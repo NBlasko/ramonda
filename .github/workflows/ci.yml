@@ -1,0 +1,23 @@
+name: CI
+
+# Runs on every PR targeting main, and on every push to main after merge.
+# The push run is what gives `main` a green check and warms the caches; the PR
+# run is the gate before merge.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# One in-flight run per branch/PR. A new push cancels the previous run so CI
+# never spends minutes finishing a build for a commit that has been superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml

@@ -1,0 +1,21 @@
+{
+  "name": "playground-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ramonda/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "vite": "^7.3.6"
+  }
+}

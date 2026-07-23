@@ -1,0 +1,42 @@
+{
+  "name": "@ramonda/devtools",
+  "version": "0.0.1",
+  "description": "Development-time devtools panel for Ramonda — component tree, state, and logs.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/devtools"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "devtools"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean && ramonda-check-bundle dist",
+    "dev": "tsup src/index.ts --format esm --watch"
+  },
+  "devDependencies": {
+    "@ramonda/shared": "workspace:^",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "name": "@ramonda/core",
+  "version": "0.0.1",
+  "description": "A TypeScript UI framework: class components, decorators, signals, and a region-aware VDOM with first-class SSR and hydration.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "framework",
+    "frontend",
+    "ui",
+    "reactive",
+    "signals",
+    "components",
+    "jsx",
+    "decorators",
+    "ssr",
+    "typescript"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "development": "./dist/index.js",
+        "production": "./dist/index.prod.js",
+        "default": "./dist/index.js"
+      }
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": {
+        "development": "./dist/testing.js",
+        "production": "./dist/testing.prod.js",
+        "default": "./dist/testing.js"
+      }
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup && ramonda-check-bundle dist",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "devDependencies": {
+    "@ramonda/devtools": "workspace:^",
+    "@ramonda/shared": "workspace:^",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.1.1",
+    "jsdom": "28.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vite-plugin-dts": "^5.0.3",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "@ramonda/router",
+  "version": "0.0.1",
+  "description": "Client-side router for Ramonda: state-first, race-free navigation with nested route outlets.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/router"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "router",
+    "routing",
+    "spa",
+    "navigation"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && ramonda-check-bundle dist",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "dependencies": {
+    "@ramonda/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@ramonda/shared": "workspace:^",
+    "@ramonda/testing-library": "workspace:^",
+    "jsdom": "28.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vitest": "^4.1.10"
+  }
+}

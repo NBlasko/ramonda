@@ -1,0 +1,76 @@
+import { Component, Host, h } from "@ramonda/core";
+import type { ComponentChild, RamondaNode } from "@ramonda/core";
+import type { ContentNode } from "./content-types";
+import { demos } from "./demos";
+import { Demo } from "./Demo";
+import { CodeBlock } from "./CodeBlock";
+import { ExamplesIndex } from "./ExamplesIndex";
+import { Link } from "@ramonda/router";
+
+interface MarkdownProps {
+  tree: readonly ContentNode[];
+}
+
+/**
+ * Renders a built content tree as real vnodes.
+ *
+ * The tree comes from `scripts/build-content.mjs`, which turns markdown into
+ * `{ t, a, c }` nodes at build time. Turning them into vnodes here — rather than
+ * setting an HTML string — is what makes a doc page an ordinary render: the
+ * server prerenders it, the client hydrates it, and a `demo:` node in the middle
+ * of the prose becomes a live component like any other child.
+ *
+ * Recursion happens in a plain function, not by nesting a component per node. A
+ * component per `<em>` would be thousands of instances per page, each with its
+ * own runtime, for markup that never changes independently.
+ */
+@Host("div")
+export class Markdown extends Component<MarkdownProps> {
+  render(): RamondaNode {
+    return this.props.tree.map(toVNode) as RamondaNode;
+  }
+}
+
+export function toVNode(node: ContentNode): ComponentChild {
+  if (typeof node === "string") return node;
+
+  // A Shiki code block becomes a component so it can carry a copy button. The
+  // check is the `shiki` class the highlighter stamps on the `<pre>`; CodeBlock
+  // renders the `<pre>` itself, so it does not route back through here.
+  if (node.t === "pre" && node.a?.className?.includes("shiki")) {
+    return h(CodeBlock, { node }) as ComponentChild;
+  }
+
+  if (node.t === "demo") {
+    const name = node.a?.name ?? "";
+    // The examples page asks for the whole registry rather than one entry.
+    if (name === "__all__") return h(ExamplesIndex, {}) as ComponentChild;
+    const demo = demos[name];
+    if (!demo) {
+      // Loud, and at the first render rather than as a blank space on a live
+      // page. A missing demo means a page is describing something that does not
+      // exist, which is worse than a broken build.
+      throw new Error(
+        `[docs] A page references the demo "${name}", which is not in src/demos/index.ts. ` +
+          `Add it there, or fix the \`\`\`demo: fence.`,
+      );
+    }
+    return h(Demo, { name }) as ComponentChild;
+  }
+
+  // An in-prose link to another docs page becomes a real <Link>, so it navigates
+  // client-side like the sidebar does. Markdown only ever produces a plain <a>,
+  // and a plain <a> is not intercepted — it would reload the whole document.
+  // External links, anchors and anything with a target are left exactly as they
+  // are: those genuinely should leave the app.
+  if (node.t === "a") {
+    const href = node.a?.href ?? "";
+    const internal = href.startsWith("/") && !node.a?.target;
+    if (internal) {
+      return h(Link, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
+    }
+  }
+
+  const children = node.c?.map(toVNode) ?? [];
+  return h(node.t, node.a ?? null, ...children) as ComponentChild;
+}

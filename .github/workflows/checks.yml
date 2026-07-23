@@ -1,0 +1,60 @@
+name: Checks
+
+# Reusable workflow: the single source of truth for "is this tree good?".
+# Called by ci.yml on every PR and push, and by release.yml as the gate before
+# anything is published — so a release can never ship code that would have failed
+# CI. Split into parallel jobs for fast feedback and a clear signal of WHAT broke.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
+      # gate: the tree is clean today (0 errors).
+      - name: Lint (oxlint)
+        run: pnpm lint
+      # Formatting is biome's job (formatter-only; oxlint does the linting). This
+      # checks without writing — it fails if anything is not biome-formatted.
+      - name: Format check (biome)
+        run: pnpm format:check
+
+  typecheck:
+    name: Type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Covers the packages that expose a `check-types` script (lens,
+      # testing-library, docs). core/router do not have one yet — that is the
+      # pending "types pass", tracked separately.
+      - run: pnpm exec turbo run check-types
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # `playground` and `playground-core` are scratch apps whose `test` script is
+      # still the `npm init` placeholder (`echo "no test specified" && exit 1`).
+      # Excluded so they cannot fail CI; drop the filters once they have real tests
+      # (or a passing/empty test script). Every real suite lives elsewhere and runs.
+      - run: pnpm exec turbo run test --filter='!playground' --filter='!playground-core'
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Builds every package AND the docs/playground apps, so the whole
+      # prerender + pagefind pipeline is exercised on every PR, not just at deploy.
+      - run: pnpm exec turbo run build

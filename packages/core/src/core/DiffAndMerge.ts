@@ -1,0 +1,1064 @@
+import { applyChangesOnAttributes } from "./Attribute";
+import type {
+  BaseComponent,
+  ComponentChild,
+  EnhancedHTMLNode,
+  EnhancedNode,
+  MaybeEnhancedNode,
+  ComponentClassKind,
+  VNode,
+  VNodeComponent,
+  EnhancedChildNode,
+  MaybeComponent,
+  VNodeString,
+  EnhancedSVGElement,
+  ListNode,
+  ListRegion,
+  RecordEntry,
+} from "../types/vdom";
+import { addTaskToQueue } from "./Task";
+import { errorHandler } from "./errorHandler";
+import { areStringRecordsEqual } from "../helpers/areStringRecordsEqual";
+import {
+  DONE,
+  TEXT_TYPE,
+  svgNamespaceUri,
+  IS_SVG,
+  KEY_SYM,
+  IS_LIST,
+  HAS_LIST,
+  CHILD_RECORD,
+  ORIGIN_SYM,
+  REF_SYM,
+} from "../helpers/constants";
+import { generateRenderOutput } from "../helpers/generateRenderOutput";
+import { hostTagMatches } from "../helpers/hostTag";
+import { queuePostCommit } from "./commit";
+import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
+import { checkHostPlacement } from "../debug/hostPlacement";
+import { seedWatchProps } from "../helpers/watchProps";
+import type { Context } from "../types/commonTypes";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
+import { runComponentEffects } from "../reactivity/effect";
+import { getRenderEnv } from "./renderEnv";
+import { getServerWorkCollector } from "./serverWork";
+import { ListEngine, isLazyList, buildLazyList, type LazyListNode, type ListHost } from "../helpers/listEngine";
+import { snapshotOwnProps, lintUnpersistedState } from "../hydration/lint";
+import { lintChildKeys } from "../debug/lintChildren";
+import { timerOwner } from "../debug/timerGuard";
+import type { Runtime } from "./runtime";
+
+export function diffAndMerge(
+  vnode: VNode,
+  placeholderComponent: MaybeComponent,
+  maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
+): EnhancedNode | EnhancedChildNode {
+  if (vnode.type === TEXT_TYPE) {
+    return executeChangesOnStringNode(vnode, placeholderComponent, maybeenhancedNode);
+  }
+
+  return createOrUpdateComponent(vnode, placeholderComponent, maybeenhancedNode);
+}
+
+/**
+ * Builds a child WITHOUT putting it in the document.
+ *
+ * Used by the children diff, where insertion is deliberately left to
+ * `reorderChildren` — which runs after the unclaimed nodes have been unmounted.
+ * Appending here instead meant a replacement was in the document while the node
+ * it replaces was still being torn down, so `@destroy` saw both: measured as
+ * `document: 1|2` where React's `componentWillUnmount` sees only `1`.
+ *
+ * `parent` is taken but not written to: the DEV placement check needs to know
+ * where the node is going, and this is the only moment both are in hand.
+ */
+function buildDetachedNode(
+  vchild: ComponentChild,
+  placeholderComponent: MaybeComponent,
+  parent: ChildNode,
+): ChildNode | undefined {
+  try {
+    if (typeof vchild === "string") {
+      return document.createTextNode(vchild);
+    }
+
+    const diff = diffAndMerge(vchild, placeholderComponent, undefined);
+    if (__DEV__) {
+      checkHostPlacement(parent, diff);
+    }
+    return diff;
+  } catch (e) {
+    errorHandler(e, placeholderComponent);
+  }
+}
+
+/**
+ * Builds a child and appends it. The ROOT mounts use this — `bootstrap` and
+ * `renderToString` have an empty container and nothing to reorder, so there is
+ * no teardown for the insertion to race with.
+ */
+export function mountNode(
+  vchild: ComponentChild,
+  placeholderComponent: MaybeComponent,
+  enhancedNode: ChildNode,
+): ChildNode | undefined {
+  const built = buildDetachedNode(vchild, placeholderComponent, enhancedNode);
+  if (built) enhancedNode.appendChild(built);
+  return built;
+}
+
+function executeChangesOnStringNode(
+  vnode: VNodeString,
+  placeholderComponent: MaybeComponent,
+  maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
+) {
+  const enhancedNode = maybeenhancedNode?.nodeName === vnode.name ? maybeenhancedNode : createElement(vnode);
+
+  applyChangesOnAttributes(enhancedNode, vnode.attributes);
+
+  const vnodeChildren = vnode.children;
+
+  if (!vnodeChildren) {
+    // `childNodes` is a live NodeList and unmounting calls `.remove()` — snapshot
+    // it first, otherwise the list shrinks mid-iteration and skips children.
+    const EnhancedChildNodes = Array.from(enhancedNode.childNodes as unknown as EnhancedChildNode[]);
+    unmountChildrenNodes(EnhancedChildNodes);
+    // Everything under this element is gone, so any list record describes nodes
+    // that no longer exist. Left behind, it would be read as truth next render —
+    // and its regions would keep their items subscribed to whatever they read.
+    releaseListRecord(enhancedNode as EnhancedChildNode);
+
+    return enhancedNode;
+  }
+
+  const { cloneChildren, orderedNodes } = applyDiffOnChildren(vnodeChildren, placeholderComponent, enhancedNode);
+
+  // Unmount before reordering: stale nodes still in the DOM would make
+  // correctly-placed nodes look misplaced and cause pointless moves.
+  unmountChildrenNodes(cloneChildren);
+  if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
+
+  return enhancedNode;
+}
+
+function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
+  // Stamped at CREATION only. A component re-rendering itself produces a fresh
+  // host vnode carrying its OWN id, and writing that on every update would erase
+  // the origin buildComponent set — the caller's id, which is the one that
+  // matters for matching.
+  if (vnodeString.attributes[IS_SVG]) {
+    const node: EnhancedSVGElement = document.createElementNS(svgNamespaceUri, vnodeString.name);
+    node[IS_SVG] = true;
+    node[ORIGIN_SYM] = vnodeString[ORIGIN_SYM];
+    return node;
+  }
+
+  const node = document.createElement(vnodeString.name) as EnhancedHTMLNode;
+  node[ORIGIN_SYM] = vnodeString[ORIGIN_SYM];
+  return node;
+}
+
+export function filterVirtualChild(rawChild: any): ComponentChild | undefined {
+  const typeofChild = typeof rawChild;
+  if (
+    // Loose on purpose: one check for both null and undefined.
+    rawChild == null ||
+    typeofChild === "boolean" ||
+    typeofChild === "function"
+  )
+    return;
+  if (typeofChild !== "string" && typeofChild !== "object") {
+    rawChild = rawChild.toString();
+  }
+  return rawChild as ComponentChild;
+}
+
+function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: MaybeComponent, enhancedNode: ChildNode) {
+  if (__DEV__) {
+    lintChildKeys(vnodeChildren, placeholderComponent);
+  }
+
+  const owner = enhancedNode as EnhancedChildNode;
+  // O(1): `flattenMixedArray` marked the array when it kept a list in it. The
+  // record check catches the render where the last list just disappeared.
+  const hasList = (vnodeChildren as { [HAS_LIST]?: boolean })[HAS_LIST] === true;
+
+  if (hasList || owner[CHILD_RECORD] !== undefined) {
+    return applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasList);
+  }
+
+  const enhancedChildNodes = enhancedNode.childNodes as unknown as EnhancedChildNode[];
+  const cloneChildren: (EnhancedChildNode | DONE)[] = [];
+  for (let i = 0; i < enhancedChildNodes.length; i++) {
+    cloneChildren[i] = enhancedChildNodes[i];
+  }
+  const keyIndex: KeyIndex = { map: null, source: cloneChildren };
+
+  // The nodes the vnode list wants, in its order. Feeds the reorder pass.
+  const orderedNodes: ChildNode[] = [];
+
+  for (let i = 0; i < vnodeChildren.length; i++) {
+    const vchild = filterVirtualChild(vnodeChildren[i]);
+    if (vchild === undefined) continue;
+
+    const placed = claimOrMount(vchild, i, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
+    if (placed) orderedNodes.push(placed);
+  }
+
+  return { cloneChildren, orderedNodes };
+}
+
+/**
+ * The key -> position index, built the first time something actually needs it.
+ *
+ * Most renders never do: a list that has not reordered finds every child at the
+ * position it was already in. Building the index up front cost a `String()` and
+ * a `Map.set` per child on every render, which made a KEYED list measurably
+ * SLOWER to update than the same list unkeyed — 20-30ms against 16-18ms on 3000
+ * items — because the unkeyed path hits its preferred position with no
+ * allocation at all.
+ */
+interface KeyIndex {
+  map: Map<string, number> | null;
+  source: (EnhancedChildNode | DONE)[];
+}
+
+function keyIndexOf(index: KeyIndex): Map<string, number> {
+  let map = index.map;
+  if (map === null) {
+    map = new Map<string, number>();
+    const source = index.source;
+    for (let i = 0; i < source.length; i++) {
+      const entry = source[i];
+      // Already claimed this pass: it cannot be matched again, and leaving it
+      // out is what keeps a late lookup from pointing at a taken node.
+      if (entry === DONE) continue;
+      const key = entry[KEY_SYM];
+      if (key != null) map.set(String(key), i);
+    }
+    index.map = map;
+  }
+  return map;
+}
+
+/**
+ * Claims one child from `cloneChildren` — by position, then by key, then by
+ * shape — or mounts it. Shared by both paths, so a list's items are reconciled
+ * by exactly the same rules as any other child; the ONLY difference is which
+ * pool and which key index they are handed, and that is what keeps lists apart.
+ */
+function claimOrMount(
+  vchild: ComponentChild,
+  preferredIndex: number,
+  placeholderComponent: MaybeComponent,
+  parent: ChildNode,
+  cloneChildren: (EnhancedChildNode | DONE)[],
+  keyIndex: KeyIndex,
+): ChildNode | undefined {
+  let matchedIndex = -1;
+
+  // 1. The position this child already occupied. `areSimilarNodes` enforces key
+  //    equality, so this is safe for keyed children too — and it is the case
+  //    that actually happens, so it must cost nothing.
+  if (preferredIndex < cloneChildren.length) {
+    const candidate = cloneChildren[preferredIndex];
+    if (candidate !== DONE && areSimilarNodes(candidate, vchild)) {
+      matchedIndex = preferredIndex;
+    }
+  }
+
+  const key = typeof vchild === "string" ? undefined : vchild.attributes?.key;
+  const keyed = key != null;
+
+  // 2. It moved: now the index is worth building.
+  if (matchedIndex === -1 && keyed) {
+    const asString = String(key);
+    const map = keyIndexOf(keyIndex);
+    const childIndex = map.get(asString);
+    if (childIndex !== undefined) {
+      matchedIndex = childIndex;
+      map.delete(asString);
+    }
+  }
+
+  // 3. Unkeyed only. A key is an identity the developer asserted, so no key
+  //    match means no match — falling back to shape would let a keyed element
+  //    adopt a differently-keyed node's state. `areSimilarNodes` rejects those
+  //    anyway, so for a keyed child the scan could only ever come back empty,
+  //    after walking the whole list to find that out.
+  if (matchedIndex === -1 && !keyed) {
+    matchedIndex = findIndexOfSimilarNodes(vchild, cloneChildren, preferredIndex);
+  }
+
+  const matched = matchedIndex > -1 ? cloneChildren[matchedIndex] : DONE;
+
+  if (matched !== DONE) {
+    if (typeof vchild === "string") {
+      applyDiffOnTextNode(vchild, matched);
+      cloneChildren[matchedIndex] = DONE;
+      return matched;
+    }
+
+    // diffAndMerge can hand back a DIFFERENT node — a keyed match only proves
+    // the key is the same, so the component definition may have changed. When
+    // it does, the old node stays unclaimed and gets unmounted below.
+    const next = diffAndMerge(vchild, placeholderComponent, matched);
+    if (next === matched) cloneChildren[matchedIndex] = DONE;
+    return next;
+  }
+
+  // Built, not inserted: `reorderChildren` places it, after the nodes this
+  // render drops have been unmounted. See buildDetachedNode.
+  const mounted = buildDetachedNode(vchild, placeholderComponent, parent);
+  cloneChildren.push(DONE);
+  return mounted;
+}
+
+export function isListNode(value: unknown): value is ListNode {
+  return value !== null && typeof value === "object" && (value as ListNode)[IS_LIST] === true;
+}
+
+/** A record entry is either a DOM node or a region; only the region has `owner`. */
+function isRegion(entry: RecordEntry): entry is ListRegion {
+  return (entry as ListRegion).owner !== undefined;
+}
+/**
+ * The path for an element that owns at least one list.
+ *
+ * Previous state comes from the element's record rather than from `childNodes`,
+ * because the DOM has nowhere to say "these three nodes are that list".
+ */
+function applyDiffWithRegions(
+  vnodeChildren: unknown[],
+  placeholderComponent: MaybeComponent,
+  enhancedNode: EnhancedChildNode,
+  hasList: boolean,
+) {
+  const previous = enhancedNode[CHILD_RECORD] ?? (Array.from(enhancedNode.childNodes) as unknown as RecordEntry[]);
+
+  const unclaimed: (EnhancedChildNode | DONE)[] = [];
+  const result = reconcileEntries(vnodeChildren, previous, undefined, placeholderComponent, enhancedNode, unclaimed);
+
+  // Kept only while this element still owns a list — every other element pays
+  // nothing and keeps reading childNodes exactly as before.
+  enhancedNode[CHILD_RECORD] = hasList ? result.entries : undefined;
+
+  // Nothing moved, mounted or unmounted, and every region reported itself
+  // unchanged — so there is no order to restore and no reason to flatten.
+  if (!result.changed && unclaimed.length === 0) {
+    return { cloneChildren: unclaimed, orderedNodes: null };
+  }
+
+  const orderedNodes: ChildNode[] = [];
+  flattenEntries(result.entries, orderedNodes);
+  return { cloneChildren: unclaimed, orderedNodes };
+}
+
+/**
+ * Reconciles one level of children against the entries that level held last
+ * render, and **recurses for a list**, so a list inside a list inside a slot is
+ * reconciled the same way at every depth.
+ *
+ * Plain children share one pool and one key index; each list gets its own,
+ * scoped to itself. That scoping is what keeps two lists that both mint `f0`
+ * from seeing each other, and what keeps a component's chrome out of reach of
+ * content passed into it.
+ */
+/**
+ * What a `list()` region reports to when an item's signal changes.
+ *
+ * The owner is the component whose render produced the descriptor — a plain
+ * function has no `this`, but the diff knows exactly whose children it is
+ * walking.
+ */
+export function listHostFor(owner: MaybeComponent): ListHost {
+  return {
+    reBuild: () => {
+      if (owner) addTaskToQueue(owner);
+    },
+    name: owner?.constructor.name ?? "list",
+  };
+}
+
+function reconcileEntries(
+  children: unknown[],
+  previous: RecordEntry[],
+  clean: boolean[] | undefined,
+  placeholderComponent: MaybeComponent,
+  parent: ChildNode,
+  unclaimed: (EnhancedChildNode | DONE)[],
+): { entries: RecordEntry[]; changed: boolean } {
+  const cloneChildren: (EnhancedChildNode | DONE)[] = [];
+  // Looked up by owner, never by position: a list keeps its nodes even when it
+  // moves among its siblings.
+  const previousRegions = new Map<unknown, ListRegion>();
+
+  for (const entry of previous) {
+    if (isRegion(entry)) previousRegions.set(entry.owner, entry);
+    else cloneChildren.push(entry);
+  }
+
+  const keyIndex: KeyIndex = { map: null, source: cloneChildren };
+  const entries: RecordEntry[] = [];
+  let changed = false;
+  let plainIndex = 0;
+
+  for (let i = 0; i < children.length; i++) {
+    const rawVchild = children[i];
+
+    if (isListNode(rawVchild)) {
+      const before = previousRegions.get(rawVchild.owner);
+      previousRegions.delete(rawVchild.owner);
+
+      // The engine hands back the identical ListNode when nothing about the
+      // list changed. Same object -> same items, same order, same length: the
+      // region is left exactly as it is, without touching one of its nodes.
+      if (before !== undefined && before.source === rawVchild) {
+        entries.push(before);
+        if (previous[entries.length - 1] !== before) changed = true;
+        continue;
+      }
+
+      // A `list()` descriptor has not run its mapper yet. This is the moment to:
+      // the previous region is in hand, and with it the engine holding the
+      // minted ids, the per-item scopes and the whole-list skip.
+      let listNode = rawVchild;
+      let engine = before?.engine;
+
+      if (isLazyList(rawVchild)) {
+        const materialized = buildLazyList(
+          rawVchild as unknown as LazyListNode,
+          engine as ListEngine<unknown> | undefined,
+          listHostFor(placeholderComponent),
+        );
+        listNode = materialized.node as typeof rawVchild;
+        engine = materialized.engine;
+      }
+
+      const inner = reconcileEntries(
+        listNode.vnodes,
+        before?.entries ?? [],
+        listNode.clean,
+        placeholderComponent,
+        parent,
+        unclaimed,
+      );
+      entries.push({
+        owner: listNode.owner,
+        entries: inner.entries,
+        // The BUILT node, not the descriptor: the whole-list skip below compares
+        // this by identity, and the engine hands back the very same object when
+        // nothing about the list changed.
+        source: listNode,
+        engine,
+      });
+      changed = true;
+      continue;
+    }
+
+    // Clean item: same vnode object, and nothing it read has changed. Its DOM
+    // subtree is therefore still correct, so it is claimed by key and left
+    // alone — no attribute pass, no recursion, no work proportional to its size.
+    if (clean !== undefined && clean[i] === true) {
+      const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
+      if (claimedNode !== undefined) {
+        entries.push(claimedNode);
+        if (previous[entries.length - 1] !== claimedNode) changed = true;
+        plainIndex++;
+        continue;
+      }
+      // No node to reuse (first render, or it was unmounted): build it normally.
+    }
+
+    const vchild = filterVirtualChild(rawVchild);
+    if (vchild === undefined) continue;
+
+    const placed = claimOrMount(vchild, plainIndex++, placeholderComponent, parent, cloneChildren, keyIndex);
+    if (placed) {
+      entries.push(placed as EnhancedChildNode);
+      if (previous[entries.length - 1] !== placed) changed = true;
+    }
+  }
+
+  // A list that is no longer rendered, and children that were not claimed.
+  for (const region of previousRegions.values()) {
+    collectRegionNodes(region, unclaimed);
+    // The nodes go to `unclaimed` to be unmounted, but the engine is reachable
+    // only from here — the region entry itself is about to be dropped.
+    region.engine?.dispose();
+    disposeRegions(region.entries);
+    changed = true;
+  }
+  for (const leftover of cloneChildren) {
+    if (leftover !== DONE) unclaimed.push(leftover);
+  }
+  if (previous.length !== entries.length) changed = true;
+
+  return { entries, changed };
+}
+
+/** Claims the node a clean item already owns, without diffing into it. */
+function claimByKey(
+  vnode: VNode,
+  cloneChildren: (EnhancedChildNode | DONE)[],
+  keyIndex: KeyIndex,
+): EnhancedChildNode | undefined {
+  const key = vnode.attributes?.key;
+  if (key == null) return undefined;
+
+  const asString = String(key);
+  const map = keyIndexOf(keyIndex);
+  const index = map.get(asString);
+  if (index === undefined) return undefined;
+
+  const node = cloneChildren[index];
+  if (node === DONE) return undefined;
+
+  map.delete(asString);
+  cloneChildren[index] = DONE;
+  return node;
+}
+
+function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
+  for (const entry of entries) {
+    if (isRegion(entry)) flattenEntries(entry.entries, out);
+    else out.push(entry);
+  }
+}
+
+function collectRegionNodes(region: ListRegion, out: (EnhancedChildNode | DONE)[]): void {
+  for (const entry of region.entries) {
+    if (isRegion(entry)) collectRegionNodes(entry, out);
+    else out.push(entry);
+  }
+}
+
+/**
+ * Aligns the DOM child order with the order the vnode list asked for, moving as
+ * few nodes as possible.
+ *
+ * The naive backwards walk ("move whenever `nextSibling` is not the node placed
+ * after me") cascades: `mountNode` appends new children at the END, so inserting
+ * one row near the front made every node between the insertion point and the end
+ * look misplaced, and each got its own `insertBefore`. Measured at 10000 items:
+ * 38.9s for an insert at index 0, 20.5s at the middle — while the mapper and the
+ * diff walk together cost ~80ms. See BUGS.md.
+ *
+ * Instead: take the longest run of nodes that are already in relative order and
+ * leave them alone; move only the rest. One insertion then costs exactly one
+ * move, whatever the list length.
+ */
+function reorderChildren(parent: ChildNode, orderedNodes: ChildNode[]): void {
+  const length = orderedNodes.length;
+  if (length === 0) return;
+
+  // Fast path, no allocation: the DOM already reads exactly like the target.
+  // This is the common render — a state change that moves nothing.
+  let cursor = parent.firstChild;
+  let i = 0;
+  while (cursor !== null && i < length && cursor === orderedNodes[i]) {
+    cursor = cursor.nextSibling;
+    i++;
+  }
+  if (i === length && cursor === null) return;
+
+  // Current position of every child, so "already in relative order" is decidable.
+  const positions = new Map<ChildNode, number>();
+  let index = 0;
+  for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
+    positions.set(node, index++);
+  }
+
+  // A node with no position is one this render just built: the children diff
+  // hands them over uninserted on purpose, so that the nodes this render drops
+  // are unmounted first. It used to be an unexpected case that bailed to the
+  // naive walk; now it is the normal way a new child arrives.
+  const current: number[] = new Array(length);
+  let fresh = 0;
+  for (let n = 0; n < length; n++) {
+    const position = positions.get(orderedNodes[n]);
+    if (position === undefined) {
+      current[n] = NOT_PLACED;
+      fresh++;
+    } else {
+      current[n] = position;
+    }
+  }
+
+  const keep = keptInOrder(current, fresh);
+  let keepIndex = keep.length - 1;
+  let reference: ChildNode | null = null;
+
+  for (let n = length - 1; n >= 0; n--) {
+    const node = orderedNodes[n];
+    if (keepIndex >= 0 && keep[keepIndex] === n) {
+      // Already in relative order: leave it, and let it anchor the ones before.
+      keepIndex--;
+    } else {
+      parent.insertBefore(node, reference);
+    }
+    reference = node;
+  }
+}
+
+/** Marks a node that is not in the parent yet, so it has no current position. */
+const NOT_PLACED = -1;
+
+/**
+ * The indices of `orderedNodes` that may stay where they are.
+ *
+ * A freshly built node can never be one of them — it has to be inserted no
+ * matter where it lands — so those entries are taken out before the longest
+ * increasing subsequence is computed, and the result is mapped back to indices
+ * in the original array.
+ *
+ * Splitting only when there IS a new node keeps the common render — a reorder
+ * with nothing added — on exactly the path it was on before: one LIS over the
+ * positions, no extra arrays.
+ */
+function keptInOrder(current: number[], fresh: number): number[] {
+  if (fresh === 0) return longestIncreasingSubsequence(current);
+  // Everything is new, so nothing can be kept. Also guards the LIS helper, which
+  // assumes a non-empty input.
+  if (fresh === current.length) return [];
+
+  const placedIndex: number[] = [];
+  const placedPosition: number[] = [];
+  for (let n = 0; n < current.length; n++) {
+    if (current[n] === NOT_PLACED) continue;
+    placedIndex.push(n);
+    placedPosition.push(current[n]);
+  }
+
+  const keptAmongPlaced = longestIncreasingSubsequence(placedPosition);
+  const keep: number[] = new Array(keptAmongPlaced.length);
+  for (let k = 0; k < keptAmongPlaced.length; k++) {
+    keep[k] = placedIndex[keptAmongPlaced[k]];
+  }
+  return keep;
+}
+
+// `reorderChildrenNaive` lived here. It was the fallback for "a node that is not
+// a child of this parent", which used to mean something had gone wrong. Since
+// the children diff hands new nodes over uninserted, that case is now the normal
+// one and the LIS path handles it — see keptInOrder. Nothing called this.
+
+/**
+ * Indices of a longest increasing subsequence of `values`, ascending.
+ * Those are the nodes that may stay put; every other node has to move.
+ * O(n log n) — patience sorting with predecessor links.
+ */
+function longestIncreasingSubsequence(values: number[]): number[] {
+  const length = values.length;
+  const predecessor = new Array<number>(length);
+  // Indices of the current best subsequence, by length.
+  const result: number[] = [0];
+
+  for (let i = 1; i < length; i++) {
+    const value = values[i];
+    const last = result[result.length - 1];
+
+    if (values[last] < value) {
+      predecessor[i] = last;
+      result.push(i);
+      continue;
+    }
+
+    // Binary search for the first entry not smaller than `value`, and take its
+    // place: a smaller tail leaves more room for what comes after.
+    let low = 0;
+    let high = result.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (values[result[middle]] < value) low = middle + 1;
+      else high = middle;
+    }
+
+    if (value < values[result[low]]) {
+      if (low > 0) predecessor[i] = result[low - 1];
+      result[low] = i;
+    }
+  }
+
+  // Walk the predecessor links back to turn the tails into the real sequence.
+  let cursor = result.length;
+  let node = result[cursor - 1];
+  while (cursor-- > 0) {
+    result[cursor] = node;
+    node = predecessor[node];
+  }
+
+  return result;
+}
+
+function applyDiffOnTextNode(vnode: string, enhancedNode: ChildNode): void {
+  if (enhancedNode.textContent !== vnode) enhancedNode.textContent = vnode;
+}
+
+function createOrUpdateComponent(
+  vnode: VNodeComponent,
+  placeholderComponent: MaybeComponent,
+  enhancedNode: MaybeEnhancedNode | EnhancedChildNode,
+): EnhancedHTMLNode | EnhancedChildNode {
+  if (!enhancedNode) return createComponent(vnode, placeholderComponent);
+  if (enhancedNode._componentDefinition !== vnode.name) return createComponent(vnode, placeholderComponent);
+  // Same class is not enough when @Host takes its tag from props: two <Card>s
+  // with a different `as` would otherwise reuse each other's element and carry
+  // the wrong tag. See helpers/hostTag.ts.
+  if (!hostTagMatches(vnode, enhancedNode)) return createComponent(vnode, placeholderComponent);
+
+  const component = enhancedNode._componentInstance;
+
+  if (!component) return createComponent(vnode, placeholderComponent);
+
+  const nextProps = vnode.attributes ?? {};
+  const componentRuntime = component[COMPONENT_RUNTIME];
+  const decide = component[GLOBAL_RUNTIME].shouldUpdateProps;
+  const shouldUpdateProps = decide
+    ? decide(componentRuntime.rawProps, nextProps)
+    : !areStringRecordsEqual(componentRuntime.rawProps, nextProps);
+
+  if (shouldUpdateProps) {
+    const prevRaw = componentRuntime.rawProps;
+    const nextRaw = nextProps;
+
+    componentRuntime.rawProps = nextRaw;
+
+    for (const key in nextRaw) {
+      const newValue = nextRaw[key];
+      const oldValue = prevRaw[key];
+
+      if (oldValue !== newValue) {
+        const sig = componentRuntime.propsSignals.get(key);
+        if (sig) sig.set(newValue);
+      }
+    }
+
+    for (const key of Object.keys(prevRaw)) {
+      if (!(key in nextRaw)) {
+        const sig = componentRuntime.propsSignals.get(key);
+        if (sig) sig.set(undefined);
+      }
+    }
+
+    addTaskToQueue(component);
+  }
+
+  return enhancedNode;
+}
+
+/**
+ * Searches for a similar node in the existing children list.
+ * Optimization: It first checks the 'preferredIndex' (the current loop position).
+ * In most UI updates, nodes stay in the same order, allowing O(1) lookup.
+ * If that fails, it performs a linear search.
+ */
+function findIndexOfSimilarNodes(
+  virtualNode: ComponentChild,
+  cloneChildren: (EnhancedChildNode | DONE)[],
+  preferredIndex: number,
+): number {
+  const cloneChildrenLength = cloneChildren.length;
+
+  if (preferredIndex < cloneChildrenLength) {
+    const candidateAtPosition = cloneChildren[preferredIndex];
+    if (candidateAtPosition !== DONE && areSimilarNodes(candidateAtPosition, virtualNode)) {
+      return preferredIndex;
+    }
+  }
+
+  for (let j = 0; j < cloneChildrenLength; j++) {
+    const candidate = cloneChildren[j];
+
+    if (candidate === DONE) continue;
+
+    if (areSimilarNodes(candidate, virtualNode)) {
+      return j;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Releases the reactive scopes the regions under a record hold.
+ *
+ * `For` did this from its own `@destroy`: the hook instance WAS the thing being
+ * unmounted, so the teardown had somewhere to live. A `list()` region has no
+ * instance — its state rides on the parent's record — so whoever destroys the
+ * record has to release it. Without this, every item that read an ANCESTOR's
+ * signal stays subscribed to it after the page stops showing the list.
+ *
+ * Measured on the old code: removing a list of three items left 1 live listener
+ * on the provider's signal instead of 0, and the whole subtree stayed reachable
+ * through it. See `ScopeCleanup.test.tsx`, which fails without this call.
+ */
+function disposeRegions(entries: RecordEntry[]): void {
+  for (const entry of entries) {
+    if (!isRegion(entry)) continue;
+    entry.engine?.dispose();
+    // Regions nest, and only the outermost is reachable from the record.
+    disposeRegions(entry.entries);
+  }
+}
+
+function releaseListRecord(node: EnhancedChildNode): void {
+  const record = node[CHILD_RECORD];
+  if (record === undefined) return;
+  disposeRegions(record);
+  node[CHILD_RECORD] = undefined;
+}
+
+export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[]) {
+  for (const child of children) {
+    if (child === DONE) continue;
+
+    if (child.childNodes.length > 0) {
+      loopThroughSoonToBeRemovedNodes(child.childNodes as NodeListOf<EnhancedChildNode>);
+    }
+
+    releaseRef(child);
+    releaseListRecord(child);
+
+    const component = child._componentInstance;
+    if (component) {
+      lifecycleCleanupManagement(component);
+      child._componentInstance = undefined;
+    }
+
+    child.remove();
+  }
+}
+
+function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNode>) {
+  for (const child of childNodes) {
+    if (child.childNodes.length > 0) {
+      loopThroughSoonToBeRemovedNodes(child.childNodes as NodeListOf<EnhancedChildNode>);
+    }
+
+    releaseRef(child);
+    releaseListRecord(child);
+
+    const component = child._componentInstance;
+
+    if (component) {
+      lifecycleCleanupManagement(component);
+      child._componentInstance = undefined;
+    }
+  }
+}
+
+/**
+ * A ref must not outlive the node it points at. Left set, `current` holds a
+ * detached element: it reads as present, `focus()` and friends do nothing, and
+ * the subtree stays reachable.
+ */
+function releaseRef(node: EnhancedChildNode): void {
+  const ref = node[REF_SYM];
+  if (!ref) return;
+  node[REF_SYM] = undefined;
+
+  // Only if it still points HERE. Mounting runs before unmounting, so when one
+  // element replaces another that shared a ref, the new node has already
+  // claimed it — clearing then would wipe the value that was just set.
+  if (ref.current !== node) return;
+  ref.setCurrent(null);
+}
+
+/**
+ * Core reconciliation logic to determine if an enhanced node can be reused.
+ * A node is reusable if it shares the same type, key, and definition.
+ */
+function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtualNode: ComponentChild): boolean {
+  if (typeof virtualNode === "string") {
+    return enhancedNode.nodeType === 3;
+  }
+
+  if (!enhancedNode || enhancedNode.nodeType === 3) return false;
+
+  // Different builders, different things. A node Panel built for itself must
+  // never be claimed for a vnode its caller passed in, however alike they look.
+  // 0 is its own group, not a wildcard: a vnode built outside any render — a
+  // module-level `const foo = <div/>`, a field initializer — matches only other
+  // such vnodes. See core/origin.ts.
+  const vOrigin = virtualNode[ORIGIN_SYM];
+  const eOrigin = enhancedNode[ORIGIN_SYM];
+  if (vOrigin !== eOrigin) return false;
+
+  const vKey = virtualNode.attributes?.key;
+  const eKey = enhancedNode[KEY_SYM];
+
+  const hasVKey = vKey != null;
+  const hasEKey = eKey != null;
+
+  if (hasVKey || hasEKey) {
+    if (String(vKey) !== String(eKey)) return false;
+  }
+
+  if (typeof virtualNode.name === "string") {
+    // A component's HOST element has the same nodeName as a plain element of
+    // that tag, so nodeName alone is not enough to tell them apart — and getting
+    // it wrong is silent and expensive.
+    //
+    // `{on ? <Child /> : <span>gone</span>}`, where Child is @Host("span"),
+    // used to claim Child's host for the plain <span>: the node was reused, the
+    // component instance was dropped on the floor, and nothing tore it down. No
+    // @destroy, no effect cleanups — its subscriptions, intervals and listeners
+    // ran for the life of the page. Not even RMD006 fired, because the timer
+    // guard lives in the teardown that never happened.
+    //
+    // Measured: `{on ? <Child /> : null}` cleaned up correctly, the ternary with
+    // an element did not. The reverse direction was always safe — a plain
+    // element has no `_componentDefinition`, so it can never be claimed FOR a
+    // component. Only this side was open.
+    if (enhancedNode._componentDefinition !== undefined) return false;
+    return enhancedNode.nodeName === virtualNode.name;
+  }
+
+  return enhancedNode._componentDefinition === virtualNode.name && hostTagMatches(virtualNode, enhancedNode);
+}
+
+function createComponent(
+  vnode: VNodeComponent,
+  placeholderComponent: MaybeComponent,
+): EnhancedHTMLNode | EnhancedChildNode {
+  const placeholderComponentRuntime = placeholderComponent?.[COMPONENT_RUNTIME];
+  const parentContext = placeholderComponent?.[GLOBAL_RUNTIME].context;
+  const currentContext = Object.create(parentContext || null);
+
+  const component = componentFactory(vnode.name, vnode.attributes, currentContext);
+  const componentRuntime = component[COMPONENT_RUNTIME];
+  const runtime = component[GLOBAL_RUNTIME];
+  componentRuntime.isInitialized = true;
+
+  if (placeholderComponentRuntime) {
+    componentRuntime.depth = placeholderComponentRuntime.depth + 1;
+    componentRuntime.parent = placeholderComponent;
+  }
+
+  // Inherit the side we're rendering on from the parent. The module-level env is
+  // only consulted for a root mount (no parent), which always happens inside a
+  // synchronous section — see renderEnv.ts for why that matters.
+  const env = placeholderComponentRuntime ? placeholderComponentRuntime.env : getRenderEnv();
+  componentRuntime.env = env;
+
+  // Same inheritance rule as `env`, and for the same reason — a component created
+  // during the server's drain loop, long after the module-level flag is clear,
+  // still reaches the render it belongs to through its parent.
+  componentRuntime.serverWork = placeholderComponentRuntime
+    ? placeholderComponentRuntime.serverWork
+    : getServerWorkCollector();
+
+  // Client render skips server-only lifecycle; server render skips client-only.
+  const onServer = env === "server";
+  const skipEnv = onServer ? "client" : "server";
+
+  // DEV lint: on the server, capture props post-construction so we can flag
+  // state that create/mount sets but doesn't persist (undefined after hydration).
+  // Kept in a plain `if (__DEV__)` block so prod builds strip it (and the import).
+  let lintBefore: ReturnType<typeof snapshotOwnProps> | undefined;
+  if (__DEV__) {
+    if (onServer) lintBefore = snapshotOwnProps(component);
+  }
+
+  // Attribute timers started by this component's lifecycle to it (RMD006).
+  // Saved and restored rather than just set: createComponent nests, because a
+  // child is built from inside the parent's diff — and the parent still has
+  // mounts and effects to run once that returns.
+  let previousTimerOwner: BaseComponent | undefined;
+  if (__DEV__) {
+    previousTimerOwner = timerOwner.component;
+    timerOwner.component = component;
+  }
+
+  try {
+    return buildComponent(component, vnode, runtime, skipEnv, lintBefore);
+  } catch (e) {
+    // The build failed, but the component was already CONSTRUCTED and its
+    // @create may already have run and taken something — a subscription, a
+    // hand-written listener, an open connection.
+    //
+    // Nothing else would ever tear it down. Teardown is reached from
+    // `unmountChildrenNodes`, which walks the DOM, and this component's host was
+    // never inserted anywhere: `render()` threw before there was one, or
+    // `@create` threw before `render()`. So it is unreachable and whatever it
+    // took leaks for the life of the page.
+    //
+    // Runs unconditionally, not only when @create completed. @destroy may
+    // therefore see a half-initialised component and has to tolerate that —
+    // `runCleanup` already isolates a throwing cleanup so one bad @destroy
+    // cannot take the rest with it. Leaking less was preferred to the more
+    // predictable rule (React's: skip cleanup for a component that never
+    // finished mounting).
+    lifecycleCleanupManagement(component);
+    throw e;
+  } finally {
+    if (__DEV__) {
+      timerOwner.component = previousTimerOwner;
+    }
+  }
+}
+
+function buildComponent(
+  component: BaseComponent,
+  vnode: VNodeComponent,
+  runtime: Runtime,
+  skipEnv: "client" | "server",
+  lintBefore: ReturnType<typeof snapshotOwnProps> | undefined,
+): EnhancedHTMLNode | EnhancedChildNode {
+  const componentRuntime = component[COMPONENT_RUNTIME];
+
+  for (const create of runtime.creates) {
+    if (create.env !== skipEnv) create.cb();
+  }
+
+  // Record each watchProp selector's starting value; mount is not a change, so
+  // no callback fires here.
+  seedWatchProps(component);
+
+  const rendered = generateRenderOutput(component);
+
+  const enhancedNode = diffAndMerge(rendered, component, undefined);
+
+  enhancedNode._componentInstance = component;
+  enhancedNode._componentDefinition = vnode.name;
+  enhancedNode[ORIGIN_SYM] = vnode[ORIGIN_SYM];
+  // `<Child ref={r} />` — a component is exactly one element (1-1), so the ref
+  // points at its host. It used to be accepted and silently do nothing, because
+  // a component's props never reach applyChangesOnAttributes.
+  applyRefFromProps(enhancedNode, vnode.attributes?.ref);
+  componentRuntime.enhancedNode = enhancedNode;
+
+  // Queued, not called: the host element is inserted by the CALLER after this
+  // returns, so running any of this here meant running it before the element was
+  // in the document. Queued in the order they used to run — mounts, lint, then
+  // effects — so only the timing moved. See core/commit.ts.
+  for (const mount of runtime.mounts) {
+    if (mount.env !== skipEnv) queuePostCommit(component, mount.cb);
+  }
+
+  if (__DEV__) {
+    // After the mounts, as before: this lint is about fields @create AND @mount
+    // set, so it has to see both.
+    if (lintBefore) {
+      queuePostCommit(component, () => lintUnpersistedState(component, lintBefore));
+    }
+  }
+
+  // Deferred with the rest, not left inline: this is what attaches @onElement
+  // listeners and runs @effect for the first time, and running it inline would
+  // move it ahead of @mount. No-op on the server.
+  queuePostCommit(component, () => runComponentEffects(component));
+  return enhancedNode;
+}
+
+function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
+  const handle = ref as { current: unknown; setCurrent(current: unknown): void } | undefined;
+  if (!handle) return;
+  node[REF_SYM] = handle;
+  handle.setCurrent(node);
+}
+
+function componentFactory(component: ComponentClassKind, props: any, ctx: Context): BaseComponent {
+  return new component(props, ctx);
+}

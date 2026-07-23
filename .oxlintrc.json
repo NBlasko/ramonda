@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/build/**",
+    "**/.turbo/**",
+    "**/.build/**",
+    "**/coverage/**",
+    "apps/docs/src/generated/**"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-unused-expressions": ["error", { "allowShortCircuit": true, "allowTernary": true }],
+    "typescript/no-this-alias": "off",
+    "no-underscore-dangle": "off",
+    "unicorn/no-useless-spread": "off",
+    "unicorn/no-new-array": "off"
+  }
+}

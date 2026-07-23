@@ -1,0 +1,666 @@
+:root {
+  --bg: #fff;
+  --fg: #1b1b1f;
+  --muted: #6b6b76;
+  --line: #e5e5ec;
+  --accent: #c0468b;
+  --code-bg: #f6f6f9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111114;
+    --fg: #e8e8ed;
+    --muted: #9a9aa6;
+    --line: #2a2a32;
+    --accent: #f08fc0;
+    --code-bg: #1a1a20;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    16px / 1.65 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+.masthead {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 24px;
+}
+.brand {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--fg);
+}
+/* The drawer toggle and its close button are mobile-only; the breakpoint reveals them. */
+.nav-toggle {
+  display: none;
+}
+.sidebar-backdrop {
+  display: none;
+}
+.drawer-close {
+  display: none;
+}
+.search-close {
+  display: none;
+}
+.body {
+  display: flex;
+  gap: 40px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  align-items: flex-start;
+}
+nav {
+  flex: 0 0 220px;
+  position: sticky;
+  top: 24px;
+}
+.sidebar-group h4 {
+  margin: 20px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.sidebar-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sidebar-group li {
+  margin: 2px 0;
+}
+.sidebar-group .link {
+  display: block;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 14px;
+}
+.sidebar-group .link:hover {
+  background: var(--code-bg);
+  text-decoration: none;
+}
+.sidebar-group .link.active {
+  background: var(--code-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.content {
+  flex: 1;
+  min-width: 0;
+}
+.notfound {
+  padding: 2em 0;
+}
+.notfound h1 {
+  font-size: 2.1rem;
+  margin: 0 0 0.5em;
+  letter-spacing: -0.02em;
+}
+.notfound p {
+  max-width: 60ch;
+  color: var(--fg);
+}
+.notfound p + p {
+  margin-top: 1.2em;
+}
+article h1 {
+  font-size: 2.1rem;
+  line-height: 1.2;
+  margin: 0 0 0.6em;
+  letter-spacing: -0.02em;
+}
+article h2 {
+  font-size: 1.4rem;
+  margin: 2em 0 0.6em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--line);
+}
+article h3 {
+  font-size: 1.1rem;
+  margin: 1.6em 0 0.5em;
+}
+article p,
+article li {
+  max-width: 70ch;
+}
+article code {
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+article pre {
+  background: var(--code-bg);
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+article pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.86rem;
+}
+.demo-counter {
+  margin: 0;
+}
+.demo-counter button {
+  font: inherit;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.demo-counter button:hover {
+  border-color: var(--accent);
+}
+ramonda-host[data-ramonda="Counter"],
+div[data-ramonda="Counter"] {
+  display: block;
+  margin: 1.5em 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+/* ── demos ─────────────────────────────────────────────────────────────── */
+.demo {
+  margin: 1.6em 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.demo-title {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  background: var(--code-bg);
+  border-bottom: 1px solid var(--line);
+}
+.demo-stage {
+  padding: 18px 16px;
+}
+.demo-stage > * {
+  margin: 0;
+}
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.demo-row:last-child {
+  margin-bottom: 0;
+}
+.demo-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.demo-error {
+  color: #c0392b;
+  margin: 0;
+}
+.demo-log {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.demo-log li {
+  padding: 2px 0;
+}
+/* Structural sharing, shown as identity: new object vs the very same one. */
+.lens-fresh {
+  color: #a03070;
+}
+.lens-shared {
+  color: #2d7d46;
+}
+.demo-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid var(--line);
+}
+.demo-badge-dark {
+  background: #1b1b22;
+  color: #eee;
+}
+.demo-badge-light {
+  background: #fff5fa;
+  color: #a03070;
+}
+.demo button {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.demo button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.demo button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.demo input {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.demo kbd {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 0.85rem;
+}
+/* The star toggle is a glyph, not a boxed button. */
+.demo button.star {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--accent);
+}
+.demo button.star:hover:not(:disabled) {
+  border: 0;
+  transform: scale(1.15);
+}
+.demo-toggle {
+  width: 100%;
+  text-align: left;
+  border: 0 !important;
+  border-top: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: var(--code-bg) !important;
+  color: var(--muted) !important;
+  font-size: 0.8rem !important;
+  padding: 8px 16px !important;
+}
+.demo-file {
+  float: right;
+  opacity: 0.7;
+}
+.examples .demo:first-child {
+  margin-top: 0;
+}
+
+/* ── code blocks (copy button) ─────────────────────────────────────────── */
+/* Wraps the Shiki <pre> so a copy button can sit over its top-right corner. */
+.code-block {
+  position: relative;
+  margin: 1.4em 0;
+}
+.code-block pre {
+  margin: 0;
+}
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+.code-block:hover .copy-btn,
+.copy-btn:focus-visible {
+  opacity: 1;
+}
+.copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* Touch devices have no hover, so the button has to be there from the start. */
+@media (hover: none) {
+  .copy-btn {
+    opacity: 0.85;
+  }
+}
+/* The demo panel keeps its own framing: flush top border, capped height. */
+.code-block-demo {
+  margin: 0;
+}
+.code-block-demo pre {
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  max-height: 420px;
+}
+
+/* ── prose tables, lists, blockquotes ──────────────────────────────────── */
+article table {
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+article th,
+article td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+article th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+article ul,
+article ol {
+  padding-left: 1.4em;
+}
+article li {
+  margin: 0.3em 0;
+}
+article blockquote {
+  margin: 1.2em 0;
+  padding: 0.4em 0 0.4em 1em;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+article hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2em 0;
+}
+article strong {
+  font-weight: 650;
+}
+
+/* ── syntax highlighting (Shiki, dual theme via CSS variables) ─────────── */
+/* Shiki stamps every token with --shiki-light and --shiki-dark. Reading them
+   here means one build output serves both themes, with no second render and no
+   JavaScript — the page just follows the reader's preference. */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+}
+@media (prefers-color-scheme: dark) {
+  .shiki,
+  .shiki span {
+    color: var(--shiki-dark);
+  }
+}
+/* Shiki ships its own theme background; the site's own is used instead so code
+   blocks match the rest of the page in both themes. */
+article pre.shiki {
+  background: var(--code-bg) !important;
+}
+.shiki code {
+  display: block;
+}
+
+/* ── search ────────────────────────────────────────────────────────────── */
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.search-open {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-open:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.search-open kbd {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 0.75rem;
+}
+.search {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.search-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+.search-panel {
+  position: relative;
+  max-width: 640px;
+  margin: 10vh auto 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.search-input {
+  width: 100%;
+  font: inherit;
+  font-size: 1rem;
+  padding: 16px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  outline: none;
+}
+/* Suppress the native clear (✕) a type="search" input draws — the panel has its
+   own close control on mobile, and two ✕ side by side read as a mistake. */
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search-note {
+  margin: 0;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.search-results li {
+  margin: 0;
+}
+.search-result {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--fg);
+}
+.search-result:hover {
+  background: var(--code-bg);
+  text-decoration: none;
+}
+.search-result strong {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 2px;
+}
+.search-excerpt {
+  display: block;
+  color: var(--muted);
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+.search-excerpt mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .search-open kbd {
+    display: none;
+  }
+}
+
+/* ── mobile: the sidebar becomes a drawer ──────────────────────────────── */
+@media (max-width: 860px) {
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .nav-toggle:hover {
+    border-color: var(--accent);
+  }
+  .masthead {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  /* The outlet takes the full width; the sidebar leaves the flow entirely. */
+  .body {
+    display: block;
+    padding: 24px 20px;
+  }
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 60;
+    width: min(280px, 82vw);
+    height: 100vh;
+    margin: 0;
+    padding: 14px 20px 20px;
+    background: var(--bg);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.18);
+  }
+  .body.nav-open nav {
+    transform: translateX(0);
+  }
+  /* The X stays put; only the link list below it scrolls. */
+  .drawer-close {
+    display: block;
+    align-self: flex-end;
+    flex: 0 0 auto;
+    margin: 0 -6px 4px 0;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 4px 10px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .drawer-close:hover {
+    color: var(--accent);
+  }
+  nav .sidebar-inner {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  /* The search modal fills the screen instead of floating in a card. */
+  .search-panel {
+    max-width: none;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .search-results {
+    max-height: none;
+    flex: 1 1 auto;
+  }
+  .search-close {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 1;
+    padding: 14px 18px;
+    font-size: 1.2rem;
+    line-height: 1;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .search-input {
+    padding-right: 56px;
+  }
+}

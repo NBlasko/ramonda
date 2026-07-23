@@ -1,0 +1,200 @@
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { getDOM } from "../test/setup";
+import { Component, Host, Hook, state, create } from "../index";
+import type { RamondaNode } from "../index";
+import { renderToString } from "../hydration/ssr";
+import { resetDiagnostics } from "../debug/diagnostics";
+
+function captureDiagnostics() {
+  const codes: string[] = [];
+  const handler = (event: Event) => {
+    const detail = (event as CustomEvent).detail as { message: string };
+    const code = detail.message.match(/^\[(RMD\d+)\]/)?.[1];
+    if (code) codes.push(code);
+  };
+  window.addEventListener("ramonda:dev-log", handler);
+  return {
+    codes,
+    stop: () => window.removeEventListener("ramonda:dev-log", handler),
+  };
+}
+
+/**
+ * Composition where a wrapper element is illegal.
+ *
+ * React reaches for a fragment here, because its unit of reuse is a function and
+ * functions cannot extend one another — so reuse means nesting, and nesting
+ * costs an element unless a fragment hides it. Ramonda's units of reuse are the
+ * class and the Hook, neither of which nests, so the wrapper never appears and
+ * there is nothing for a fragment to hide.
+ */
+describe("composition inside a <tr>, where only <td> is legal", () => {
+  let captured: ReturnType<typeof captureDiagnostics>;
+
+  beforeEach(() => {
+    resetDiagnostics();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    captured = captureDiagnostics();
+  });
+
+  afterEach(() => {
+    captured.stop();
+    vi.restoreAllMocks();
+  });
+
+  test("a reusable cell IS the <td>, and takes children", async () => {
+    // Not a wrapper around a td — the td itself. Composition happens through
+    // props and children, inside the element the parent already expects.
+    @Host("td")
+    class StyledCell extends Component<{ tone?: string; children?: RamondaNode }> {
+      render() {
+        return <span className={this.props.tone ?? "plain"}>{this.props.children}</span>;
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      render() {
+        return (
+          <table>
+            <tbody>
+              <tr>
+                <StyledCell tone="hot">a</StyledCell>
+                <td>b</td>
+              </tr>
+            </tbody>
+          </table>
+        );
+      }
+    }
+
+    const html = await renderToString(<App />);
+    const back = document.createElement("div");
+    back.innerHTML = html;
+
+    expect(back.innerHTML).toBe(html);
+    expect(back.querySelectorAll("tr > td").length).toBe(2);
+    expect(back.querySelector("td span")!.className).toBe("hot");
+    expect(captured.codes).toEqual([]);
+  });
+
+  test("@Host is inherited, so behaviour composes by extending", async () => {
+    // "Someone styled a <td> and we want to add to it, but it must stay a <td>."
+    // In React that means nesting, which needs a fragment. Here the subclass IS
+    // the same one element — HOST_META is a static, so it comes down the chain.
+    @Host("td")
+    class BaseCell extends Component<{ label?: string }> {
+      protected decorate(v: string) {
+        return v.toUpperCase();
+      }
+      render() {
+        return <span>{this.decorate(this.props.label ?? "")}</span>;
+      }
+    }
+
+    class FancyCell extends BaseCell {
+      protected override decorate(v: string) {
+        return `«${super.decorate(v)}»`;
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      render() {
+        return (
+          <table>
+            <tbody>
+              <tr>
+                <BaseCell label="a" />
+                <FancyCell label="b" />
+              </tr>
+            </tbody>
+          </table>
+        );
+      }
+    }
+
+    const app = await getDOM(<App />);
+    await app.settle();
+
+    const cells = app.container.querySelectorAll("tr > td");
+    expect(cells.length).toBe(2);
+    expect(cells[0].textContent).toBe("A");
+    expect(cells[1].textContent).toBe("«B»");
+    // The subclass did not add a second element.
+    expect(app.container.querySelector("td td")).toBeNull();
+    expect(captured.codes).toEqual([]);
+  });
+
+  test("a group of cells with shared state is a Hook, not a component", async () => {
+    // The actual fragment case: 3 of the 10 cells share state and want to be one
+    // reusable unit. A component there would have to be an element, and only
+    // <td> is legal — so the unit is a Hook, and its cells are spliced in.
+    @Host("td")
+    class StyledCell extends Component<{ tone: string; children?: RamondaNode }> {
+      render() {
+        return <span className={this.props.tone}>{this.props.children}</span>;
+      }
+    }
+
+    class FirstThree extends Hook<{ labels: string[] }> {
+      @state active = 0;
+
+      @create init() {
+        this.active = 1;
+      }
+
+      select(i: number) {
+        this.active = i;
+      }
+
+      cells() {
+        return this.options.labels.map((l, i) => (
+          <StyledCell key={l} tone={i === this.active ? "hot" : "cool"}>
+            {l}
+          </StyledCell>
+        ));
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      group = this.use(FirstThree, { labels: ["a", "b", "c"] });
+      render() {
+        return (
+          <table>
+            <tbody>
+              <tr>
+                {this.group.cells()}
+                <td>4</td>
+              </tr>
+            </tbody>
+          </table>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    // Three cells from the hook plus the literal one: all direct <td> of the
+    // <tr>, with nothing wrapping them.
+    expect(app.container.querySelectorAll("tr > td").length).toBe(4);
+    expect(app.container.querySelector("ramonda-host")).toBeNull();
+    // The hook's @create ran and its state drove which cell is hot.
+    expect(app.container.querySelectorAll("span.hot").length).toBe(1);
+    expect(app.container.querySelectorAll("span.hot")[0].textContent).toBe("b");
+
+    // Its state writes re-render the owner — the hook has no boundary of its own.
+    app.instance.group.select(2);
+    await app.settle();
+    expect(app.container.querySelectorAll("span.hot")[0].textContent).toBe("c");
+
+    expect(captured.codes).toEqual([]);
+
+    const html = await renderToString(<App />);
+    const back = document.createElement("div");
+    back.innerHTML = html;
+    expect(back.innerHTML).toBe(html);
+  });
+});

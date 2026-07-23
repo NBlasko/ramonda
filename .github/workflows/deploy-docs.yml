@@ -1,0 +1,54 @@
+name: Deploy docs
+
+# Deploys apps/docs (the prerendered static site) to Cloudflare Pages.
+#   - push to main  → production deployment
+#   - PR to main    → a preview deployment with its own URL, posted back to the PR
+#
+# The docs build is self-contained: it consumes the workspace packages from
+# SOURCE via esbuild aliases, so there is nothing to pre-build — just install and
+# `pnpm --filter @ramonda/docs build`, which runs content → esbuild → prerender →
+# pagefind and writes apps/docs/dist.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: deploy-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write # let wrangler-action post the preview URL on the PR
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    # Skip PRs from forks: repository secrets (the Cloudflare token) are not
+    # available to them, so the deploy could only fail. Same-repo PRs and pushes
+    # to main run normally.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Build the docs site
+        run: pnpm --filter @ramonda/docs build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Lets the action create a GitHub deployment and comment the preview URL.
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # `--branch` decides production vs preview: Cloudflare treats a deploy on
+          # the project's production branch (main) as production, and any other
+          # branch as a preview with its own *.pages.dev URL.
+          command: >-
+            pages deploy apps/docs/dist
+            --project-name=ramonda
+            --branch=${{ github.head_ref || github.ref_name }}

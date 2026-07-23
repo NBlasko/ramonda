@@ -1,0 +1,26 @@
+name: Setup
+description: Install pnpm, Node.js and workspace dependencies from the frozen lockfile.
+
+# A composite action so every job sets up the toolchain identically and in one
+# place — bump the Node version or the install flags here and every workflow
+# follows. pnpm is installed BEFORE setup-node so that `cache: pnpm` can find the
+# store, and the version comes from the root `packageManager` field (pnpm@9), so
+# CI can never drift from what the repo pins.
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: pnpm
+
+    - name: Install dependencies
+      shell: bash
+      # --frozen-lockfile: fail if pnpm-lock.yaml is out of date rather than
+      # silently resolving something new — CI must build the exact tree the PR
+      # author committed.
+      run: pnpm install --frozen-lockfile

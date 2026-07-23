@@ -1,0 +1,6 @@
+# Cloudflare Pages reads this at the site root (it is copied from public/ into
+# dist/ by the prerender). Content-hashed chunks never change under their name,
+# so they can be cached forever; everything else keeps Pages' sensible defaults
+# (HTML revalidates, so a deploy is visible immediately).
+/assets/chunk-*
+  Cache-Control: public, max-age=31536000, immutable

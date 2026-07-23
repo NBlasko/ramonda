@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ramonda SSR</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; }
+      nav a { margin-right: 10px; }
+      code { background: #eee; padding: 2px 6px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"><!--ssr--></div>
+
+    <!--
+      ADOPTION CHECK — a permanent fixture of this playground.
+
+      This app exists to answer one question no jsdom test can: does a real
+      browser ADOPT the server's nodes, or does hydration quietly rebuild them?
+      Rebuilding is not a crash — the page looks right either way — so without a
+      measurement the answer is a guess, and a regression here would be silent.
+
+      How it works: a node that gets replaced is a NEW object, and an expando
+      property does not travel to it. So we stamp every server node during
+      parsing and count the survivors after hydration. This is a classic script
+      (not type="module") on purpose: it runs as the parser reaches it, which is
+      after the server's markup exists and before the deferred module runs.
+
+      Reading the result:
+
+        elements-rebuilt  MUST be 0. Anything else means hydration threw away a
+                          server element and built its own — that is the failure
+                          this check exists to catch.
+        dropped           MUST be 0. A server node that is no longer connected
+                          was discarded.
+        text-split        EXPECTED, and not a fault. HTML cannot record where one
+                          text node ends and the next begins, so `User {id}`
+                          arrives as one fused run; hydration splits it back with
+                          splitText, which keeps the original (truncated) and
+                          mints a new node for the tail. A run of N text children
+                          therefore costs N-1 new nodes.
+
+      Measured 2026-07-19, and the text counts were predicted from the JSX before
+      being read — which is what made it evidence rather than a plausible story:
+
+        /           24 served, 2 text-split  (`clicked {this.clicks} times` = 3 children)
+        /users/42   20 served, 1 text-split  (`User {id}` = 2 children)
+
+      If those numbers move, the JSX changed or something regressed. Check which.
+    -->
+    <script>
+      (function () {
+        var walk = function () {
+          var out = [];
+          var walker = document.createTreeWalker(
+            document.getElementById("app"),
+            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT
+          );
+          var node;
+          while ((node = walker.nextNode())) out.push(node);
+          return out;
+        };
+
+        var served = walk();
+        served.forEach(function (node) {
+          node.__fromServer = true;
+        });
+
+        window.addEventListener("load", function () {
+          // A tick after load: hydration's effects and any first re-render are
+          // queued as microtasks, so counting immediately would miss them.
+          setTimeout(function () {
+            var live = walk();
+            var fresh = live.filter(function (node) {
+              return !node.__fromServer;
+            });
+            var elements = fresh.filter(function (node) {
+              return node.nodeType === 1;
+            });
+            var text = fresh.filter(function (node) {
+              return node.nodeType === 3;
+            });
+            var dropped = served.filter(function (node) {
+              return !node.isConnected;
+            });
+
+            var ok = elements.length === 0 && dropped.length === 0;
+            console.log(
+              "%c[ADOPTION] " + (ok ? "adopted" : "REBUILT") +
+                " — served=" + served.length +
+                "  elements-rebuilt=" + elements.length +
+                "  dropped=" + dropped.length +
+                "  text-split=" + text.length,
+              "font-weight:bold;color:" + (ok ? "#137333" : "#c5221f")
+            );
+            if (!ok) {
+              console.warn(
+                "Hydration did not adopt the server DOM. Elements rebuilt:",
+                elements,
+                "Server nodes dropped:",
+                dropped
+              );
+            }
+          }, 0);
+        });
+      })();
+    </script>
+
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>

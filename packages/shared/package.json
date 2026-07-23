@@ -1,0 +1,29 @@
+{
+  "name": "@ramonda/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-time guards shared by every Ramonda package.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/shared"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "internal",
+    "build"
+  ],
+  "type": "module",
+  "bin": {
+    "ramonda-check-bundle": "./check-bundle.mjs"
+  },
+  "files": [
+    "check-bundle.mjs"
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "name": "@ramonda/lens",
+  "version": "0.0.1",
+  "description": "Immutable updates for deep objects by describing a path, not by mutating a proxy.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/lens"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "immutable",
+    "state",
+    "structural-sharing",
+    "update",
+    "lens"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "development": "./dist/index.js",
+        "production": "./dist/index.prod.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && ramonda-check-bundle dist",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "pnpm build && node bench/against-immer.mjs",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "devDependencies": {
+    "@ramonda/shared": "workspace:^",
+    "@types/node": "^26.1.1",
+    "immer": "^11.1.15",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vitest": "^4.1.10"
+  }
+}

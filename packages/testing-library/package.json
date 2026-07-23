@@ -1,0 +1,64 @@
+{
+  "name": "@ramonda/testing-library",
+  "version": "0.0.1",
+  "description": "Testing utilities for Ramonda components and hooks, built on @testing-library/dom.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/testing-library"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "testing",
+    "testing-library",
+    "test"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./dont-cleanup-after-each": {
+      "import": "./dist/dont-cleanup-after-each.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && ramonda-check-bundle dist",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "peerDependencies": {
+    "@ramonda/core": "workspace:^"
+  },
+  "dependencies": {
+    "@testing-library/dom": "^10.4.1"
+  },
+  "devDependencies": {
+    "@ramonda/core": "workspace:^",
+    "@ramonda/devtools": "workspace:^",
+    "@ramonda/shared": "workspace:^",
+    "@types/node": "^26.1.1",
+    "jsdom": "28.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vitest": "^4.1.10"
+  }
+}
