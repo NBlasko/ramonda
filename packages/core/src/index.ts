@@ -43,7 +43,14 @@ if (__DEV__) {
   initDevtoolsBridge();
   installTimerGuard();
 
-  import("@ramonda/devtools").then(() => {
+  // Optional, DEV-only, loaded for its side effect (registering <ramonda-devtools>).
+  // The specifier is held in a variable so the type-checker does not try to resolve
+  // it — the same trick the docs' pagefind loader uses. core has no build-time
+  // dependency on devtools (it is a devDependency the docs even stub out), and this
+  // keeps `@ramonda/devtools` from becoming a resolution requirement for every
+  // package that type-checks core's source.
+  const devtoolsSpecifier = "@ramonda/devtools";
+  import(/* @vite-ignore */ devtoolsSpecifier).then(() => {
     if (!document.querySelector("ramonda-devtools")) {
       const devTools = document.createElement("ramonda-devtools");
       document.body.appendChild(devTools);

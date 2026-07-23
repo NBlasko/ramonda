@@ -39,14 +39,14 @@ jobs:
     # publish and scope NPM_TOKEN to it.
     environment: npm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Changesets needs full history to build changelogs and tags.
           fetch-depth: 0
       - uses: ./.github/actions/setup
 
       # Writes the auth .npmrc that `changeset publish` reads.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
