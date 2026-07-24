@@ -60,5 +60,13 @@ jobs:
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Both names on purpose: changesets/action looks for NPM_TOKEN (without
+          # it, it falls back to OIDC trusted publishing, which is scoped to the
+          # @ramonda org and CANNOT create the unscoped `create-ramonda`);
+          # setup-node's .npmrc reads NODE_AUTH_TOKEN. The secret must be a token
+          # that can create new packages — a classic Automation token (account-wide)
+          # or a granular token with "All packages: Read and write". A token scoped
+          # to only @ramonda will still 403 on create-ramonda.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
