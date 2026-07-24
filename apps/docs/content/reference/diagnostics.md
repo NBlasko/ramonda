@@ -7,7 +7,7 @@ order: 110
 
 # Diagnostics
 
-Ramonda reports sixteen kinds of mistake at runtime, in development only. Every one is wrapped in
+Ramonda reports the common mistakes below at runtime, in development only. Every one is wrapped in
 `if (__DEV__)`, so a production build ships none of the checks and none of the messages.
 
 **They exist because these mistakes are silent.** Almost every bug this framework has had produced
