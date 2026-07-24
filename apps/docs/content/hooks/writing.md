@@ -1,13 +1,14 @@
 ---
 title: Writing a hook
-description: Options as a bag or a callback, why they are read-only, and how they stay reactive.
+description: Give a hook input with options, and keep them reactive.
 section: Hooks
 order: 51
 ---
 
 # Writing a hook
 
-A hook takes an options type and reads it from `this.options`.
+A hook can take input from whoever uses it — its **options** — read from
+`this.options`:
 
 ```tsx
 interface CounterOptions {
@@ -30,54 +31,42 @@ export class Counter extends Hook<CounterOptions> {
 
 ## Passing options
 
-Two forms, and the difference matters.
+Two forms, and the difference matters:
 
 ```tsx
-// A plain bag — fixed for the life of the hook.
+// A plain object — fixed for the life of the hook. For constants.
 counter = this.use(Counter, { start: 10 });
 
-// A callback — re-evaluated when the owner re-renders.
+// A callback — re-run whenever the owner re-renders. Use this whenever the
+// options depend on something that changes.
 counter = this.use(Counter, (self: Panel) => ({ start: self.props.initial }));
 ```
 
-**Reach for the callback whenever the options depend on anything that changes.** The bag form is
-for constants.
+## Options are read-only
 
-## Options are read-only, and they throw
+Like props, options belong to the caller — assigning to one throws (`RMD015`). It is
+the same rule as [props](/concepts/props), because it is the same idea from the other
+side. To change something an option gave you, copy it into your own `@state`, or take
+a callback option and ask the owner.
 
-```tsx
-this.options.start = 5;   // TypeError, RMD015
-```
+## They stay reactive, per key
 
-They belong to the caller. Assigning throws in every build — the same rule and the same reasoning
-as [props](/concepts/props), because they are the same thing seen from the other side: one rule
-for read-only inputs, not two.
-
-Copy into your own `@state`, or take a callback option and ask the owner to change it.
-
-## How they stay reactive
-
-Each option key is backed by its own signal on the owner's runtime. When the owner re-renders,
-the callback is re-evaluated and only the keys whose values actually moved are updated.
-
-So a hook that reads `this.options.start` reacts to `start` changing and not to some other key
-changing on the same bag. Reads are per key, exactly like props.
-
-An option a caller stops passing is set to `undefined` rather than keeping its last value — a
-removed key would otherwise be invisible forever.
+Each option key is its own signal. When the owner re-renders, the callback runs again
+and only the keys whose values actually changed update. So a hook that reads
+`this.options.start` reacts to `start` changing, not to some other key — exactly like
+props. (An option the caller stops passing becomes `undefined`, so a removed key can't
+linger.)
 
 ## Hooks compose
 
-A hook may use hooks:
+A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
 export class Pagination extends Hook<PaginationOptions> {
   private route = this.use(RouteHook);
-  ...
+  // …
 }
 ```
-
-They share the owner's runtime all the way down, so the whole chain re-renders the same component.
 
 ## Testing one
 
@@ -90,11 +79,11 @@ expect(current.count).toBe(2);
 act(() => current.increment());
 expect(current.count).toBe(3);
 
-rerender({ start: 99 });   // drives the same option signals a parent would
+rerender({ start: 99 }); // like a parent passing new options
 ```
 
-`current` does **not** change between renders — a hook is constructed once by `use()` and lives
-as long as its owner. The instance is the identity; the fields are what change.
+`current` stays the same object between renders — a hook is built once and lives as
+long as its owner; only its fields change.
 
 ## Next
 

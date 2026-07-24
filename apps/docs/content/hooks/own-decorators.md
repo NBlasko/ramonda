@@ -1,27 +1,27 @@
 ---
 title: Your own decorators
-description: createSubscriptionDecorator turns "subscribe, and unsubscribe on unmount" into a decorator.
+description: Make a decorator that subscribes on mount and cleans up on unmount.
 section: Hooks
 order: 52
 ---
 
 # Your own decorators
 
-`@interval`, `@timeout`, `@onWindow` and `@onElement` are all the same shape: subscribe to
-something when the component mounts, unsubscribe when it goes away. `createSubscriptionDecorator`
-is that shape, exposed.
+`@interval`, `@timeout`, `@onWindow` and `@onElement` all share one shape: subscribe
+to something when the component appears, unsubscribe when it goes away.
+`createSubscriptionDecorator` lets you make your own decorator with that shape —
+handy for connecting to an external store or any subscribe/unsubscribe API.
 
 ```tsx
 import { createSubscriptionDecorator } from "@ramonda/core";
 
 export const onStore = createSubscriptionDecorator(
   "onStore",
-  (_owner, handler: (state: ThemeState) => void, store: ThemeStore) =>
-    store.subscribe(handler),
+  (_owner, handler: (state: ThemeState) => void, store: ThemeStore) => store.subscribe(handler),
 );
 ```
 
-Then:
+Then use it like the built-in ones:
 
 ```tsx
 export class Panel extends Component {
@@ -37,69 +37,43 @@ export class Panel extends Component {
 ```demo:StoreSubscription
 ```
 
-Write the `connect` — subscribe, return the unsubscribe — and the framework owns the teardown.
-There is nothing in `Panel` that remembers the subscription exists.
+You write the connect — subscribe, and return the unsubscribe — and Ramonda handles
+the teardown. Nothing in `Panel` has to remember the subscription exists.
 
-## Connecting to an external store
+## What it's for
 
-This is what it is for. Zustand, Redux, a plain event emitter, a WebSocket, `IntersectionObserver`
-— anything with a subscribe/unsubscribe pair.
+Connecting to anything with a subscribe/unsubscribe pair: Zustand, Redux, a plain
+event emitter, a WebSocket, `IntersectionObserver`.
 
 ## The rule: return a function, or nothing
 
-```tsx
-// ✓
-(owner, handler, store) => store.subscribe(handler)
+The connect must return the cleanup **function** — not an object.
 
-// ✗ — an object is not a cleanup
-(owner, handler, store) => store.subscribe(handler)   // returns { unsubscribe }
+```tsx
+// ✓  store.subscribe returns an unsubscribe function
+(owner, handler, store) => store.subscribe(handler);
 ```
 
-`{ unsubscribe }` is a common return shape, and it is **not** a function. Without a check it
-would be silently dropped and the subscription would outlive the component — measured: 1 listener
-after mount, still 1 after unmount, page still working, nothing said a word.
-
-Development throws on it and names the fix:
+Many APIs hand back `{ unsubscribe }` instead, which is not a function — wrap it:
 
 ```tsx
 const sub = store.subscribe(handler);
 return () => sub.unsubscribe();
 ```
 
-## The handler's type comes from `connect`
+Returning the object would silently leak the subscription past unmount, so development
+throws and names the fix.
 
-The decorated method's signature is taken from `connect`'s `handler` parameter, so a method with
-the wrong shape is a type error at the call site rather than a surprise at runtime.
+## `connect` can follow a value
 
-## `connect` may read signals
-
-It runs inside an effect, so reading `owner.props.x` or a `@state` field makes the subscription
-**follow** that value — disconnecting the old target before connecting the new one. Read nothing
-and it subscribes exactly once.
-
-## Validating your decorator's arguments
-
-The optional third parameter runs at **class-definition time** — the cheapest moment to catch a
-wrong argument, since a decorator's arguments are fixed at the source and can never depend on
-runtime data.
-
-```tsx
-export const onChannel = createSubscriptionDecorator(
-  "onChannel",
-  (_owner, handler: (msg: string) => void, name: string) => subscribe(name, handler),
-  (name) => {
-    if (!name) throw new Error("[@onChannel] needs a channel name");
-  },
-);
-```
-
-That is how `@interval` rejects a non-numeric delay where it is written, rather than on the first
-commit.
+It runs inside an effect, so if it reads `owner.props.x` or a `@state` field, the
+subscription follows that value — disconnecting the old target before connecting the
+new. Read nothing, and it subscribes exactly once.
 
 ## It works on hooks too
 
-The constraint is a runtime, not an element — so a [hook](/hooks) can own a subscription just as
-a component can.
+The requirement is a runtime, not an element, so a [hook](/hooks) can own a
+subscription just like a component can.
 
 ## Next
 

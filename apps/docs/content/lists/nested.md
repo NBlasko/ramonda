@@ -1,16 +1,14 @@
 ---
 title: Nested lists
-description: A list of lists nests directly, and what a missing key costs in two dimensions.
+description: A list of lists — a grid or table — nests wherever you write it.
 section: Lists
 order: 62
 ---
 
 # Nested lists
 
-A grid, a table, a list of groups: an outer list whose items each contain a list.
-
-`list()` is an expression, so it nests where you write it. There is nothing to declare and no
-component to introduce:
+A grid, a table, a list of groups — an outer list whose items each contain a list.
+Because `list()` is just an expression, it nests wherever you write it:
 
 ```tsx
 @Host("table")
@@ -30,18 +28,14 @@ export class Grid extends Component {
 }
 ```
 
-**Each list has its own key space.** Reordering the outer list moves whole rows, cells intact.
-Two lists never share identity, and neither do two `.map()` calls side by side — Ramonda keeps a
-nested array as one child rather than splicing it into its parent's children.
+Each list keeps its own identity, so reordering the outer list moves whole rows with
+their cells intact, and two lists never get their items confused — even side by side.
 
-## When a row should be a component instead
+## When a row should be a component
 
-Nesting directly is right when a row is *markup*. Give the row a component when it is more than
-that:
-
-- it owns state, lifecycle, or handlers
-- you want it to re-render on its own rather than with the whole grid
-- the markup is big enough to deserve a name
+Nesting inline is right when a row is just markup. Make the row a component when it is
+more — it owns state, you want it to re-render on its own, or the markup deserves a
+name:
 
 ```tsx
 @Host("tr")
@@ -59,44 +53,13 @@ export class Grid extends Component {
 }
 ```
 
-**`render()` returns the list itself** — no wrapper. `@Host` already supplies the single element,
-which is what lets one `@Host("tr")` hold many `<td>`s without a component per cell.
+`render()` returns the list directly — `@Host("tr")` already supplies the one
+element, which is what lets a row hold many cells with no component per cell.
 
-## What no `key` costs in two dimensions
+## Inside a table, become the right element
 
-This is the case worth being precise about, because two dimensions is where people reach for keys
-out of habit.
-
-Identity is the item object. In a 2D list that means a **row** is identified by its row object,
-and a cell by its cell object. So:
-
-| what you do | what happens |
-|---|---|
-| reorder rows, same objects | rows move with all their cell state — perfect, no key needed |
-| replace one row object (an immutable edit) | that row resets; every other row is untouched |
-| replace every row object | order is right, all state resets |
-
-**State is never wrong — only reset.** That is the guarantee, and it is stricter than an unkeyed
-list matching by index, where state attaches to whichever item now occupies the position.
-
-So `key` in two dimensions is an optimisation and a way to say "this is the same entity", not a
-correctness requirement. Reach for it when rows are replaced by fresh objects — a refetch, or an
-immutable update — **and** the rows own state you do not want reset:
-
-```tsx
-list({
-  each: this.rows,
-  key: (row) => row.id,
-  render: (row) => (
-    <tr>{list({ each: row.cells, key: (cell) => cell.id, render: … })}</tr>
-  ),
-})
-```
-
-## Inside a table
-
-`<table>`, `<tbody>` and `<tr>` reject unknown children — the browser's parser moves or deletes
-them. So a component inside one must **become the element the parent expects**:
+`<table>`, `<tbody>` and `<tr>` only accept certain children, so a component inside
+one must be the element the parent expects:
 
 | inside | use |
 |---|---|
@@ -104,29 +67,24 @@ them. So a component inside one must **become the element the parent expects**:
 | `<tbody>` | `@Host("tr")` |
 | `<tr>` | `@Host("td")` |
 
-Development reports the mistake as `RMD010`, naming the parent and suggesting a tag. See
-[the host element](/concepts/host).
+Development reports a mismatch as `RMD010`. See [the host element](/concepts/host).
 
-## Two lists in one component
+## Keys in two dimensions
 
-Perfectly fine, and they do not interfere:
+Same rule as a flat list: identity is the object, so a row is identified by its row
+object and a cell by its cell object. Reorder rows (same objects) and everything moves
+with its state — no key needed. You only need a `key` when rows are *replaced* by
+fresh objects (a refetch, an immutable update) **and** they own state you don't want
+reset:
 
 ```tsx
-render() {
-  return (
-    <div>
-      <ul>{list({ each: this.open, as: TaskRow })}</ul>
-      <ul>{list({ each: this.closed, as: TaskRow })}</ul>
-    </div>
-  );
-}
+list({
+  each: this.rows,
+  key: (row) => row.id,
+  render: (row) => <tr>{list({ each: row.cells, key: (cell) => cell.id, render: cellView })}</tr>,
+});
 ```
-
-A list identifies its region by the component that rendered it plus the child slot it occupies.
-That survives a conditional sibling appearing or disappearing next to it; what it does not
-survive is being moved to a different slot, which costs one re-render of that list and no
-correctness.
 
 ## Next
 
-- [Conditional and filtered lists](/lists/conditional) — a list that is a filter, or is not there at all.
+- [Conditional and filtered lists](/lists/conditional).

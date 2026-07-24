@@ -1,19 +1,27 @@
 ---
 title: Hooks
-description: State, lifecycle and effects with no element of their own — and the one cost that carries.
+description: Reusable state, lifecycle and effects — like a component, but with no element of its own.
 section: Hooks
 order: 50
 ---
 
 # Hooks
 
-A hook is a class with state, lifecycle and effects, and **no element**.
+A **hook** is a bundle of state, lifecycle and effects that a component can reuse —
+like a component, but with **no element of its own**. It is how you share stateful
+behaviour — a clock, a subscription, pagination — between components without each one
+reinventing it.
 
 ```tsx
-import { Hook, state, interval } from "@ramonda/core";
+import { Hook, state, mount, interval } from "@ramonda/core";
 
 export class Clock extends Hook {
-  @state now = new Date();
+  @state now: Date | null = null;
+
+  @mount({ env: "client" })
+  start() {
+    this.now = new Date();
+  }
 
   @interval(1000)
   tick() {
@@ -22,60 +30,60 @@ export class Clock extends Hook {
 }
 ```
 
-A component uses it with `this.use()`:
+A component uses one with `this.use()`:
 
 ```tsx
 export class Header extends Component {
   clock = this.use(Clock);
 
   render() {
-    return <time>{this.clock.now.toLocaleTimeString()}</time>;
+    return <time>{this.clock.now?.toLocaleTimeString() ?? "—"}</time>;
   }
 }
 ```
 
-## Why they exist
+Now any component that wants a live clock just uses `Clock` — the ticking and the
+cleanup live in one place.
 
-Because Ramonda is 1-1: every component is exactly one element. So the familiar pattern of "a
-component with state and lifecycle but no markup" has nowhere to put itself — the component would
-still be an element.
+Notice `now` starts empty and is filled in on the client, not in the field. `new Date()`
+in the field would run on the server too and give a different time than the browser, and
+a server-rendered page would flag the mismatch. Seeding it in `@mount({ env: "client" })`
+keeps the two in step. (In a client-only app there is no server, so a plain
+`@state now = new Date()` would work — but this way is safe everywhere.) See
+[timers](/concepts/timers) for more on this.
 
-There are two answers, and which one you want depends on whether the element is in your way.
+## Why they are separate from components
 
-**Usually it is not.** Write an ordinary component and let it have its default host. That host
-takes part in no layout, and you keep a re-render boundary of your own.
+A component is always exactly one element. So "state and lifecycle but no markup" — a
+common thing to want — has nowhere to live as a component. That is a hook.
 
-**Where even an inert element is illegal** — inside `<table>`, `<select>`, `<svg>` — or where you
-genuinely want no node at all, that is a hook.
+(Often you don't even need one: an ordinary component's default element takes up no
+space, so a component with a `render()` and a little state is usually fine. Reach for
+a hook when you want *no* node at all — for example inside a `<table>` or `<select>`,
+where an extra element is illegal — or when you want to share the behaviour itself.)
 
 ## What a hook has
 
 Everything a component has, except a `render()` and an element:
 
 - `@state`, `@compute`, `@persist`
-- `@create`, `@mount`, `@destroy`, with `env`
+- `@create`, `@mount`, `@destroy` (with `env`)
 - `@effect`, `@interval`, `@timeout`
-- `@onWindow`, `@onDocument` — but **not** `@onElement`, which needs an element
-- `this.use()`, so hooks compose with hooks
-- it can provide and consume [context](/concepts/context)
+- `@onWindow`, `@onDocument` — but **not** `@onElement` (that needs an element)
+- `this.use()`, so hooks can use other hooks
+- it can provide and read [context](/composition/context)
 
-## The one real cost
+## The one thing to know
 
-**A hook shares its owner's runtime.** Its state writes re-render the **owner**, not some smaller
-region — it has no re-render boundary of its own.
+**A hook shares its owner's re-rendering.** When a hook's state changes, the *owner*
+component re-renders — the hook has no smaller boundary of its own. That is the one
+thing a child component gives you that a hook doesn't. If a hook's state changes a lot
+and its owner is expensive to draw, a child component may be the better fit.
 
-That is the single thing a stateful component has that a hook does not, and it is worth saying
-plainly rather than discovering. If a hook's state changes often and its owner is expensive to
-render, a child component is the better shape: the render boundary is the point of the element.
+## A hook can return markup
 
-It also means a hook's lifecycle and effects land in the owner's arrays, which is why the
-ordering rules read the same for both.
-
-## Hooks can return vnodes
-
-A hook has no element, but nothing stops it producing markup for its owner to place. That is how
-a group of elements can share state without a component — and without a wrapper, which matters
-inside a `<tr>` or a `<select>` where an extra element is illegal:
+A hook has no element, but it can still produce markup for its owner to place — handy
+when a group of elements needs shared state but no wrapper (inside a `<tr>`, say):
 
 ```tsx
 class Toolbar extends Hook<{ actions: Action[] }> {
@@ -87,15 +95,16 @@ class Toolbar extends Hook<{ actions: Action[] }> {
   }
 }
 
-// in the owner
+// in the owner:
 private toolbar = this.use(Toolbar, () => ({ actions: this.actions }));
-render() { return <div>{this.toolbar.buttons()}</div>; }
+render() {
+  return <div>{this.toolbar.buttons()}</div>;
+}
 ```
 
-The hook contributed N siblings; the component still has exactly one host. For an actual list of
-data, reach for [`list()`](/lists) instead — it brings identity with it, which a plain `.map()`
-like this one does not.
+For an actual list of data, use [`list()`](/lists) instead — it brings identity,
+which a plain `.map()` like this one doesn't.
 
 ## Next
 
-- [Writing a hook](/hooks/writing) — options, and how they stay reactive.
+- [Writing a hook](/hooks/writing) — options, and keeping them reactive.
