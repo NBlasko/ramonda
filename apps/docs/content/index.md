@@ -1,42 +1,57 @@
 ---
 title: Ramonda
-description: A class-based frontend framework — signals, decorators, and one tag per element.
+description: A framework for building web interfaces — start here, even if it's your first one.
 section:
 order: 0
 ---
 
 # Ramonda
 
-A frontend framework built on classes, signals and decorators. State is a field on an
-instance. Lifecycle is a decorated method. Every JSX tag is exactly one element.
+Ramonda is a tool for building the parts of a web page people look at and interact
+with — the buttons, forms, lists and text that change as the page is used.
+
+You build the page out of small, self-contained pieces called **components**. Each
+one knows how to draw a bit of the screen and how to react when something changes.
+When your data changes, Ramonda updates the screen for you. You never reach in and
+update the page by hand.
+
+Never built for the web before? Good — this guide starts from zero and assumes
+nothing.
 
 ```demo:Counter
 ```
 
-## What is different
+That button is a live Ramonda component. It remembers a number, and each click adds
+one. Notice what you did *not* have to do: there is no code that finds the button
+and rewrites its text. You change the number, and the screen follows.
 
-**One tag, one element.** There are no fragments and no function components. A JSX tree and
-the DOM it produces have the same shape, so you can read one off the other. Anything that
-would break that — a tag that is not an element — is refused rather than accommodated.
+## The ideas, in a minute
 
-**State is a field.** `@state count = 0` turns a class field into a signal. Reading it inside
-`render()` subscribes; writing it schedules a re-render. There is no setter to call and no
-dependency array to keep honest.
+You will meet these properly over the next few pages. Here is the shape of them, so
+the words are familiar when they arrive.
 
-**Methods are bound for you.** `onClick={this.increment}` works. No constructor, no arrow
-fields, and decorators still apply because the methods are ordinary methods.
+**A component is a piece of the page.** It is a small class you write. It has a
+`render()` that says what to draw, and it can hold data and respond to clicks. You
+build a whole app by putting components together.
 
-**The framework explains itself.** Fifteen development-only diagnostics catch the mistakes
-that would otherwise be silent — state written during a render, props mutated, a list whose
-items cannot be told apart, a component that updated after being unmounted. Each one names the
-component and says what to do instead.
+**State is what a component remembers.** A number, a name, whether a menu is open.
+You mark a field with `@state`, change it like an ordinary variable, and Ramonda
+updates the page to match. There is nothing else to call.
 
-## Where to go next
+**What you write is what you get.** You describe the screen with a syntax called
+JSX — it looks like HTML living inside your code. Each tag becomes exactly one thing
+on the page, so the shape of what you write is the shape of what appears.
 
-Start with [Installation](/guide/installation) — it is short, and the three things it asks you
-to configure are the three things that fail confusingly when they are missing. Then
-[your first component](/guide/first-component).
+**The framework tells you when something is off.** While you develop, Ramonda
+watches for the common mistakes — changing data at the wrong moment, a list it can't
+tell apart — and prints a plain-language note naming the component and what to do
+instead. In the finished app, those checks are gone and add nothing.
 
-If you would rather read than set up, [Components](/concepts/components) is the page that
-explains the rest, and [Examples](/guide/examples) is every feature as a running component with
-its source.
+## Start here
+
+1. **[Installation](/guide/installation)** — get a project running. It is short.
+2. **[Your first component](/guide/first-component)** — write one from scratch,
+   give it state, and handle a click.
+
+Prefer to browse? **[Examples](/examples)** is every feature as a running
+component you can read the source of.

@@ -1,13 +1,17 @@
 ---
 title: Your first component
-description: Write a Ramonda component, give it state, and handle an event.
+description: What a component is, and how to give one state and handle a click — from scratch.
 section: Guide
 order: 11
 ---
 
 # Your first component
 
-A component is a class. It extends `Component` and it has a `render()`.
+A component is a piece of a web page you build once and can reuse — a button, a
+card, a whole screen. In Ramonda a component is a **class**: a bundle of code that
+keeps some data and the things you can do with it together, under one name.
+
+Here is the smallest one that works.
 
 ```tsx
 import { Component } from "@ramonda/core";
@@ -19,7 +23,17 @@ export class Hello extends Component {
 }
 ```
 
-Mount it:
+Two things are doing the work:
+
+- **`extends Component`** — this is what makes the class a Ramonda component.
+- **`render()`** — a method that returns what to show. Here it is a paragraph with
+  the word *Hello*. The `<p>…</p>` is **JSX**: an HTML-like syntax you write right
+  in your code.
+
+## Put it on the page
+
+A component is only a description until you **mount** it — attach it to a real spot
+on the page.
 
 ```tsx
 import { bootstrap } from "@ramonda/core";
@@ -27,12 +41,17 @@ import { bootstrap } from "@ramonda/core";
 bootstrap(<Hello />, document.getElementById("app")!);
 ```
 
-That is the whole setup. There is no provider to wrap it in and no root API to configure.
+`document.getElementById("app")` finds the element on the page whose id is `app` —
+an empty `<div id="app"></div>` in your HTML. `bootstrap` draws your component
+inside it. That is the whole setup: no wrapper to configure, no root API.
 
-## Add state
+And `<Hello />` is how you use a component you wrote — the class name, as a tag.
 
-A field marked `@state` is a signal. Reading it inside `render()` subscribes; assigning to it
-schedules a re-render.
+## Make it remember something
+
+A fixed paragraph is not very interesting. Let's build a button that counts.
+
+For a component to remember something, give it a field marked **`@state`**.
 
 ```tsx
 import { Component, state } from "@ramonda/core";
@@ -53,38 +72,45 @@ export class Counter extends Component {
 ```demo:Counter
 ```
 
-Three things in that example are worth naming, because each is a decision the framework made
-for you.
+Walk through it:
 
-**There is no setter.** `this.count = this.count + 1` is the update. `@state` replaces the
-field with an accessor, so an ordinary assignment is what the framework observes.
+- **`@state count = 0`** — `count` starts at `0`. The `@state` mark is what makes it
+  special: change it, and Ramonda updates the page to match.
+- **`increment()`** — a method that adds one. `this.count` is how a class refers to
+  its own field.
+- **`onClick={this.increment}`** — run `increment` when the button is clicked.
+- **`{this.count}`** — inside JSX, curly braces drop a value into the text, so the
+  button always shows the current number.
 
-**`onClick={this.increment}` works.** Ramonda binds your methods to the instance when the
-component is constructed, so passing one as a handler does not lose `this`. You do not need a
-constructor, and you do not need arrow-function fields — which matters, because a decorator
-cannot be applied to an arrow field.
+Click it: the number goes up. You changed a field, and Ramonda updated the button to
+match. You never wrote a line that finds the button and rewrites its text.
 
-**Nothing declares a dependency.** `render()` read `this.count`, so this component re-renders
-when `count` changes and not otherwise. There is no dependency array to keep in step with the
-body.
+## Three things that just worked
 
-## What happens when you assign
+**Changing the field is the whole update.** `this.count = this.count + 1` is an
+ordinary assignment — no special setter, no function to call. `@state` turns the
+field into something Ramonda watches, so assigning to it is enough.
 
-Assigning does not touch the DOM immediately. Ramonda batches: several writes in one turn
-produce one render, on the next microtask.
+**Changing state updates the page.** Whenever a `@state` field changes, Ramonda
+calls this component's `render()` again — the component describes what it should
+look like now — and updates the page to match, changing only the parts that
+actually differ. The component is not rebuilt; it just describes itself anew.
+(Several changes in one go become a single update, so it stays fast — but that is
+Ramonda's job, not yours.)
 
-```tsx
-this.count = 1;
-this.count = 2;
-this.count = 3;
-// one render, with count === 3
-```
+**Handing over the method works.** `onClick={this.increment}` keeps working because
+Ramonda ties your methods to the component for you. No extra ceremony to wire up a
+click.
 
-That is invisible in an app and matters in exactly one place — a test that asserts straight
-after a write reads the old DOM. See [testing](/guide/state#testing-a-change) on that page, or
-`act()` in `@ramonda/testing-library`.
+## Why a class? (optional)
+
+You can skip this and come back. A component keeps three things together: the data
+it remembers, the code that changes that data, and the code that draws it. A class
+is a natural home for all three — they share one `this`, so they can reach each
+other without being passed around. That is the whole reason Ramonda components are
+classes.
 
 ## Next
 
-- [Components](/concepts/components) — the one rule the whole framework is built on.
-- [State](/concepts/state) — what a signal tracks, and what it does not.
+- **[Components](/concepts/components)** — the one rule the framework is built on.
+- **[State](/concepts/state)** — what changing a field really does, and when.

@@ -1,13 +1,15 @@
 ---
 title: State
-description: How @state turns a class field into a signal, what tracking means, and when the DOM catches up.
+description: What @state is, what changing it does, and when the page catches up.
 section: Core concepts
 order: 32
 ---
 
 # State
 
-`@state` turns a class field into a signal.
+**State is the data a component remembers from one moment to the next** — a count, a
+name, whether a panel is open. You mark a field with `@state`, and from then on
+changing that field updates the page.
 
 ```tsx
 export class Counter extends Component {
@@ -15,73 +17,83 @@ export class Counter extends Component {
 }
 ```
 
-Reading it inside `render()` subscribes this component to it. Assigning to it schedules a
-re-render. There is no setter and no dependency list.
+`count` is now part of this component's state. Change it, and Ramonda calls the
+component's `render()` again and updates the page to match.
 
 ```demo:Counter
 ```
 
-## What tracking actually means
+## Changing it is the whole update
 
-The subscription is per **field**, established by the read. A component that never reads
-`this.expanded` does not re-render when `expanded` changes, even though the field is on the same
-instance.
-
-That has a practical consequence worth knowing: what re-renders is decided by your `render()`,
-not by where the write came from. Moving a read out of `render()` and into an event handler
-removes the subscription.
-
-## Assignment is the update
+Assigning to a `@state` field is how you update it — no setter to call, no list of
+dependencies to keep in step.
 
 ```tsx
-this.count = this.count + 1;   // ✓
-this.items = [...this.items, next];  // ✓
+this.count = this.count + 1;          // ✓
+this.items = [...this.items, next];   // ✓
 ```
 
-**Mutating in place is not.** The signal compares values, and an array you pushed into is the
-same array.
+## What a change re-renders
+
+When you change any `@state` field, Ramonda re-runs **this component's** `render()`
+— the whole component, not just the line that happened to use the field. It then
+updates the page to match what `render()` returns, changing only the parts of the
+page that actually differ.
+
+So you never have to wire a field to a piece of the screen. Change the data; the
+component describes itself again; Ramonda applies the difference. (Set a field to the
+value it already holds and nothing happens — there is nothing to change.)
+
+This is deliberately simple: a component re-renders on any of its own state changes,
+full stop. When you need to react to one *specific* value — recompute a total, run a
+side effect — that is what [compute](/concepts/compute) and [effects](/concepts/effects)
+are for, and those *do* track the individual values they read.
+
+## Replace, don't change in place
+
+To decide whether to re-render, Ramonda compares the old value with the new one. So
+you have to give it a **new** value. Pushing into the same array leaves it the same
+array, and nothing happens.
 
 ```tsx
-this.items.push(next);   // ✗ nothing re-renders
+this.items.push(next);               // ✗ same array — no update
+this.items = [...this.items, next];  // ✓ a new array
+this.user = { ...this.user, name };  // ✓ a new object
 ```
 
-In development this is reported as `RMD005`. In production it is simply silent, which is why the
-diagnostic exists.
+In development, changing an array or object in place is caught and reported as
+`RMD005`. In the finished app it is silent — which is exactly why the check exists.
 
-The same applies to objects: replace, do not mutate.
+## Don't change state while rendering
 
-```tsx
-this.user = { ...this.user, name };   // ✓
-```
-
-## Do not write state during a render
-
-`render()` must be a function of state, not a place that changes it. A write during a render
-schedules another render from inside the render that caused it.
+`render()` is where a component *describes* what it should look like. It should not
+change anything. Changing state during a render asks for another render from inside
+the one already running.
 
 ```tsx
 render() {
-  this.seen = true;     // ✗ RMD001
+  this.seen = true;   // ✗ reported as RMD001
   return <p>…</p>;
 }
 ```
 
-Put it in [`@create`](/concepts/lifecycle) if it is initialisation, or in an event handler if it
-is a response to something.
+Setting something up? Put it in [`@create`](/concepts/lifecycle). Reacting to
+something? Put it in an event handler.
 
-## Batching, and when the DOM catches up
+## When the page catches up
 
-Writes are batched through a microtask. Several assignments in one turn produce **one** render.
+Changes are batched. Several assignments in the same moment produce **one** render,
+on the next tick.
 
 ```tsx
 this.a = 1;
 this.b = 2;
 this.c = 3;
-// one render
+// one render, with the final values
 ```
 
-The DOM is therefore one microtask behind the assignment. In an app that is invisible and
-desirable. It shows up in exactly one place:
+In an app this is invisible and exactly what you want. It surfaces in one place: a
+test that checks the page immediately after a change.
 
 ### Testing a change
 
@@ -90,32 +102,47 @@ import { render, act } from "@ramonda/testing-library";
 
 const { instance, getByText } = render<Counter>(<Counter />);
 
-act(() => { instance.count = 5; });
+act(() => {
+  instance.count = 5;
+});
 expect(getByText("count is 5")).toBeTruthy();
 ```
 
-`act` runs the callback and then commits everything it caused — every pending render, `@mount`
-and effect — however deep the cascade goes. Without it the assertion reads the DOM as it was
-before the write.
+`act` makes the change and then lets everything it caused settle — every pending
+render and effect — before the next line runs. Without it, the assertion reads the
+page as it was *before* the change.
 
-Note `instance`: because state is a field on an object, a test can set it directly rather than
-having to find an event that would. Both are worth testing; this one is for setting up a state
-that would take six clicks to reach.
+(You can set `instance.count` directly because state is an ordinary field on an
+object. A test can put the component straight into a state that would otherwise take
+six clicks to reach.)
 
 ## After a component is gone
 
-Writing to a destroyed component's state is dropped, not applied — a fetch that resolves after
-the user navigated away cannot schedule a render into a detached tree. In development it is
-reported as `RMD008`. The drop ships in production too.
+If something changes a component's state after the component has been removed from
+the page — a network response that lands once the user has already navigated away —
+the change is dropped, not applied. There is no page left to update. In development
+this is reported as `RMD008`; the drop happens in production too.
 
-## Values that are not signals
+## Fields that aren't state
 
-Not every field needs to be one. A plain field is fine for anything a render never reads.
+Not every field needs `@state`. A plain field is fine for anything `render()` never
+shows and nothing needs to react to — marking it reactive would only cost memory for
+no gain.
 
-`@persist` marks a plain field as part of the hydration payload without making it reactive —
-for set-once, render-relevant values on a prerendered page. See [server rendering](/guide/examples).
+`@persist` is an in-between: a plain field whose value is carried over when a
+server-rendered page comes alive in the browser, without making it reactive. See
+[server rendering](/ssr).
+
+## Why it's this simple (optional)
+
+Ramonda *could* track which field each render read and re-render only when that exact
+field changes. It deliberately doesn't. When you change a component's state, you
+almost always change what it shows — so the bookkeeping to ask "did this particular
+change matter?" usually costs more than re-running one `render()` and updating only
+the DOM that differs, which is already cheap. The fine-grained tracking lives where
+it earns its keep: [compute](/concepts/compute) and [effects](/concepts/effects).
 
 ## Next
 
-- [Props](/concepts/props) — state that belongs to the parent.
-- [Lifecycle](/concepts/lifecycle) — where initialisation goes.
+- [Props](/concepts/props) — data a component gets from its parent.
+- [Lifecycle](/concepts/lifecycle) — where setup goes.
