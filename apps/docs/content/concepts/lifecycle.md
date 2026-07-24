@@ -84,9 +84,11 @@ for them.)
 removed — no cleanup to remember:
 
 ```tsx
+@state now = "";
+
 @interval(1000)
 tick() {
-  this.now = new Date();
+  this.now = new Date().toLocaleTimeString();
 }
 ```
 

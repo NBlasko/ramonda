@@ -11,9 +11,11 @@ To run something on a clock — a ticking time, a delayed reveal — use `@inter
 `@timeout`:
 
 ```tsx
+@state now = "";
+
 @interval(1000)
 tick() {
-  this.now = new Date();
+  this.now = new Date().toLocaleTimeString();
 }
 
 @timeout(3000)
@@ -21,6 +23,10 @@ giveUp() {
   this.status = "timeout";
 }
 ```
+
+(Note `now` holds a **string**, not a `Date`. State can be serialised — for the SSR
+payload or `@persist` — and a `Date` instance doesn't round-trip through that, so
+keep state to plain, serialisable values and format for display.)
 
 `@interval` runs the method every `ms` for as long as the component is on the page.
 `@timeout` runs it once, `ms` after the component mounts. **Both stop automatically
