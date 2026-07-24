@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Ramonda — A TypeScript UI framework">
+  <title>Ramonda</title>
+  <rect width="1200" height="630" fill="#FBF8FF"/>
+  <rect width="1200" height="8" fill="#7A4FBF"/>
+
+  <!-- Bloom mark -->
+  <g transform="translate(330,315) scale(8.4)">
+    <g fill="#7A4FBF">
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(72)"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(144)"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(216)"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(288)"/>
+    </g>
+    <circle r="6.6" fill="#E9B44C"/>
+    <circle r="6.6" fill="none" stroke="#4E2F86" stroke-width="1.4"/>
+  </g>
+
+  <text x="600" y="270" font-family="'DejaVu Sans', Verdana, sans-serif"
+        font-size="118" font-weight="700" fill="#241E2E" letter-spacing="-3">ramonda</text>
+  <text x="604" y="340" font-family="'DejaVu Sans', Verdana, sans-serif"
+        font-size="40" fill="#6B6376">A TypeScript UI framework</text>
+  <text x="604" y="410" font-family="'DejaVu Serif', Georgia, serif"
+        font-size="30" font-style="italic" fill="#7A4FBF">Every JSX tag is exactly one element.</text>
+</svg>

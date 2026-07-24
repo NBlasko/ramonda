@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-90 -90 180 180" role="img" aria-label="Ramonda">
+  <title>Ramonda</title>
+  <rect x="-90" y="-90" width="180" height="180" fill="#FBF8FF"/>
+  <g transform="scale(2.55)">
+    <g fill="#7A4FBF">
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(72)"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(144)"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(216)"/>
+      <ellipse cx="0" cy="-14" rx="8.6" ry="14" transform="rotate(288)"/>
+    </g>
+    <circle r="6.6" fill="#E9B44C"/>
+    <circle r="6.6" fill="none" stroke="#4E2F86" stroke-width="1.4"/>
+  </g>
+</svg>

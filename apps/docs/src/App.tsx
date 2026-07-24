@@ -99,7 +99,8 @@ export class App extends Component {
             ☰
           </button>
           <Link href="/" className="brand">
-            Ramonda <span aria-hidden="true">🌸</span>
+            <img className="brand-mark" src="/favicon.svg" width="24" height="24" alt="" />
+            Ramonda
           </Link>
           <Search />
         </header>
