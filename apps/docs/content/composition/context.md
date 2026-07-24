@@ -1,11 +1,16 @@
 ---
 title: Context
-description: Publish a value to a subtree, read it anywhere below, without threading it through every level.
+description: Share a value down a whole subtree without passing it through every component in between.
 section: Composition
 order: 71
 ---
 
 # Context
+
+Some values are needed all over the place — the current theme, the logged-in user,
+the app's language. Passing such a value down as a prop through every component in
+between is tedious. **Context** lets one component publish a value and any component
+below it read it directly, with nothing in between having to carry it.
 
 ```tsx
 import { createContext } from "@ramonda/core";
@@ -16,8 +21,8 @@ const [ThemeProvider, ThemeConsumer] = createContext({
 });
 ```
 
-`createContext` returns a **pair**: a provider hook and a consumer hook. Both are hooks, so
-neither adds an element.
+`createContext` gives you a pair: a **provider** to publish the value, and a
+**consumer** to read it. Both are hooks, so neither adds an element to the page.
 
 ```tsx
 class App extends Component {
@@ -36,50 +41,36 @@ class Badge extends Component {
 ```demo:ThemeContextDemo
 ```
 
-Nothing between `App` and `Badge` knows the theme exists.
+Nothing between `App` and `Badge` has to know the theme exists.
 
-## Reads are per key
+## You react to the keys you read
 
-`this.ctx.theme` subscribes to `theme`, not to the whole context. A component reading only
-`theme` is not re-rendered when `accent` changes.
-
-That is not an optimisation you opt into — it is how the context is built. Each key is its own
-signal.
+Reading `this.ctx.theme` ties this component to `theme`: change the theme and it
+re-renders, but change only `accent` and it doesn't. Each key is tracked on its own,
+and you get that for free.
 
 ## The default is a real fallback
 
-The object passed to `createContext` is used for any key a provider does not supply — not just
-when there is no provider at all.
+The object you pass to `createContext` fills in any key a provider doesn't supply —
+not only the case where there is no provider at all.
 
 ```tsx
 createContext({ theme: "light", accent: "pink" });
-// a provider passing only { theme } leaves accent as "pink"
+// a provider passing only { theme } still leaves accent as "pink"
 ```
 
-An explicitly provided `undefined` still wins. The default is for keys nobody mentioned.
+## No provider above it
 
-## No provider above
-
-Reading a consumer with no provider anywhere above it falls back to the default and reports
-`RMD003` in development, naming the context and the key.
-
-It is reported on the **read**, not on construction, because a hook may legitimately hold a
-consumer it never reads.
-
-## Labelling it for devtools
-
-```tsx
-createContext({ theme: "light" }, { label: "Theme" });
-```
-
-The devtools tree then shows `ThemeProvider` / `ThemeConsumer` rather than anonymous nodes.
-Development only.
+If a consumer has no provider anywhere above it, it falls back to the default and, in
+development, reports `RMD003` — naming the context and the key, so you can see what is
+missing.
 
 ## When not to use it
 
-Context is for values a whole subtree needs and nothing in between should have to carry — theme,
-locale, the current user, a router. For a value one child needs, pass a prop. Threading a prop
-through two levels is clearer than a context nobody can see.
+Context is for values a whole subtree needs and nothing in between should have to
+carry — theme, language, the current user, the router. For a value just one child
+needs, pass a prop; threading a prop through a level or two is clearer than a value
+that is invisible in the markup.
 
 ## Next
 

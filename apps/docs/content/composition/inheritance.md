@@ -1,13 +1,14 @@
 ---
 title: Extending components
-description: The unit of reuse is the class, and classes extend each other — which is why there are no fragments.
+description: When a component is almost another one, build on it instead of copying it.
 section: Composition
 order: 70
 ---
 
 # Extending components
 
-A component that is *almost* another component subclasses it.
+When a component is *almost* another one, you don't have to copy it — you can
+**extend** it: keep everything it had, and change only what's different.
 
 ```tsx
 @Host("th")
@@ -21,45 +22,35 @@ class HeaderCell extends Cell {
 ```demo:InheritanceDemo
 ```
 
-## What survives the extends
+`HeaderCell` is a `Cell` that renders in bold and is a `<th>` instead of a `<td>`.
+`super.render()` calls the parent's version.
 
-Everything, with no constructor to write:
+## What carries over
 
-- **`@Host` is inherited**, and can be overridden. That is the answer to "someone styled a
-  `<td>`, I want more behaviour but it must stay a `<td>`."
-- **`@state` fields** on the base keep working, and the subclass can add more.
-- **Hooks** the base used are still used.
-- **Lifecycle** runs base-first, then subclass — `@create` on `Cell` before `@create` on
-  `HeaderCell`.
-- **Methods** can be overridden, and `super.method()` works.
+Everything, and you don't write a constructor:
 
-## Why this matters more here than elsewhere
+- **`@Host`** is inherited and can be overridden — so "keep it a `<td>` but add
+  behaviour" is just extending `Cell`.
+- **`@state` fields** on the parent keep working; the subclass can add more.
+- **Hooks** the parent used are still used.
+- **Lifecycle** runs parent-first, then subclass — the parent's `@create` before the
+  child's.
+- **Methods** can be overridden, and `super.method()` calls the original.
 
-It is the reason Ramonda needs no fragments.
+## A common question
 
-In a framework whose unit of reuse is a function, functions cannot extend each other — so reuse
-means **nesting**. Nesting costs an element, elements distort layout, and a fragment is the
-escape hatch that hides the cost.
+> Ten `<td>`s, and the first three need special behaviour. What component do I wrap
+> them in?
 
-Classes do not nest to be reused. A component that extends another *is* one component, one
-element. There is no wrapper to hide, so there is nothing for a fragment to do.
+None — and that isn't a gap. Write a `Cell` with `@Host("td")`, and a `SpecialCell`
+that extends it. Both are `<td>`s; nothing wraps anything. (If the special group also
+needs shared state, that's a [hook](/hooks) that returns the cells.)
 
-## The question this usually answers
+## `override` is optional
 
-> Ten `<td>`s, and the first three need special behaviour. I want them wrapped in a component —
-> what is a good wrapper?
-
-**None, and that is not a gap.** Write a `Cell` component with `@Host("td")`, and a `SpecialCell`
-that extends it. Both are `<td>`s. Nothing wraps anything.
-
-If the group also needs shared state, that is a [hook](/hooks) returning vnodes, spliced in as
-`{group.cells()}`.
-
-## `override` is not required
-
-`noImplicitOverride` is not enabled, so `override` is optional. Turn it on in your own tsconfig
-if you want a renamed base method to be caught.
+Ramonda doesn't require the `override` keyword. Turn on `noImplicitOverride` in your
+own tsconfig if you'd like a renamed parent method to be flagged.
 
 ## Next
 
-- [Context](/composition/context) — a value without threading it through every level.
+- [Context](/composition/context) — a value shared down a subtree.

@@ -1,13 +1,14 @@
 ---
-title: Children and slots
-description: Passing markup into a component, and the one trap that comes with it.
+title: Children
+description: Let a component wrap whatever markup it is given.
 section: Composition
 order: 72
 ---
 
-# Children and slots
+# Children
 
-`children` is an ordinary prop.
+The content you put *inside* a component's tags is handed to it as a prop called
+`children`. That lets you write a component that wraps whatever it is given.
 
 ```tsx
 export class Panel extends Component<{ title: string; children?: RamondaNode }> {
@@ -28,10 +29,14 @@ export class Panel extends Component<{ title: string; children?: RamondaNode }> 
 </Panel>
 ```
 
-## Several slots
+`Panel` draws its own frame and drops whatever it was given where
+`{this.props.children}` sits.
 
-There is no slot syntax. If you need more than one, take more than one prop — they are just
-values, and a vnode is a value.
+## More than one slot
+
+There is no special "slot" syntax — if you need to place content in more than one
+spot, take more than one prop. Markup is just a value, so you can pass it like any
+other:
 
 ```tsx
 export class Dialog extends Component<{
@@ -57,34 +62,23 @@ export class Dialog extends Component<{
 </Dialog>
 ```
 
-## The trap: an unkeyed list from the caller
+## One trap: passing an unkeyed list as children
 
-A component that renders `{this.props.children}` **with chrome around it** cannot control how the
-caller produced those children. If the caller passes an unkeyed `.map()`, the diff matches by
-position — and when the list grows, the component's own chrome can be claimed as a list item.
+If a component wraps its `children` in its own markup, it can't control how the caller
+built those children. If the caller passes a bare `.map()`, items get matched by
+position — and as the list grows, the wrapper's own markup can be mistaken for a list
+item, so state lands on the wrong node. There is no visible error; development reports
+it.
+
+The fix is the caller's, and it is [`list()`](/lists) instead of `.map()`:
 
 ```tsx
-// The caller:
-<Panel>
-  {items.map((item) => <li>{item.name}</li>)}
-</Panel>
+// instead of  {items.map((item) => <li>{item.name}</li>)}
+<Panel>{list({ each: items, as: Item })}</Panel>
 ```
 
-The symptom is state landing on the wrong node, not a visible error. Development reports it as a
-diagnostic on the caller's side.
-
-**The fix belongs to the caller**, and it is [`list()`](/lists): its vnodes come out with identity,
-so the diff claims by identity rather than by position and nothing after the list can be mistaken
-for part of it.
-
-This is a genuine caller dependency, and it is the same one every framework with children has. The
-diagnostic is what makes it loud instead of silent.
-
-## Why there is no `<Fragment>` for grouping children
-
-A tag that is not an element would break the one rule the framework is built on. If you need
-several nodes at one position, `render()` may return an **array** — see
-[components](/concepts/components).
+`list()` gives each item a stable identity, so nothing around it can be confused for
+part of it.
 
 ## Next
 
