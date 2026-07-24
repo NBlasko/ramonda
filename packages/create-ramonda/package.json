@@ -1,0 +1,49 @@
+{
+  "name": "create-ramonda",
+  "version": "0.0.1",
+  "description": "Scaffold a Ramonda app — pick your packages and rendering mode, then just run it.",
+  "type": "module",
+  "bin": {
+    "create-ramonda": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint src"
+  },
+  "keywords": [
+    "ramonda",
+    "create",
+    "scaffold",
+    "starter",
+    "template",
+    "cli"
+  ],
+  "author": "Nikola Blagojević",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/create-ramonda"
+  },
+  "homepage": "https://ramonda.pages.dev",
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

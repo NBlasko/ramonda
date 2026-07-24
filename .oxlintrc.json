@@ -6,7 +6,8 @@
     "**/.turbo/**",
     "**/.build/**",
     "**/coverage/**",
-    "apps/docs/src/generated/**"
+    "apps/docs/src/generated/**",
+    "packages/create-ramonda/templates/**"
   ],
   "categories": {
     "correctness": "error"

@@ -1,0 +1,110 @@
+:root {
+  --bg: #fbf8ff;
+  --fg: #241a2e;
+  --muted: #6b6376;
+  --accent: #7a4fbf;
+  --card: #ffffff;
+  --line: #ece3f5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14101a;
+    --fg: #ece6f3;
+    --muted: #a79fb3;
+    --accent: #b18ae6;
+    --card: #1e1826;
+    --line: #2e2739;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.card {
+  max-width: 30rem;
+  margin: 2rem;
+  padding: 2.5rem;
+  text-align: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.mark {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 1rem;
+  background: var(--accent);
+  /* A five-petal flower via a conic + radial trick would be heavier; the real
+     mark ships as an SVG. This is a placeholder dot you can swap out. */
+  border-radius: 50%;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: 2.25rem;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0 0 1.75rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 0.6rem;
+  padding: 0.7rem 1.4rem;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 1.75rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+}
+
+.docs {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.docs:hover {
+  text-decoration: underline;
+}
