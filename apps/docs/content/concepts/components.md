@@ -1,13 +1,15 @@
 ---
 title: Components
-description: The class, render(), and the rule that one JSX tag is exactly one element.
+description: What a component is, how you use one, and the single rule the framework rests on.
 section: Core concepts
 order: 30
 ---
 
 # Components
 
-A component is a class extending `Component`, with a `render()` that returns JSX.
+A component is a small class that draws one piece of the page and knows how to react
+to what happens on it. You write one by extending `Component` and giving it a
+`render()`.
 
 ```tsx
 export class Card extends Component {
@@ -17,68 +19,69 @@ export class Card extends Component {
 }
 ```
 
-## One tag, one element
+You build a whole app out of components: small ones — a button, an avatar — combined
+into bigger ones — a card, a page.
 
-**Every JSX tag produces exactly one element.** An intrinsic tag like `<div>` is a `<div>`. A
-component tag like `<Card />` is one element too — the component's *host*.
+## Using a component
 
-This is the rule the rest of the framework is arranged around, and it buys one thing: **you can
-read the DOM off the JSX.** A tree of tags and the tree of nodes it produces have the same
-shape. Nothing collapses, nothing expands, nothing disappears.
-
-Two things follow, and both are refusals.
-
-**There are no fragments.** Nothing that renders as "several elements at this position, or
-none" exists as a tag.
-
-**There are no function components.** A function in tag position would be a tag that is not an
-element. TypeScript rejects it, and if it reaches the runtime anyway Ramonda reports `RMD011`
-and points at what to use instead.
-
-## What to use instead of a fragment
-
-Two questions get asked here, and they have different answers.
-
-**"I need several elements at this position."** `render()` may return an array. The elements
-become children of the component's host.
+Write its name as a tag:
 
 ```tsx
-render() {
-  return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
-}
+<Card />
 ```
 
-**"I need state and lifecycle but no element of my own."** That is a [Hook](/concepts/hooks), not
-a component. A hook has `@state`, `@create`, `@destroy` and effects, can provide context, and
-adds no node at all.
+A component can take input from whoever uses it (see [props](/concepts/props)) and
+keep its own memory (see [state](/concepts/state)).
 
-If the wrapper element is simply not in your way — and it usually is not, because the default
-host takes part in no layout — write an ordinary component and stop thinking about it. See
-[the host element](/concepts/host).
+## One tag, one element
 
-## Conditionals
+Ramonda has a single rule that everything else rests on: **every tag in your JSX
+becomes exactly one element on the page.** A `<div>` is one `<div>`. Your own
+`<Card />` is one element too.
 
-`null` renders nothing.
+Because of that, the shape of what you write is the shape of what appears — nothing
+quietly splits into several elements or vanishes. Once you can picture the page from
+the code, a lot of guesswork goes away.
+
+## Showing one thing or another
+
+Return `null` to draw nothing. A `? :` (ternary) picks between two things to show.
 
 ```tsx
 render() {
   return (
     <div>
-      {this.loading ? <Spinner /> : null}
+      {this.loading ? <Spinner /> : <p>Ready.</p>}
       <p>Always here.</p>
     </div>
   );
 }
 ```
 
-`&&` works too, with the usual caveat that a falsy non-boolean renders itself — `{count && …}`
-prints `0`. Prefer an explicit ternary.
+Prefer a ternary to `&&` for showing and hiding: `{count && <p>…</p>}` prints a
+stray `0` when `count` is `0`, because a leftover number draws itself.
 
-## Composition is inheritance
+## Returning several elements
 
-The unit of reuse is the class, and classes extend each other. A component that is *almost*
-another component subclasses it — overriding `render()`, adding state, adding methods, calling
-`super`.
+Sometimes a component needs to place several elements at its spot rather than wrap
+them in a container. `render()` may return an array:
+
+```tsx
+@Host("tr")
+export class Row extends Component {
+  render() {
+    return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
+  }
+}
+```
+
+Here one `Row` is a table row — `<tr>`, its [host element](/concepts/host) — holding
+several cells, with no extra component per cell.
+
+## Reusing a component
+
+Because a component is a class, one that is *almost* another can **extend** it: keep
+what it had, change what differs.
 
 ```tsx
 @Host("th")
@@ -89,14 +92,23 @@ export class HeaderCell extends Cell {
 }
 ```
 
-This is why the fragment question comes up less than you would expect. In a framework whose
-unit is a function, reuse means nesting, nesting costs an element, and a fragment hides it.
-Classes do not nest to be reused, so no wrapper appears.
+Inherited state, hooks and lifecycle keep working. More in
+[inheritance](/composition/inheritance).
 
-`@Host` is inherited and can be overridden. Inherited `@state`, hooks and lifecycle methods keep
-working; `@create` runs base-first, then subclass.
+## Why one tag, one element (optional)
+
+Some frameworks let one tag stand for several elements at once (a *fragment*), or let
+a plain function be a tag (a *function component*). Ramonda allows neither, on
+purpose — both break the promise that a tag is one element, and that promise is what
+lets you read the page off the code.
+
+The two cases people reach for them still have answers. Need state and lifecycle but
+no element of your own? That is a [Hook](/hooks). Bothered by a wrapper
+element? The default one takes part in no layout, so it usually isn't in the way —
+see [the host element](/concepts/host). Using a function as a tag is refused:
+TypeScript rejects it, and at runtime it is reported as `RMD011`.
 
 ## Next
 
-- [JSX](/concepts/jsx) — children, arrays, keys, and what `h` does.
+- [JSX](/concepts/jsx) — the HTML-like syntax, up close.
 - [The host element](/concepts/host) — which element a component *is*.

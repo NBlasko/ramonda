@@ -74,4 +74,4 @@ A ref is cleared when its element is unmounted, so it cannot keep a detached nod
 
 ## Next
 
-- [Hooks](/concepts/hooks) — state and lifecycle with no element at all.
+- [Hooks](/hooks) — state and lifecycle with no element at all.

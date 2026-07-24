@@ -1,13 +1,14 @@
 ---
 title: Props
-description: Props are read-only, reactive per key, and @watchProp reacts to one changing.
+description: Props are the input a component gets from its parent — read-only, and reactive.
 section: Core concepts
 order: 33
 ---
 
 # Props
 
-Props are what a parent passes in. They arrive on `this.props`.
+**Props are the input a component gets from whoever uses it.** The parent passes them
+in like attributes, and they arrive on `this.props`.
 
 ```tsx
 export class Greeting extends Component<{ name: string }> {
@@ -21,24 +22,27 @@ export class Greeting extends Component<{ name: string }> {
 <Greeting name="Ada" />
 ```
 
-The type parameter is the props type. It is not optional in practice — it is what makes the
-call site check.
+The `<{ name: string }>` after `Component` describes the props this component expects,
+so using it without `name`, or with the wrong type, is caught as you type.
 
-## They are read-only, and they throw
+## Props are read-only
+
+A component may read its props but not change them — they belong to the parent.
+Assigning to one throws:
 
 ```tsx
-this.props.name = "Grace";   // TypeError, RMD004
+this.props.name = "Grace";   // ✗ throws (RMD004)
 ```
 
-Not a warning. Assigning throws in **every** build, development and production alike, because
-the alternative was worse: the write used to land nowhere and vanish, so reading the value back
-gave the old one and nothing ever said the assignment had been dropped.
+It throws in every build, on purpose. The alternative — quietly ignoring the write —
+let bugs hide: you would assign, read back the old value, and get no hint why.
 
-If you need to change it, you have two options and they are the honest ones:
+If you need to change something a prop gave you, there are two honest ways:
 
-- **Copy it into your own state.** `@state name = this.props.name` in `@create`, then it is
-  yours.
-- **Ask the parent.** Take a callback prop and call it.
+- **Make it your own state.** Copy it in `@create`: `@state name = this.props.name`.
+  Now it is yours to change.
+- **Ask the parent.** Take a callback prop and call it — the parent owns the data, so
+  the parent changes it.
 
 ```tsx
 export class Row extends Component<{ item: Item; onRemove: (id: string) => void }> {
@@ -48,19 +52,18 @@ export class Row extends Component<{ item: Item; onRemove: (id: string) => void 
 }
 ```
 
-Hook options work the same way and throw the same way (`RMD015`) — one rule for read-only
-inputs, not two.
+## A component reacts to the props it reads
 
-## Reads are per key
+Reading `this.props.name` ties this component to `name`: if the parent later passes a
+new `name`, the component re-renders to match. A prop it never reads — say `title` —
+does not trigger a re-render when it changes. You get this for free; there is nothing
+to declare.
 
-`this.props.name` subscribes to `name`, not to the whole props object. A component that reads
-only `name` does not re-render when the parent passes a new `title`.
+## Reacting to a specific prop changing
 
-## Reacting to a prop changing
-
-Sometimes derived state has to be recomputed when a specific prop moves. `@watchProp` does that
-**before** the render, so the derived value is already correct when `render()` runs — with no
-second pass.
+Sometimes you need to *do* something when one prop changes — refetch when an `id`
+changes, say. `@watchProp` runs a method just before the render, whenever the prop
+you name changes:
 
 ```tsx
 @watchProp((props: UserProps) => props.userId)
@@ -73,34 +76,23 @@ reload(next: string, previous: string) {
 ```demo:WatchPropDemo
 ```
 
-Three things about it:
+- **It doesn't run on the first render** — only on a later change. Use `@create` for
+  the initial load.
+- **Type it by annotating the selector's parameter** (`props: UserProps` above); that
+  infers the rest. An explicit `watchProp<UserProps>(...)` does *not* work.
+- **It's a selector function, not a string** — so it can go as deep as
+  `p => p.filters[0].value`, and the compiler checks it.
 
-**It does not fire on mount.** Only on a change. Use `@create` for the initial case — which is
-usually what you want anyway, since the two do different work.
+### `@watchProp` or `@effect`? (optional)
 
-**Type it by annotating the selector's parameter**, as above. That fills in both the props type
-and the value type by inference. An explicit generic (`watchProp<UserProps>(...)`) does *not*
-work: TypeScript has no partial inference, so naming one drops the other and the method's
-parameters fall back to `unknown`.
+Both react to a change; they differ in *when*. `@watchProp` runs **before** the
+render, so derived state is ready with no extra pass. [`@effect`](/concepts/effects)
+runs **after** the page updates — the place for side effects like a fetch, a
+subscription, or a measurement, not for working out what to show.
 
-**A selector, not a string.** It can reach as deep as you like — `p => p.filters[0].value` — and
-it is checked by the compiler, which a string could never be.
+## `children` is a prop
 
-### `@watchProp` or `@effect`?
-
-Both can respond to a change. They differ in when.
-
-| | runs | costs |
-|---|---|---|
-| `@watchProp` | before the render | nothing extra |
-| `@effect` | after the commit | its write causes another render |
-
-Use `@watchProp` for derived state. Use [`@effect`](/guide/examples) when the response is a side
-effect — a subscription, a fetch, a measurement.
-
-## Children
-
-`children` is an ordinary prop.
+The content between a component's tags arrives as the `children` prop:
 
 ```tsx
 export class Panel extends Component<{ children?: RamondaNode }> {

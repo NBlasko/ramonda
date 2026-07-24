@@ -1,29 +1,47 @@
 ---
 title: JSX
-description: How Ramonda's JSX works — h, children, arrays, keys, and what is deliberately missing.
+description: The HTML-like syntax you write in a component — values, attributes, children, refs.
 section: Core concepts
 order: 31
 ---
 
 # JSX
 
-Ramonda's JSX compiles to `h(...)`, not `React.createElement`. Your bundler has to be told —
-see [installation](/guide/installation).
+JSX is the HTML-like syntax you write inside a component to describe what to show.
+You have been using it already:
 
 ```tsx
-<p className="lead">Hello {name}</p>
-// becomes
-h("p", { className: "lead" }, "Hello ", name)
+render() {
+  return <p className="lead">Hello</p>;
+}
 ```
 
-## Attributes are DOM attributes
+It looks like HTML, but it lives in your code — so you can mix in values and logic.
+(Your bundler turns it into function calls behind the scenes;
+[installation](/guide/installation) sets that up.)
 
-Names are the DOM's, not a framework's rename. `className`, `htmlFor`, `tabIndex` — the
-property names the DOM uses.
+## Putting values in
 
-**SVG is the exception worth reading twice.** Ramonda writes SVG attribute names **verbatim**,
-because the JSX is meant to be the DOM. So it is `stroke-width` — the SVG spelling — not a
-camelCased `strokeWidth`, and `viewBox` stays camelCase because that is what SVG defines.
+Curly braces `{ }` drop a value into the markup — text, a number, whatever an
+expression produces:
+
+```tsx
+<p>Hello {name}, you have {count} messages</p>
+```
+
+## Attributes
+
+Attributes use the **DOM's own names**. Most match HTML; a couple differ because the
+HTML name is a reserved word in JavaScript — `className` (not `class`), `htmlFor`
+(not `for`).
+
+```tsx
+<label className="field" htmlFor="email">Email</label>
+```
+
+**SVG is worth reading twice.** Inside SVG, Ramonda writes attribute names exactly as
+SVG defines them — `stroke-width` with a dash, `viewBox` in camelCase — because the
+JSX is meant to mirror the real element:
 
 ```tsx
 <svg viewBox="0 0 24 24">
@@ -31,76 +49,47 @@ camelCased `strokeWidth`, and `viewBox` stays camelCase because that is what SVG
 </svg>
 ```
 
-The camelCased spelling is rejected by the types. If it reaches the runtime it silently does
-nothing — SVG attribute names are case-sensitive.
-
 ## Children
 
-Text, elements, components, arrays, and `null` for nothing.
+What sits between the tags: text, other elements, components, and `null` for nothing.
 
 ```tsx
-<ul>
-  {items.map((item) => (
-    <li>{item.name}</li>
-  ))}
-</ul>
+<section>
+  <h1>{title}</h1>
+  {subtitle ? <p>{subtitle}</p> : null}
+</section>
 ```
 
-**An array stays one child.** Ramonda does not splice a nested array into its parent's children
-the way a flatten would; it keeps it as its own group with its own key space. That is what lets
-two `.map()` calls sit side by side without their keys colliding, and what stops a list's
-siblings being mistaken for list items.
-
-## `render()` may return an array
-
-A component is one element — its host — and an array becomes that host's children.
+For a **list** built from an array, use `list()` rather than `.map()` — it keeps
+track of which item is which, so items hold their place when the list changes:
 
 ```tsx
-@Host("tr")
-export class Row extends Component {
-  render() {
-    return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
-  }
+render() {
+  return list({ each: this.rows, as: Row });
 }
 ```
 
-That is the answer to "one `<tr>` with many `<td>`s, without a component per cell".
+See [rendering lists](/lists).
 
-## Keys
+## `ref` — reaching the real element
 
-A `key` tells the diff that two elements across two renders are the same thing. It matters when
-a list reorders, and it is the one place where a mistake is silent — the wrong key moves state
-to the wrong row.
-
-Which is why, for lists, **you should not be writing keys at all.** `list()` derives identity
-from the items themselves:
-
-```tsx
-render() { return list({ each: this.rows, as: Row }); }
-```
-
-See [rendering lists](/lists). `key` remains available as an override for the case a list cannot
-see — objects re-created by a refetch that mean the same entity.
-
-## `ref`
-
-On an intrinsic tag, `ref` receives that element. On a component, it receives the component's
-host element — unambiguous, because a component is exactly one element.
+Sometimes you need the actual element on the page — to focus an input, measure it,
+play a video. `ref` hands it to you:
 
 ```demo:RefFocus
 ```
 
-## What is deliberately missing
+On a plain tag, `ref` gives you that element. On a component, it gives you the
+component's one element (its host).
 
-**`JSX.ElementType` is not declared.** Its absence is what makes TypeScript apply its default
-rule — a component used as a tag must return `JSX.Element` — which is exactly the rule Ramonda
-wants, and it is what rejects a function in tag position. The absence is the feature.
+## Why no raw HTML strings (optional)
 
-**There is no `dangerouslySetInnerHTML`.** Markup injected as a string is invisible to the diff:
-it cannot be hydrated, cannot contain a component, and cannot take part in a render. If you have
-HTML from elsewhere, parse it into a tree and render that — which is what this documentation
-site does with its markdown.
+Some frameworks let you drop a raw HTML string straight into the page. Ramonda does
+not: markup pasted as a string is invisible to the framework — it can't take part in
+a render, can't hold a component, can't be hydrated. If you have HTML from elsewhere,
+parse it into a tree and render that. (That is exactly how this docs site shows its
+markdown.)
 
 ## Next
 
-- [State](/concepts/state) — what a render reads, and what that subscribes to.
+- [State](/concepts/state) — the data a component remembers.
