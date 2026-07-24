@@ -1,93 +1,154 @@
 ---
 title: Hooks
-description: Reusable state, lifecycle and effects — like a component, but with no element of its own.
+description: Reuse stateful logic across components — state, lifecycle and effects with no element of their own.
 section: Hooks
 order: 50
 ---
 
 # Hooks
 
-A **hook** is a bundle of state, lifecycle and effects that a component can reuse —
-like a component, but with **no element of its own**. It is how you share stateful
-behaviour — a clock, a subscription, pagination — between components without each one
-reinventing it.
+## The point: reuse stateful logic
+
+Sometimes the interesting part of a component isn't its markup — it's its *behaviour*:
+fetching data and tracking whether it has arrived, following the window size, running
+a countdown. When several components need the same behaviour, you don't want to copy
+it into each one. A **hook** is that behaviour pulled out into one reusable place:
+state, lifecycle and effects together, with **no element of its own**.
 
 ```tsx
-import { Hook, state, mount, interval } from "@ramonda/core";
+import { Hook, state } from "@ramonda/core";
 
-export class Clock extends Hook {
-  @state now: Date | null = null;
+export class Toggle extends Hook {
+  @state open = false;
 
-  @mount({ env: "client" })
-  start() {
-    this.now = new Date();
-  }
-
-  @interval(1000)
-  tick() {
-    this.now = new Date();
+  toggle() {
+    this.open = !this.open;
   }
 }
 ```
 
-A component uses one with `this.use()`:
+Any component uses it with `this.use()`:
 
 ```tsx
-export class Header extends Component {
-  clock = this.use(Clock);
+export class Menu extends Component {
+  menu = this.use(Toggle);
 
   render() {
-    return <time>{this.clock.now?.toLocaleTimeString() ?? "—"}</time>;
+    return (
+      <div>
+        <button onClick={this.menu.toggle}>{this.menu.open ? "Close" : "Open"}</button>
+        {this.menu.open ? <ul>…</ul> : null}
+      </div>
+    );
   }
 }
 ```
 
-Now any component that wants a live clock just uses `Clock` — the ticking and the
-cleanup live in one place.
+A `Dialog`, a `Dropdown` and an `Accordion` can all `this.use(Toggle)` — the
+open/close logic lives in one class instead of being copied three times. **That reuse
+is the whole reason hooks exist.**
 
-Notice `now` starts empty and is filled in on the client, not in the field. `new Date()`
-in the field would run on the server too and give a different time than the browser, and
-a server-rendered page would flag the mismatch. Seeding it in `@mount({ env: "client" })`
-keeps the two in step. (In a client-only app there is no server, so a plain
-`@state now = new Date()` would work — but this way is safe everywhere.) See
-[timers](/concepts/timers) for more on this.
+## Why not just a component?
 
-## Why they are separate from components
+A component is always exactly one element, so "state and lifecycle but no markup"
+can't be a component — it would still be an element. That is the gap a hook fills.
+(If a wrapper element wouldn't bother you, an ordinary component works too — its
+default element takes up no space. Reach for a hook when you want *no* element, or
+when the goal is to share the behaviour itself.)
 
-A component is always exactly one element. So "state and lifecycle but no markup" — a
-common thing to want — has nowhere to live as a component. That is a hook.
+## Synchronising with the owner
 
-(Often you don't even need one: an ordinary component's default element takes up no
-space, so a component with a `render()` and a little state is usually fine. Reach for
-a hook when you want *no* node at all — for example inside a `<table>` or `<select>`,
-where an extra element is illegal — or when you want to share the behaviour itself.)
+A hook often needs a value from the component using it — the id to fetch, the size to
+paginate by. You pass it as **options**. Pass a **callback**, and it re-runs every
+time the owner re-renders, so the hook stays in step with the owner's data.
 
-## What a hook has
+```tsx
+export class Resource<T> extends Hook<{ url: string }> {
+  @state data: T | null = null;
 
-Everything a component has, except a `render()` and an element:
+  @effect
+  load() {
+    let alive = true;
+    this.data = null;
+    fetch(this.options.url)
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) this.data = d;
+      });
+    return () => {
+      alive = false;
+    };
+  }
+}
+```
 
-- `@state`, `@compute`, `@persist`
-- `@create`, `@mount`, `@destroy` (with `env`)
-- `@effect`, `@interval`, `@timeout`
-- `@onWindow`, `@onDocument` — but **not** `@onElement` (that needs an element)
-- `this.use()`, so hooks can use other hooks
-- it can provide and read [context](/composition/context)
+```tsx
+export class UserCard extends Component<{ id: string }> {
+  // The callback re-runs when this component re-renders, so `url` follows `id`.
+  user = this.use(Resource, (self: UserCard) => ({ url: `/api/users/${self.props.id}` }));
 
-## The one thing to know
+  render() {
+    return this.user.data ? <p>{this.user.data.name}</p> : <p>Loading…</p>;
+  }
+}
+```
 
-**A hook shares its owner's re-rendering.** When a hook's state changes, the *owner*
-component re-renders — the hook has no smaller boundary of its own. That is the one
-thing a child component gives you that a hook doesn't. If a hook's state changes a lot
-and its owner is expensive to draw, a child component may be the better fit.
+When the parent passes a new `id`, the callback produces a new `url`; the `@effect`
+that read `this.options.url` re-runs and refetches — with no wiring on your part.
+Options are tracked **per key** (exactly like [props](/concepts/props)), so the hook
+reacts to the option that changed and not to the others. Authoring them in detail is
+[writing a hook](/hooks/writing).
+
+## A hook can use another hook
+
+Hooks compose: a hook can `this.use()` another, building bigger behaviour out of
+smaller pieces.
+
+```tsx
+export class UserProfile extends Hook<{ id: string }> {
+  private user = this.use(Resource, (self: UserProfile) => ({ url: `/api/users/${self.options.id}` }));
+  private posts = this.use(Resource, (self: UserProfile) => ({ url: `/api/users/${self.options.id}/posts` }));
+
+  get ready() {
+    return this.user.data !== null && this.posts.data !== null;
+  }
+}
+```
+
+The whole chain shares one owner and updates together — when the owner re-renders,
+each hook's options are re-evaluated in turn, down through the nested ones.
+
+## When things fire
+
+- **A hook is created the moment `this.use()` runs** — while the owner itself is
+  being built, before the owner's own `@create`. Hooks are built in `this.use()`
+  order.
+- **Its lifecycle is part of the owner's, not a separate pass.** A hook has no
+  element, so there's no separate mount for it: its `@create` runs as the owner is
+  built, its `@mount` once the owner's DOM is on the page, its `@destroy` when the
+  owner is removed. You can watch the exact interleaving in the
+  [lifecycle](/concepts/lifecycle) demo.
+- **On every re-render of the owner**, each hook's options callback re-runs, in
+  `use()` order, and the new values flow into the hook — cascading down through any
+  nested hooks.
+
+## The one cost to know
+
+A hook shares its owner's re-rendering: when a hook's state changes, the **owner**
+re-renders — the hook has no smaller boundary of its own. That is the one thing a
+child component gives you that a hook doesn't. If a hook's state changes very often
+and the owner is expensive to draw, a child component may be the better shape.
 
 ## A hook can return markup
 
-A hook has no element, but it can still produce markup for its owner to place — handy
-when a group of elements needs shared state but no wrapper (inside a `<tr>`, say):
+A hook has no element, but it can still produce markup for the owner to place — useful
+when a group of elements needs shared state but no wrapper (inside a `<tr>` or
+`<select>`, where an extra element is illegal):
 
 ```tsx
 class Toolbar extends Hook<{ actions: Action[] }> {
   @state busy = false;
+
   buttons() {
     return this.options.actions.map((action) => (
       <button disabled={this.busy} onClick={() => this.run(action)}>{action.label}</button>
@@ -107,4 +168,4 @@ which a plain `.map()` like this one doesn't.
 
 ## Next
 
-- [Writing a hook](/hooks/writing) — options, and keeping them reactive.
+- [Writing a hook](/hooks/writing) — options in depth, and keeping them reactive.
