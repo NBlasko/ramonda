@@ -1,58 +1,50 @@
 ---
 title: Why prerender
-description: What a crawler sees, and why it decides how a framework should render.
+description: Send finished HTML instead of an empty shell — for search engines, link previews, and first paint.
 section: Server rendering
 order: 90
 ---
 
-# Why prerender
+# Why render on the server
 
-A client-only app ships an empty shell and fills it in with JavaScript. A prerendered app ships
-the finished HTML and *then* attaches behaviour to it.
+A client-only app ships an almost-empty page and builds everything with JavaScript
+after it loads. **Server rendering** flips that: the server produces the finished
+HTML, sends it, and the browser then attaches behaviour to what is already there.
 
-| | what a crawler receives |
-|---|---|
-| client-only SPA | an empty `<div id="app">` |
-| **prerendered** | the whole page, as text |
+Two reasons it matters:
 
-## This is mostly a distribution question
+**Search engines and link previews see real content.** A client-only page arrives as
+an empty `<div id="app">`, so anything reading it without running JavaScript — most
+crawlers, and the bots feeding AI assistants — sees nothing. A server-rendered page
+arrives as the whole page, as text.
 
-Nobody browses documentation from the homepage. They search, or they follow a link. If the served
-HTML is empty, the page competes on nothing.
+**It paints sooner.** The content is in the HTML, so it shows the moment the HTML
+arrives. The "download the bundle, run it, then see something" wait happens *behind*
+content the reader can already read.
 
-Google does eventually execute JavaScript, but indexing is delayed and unreliable. **Most other
-crawlers do not run it at all** — and that now includes the ones feeding AI assistants, which is
-increasingly how people ask about a library before they ever visit its site.
+## SSG or SSR?
 
-## And a load-time one
+Two flavours, the same tools:
 
-Prerendered content paints as soon as the HTML arrives. There is no "download the bundle, parse
-it, run it, then see something" step in front of the first render — that work still happens, but
-it happens *behind* content the reader can already use.
+- **Static (SSG)** — render at *build time*, write HTML files, serve them from a CDN.
+  No server, no per-request cost. This is what these docs do, and where to start.
+- **Server (SSR)** — render *per request*, for pages that depend on who is asking.
+
+Start static; move a page to per-request rendering only when it genuinely can't be
+built ahead of time.
 
 ## What Ramonda gives you
 
+The same components and lifecycle — there is no separate server renderer to learn.
+The [`env`](/ssr/env) option decides what runs where.
+
 | | |
 |---|---|
-| [`renderToString`](/ssr/render) | an app → HTML, with state blobs for hydration |
-| [`renderPage`](/ssr/head) | the same, plus the `<head>` its components produced |
-| [`renderDocument`](/ssr/static) | wraps that in a complete document |
-| [`hydrateRoot`](/ssr/render) | adopts the server's DOM instead of rebuilding it |
+| [`renderToString`](/ssr/render) | your app → HTML |
+| [`renderPage`](/ssr/head) | the HTML plus the `<head>` its components set |
+| [`renderDocument`](/ssr/static) | wraps that in a full HTML document |
+| [`hydrateRoot`](/ssr/render) | in the browser, adopts the server's HTML |
 | [`routePaths`](/ssr/static) | the paths a static build should render |
-
-There is no separate server renderer to learn. The same components, the same lifecycle, the same
-diff — the `env` option decides what runs where.
-
-## SSR or SSG?
-
-Both use the same functions. The difference is when you call them.
-
-- **Static (SSG)** — call them at build time, write files, serve them from a CDN. No server, no
-  runtime cost, and it is what this site does.
-- **Server (SSR)** — call them per request, when the page depends on who is asking.
-
-Start static. Move a route to per-request rendering when it genuinely cannot be built ahead of
-time.
 
 ## Next
 

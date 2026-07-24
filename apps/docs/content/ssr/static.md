@@ -1,11 +1,14 @@
 ---
 title: Building a static site
-description: The whole build is six lines — routePaths, renderPage, renderDocument.
+description: Render every page to an HTML file at build time — the whole loop is a few lines.
 section: Server rendering
 order: 93
 ---
 
 # Building a static site
+
+A static build renders every page to an HTML file at build time. The whole loop is a
+few lines:
 
 ```ts
 import { renderPage, renderDocument } from "@ramonda/core";
@@ -20,20 +23,20 @@ for (const path of paths) {
 }
 ```
 
-That is the build. This site is produced by it.
+This site is built exactly like that.
 
-## `routePaths` splits what it can enumerate from what it cannot
+## `routePaths` — the pages it can list, and the ones it can't
+
+A route table is a set of *patterns*, and only some are single pages. `/guide` is one
+page; `/players/:id` is one route but as many pages as there are players.
 
 ```ts
 const { paths, needsData } = routePaths(routes, ["/players/1", "/players/2"]);
 ```
 
-A route table is a set of **patterns**, and only some of them are pages. `/guide` is one page;
-`/players/:id` is one route and however many players there are.
-
-`needsData` is the list of patterns whose values live in your data. A build that enumerated the
-table and stopped would ship a site missing everything dynamic — and nothing about the output
-would look wrong, because the pages it *did* emit are all correct. So fail on it:
+`needsData` is the list of patterns whose values live in your data — you supply the
+concrete paths (the second argument). A build that ignored `needsData` would silently
+ship a site missing everything dynamic, so it is worth failing on:
 
 ```ts
 if (needsData.length && extra.length === 0) {
@@ -41,44 +44,32 @@ if (needsData.length && extra.length === 0) {
 }
 ```
 
-`"*"` is excluded — it matches what matched nothing, so it has no URL. Render a 404 explicitly at
-whatever path your host expects.
+(`"*"` is left out — it matches what nothing else did, so it has no URL. Render a 404
+page explicitly at whatever path your host serves for missing files.)
 
 ## `renderDocument`
 
-Wraps a rendered page in a complete document: doctype, charset, viewport, title, the page's own
-head, a root element, stylesheets, module scripts.
+Wraps a rendered page in a complete HTML document — doctype, charset, viewport, title,
+the page's own head, a root element, your stylesheets and scripts.
 
 | option | |
 |---|---|
 | `lang` | `<html lang>`, default `"en"` |
 | `scripts` | module scripts at the end of `<body>` — your hydration entry |
-| `styles` | stylesheet hrefs |
-| `headExtra` | raw markup for whatever this does not model. **Not escaped** |
+| `styles` | stylesheet links |
+| `headExtra` | raw markup for anything it doesn't model (favicon, analytics). **Not escaped** |
 | `rootId` | the element the app mounts into, default `"app"` |
 
-Deliberately small. A shell is the one part every project wants slightly differently, so it models
-what is the same everywhere and leaves the rest to `headExtra`.
-
-`charset` is emitted **before** the title, on purpose: a browser not told the encoding guesses
-from the first bytes and restarts the parse if it guessed wrong, and the spec asks for it inside
-the first 1024 bytes — which a long non-ASCII title could push it past.
-
-## One DOM, not one per page
-
-A build loop is **sequential**, so it does not need a fresh DOM per page the way a concurrent
-server does. Changing the URL between renders is enough; this site's build renders every page into
-one document and the output is byte-for-byte repeatable across builds.
+It is deliberately small: the document shell is the one part every project wants
+slightly differently, so it does the parts that are always the same and leaves the
+rest to `headExtra`.
 
 ## Your bundler needs two builds
 
-A client bundle (which calls `hydrateRoot`) and a server bundle for the build loop. **Node cannot
-parse TC39 decorators**, so the build script has to run *transpiled* output — a dev server's
-transform will not do.
-
-If you use `AsyncLoad`, **split both bundles**. With `--outfile` and ESM, esbuild cannot make a
-chunk, so it leaves `import("./Panel")` as a literal runtime import that then fails to resolve
-from the build directory — and every lazy component renders its error fallback into your HTML.
+A **client** bundle (which calls `hydrateRoot`) and a **server** bundle for the build
+loop. Node can't parse TC39 decorators, so the build script runs *transpiled* output —
+a dev server's on-the-fly transform won't do. (And if you use `AsyncLoad`, split both
+bundles — see [lazy loading](/composition/lazy).)
 
 ## Next
 

@@ -1,64 +1,45 @@
 ---
 title: renderToString and hydrateRoot
-description: The pair — how the server's markup is produced, and how the client adopts it.
+description: One turns your app into HTML on the server; the other brings that HTML to life in the browser.
 section: Server rendering
 order: 91
 ---
 
 # `renderToString` and `hydrateRoot`
 
+The two ends of server rendering: one turns your app into HTML on the server, the
+other brings that HTML to life in the browser.
+
 ```ts
-// server
+// on the server
 const html = await renderToString(<App />);
 
-// client
+// in the browser
 hydrateRoot(<App />, document.getElementById("app")!);
 ```
 
-## What the server produces
+## What the server sends
 
-The same components, rendered under a DOM, serialized to HTML. Two things go in that a plain
-render would not have:
-
-**A state blob per component.** Every host element carries `data-ramonda-state` with that
-component's `@state` and `@persist` fields. That is what lets the client resume rather than start
-over — a value the server computed is *restored*, not recomputed.
-
-**No whitespace between nodes.** The markup is built with `createElement`, so there is nothing
-between elements to confuse the position matching hydration does.
+The same components, rendered to HTML — plus one thing a normal render wouldn't have:
+**a small blob of each component's state** (`data-ramonda-state` on its element,
+holding its `@state` and `@persist`). That is what lets the browser *resume* instead
+of starting over — a value the server computed is restored, not recomputed.
 
 ## What hydration does
 
-`hydrateRoot` **adopts**. It walks the vnode tree against the DOM already there and, where they
-agree, keeps the node: attaches listeners, wires refs, restores state, runs client lifecycle.
+`hydrateRoot` **adopts** the HTML that is already there. It walks your component tree
+against the existing DOM and, where they agree, keeps each node — attaching event
+handlers, wiring refs, restoring state, running client lifecycle. Nothing is rebuilt
+when the two agree (on this page: every element adopted, none replaced).
 
-Nothing is rebuilt when the two agree. On this page, measured: **every element adopted, none
-replaced.**
+Where they *disagree*, the browser wins — the DOM is corrected — and development
+reports it as [`RMD007`](/ssr/mismatches). See
+[hydration mismatches](/ssr/mismatches) for why that happens and how to avoid it.
 
-Where they disagree, the client wins — the DOM is patched — and development reports it as
-[`RMD007`](/ssr/mismatches).
+## Fetching on the server
 
-## Hydrating IS the comparison
-
-There is no second render to detect divergence. The client renders once, and walking that output
-against the server's DOM is a comparison the adopt path had to make anyway.
-
-## The one place the DOM is not shaped like the vnodes
-
-Text. HTML cannot record where one text node ends and the next begins, so
-`<span>Hello {name}!</span>` — three text children — comes back as **one** node.
-
-Hydration splits it again with `splitText`, taking each child's share off the front. One way to
-do this is to write `<!---->` separator comments into the markup; Ramonda spends zero bytes on
-them and does the work on the client instead.
-
-It also makes divergence detection more precise: the server's node must *start with* what the
-client rendered, and anything else is real disagreement.
-
-## Async work
-
-A component that fetches in `@mount` — which is what `@mount` is for — has that awaited before
-serializing. See [async on the server](/ssr/async).
+A component that fetches when it mounts has that finished before the HTML is produced,
+so the data is already in the page — see [async on the server](/ssr/async).
 
 ## Next
 
