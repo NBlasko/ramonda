@@ -1,7 +1,7 @@
 ---
 title: Your first component
 description: What a component is, and how to give one state and handle a click — from scratch.
-section: Guide
+section: Start here
 order: 11
 ---
 

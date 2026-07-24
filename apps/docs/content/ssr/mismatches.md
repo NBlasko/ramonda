@@ -2,7 +2,7 @@
 title: Hydration mismatches
 description: When the browser renders something different from the server — what causes it, and the fix.
 section: Server rendering
-order: 96
+order: 86
 ---
 
 # Hydration mismatches

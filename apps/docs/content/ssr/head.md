@@ -2,7 +2,7 @@
 title: Head and metadata
 description: Give each page its own title and description, from the component that knows them.
 section: Server rendering
-order: 92
+order: 82
 ---
 
 # Head and metadata

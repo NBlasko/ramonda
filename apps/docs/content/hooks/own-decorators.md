@@ -2,7 +2,7 @@
 title: Your own decorators
 description: Make a decorator that subscribes on mount and cleans up on unmount.
 section: Hooks
-order: 52
+order: 62
 ---
 
 # Your own decorators

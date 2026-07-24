@@ -2,7 +2,7 @@
 title: JSX
 description: The HTML-like syntax you write in a component — values, attributes, children, refs.
 section: Core concepts
-order: 31
+order: 21
 ---
 
 # JSX

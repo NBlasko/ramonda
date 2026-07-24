@@ -2,7 +2,7 @@
 title: Links
 description: Move between pages with a real anchor that navigates instantly on a plain click.
 section: Routing
-order: 81
+order: 71
 ---
 
 # Links

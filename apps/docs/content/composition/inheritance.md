@@ -2,7 +2,7 @@
 title: Extending components
 description: When a component is almost another one, build on it instead of copying it.
 section: Composition
-order: 70
+order: 50
 ---
 
 # Extending components

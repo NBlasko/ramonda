@@ -2,7 +2,7 @@
 title: Setup
 description: Add routing with two pieces — a Router that tracks the URL, and an outlet that shows the matching page.
 section: Routing
-order: 80
+order: 70
 ---
 
 # Routing

@@ -2,7 +2,7 @@
 title: Async on the server
 description: The server waits for the data your components fetch, so it lands in the HTML.
 section: Server rendering
-order: 94
+order: 84
 ---
 
 # Async work on the server

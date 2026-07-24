@@ -1,7 +1,7 @@
 ---
 title: Installation
 description: Start a new project with create-ramonda, or add Ramonda to one you already have.
-section: Guide
+section: Start here
 order: 10
 ---
 

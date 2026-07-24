@@ -1,8 +1,8 @@
 ---
 title: Nested lists
 description: A list of lists — a grid or table — nests wherever you write it.
-section: Lists
-order: 62
+section: Rendering lists
+order: 42
 ---
 
 # Nested lists

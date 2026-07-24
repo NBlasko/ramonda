@@ -2,7 +2,7 @@
 title: Building a static site
 description: Render every page to an HTML file at build time — the whole loop is a few lines.
 section: Server rendering
-order: 93
+order: 83
 ---
 
 # Building a static site

@@ -2,7 +2,7 @@
 title: renderToString and hydrateRoot
 description: One turns your app into HTML on the server; the other brings that HTML to life in the browser.
 section: Server rendering
-order: 91
+order: 81
 ---
 
 # `renderToString` and `hydrateRoot`

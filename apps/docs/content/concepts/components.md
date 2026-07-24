@@ -2,7 +2,7 @@
 title: Components
 description: What a component is, how you use one, and the single rule the framework rests on.
 section: Core concepts
-order: 30
+order: 20
 ---
 
 # Components

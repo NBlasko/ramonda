@@ -2,7 +2,7 @@
 title: Nested outlets
 description: A routed page that has routes of its own.
 section: Routing
-order: 84
+order: 74
 ---
 
 # Nested outlets

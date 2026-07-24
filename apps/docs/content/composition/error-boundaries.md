@@ -2,7 +2,7 @@
 title: Error boundaries
 description: Catch an error from part of the page, keep the rest working, and offer a way back.
 section: Composition
-order: 73
+order: 53
 ---
 
 # Error boundaries

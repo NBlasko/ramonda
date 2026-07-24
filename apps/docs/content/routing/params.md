@@ -2,7 +2,7 @@
 title: Params, query and hash
 description: Read the current URL inside a component — path params, the query string, the hash.
 section: Routing
-order: 82
+order: 72
 ---
 
 # Reading the URL

@@ -1,8 +1,8 @@
 ---
 title: Conditional and filtered
 description: A list that only sometimes exists, or that shows a filtered slice — done right.
-section: Lists
-order: 63
+section: Rendering lists
+order: 43
 ---
 
 # Conditional and filtered lists

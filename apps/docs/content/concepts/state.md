@@ -2,7 +2,7 @@
 title: State
 description: What @state is, what changing it does, and when the page catches up.
 section: Core concepts
-order: 32
+order: 22
 ---
 
 # State

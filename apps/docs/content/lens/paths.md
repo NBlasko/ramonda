@@ -2,7 +2,7 @@
 title: Walking a path
 description: get, at and where say where to go; nothing runs until a final operation does.
 section: Immutable updates
-order: 66
+order: 91
 ---
 
 # Walking a path

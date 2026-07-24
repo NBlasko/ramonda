@@ -2,7 +2,7 @@
 title: Lazy loading
 description: Load a heavy component only when it is first shown, so the page starts light.
 section: Composition
-order: 74
+order: 54
 ---
 
 # Lazy loading

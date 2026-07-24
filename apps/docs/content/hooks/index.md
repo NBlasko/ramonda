@@ -2,7 +2,7 @@
 title: Hooks
 description: Reuse stateful logic across components — state, lifecycle and effects with no element of their own.
 section: Hooks
-order: 50
+order: 60
 ---
 
 # Hooks

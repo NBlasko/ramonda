@@ -2,7 +2,7 @@
 title: Client, server, shared
 description: The env option says which side each piece of setup runs on.
 section: Server rendering
-order: 95
+order: 85
 ---
 
 # Client, server, shared

@@ -2,7 +2,7 @@
 title: Props
 description: Props are the input a component gets from its parent — read-only, and reactive.
 section: Core concepts
-order: 33
+order: 23
 ---
 
 # Props

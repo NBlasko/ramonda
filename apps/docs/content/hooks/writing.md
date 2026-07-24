@@ -2,7 +2,7 @@
 title: Writing a hook
 description: Give a hook input with options, and keep them reactive.
 section: Hooks
-order: 51
+order: 61
 ---
 
 # Writing a hook

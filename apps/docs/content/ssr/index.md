@@ -2,7 +2,7 @@
 title: Why prerender
 description: Send finished HTML instead of an empty shell — for search engines, link previews, and first paint.
 section: Server rendering
-order: 90
+order: 80
 ---
 
 # Why render on the server

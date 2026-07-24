@@ -2,7 +2,7 @@
 title: Children
 description: Let a component wrap whatever markup it is given.
 section: Composition
-order: 72
+order: 52
 ---
 
 # Children

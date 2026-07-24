@@ -1,8 +1,8 @@
 ---
 title: Derived values
 description: A value computed from your state that recalculates itself only when it needs to.
-section: Core concepts
-order: 36
+section: Lifecycle and effects
+order: 32
 ---
 
 # Derived values

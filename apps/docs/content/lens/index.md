@@ -2,7 +2,7 @@
 title: Immutable updates
 description: Change something deep in nested state without mutating it — readably.
 section: Immutable updates
-order: 65
+order: 90
 ---
 
 # Immutable updates

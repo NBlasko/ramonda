@@ -1,8 +1,8 @@
 ---
 title: as and render
 description: The two ways to turn each item in a list into markup.
-section: Lists
-order: 61
+section: Rendering lists
+order: 41
 ---
 
 # `as` and `render`

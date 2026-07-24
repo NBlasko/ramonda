@@ -1,8 +1,8 @@
 ---
 title: Examples
 description: Every Ramonda feature as a small running component, with its source.
-section: Guide
-order: 20
+section: Start here
+order: 12
 ---
 
 # Examples

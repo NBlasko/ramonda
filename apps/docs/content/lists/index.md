@@ -1,8 +1,8 @@
 ---
 title: Rendering lists
 description: Draw a list from an array with list() — no keys to write, and none to get wrong.
-section: Lists
-order: 60
+section: Rendering lists
+order: 40
 ---
 
 # Rendering lists

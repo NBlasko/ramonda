@@ -2,7 +2,7 @@
 title: Events
 description: React to clicks and keys — handlers as props, or decorators for window, document, and the host.
 section: Core concepts
-order: 38
+order: 24
 ---
 
 # Events

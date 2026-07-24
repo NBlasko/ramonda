@@ -2,7 +2,7 @@
 title: Updating
 description: The operations, forking a path with and, and one chain per write.
 section: Immutable updates
-order: 67
+order: 92
 ---
 
 # Updating

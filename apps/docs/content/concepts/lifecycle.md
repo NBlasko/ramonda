@@ -1,8 +1,8 @@
 ---
 title: Lifecycle
 description: Run code when a component is created, shown on the page, and removed.
-section: Core concepts
-order: 34
+section: Lifecycle and effects
+order: 30
 ---
 
 # Lifecycle

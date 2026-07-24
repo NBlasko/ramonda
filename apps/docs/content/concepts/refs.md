@@ -1,8 +1,8 @@
 ---
 title: Refs
 description: Reach the real element on the page — to focus it, measure it, or hand it to a library.
-section: Core concepts
-order: 40
+section: Lifecycle and effects
+order: 34
 ---
 
 # Refs

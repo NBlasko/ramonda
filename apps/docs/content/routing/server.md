@@ -2,7 +2,7 @@
 title: The router on the server
 description: How routing works during a server render, and why the browser's URL wins on hydration.
 section: Routing
-order: 85
+order: 75
 ---
 
 # The router on the server

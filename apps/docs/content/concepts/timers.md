@@ -1,8 +1,8 @@
 ---
 title: Timers
 description: Run something on a clock or after a delay — started and cleaned up for you.
-section: Core concepts
-order: 39
+section: Lifecycle and effects
+order: 33
 ---
 
 # Timers

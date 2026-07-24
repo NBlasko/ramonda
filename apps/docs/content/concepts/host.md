@@ -2,7 +2,7 @@
 title: The host element
 description: A component is one element on the page — this is how you choose which element that is.
 section: Core concepts
-order: 35
+order: 25
 ---
 
 # The host element

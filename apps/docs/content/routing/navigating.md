@@ -2,7 +2,7 @@
 title: Navigating
 description: Move around from code — push, replace, back and forward.
 section: Routing
-order: 83
+order: 73
 ---
 
 # Navigating

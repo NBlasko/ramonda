@@ -1,8 +1,8 @@
 ---
 title: Effects
 description: Reach outside the component — a subscription, a socket — after it is on the page, and clean up.
-section: Core concepts
-order: 37
+section: Lifecycle and effects
+order: 31
 ---
 
 # Effects
