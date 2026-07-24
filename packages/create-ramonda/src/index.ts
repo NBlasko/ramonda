@@ -1,4 +1,13 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync, cpSync, mkdirSync, renameSync, realpathSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  cpSync,
+  mkdirSync,
+  renameSync,
+  realpathSync,
+} from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -256,7 +265,8 @@ function sortKeys(obj: Record<string, string>): Record<string, string> {
 // a raw string compare fails and nothing happens. `realpathSync` resolves both.
 let invokedAsCli = false;
 try {
-  invokedAsCli = Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  invokedAsCli =
+    Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 } catch {
   invokedAsCli = false;
 }
