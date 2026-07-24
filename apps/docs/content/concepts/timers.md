@@ -1,22 +1,30 @@
 ---
 title: Timers
-description: "@interval and @timeout start on mount and are cleared on unmount."
+description: Run something on a clock or after a delay — started and cleaned up for you.
 section: Core concepts
 order: 39
 ---
 
 # Timers
 
+To run something on a clock — a ticking time, a delayed reveal — use `@interval` or
+`@timeout`:
+
 ```tsx
 @interval(1000)
-tick() { this.now = new Date(); }
+tick() {
+  this.now = new Date();
+}
 
 @timeout(3000)
-giveUp() { this.state = "timeout"; }
+giveUp() {
+  this.status = "timeout";
+}
 ```
 
-`@interval` runs the method every `ms` for the component's lifetime. `@timeout` runs it once,
-`ms` after mount. Both are cleared when the component is destroyed.
+`@interval` runs the method every `ms` for as long as the component is on the page.
+`@timeout` runs it once, `ms` after the component mounts. **Both stop automatically
+when the component is removed** — there is nothing to clean up.
 
 ```demo:IntervalClock
 ```
@@ -24,38 +32,33 @@ giveUp() { this.state = "timeout"; }
 ```demo:TimeoutReveal
 ```
 
-## Why not just call setTimeout
+## Why not a plain setTimeout?
 
-Because the clearing is the hard part, and it is the part that gets forgotten.
+Because remembering to clear it is the part that gets forgotten:
 
 ```tsx
 @mount
 start() {
-  setTimeout(() => { this.done = true; }, 3000);   // ✗
+  setTimeout(() => {
+    this.done = true;
+  }, 3000); // ✗
 }
 ```
 
-That timer survives the component. Three seconds later it writes state into something that no
-longer exists — which Ramonda drops (`RMD008`), so the symptom is not a crash but a handler that
-silently does nothing, on a page that has moved on.
+That timer outlives the component. Three seconds later it tries to change state on
+something that is already gone — Ramonda drops the write (`RMD008`), so the bug isn't
+a crash but a handler that quietly does nothing on a page that has moved on.
+`@timeout` leaves nothing to forget.
 
-With `@timeout` there is nothing to remember.
+## Only in the browser
 
-## Client only
+Both are built on [effects](/concepts/effects), so neither runs during a server
+render — a prerendered page ships with no timer running, and they start when the
+browser takes over.
 
-Both are built on [effects](/concepts/effects), so neither runs during a server render. A
-prerendered page ships without any timer running, and they start when the client takes over.
-
-That is also why a clock reads its first value in `@mount({ env: "client" })` rather than in a
-field initializer: a time rendered on the server would not match the time on the client, and
-hydration would report the mismatch (`RMD007`). Render something stable, fill it in once the
-client is running.
-
-## RMD006 — a timer that outlived its component
-
-In development, a timer still running after its component was destroyed is reported by name.
-With `@interval` and `@timeout` you cannot cause it; the check is there for raw `setInterval`
-calls, whoever started them.
+That is also why a clock fills in its first value in `@mount({ env: "client" })`, not
+in the field itself: a time rendered on the server wouldn't match the browser's, and
+hydration would flag the mismatch. Show something steady first, then fill it in.
 
 ## Next
 

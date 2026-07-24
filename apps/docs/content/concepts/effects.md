@@ -1,13 +1,15 @@
 ---
 title: Effects
-description: "@effect runs after the DOM is committed and returns its own cleanup."
+description: Reach outside the component — a subscription, a socket — after it is on the page, and clean up.
 section: Core concepts
 order: 37
 ---
 
 # Effects
 
-An `@effect` runs after the DOM is committed, and again whenever a signal it **read** changes.
+An **effect** is code that reaches outside your component — opening a connection,
+starting a subscription, listening to something — once the component is on the page.
+It runs after the DOM is ready, and again whenever a piece of state it read changes.
 
 ```tsx
 export class Feed extends Component {
@@ -21,94 +23,61 @@ export class Feed extends Component {
 }
 ```
 
-## Return a function and it is the cleanup
+## Return a function to clean up
 
-That is the whole contract, and it holds on both ends: the cleanup runs **before** the effect
-re-runs, and once more when the component is destroyed.
+Whatever you return from an effect is its cleanup. Ramonda runs it before the effect
+runs again, and once more when the component is removed. So a connection opened in an
+effect is always closed.
 
 ```demo:EffectCleanup
 ```
 
-Measured on an effect that reads `this.channel`:
+For the effect above, which reads `this.channel`:
 
 ```
-mount           connected to news
-channel = "sport"   disconnected from news, connected to sport
-unmount         disconnected from sport
+mount              connect to news
+channel = "sport"  close news, connect to sport
+unmount            close sport
 ```
 
-So an effect that reads **no** signal runs exactly once and is cleaned up exactly once — which is
-what a plain subscription wants. An effect that reads one follows it, disconnecting the old
-target first.
+An effect that reads no state runs once and cleans up once — exactly what a plain
+subscription wants. One that reads state re-runs when that state changes, closing the
+old thing first. A re-render caused by *other* state leaves it alone.
 
-Nothing else re-runs an effect. A re-render caused by other state leaves it alone.
+## Effects run only in the browser
 
-## Client only
+An effect never runs during a server render. That is what makes it the right home for
+anything that touches the browser — listeners, timers, sockets, measurements. (A
+value the *server* must produce can't come from an effect; use
+`@create({ env: "server" })` — see [lifecycle](/concepts/lifecycle).)
 
-Effects never run during a server render. That is not a special case to remember — it is what
-makes them the right place for anything that touches the browser: listeners, timers, sockets,
-measurements.
+## Don't make two effects chase each other (optional)
 
-It also means a value the server must produce cannot come from an effect. Use
-`@create({ env: "server" })`; see [lifecycle](/concepts/lifecycle).
-
-## Ordering
-
-Within one commit, a component's effects run **after** its children's, and after its own
-`@mount`. So an effect can rely on the whole subtree below it being mounted and on
-`@onElement` listeners being attached.
-
-That holds on every path — a fresh build, a hydrated page, and a re-render that creates a child.
-
-## Writing what you read
-
-An effect that writes a signal it also read does **not** loop:
+An effect that writes the same state it read does not loop — Ramonda stops it after
+the first run. But two effects, each writing what the other reads, is a real loop:
 
 ```tsx
 @effect
-selfWriting() {
-  this.count = this.count + 1;   // reads and writes the same signal
+a() {
+  this.x = this.y + 1;
+}
+
+@effect
+b() {
+  this.y = this.x + 1;
 }
 ```
 
-After the effect runs, the framework detaches any signal the effect **itself mutated** from that
-effect's dependencies. So this fires once and then stops.
+In development this is caught and reported (`RMD009`); in production a hard limit
+throws rather than let the tab freeze. The rule that avoids it: read what drives the
+effect, write something *else*.
 
-It is worth knowing rather than relying on, for one reason: the loop you would have been able to
-find yourself simply does not happen, so nothing tells you the code is confused. It runs once,
-quietly, and reads as if it were meant to.
+## Built on effects
 
-## The loop that is real: two effects
-
-The guard is per effect, not across effects. Two effects writing what the other reads is a
-genuine cycle, and nothing at the dependency level breaks it:
-
-```tsx
-@effect
-a() { this.x = this.y + 1; }
-
-@effect
-b() { this.y = this.x + 1; }
-```
-
-Each write schedules the other, forever. That is stopped by a **count**, not by dependency
-tracking:
-
-- **Development** — `RMD009` names the component and stops it after a small number of rebuilds.
-- **Production** — a hard limit on rebuilds per drain, which throws.
-
-Production throws deliberately. A loop that only appears with real data would never have been
-seen in development, and a frozen tab is a worse outcome than an error — it takes the browser
-with it and leaves nothing to debug.
-
-The shape to avoid is the same either way: read what drives the effect, write something else.
-
-## Effects underneath everything else
-
-`@onElement`, `@onWindow`, `@onDocument`, `@interval` and `@timeout` are all built on this
-primitive — they subscribe on mount and clean up on unmount. If you need one of your own, that
-is what [`createSubscriptionDecorator`](/concepts/own-decorators) is for.
+`@onWindow`, `@onDocument`, `@onElement`, `@interval` and `@timeout` are all effects
+underneath — they set up on mount and clean up on unmount. To build your own, see
+[custom decorators](/hooks/own-decorators).
 
 ## Next
 
-- [Events](/concepts/events) · [Timers](/concepts/timers) — the decorators built on this.
+- [Events](/concepts/events) · [Timers](/concepts/timers) — decorators built on this.

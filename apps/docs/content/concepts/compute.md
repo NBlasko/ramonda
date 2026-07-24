@@ -1,13 +1,15 @@
 ---
 title: Derived values
-description: "@compute caches a value derived from state and recomputes it only when a read changed."
+description: A value computed from your state that recalculates itself only when it needs to.
 section: Core concepts
 order: 36
 ---
 
 # Derived values
 
-`@compute` caches a value derived from state.
+Often a value you want to show is *computed* from your state — a total from a list of
+prices, a filtered view of some items. `@compute` gives you exactly that: a value
+derived from state that recalculates itself only when it needs to.
 
 ```tsx
 export class Cart extends Component {
@@ -20,76 +22,51 @@ export class Cart extends Component {
 }
 ```
 
-Read it like a field: `this.total`. It recomputes only when something it read has changed.
+Read it like a field — `this.total`. It recomputes only when something it read has
+changed; the rest of the time you get the cached value back.
 
 ```demo:ComputeDemo
 ```
 
-## It tracks reads, not declarations
+## It follows what it reads
 
-The dependencies are whatever the body actually read, this time. Nothing is declared, and there
-is no array to keep in step.
+You never declare what a compute depends on — Ramonda watches what the body actually
+reads. In the demo, `total` reads `items`, while `visible` reads `items` **and**
+`filter`. So typing in the filter box recomputes `visible` and leaves `total` alone.
 
-In the demo above, `total` reads `items` and `visible` reads `items` **and** `filter`. So typing
-in the filter box recomputes `visible` and leaves `total` alone — you can watch the two counters
-diverge.
+This is the fine-grained tracking that [state](/concepts/state) on its own does not
+do: changing a `@state` field re-renders the whole component, but a `@compute` only
+recalculates when one of *its own* reads changed.
 
-That also means a conditional branch changes the dependencies. A compute that returns early
-before reading `this.expensive` is not subscribed to `expensive` that time round, and will be
-once the branch changes.
+## A getter or a method
 
-## Method or getter
-
-Both work, and both are cached the same way:
+Both work, and both cache the same way:
 
 ```tsx
 @compute
-get total() { … }   // this.total
+get total() {} // this.total
 
 @compute
-total() { … }       // this.total()
+total() {} // this.total()
 ```
 
-Pick whichever reads better where it is used. A getter is usually right for a value; a method
-reads better when the name is a verb.
+Use a getter for a value, a method when the name is a verb.
 
-## Computes may read computes
+## It must not change anything
 
-A `@compute` that reads another one subscribes to what the inner one depends on, not just to the
-inner one. So a cache *hit* on the inner value still registers the right dependencies, and the
-outer value cannot go stale.
+A compute *derives* a value and returns it — it must not write state or cause side
+effects. Ramonda calls it whenever something reads it, on no schedule you control, so
+a write in there is a bug: it is reported as
+[RMD018](/reference/diagnostics). (To count a compute's runs for yourself, use a
+plain field rather than `@state`, as the demo does.)
 
-```tsx
-@compute
-get subtotal() { return sum(this.items); }
+## When to reach for it
 
-@compute
-get withTax() { return this.subtotal * 1.2; }
-```
-
-## When not to reach for it
-
-`@compute` costs a cache, a dependency set and a subscription per instance. For something cheap
-— a string concatenation, a comparison, a `.length` — just write it in `render()`. It will be
-recomputed on every render of that component, which is precisely as often as it is needed.
-
-Reach for `@compute` when the work is real (a filter or a reduce over a list, a sort, a parse) or
-when the value is read from several places in one render.
-
-## It must be pure
-
-The framework calls it when something reads it, which is not a schedule you control. A `@compute`
-derives a value and returns it — it does not write state, and does not perform side effects.
-
-Writing reactive state while deriving is reported as [RMD018](/reference/diagnostics#rmd018-state-written-during-a-compute), and the reason is not
-style: if the compute reads the signal it wrote, it invalidates its own cache and recomputes
-forever; if it reads another, every read now fires that signal's listeners and re-renders whatever
-was only trying to read a derived value.
-
-The demo counts its own runs with a **plain field** — `totalRuns = 0`, not `@state` — bumped
-inside the getter. That is the sanctioned way to instrument a compute: render re-runs on the same
-changes the compute does, so it always reads the latest count, and nothing reactive is written.
+Use `@compute` when the work is real — a filter or reduce over a list, a sort, a
+parse — or when several places read the same derived value in one render. For
+something cheap like a string join or a `.length`, just write it in `render()`: it
+recomputes each render, which is exactly as often as it is needed.
 
 ## Next
 
-- [Effects](/concepts/effects) — for the work that is *not* a value.
+- [Effects](/concepts/effects) — for work that is *not* a value.

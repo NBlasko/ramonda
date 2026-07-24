@@ -1,139 +1,101 @@
 ---
 title: Lifecycle
-description: "@create, @mount and @destroy — what each guarantees, in what order, and on which side."
+description: Run code when a component is created, shown on the page, and removed.
 section: Core concepts
 order: 34
 ---
 
 # Lifecycle
 
-Three decorators, on ordinary methods.
+A component has three moments in its life: it is **created**, it is **shown** on the
+page, and later it is **removed**. You can run code at each one by putting a decorator
+on a method.
 
 ```tsx
 export class Panel extends Component {
   @create
-  init() { }
+  init() {} // being created
 
   @mount
-  ready() { }
+  ready() {} // now on the page
 
   @destroy
-  bye() { }
+  bye() {} // being removed
 }
 ```
 
 ```demo:LifecycleLog
 ```
 
-## `@create` — building
+## `@create` — being built
 
-Runs while the component is being built, before its element exists.
+Runs while the component is being created, *before* its element exists. This is where
+you set up from your props and seed your state.
 
-**For initialisation, not for side effects**, and both halves of that are rules rather than
-style preferences:
+Two things are deliberately off-limits here:
 
-**There is no DOM yet.** The host element is created after `@create`, and inserted by the caller
-after that. A `document.querySelector` here finds nothing of this component — and during a
-*replacement* it finds the outgoing instance instead, which is worse than finding nothing.
+- **There is no element yet.** Don't try to find or measure this component's DOM in
+  `@create` — it isn't on the page. That is what `@mount` is for.
+- **Keep it to setup.** Read props, set state, compute. Leave subscriptions, focus,
+  and measurements for `@mount`.
 
-**The instance it replaces is still alive.** On any replacement — a `key` change, a swapped
-class, a host tag resolved from props — the new `@create` runs before the old `@destroy`.
-Anything exclusive taken here (a lock, a subscription keyed by identity) would briefly overlap
-itself.
+## `@mount` — on the page
 
-So: read props, seed state, compute. Nothing that reaches outside.
+Runs once the component's DOM is in the document. This is where you reach the real
+page: focus an input, measure an element, hand a node to a chart library.
 
-## `@mount` — committed
+Children mount before their parent, so by the time a parent's `@mount` runs, its
+children are already on the page.
 
-Runs after the DOM this commit built is in the document. Measure, focus, hand the node to a
-chart library — this is where that belongs.
+## `@destroy` — being removed
 
-Within one commit:
+Runs when the component is removed. Your state and computed values are still readable,
+so you can clean up based on them. It runs exactly once — even for a component that
+failed while building — so write it to tolerate a half-set-up instance.
 
-- every child's `@mount` before its parent's;
-- a component's `@mount` before its effects, so `@onElement` listeners are already attached.
+## Server vs. browser: `env`
 
-A component built and torn down inside the same commit never mounts at all.
-
-## `@destroy` — teardown
-
-Runs on unmount, **while reactive dependencies are still readable**, so you can still read state
-and computed values.
-
-It runs exactly once, and it runs even for a component whose **build failed** — a throw in
-`render()` or in `@create` itself. So `@destroy` must tolerate a half-built instance. That was
-chosen over never cleaning up such a component, because whatever `@create` took would otherwise
-leak for the life of the page.
-
-A throw inside `@destroy` is reported and does not stop the rest of the cleanup.
-
-## Order, measured
-
-For a parent containing a child, on a fresh mount:
-
-```
-parent @create
-parent render
-child  @create
-child  render
-child  @mount
-parent @mount
-```
-
-Children mount before parents, so a parent's `@mount` can rely on its children being in the
-document.
-
-**Effects follow the same shape** — a component's effects run after its children's, on every
-path: a fresh build, a hydrated page, and a re-render that creates a child. That was not always
-true; two of those three paths ran parent-first until it was measured and fixed.
-
-## Where it runs: `env`
-
-Each lifecycle decorator takes an `env`.
+`@create`, `@mount` and `@destroy` can be limited to one side with `env`:
 
 ```tsx
 @create({ env: "client" })
-startPolling() { }
+startPolling() {} // only in the browser
 
 @create({ env: "server" })
-stampBuildTime() { }
+stampBuildTime() {} // only during a server render
 
-@create   // "shared" — both
-init() { }
+@create
+init() {} // both — the default
 ```
 
-| | server render | client |
+| | server render | browser |
 |---|---|---|
 | `"shared"` (default) | yes | yes |
 | `"client"` | no | yes |
 | `"server"` | yes | no |
 
-Anything that touches `window`, starts a timer or subscribes to something belongs on the client.
-
-**Effects have no `env`** — they are always client-only, so there is nothing to get wrong. That
-also means an `@effect` never runs during a server render, which is why a value the server must
-produce goes in `@create({ env: "server" })`.
-
-```demo:PersistDemo
-```
+Anything that touches `window`, starts a timer, or opens a connection belongs on the
+client. (Effects — the next page — are always client-only, so you rarely need `env`
+for them.)
 
 ## Timers are lifecycle too
 
-`@interval(ms)` and `@timeout(ms)` start on mount and are cleared on unmount. There is no
-cleanup to remember:
+`@interval(ms)` and `@timeout(ms)` start when the component mounts and stop when it is
+removed — no cleanup to remember:
 
 ```tsx
 @interval(1000)
-tick() { this.now = new Date(); }
+tick() {
+  this.now = new Date();
+}
 ```
 
 ```demo:IntervalClock
 ```
 
-A bare `setTimeout` in `@mount` would still fire after the component was gone, and write state
-into something that no longer exists. In development, a timer still running after teardown is
-reported as `RMD006`.
+See [timers](/concepts/timers).
 
 ## Next
 
-- [The host element](/concepts/host) — which element `@mount` is talking about.
+- [Effects](/concepts/effects) — reacting to state, with cleanup.
+- [The host element](/concepts/host) — the element `@mount` is talking about.
