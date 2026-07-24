@@ -42,10 +42,22 @@ export function sanitizeHref(url: string): string {
   return "/";
 }
 
+/**
+ * Strips a trailing slash so `/guide/state/` and `/guide/state` are the same
+ * route. Root stays `/`. Without this, a host that adds a trailing slash — a
+ * static host serving `dir/index.html`, e.g. Cloudflare Pages 308-redirecting
+ * `/x` to `/x/` — leaves the router with a pathname that matches no route, so
+ * every direct load or reload falls through to `*` (a 404).
+ */
+export function normalizePathname(pathname: string): string {
+  if (pathname === "/") return "/";
+  return pathname.replace(/\/+$/, "") || "/";
+}
+
 /** Parses the CURRENT browser URL (used at init and on back/forward). */
 export function parseUrl(): RouterState {
   return {
-    baseUrl: window.location.pathname,
+    baseUrl: normalizePathname(window.location.pathname),
     queryParams: parseQueryParams(window.location.search),
     hashTags: parseHash(window.location.hash),
   };
@@ -55,7 +67,7 @@ export function parseUrl(): RouterState {
 export function parseUrlString(url: string): RouterState {
   const parsed = new URL(url, window.location.href); // relative URLs resolve against current
   return {
-    baseUrl: parsed.pathname,
+    baseUrl: normalizePathname(parsed.pathname),
     queryParams: parseQueryParams(parsed.search),
     hashTags: parseHash(parsed.hash),
   };

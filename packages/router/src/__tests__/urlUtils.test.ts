@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { parseUrl, parseUrlString, buildUrl, sanitizeHref } from "../urlUtils";
+import { parseUrl, parseUrlString, buildUrl, sanitizeHref, normalizePathname } from "../urlUtils";
 
 describe("urlUtils", () => {
   test("parseUrlString: pathname + query + hash → structured state", () => {
@@ -57,5 +57,23 @@ describe("urlUtils", () => {
     const s = parseUrl();
     expect(s.baseUrl).toBe("/now");
     expect(s.queryParams).toEqual({ z: "9" });
+  });
+
+  test("normalizePathname strips a trailing slash but keeps root", () => {
+    expect(normalizePathname("/")).toBe("/");
+    expect(normalizePathname("/guide/state")).toBe("/guide/state");
+    expect(normalizePathname("/guide/state/")).toBe("/guide/state");
+    expect(normalizePathname("/guide/state//")).toBe("/guide/state");
+    expect(normalizePathname("//")).toBe("/");
+  });
+
+  test("parseUrlString normalizes a host-added trailing slash so the route still matches", () => {
+    expect(parseUrlString("/concepts/state/").baseUrl).toBe("/concepts/state");
+    expect(parseUrlString("/concepts/state/?a=1").baseUrl).toBe("/concepts/state");
+  });
+
+  test("parseUrl normalizes the current location's trailing slash", () => {
+    window.history.pushState(null, "", "/concepts/state/");
+    expect(parseUrl().baseUrl).toBe("/concepts/state");
   });
 });
