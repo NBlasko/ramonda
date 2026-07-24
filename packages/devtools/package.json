@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/devtools",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Development-time devtools panel for Ramonda — component tree, state, and logs.",
   "license": "MIT",
   "author": "Nikola Blagojević",
