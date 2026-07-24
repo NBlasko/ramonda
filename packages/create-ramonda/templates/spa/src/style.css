@@ -44,13 +44,24 @@ body {
 
 .mark {
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   margin: 0 auto 1rem;
-  background: var(--accent);
-  /* A five-petal flower via a conic + radial trick would be heavier; the real
-     mark ships as an SVG. This is a placeholder dot you can swap out. */
-  border-radius: 50%;
+  /* The petals inherit `color`; the golden centre is fixed in the SVG. */
+  color: var(--accent);
+  animation: spin 9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark {
+    animation: none;
+  }
 }
 
 h1 {

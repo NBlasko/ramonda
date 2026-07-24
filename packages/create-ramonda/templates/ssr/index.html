@@ -19,7 +19,9 @@
       * { box-sizing: border-box; }
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg); }
       .card { max-width: 30rem; margin: 2rem; padding: 2.5rem; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 1rem; }
-      .mark { display: block; width: 56px; height: 56px; margin: 0 auto 1rem; background: var(--accent); border-radius: 50%; }
+      .mark { display: block; width: 64px; height: 64px; margin: 0 auto 1rem; color: var(--accent); animation: spin 9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .mark { animation: none; } }
       h1 { margin: 0 0 0.5rem; font-size: 2.25rem; letter-spacing: -0.02em; }
       .tagline { margin: 0 0 1.75rem; color: var(--muted); line-height: 1.6; }
       button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: none; border-radius: 0.6rem; padding: 0.7rem 1.4rem; cursor: pointer; }

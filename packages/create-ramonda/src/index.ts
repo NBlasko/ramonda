@@ -248,7 +248,7 @@ import { render } from "@ramonda/testing-library";
 import { App } from "./App";
 
 test("renders the heading", () => {
-  const { container } = render(App);
+  const { container } = render(<App />);
   expect(container.textContent).toContain("Ramonda");
 });
 `,
