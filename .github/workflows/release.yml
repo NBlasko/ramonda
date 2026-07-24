@@ -11,14 +11,12 @@ name: Release
 # So every push to main runs one job; the changesets/action decides which half of
 # the flow it is. CI (ci.yml) has already gated the PR, so this does not re-run it.
 #
-# TEMPORARILY manual-only (`workflow_dispatch`) until npm is set up (the `@ramonda`
-# org + 2FA). This guarantees a push can never publish before you are ready. To
-# switch the changesets flow on, restore the `push:` trigger below:
-#
-#   on:
-#     push:
-#       branches: [main]
+# The changesets flow is live: a push to main with pending changesets opens a
+# "Version Packages" PR (bumping versions + writing changelogs); merging that PR
+# publishes. workflow_dispatch is kept so a release can also be triggered by hand.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Never cancel a release mid-publish.
