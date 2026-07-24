@@ -72,10 +72,18 @@ function installDom(url) {
   return dom;
 }
 
-/** `/` → `dist/index.html`; `/guide/installation` → `dist/guide/installation/index.html`. */
+/**
+ * `/` → `dist/index.html`; `/guide/installation` → `dist/guide/installation.html`.
+ *
+ * FLAT `.html` files, not `dir/index.html`. A static host serves a flat file at
+ * its exact path (`/guide/installation`), but serves a directory only with a
+ * trailing slash — so `dir/index.html` makes Cloudflare Pages 308-redirect
+ * `/guide/installation` → `/guide/installation/`, which is the ugly trailing
+ * slash. Flat files give clean, slash-free URLs with no redirect.
+ */
 function outputPath(routePath) {
-  const clean = routePath === "/" ? "" : routePath.replace(/^\//, "");
-  return join(dist, clean, "index.html");
+  if (routePath === "/") return join(dist, "index.html");
+  return join(dist, routePath.replace(/^\//, "") + ".html");
 }
 
 if (!existsSync(serverBundle)) {
