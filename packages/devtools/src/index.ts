@@ -159,7 +159,7 @@ class RamondaDevTools extends HTMLElement {
         .state-row.updated { animation: flash-green 0.8s ease-out; }
         .ramonda-badge {
           position: fixed; bottom: 20px; right: 20px;
-          width: 50px; height: 50px; background: #ff0055; color: white;
+          width: 50px; height: 50px; background: #7A4FBF; color: white;
           border-radius: 50%; display: flex; align-items: center; justify-content: center;
           font-weight: bold; font-size: 20px; cursor: grab; z-index: 2147483647;
           box-shadow: 0 4px 15px rgba(0,0,0,0.3); user-select: none; touch-action: none;
@@ -174,24 +174,24 @@ class RamondaDevTools extends HTMLElement {
           box-shadow: -5px 0 25px rgba(0,0,0,0.5);
           transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           transform: translateX(100%); display: flex; flex-direction: column;
-          border-left: 3px solid #ff0055; font-family: sans-serif;
+          border-left: 3px solid #7A4FBF; font-family: sans-serif;
         }
         :host([open]) .ramonda-panel { transform: translateX(0); }
         :host([open]) .ramonda-overlay { display: block; }
-        .header { padding: 20px; background: #ff0055; color: white; display: flex; justify-content: space-between; align-items: center; }
+        .header { padding: 20px; background: #7A4FBF; color: white; display: flex; justify-content: space-between; align-items: center; }
         .log-item { position: relative; border-bottom: 1px solid #222; padding: 12px 30px 12px 0; font-family: monospace; }
         .delete-btn { position: absolute; right: 0; top: 12px; background: none; border: none; color: #666; cursor: pointer; font-size: 16px; }
         .delete-btn:hover { color: #ff4444; }
         .data-preview { background: #1a1a1a; padding: 8px; border-radius: 4px; margin-top: 8px; font-size: 12px; color: #00ffaa; max-height: 150px; overflow: auto; white-space: pre-wrap; cursor: pointer; }
         .tabs { display: flex; background: #1a1a1a; border-bottom: 1px solid #333; flex-shrink: 0; }
         .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-bottom: 2px solid transparent; color: #888; font-weight: bold; transition: 0.2s; }
-        .tab.active { color: #ff0055; border-bottom: 2px solid #ff0055; background: #222; }
+        .tab.active { color: #B18AE6; border-bottom: 2px solid #B18AE6; background: #222; }
         .tab-content { display: none; padding: 20px; overflow-y: auto; flex-grow: 1; }
         .tab-content.active { display: block; }
         .component-node { margin-top: 4px; }
         .comp-summary { outline: none; cursor: pointer; }
         .kind-badge { font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
-        .kind-component { background: #ff0055; color: #fff; }
+        .kind-component { background: #7A4FBF; color: #fff; }
         .kind-hook { background: #6a3; color: #fff; }
         .node-body { padding-left: 12px; border-left: 1px solid #333; margin-left: 5px; }
         .state-block { background: #1a1a1a; padding: 5px; margin: 5px 0; font-size: 11px; border-left: 2px solid #00ffaa; }
@@ -204,8 +204,8 @@ class RamondaDevTools extends HTMLElement {
     <div class="ramonda-overlay"></div>
     <div class="ramonda-panel">
       <div class="header">
-        <h2 style="margin:0">🌸 Ramonda</h2>
-        <button id="close-btn" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">X</button>
+        <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="-32 -32 64 64" aria-hidden="true"><g fill="#fff"><ellipse cy="-14" rx="8.6" ry="14"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(72)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(144)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(216)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(288)"/></g><circle r="6.6" fill="#E9B44C"/></svg>Ramonda</h2>
+        <button id="close-btn" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer">×</button>
       </div>
       <div class="tabs">
         <div class="tab active" data-tab="logs">LOGS</div>
@@ -216,7 +216,7 @@ class RamondaDevTools extends HTMLElement {
       </div>
       <div id="components-tab" class="tab-content">
         <div id="components-container">
-          <small style="color:#666">Nema aktivnih komponenti...</small>
+          <small style="color:#666">No active components…</small>
         </div>
       </div>
     </div>
@@ -334,7 +334,7 @@ class RamondaDevTools extends HTMLElement {
       const label =
         n.kind === "hook"
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
-          : `<span style="color:#ff0055">&lt;${escapeHtml(n.name)} /&gt;</span>`;
+          : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
       html += `
         <div class="component-node">
@@ -384,7 +384,7 @@ class RamondaDevTools extends HTMLElement {
     const acc: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
     const html = this.walkTree(tree, "", acc);
 
-    container.innerHTML = html || `<small style="color:#666">Nema aktivnih komponenti...</small>`;
+    container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
     this.lastValues = acc.values;
     this.nodeMap = acc.nodes;
     this.lastSig = acc.sig.join(";");
@@ -445,7 +445,7 @@ class RamondaDevTools extends HTMLElement {
     this.clearHighlight();
     this.highlighted = node;
     node.dataset.ramondaPrevOutline = node.style.outline;
-    node.style.outline = "2px solid #ff0055";
+    node.style.outline = "2px solid #7A4FBF";
     node.style.backgroundColor = "rgba(255, 0, 85, 0.1)";
   }
 
