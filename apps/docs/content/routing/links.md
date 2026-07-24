@@ -1,51 +1,49 @@
 ---
 title: Links
-description: Link renders a real anchor and intercepts only the clicks it should.
+description: Move between pages with a real anchor that navigates instantly on a plain click.
 section: Routing
 order: 81
 ---
 
 # Links
 
+To let people move between pages, use `<Link>`:
+
 ```tsx
 import { Link } from "@ramonda/router";
 
-<Link href="/players/9" className="navlink">Player 9</Link>
+<Link href="/players/9" className="navlink">Player 9</Link>;
 ```
 
-## It renders a real `<a href>`
+A plain left click navigates instantly — no page reload — and everything else about it
+behaves like a normal link.
 
-Not a `<span>` with a click handler, and this matters more than it sounds:
+## It's a real `<a href>`
 
-- **middle click and ⌘/Ctrl-click** open a new tab, because the browser handles them;
-- **right click → copy link address** works;
-- **crawlers follow it**, which is most of how a site is discovered;
-- **the status bar shows the destination** on hover, which is what tells a person where they are
-  about to go.
+`Link` renders an actual anchor, not a `<span>` with a click handler, and that
+matters:
 
-A plain left click is intercepted and routed through the store, so navigation is instant. Anything
-else is left to the browser.
+- **⌘/Ctrl-click and middle-click** open a new tab (the browser handles them);
+- **right-click → copy link address** works;
+- **search engines follow it**, which is much of how a site gets found;
+- **hovering shows the destination** in the status bar.
 
-## What is not intercepted
+A plain left click is caught and routed through the router (instant); anything else is
+left to the browser.
 
-- a click with a modifier key, or any button other than the primary one;
-- `target="_blank"` or a `download` attribute;
-- an external URL — a different origin is a different app;
-- a click something else has already called `preventDefault()` on.
+## What it leaves to the browser
 
-## The rendered href is the one a click follows
+`Link` does not intercept:
 
-`href` is sanitized before it is rendered — a value that is not a safe same-origin path falls back
-to `/`. **The click handler reads the rendered value, not the prop.**
+- a click with a modifier key, or a non-primary button;
+- `target="_blank"` or a `download`;
+- a link to another site (a different origin is a different app);
+- a click something else already called `preventDefault()` on.
 
-That sounds obvious and was once a real bug: the handler read the raw prop while the anchor showed
-the sanitized one, so a middle click went to `/` and a left click went somewhere else entirely.
-The same link meant two different things depending on how it was clicked.
+## Navigating from code instead
 
-If you take one thing from this page: a link's destination should be knowable from the markup,
-because that is what every other consumer of a link reads.
-
-## Navigating from code
+Sometimes a navigation is the result of an action, not a link someone clicks — a
+redirect after saving. For that, use the router's `push` (next page):
 
 ```tsx
 export class SaveButton extends Component {
@@ -58,8 +56,8 @@ export class SaveButton extends Component {
 }
 ```
 
-See [navigating](/routing/navigating). Use `<Link>` whenever the thing is a link — a person
-should be able to open it in a new tab.
+Rule of thumb: if a person should be able to open it in a new tab, it is a `<Link>`.
+If it is a consequence of something else, it is `push`.
 
 ## Next
 

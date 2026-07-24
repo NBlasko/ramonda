@@ -1,13 +1,14 @@
 ---
 title: Params, query and hash
-description: RouteHook reads the URL, and reads are per key.
+description: Read the current URL inside a component — path params, the query string, the hash.
 section: Routing
 order: 82
 ---
 
 # Reading the URL
 
-`RouteHook` gives a component the current route.
+To read the current URL inside a component — the `id` in `/players/9`, a `?query`, a
+`#hash` — use `RouteHook`:
 
 ```tsx
 export class Player extends Component {
@@ -20,36 +21,32 @@ export class Player extends Component {
 }
 ```
 
+What it gives you:
+
 | | |
 |---|---|
 | `pathname` | `/players/9` |
-| `params<T>()` | the matched route's `:params` — needs a `<RouteOutlet>` above |
+| `params<T>()` | the `:params` the route matched (needs a `<RouteOutlet>` above) |
 | `searchParams` | `?a=1&b=2` → `{ a: "1", b: "2" }` |
-| `hashTags` | `#tab=film#play=5` → ordered segments |
+| `hashTags` | the `#…` segments |
 
-## Reads are per key
+## You react to the part you read
 
-`pathname` and `searchParams` are separate signals. A component reading only `pathname` is **not**
-re-rendered when a query parameter changes, and vice versa.
-
-That is not an optimisation you switch on — it falls out of how the route state is published. It
-also means a plain `<Link href="…">` with no dynamic behaviour subscribes to nothing at all, so a
-navigation does not re-render every link in your nav bar.
+`pathname` and `searchParams` are tracked separately: a component reading only
+`pathname` doesn't re-render when a query parameter changes, and vice versa. You get
+that for free — and it's why a plain `<Link>` (which reads none of it) doesn't
+re-render on every navigation.
 
 ## `params` needs an outlet
 
-`params()` comes from the `<RouteOutlet>` that matched, so it is only meaningful inside the routed
-subtree. A nav bar sitting beside the outlet has `pathname` but no params — which is correct: it
-is not part of any route.
+`params()` comes from the `<RouteOutlet>` that matched, so it only means something
+inside the routed page. A nav bar beside the outlet has `pathname` but no params —
+which is right, it isn't part of any route.
 
-## Typing params
+## Params are always strings
 
-```tsx
-const { id } = this.route.params<{ id: string }>();
-```
-
-Params are always strings — they come out of a URL. Parse them where you use them, and treat a
-missing or malformed one as a real case: a URL is user input.
+They come out of a URL, so they are strings. Parse them where you use them, and treat
+a missing or malformed one as a real possibility — a URL is user input.
 
 ## Next
 

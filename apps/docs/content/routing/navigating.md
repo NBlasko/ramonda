@@ -1,11 +1,13 @@
 ---
 title: Navigating
-description: push, replace, back and forward — state-first, and the methods stay bound.
+description: Move around from code — push, replace, back and forward.
 section: Routing
 order: 83
 ---
 
 # Navigating
+
+`RouteHook` lets a component navigate from code:
 
 ```tsx
 export class Toolbar extends Component {
@@ -24,43 +26,31 @@ export class Toolbar extends Component {
 
 | | |
 |---|---|
-| `push(href, opts?)` | navigate, adding a history entry |
-| `replace(href, opts?)` | navigate without adding one |
+| `push(href, opts?)` | go to a URL, adding a history entry |
+| `replace(href, opts?)` | go there without adding one |
 | `back()` / `forward()` | move through history |
 
 `opts.scroll` scrolls to the top after navigating.
 
-## The methods stay bound
+## The methods are already bound
 
-`onClick={this.route.back}` works — the hook's methods are bound like any other, so passing one
-as a handler does not lose `this`. There is no `() => this.route.back()` wrapper to write.
-
-## State first, then the URL
-
-A navigation updates the store and *then* syncs history. The URL is never read back except at
-startup and on `popstate`.
-
-That ordering is what makes it race-free. Reading the URL back after writing it means the render
-depends on when the browser got round to updating `location` — and two navigations in one turn
-can then resolve in the wrong order. Here the store is the single source of truth and the URL is
-an output of it.
+`onClick={this.route.back}` works as-is — the hook's methods are bound to it, so
+passing one as a handler keeps working. No `() => this.route.back()` wrapper needed.
 
 ## `push` or `<Link>`?
 
-Use [`<Link>`](/routing/links) whenever the thing *is* a link — a person should be able to
-middle-click it, and a crawler should be able to follow it.
+Use [`<Link>`](/routing/links) when the thing *is* a link — someone should be able to
+middle-click it and a crawler should follow it. Use `push` when the navigation is the
+result of something else: a submitted form, a resolved choice, a redirect after a
+save.
 
-Use `push` for a navigation that is the result of something else: a form that submitted, a
-selection that resolved, a redirect after a save.
+## There is no global router
 
-## There is no imperative router outside components
-
-You cannot `import { router }` and call `push` from anywhere. That is deliberate: a module-level
-router is shared by every concurrent request on a server, so one request's navigation would be
-visible to another.
-
-Navigation is reachable from inside the tree, through `RouteHook`. If a plain function needs to
-navigate, take a callback — the component that calls it has the hook.
+You can't `import` the router and call `push` from just anywhere — navigation is
+reachable only from inside the tree, through `RouteHook`. (A module-level router would
+be shared by every request on a server, so one visitor's navigation could show up for
+another.) If a plain function needs to navigate, pass it a callback — the component
+calling it has the hook.
 
 ## Next
 

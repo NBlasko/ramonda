@@ -1,14 +1,14 @@
 ---
 title: Nested outlets
-description: A route that has routes of its own.
+description: A routed page that has routes of its own.
 section: Routing
 order: 84
 ---
 
 # Nested outlets
 
-An outlet may contain another outlet. The inner one matches the same pathname, so its patterns
-include the outer prefix.
+A routed page can have routes of its own — a settings screen with Profile, Billing
+and Team tabs. Put a second `<RouteOutlet>` inside the page:
 
 ```tsx
 const settingsRoutes = createRoutes({
@@ -38,22 +38,21 @@ const routes = createRoutes({
 });
 ```
 
-The outer table has to name every path that should render `Settings`, because matching is on the
-whole pathname rather than segment by segment. That is more explicit than a nested route tree, and
-it means the route table is a flat list you can read.
+The outer table names every path that should render `Settings`, because matching is
+on the whole pathname, not segment by segment. The upside: the route table stays a
+flat list you can read top to bottom.
 
-## What survives a navigation
+## What stays put across navigation
 
-Moving between `/settings/billing` and `/settings/team` re-renders the **inner** outlet only.
-`Settings` and its `SettingsNav` are the same instances — same state, same scroll position, no
-remount — because the outer outlet's match did not change.
-
-That is the same property the top-level nav bar has, applied one level down.
+Moving between `/settings/billing` and `/settings/team` re-renders only the **inner**
+outlet. `Settings` and its `SettingsNav` are the same instances — same state, same
+scroll position, no remount — because the outer match didn't change. It is the
+nav-bar property, one level down.
 
 ## Params at each level
 
-Each `<RouteOutlet>` publishes the params **it** matched. A component reads the params of the
-nearest outlet above it:
+Each outlet publishes the params *it* matched, and a component reads the nearest
+outlet above it:
 
 ```tsx
 const { teamId } = this.route.params<{ teamId: string }>();
@@ -61,4 +60,4 @@ const { teamId } = this.route.params<{ teamId: string }>();
 
 ## Next
 
-- [The router on the server](/routing/server) — what changes, and what does not.
+- [The router on the server](/routing/server).
