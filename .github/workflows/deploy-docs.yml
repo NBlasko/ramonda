@@ -40,6 +40,12 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
+        # wrangler-action installs wrangler with `pnpm add wrangler`, which in a
+        # workspace root pnpm refuses (ERR_PNPM_ADDING_TO_ROOT) unless told the root
+        # is intended. Scope that allowance to this step only — it does not affect
+        # local dev or the other jobs.
+        env:
+          npm_config_ignore_workspace_root_check: "true"
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
