@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync, cpSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, cpSync, mkdirSync, renameSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
@@ -250,9 +250,16 @@ function sortKeys(obj: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-// Run the interactive flow only when invoked as the CLI, so tests can import
-// `scaffold` without tripping the prompts.
-const invokedAsCli = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+// Run the interactive flow when invoked as the CLI. Compare REAL paths: npm/npx
+// run the bin through a symlink (node_modules/.bin/create-ramonda), so
+// `process.argv[1]` is the symlink while `import.meta.url` is the real file —
+// a raw string compare fails and nothing happens. `realpathSync` resolves both.
+let invokedAsCli = false;
+try {
+  invokedAsCli = Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+} catch {
+  invokedAsCli = false;
+}
 if (invokedAsCli) {
   main().catch((err) => {
     p.log.error(String(err instanceof Error ? err.stack : err));
