@@ -51,6 +51,13 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # Lets the action create a GitHub deployment and comment the preview URL.
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # `pages deploy` will not create a missing project non-interactively, so
+          # ensure it exists first. On the first run this creates it (with main as
+          # the production branch); on every later run the create fails with
+          # "already exists", which `|| true` swallows. A real auth/permission
+          # problem still surfaces on the deploy command below.
+          preCommands: |
+            wrangler pages project create ramonda --production-branch=main || true
           # `--branch` decides production vs preview: Cloudflare treats a deploy on
           # the project's production branch (main) as production, and any other
           # branch as a preview with its own *.pages.dev URL.
