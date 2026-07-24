@@ -1,6 +1,6 @@
 ---
 title: Setup
-description: "@ramonda/testing-library — built on the DOM Testing Library, with the one part only Ramonda can know."
+description: Test a Ramonda app with the DOM Testing Library plus the few pieces only Ramonda can provide.
 section: Testing
 order: 100
 ---
@@ -23,24 +23,20 @@ test("counts up", () => {
 
 No `await`, no `settle()`, no cleanup call. That is the point of the package.
 
-## What it adds, and what it does not
+## What it adds
 
-The queries, `screen`, `waitFor`, `within` and `prettyDOM` are **not** reimplemented — they are
-the DOM Testing Library's, re-exported. That library is framework-agnostic on purpose, it is
-where the query semantics people already know come from, and a copy would be a worse version of
-it that also has to be maintained.
+The queries you already know — `screen`, `getByText`, `waitFor`, `within` — are the
+**DOM Testing Library's**, re-exported unchanged. Anything you can import from
+`@testing-library/dom`, you can import from here.
 
-Anything you can import from `@testing-library/dom`, you can import from here.
+A few things are Ramonda's, because only Ramonda can know them:
 
-Three things are Ramonda's, because only Ramonda can know them:
-
-| | why |
+| | |
 |---|---|
-| [`act`](/testing/act) | renders are batched through a microtask; only the framework knows when the queue is empty |
+| [`act`](/testing/act) | renders are batched onto a microtask; only the framework knows when the queue is empty |
 | [`render`](/testing/rendering) / [`renderHook`](/testing/hooks) | mounting a Ramonda tree, and diffing a re-render into it |
 | `fireEvent` | the DOM library's, wrapped so the render an event causes is committed before it returns |
-
-`cleanup` is the fourth, and it runs itself.
+| `cleanup` | runs itself after every test |
 
 ## Config
 
@@ -48,7 +44,7 @@ Three things are Ramonda's, because only Ramonda can know them:
 // vitest.config.ts
 export default defineConfig({
   define: { __DEV__: JSON.stringify(process.env.NODE_ENV !== "production") },
-  esbuild: { jsxFactory: "h", jsxFragment: "Fragment", target: "es2022" },
+  esbuild: { jsxFactory: "h", target: "es2022" },
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```
@@ -59,23 +55,14 @@ import { h } from "@ramonda/core";
 (globalThis as unknown as { h: typeof h }).h = h;
 ```
 
-`globals: true` is what lets cleanup register itself.
+`globals: true` is what lets cleanup register its own `afterEach`.
 
 ## Cleanup runs after every test
 
-Automatically, when the framework exposes a global `afterEach`.
-
-**It is not tidiness.** Two failures worth knowing about, both measured on the ad-hoc harness this
-package replaced:
-
-1. A leaked container keeps a **live** tree — its `@interval`s keep firing and its window
-   listeners stay attached, into whatever test runs next.
-2. Ids stop being unique across containers, and jsdom resolves even a *scoped*
-   `container.querySelector("#x")` through a document-wide index — so a query returns a node from
-   an **earlier** test. Those tests pass one at a time and fail together, pointing at the wrong
-   file.
-
-Neither looks like a leak from the outside.
+Automatically — and it isn't just tidiness. A leaked container keeps a *live* tree
+(its `@interval`s keep firing, its listeners stay attached) into the next test, and
+duplicate ids across containers make a scoped query return a node from an earlier
+test. Both make tests that pass alone fail together, pointing at the wrong file.
 
 ## Next
 

@@ -11,51 +11,52 @@ order: 101
 const { container, getByText, instance, rerender, unmount } = render(<Card title="a" />);
 ```
 
-Synchronous. `bootstrap` builds the tree and runs `@mount` before it returns, and `render` commits
-anything those wrote — so there is nothing left to await, and no guessing how many ticks a cascade
-needed.
-
-Queries are bound to `baseElement` (`document.body`), matching the DOM Testing Library
-convention, so anything rendered outside the container is still found.
+Synchronous: `render` builds the tree, runs `@mount`, and commits anything they wrote
+— so there is nothing left to await. Queries are bound to `document.body` (the DOM
+Testing Library convention), so content rendered outside the container is still found.
 
 ## Options
 
 | | |
 |---|---|
-| `container` | render into this element instead of a fresh `<div>`. Yours, so cleanup empties it but does not remove it |
-| `baseElement` | what queries bind to, and where a created container is appended |
+| `container` | render into this element instead of a fresh `<div>` |
+| `baseElement` | what queries bind to |
 | `wrapper` | a component mounted above the tree — a context provider, a router shell |
-| `hydrate` | adopt server markup: `true` for what is already in `container`, or **a string** of markup |
+| `hydrate` | adopt server markup: `true` for what's already in `container`, or a **string** of markup |
 
 ## `instance` — driving a component directly
 
-In a framework whose state lives in closures, the only way in is an event. In Ramonda state is a
-field on an object, so a test can be explicit:
+Because state is a field on an object, a test can set it directly instead of finding
+an event that would:
 
 ```tsx
 const { instance, getByText } = render<Counter>(<Counter />);
 
-act(() => { instance.count = 41; });
+act(() => {
+  instance.count = 41;
+});
 expect(getByText("count is 41")).toBeTruthy();
 ```
 
-Use it to reach a state that would take six clicks to set up. Test the six clicks too, through
-`fireEvent` — the two answer different questions.
+Use it to reach a state that would take six clicks to set up — and test the six clicks
+too, through `fireEvent`. They answer different questions.
 
-## `rerender` diffs
+## `rerender` diffs new props in
 
 ```tsx
 const { instance, rerender, getByText } = render<Card>(<Card title="a" />);
 
-act(() => { instance.hits = 7; });
+act(() => {
+  instance.hits = 7;
+});
 rerender(<Card title="b" />);
 
-expect(getByText("b:7")).toBeTruthy();   // not "b:0"
+expect(getByText("b:7")).toBeTruthy(); // not "b:0"
 ```
 
-The instance survives, its `@state` survives, `@create` does not run again and `@watchProp` fires
-— exactly what happens when a real parent re-renders a child with new props. That makes it the way
-to test prop reactivity.
+The instance survives, its `@state` survives, `@create` doesn't run again, and
+`@watchProp` fires — exactly like a real parent re-rendering a child with new props.
+That makes it how you test prop reactivity.
 
 ## `fireEvent` is wrapped
 
@@ -64,17 +65,13 @@ fireEvent.click(getByText("count is 0"));
 expect(getByText("count is 1")).toBeTruthy();
 ```
 
-Import it from this package, not from `@testing-library/dom`. Dispatch is synchronous but the
-render it triggers is not, so the unwrapped version leaves the assertion one tick early and reads
-the DOM as it was *before* the click.
+Import it from this package, not `@testing-library/dom` — the render a click triggers
+isn't synchronous, so the unwrapped version reads the DOM one tick too early.
 
 ## Also on the result
 
-| | |
-|---|---|
-| `asFragment()` | the container's content, detached — for snapshots |
-| `debug(el?)` | prints formatted HTML |
-| `unmount()` | runs `@destroy` and every cleanup |
+`asFragment()` (detached content, for snapshots), `debug(el?)` (prints HTML),
+`unmount()` (runs `@destroy` and every cleanup).
 
 ## Next
 

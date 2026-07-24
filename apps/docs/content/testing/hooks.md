@@ -20,25 +20,22 @@ expect(current.count).toBe(3);
 
 ## It really mounts a component
 
-A Ramonda hook cannot stand alone — `use()` gives it its owner's runtime, and that runtime is what
-its lifecycle, effects and option signals hang off. So `renderHook` builds a throwaway host
-component and uses the hook on it.
+A hook can't stand alone — `use()` gives it its owner's runtime. So `renderHook`
+builds a throwaway host component and uses the hook on it, exercising the same
+machinery that ships.
 
-There is no lighter way that still exercises the same machinery, and a lighter way that did not
-would be testing something other than what ships.
+## `current` stays the same object
 
-## `current` does not change between renders
-
-Unlike a function-hook library, where the whole point is that each render returns a fresh value:
+Unlike function-hook libraries, where each render returns a fresh value:
 
 ```tsx
 const first = result.current;
 act(() => result.current.increment());
-expect(result.current).toBe(first);   // ✓ same object
+expect(result.current).toBe(first); // ✓ same object
 ```
 
-A Ramonda hook is constructed once by `use()` and lives as long as its owner. **The instance is
-the identity; the fields are what change.** Read a field to see the current value.
+A Ramonda hook is constructed once and lives as long as its owner — the instance is
+the identity, the fields are what change. Read a field for the current value.
 
 ## `rerender(options)` drives the real path
 
@@ -46,8 +43,8 @@ the identity; the fields are what change.** Read a field to see the current valu
 rerender({ start: 99 });
 ```
 
-Options reach a hook through signals owned by the **caller**, updated when the caller re-renders.
-Passing new options here drives that same path, so anything that reacts to an option reacts
+Options reach a hook through signals owned by the caller, updated when the caller
+re-renders — so passing new options here makes anything that reacts to an option react
 exactly as it would under a real parent.
 
 ## `wrapper`
@@ -58,14 +55,16 @@ For a hook that needs a provider above it:
 renderHook(ThemedHook, { wrapper: ThemeShell });
 ```
 
-## Testing a hook through a component instead
+## Or test it through a component
 
-Sometimes clearer, especially when the hook's whole job is to affect what its owner renders:
+Sometimes clearer, especially when the hook's job is to affect what its owner renders:
 
 ```tsx
 class Owner extends Component {
   counter = this.use(CounterHook, { start: 5 });
-  render() { return <p>{this.counter.count}</p>; }
+  render() {
+    return <p>{this.counter.count}</p>;
+  }
 }
 
 const { instance, getByText } = render<Owner>(<Owner />);
@@ -73,8 +72,8 @@ act(() => instance.counter.increment());
 expect(getByText("6")).toBeTruthy();
 ```
 
-Both are real. `renderHook` is for testing the hook's own behaviour; a component is for testing
-what the hook does *to* a render.
+`renderHook` tests the hook's own behaviour; a component tests what the hook does *to*
+a render.
 
 ## Next
 

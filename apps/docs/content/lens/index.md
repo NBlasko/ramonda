@@ -1,11 +1,31 @@
 ---
 title: Immutable updates
-description: focusOn describes a path, copies only what is on it, and leaves every other reference untouched.
+description: Change something deep in nested state without mutating it — readably.
 section: Immutable updates
 order: 65
 ---
 
 # Immutable updates
+
+When your state is a nested object and you need to change something deep inside it,
+you can't just mutate it in place — Ramonda compares by reference to decide what
+changed (see [state](/concepts/state)), so a mutated object still looks the same. You
+have to produce a *new* object: copy the parts that changed, keep the rest. Done by
+hand with spread syntax, that gets verbose fast:
+
+```tsx
+// change one tag on one post, by hand:
+this.data = {
+  ...this.data,
+  posts: this.data.posts.map((post) =>
+    post.id === 102
+      ? { ...post, tags: post.tags.map((t) => (t === "draft" ? "published" : t)) }
+      : post,
+  ),
+};
+```
+
+`@ramonda/lens` does the same thing, readably:
 
 ```tsx
 import { focusOn } from "@ramonda/lens";
@@ -18,73 +38,45 @@ this.data = focusOn(this.data)
   .set("published");
 ```
 
-Nothing is mutated. The result shares every object that was **not** on that path — the other
-users, the other post, the untouched tag — and has a new object for each of the four levels that
-were: the root, `posts`, `posts[1]`, and `posts[1].tags`.
+You describe the **path** to what you want to change, and the change. `focusOn` copies
+exactly the objects along that path and shares everything else untouched. Nothing is
+mutated.
 
-No proxies. Nothing is read, copied or wrapped until a terminal operation runs; the chain only
-records where to go.
+## Why the sharing matters
 
-## Why the shape of the result matters
-
-Ramonda's diff shallow-compares. A branch whose reference did not change is rejected on a `===`
-and never walked into. That only works if *untouched* really means *identical* — which is the
-guarantee this package exists to provide, and the reason it lives next to the framework rather
-than being any immutable-update helper.
+Ramonda's diff skips a branch whose object reference didn't change — so keeping the
+untouched parts *identical* is what makes re-renders cheap. That is exactly what
+`focusOn` guarantees, which is why it lives next to the framework rather than being
+just any helper.
 
 ```demo:LensSharing
 ```
 
-Press the buttons and watch which rows say **same object**. Those are the branches the diff will
-skip.
-
-The guarantee holds in the other direction too. A write whose value is already there produces
-**no copies at all** and returns the original root:
+Press the buttons and watch which rows say **same object** — those are the branches
+the diff will skip. A write whose value is already there produces no copies at all and
+returns the original:
 
 ```tsx
 focusOn(state).get("title").set(state.title) === state; // true
 ```
 
-So does a `merge` of unchanged fields, and an `update` that returns its input. A no-op cannot
-invalidate the path above it.
+## It pairs with `list()`
 
-## The pairing with `list()`
-
-[`list()`](/lists) binds an item's identity to its object. An immutable edit gives the edited item
-a **new object** — which is exactly right for the diff, and has one consequence worth knowing
-before you meet it:
-
-> In a list **without** `key`, the edited row is a new entity, so that row's component state
-> resets. Every other row is untouched.
-
-Nothing lands on the wrong row — [state is never wrong, only reset](/lists/nested) — but when a
-row owns state you care about, that is when `key` earns its place:
+An immutable edit gives the edited item a **new object**. In a [`list()`](/lists)
+without a `key`, that edited row counts as a new entity, so its component state resets
+(every other row is untouched — [state is never wrong, only reset](/lists/nested)).
+When a row owns state you care about, add a `key`:
 
 ```tsx
-list({
-  each: this.posts,
-  key: (post) => post.id,   // "this is still the same entity"
-  as: PostRow,
-})
+list({ each: this.posts, key: (post) => post.id, as: PostRow });
 ```
 
-`focusOn` and `key` belong together whenever list items own state. Neither is needed for a list of
-plain markup.
+`focusOn` and `key` belong together whenever list items own state.
 
-## Why not a draft-mutating library
+## Small and dependency-free
 
-The usual alternative hands you a proxied draft to mutate. It produces the same structural
-sharing, so the difference is not correctness:
-
-- **No proxy means no draft that can escape its producer**, and no finalize pass over the result.
-- **Scanning is not pathological.** Searching a draft drafts every element it touches, so
-  `draft.posts.find(…)` over 5000 records allocates 5000 proxies. Describing the search as part of
-  the path does not.
-- It is about **1.2 KB**, and has no dependencies.
-
-On like-for-like paths the speed difference is modest — both approaches copy only what is on the
-path, and that costs the same. The numbers, including the ones that flatter neither side, are in
-the package README.
+It's about 1.2 KB, has no dependencies, and uses no proxies — nothing is copied or
+wrapped until a final operation runs; the chain just records where to go.
 
 ## Next
 
