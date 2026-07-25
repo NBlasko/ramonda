@@ -35,14 +35,24 @@ precise tracking earns its keep: a derived total that is expensive to recompute,
 subscription that should only reconnect when its channel changes. Reach for them when
 you need to react to one specific value; use plain `@state` for everything else.
 
-## Props and context are per-key
+## Props are coarse like state; context is per-key
 
-There is one more piece of fine-grained behaviour, and it is free. A component reacts
-to the [props](/concepts/props) and [context](/composition/context) keys it actually
-reads: read `this.props.name` and the component re-renders when `name` changes, but not
-when a sibling prop `title` does. That falls out of how props and context are published
-— each key is its own signal — and it is why a plain `<Link href>` that reads none of
-the route state doesn't re-render on every navigation.
+It is worth being precise about two things that look alike but aren't.
 
-The division of labour, then: **`@state` is coarse and simple; compute, effects, props
-and context are fine-grained where it matters.**
+**Props are coarse, like `@state`.** A component re-renders whenever its parent hands it
+a shallowly-different set of [props](/concepts/props) — regardless of which props
+`render()` actually reads. A change to a prop the component never touches still
+re-renders it. (Per-prop signals do exist, but they serve `@compute`, `@watchProp` and
+`@effect` that read a specific prop — not the component's own render.) To skip a
+prop-driven re-render in the rare case it matters, gate it with
+`@shouldUpdateOnPropsChange`.
+
+**[Context](/composition/context) is per-key** — and this one is free. A consumer reacts
+only to the keys it reads: read `ctx.theme` and it re-renders when `theme` changes, but
+not when a sibling `accent` does. That falls out of how context is published — each key
+is its own signal a consumer subscribes to *directly*, with no parent-to-child pass in
+between. It is why a `Navigator` reading only `pathname` doesn't re-render when a query
+parameter changes.
+
+The division of labour, then: **`@state` and props are coarse and simple; `@compute`,
+`@effect`, `@watchProp` and context are fine-grained where it matters.**

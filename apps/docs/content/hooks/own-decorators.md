@@ -42,8 +42,8 @@ the teardown. Nothing in `Panel` has to remember the subscription exists.
 
 ## What it's for
 
-Connecting to anything with a subscribe/unsubscribe pair: Zustand, Redux, a plain
-event emitter, a WebSocket, `IntersectionObserver`.
+Connecting to anything with a subscribe/unsubscribe pair: an external state store, a
+plain event emitter, a `WebSocket`, an `IntersectionObserver`.
 
 ## The rule: return a function, or nothing
 

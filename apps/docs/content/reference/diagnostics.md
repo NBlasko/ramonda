@@ -170,6 +170,25 @@ To **produce** a value, return it. To **cause** an effect, use an event handler 
 [`@effect`](/concepts/effects). To **count runs** or otherwise instrument the compute, use a plain
 (non-`@state`) field — render re-runs on the same changes and reads its latest value.
 
+## RMD019 — State set to a value that cannot be serialized
+
+`@state` travels to the client in the hydration blob as JSON, so it can only hold JSON-serializable
+data. Assigning a **function**, a **symbol**, or a **bigint** to a `@state` field is flagged the
+moment it happens — at the field initializer (`@state x = …`) or a later write — because JSON has no
+way to carry it: a function and a symbol are dropped silently, a bigint makes serialization throw.
+Either way the client would come alive with that field missing.
+
+```tsx
+@state onPick = () => {};   // ✗ a function — not serializable
+@state total = 42n;         // ✗ a bigint
+```
+
+Keep behaviour off state: a function is a **method** on the class, or a **prop** passed in (props
+are not serialized — the parent re-supplies them on the client). A symbol or bigint should be a
+string or number in state. And if the field is genuinely client-only and never meant to travel, it
+should be a plain field, not `@state`. Deeper cases — a `Map`, a `Date`, a circular object — are
+caught by the server renderer when it serializes, rather than at the write.
+
 ---
 
 ## Reading them

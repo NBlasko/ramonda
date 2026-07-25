@@ -343,3 +343,66 @@ describe("@shouldUpdateOnPropsChange", () => {
     expect(() => bootstrap(<App />, container)).toThrow(/components, not hooks/);
   });
 });
+
+describe("a prop change re-renders the whole component", () => {
+  test("even a prop render() never reads triggers a re-render (coarse, like state)", async () => {
+    let childRenders = 0;
+
+    @Host("div")
+    class Child extends Component<{ a: number; b: number }> {
+      render() {
+        childRenders++;
+        // Reads ONLY `a`, never `b`.
+        return <span>{this.props.a}</span>;
+      }
+    }
+
+    @Host("div")
+    class Parent extends Component {
+      @state a = 1;
+      @state b = 1;
+      render() {
+        return <Child a={this.a} b={this.b} />;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Parent>(<Parent />);
+    expect(childRenders).toBe(1);
+
+    // Change ONLY the prop the child never reads — it still re-renders, because the
+    // prop set differs. Documented in concepts/props.md.
+    instance.b = 2;
+    await settle();
+    expect(childRenders).toBe(2);
+  });
+
+  test("passing the same prop values again re-renders nothing", async () => {
+    let childRenders = 0;
+
+    @Host("div")
+    class Child extends Component<{ a: number }> {
+      render() {
+        childRenders++;
+        return <span>{this.props.a}</span>;
+      }
+    }
+
+    @Host("div")
+    class Parent extends Component {
+      @state tick = 0;
+      render() {
+        // `a` never changes; bumping `tick` re-renders Parent and re-passes a={1}.
+        void this.tick;
+        return <Child a={1} />;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Parent>(<Parent />);
+    expect(childRenders).toBe(1);
+
+    instance.tick = 1;
+    await settle();
+    // The shallow compare found nothing different, so the child was left alone.
+    expect(childRenders).toBe(1);
+  });
+});

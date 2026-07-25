@@ -45,6 +45,10 @@ bootstrap(<Hello />, document.getElementById("app")!);
 an empty `<div id="app"></div>` in your HTML. `bootstrap` draws your component
 inside it. That is the whole setup: no wrapper to configure, no root API.
 
+(The `!` right after it is a TypeScript note, not Ramonda: it says "this element
+definitely exists." Without it, TypeScript worries `getElementById` might find
+nothing and return `null`.)
+
 And `<Hello />` is how you use a component you wrote — the class name, as a tag.
 
 ## Make it remember something
@@ -78,7 +82,9 @@ Walk through it:
   special: change it, and Ramonda updates the page to match.
 - **`increment()`** — a method that adds one. `this.count` is how a class refers to
   its own field.
-- **`onClick={this.increment}`** — run `increment` when the button is clicked.
+- **`onClick={this.increment}`** — run `increment` when the button is clicked. The
+  prop is `onClick`, camelCase — a JSX spelling, not HTML's lowercase `onclick`
+  ([more on that](/concepts/events)).
 - **`{this.count}`** — inside JSX, curly braces drop a value into the text, so the
   button always shows the current number.
 

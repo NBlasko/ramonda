@@ -37,15 +37,15 @@ expect(result.current).toBe(first); // ✓ same object
 A Ramonda hook is constructed once and lives as long as its owner — the instance is
 the identity, the fields are what change. Read a field for the current value.
 
-## `rerender(options)` drives the real path
+## `rerender(props)` drives the real path
 
 ```tsx
 rerender({ start: 99 });
 ```
 
-Options reach a hook through signals owned by the caller, updated when the caller
-re-renders — so passing new options here makes anything that reacts to an option react
-exactly as it would under a real parent.
+A hook's props reach it through signals owned by the caller, updated when the caller
+re-renders — so passing new props here makes anything that reacts to one react exactly
+as it would under a real parent.
 
 ## `wrapper`
 

@@ -78,6 +78,24 @@ Anything that touches `window`, starts a timer, or opens a connection belongs on
 client. (Effects — the next page — are always client-only, so you rarely need `env`
 for them.)
 
+### The method also receives `env`
+
+When a method needs to know which side it is on — rather than skip a side entirely —
+it is handed `env` as an argument, `"client"` or `"server"`:
+
+```tsx
+@mount
+setup(env: RenderEnv) {
+  if (env === "server") return; // nothing to wire up during a server render
+  this.observer = new IntersectionObserver(/* … */);
+}
+```
+
+Prefer this to a `typeof window` check: a server render runs under a DOM shim where
+`window` exists, so that check cannot tell the two sides apart — `env` always can.
+The parameter is optional; a method that ignores it is unaffected. More in
+[client / server / shared](/ssr/env).
+
 ## Timers are lifecycle too
 
 `@interval(ms)` and `@timeout(ms)` start when the component mounts and stop when it is

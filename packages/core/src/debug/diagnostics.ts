@@ -25,7 +25,8 @@ export type DiagnosticCode =
   | "RMD015"
   | "RMD016"
   | "RMD017"
-  | "RMD018";
+  | "RMD018"
+  | "RMD019";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -112,6 +113,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "State written during a @compute",
     fix: "A @compute must be a pure function of what it reads — it derives a value, it does not write one. A write here is worse than the same write in render() (RMD001): if the @compute reads the signal it wrote, it invalidates its own cache and recomputes forever; if it reads another, every read of the compute now also fires that signal's listeners, re-rendering components that only wanted to read a derived value. To count runs or otherwise instrument a compute, use a plain (non-@state) field — render re-runs on the same changes and will read its latest value. To produce a value, return it. To cause an effect, do it in an event handler or @effect, never while deriving.",
+  },
+  RMD019: {
+    severity: "error",
+    title: "State set to a value that cannot be serialized",
+    fix: "@state is carried to the client in the hydration blob as JSON, so it can only hold JSON-serializable data — a function, symbol or bigint is silently lost there, and the client would hydrate with a hole where this field was. Keep behaviour off state: a function belongs on the class as a method, or is passed in as a prop; a symbol/bigint should be a string or number in state. If this field is genuinely local to the client and never meant to travel, it should not be @state at all — use a plain field.",
   },
   RMD013: {
     severity: "error",

@@ -1,4 +1,5 @@
 import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
+import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
@@ -258,11 +259,16 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
     const contextName = ensureStringContextName(context.name, "state");
     const initialValue = this[contextName];
     const runtime = this[GLOBAL_RUNTIME];
+    const owner = this.constructor.name;
+
+    // The value straight from the field initializer (`@state x = …`) — the
+    // "through the constructor" case. Later writes are checked in the setter below.
+    if (__DEV__) reportNonSerializableState(initialValue, contextName, owner);
 
     const state = new State(initialValue, {
       listener: { id: runtime.id, onChange: runtime.reBuild },
       metaData: contextName,
-      owner: this.constructor.name,
+      owner,
     });
 
     // Register as serializable state (used by hydration) — always, not dev-only.
@@ -275,6 +281,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
         return state.get();
       },
       set(value: any) {
+        if (__DEV__) reportNonSerializableState(value, contextName, owner);
         state.set(value);
       },
     });

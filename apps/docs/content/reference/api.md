@@ -180,5 +180,5 @@ A separate entry point, for building a test harness rather than for apps.
 | `rerenderRoot(vnode, container)` | Diffs new JSX into an already-rendered container. |
 | `getComponentInstance(node)` | The component a DOM node belongs to. |
 
-It exists so `index.ts` does not have to be widened for a test utility — the same shape as
-`react-dom/test-utils`.
+It exists so the main entry does not have to be widened for a test utility: a separate,
+narrow door that a harness reaches for and an app never sees.

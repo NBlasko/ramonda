@@ -42,8 +42,9 @@ both fail confusingly when they're missing — so they come first.
 
 ### 1. The JSX factory is `h`
 
-Ramonda's JSX compiles to `h(...)`, not React's `createElement`. Point the JSX
-transform at `h` and auto-inject it, so individual files don't have to import it.
+Ramonda's JSX compiles to calls to a function named `h`. Point your bundler's JSX
+transform at `h` and have it auto-inject the import, so individual files never write
+it themselves.
 
 ### 2. Decorators must be transpiled
 
@@ -83,6 +84,10 @@ export default defineConfig({
   }
 }
 ```
+
+(`"jsx": "react"` is just TypeScript's built-in name for this classic `h()`-style
+transform — it turns `<p/>` into `h("p")` and pulls in no library. `jsxFactory` is
+what tells it to call `h`.)
 
 And tell the type-checker that `h` is a global (the bundler injects it, so you never
 import it by hand):

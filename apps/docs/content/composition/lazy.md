@@ -37,9 +37,11 @@ a promise (a dynamic `import()`), and `onLoading` is what to show until it arriv
   apart from `AsyncLoad`'s own attributes (`lazy`, `onLoading`) so the two can't be
   confused.
 - **`onLoading`** — shown while the module downloads.
-- **`errorFallback`** — a node, or a function given `{ error, retry }` (the same shape
-  as [`ErrorBoundary`](/composition/error-boundaries)). `retry` really does re-attempt
-  the download.
+- **`errorFallback`** — a node, or a function given `{ error, retry, attempt }`. It
+  plays the same role as an [`ErrorBoundary`](/composition/error-boundaries) fallback —
+  a failure UI with a way back — though the fields are named for a *load*: `error` is
+  whatever the import rejected with, `retry` really does re-attempt the download, and
+  `attempt` counts the tries (`1` on the first failure).
 
 Unmounting while it is still loading is safe — nothing gets written into a component
 that is gone.

@@ -56,8 +56,9 @@ save.
 
 The component that mounts the router with `this.use(Router)` doesn't need a separate
 `Navigator` to read the URL or navigate — the `Router` instance exposes the same
-`pathname`, `searchParams`, `hashTags`, `push`, `replace`, `back` and `forward`, on top
-of the setup work it does. It's the same surface, from the piece that owns the state:
+`pathname`, `searchParams`, `hashTags`, `push`, `replace`, `updateSearchParams`,
+`updateHashTags`, `back` and `forward`, on top of the setup work it does. It's the same
+surface, from the piece that owns the state:
 
 ```tsx
 @Host("div")

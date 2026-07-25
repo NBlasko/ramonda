@@ -59,8 +59,10 @@ It does **not** catch:
 
 ## For loading failures
 
-[`AsyncLoad`](/composition/lazy) has its own `errorFallback` with the same shape, so a
-failed *load* and a failed *render* are handled the same way.
+[`AsyncLoad`](/composition/lazy) has its own `errorFallback` that plays the same role
+— a failure UI with a way to retry — so a failed *load* and a failed *render* are
+handled alike. (Its fields are named for a load: `{ error, retry, attempt }` rather
+than `{ message, err, reset }`.)
 
 ## Next
 

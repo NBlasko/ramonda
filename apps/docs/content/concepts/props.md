@@ -52,12 +52,25 @@ export class Row extends Component<{ item: Item; onRemove: (id: string) => void 
 }
 ```
 
-## A component reacts to the props it reads
+## A prop change re-renders the component
 
-Reading `this.props.name` ties this component to `name`: if the parent later passes a
-new `name`, the component re-renders to match. A prop it never reads — say `title` —
-does not trigger a re-render when it changes. You get this for free; there is nothing
-to declare.
+When the parent re-renders and passes a new set of props, Ramonda compares it to the
+old set. If **any** prop differs, it re-renders the whole component — the same coarse
+rule as [state](/concepts/state), and for the same reason: a changed prop almost
+always changes what the component shows. It does not matter which props `render()`
+actually reads; a change to any of them re-renders.
+
+The comparison is shallow — each prop by `===` — so passing the same values again
+costs nothing, and re-renders only when something really changed. Two ways to go
+finer when you need to:
+
+- To **skip** the re-render for some prop changes, gate it with
+  [`@shouldUpdateOnPropsChange`](/reference/api) — a rare tool, for a prop that is
+  rebuilt every parent render but rarely matters.
+- To **react to one specific prop** — recompute a total, refetch when an `id`
+  changes — read it inside a [`@compute`](/concepts/compute), a `@watchProp` (below),
+  or an [`@effect`](/concepts/effects); those *do* track the individual props they
+  read, exactly like state.
 
 ## Reacting to a specific prop changing
 
