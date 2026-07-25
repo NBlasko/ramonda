@@ -1,7 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, Host, effect, shouldUpdateProps } from "../base/decorators";
+import { state, Host, effect, shouldUpdateOnPropsChange } from "../base/decorators";
 import { Component } from "../base/Component";
+import { Hook } from "../base/Hook";
+import { bootstrap } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 function captureDiagnostics() {
@@ -246,14 +248,14 @@ describe("update rules", () => {
   });
 });
 
-describe("@shouldUpdateProps", () => {
-  test("skips the render when it returns false, and the method name is yours", async () => {
+describe("@shouldUpdateOnPropsChange", () => {
+  test("drops the incoming props when it returns false, and the method name is yours", async () => {
     const renders: string[] = [];
 
     @Host("div")
     class Row extends Component<{ id: string; noise: number }> {
       // Named for what it means here, not for what the framework calls it.
-      @shouldUpdateProps
+      @shouldUpdateOnPropsChange
       onlyWhenIdChanges(previous: { id: string; noise: number }, next: { id: string; noise: number }) {
         return previous.id !== next.id;
       }
@@ -278,7 +280,8 @@ describe("@shouldUpdateProps", () => {
 
     instance.noise = 1;
     await settle();
-    // The prop changed and the render was skipped, because the method said so.
+    // The predicate said no, so the whole update was dropped — no render, and the
+    // new `noise` was not even applied (the next accepted update carries it).
     expect(renders).toEqual(["a/0"]);
 
     instance.id = "b";
@@ -286,14 +289,14 @@ describe("@shouldUpdateProps", () => {
     expect(renders.at(-1)).toBe("b/1");
   });
 
-  test("a plain method called shouldUpdateProps has no framework meaning", async () => {
+  test("a plain method called shouldUpdateOnPropsChange has no framework meaning", async () => {
     const renders: string[] = [];
 
     @Host("div")
     class Row extends Component<{ n: number }> {
       // Before this was a decorator, defining this would have silently taken
       // control of the component's re-rendering.
-      shouldUpdateProps() {
+      shouldUpdateOnPropsChange() {
         return false;
       }
       render() {
@@ -316,5 +319,27 @@ describe("@shouldUpdateProps", () => {
 
     // It rendered: the method is just a method.
     expect(renders).toEqual(["0", "1"]);
+  });
+
+  test("throws when placed on a hook — a hook has no parent-driven prop update to gate", () => {
+    class BadHook extends Hook {
+      @shouldUpdateOnPropsChange
+      nope() {
+        return true;
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      bad = this.use(BadHook);
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    const container = document.createElement("div");
+    // The throw happens while the hook is being constructed, synchronously inside
+    // the mount, so bootstrap surfaces it directly.
+    expect(() => bootstrap(<App />, container)).toThrow(/components, not hooks/);
   });
 });

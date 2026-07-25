@@ -66,9 +66,9 @@ describe("list scope cleanup", () => {
 
     const provider = (app.instance as unknown as { provider: unknown }).provider as Record<
       symbol,
-      { optionsSignals: Map<string, unknown> }
+      { propsSignals: Map<string, unknown> }
     >;
-    const signal = provider[HOOK_RUNTIME].optionsSignals.get("theme");
+    const signal = provider[HOOK_RUNTIME].propsSignals.get("theme");
 
     // Three items plus the consuming component itself.
     expect(listenerCount(signal)).toBe(4);

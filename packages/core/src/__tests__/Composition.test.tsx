@@ -149,7 +149,7 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
       }
 
       cells() {
-        return this.options.labels.map((l, i) => (
+        return this.props.labels.map((l, i) => (
           <StyledCell key={l} tone={i === this.active ? "hot" : "cool"}>
             {l}
           </StyledCell>

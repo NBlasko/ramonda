@@ -11,16 +11,16 @@ let log: string[] = [];
  */
 class GrandChildHook extends Hook<{ val: number; label: string }> {
   @create init() {
-    log.push(`${this.options.label}:Unit:Init`);
+    log.push(`${this.props.label}:Unit:Init`);
   }
 
   @destroy dispose() {
-    log.push(`${this.options.label}:Unit:Cleanup`);
+    log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
   @effect onUpdate() {
-    log.push(`${this.options.label}:Effect:Value:${this.options.val}`);
-    return () => log.push(`${this.options.label}:Effect:Cleanup`);
+    log.push(`${this.props.label}:Effect:Value:${this.props.val}`);
+    return () => log.push(`${this.props.label}:Effect:Cleanup`);
   }
 }
 
@@ -29,25 +29,25 @@ class GrandChildHook extends Hook<{ val: number; label: string }> {
  */
 class ChildHook extends Hook<{ count: number; label: string }> {
   nested = this.use(GrandChildHook, (bag) => ({
-    val: bag.options.count * 2,
-    label: `${bag.options.label}->Nested`,
+    val: bag.props.count * 2,
+    label: `${bag.props.label}->Nested`,
   }));
 
   get getOptions() {
-    return this.options;
+    return this.props;
   }
 
   @create init() {
-    log.push(`${this.options.label}:Unit:Init`);
+    log.push(`${this.props.label}:Unit:Init`);
   }
 
   @destroy dispose() {
-    log.push(`${this.options.label}:Unit:Cleanup`);
+    log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
   @effect onUpdate() {
-    log.push(`${this.options.label}:Effect:Count:${this.options.count}`);
-    return () => log.push(`${this.options.label}:Effect:Cleanup`);
+    log.push(`${this.props.label}:Effect:Count:${this.props.count}`);
+    return () => log.push(`${this.props.label}:Effect:Cleanup`);
   }
 }
 

@@ -1,12 +1,12 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
 import type { HookClassKind } from "../types/commonTypes";
-import type { BaseHook, HookOptions } from "../types/HookTypes";
+import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
 
 export function useCommon<T extends BaseHook<any>, P>(
-  that: BaseComponent<P> | BaseHook<HookOptions>,
+  that: BaseComponent<P> | BaseHook<HookProps>,
   hook: HookClassKind<T, any>,
-  hookOptions?: any,
+  hookProps?: any,
 ): T {
   let internalHooks = that[INTERNAL_HOOKS];
 
@@ -22,8 +22,8 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const runtime = that[GLOBAL_RUNTIME];
 
-  const initialOptions = typeof hookOptions === "function" ? hookOptions(that) : (hookOptions ?? {});
-  const hookInstance = new hook(runtime, initialOptions);
+  const initialProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
+  const hookInstance = new hook(runtime, initialProps);
   const hookRuntime = hookInstance[HOOK_RUNTIME];
 
   // Track child hook instances in use() order — deterministic tree for hydration.
@@ -41,34 +41,34 @@ export function useCommon<T extends BaseHook<any>, P>(
   childHooks.push(hookInstance);
 
   const updateFn = () => {
-    const nextOptions = typeof hookOptions === "function" ? hookOptions(that) : (hookOptions ?? {});
-    const prevOptions = hookRuntime.rawOptions;
-    hookRuntime.rawOptions = nextOptions;
-    const sigs = hookRuntime.optionsSignals;
+    const nextProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
+    const prevProps = hookRuntime.rawProps;
+    hookRuntime.rawProps = nextProps;
+    const sigs = hookRuntime.propsSignals;
 
-    if (prevOptions) {
-      // An update: both the old and the new options exist.
+    if (prevProps) {
+      // An update: both the old and the new props exist.
 
-      // 1. Walk the new options and wake the signals whose value moved.
-      for (const key in nextOptions) {
-        const newVal = nextOptions[key];
-        if (newVal !== prevOptions[key]) {
+      // 1. Walk the new props and wake the signals whose value moved.
+      for (const key in nextProps) {
+        const newVal = nextProps[key];
+        if (newVal !== prevProps[key]) {
           sigs.get(key)?.set(newVal);
         }
       }
 
-      // 2. Walk the old options for keys the new one dropped. Without this a
+      // 2. Walk the old props for keys the new one dropped. Without this a
       //    removed key would keep its last value forever — nothing else ever
       //    visits it again.
-      for (const key in prevOptions) {
-        if (!(key in nextOptions)) {
+      for (const key in prevProps) {
+        if (!(key in nextProps)) {
           sigs.get(key)?.set(undefined);
         }
       }
     } else {
       // First render: nothing to compare against, so just seed every signal.
-      for (const key in nextOptions) {
-        sigs.get(key)?.set(nextOptions[key]);
+      for (const key in nextProps) {
+        sigs.get(key)?.set(nextProps[key]);
       }
     }
 

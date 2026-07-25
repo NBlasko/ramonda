@@ -13,11 +13,11 @@ class ProducerHook extends Hook<{ label: string }> {
   @state internalCount = 0; // Internal state of Hook A
 
   @create init() {
-    log.push(`${this.options.label}:Unit:Init`);
+    log.push(`${this.props.label}:Unit:Init`);
   }
 
   @destroy dispose() {
-    log.push(`${this.options.label}:Unit:Cleanup`);
+    log.push(`${this.props.label}:Unit:Cleanup`);
   }
 }
 
@@ -26,8 +26,8 @@ class ProducerHook extends Hook<{ label: string }> {
  */
 class ConsumerHook extends Hook<{ val: number; label: string }> {
   @effect onUpdate() {
-    log.push(`${this.options.label}:Effect:Value:${this.options.val}`);
-    return () => log.push(`${this.options.label}:Effect:Cleanup`);
+    log.push(`${this.props.label}:Effect:Value:${this.props.val}`);
+    return () => log.push(`${this.props.label}:Effect:Cleanup`);
   }
 }
 

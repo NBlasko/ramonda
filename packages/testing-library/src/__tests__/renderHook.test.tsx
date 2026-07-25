@@ -11,7 +11,7 @@ class CounterHook extends Hook<CounterOptions> {
   @state count = 0;
 
   @create seed() {
-    this.count = this.options.start;
+    this.count = this.props.start;
   }
 
   increment() {
@@ -21,7 +21,7 @@ class CounterHook extends Hook<CounterOptions> {
 
 describe("renderHook", () => {
   test("mounts a hook on its own host and exposes the instance", () => {
-    const result = renderHook(CounterHook, { initialOptions: { start: 2 } });
+    const result = renderHook(CounterHook, { initialProps: { start: 2 } });
 
     expect(result.current.count).toBe(2);
 
@@ -33,7 +33,7 @@ describe("renderHook", () => {
   });
 
   test("the instance is stable across renders, unlike a function hook", () => {
-    const result = renderHook(CounterHook, { initialOptions: { start: 0 } });
+    const result = renderHook(CounterHook, { initialProps: { start: 0 } });
     const first = result.current;
 
     act(() => {
@@ -50,11 +50,11 @@ describe("renderHook", () => {
 
     class Watching extends Hook<CounterOptions> {
       @effect track() {
-        seen.push(this.options.start);
+        seen.push(this.props.start);
       }
     }
 
-    const result = renderHook(Watching, { initialOptions: { start: 1 } });
+    const result = renderHook(Watching, { initialProps: { start: 1 } });
     expect(seen).toEqual([1]);
 
     result.rerender({ start: 2 });
@@ -89,7 +89,7 @@ describe("renderHook", () => {
     }
 
     const result = renderHook(CounterHook, {
-      initialOptions: { start: 4 },
+      initialProps: { start: 4 },
       wrapper: Frame,
     });
 
@@ -109,7 +109,7 @@ describe("a hook tested through renderHook behaves the same in a real component"
     }
 
     const viaComponent = render<Owner>(<Owner />);
-    const viaHarness = renderHook(CounterHook, { initialOptions: { start: 5 } });
+    const viaHarness = renderHook(CounterHook, { initialProps: { start: 5 } });
 
     expect(viaComponent.instance.counter.count).toBe(viaHarness.current.count);
 

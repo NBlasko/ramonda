@@ -3,12 +3,12 @@ import { diagnose } from "./diagnostics";
 import { stateProperty } from "./stateLabels";
 
 /**
- * Reports a write to a hook's own options. The write itself is stopped by the
+ * Reports a write to a hook's own props. The write itself is stopped by the
  * proxy, which throws; this only supplies the explanation and the devtools entry.
  */
-export function reportOptionWrite(hook: object, property: string): void {
+export function reportHookPropWrite(hook: object, property: string): void {
   const name = hook.constructor.name;
-  diagnose("RMD015", `${name}:${property}`, `<${name} /> assigned to \`options.${property}\`.`);
+  diagnose("RMD015", `${name}:${property}`, `<${name} /> assigned to \`props.${property}\`.`);
 }
 
 /**

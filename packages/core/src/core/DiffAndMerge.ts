@@ -713,12 +713,12 @@ function createOrUpdateComponent(
 
   const nextProps = vnode.attributes ?? {};
   const componentRuntime = component[COMPONENT_RUNTIME];
-  const decide = component[GLOBAL_RUNTIME].shouldUpdateProps;
-  const shouldUpdateProps = decide
+  const decide = component[GLOBAL_RUNTIME].shouldUpdateOnPropsChange;
+  const takeProps = decide
     ? decide(componentRuntime.rawProps, nextProps)
     : !areStringRecordsEqual(componentRuntime.rawProps, nextProps);
 
-  if (shouldUpdateProps) {
+  if (takeProps) {
     const prevRaw = componentRuntime.rawProps;
     const nextRaw = nextProps;
 

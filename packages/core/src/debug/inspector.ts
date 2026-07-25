@@ -21,7 +21,7 @@ interface Inspectable {
   [STATE_KEYS]?: Set<string>;
   [PERSIST_KEYS]?: Set<string>;
   [CHILD_HOOKS]?: Inspectable[];
-  [HOOK_RUNTIME]?: { rawOptions?: Record<string, unknown> };
+  [HOOK_RUNTIME]?: { rawProps?: Record<string, unknown> };
   [COMPONENT_RUNTIME]?: { rawProps?: Record<string, unknown> };
   constructor?: { name?: string };
 }
@@ -54,7 +54,7 @@ function readState(instance: Inspectable): Record<string, unknown> {
  * the hook runtime, not in @state, so they'd otherwise be invisible.
  */
 function readOptions(instance: Inspectable): Record<string, unknown> | undefined {
-  const raw = instance[HOOK_RUNTIME]?.rawOptions;
+  const raw = instance[HOOK_RUNTIME]?.rawProps;
   if (!raw || typeof raw !== "object") return undefined;
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(raw)) out[key] = raw[key];

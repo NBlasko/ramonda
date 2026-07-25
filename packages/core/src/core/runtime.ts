@@ -4,7 +4,7 @@ import type { BaseComponent, MaybeEnhancedNode, LifecycleEntry, WatchPropEntry }
 import { createId } from "../helpers/createId";
 import { addTaskToQueue } from "./Task";
 import type { State } from "../reactivity/State";
-import type { HookOptions } from "../types/HookTypes";
+import type { HookProps } from "../types/HookTypes";
 import type { RenderEnv } from "./renderEnv";
 import type { ServerWork } from "./serverWork";
 
@@ -22,8 +22,11 @@ export interface Runtime {
    * return a promise, and hydration waits for all of them.
    */
   deferHydrations: (() => unknown)[];
-  /** The `@shouldUpdateProps` method, bound. Undefined means "always update". */
-  shouldUpdateProps?: (prev: unknown, next: unknown) => boolean;
+  /**
+   * The `@shouldUpdateOnPropsChange` predicate, bound. Undefined means the default
+   * shallow compare decides — i.e. take the props whenever they differ.
+   */
+  shouldUpdateOnPropsChange?: (prev: unknown, next: unknown) => boolean;
   effects: Effect[];
   clearReactives: ClearReactives;
   hooksOptions: (() => any)[];
@@ -83,18 +86,18 @@ export interface ComponentRuntime {
 
 export interface HookRuntime {
   /**
-   * The options this hook was given, **never undefined** — `createHookRuntime`
+   * The props this hook was given, **never undefined** — `createHookRuntime`
    * normalises a missing bag to `{}`.
    *
-   * That guarantee used to live in `useCommon` (`hookOptions ?? {}`) while this
-   * type still said it could be absent, so the options proxy asserted it with a
+   * That guarantee used to live in `useCommon` (`hookProps ?? {}`) while this
+   * type still said it could be absent, so the props proxy asserted it with a
    * non-null `!`. The assertion happened to hold, but only because every caller
    * remembered — and `createContext`'s Consumer passes `undefined` straight
    * through, which the type permitted and nothing checked. Normalising here makes
    * it structural instead of a convention.
    */
-  rawOptions: Record<string, unknown>;
-  optionsSignals: Map<string, State<unknown>>;
+  rawProps: Record<string, unknown>;
+  propsSignals: Map<string, State<unknown>>;
 }
 
 export const GLOBAL_RUNTIME = Symbol("globalRuntime");
@@ -130,10 +133,10 @@ export const createComponentRuntime = (rawProps: unknown, env: RenderEnv = "clie
   };
 };
 
-export const createHookRuntime = (rawOptions: HookOptions): HookRuntime => {
+export const createHookRuntime = (rawProps: HookProps): HookRuntime => {
   return {
-    // A hook with no options still needs a bag to read from — see HookRuntime.
-    rawOptions: rawOptions ?? {},
-    optionsSignals: new Map<string, State<unknown>>(),
+    // A hook with no props still needs a bag to read from — see HookRuntime.
+    rawProps: rawProps ?? {},
+    propsSignals: new Map<string, State<unknown>>(),
   };
 };

@@ -47,7 +47,7 @@ const EXPECTED = [
   "destroy",
   "watchProp",
   "deferHydration",
-  "shouldUpdateProps",
+  "shouldUpdateOnPropsChange",
   "memoizedHandler",
   "onElement",
   "onWindow",

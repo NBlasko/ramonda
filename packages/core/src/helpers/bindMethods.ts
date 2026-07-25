@@ -100,8 +100,8 @@ function buildPlan(prototype: object, stopAt: object, skipNames: ReadonlySet<str
  *
  * @param stopAt    the framework base prototype to stop the walk at; its own
  *                  members are never bound
- * @param skipNames extra names to leave alone (Component uses this for `render`
- *                  and `shouldUpdateProps`, which the framework calls directly)
+ * @param skipNames extra names to leave alone (Component uses this for `render`,
+ *                  which the framework calls directly)
  */
 export function bindInstanceMethods(instance: object, stopAt: object, skipNames?: ReadonlySet<string>): void {
   const prototype = Object.getPrototypeOf(instance);

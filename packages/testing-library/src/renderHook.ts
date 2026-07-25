@@ -6,21 +6,21 @@ import { render, type WrapperComponent } from "./render";
 /**
  * A hook class as `use()` takes it.
  *
- * Structural rather than `typeof Hook`: core's `HookClassKind` and `HookOptions`
+ * Structural rather than `typeof Hook`: core's `HookClassKind` and `HookProps`
  * are internal types, and constraining to `Hook<O>` would need them. Written
- * this way, `O` is inferred from the constructor's own options parameter — so
- * `renderHook(CounterHook)` knows both the hook's type and its options bag with
+ * this way, `O` is inferred from the constructor's own props parameter — so
+ * `renderHook(CounterHook)` knows both the hook's type and its props bag with
  * nothing declared at the call site.
  *
  * `runtime: never` because a caller never supplies it: `use()` passes the
  * owner's runtime, and constructor parameters are bivariant, so any runtime type
  * still matches.
  */
-type HookClass<T, O> = new (runtime: never, options: O) => T;
+type HookClass<T, O> = new (runtime: never, props: O) => T;
 
-export interface RenderHookOptions<O> {
-  /** The options bag the hook is first given, as a caller's `use()` would pass it. */
-  initialOptions?: O;
+export interface RenderHookProps<O> {
+  /** The props bag the hook is first given, as a caller's `use()` would pass it. */
+  initialProps?: O;
   /** A component to mount the host inside — a context provider, for instance. */
   wrapper?: WrapperComponent;
 }
@@ -36,8 +36,8 @@ export interface RenderHookResult<T, O> {
    * the state.
    */
   current: T;
-  /** Replaces the options the hook was given, the way a re-rendering owner would. */
-  rerender(options?: O): void;
+  /** Replaces the props the hook was given, the way a re-rendering owner would. */
+  rerender(props?: O): void;
   /** Destroys the host component, so the hook's `@destroy` and cleanups run. */
   unmount(): void;
   /** The host component's container, for the rare hook that touches the DOM. */
@@ -48,7 +48,7 @@ export interface RenderHookResult<T, O> {
  * Mounts a hook on its own throwaway component, so it can be tested without one.
  *
  * ```ts
- * const { current, rerender } = renderHook(useCounter, { initialOptions: { start: 2 } });
+ * const { current, rerender } = renderHook(useCounter, { initialProps: { start: 2 } });
  * expect(current.count).toBe(2);
  *
  * act(() => { current.increment(); });
@@ -56,30 +56,30 @@ export interface RenderHookResult<T, O> {
  * ```
  *
  * A Ramonda hook cannot stand alone — `use()` gives it its owner's runtime, and
- * that runtime is what its lifecycle, effects and option signals hang off. So
+ * that runtime is what its lifecycle, effects and prop signals hang off. So
  * this really does mount a component; there is no lighter way that still
  * exercises the same machinery, and a lighter way that did not would be testing
  * something other than what ships.
  *
- * **`rerender(options)` is the interesting one.** Options reach a hook through
+ * **`rerender(props)` is the interesting one.** Props reach a hook through
  * signals owned by the CALLER, updated when the caller re-renders. Passing new
- * options here drives that same path, so `@watchProp`-style reactions and
- * anything reading `this.options` behave exactly as they would under a real
+ * props here drives that same path, so `@watchProp`-style reactions and
+ * anything reading `this.props` behave exactly as they would under a real
  * parent.
  */
 export function renderHook<T, O = undefined>(
   hook: HookClass<T, O>,
-  options: RenderHookOptions<O> = {},
+  options: RenderHookProps<O> = {},
 ): RenderHookResult<T, O> {
-  const initialOptions = options.initialOptions;
+  const initialProps = options.initialProps;
 
   class HookHost extends Component {
     // Declared before `instance` on purpose: field initializers run top to
-    // bottom, and `use()` reads this one immediately to build the first options
+    // bottom, and `use()` reads this one immediately to build the first props
     // bag. Reversed, the hook would be constructed against `undefined`.
-    @state currentOptions: O | undefined = initialOptions;
+    @state currentProps: O | undefined = initialProps;
 
-    instance = this.use(hook as never, (self: HookHost) => self.currentOptions as never) as T;
+    instance = this.use(hook as never, (self: HookHost) => self.currentProps as never) as T;
 
     render(): RamondaNode {
       // A hook has no DOM of its own; the host still needs one element, because
@@ -101,7 +101,7 @@ export function renderHook<T, O = undefined>(
     },
     rerender(next?: O) {
       act(() => {
-        host.currentOptions = next;
+        host.currentProps = next;
       });
     },
     unmount: result.unmount,

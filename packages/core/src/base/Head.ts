@@ -164,7 +164,7 @@ export class Head extends Hook<HeadOptions> {
    * particular page happens to set.
    */
   private readOptions(): HeadOptions {
-    const { title, description, meta, link } = this.options;
+    const { title, description, meta, link } = this.props;
     return { title, description, meta, link };
   }
 

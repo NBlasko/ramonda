@@ -25,7 +25,7 @@ export type {
   WrapperComponent,
 } from "./render";
 export { renderHook } from "./renderHook";
-export type { RenderHookOptions, RenderHookResult } from "./renderHook";
+export type { RenderHookProps, RenderHookResult } from "./renderHook";
 
 import { registerAutoCleanup } from "./cleanup";
 

@@ -9,7 +9,7 @@ order: 103
 
 ```tsx
 const { current, rerender, unmount } = renderHook(CounterHook, {
-  initialOptions: { start: 2 },
+  initialProps: { start: 2 },
 });
 
 expect(current.count).toBe(2);

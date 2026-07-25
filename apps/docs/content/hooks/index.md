@@ -59,7 +59,7 @@ when the goal is to share the behaviour itself.)
 ## Synchronising with the owner
 
 A hook often needs a value from the component using it — the id to fetch, the size to
-paginate by. You pass it as **options**. Pass a **callback**, and it re-runs every
+paginate by. You pass it as **props**. Pass a **callback**, and it re-runs every
 time the owner re-renders, so the hook stays in step with the owner's data.
 
 ```tsx
@@ -70,7 +70,7 @@ export class Resource<T> extends Hook<{ url: string }> {
   load() {
     let alive = true;
     this.data = null;
-    fetch(this.options.url)
+    fetch(this.props.url)
       .then((r) => r.json())
       .then((d) => {
         if (alive) this.data = d;
@@ -94,9 +94,9 @@ export class UserCard extends Component<{ id: string }> {
 ```
 
 When the parent passes a new `id`, the callback produces a new `url`; the `@effect`
-that read `this.options.url` re-runs and refetches — with no wiring on your part.
-Options are tracked **per key** (exactly like [props](/concepts/props)), so the hook
-reacts to the option that changed and not to the others. Authoring them in detail is
+that read `this.props.url` re-runs and refetches — with no wiring on your part.
+Props are tracked **per key** (exactly like [props](/concepts/props)), so the hook
+reacts to the prop that changed and not to the others. Authoring them in detail is
 [writing a hook](/hooks/writing).
 
 ## A hook can use another hook
@@ -106,8 +106,8 @@ smaller pieces.
 
 ```tsx
 export class UserProfile extends Hook<{ id: string }> {
-  private user = this.use(Resource, (self: UserProfile) => ({ url: `/api/users/${self.options.id}` }));
-  private posts = this.use(Resource, (self: UserProfile) => ({ url: `/api/users/${self.options.id}/posts` }));
+  private user = this.use(Resource, (self: UserProfile) => ({ url: `/api/users/${self.props.id}` }));
+  private posts = this.use(Resource, (self: UserProfile) => ({ url: `/api/users/${self.props.id}/posts` }));
 
   get ready() {
     return this.user.data !== null && this.posts.data !== null;
@@ -116,7 +116,7 @@ export class UserProfile extends Hook<{ id: string }> {
 ```
 
 The whole chain shares one owner and updates together — when the owner re-renders,
-each hook's options are re-evaluated in turn, down through the nested ones.
+each hook's props are re-evaluated in turn, down through the nested ones.
 
 ## When things fire
 
@@ -128,7 +128,7 @@ each hook's options are re-evaluated in turn, down through the nested ones.
   built, its `@mount` once the owner's DOM is on the page, its `@destroy` when the
   owner is removed. You can watch the exact interleaving in the
   [lifecycle](/concepts/lifecycle) demo.
-- **On every re-render of the owner**, each hook's options callback re-runs, in
+- **On every re-render of the owner**, each hook's props callback re-runs, in
   `use()` order, and the new values flow into the hook — cascading down through any
   nested hooks.
 
@@ -150,7 +150,7 @@ class Toolbar extends Hook<{ actions: Action[] }> {
   @state busy = false;
 
   buttons() {
-    return this.options.actions.map((action) => (
+    return this.props.actions.map((action) => (
       <button disabled={this.busy} onClick={() => this.run(action)}>{action.label}</button>
     ));
   }
@@ -168,4 +168,4 @@ which a plain `.map()` like this one doesn't.
 
 ## Next
 
-- [Writing a hook](/hooks/writing) — options in depth, and keeping them reactive.
+- [Writing a hook](/hooks/writing) — props in depth, and keeping them reactive.

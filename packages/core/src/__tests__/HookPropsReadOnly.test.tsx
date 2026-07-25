@@ -4,26 +4,26 @@ import type { VNode } from "../types/vdom";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
- * A hook's options are owned by whoever called `this.use(...)`. The proxy serves
+ * A hook's props are owned by whoever called `this.use(...)`. The proxy serves
  * them from the owner's signals on every read, so an assignment has nothing to
  * write to — and before RMD015 it landed on the empty proxy target and vanished:
  * no error, and reading the key back still returned the old value.
  *
  * RMD015 throws in every build, exactly like a write to a component's props
- * (RMD004) — one rule for read-only inputs. See the note in createOptionsProxy.
+ * (RMD004) — one rule for read-only inputs. See the note in createPropsProxy.
  */
 
-interface SizeOptions {
+interface SizeProps {
   width: number;
 }
 
-class SizeHook extends Hook<SizeOptions> {
+class SizeHook extends Hook<SizeProps> {
   get width(): number {
-    return this.options.width;
+    return this.props.width;
   }
   /** The mistake this diagnostic is about. */
   tryToResize(): void {
-    (this.options as SizeOptions).width = 999;
+    (this.props as SizeProps).width = 999;
   }
 }
 
@@ -53,14 +53,14 @@ beforeEach(() => {
   resetDiagnostics();
 });
 
-describe("hook options are read-only (RMD015)", () => {
-  test("assigning to an option throws instead of vanishing", () => {
+describe("a hook's props are read-only (RMD015)", () => {
+  test("assigning to a prop throws instead of vanishing", () => {
     withApp(() => {
       expect(() => hook.tryToResize()).toThrow(/RMD015/);
     });
   });
 
-  test("the option keeps the owner's value after a rejected write", () => {
+  test("the prop keeps the owner's value after a rejected write", () => {
     withApp((container) => {
       expect(() => hook.tryToResize()).toThrow();
       expect(hook.width).toBe(10);
@@ -71,7 +71,7 @@ describe("hook options are read-only (RMD015)", () => {
   test("the thrown message names the hook and the property", () => {
     withApp(() => {
       expect(() => hook.tryToResize()).toThrow(/SizeHook/);
-      expect(() => hook.tryToResize()).toThrow(/options\.width/);
+      expect(() => hook.tryToResize()).toThrow(/props\.width/);
     });
   });
 
@@ -83,11 +83,11 @@ describe("hook options are read-only (RMD015)", () => {
    */
   test("CONTROL: without a set trap the write is swallowed", () => {
     const store: Record<string, unknown> = { width: 10 };
-    const optionsWithoutTrap = new Proxy({}, { get: (_, key: string) => store[key] }) as { width: number };
+    const propsWithoutTrap = new Proxy({}, { get: (_, key: string) => store[key] }) as { width: number };
 
     expect(() => {
-      optionsWithoutTrap.width = 999;
+      propsWithoutTrap.width = 999;
     }).not.toThrow();
-    expect(optionsWithoutTrap.width).toBe(10); // the write left no trace
+    expect(propsWithoutTrap.width).toBe(10); // the write left no trace
   });
 });

@@ -11,15 +11,15 @@ let log: string[] = [];
  */
 class ItemHook extends Hook<{ id: number }> {
   @create init() {
-    log.push(`ItemHook:Init:${this.options.id}`);
+    log.push(`ItemHook:Init:${this.props.id}`);
   }
 
   @destroy dispose() {
-    log.push(`ItemHook:Cleanup:${this.options.id}`);
+    log.push(`ItemHook:Cleanup:${this.props.id}`);
   }
 
   @effect onUpdate() {
-    log.push(`ItemHook:Effect:${this.options.id}`);
+    log.push(`ItemHook:Effect:${this.props.id}`);
   }
 }
 

@@ -21,7 +21,7 @@ import {
 class HistoryHook extends Hook<{ value: number }> {
   @state history: number[] = [];
   @effect track() {
-    const v = this.options.value;
+    const v = this.props.value;
     this.history = [...this.history, v].slice(-5);
   }
 }

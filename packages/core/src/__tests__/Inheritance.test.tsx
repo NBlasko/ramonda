@@ -18,7 +18,7 @@ describe("extending a component (no constructor anywhere)", () => {
 
   class Helper extends Hook<{ tag: string }> {
     value() {
-      return this.options.tag;
+      return this.props.tag;
     }
   }
 

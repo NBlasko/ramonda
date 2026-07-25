@@ -13,25 +13,25 @@ class AsyncHook extends Hook<{ userId: number; label: string }> {
   @state data: string | null = null;
 
   @create init() {
-    log.push(`${this.options.label}:Unit:Init`);
+    log.push(`${this.props.label}:Unit:Init`);
   }
 
   @destroy dispose() {
-    log.push(`${this.options.label}:Unit:Cleanup`);
+    log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
   @effect onUpdate() {
-    const id = this.options.userId;
-    log.push(`${this.options.label}:Effect:Start:User:${id}`);
+    const id = this.props.userId;
+    log.push(`${this.props.label}:Effect:Start:User:${id}`);
 
     const timeoutId = setTimeout(() => {
       this.data = `Data for ${id}`;
-      log.push(`${this.options.label}:Effect:Success:User:${id}`);
+      log.push(`${this.props.label}:Effect:Success:User:${id}`);
     }, 100);
 
     return () => {
       clearTimeout(timeoutId);
-      log.push(`${this.options.label}:Effect:Cleanup:User:${id}`);
+      log.push(`${this.props.label}:Effect:Cleanup:User:${id}`);
     };
   }
 }

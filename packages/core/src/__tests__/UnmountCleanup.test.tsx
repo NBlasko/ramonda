@@ -145,7 +145,7 @@ describe("unmount cleanup", () => {
     const sym = Object.getOwnPropertySymbols((app.instance as any).p).find((s) =>
       String(s).includes("hookRuntime"),
     ) as symbol;
-    const sig: any = (app.instance as any).p[sym].optionsSignals.get("v");
+    const sig: any = (app.instance as any).p[sym].propsSignals.get("v");
     const count = (x: any) => (x?._listeners ? x._listeners.size : x?._listener !== undefined ? 1 : 0);
     expect(count(sig)).toBe(2); // the consumer, plus the providing component
 

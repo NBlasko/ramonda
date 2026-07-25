@@ -169,7 +169,7 @@ describe("Hook", () => {
     expect(loose()).toBe(true);
   });
 
-  test("a hook used without options can still read this.options", async () => {
+  test("a hook used without options can still read this.props", async () => {
     class H extends Hook {
       @state n = 0;
       peek() {

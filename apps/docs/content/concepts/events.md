@@ -12,8 +12,10 @@ a form.
 
 ## On an element you render
 
-Pass a handler as a prop, using the DOM's own names: `onClick`, `onInput`,
-`onSubmit`.
+Pass a handler as a prop. Event props are **camelCase with an `on` prefix** —
+`onClick`, `onInput`, `onSubmit` — a [JSX naming convention](/concepts/jsx), not the
+lowercase HTML `onclick`. The browser's event is `click`; the prop you write is
+`onClick`.
 
 ```tsx
 render() {
@@ -23,8 +25,22 @@ render() {
 
 `this.increment` is a method on your component. **Ramonda ties your methods to the
 component for you**, so handing one to `onClick` just works — `this` still means the
-component inside it. No constructor, no arrow-function fields. (A method whose name
-starts with `_` is left unbound, if you ever want to opt out.)
+component inside it. No constructor, no arrow-function fields, no `.bind(this)`. (A
+method whose name starts with `_` is left unbound, if you ever want to opt out.)
+
+If your handler needs the event, annotate its parameter with the matching DOM event
+type. `onInput` hands you a plain `Event` — read `event.target` for the value;
+`onClick` a `PointerEvent` (a `MouseEvent` with pointer details, so `clientX` and
+`button` are there too):
+
+```tsx
+onInput(event: Event) {
+  this.text = (event.target as HTMLInputElement).value;
+}
+```
+
+(An inline arrow like `onClick={(e) => …}` types `e` for you; a method referenced by
+name, as above, needs the annotation.)
 
 ## On window, document, or the component's own element
 

@@ -81,7 +81,7 @@ export function createContext<T extends object>(
       const channel: ContextChannel = {
         getSignal: (key) => {
           const hookRuntime = this[HOOK_RUNTIME];
-          const signals = hookRuntime.optionsSignals;
+          const signals = hookRuntime.propsSignals;
           const existing = signals.get(key);
           if (existing) return existing;
 
@@ -92,11 +92,11 @@ export function createContext<T extends object>(
           // and a consumer measured `undefined` where its declared default was
           // meant. An explicitly provided `undefined` still wins, because the
           // key IS present.
-          const raw = hookRuntime.rawOptions;
+          const raw = hookRuntime.rawProps;
           if (!raw || !(key in raw)) return undefined;
 
           // Reading through the options proxy lazily creates the signal.
-          void this.options[key];
+          void this.props[key];
           return signals.get(key);
         },
       };
@@ -107,7 +107,7 @@ export function createContext<T extends object>(
       // never double-renders when reading its own provided value.
       for (const key of contextKeys) {
         Object.defineProperty(this, key, {
-          get: () => this.options[key],
+          get: () => this.props[key],
           enumerable: true,
           configurable: true,
         });

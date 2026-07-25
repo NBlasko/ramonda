@@ -1,6 +1,6 @@
 import type { Context, HookClassKind, DefaultProps, RenderableProps } from "../types/commonTypes";
 import type { BaseComponent, ComponentProps, RamondaNode } from "../types/vdom";
-import type { BaseHook, HookOptions } from "../types/HookTypes";
+import type { BaseHook, HookProps } from "../types/HookTypes";
 
 import { useCommon } from "../helpers/common";
 import {
@@ -20,11 +20,11 @@ import { bindInstanceMethods } from "../helpers/bindMethods";
  */
 const lifecycles = new Set(["render"]);
 
-// `shouldUpdateProps` used to be here: a method the framework looked up BY NAME,
-// which meant the name was reserved on every component whether or not the author
-// knew it. It is now the `@shouldUpdateProps` decorator, so the method can be
-// called anything and a class that happens to define `shouldUpdateProps` for its
-// own reasons is just a class with a method.
+// A prop-update gate used to be a method the framework looked up BY NAME, which
+// meant the name was reserved on every component whether or not the author knew it.
+// It is now the `@shouldUpdateOnPropsChange` decorator, so the method can be called
+// anything and a class that happens to define a method by that name for its own
+// reasons is just a class with a method.
 //
 // `render` is the one name still reserved, and it is a different case: it is
 // `abstract`, so TypeScript requires exactly one of it with exactly one
@@ -88,15 +88,15 @@ export abstract class Component<P extends ComponentProps = DefaultProps> impleme
   }
 
   protected use<T extends BaseHook<undefined>>(hook: HookClassKind<T, undefined>): T;
-  protected use<T extends BaseHook<Q>, Q extends HookOptions, R extends (bag: this) => Q>(
+  protected use<T extends BaseHook<Q>, Q extends HookProps, R extends (bag: this) => Q>(
     hook: HookClassKind<T, Q>,
-    options: Q | R,
+    props: Q | R,
   ): T;
-  protected use<T extends BaseHook<Q>, Q extends HookOptions, R extends (bag: this) => Q>(
+  protected use<T extends BaseHook<Q>, Q extends HookProps, R extends (bag: this) => Q>(
     hook: HookClassKind<T, Q>,
-    options?: Q | R,
+    props?: Q | R,
   ): T {
-    return useCommon(this, hook, options);
+    return useCommon(this, hook, props);
   }
 
   public abstract render(): RamondaNode;

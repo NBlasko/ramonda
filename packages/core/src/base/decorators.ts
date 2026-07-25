@@ -27,7 +27,9 @@ type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
 >;
 
 type EnhancedClassMethodDecoratorContext = ClassMethodDecoratorContext<
-  { [GLOBAL_RUNTIME]: Runtime } & Record<string, any>
+  // COMPONENT_RUNTIME is optional: components carry it, hooks do not — which is how
+  // a decorator can tell the two apart (see @shouldUpdateOnPropsChange).
+  { [GLOBAL_RUNTIME]: Runtime; [COMPONENT_RUNTIME]?: ComponentRuntime } & Record<string, any>
 >;
 
 function ensureStringContextName(contextName: string | symbol, decoratorName: string): string {
@@ -347,47 +349,67 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
 }
 
 /**
- * Decides whether a change in props should re-render this component.
+ * Decides whether new props from the parent should be taken up by this component.
  *
  * ```tsx
  * class Row extends Component<RowProps> {
- *   @shouldUpdateProps
+ *   @shouldUpdateOnPropsChange
  *   onlyWhenIdChanges(previous: RowProps, next: RowProps) {
  *     return previous.id !== next.id;
  *   }
  * }
  * ```
  *
- * Return `false` and the render is skipped; the props are still updated, so the
- * next render that happens for any other reason sees them.
+ * It runs ONLY when the parent re-renders and hands this component a new set of
+ * props — never for the component's own `@state` writes, which always render.
+ * Return `true` and the incoming props are applied (the prop signals update and a
+ * render is scheduled); return `false` and the whole update is dropped — **the
+ * props are NOT updated either**, so the component keeps rendering its old ones
+ * until some other change comes along.
  *
  * A decorator rather than a method the framework looks up by name, for the same
  * reason as `@deferHydration`: **the method is yours to name**, and a framework
- * that reserves `shouldUpdateProps` on every class changes behaviour silently the
- * day someone writes a method that happens to be called that.
+ * that reserves a name on every class changes behaviour silently the day someone
+ * writes a method that happens to be called that.
+ *
+ * **Components only.** A hook has no parent handing it JSX props — its `props`
+ * come from the `this.use()` callback and are refreshed on every owner render — so
+ * the decorator throws if placed on one rather than sitting there doing nothing.
  *
  * Without it, props are compared shallowly, which is right for almost everything.
  * Reach for this only when you have measured that the default comparison is the
  * problem — a deep object that is rebuilt every render, most often.
  */
-export function shouldUpdateProps(
+export function shouldUpdateOnPropsChange(
   value: (previous: any, next: any) => boolean,
   context: EnhancedClassMethodDecoratorContext,
 ) {
   if (__DEV__) {
-    assertMethod(context.kind, "shouldUpdateProps", context.name);
+    assertMethod(context.kind, "shouldUpdateOnPropsChange", context.name);
   }
-  ensureStringContextName(context.name, "shouldUpdateProps");
+  ensureStringContextName(context.name, "shouldUpdateOnPropsChange");
 
   context.addInitializer(function (this) {
-    const runtime = this[GLOBAL_RUNTIME];
-    if (__DEV__ && runtime.shouldUpdateProps !== undefined) {
-      ramondaLog(
-        "error",
-        `<${this.constructor.name} /> has more than one @shouldUpdateProps. There can only be one answer to "should this render", so the last one wins — remove the others.`,
+    // A hook reaches its inputs a different way (the this.use() callback), and the
+    // component update path that consults this predicate never runs for one — so on
+    // a hook it would be a silent no-op. Throw instead, in every build, so the
+    // mistake surfaces rather than quietly doing nothing.
+    if (this[COMPONENT_RUNTIME] === undefined) {
+      throw new Error(
+        `[Ramonda] @shouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
+          `this.use() callback and refresh on every owner render — there is no parent-driven prop update to gate. ` +
+          `Put the decorator on the component that renders <${this.constructor.name} />, or drop it.`,
       );
     }
-    runtime.shouldUpdateProps = (previous, next) => value.call(this, previous, next);
+
+    const runtime = this[GLOBAL_RUNTIME];
+    if (__DEV__ && runtime.shouldUpdateOnPropsChange !== undefined) {
+      ramondaLog(
+        "error",
+        `<${this.constructor.name} /> has more than one @shouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the last one wins — remove the others.`,
+      );
+    }
+    runtime.shouldUpdateOnPropsChange = (previous, next) => value.call(this, previous, next);
   });
 }
 

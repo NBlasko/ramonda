@@ -29,25 +29,50 @@ expression produces:
 <p>Hello {name}, you have {count} messages</p>
 ```
 
-## Attributes
+## Names: it reads like HTML, but the names are JSX's
 
-Attributes use the **DOM's own names**. Most match HTML; a couple differ because the
-HTML name is a reserved word in JavaScript — `className` (not `class`), `htmlFor`
-(not `for`).
+JSX *looks* like HTML, but what you type is not HTML text — it compiles to function
+calls, and the names are keys on those calls. That is why a few of them differ from
+the HTML you may know. Three rules cover almost everything.
+
+**Events are camelCase, with an `on` prefix.** The browser's event is called `click`;
+in plain HTML the attribute is `onclick`, all lowercase. In JSX you pass a handler as
+`onClick` — capital `C`:
+
+```tsx
+<button onClick={this.save}>Save</button>
+```
+
+The shape is always `on` + the event name with each word capitalised: `onInput`,
+`onSubmit`, `onKeyDown`, `onPointerMove`. Lowercase `onclick` will **not** work — it
+is a different key, and nothing listens to it. See [events](/concepts/events) for
+what you can pass and how `this` stays bound.
+
+**Two attributes sidestep JavaScript's reserved words.** `class` and `for` are
+keywords in JavaScript, so JSX borrows the DOM property names instead — `className`
+and `htmlFor`:
 
 ```tsx
 <label className="field" htmlFor="email">Email</label>
 ```
 
-**SVG is worth reading twice.** Inside SVG, Ramonda writes attribute names exactly as
-SVG defines them — `stroke-width` with a dash, `viewBox` in camelCase — because the
-JSX is meant to mirror the real element:
+Everything else — `id`, `href`, `disabled`, `value`, `placeholder`, `aria-*`,
+`data-*` — is written exactly as in HTML.
+
+**SVG keeps its real names.** Inside SVG the names are written exactly as SVG defines
+them — `stroke-width` with a dash, `viewBox` in camelCase — because the JSX mirrors
+the real element one to one:
 
 ```tsx
 <svg viewBox="0 0 24 24">
   <path d="…" stroke-width="2" />
 </svg>
 ```
+
+> **Written JSX before?** The `onClick` and `className` / `htmlFor` conventions will
+> feel familiar. The one habit to drop is SVG: Ramonda leaves SVG attribute names
+> literal instead of camelCasing them, so `stroke-width` stays `stroke-width`, not
+> `strokeWidth`.
 
 ## Children
 

@@ -70,7 +70,7 @@ All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [
 | | |
 |---|---|
 | `@watchProp(selector)` | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| `@shouldUpdateProps` | Decides whether a prop change should re-render. |
+| `@shouldUpdateOnPropsChange` | Gates whether new props from the parent are taken up (their signals update + a render). Components only; runs only on prop changes. |
 | `@deferHydration` | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 
 ### Decorators — the DOM

@@ -1,25 +1,25 @@
 ---
 title: Writing a hook
-description: Give a hook input with options, and keep them reactive.
+description: Give a hook props, read them from this.props, and keep them reactive.
 section: Hooks
 order: 61
 ---
 
 # Writing a hook
 
-A hook can take input from whoever uses it — its **options** — read from
-`this.options`:
+A hook takes input from whoever uses it — its **props** — read from `this.props`,
+exactly like a component. Same word, same idea: they are read-only and owned by the
+caller.
 
 ```tsx
-interface CounterOptions {
+interface CounterProps {
   start: number;
 }
 
-export class Counter extends Hook<CounterOptions> {
-  // Read the option straight into state — `this.options` is ready before the
-  // field initializers run. No need to seed a placeholder and copy it over in
-  // `@create`.
-  @state count = this.options.start;
+export class Counter extends Hook<CounterProps> {
+  // Read a prop straight into state — `this.props` is ready before the field
+  // initializers run, so there is no placeholder to seed and copy over in `@create`.
+  @state count = this.props.start;
 
   increment() {
     this.count = this.count + 1;
@@ -27,7 +27,7 @@ export class Counter extends Hook<CounterOptions> {
 }
 ```
 
-## Passing options
+## Passing props
 
 Two forms, and the difference matters:
 
@@ -35,32 +35,35 @@ Two forms, and the difference matters:
 // A plain object — fixed for the life of the hook. For constants.
 counter = this.use(Counter, { start: 10 });
 
-// A callback — re-run whenever the owner re-renders. Use this whenever the
-// options depend on something that changes.
+// A callback — re-run whenever the owner re-renders. Use this whenever a prop
+// depends on something that changes.
 counter = this.use(Counter, (self: Panel) => ({ start: self.props.initial }));
 ```
 
-## Options are read-only
+The callback receives the owner (`self`), so a hook's props can be built from the
+owner's own props or state — that is what keeps them in sync.
 
-Like props, options belong to the caller — assigning to one throws (`RMD015`). It is
-the same rule as [props](/concepts/props), because it is the same idea from the other
-side. To change something an option gave you, copy it into your own `@state`, or take
-a callback option and ask the owner.
+## Props are read-only
+
+A hook's props belong to the caller, exactly like a component's — assigning to one
+throws (`RMD015`). It is the same rule as [component props](/concepts/props), because
+it is the same idea from the other side. To change something a prop gave you, copy it
+into your own `@state`, or take a **callback prop** and ask the owner to change it.
 
 ## They stay reactive, per key
 
-Each option key is its own signal. When the owner re-renders, the callback runs again
-and only the keys whose values actually changed update. So a hook that reads
-`this.options.start` reacts to `start` changing, not to some other key — exactly like
-props. (An option the caller stops passing becomes `undefined`, so a removed key can't
-linger.)
+Each prop is its own signal. When the owner re-renders, the callback runs again and
+only the keys whose values actually changed update. So a hook that reads
+`this.props.start` reacts to `start` changing, not to some other key — exactly like a
+component. (A prop the caller stops passing becomes `undefined`, so a removed key
+can't linger.)
 
 ## Hooks compose
 
 A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
-export class Pagination extends Hook<PaginationOptions> {
+export class Pagination extends Hook<PaginationProps> {
   private route = this.use(Navigator);
   // …
 }
@@ -71,13 +74,13 @@ export class Pagination extends Hook<PaginationOptions> {
 ```ts
 import { renderHook, act } from "@ramonda/testing-library";
 
-const { current, rerender } = renderHook(Counter, { initialOptions: { start: 2 } });
+const { current, rerender } = renderHook(Counter, { initialProps: { start: 2 } });
 expect(current.count).toBe(2);
 
 act(() => current.increment());
 expect(current.count).toBe(3);
 
-rerender({ start: 99 }); // like a parent passing new options
+rerender({ start: 99 }); // like a parent passing new props
 ```
 
 `current` stays the same object between renders — a hook is built once and lives as
