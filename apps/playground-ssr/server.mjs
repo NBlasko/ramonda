@@ -86,9 +86,19 @@ const server = createServer(async (req, res) => {
     const dom = installDom(`http://localhost:${PORT}${url}`);
 
     const started = process.hrtime.bigint();
-    const html = await render();
+    const { html, redirect } = await render();
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     dom.window.close();
+
+    if (redirect) {
+      // A route guard sent this request elsewhere — answer with the redirect so the
+      // browser navigates there and requests the correct page.
+      res.statusCode = redirect.status;
+      res.setHeader("Location", redirect.url);
+      res.end();
+      console.log(`${req.method} ${url} → ${redirect.status} ${redirect.url}`);
+      return;
+    }
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/html");

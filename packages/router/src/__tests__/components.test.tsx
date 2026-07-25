@@ -2,7 +2,7 @@ import { beforeEach, describe, test, expect } from "vitest";
 import { Component, Host, create } from "@ramonda/core";
 import type { VNode, RamondaNode } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
-import { Router, RouteOutlet, RouteHook } from "../Router";
+import { Router, RouteOutlet, Navigator } from "../Router";
 import { Link } from "../Link";
 import { createRoutes } from "../match";
 import { scanComponentTree } from "../../../core/src/debug/inspector";
@@ -39,14 +39,14 @@ beforeEach(() => {
 });
 
 /**
- * The live route's RouteHook. Navigation is only reachable from inside the
+ * The live route's Navigator. Navigation is only reachable from inside the
  * Router's tree now, which is exactly how an app does it — so the routes below
  * publish their hook and the tests drive it.
  */
-let route: RouteHook;
+let route: Navigator;
 
 class Home extends Component {
-  hook = this.use(RouteHook);
+  hook = this.use(Navigator);
   @create expose() {
     route = this.hook;
   }
@@ -55,7 +55,7 @@ class Home extends Component {
   }
 }
 class Player extends Component {
-  hook = this.use(RouteHook);
+  hook = this.use(Navigator);
   @create expose() {
     route = this.hook;
   }
@@ -64,7 +64,7 @@ class Player extends Component {
   }
 }
 class NotFound extends Component {
-  hook = this.use(RouteHook);
+  hook = this.use(Navigator);
   @create expose() {
     route = this.hook;
   }
@@ -120,7 +120,7 @@ describe("Router", () => {
     expect(container.querySelector("#nf")).toBeTruthy();
   });
 
-  test("RouteHook exposes params from the matched route", () => {
+  test("Navigator exposes params from the matched route", () => {
     window.history.pushState(null, "", "/players/7");
 
     const { container } = render(app());
@@ -174,7 +174,7 @@ describe("Router", () => {
 describe("Router: chrome above the outlet", () => {
   test("a nav bar beside the outlet can navigate, and survives the swap", () => {
     class NavBar extends Component {
-      hook = this.use(RouteHook);
+      hook = this.use(Navigator);
       render() {
         return (
           <nav>
@@ -211,7 +211,7 @@ describe("Router: chrome above the outlet", () => {
     expect(container.querySelector("#path")?.textContent).toBe("/players/8");
   });
 
-  test("RouteHook methods work when passed as bare callbacks", () => {
+  test("Navigator methods work when passed as bare callbacks", () => {
     // The playground does `<button onClick={this.route.back}>`. The methods
     // reach navigation through `this.ctx` now, so they must stay bound.
     const { container } = render(app());
@@ -224,7 +224,7 @@ describe("Router: chrome above the outlet", () => {
 
   test("params still reach the route component under the outlet", () => {
     class NavBar extends Component {
-      hook = this.use(RouteHook);
+      hook = this.use(Navigator);
       render() {
         return <nav id="nav">{this.hook.pathname}</nav>;
       }
@@ -247,6 +247,64 @@ describe("Router: chrome above the outlet", () => {
 
     expect(container.querySelector("#nav")?.textContent).toBe("/players/3");
     expect(container.querySelector("#player")?.textContent).toContain("3");
+  });
+});
+
+describe("Navigator: partial-state updates", () => {
+  test("updateSearchParams changes only the query, leaving the route in place", () => {
+    const { container } = render(app());
+    const home = container.querySelector("#home");
+    expect(home).toBeTruthy();
+
+    act(() => route.updateSearchParams({ tab: "stats" }));
+
+    // The query is written...
+    expect(window.location.search).toBe("?tab=stats");
+    expect(route.searchParams).toEqual({ tab: "stats" });
+    // ...and the matched route did NOT swap: no re-match on a query-only change,
+    // so the very same element is still there (not a rebuilt one).
+    expect(container.querySelector("#home")).toBe(home);
+  });
+
+  test("the functional form is race-free: two updates in a tick both survive", () => {
+    render(app());
+
+    // Two filters changed in the same tick. If the second read stale state it
+    // would drop the first's `a=1` and the search would be just `?b=2`.
+    act(() => {
+      route.updateSearchParams((prev) => ({ ...prev, a: "1" }));
+      route.updateSearchParams((prev) => ({ ...prev, b: "2" }));
+    });
+
+    expect(window.location.search).toBe("?a=1&b=2");
+  });
+
+  test("updateHashTags changes only the hash", () => {
+    render(app());
+
+    act(() => route.updateHashTags([{ key: "open", value: "1", level: 0 }]));
+
+    expect(window.location.hash).toBe("#open=1");
+    expect(route.pathname).toBe("/");
+    expect(window.location.search).toBe("");
+  });
+
+  test("push scrolls to the top; a partial update stays put unless asked", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    try {
+      render(app());
+
+      act(() => route.push("/players/1"));
+      expect(scrollTo).toHaveBeenCalledTimes(1); // navigation → top
+
+      act(() => route.updateSearchParams({ a: "1" }));
+      expect(scrollTo).toHaveBeenCalledTimes(1); // in-place → no scroll
+
+      act(() => route.updateSearchParams({ a: "2" }, { scroll: true }));
+      expect(scrollTo).toHaveBeenCalledTimes(2); // opted in
+    } finally {
+      scrollTo.mockRestore();
+    }
   });
 });
 

@@ -7,8 +7,10 @@ import type { StateUpdater } from "./types";
 export interface LinkProps {
   href?: string;
   replace?: boolean;
+  /** Scroll to the top after navigating. Default `true` — a link is a real
+   * navigation. Pass `scroll={false}` for a link that swaps a view in place
+   * (e.g. tabs partway down a long page). */
   scroll?: boolean;
-  shallow?: boolean;
   /**
    * Compute the target from route state. Evaluated AT RENDER, so it must be a
    * pure function of the state it reads — the value it returns becomes the
@@ -76,8 +78,7 @@ export class Link extends Component<LinkProps> {
     e.preventDefault();
     this.ctx.nav.updateState(() => parseUrlString(href), {
       replace: this.props.replace,
-      scroll: this.props.scroll,
-      shallow: this.props.shallow,
+      scroll: this.props.scroll !== false,
     });
   }
 

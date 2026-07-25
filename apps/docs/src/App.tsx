@@ -1,6 +1,6 @@
 import { Component, Host, state } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { Router, RouteOutlet, RouteHook, Link } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Link } from "@ramonda/router";
 import { routes, pages } from "./routes";
 import { Search } from "./Search";
 
@@ -22,7 +22,7 @@ const grouped = (() => {
 
 @Host("nav")
 class Sidebar extends Component<SidebarProps> {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
 
   /**
    * On mobile the sidebar is a drawer over the page, so a followed link has to

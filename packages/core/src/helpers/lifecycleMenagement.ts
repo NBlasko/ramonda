@@ -61,7 +61,7 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
   if (destroys) {
     for (let i = destroys.length - 1; i >= 0; i--) {
       const entry = destroys[i];
-      if (entry.env !== "server") runCleanup("a @destroy", component, entry.cb);
+      if (entry.env !== "server") runCleanup("a @destroy", component, () => entry.cb(component[COMPONENT_RUNTIME].env));
     }
   }
 

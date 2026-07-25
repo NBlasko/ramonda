@@ -194,7 +194,7 @@ function hydrateComponent(
 
   // create/mount ran on the server (shared/server env) → skip; run client only.
   for (const create of runtime.creates) {
-    if (create.env === "client") create.cb();
+    if (create.env === "client") create.cb(componentRuntime.env);
   }
 
   // Re-evaluate every hook's options — AFTER the restore and AFTER @create.
@@ -290,7 +290,7 @@ function hydrateComponent(
   // Anything that genuinely must run once, on the server only, says so with
   // `env: "server"`. That is what the option is for.
   for (const mount of runtime.mounts) {
-    if (mount.env !== "server") queuePostCommit(component, mount.cb);
+    if (mount.env !== "server") queuePostCommit(component, () => mount.cb(componentRuntime.env));
   }
 
   // Effects are always client-only: this attaches @onElement/@onWindow/@onDocument
@@ -504,7 +504,7 @@ function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void 
   hydrateChildren(rendered.children, component, host);
 
   for (const mount of runtime.mounts) {
-    if (mount.env !== "server") queuePostCommit(component, mount.cb);
+    if (mount.env !== "server") queuePostCommit(component, () => mount.cb(componentRuntime.env));
   }
   queuePostCommit(component, () => runComponentEffects(component));
 

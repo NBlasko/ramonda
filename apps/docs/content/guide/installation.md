@@ -16,7 +16,8 @@ npm create ramonda@latest my-app
 ```
 
 It asks a couple of questions — a client-side app or a server-rendered one, and which
-packages to add (router, testing, devtools) — then:
+packages and tooling to add (router, lens, testing, devtools, and Biome for lint +
+format) — then:
 
 ```
 cd my-app

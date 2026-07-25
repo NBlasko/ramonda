@@ -42,6 +42,8 @@ Everything the three packages export. Each entry links to the page that explains
 | `renderPage(vnode)` | The same, plus `{ title, head }`. [Head](/ssr/head) |
 | `renderDocument(page, options?)` | Wraps a rendered page in a complete document. [Static builds](/ssr/static) |
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
+| `ServerRedirect` | Thrown by `renderToString` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
+| `captureServerRedirect()` | Low-level hook to record a server redirect for the current render. [Guards](/routing/server) |
 
 ### Decorators — state
 
@@ -99,9 +101,9 @@ All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [
 
 | | |
 |---|---|
-| `Router` | A **hook** on the app root; owns the store, adds no element. [Setup](/routing) |
+| `Router` | A **hook** on the app root; owns the store, adds no element. Also exposes the `Navigator` surface (minus `params()`). [Setup](/routing) |
 | `RouteOutlet` | Renders the matched route. |
-| `RouteHook` | `pathname` · `params<T>()` · `searchParams` · `hashTags` · `push` · `replace` · `back` · `forward`. [Reading the URL](/routing/params) |
+| `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashTags` · `push` · `replace` · `updateSearchParams` · `updateHashTags` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once. Call it at module scope. |
 | `routePaths(config, extra?)` | `{ paths, needsData }` for a static build. [Static builds](/ssr/static) |
@@ -109,7 +111,8 @@ All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [
 | `parseUrl` · `parseUrlString` · `buildUrl` · `sanitizeHref` | URL helpers. |
 
 Types: `RouteConfig` · `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` ·
-`NavigateOptions` · `HashTag` · `StateUpdater` · `RouteOutletProps` · `LinkProps`
+`NavigateOptions` · `PartialNavigateOptions` · `SearchParamsUpdater` · `HashTagsUpdater` ·
+`HashTag` · `StateUpdater` · `RouteOutletProps` · `LinkProps`
 
 ---
 

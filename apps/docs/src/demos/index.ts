@@ -79,7 +79,7 @@ export const demoTitles: Record<string, string> = {
   ListDemo: "list() — lists without keys",
   FilteredList: "list() — a filtered, conditional list",
   LensSharing: "focusOn — what an immutable edit copies",
-  RouteInfo: "RouteHook — the live route of this site",
+  RouteInfo: "Navigator — the live route of this site",
   InheritanceDemo: "Inheritance — the unit of reuse",
   LazyPanel: "AsyncLoad — a component in its own chunk",
 };

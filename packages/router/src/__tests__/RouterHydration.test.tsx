@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component, Host, renderToString } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
-import { Router, RouteOutlet, RouteHook } from "../Router";
+import { Router, RouteOutlet, Navigator } from "../Router";
 import { scanComponentTree } from "../../../core/src/debug/inspector";
 import { createRoutes } from "../match";
 
@@ -51,7 +51,7 @@ class Home extends Component {
 
 @Host("div")
 class Players extends Component {
-  hook = this.use(RouteHook);
+  hook = this.use(Navigator);
   render() {
     return <span id="players">players</span>;
   }

@@ -9,7 +9,6 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["vitest/globals"],
-    "baseUrl": ".",
     "paths": {
       "@ramonda/core": ["../core/src/index.ts"],
       "@ramonda/core/testing": ["../core/src/testing.ts"]

@@ -72,24 +72,26 @@ export class LensSharing extends Component {
   }
 
   rename() {
+    const title = `Second post (${this.data.posts[1].title.length})`;
     this.apply(
-      'get("posts").where(id === 102).get("title").set(…)',
+      `get("posts").where(id === 102).get("title").set("${title}")`,
       focusOn(this.data)
         .get("posts")
         .where((post) => post.id === 102)
         .get("title")
-        .set(`Second post (${this.data.posts[1].title.length})`),
+        .set(title),
     );
   }
 
   addTag() {
+    const tag = `tag${this.data.posts[1].tags.length}`;
     this.apply(
-      'get("posts").where(id === 102).get("tags").push(…)',
+      `get("posts").where(id === 102).get("tags").push("${tag}")`,
       focusOn(this.data)
         .get("posts")
         .where((post) => post.id === 102)
         .get("tags")
-        .push(`tag${this.data.posts[1].tags.length}`),
+        .push(tag),
     );
   }
 

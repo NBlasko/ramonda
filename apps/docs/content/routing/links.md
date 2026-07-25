@@ -31,6 +31,13 @@ matters:
 A plain left click is caught and routed through the router (instant); anything else is
 left to the browser.
 
+## Props
+
+- `replace` — replace the history entry instead of adding one.
+- `scroll` — scroll to the top after navigating. Defaults to `true` (a link is a real
+  navigation); pass `scroll={false}` for a link that swaps a view in place, like tabs
+  partway down a long page.
+
 ## What it leaves to the browser
 
 `Link` does not intercept:
@@ -47,7 +54,7 @@ redirect after saving. For that, use the router's `push` (next page):
 
 ```tsx
 export class SaveButton extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
 
   async save() {
     await this.props.onSave();

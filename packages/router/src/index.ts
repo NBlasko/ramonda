@@ -2,6 +2,9 @@ export type {
   HashTag,
   RouterState,
   NavigateOptions,
+  PartialNavigateOptions,
+  SearchParamsUpdater,
+  HashTagsUpdater,
   StateUpdater,
 } from "./types";
 export {
@@ -12,7 +15,7 @@ export {
 } from "./urlUtils";
 // The module-level `routerStore` / `router` / `updateState` singletons are gone
 // on purpose: a module global is shared across concurrent server renders. The
-// store now lives on the <Router> instance — reach it with `this.use(RouteHook)`.
+// store now lives on the <Router> instance — reach it with `this.use(Navigator)`.
 export type { RouterNavigator } from "./store";
 export {
   matchParams,
@@ -27,7 +30,7 @@ export {
 export {
   Router,
   RouteOutlet,
-  RouteHook,
+  Navigator,
   type RouteOutletProps,
 } from "./Router";
 export { Link, type LinkProps } from "./Link";

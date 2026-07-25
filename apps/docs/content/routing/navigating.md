@@ -7,11 +7,11 @@ order: 73
 
 # Navigating
 
-`RouteHook` lets a component navigate from code:
+`Navigator` lets a component navigate from code:
 
 ```tsx
 export class Toolbar extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
 
   render() {
     return (
@@ -28,9 +28,17 @@ export class Toolbar extends Component {
 |---|---|
 | `push(href, opts?)` | go to a URL, adding a history entry |
 | `replace(href, opts?)` | go there without adding one |
+| `updateSearchParams(next, opts?)` | change only the query — see [keeping state in the URL](/routing/params#keep-ui-state-in-the-url) |
+| `updateHashTags(next, opts?)` | change only the hash |
 | `back()` / `forward()` | move through history |
 
-`opts.scroll` scrolls to the top after navigating.
+## Scrolling is your choice, per call
+
+A `push` or `replace` moves to another page, so it scrolls to the top by default.
+Pass `{ scroll: false }` to stay where you are — useful when a `<RouteOutlet>` sits
+partway down a long page and you don't want the jump. The in-place updaters
+(`updateSearchParams`, `updateHashTags`) are the opposite: they *don't* scroll unless
+you ask with `{ scroll: true }`.
 
 ## The methods are already bound
 
@@ -44,10 +52,36 @@ middle-click it and a crawler should follow it. Use `push` when the navigation i
 result of something else: a submitted form, a resolved choice, a redirect after a
 save.
 
+## The `Router` hook can do this too
+
+The component that mounts the router with `this.use(Router)` doesn't need a separate
+`Navigator` to read the URL or navigate — the `Router` instance exposes the same
+`pathname`, `searchParams`, `hashTags`, `push`, `replace`, `back` and `forward`, on top
+of the setup work it does. It's the same surface, from the piece that owns the state:
+
+```tsx
+@Host("div")
+export class App extends Component {
+  router = this.use(Router);
+
+  render() {
+    return (
+      <div className="app">
+        <button onClick={() => this.router.push("/")}>{this.router.pathname}</button>
+        <RouteOutlet routes={routes} />
+      </div>
+    );
+  }
+}
+```
+
+The one thing it can't give you is `params()` — those are matched by a `<RouteOutlet>`,
+which sits *below* the Router, so only a `Navigator` inside a routed page has them.
+
 ## There is no global router
 
 You can't `import` the router and call `push` from just anywhere — navigation is
-reachable only from inside the tree, through `RouteHook`. (A module-level router would
+reachable only from inside the tree, through `Navigator`. (A module-level router would
 be shared by every request on a server, so one visitor's navigation could show up for
 another.) If a plain function needs to navigate, pass it a callback — the component
 calling it has the hook.

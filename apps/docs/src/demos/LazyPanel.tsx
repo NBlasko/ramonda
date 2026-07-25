@@ -18,11 +18,15 @@ export class LazyPanel extends Component {
   // the second mount needs no request at all.
   @state show = true;
 
+  toggle() {
+    this.show = !this.show;
+  }
+
   render() {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={() => (this.show = !this.show)}>
+          <button type="button" onClick={this.toggle}>
             {this.show ? "unload it" : "load it again"}
           </button>
           <span className="demo-note">

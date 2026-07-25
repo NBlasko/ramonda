@@ -23,11 +23,21 @@ const MIME = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+
  */
 function installDom(url) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { url });
-  const put = (name, value) =>
-    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  const put = (name, value) => Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
   for (const name of [
-    "window", "document", "navigator", "location", "history",
-    "HTMLElement", "SVGElement", "Node", "Text", "CustomEvent", "Event", "MouseEvent", "getComputedStyle",
+    "window",
+    "document",
+    "navigator",
+    "location",
+    "history",
+    "HTMLElement",
+    "SVGElement",
+    "Node",
+    "Text",
+    "CustomEvent",
+    "Event",
+    "MouseEvent",
+    "getComputedStyle",
   ]) {
     put(name, dom.window[name]);
   }
@@ -64,10 +74,18 @@ const server = createServer(async (req, res) => {
 
   try {
     installDom(`http://localhost:${PORT}${url}`);
-    const body = await render();
+    const { html, redirect } = await render();
+    if (redirect) {
+      // A route guard sent this request elsewhere — answer with the redirect so the
+      // browser navigates there and requests the correct page.
+      res.statusCode = redirect.status;
+      res.setHeader("Location", redirect.url);
+      res.end();
+      return;
+    }
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/html");
-    res.end(template.replace("<!--ssr-->", body));
+    res.end(template.replace("<!--ssr-->", html));
   } catch (error) {
     res.statusCode = 500;
     res.end(`<pre>${String(error?.stack ?? error)}</pre>`);

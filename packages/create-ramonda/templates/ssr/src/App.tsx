@@ -31,9 +31,7 @@ export class App extends Component {
           count is {this.count}
         </button>
 
-        <p className="hint">
-          The page arrives as HTML from the server, then this button wakes up.
-        </p>
+        <p className="hint">The page arrives as HTML from the server, then this button wakes up.</p>
 
         <a className="docs" href="https://ramonda.pages.dev" target="_blank" rel="noreferrer">
           Read the docs →

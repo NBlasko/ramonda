@@ -54,7 +54,8 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup && ramonda-check-bundle dist",
-    "test": "vitest run",
+    "test": "vitest run && pnpm test:prod",
+    "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
     "format": "biome format --write src"

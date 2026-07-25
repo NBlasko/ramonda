@@ -7,7 +7,6 @@
     "jsxFactory": "h",
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
       "@ramonda/core": ["../../packages/core/src/index.ts"],
       "@ramonda/router": ["../../packages/router/src/index.ts"]

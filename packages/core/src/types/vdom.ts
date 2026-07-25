@@ -3,6 +3,11 @@ import type { COMPONENT_TYPE, TEXT_TYPE } from "../helpers/constants";
 import { IS_SVG, KEY_SYM, IS_LIST, CHILD_RECORD, ORIGIN_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
 
 import type { COMPONENT_RUNTIME, ComponentRuntime, INTERNAL_HOOKS, GLOBAL_RUNTIME, Runtime } from "../core/runtime";
+import type { RenderEnv } from "../core/renderEnv";
+// Re-exported as public API (index.ts pulls it from here — a public folder — so
+// the internal-folders rule stays satisfied). It is the argument type for the
+// lifecycle decorators.
+export type { RenderEnv };
 
 interface EnhancedElement {
   _componentInstance?: BaseComponent<any>;
@@ -88,7 +93,10 @@ export type LifecycleEnv = "client" | "server" | "shared";
 
 export interface LifecycleEntry {
   id: number;
-  cb: () => void;
+  // Receives the concrete render side ("client" | "server") when it fires, so a
+  // @create/@mount/@destroy method can branch on where it is running. A method
+  // that declares no parameter still satisfies this (fewer params is assignable).
+  cb: (env: RenderEnv) => void;
   env: LifecycleEnv;
 }
 

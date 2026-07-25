@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component, Host, Head, renderPage, renderDocument } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
-import { Router, RouteOutlet, RouteHook } from "../Router";
+import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes, routePaths } from "../match";
 
 /**
@@ -48,7 +48,7 @@ class Guide extends Component {
 
 @Host("main")
 class Player extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   head = this.use(Head, (self: Player) => ({
     title: `Player ${self.route.params<{ id: string }>().id}`,
   }));

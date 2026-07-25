@@ -31,6 +31,35 @@ stampBuildTime() {} // only during a server render
 (Effects — `@effect`, `@interval`, timers, `@onWindow` — have no `env`; they are
 always client-only. That is why a subscription never leaks into a server render.)
 
+## Knowing the side inside a shared method
+
+Sometimes a shared method runs mostly the same both ways but must skip one step on one
+side — fetch on the client, not during the server render. Rather than split it in two,
+each lifecycle method receives its side as an argument:
+
+```tsx
+import { RenderEnv } from "@ramonda/core";
+
+@mount
+async load(env: RenderEnv) {
+  if (env === "server") return;            // the client fetches after hydration
+  this.data = await fetch(`/api/thing/${this.props.id}`).then((r) => r.json());
+}
+```
+
+Read the argument, not `typeof window`: under server rendering the DOM is a shim, so
+`window` and `document` exist there too and the check would lie. `env` is `"client"` or
+`"server"`, and it stays correct even inside an `async` method after an `await`.
+
+## `env` is not a security boundary
+
+`env: "server"` chooses where code **runs**, not whether it **ships**. A `"server"`
+method's body is part of your component, so it is bundled and sent to the browser like
+everything else — someone can read it there even though it never executes. Never put a
+secret (an API key, a private token, logic you don't want seen) in a `"server"`
+lifecycle expecting the client can't reach it. If something must stay secret it lives
+behind an API the browser calls; that boundary is the server, not a decorator.
+
 ## Which to use
 
 - **`"shared"` for anything that produces the page** — reading props, seeding state,

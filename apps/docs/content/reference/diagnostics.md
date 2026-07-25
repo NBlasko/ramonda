@@ -181,5 +181,3 @@ so a devtools panel or a test can capture them:
 window.addEventListener("ramonda:diagnostic", (event) => { … });
 ```
 
-The full reasoning behind each one — what was measured, what was rejected — is in
-`packages/core/DIAGNOSTICS.md`.

@@ -1009,7 +1009,7 @@ function buildComponent(
   const componentRuntime = component[COMPONENT_RUNTIME];
 
   for (const create of runtime.creates) {
-    if (create.env !== skipEnv) create.cb();
+    if (create.env !== skipEnv) create.cb(componentRuntime.env);
   }
 
   // Record each watchProp selector's starting value; mount is not a change, so
@@ -1034,7 +1034,7 @@ function buildComponent(
   // in the document. Queued in the order they used to run — mounts, lint, then
   // effects — so only the timing moved. See core/commit.ts.
   for (const mount of runtime.mounts) {
-    if (mount.env !== skipEnv) queuePostCommit(component, mount.cb);
+    if (mount.env !== skipEnv) queuePostCommit(component, () => mount.cb(componentRuntime.env));
   }
 
   if (__DEV__) {

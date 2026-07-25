@@ -225,6 +225,11 @@ div[data-ramonda="Counter"] {
   color: var(--muted);
   font-size: 0.85rem;
 }
+/* Long query strings (e.g. the lens demo's `last:` line) wrap instead of
+   overflowing or getting clipped. */
+.demo-note code {
+  overflow-wrap: anywhere;
+}
 .demo-error {
   color: #c0392b;
   margin: 0;

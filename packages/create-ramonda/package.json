@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsup",
     "check-types": "tsc --noEmit",
-    "lint": "oxlint src"
+    "lint": "oxlint src",
+    "verify-versions": "node scripts/verify-versions.mjs"
   },
   "keywords": [
     "ramonda",

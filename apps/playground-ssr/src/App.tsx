@@ -1,5 +1,5 @@
 import { Component, Host, state } from "@ramonda/core";
-import { Router, RouteOutlet, RouteHook, Link, createRoutes } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
 
 /**
  * Deliberately small. This app exists to answer questions a jsdom test cannot:
@@ -52,7 +52,7 @@ class AboutPage extends Component {
 
 @Host("div")
 class UserPage extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   render() {
     const id = this.route.params<{ id: string }>().id;
     return (
@@ -66,7 +66,7 @@ class UserPage extends Component {
 
 @Host("div")
 class NotFoundPage extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   render() {
     return (
       <div className="page">
@@ -87,7 +87,7 @@ const routes = createRoutes({
 @Host("div")
 export class App extends Component {
   router = this.use(Router);
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   render() {
     return (
       <div className="app">

@@ -35,6 +35,8 @@ const EXPECTED = [
   "renderPage",
   "renderDocument",
   "hydrateRoot",
+  "ServerRedirect",
+  "captureServerRedirect",
   // decorators
   "state",
   "persist",

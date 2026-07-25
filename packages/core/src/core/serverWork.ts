@@ -41,6 +41,16 @@ export interface ServerWork {
    * unbounded.
    */
   done: boolean;
+  /**
+   * Set when something in the tree asked, during this server render, to redirect
+   * the request elsewhere — a route guard sending an unauthenticated visitor to
+   * `/login`, say. `renderToString` turns a set value into a thrown `ServerRedirect`
+   * instead of returning markup, so the Node layer can answer with a 302 and the
+   * browser actually navigates (rather than being handed a page for the wrong URL,
+   * which would then snap back on hydration). First writer wins — see
+   * `captureServerRedirect`. `undefined` means "render the page normally".
+   */
+  redirect?: string;
 }
 
 let current: ServerWork | undefined;

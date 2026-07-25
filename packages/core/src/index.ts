@@ -21,6 +21,11 @@ export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";
 // them (apps/playground-ssr); until then the tests reached them by path.
 export { renderToString, renderPage } from "./hydration/ssr";
 export type { RenderedPage } from "./hydration/ssr";
+// A route guard (or any tree code) can ask a server render to redirect instead of
+// producing a page. `renderToString` throws `ServerRedirect`; catch it at the
+// server boundary and answer with a 302. `captureServerRedirect` is the low-level
+// hook the router uses to record one. See hydration/serverRedirect.ts.
+export { ServerRedirect, captureServerRedirect } from "./hydration/serverRedirect";
 export { renderDocument } from "./hydration/document";
 export type { DocumentOptions } from "./hydration/document";
 export { hydrateRoot } from "./hydration/hydrate";
@@ -34,6 +39,11 @@ export type {
   RamondaNode,
   ComponentChild,
   ComponentClassKind,
+  // The side a lifecycle is running on. `@create`/`@mount`/`@destroy` receive it
+  // as their argument, so a shared method can branch (e.g. skip a fetch on the
+  // server) without a `typeof window` check — unreliable anyway, since SSR runs
+  // under a DOM shim where `window` exists.
+  RenderEnv,
 } from "./types/vdom";
 export { h } from "./vdom/h";
 export * from "./global";
@@ -49,21 +59,33 @@ if (__DEV__) {
   // dependency on devtools (it is a devDependency the docs even stub out), and this
   // keeps `@ramonda/devtools` from becoming a resolution requirement for every
   // package that type-checks core's source.
-  const devtoolsSpecifier = "@ramonda/devtools";
-  import(/* @vite-ignore */ devtoolsSpecifier).then(() => {
-    if (!document.querySelector("ramonda-devtools")) {
-      const devTools = document.createElement("ramonda-devtools");
-      document.body.appendChild(devTools);
-    }
+  //
+  // Browser only: on the server there is no `document` to attach the panel to.
+  // And `.catch` is not optional — devtools is genuinely optional, so a project
+  // that never installed it (e.g. a scaffold with tests but no devtools add-on)
+  // must not eat an unhandled "Cannot find package '@ramonda/devtools'" rejection.
+  if (typeof document !== "undefined") {
+    const devtoolsSpecifier = "@ramonda/devtools";
+    import(/* @vite-ignore */ devtoolsSpecifier)
+      .then(() => {
+        if (!document.querySelector("ramonda-devtools")) {
+          const devTools = document.createElement("ramonda-devtools");
+          document.body.appendChild(devTools);
+        }
 
-    window.addEventListener("keydown", (e) => {
-      // Check for Alt + D (`code` is more stable than `key`).
-      if (e.altKey && e.code === "KeyD") {
-        console.log("🌸 Ramonda Core: Alt+D pressed, sending the signal...");
-        window.dispatchEvent(new CustomEvent("ramonda:toggle-devtools"));
-      }
-    });
-  });
+        window.addEventListener("keydown", (e) => {
+          // Check for Alt + D (`code` is more stable than `key`).
+          if (e.altKey && e.code === "KeyD") {
+            console.log("🌸 Ramonda Core: Alt+D pressed, sending the signal...");
+            window.dispatchEvent(new CustomEvent("ramonda:toggle-devtools"));
+          }
+        });
+      })
+      .catch(() => {
+        // No devtools installed (or it failed to load) → no in-page inspector.
+        // That is a fine state, not an error worth surfacing.
+      });
+  }
 }
 
 export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {

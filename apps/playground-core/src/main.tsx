@@ -1,5 +1,5 @@
 import { Component, bootstrap, state } from "@ramonda/core";
-import { Router, RouteOutlet, RouteHook, Link } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Link } from "@ramonda/router";
 import { ThemeProvider, ThemedBadge } from "./theme";
 import { routes } from "./routes";
 import "./styles";
@@ -16,7 +16,7 @@ import "./styles";
 
 /* ── Nav bar (Links + back/forward + live pathname) ────────────────────── */
 class NavBar extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   render() {
     return (
       <nav className="nav">

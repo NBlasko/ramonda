@@ -1,8 +1,8 @@
 import { Component } from "@ramonda/core";
-import { Link, RouteHook } from "@ramonda/router";
+import { Link, Navigator } from "@ramonda/router";
 
 export class NotFoundPage extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   render() {
     return (
       <div className="page">

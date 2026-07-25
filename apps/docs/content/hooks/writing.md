@@ -16,12 +16,10 @@ interface CounterOptions {
 }
 
 export class Counter extends Hook<CounterOptions> {
-  @state count = 0;
-
-  @create
-  seed() {
-    this.count = this.options.start;
-  }
+  // Read the option straight into state — `this.options` is ready before the
+  // field initializers run. No need to seed a placeholder and copy it over in
+  // `@create`.
+  @state count = this.options.start;
 
   increment() {
     this.count = this.count + 1;
@@ -63,7 +61,7 @@ A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
 export class Pagination extends Hook<PaginationOptions> {
-  private route = this.use(RouteHook);
+  private route = this.use(Navigator);
   // …
 }
 ```

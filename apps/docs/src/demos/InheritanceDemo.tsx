@@ -1,4 +1,4 @@
-import { Component, Host, state, create } from "@ramonda/core";
+import { Component, Host, state } from "@ramonda/core";
 
 // The unit of reuse is the CLASS, and classes extend each other. That is why
 // Ramonda needs no fragments: in a framework whose unit is a function, reuse
@@ -7,10 +7,6 @@ import { Component, Host, state, create } from "@ramonda/core";
 @Host("div")
 class Badge extends Component<{ label: string }> {
   @state clicks = 0;
-
-  @create init() {
-    this.clicks = 0;
-  }
 
   bump() {
     this.clicks = this.clicks + 1;
@@ -31,7 +27,7 @@ class Badge extends Component<{ label: string }> {
 }
 
 // Overrides ONE method. No constructor, no super() call to remember, and the
-// inherited @state and @create keep working.
+// inherited @state keeps working.
 class LoudBadge extends Badge {
   protected decorate(text: string) {
     return <strong>{super.decorate(text)}!</strong>;

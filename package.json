@@ -10,7 +10,7 @@
     "format:check": "biome format .",
     "check-types": "turbo run check-types",
     "changeset": "changeset",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.5",

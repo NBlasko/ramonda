@@ -8,11 +8,11 @@ order: 72
 # Reading the URL
 
 To read the current URL inside a component — the `id` in `/players/9`, a `?query`, a
-`#hash` — use `RouteHook`:
+`#hash` — use `Navigator`:
 
 ```tsx
 export class Player extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
 
   render() {
     const { id } = this.route.params<{ id: string }>();
@@ -47,6 +47,43 @@ which is right, it isn't part of any route.
 
 They come out of a URL, so they are strings. Parse them where you use them, and treat
 a missing or malformed one as a real possibility — a URL is user input.
+
+## Keep UI state in the URL
+
+A tab, a filter, a search query — anything you'd reach for `@state` to hold can instead
+live in the URL. Then it survives a reload, it's shareable as a link, and Back undoes
+it, all for free. Read it with `searchParams`, and change it with `updateSearchParams`:
+
+```tsx
+export class Filters extends Component {
+  route = this.use(Navigator);
+
+  setColor(color: string) {
+    this.route.updateSearchParams((prev) => ({ ...prev, color }));
+  }
+  setSize(size: string) {
+    this.route.updateSearchParams((prev) => ({ ...prev, size }));
+  }
+}
+```
+
+Three things make this the right tool for fast-changing state like a filter panel:
+
+- **It touches only the query.** `pathname` doesn't change, so the route never
+  re-matches — no page swap, cheap on every keystroke. (Routes match on the path only;
+  the query is never part of a route pattern.)
+- **It stays put.** No scroll to the top, so filtering a long table doesn't yank you
+  away from it. Pass `{ scroll: true }` on the rare time you want the jump.
+- **It's race-free.** Give it a function and it receives the *freshest* params, so two
+  filters changed in the same instant don't clobber each other — the second reads the
+  first's write. This is why the functional form matters: `setColor` and `setSize`
+  firing together both land, instead of one silently dropping the other.
+
+Pass a plain object instead of a function to replace the query outright. And by default
+each change is a new history entry, so Back steps through them; pass `{ replace: true }`
+(e.g. while someone is typing) to avoid filling the history.
+
+The same `updateHashTags` exists for the hash, with the same options.
 
 ## Next
 

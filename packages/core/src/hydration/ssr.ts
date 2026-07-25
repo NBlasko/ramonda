@@ -1,4 +1,5 @@
 import { mountNode } from "../core/DiffAndMerge";
+import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
@@ -41,6 +42,10 @@ async function drainServerWork(work: ServerWork): Promise<void> {
     // Renders scheduled by the last batch, and the mounts they queue — which is
     // where the next round's work gets registered.
     await flushTaskQueue();
+
+    // A guard already decided this request is going elsewhere; the page about to
+    // be built will be thrown away for a 302, so stop draining work for it.
+    if (work.redirect !== undefined) return;
 
     const pending = takeServerWork(work);
     if (pending.length === 0) return;
@@ -115,6 +120,13 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
     finishServerWork(work);
   }
 
+  // A guard asked to send the request elsewhere. The markup built above is for the
+  // wrong URL, so it is discarded: throw instead of returning it, and let the
+  // server boundary translate that into a redirect response. See serverRedirect.ts.
+  if (work.redirect !== undefined) {
+    throw new ServerRedirect(work.redirect);
+  }
+
   stampBlobs(container);
   return container.innerHTML;
 }
@@ -159,21 +171,23 @@ export interface RenderedPage {
 export async function renderPage(vnode: ComponentChild): Promise<RenderedPage> {
   resetHead();
 
-  const body = await renderToString(vnode);
+  try {
+    const body = await renderToString(vnode);
 
-  const tags = Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
-  const page: RenderedPage = {
-    body,
-    title: document.title,
-    head: tags.map((tag) => tag.outerHTML).join(""),
-  };
-
-  // Also cleared afterwards, once the markup is safely captured. The reset above
-  // is the one that guarantees correctness; this one keeps a long-lived server
-  // process from carrying a rendered page's tags in its document between
-  // requests, where anything else reading the head would see them.
-  resetHead();
-  return page;
+    const tags = Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
+    return {
+      body,
+      title: document.title,
+      head: tags.map((tag) => tag.outerHTML).join(""),
+    };
+  } finally {
+    // Cleared once the markup is safely captured — and in a `finally` so a render
+    // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
+    // so left its head tags behind) does not leak them into the next request. The
+    // reset above is the one that guarantees correctness; this keeps a long-lived
+    // server process from carrying a rendered page's tags between requests.
+    resetHead();
+  }
 }
 
 /** Clears the tags a previous `Head` left behind, and the title with them. */

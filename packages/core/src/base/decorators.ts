@@ -474,6 +474,10 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
  * component that never finished initialising. So `@destroy` must tolerate a
  * half-built instance. That was chosen over never cleaning up such a component,
  * because whatever `@create` took would otherwise leak for the life of the page.
+ *
+ * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
+ * as an argument, for the rare shared init that must branch on where it runs.
+ * Declaring the parameter is optional.
  */
 export const create = createLifecycleDecorator("creates", "create");
 /**
@@ -483,13 +487,19 @@ export const create = createLifecycleDecorator("creates", "create");
  * Within one commit: every child's `@mount` before its parent's, and a
  * component's `@mount` before its effects, so `@onElement` listeners are already
  * attached. A component torn down before the commit finishes never mounts at all.
+ *
+ * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
+ * as an argument, so a shared mount can skip a browser-only step (e.g. a fetch)
+ * on the server without a `typeof window` check. Declaring the parameter is
+ * optional.
  */
 export const mount = createLifecycleDecorator("mounts", "mount");
 /**
  * Runs on teardown, while reactive dependencies are still readable.
  *
  * Runs exactly once, and also for a component whose BUILD failed — see `create`.
- * A throw here is reported and does not stop the rest of the cleanup.
+ * A throw here is reported and does not stop the rest of the cleanup. Receives the
+ * render side (`env: RenderEnv`) as an argument, like `@create`/`@mount`.
  */
 export const destroy = createLifecycleDecorator("destroys", "destroy");
 

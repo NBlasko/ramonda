@@ -1,8 +1,8 @@
 import { Component } from "@ramonda/core";
-import { Link, RouteHook } from "@ramonda/router";
+import { Link, Navigator } from "@ramonda/router";
 
 export class UserPage extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
   render() {
     const id = this.route.params<{ id: string }>().id;
     return (
@@ -10,7 +10,7 @@ export class UserPage extends Component {
         <h2>User Profile</h2>
         <p className="muted">
           Route param <code>:id</code> = <strong>{id}</strong>
-          &nbsp;(from &lt;Router&gt; match → RouteHook.params)
+          &nbsp;(from &lt;Router&gt; match → Navigator.params)
         </p>
         <div className="row">
           <Link href="/users/7" className="navlink">

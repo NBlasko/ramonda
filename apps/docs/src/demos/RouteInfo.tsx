@@ -1,15 +1,15 @@
 import { Component, Host } from "@ramonda/core";
-import { RouteHook, Link } from "@ramonda/router";
+import { Navigator, Link } from "@ramonda/router";
 
 // A live one: this page is served by a Ramonda router, so the hook below is
 // reading the real navigation state of the site you are on. Click the links and
 // watch it change without a page load.
 //
-// `RouteHook` is a hook, not a component, so it adds no element — it just gives
+// `Navigator` is a hook, not a component, so it adds no element — it just gives
 // the component the current route.
 @Host("div")
 export class RouteInfo extends Component {
-  route = this.use(RouteHook);
+  route = this.use(Navigator);
 
   render() {
     const query = Object.entries(this.route.searchParams);

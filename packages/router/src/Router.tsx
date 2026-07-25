@@ -1,8 +1,18 @@
-import { Component, Hook, createContext, state, compute, create, destroy, onWindow } from "@ramonda/core";
+import {
+  Component,
+  Hook,
+  createContext,
+  state,
+  compute,
+  create,
+  destroy,
+  onWindow,
+  captureServerRedirect,
+} from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
 import { parseUrl } from "./urlUtils";
 import { matchCompiled, type RouteConfig, type RouteParams } from "./match";
-import type { HashTag, RouterState } from "./types";
+import type { HashTag, HashTagsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
 /**
  * What a <Router> publishes to its whole subtree. Split into separate keys on
@@ -110,13 +120,59 @@ export class Router extends Hook {
    */
   @state private routeState: RouterState = parseUrl();
 
+  /**
+   * On a server render this is a function that records a redirect for the request;
+   * on the client it is `undefined`. Captured here, at construction, because that
+   * is inside the synchronous server-mount window where the render's redirect slot
+   * is reachable — and the captured closure keeps working when a guard fires later
+   * from an async `@mount`. See core's `captureServerRedirect`.
+   */
+  private serverRedirect = captureServerRedirect();
+
   /** Stable for this Router's lifetime, so consumers never see a new identity. */
-  private nav = createNavigator({
-    read: () => this.routeState,
-    write: (next) => {
-      this.routeState = next;
+  private nav = createNavigator(
+    {
+      read: () => this.routeState,
+      write: (next) => {
+        this.routeState = next;
+      },
     },
-  });
+    this.serverRedirect,
+  );
+
+  // Reading the URL and navigating — the same surface `Navigator` exposes, so the
+  // component that mounts the Router can read and navigate directly without also
+  // using a Navigator. It reads its own `routeState` (not context), because the
+  // Router sits ABOVE its own provider. The one thing missing is `params()`: those
+  // come from a <RouteOutlet> below, so only a Navigator under an outlet has them.
+  get pathname(): string {
+    return this.routeState.baseUrl;
+  }
+  get searchParams(): Record<string, string> {
+    return this.routeState.queryParams;
+  }
+  get hashTags(): HashTag[] {
+    return this.routeState.hashTags;
+  }
+
+  push(href: string, opts?: { scroll?: boolean }): void {
+    this.nav.push(href, opts);
+  }
+  replace(href: string, opts?: { scroll?: boolean }): void {
+    this.nav.replace(href, opts);
+  }
+  updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
+    this.nav.updateSearchParams(next, opts);
+  }
+  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void {
+    this.nav.updateHashTags(next, opts);
+  }
+  back(): void {
+    this.nav.back();
+  }
+  forward(): void {
+    this.nav.forward();
+  }
 
   /**
    * Client-only on purpose. `@create` defaults to `env: "shared"`, which runs on
@@ -212,15 +268,16 @@ export class RouteOutlet extends Component<RouteOutletProps> {
 }
 
 /**
- * Reactive router readers + imperative navigation (the useRouter/useSearchParams
- * /usePathname/useParams equivalents). Needs a <Router> ancestor.
+ * Reactive router readers (pathname, searchParams, hashTags, params) plus
+ * imperative navigation (push, replace, updateSearchParams, …). Needs a <Router>
+ * ancestor.
  *
  * Each getter reads one context key, so a component using only `pathname`
  * re-renders on a path change and ignores query-only ones. `params()` reads a
  * different context, published by the enclosing <RouteOutlet> — so chrome above
  * the outlet can use everything here except `params()`.
  */
-export class RouteHook extends Hook {
+export class Navigator extends Hook {
   private ctx = this.use(RouteContext);
   private paramsCtx = this.use(ParamsContext);
 
@@ -244,6 +301,12 @@ export class RouteHook extends Hook {
   }
   replace(href: string, opts?: { scroll?: boolean }): void {
     this.ctx.nav.replace(href, opts);
+  }
+  updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
+    this.ctx.nav.updateSearchParams(next, opts);
+  }
+  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void {
+    this.ctx.nav.updateHashTags(next, opts);
   }
   back(): void {
     this.ctx.nav.back();

@@ -84,6 +84,19 @@ Mounting a second `Router` while one is live throws — there is a single source
 truth for the URL, and two would disagree. (Unmounting one and mounting another is
 fine, so tests and hot reload work.)
 
+## Why route through it at all
+
+You could set `window.location` yourself. What the router buys you is that **every
+change to the URL goes through one channel**, and each one starts from the freshest
+state — even the imperative `push` and a `<Link>` click share it. So two navigations
+that land in the same tick serialize instead of clobbering each other: no lost update
+where one write reads stale state and overwrites the other. URL bugs that only show up
+under fast clicks or async races simply don't have a place to happen.
+
+The other half is that **the URL is a place to keep state**. A selected tab, an open
+filter, a search query — put it in the URL and it survives a reload, it's shareable as
+a link, and Back undoes it. See [keeping state in the URL](/routing/params#keep-ui-state-in-the-url).
+
 ## Next
 
 - [Links](/routing/links) — moving around without breaking what a real link does.

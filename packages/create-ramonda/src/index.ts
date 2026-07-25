@@ -18,20 +18,26 @@ const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = resolve(here, "..", "templates");
 
 // Version specifiers written into the generated package.json. Kept together so a
-// release only has to touch this block. `^0.0.1` pins to 0.0.1 today and widens
-// automatically once minor versions ship.
+// release only has to touch this block.
+//
+// `@ramonda/*` use `~0.0.1`, NOT `^0.0.1`: on a `0.0.z` version the caret pins to
+// that exact patch (`^0.0.1` === only 0.0.1), so a scaffold would never pick up
+// 0.0.2 — including whatever new API a freshly-published template already uses.
+// The tilde is `>=0.0.1 <0.1.0`, so a scaffold gets the latest 0.0.x, and the
+// scaffolder itself still gates the 0.1 / 1.0 line by bumping this when it adopts one.
 const V = {
-  ramonda: "^0.0.1",
+  ramonda: "~0.0.1",
   vite: "^7.3.6",
   typescript: "^5.9.3",
   typesNode: "^26.1.1",
   vitest: "^3.2.4",
   jsdom: "^28.0.0",
   esbuild: "^0.28.1",
+  biome: "^2.5.5",
 };
 
 type Mode = "spa" | "ssr";
-type AddOn = "router" | "lens" | "testing" | "devtools";
+type AddOn = "router" | "lens" | "testing" | "devtools" | "biome";
 
 interface Deps {
   dependencies: Record<string, string>;
@@ -115,13 +121,14 @@ async function main(): Promise<void> {
 
   const addons = guard(
     await p.multiselect({
-      message: "Add packages? " + pc.dim("(space to toggle, enter to confirm)"),
+      message: "Add packages and tooling? " + pc.dim("(space to toggle, enter to confirm)"),
       required: false,
       options: [
         { value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" },
         { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
         { value: "testing" as AddOn, label: "Testing", hint: "vitest + @ramonda/testing-library" },
         { value: "devtools" as AddOn, label: "Devtools", hint: "@ramonda/devtools — dev inspector" },
+        { value: "biome" as AddOn, label: "Biome", hint: "@biomejs/biome — lint + format in one tool" },
       ],
       initialValues: ["devtools" as AddOn],
     }),
@@ -208,14 +215,25 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     writeTestingFiles(targetDir, mode);
   }
 
+  if (addons.includes("biome")) {
+    deps.devDependencies["@biomejs/biome"] = V.biome;
+    writeBiomeConfig(targetDir);
+  }
+
   // Merge into the template's package.json, keeping its scripts.
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>;
   pkg.name = name;
   pkg.dependencies = sortKeys({ ...(pkg.dependencies as object), ...deps.dependencies });
   pkg.devDependencies = sortKeys({ ...(pkg.devDependencies as object), ...deps.devDependencies });
-  if (addons.includes("testing")) {
-    pkg.scripts = { ...(pkg.scripts as object), test: "vitest" };
+  const extraScripts: Record<string, string> = {};
+  if (addons.includes("testing")) extraScripts.test = "vitest";
+  if (addons.includes("biome")) {
+    extraScripts.lint = "biome lint .";
+    extraScripts.format = "biome format --write .";
+  }
+  if (Object.keys(extraScripts).length > 0) {
+    pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   }
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 }
@@ -253,6 +271,25 @@ test("renders the heading", () => {
 });
 `,
   );
+}
+
+/**
+ * A Biome config, dropped in when the Biome add-on is picked — one tool for both
+ * linting and formatting. `preset: "recommended"` is Biome 2.x's non-deprecated way
+ * to turn on the recommended lint rules; `vcs.useIgnoreFile` keeps it off .gitignored
+ * paths (dist, node_modules). The schema version tracks V.biome so the two never drift.
+ */
+function writeBiomeConfig(targetDir: string): void {
+  const version = V.biome.replace(/^\D*/, "");
+  const config = {
+    $schema: `https://biomejs.dev/schemas/${version}/schema.json`,
+    vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },
+    files: { ignoreUnknown: true },
+    formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 120 },
+    linter: { enabled: true, rules: { preset: "recommended" } },
+    javascript: { formatter: { quoteStyle: "double" } },
+  };
+  writeFileSync(join(targetDir, "biome.json"), JSON.stringify(config, null, 2) + "\n");
 }
 
 function sortKeys(obj: Record<string, string>): Record<string, string> {

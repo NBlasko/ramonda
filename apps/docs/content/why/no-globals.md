@@ -29,7 +29,7 @@ data?" bug impossible rather than merely discouraged.
 
 This is why the [router](/routing) is a hook you add with `this.use(Router)` rather
 than a global you import. The route state lives on the tree like any other state;
-navigation is reached through `RouteHook` from inside a component, not from a free
+navigation is reached through `Navigator` from inside a component, not from a free
 function. If a plain function needs to navigate, you pass it a callback — the component
 calling it has the hook.
 
