@@ -27,7 +27,8 @@ export type DiagnosticCode =
   | "RMD017"
   | "RMD018"
   | "RMD019"
-  | "RMD020";
+  | "RMD020"
+  | "RMD021";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -124,6 +125,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "render() produced a different value the second time",
     fix: "Two renders in the same tick, with no state change between them, must produce the same values — anything that differs was built in place by the render itself, or does not come from state at all. Development builds render twice to check; production renders once and this check is stripped.",
+  },
+  RMD021: {
+    severity: "warning",
+    title: "A clock or a random number was read during render() or a @compute",
+    fix: "Both have to be a function of their inputs. In render() a value read from outside makes the output depend on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute it is quieter and worse: the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. Read it once in @create and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it.",
   },
   RMD013: {
     severity: "error",

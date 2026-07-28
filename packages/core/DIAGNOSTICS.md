@@ -53,6 +53,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | warning | A component updated while its element is not in the document |
 | `RMD020` | warning | `render()` produced a different value the second time |
+| `RMD021` | warning | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
 
 ### RMD001 — State written during render()
 
@@ -604,7 +605,13 @@ still disconnected really is orphaned.
 A development build calls each component's `render()` **twice** and compares the two
 outputs. With no state change between the two calls, anything that differs was built
 by the render itself — an inline function, a rebuilt object or array — or does not
-come from state at all (`Date.now()`, `Math.random()`).
+come from state at all (`Math.random()`, `performance.now()`, `new Date()`).
+
+**It does not catch a millisecond clock**, and that is worth stating rather than
+discovering: the two renders are microseconds apart, so `Date.now()` reads the same
+both times — measured, two consecutive calls differ in 0.006% of 200,000 tries.
+RMD007 catches those, because a server render and its hydration are milliseconds to
+seconds apart. Neither check covers the class alone.
 
 **Why twice rather than comparing against the previous render.** That comparison
 conflates "created in place" with "genuinely changed", and cannot tell them apart at
@@ -635,3 +642,64 @@ a `fetch()` or a `console.log` in a render really does happen twice in developme
 The framework's own test suites turn the check off in their setup files
 (`strictRender.enabled = false`), because they observe render ORDER by logging from
 `render()` — precisely the impurity this reports.
+
+### RMD021 — randomness during a render, a @compute, a memoised handler or a hook's props
+
+`Math.random`, `crypto.randomUUID` and `crypto.getRandomValues` are patched in a
+development build (the trick `timerGuard` already uses) and report when they are called
+while `renderPhase`, `computePhase`, `memoPhase` or `propsPhase` is set. Four messages,
+because the consequence differs: a render disagrees with its own hydration, a `@compute`
+freezes the value until a dependency it READ changes, a memoised handler caches the
+value with the handler so every call uses the same one, and a hook's props callback runs
+on EVERY render, so the prop holds a different value each time — as a query key, a new
+cache entry per render.
+
+`propsPhase` is also the answer to "should the props callback run twice in a strict
+render, like `render()` does". It should not: watching the call catches the same mistake,
+and a callback may do more than build an object — running it twice would do that twice.
+
+**Why the clock is not patched**, which was the first version: a patched global catches
+the PLATFORM's calls too. An `Event` constructor stamps `timeStamp`, and under jsdom
+that is a JS-visible `Date.now()` — so raising any diagnostic during a render tripped
+it, because `ramondaLog` dispatches a `CustomEvent` for the devtools stream. Three of
+core's own diagnostic tests failed with RMD021 instead of the code they asserted. Under
+jsdom is where every app runs its tests, so that is disqualifying rather than fixable.
+Randomness has no such problem: the platform never generates it behind your back.
+
+`logger.ts` captures `crypto.randomUUID` before the patch is installed, for the same
+reason — otherwise the framework reports itself.
+
+## What is non-deterministic in JavaScript, and what catches it
+
+The inventory, because "collect how many of these exist" is the right instinct — and
+the answer is that they fall into groups with different checks:
+
+| read | RMD020 (render twice) | RMD021 (watch the call) |
+|---|---|---|
+| `Math.random()` | every time | yes |
+| `crypto.randomUUID()` | every time | yes |
+| `crypto.getRandomValues()` | every time | yes |
+| `new Date()` (kept as an object) | every time | — |
+| `performance.now()` | every time | — |
+| `Date.now()` | **0.006%** | — |
+| `new Date().toISOString()` | 0.091% | — |
+| `process.hrtime()` (SSR) | every time | — |
+| an app's own `let seq = 0; seq++` | every time | — |
+
+RMD021 patches only the randomness family, and that is a finding rather than a
+preference: a patched clock catches the PLATFORM's reads too. An `Event` constructor
+stamps `timeStamp`, which under jsdom is a JS-visible `Date.now()` — so any diagnostic
+raised during a render tripped it, and under jsdom is where every app runs its own
+tests. Nothing in the platform generates randomness behind your back, so that half of
+the check can be trusted.
+
+**The residual gap, stated rather than papered over:** `Date.now()` read during a render
+in a client-only app, with the value rendered. RMD020 misses it (same millisecond),
+RMD021 does not watch it, and RMD007 never sees it because there is no server render to
+disagree with. Server-render the app and RMD007 catches it immediately.
+
+Not in scope for either, and a different mistake with a different fix: reading LAYOUT
+or ambient state during a render — `getBoundingClientRect()`, `window.innerWidth`,
+`scrollY`, `localStorage`, `document.activeElement`. Those are not non-deterministic so
+much as a forced layout and a dependency on something outside the tree; `@updated` is
+where that work belongs.

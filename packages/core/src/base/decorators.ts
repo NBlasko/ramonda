@@ -9,6 +9,7 @@ import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { ramondaLog } from "../debug/logger";
 import { computePhase } from "../debug/renderPhase";
+import { memoPhase } from "../debug/purityGuard";
 import {
   assertMethod,
   assertField,
@@ -728,8 +729,23 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
     if (entry) {
       entry.used = true;
     } else {
-      const fn = originalMethod.call(this, ...args);
-      entry = { fn, used: true };
+      // Named as the phase it is, so randomness read while BUILDING the handler is
+      // reported against the builder rather than against the render that asked for
+      // it (RMD021). The distinction matters: whatever the builder captures is cached
+      // with the handler, so it is frozen for every later call.
+      const previousMemoPhase = __DEV__ ? memoPhase.label : undefined;
+      if (__DEV__) {
+        memoPhase.label = `${(this as { constructor: { name: string } }).constructor.name}.${String(context.name)}`;
+      }
+
+      let fn: unknown;
+      try {
+        fn = originalMethod.call(this, ...args);
+      } finally {
+        if (__DEV__) memoPhase.label = previousMemoPhase;
+      }
+
+      entry = { fn: fn as (...a: any[]) => any, used: true };
       instanceMap.set(key, entry);
     }
 

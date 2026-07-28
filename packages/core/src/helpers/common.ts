@@ -2,6 +2,28 @@ import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../co
 import type { HookClassKind } from "../types/commonTypes";
 import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
+import { propsPhase } from "../debug/purityGuard";
+
+/**
+ * Runs the props callback with the phase marked, so randomness inside a bag is reported
+ * against the bag (RMD021) rather than against nothing.
+ *
+ * Marking beats double-calling: a callback may do more than build an object, and running
+ * it twice would do that twice. Watching the call catches the same mistake without it.
+ */
+function buildProps(that: object, hookName: string, hookProps: unknown): any {
+  if (typeof hookProps !== "function") return hookProps ?? {};
+
+  if (!__DEV__) return (hookProps as (bag: unknown) => unknown)(that);
+
+  const previous = propsPhase.label;
+  propsPhase.label = `${that.constructor.name} → ${hookName}`;
+  try {
+    return (hookProps as (bag: unknown) => unknown)(that);
+  } finally {
+    propsPhase.label = previous;
+  }
+}
 
 export function useCommon<T extends BaseHook<any>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
@@ -22,7 +44,7 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const runtime = that[GLOBAL_RUNTIME];
 
-  const initialProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
+  const initialProps = buildProps(that, hook.name, hookProps);
 
   const hookInstance = new hook(runtime, initialProps);
   const hookRuntime = hookInstance[HOOK_RUNTIME];
@@ -42,7 +64,7 @@ export function useCommon<T extends BaseHook<any>, P>(
   childHooks.push(hookInstance);
 
   const updateFn = () => {
-    const nextProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
+    const nextProps = buildProps(that, hook.name, hookProps);
     const prevProps = hookRuntime.rawProps;
     hookRuntime.rawProps = nextProps;
     const sigs = hookRuntime.propsSignals;

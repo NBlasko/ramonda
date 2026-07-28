@@ -91,6 +91,53 @@ rerender({ start: 99 }); // like a parent passing new props
 `current` stays the same object between renders — a hook is built once and lives as
 long as its owner; only its fields change.
 
+## When the bag should stay the same object
+
+The callback runs on every render of the owner, so the bag it returns is a new object
+each time, with new arrays and new closures inside it. That is almost always fine — the
+values are equal, and the framework compares each prop and wakes only the signals whose
+value actually moved.
+
+It stops being fine when something **reactive** reads the bag. A `@compute` that reads a
+rebuilt array recomputes every render, so its cache does nothing; a subscription whose
+`connect` reads one disconnects and reconnects every render. Two ways to fix that, both
+using what you already have.
+
+**A method instead of a closure.** It reads `this` when it is called, so there is
+nothing to capture — and methods are bound, so the identity never changes:
+
+```tsx
+load(ctx: FetchContext) {
+  return api.getUser(this.props.id, ctx);   // read at call time
+}
+
+private user = this.use(Query, (self: UserCard) => ({
+  key: ["user", self.props.id],
+  fetch: self.load,                          // the same function every render
+}));
+```
+
+**A [`@compute`](/concepts/compute) for the whole bag**, which fixes the arrays and the
+closures in one move:
+
+```tsx
+@compute get userQuery() {
+  return { key: ["user", this.props.id], fetch: (ctx) => api.getUser(this.props.id, ctx) };
+}
+
+private user = this.use(Query, (self: UserCard) => self.userQuery);
+```
+
+A compute recomputes only when something it **read** changes, so on an unrelated render
+the bag, the key array and the closure are all the same objects as last time. Measured
+in core's own tests: three renders, one bag.
+
+**The rule for a compute is one sentence: read what you need.** If it is reactive, the
+compute refreshes itself when it moves. If it is *not* reactive — `Date.now()`, a module
+variable, the DOM — the compute freezes it at the moment it was first asked for and
+nothing ever refreshes it. Development builds report randomness read inside a compute
+for exactly that reason ([RMD021](/reference/diagnostics)).
+
 ## Next
 
 - [Your own decorators](/hooks/own-decorators) — packaging a subscription.

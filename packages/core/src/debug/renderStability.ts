@@ -13,9 +13,16 @@ import { diagnose } from "./diagnostics";
  * **same tick, with no state change between them**, cannot be confused that way —
  * any difference is, by definition, freshly built. No false positives.
  *
- * It also catches things the previous-render comparison cannot see at all: a render
- * that is not deterministic (`Date.now()`, `Math.random()`), reported here without
- * needing an SSR round trip to disagree with.
+ * It also catches something the previous-render comparison cannot see at all: a render
+ * that is not deterministic, reported without needing an SSR round trip to disagree
+ * with. But only the part of that class which varies WITHIN a tick —
+ * `Math.random()`, `performance.now()` and `new Date()` (which is a fresh object, so its
+ * identity differs) are caught every time. A **millisecond clock is not**: measured over
+ * 200,000 tries, two consecutive `Date.now()` calls differ in 0.006% of them — the two
+ * renders happen microseconds apart, well inside one millisecond. `RMD007` is the check
+ * that catches those, because a server render and its hydration are milliseconds to
+ * seconds apart, not microseconds. The two checks cover the class between them; neither
+ * covers it alone.
  *
  * ## Why it can afford to run on every render
  *
@@ -128,9 +135,11 @@ function classify(a: unknown, b: unknown): Kind | undefined {
     return looksRebuilt(a, b) ? "object" : "nondeterministic";
   }
 
-  // Two primitives that differ between two calls in the same tick: the render is
-  // not a function of state. `Date.now()` and `Math.random()` are the whole class,
-  // and this catches them without waiting for hydration to disagree (RMD007).
+  // Two primitives that differ between two calls in the same tick: the render is not
+  // a function of state. `Math.random()` and `performance.now()` land here every
+  // time; `Date.now()` almost never does, because the two calls are inside the same
+  // millisecond — see the note at the top, and RMD007 for the check that does catch
+  // a clock.
   const bothPrimitive = !isObjectish(a) && !isObjectish(b);
   return bothPrimitive ? "nondeterministic" : undefined;
 }

@@ -169,6 +169,17 @@ Also on the client: `setData` (write straight into the cache — a fetch in flig
 abandoned, because an explicit write is newer information than a request made before
 it), `peek`, `invalidate`, `remove` for a logout, and `cancel`.
 
+## When the options should be one stable object
+
+`key` is an array literal and `fetch` is usually a closure, so the options object is
+rebuilt on every render of the owner. `Query` is built for that — it compares the key
+part by part, measured at 31 ns — so there is nothing to do in the ordinary case.
+
+If you want the whole thing stable anyway (a `@compute` of your own reads it, say), the
+two forms are in [writing a hook](/hooks/writing#when-the-bag-should-stay-the-same-object):
+a method instead of a closure for `fetch`, or a `@compute` holding the options, which
+makes the key and the closure stable together.
+
 ## Next
 
 - [Mutations](/query/mutations) — writing, and rolling back.

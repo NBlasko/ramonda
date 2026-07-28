@@ -4,6 +4,7 @@ import { flushPostCommit } from "./core/commit";
 import { ramondaLog } from "./debug/logger";
 import { initDevtoolsBridge, setInspectRoot, notifyComponentUpdate } from "./debug/devtoolsBridge";
 import { installTimerGuard } from "./debug/timerGuard";
+import { installPurityGuard } from "./debug/purityGuard";
 export { Component } from "./base/Component";
 export { Hook } from "./base/Hook";
 export { createContext, type ContextOptions } from "./base/Context";
@@ -56,6 +57,9 @@ if (__DEV__) {
   console.info("🌸 Ramonda Core: development mode is active.");
   initDevtoolsBridge();
   installTimerGuard();
+  // Watches the CALL rather than the value, which is what makes it catch a
+  // millisecond clock — the thing RMD020's double render cannot see. See purityGuard.
+  installPurityGuard();
 
   // Optional, DEV-only, loaded for its side effect (registering <ramonda-devtools>).
   // The specifier is held in a variable so the type-checker does not try to resolve

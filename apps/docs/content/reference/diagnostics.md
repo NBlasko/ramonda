@@ -234,10 +234,15 @@ state lost, `@destroy` and `@create` run again.
 @compute get config() { … }            // ✓ recomputed only when its inputs change
 ```
 
-**A value that does not come from state** — `Date.now()`, `Math.random()`. This is the same mistake
-[RMD007](#rmd007-server-and-client-rendered-different-output) reports after a hydration mismatch,
-caught here without needing a server render to disagree with. Decide the value once in `@create` and
-keep it in `@state`.
+**A value that does not come from state** — `Math.random()`, `performance.now()`, `new Date()`. Decide
+the value once in `@create` and keep it in `@state`.
+
+Only the part of that class which varies **within a tick**, though: the two renders are microseconds
+apart, so a millisecond clock reads the same both times. Measured over 200,000 tries, two consecutive
+`Date.now()` calls differ in 0.006% of them. `Date.now()` is caught by
+[RMD007](#rmd007-server-and-client-rendered-different-output) instead — a server render and its
+hydration are milliseconds to seconds apart. The two checks cover the class between them; neither
+covers it alone.
 
 **What is deliberately not checked.** A hook's props callback exists in order to re-run on every
 render of its owner — that is its contract — so the bag it returns is a fresh object by design, and so
@@ -263,3 +268,62 @@ bootstrap(<App />, document.querySelector("#app")!);
 ```
 
 It is a no-op in a production build, where the check is not compiled in at all.
+
+## RMD021 — randomness during a render, a `@compute`, a memoised handler or a hook's props
+
+`Math.random()`, `crypto.randomUUID()` and `crypto.getRandomValues()` are reported when
+they are called while one of the four pure phases is running. The same call fails
+differently in each, so the message differs with it:
+
+- **In a `render()`** the output depends on when it ran, so a server render and its
+  hydration disagree and the markup is thrown away
+  ([RMD007](#rmd007-server-and-client-rendered-different-output)).
+- **In a [`@compute`](/concepts/compute)** it is quieter and worse: the answer is
+  cached, so the value is frozen at the moment it was first asked for, and only a
+  dependency the compute actually READ can refresh it — which may be never.
+- **In a [`@memoizedHandler`](/concepts/events) builder** it is cached *with the
+  handler*, keyed by the arguments, so every call to that handler uses the one value.
+  The builder runs during a render, so without its own report the fix would look like a
+  render problem.
+- **In a [hook's props callback](/hooks/writing)** it is the sharpest of the four: the
+  callback runs on every render, so the prop holds a different value every time. As a
+  [query key](/query/queries) that is a new cache entry per render and a fetch that
+  never settles.
+
+Read it once in `@create` and keep it in `@state` (or `@persist`, so it survives
+hydration), take it as a prop, or read it in the event handler that needs it.
+
+## What is non-deterministic in JavaScript, and what catches it
+
+The inventory, because "collect how many of these exist" is the right instinct — and
+the answer is that they fall into groups with different checks:
+
+| read | RMD020 (render twice) | RMD021 (watch the call) |
+|---|---|---|
+| `Math.random()` | every time | yes |
+| `crypto.randomUUID()` | every time | yes |
+| `crypto.getRandomValues()` | every time | yes |
+| `new Date()` (kept as an object) | every time | — |
+| `performance.now()` | every time | — |
+| `Date.now()` | **0.006%** | — |
+| `new Date().toISOString()` | 0.091% | — |
+| `process.hrtime()` (SSR) | every time | — |
+| an app's own `let seq = 0; seq++` | every time | — |
+
+RMD021 patches only the randomness family, and that is a finding rather than a
+preference: a patched clock catches the PLATFORM's reads too. An `Event` constructor
+stamps `timeStamp`, which under jsdom is a JS-visible `Date.now()` — so any diagnostic
+raised during a render tripped it, and under jsdom is where every app runs its own
+tests. Nothing in the platform generates randomness behind your back, so that half of
+the check can be trusted.
+
+**The residual gap, stated rather than papered over:** `Date.now()` read during a render
+in a client-only app, with the value rendered. RMD020 misses it (same millisecond),
+RMD021 does not watch it, and RMD007 never sees it because there is no server render to
+disagree with. Server-render the app and RMD007 catches it immediately.
+
+Not in scope for either, and a different mistake with a different fix: reading LAYOUT
+or ambient state during a render — `getBoundingClientRect()`, `window.innerWidth`,
+`scrollY`, `localStorage`, `document.activeElement`. Those are not non-deterministic so
+much as a forced layout and a dependency on something outside the tree; `@updated` is
+where that work belongs.
