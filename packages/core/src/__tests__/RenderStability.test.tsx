@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
+import type { RamondaNode } from "../types/vdom";
 import { list } from "../base/list";
 import { compute, memoizedHandler, state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -204,10 +205,14 @@ describe("RMD020 — values built inside render()", () => {
     }
 
     await getDOM<Table>(<Table />);
-    // `render` is a fresh arrow too — but it is the list's mapper, declared inline
-    // by design, and it is compared as part of `options`. It differs, so it IS
-    // reported; what must not be reported is `each`.
-    expect(reported()).not.toContain("loses its identity");
+    /**
+     * Nothing at all — and the mapper is the interesting half of that. `render` is a
+     * fresh arrow on every render here, and it is SUPPOSED to be: the engine reuses
+     * an item scope on `existing.item === item && !existing.dirty`, so a mapper's
+     * identity is never compared and a fresh one re-invokes nothing. Reporting it
+     * would put a warning on every list in an app.
+     */
+    expect(reported()).not.toContain("RMD020");
   });
 
   test("it reports once per place, not once per render", async () => {
@@ -274,43 +279,32 @@ describe("RMD020 — values built inside render()", () => {
   });
 });
 
-describe("RMD020 — values built inside a hook's props callback", () => {
-  class Sink extends Hook<{ config: { size: number }; label: string }> {
-    get size(): number {
-      return this.props.config.size;
+describe("what is deliberately NOT checked", () => {
+  test("a hook's props bag is not reported, however it is rebuilt", async () => {
+    /**
+     * The callback form of `this.use(Hook, …)` exists in order to re-run on every
+     * owner render — that is its contract. So the bag is a fresh object by design and
+     * so are the values in it: a fetcher closing over `self.props.id` cannot be a
+     * stable function, and a query key is an array literal that `@ramonda/query`
+     * handles on purpose.
+     *
+     * This check was implemented and then removed after auditing what it said about
+     * real code: a warning per hook per app with no action behind it. The churn is
+     * real and documented (a `@compute` bag is the cure when an effect reads it), but
+     * it is not this diagnostic's business.
+     */
+    class Sink extends Hook<{ config: { size: number }; items: number[] }> {
+      get size(): number {
+        return this.props.config.size + this.props.items.length;
+      }
     }
-  }
 
-  test("a rebuilt props object is reported, and the hook is named", async () => {
     class Panel extends Component {
       @state size = 1;
       sink = this.use(Sink, (self: Panel) => ({
         config: { size: self.size },
-        label: "fixed",
+        items: [1, 2, 3],
       }));
-
-      render() {
-        return <div>{String(this.sink.size)}</div>;
-      }
-    }
-
-    await getDOM<Panel>(<Panel />);
-
-    expect(reported()).toContain("RMD020");
-    expect(reported()).toContain("Sink");
-    expect(reported()).toContain("config");
-  });
-
-  test("scalar props are not reported", async () => {
-    class Flat extends Hook<{ size: number; label: string }> {
-      get size(): number {
-        return this.props.size;
-      }
-    }
-
-    class Panel extends Component {
-      @state size = 1;
-      sink = this.use(Flat, (self: Panel) => ({ size: self.size, label: "fixed" }));
 
       render() {
         return <div>{String(this.sink.size)}</div>;
@@ -321,22 +315,22 @@ describe("RMD020 — values built inside a hook's props callback", () => {
     expect(reported()).not.toContain("RMD020");
   });
 
-  test("a @compute bag is the cure here too", async () => {
-    class Panel extends Component {
-      @state size = 1;
-
-      @compute get config() {
-        return { size: this.size };
-      }
-
-      sink = this.use(Sink, (self: Panel) => ({ config: self.config, label: "fixed" }));
-
+  test("a vnode passed as a prop is walked, not called an object built in place", async () => {
+    // JSX IS a fresh object every render — `onLoading={<p>…</p>}` cannot be otherwise.
+    // What still counts is an inline handler INSIDE it.
+    class Panel extends Component<{ slot: RamondaNode }> {
       render() {
-        return <div>{String(this.sink.size)}</div>;
+        return <div>{this.props.slot}</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
+    class Clean extends Component {
+      render() {
+        return <Panel slot={<span>steady</span>} />;
+      }
+    }
+
+    await getDOM<Clean>(<Clean />);
     expect(reported()).not.toContain("RMD020");
   });
 });

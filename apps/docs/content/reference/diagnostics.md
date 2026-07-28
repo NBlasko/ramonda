@@ -239,9 +239,13 @@ state lost, `@destroy` and `@create` run again.
 caught here without needing a server render to disagree with. Decide the value once in `@create` and
 keep it in `@state`.
 
-The check also runs on a hook's props callback, which is the other place values are built per render:
-a props bag rebuilt with equal contents fires every key's signal, so anything reading it — an
-`@effect`, a `connect`, a `@compute` — re-runs on every render of the owner.
+**What is deliberately not checked.** A hook's props callback exists in order to re-run on every
+render of its owner — that is its contract — so the bag it returns is a fresh object by design, and so
+are the values in it: a fetcher that closes over a prop cannot be a stable function. That churn is
+real, and a [`@compute`](/concepts/compute) bag is the cure when an `@effect` or a `@compute` reads
+one, but reporting it would be a warning per hook with nothing to do about it. A **vnode** passed as a
+prop — `onLoading={<p>…</p>}` — is not reported either, for the same reason at a smaller scale: JSX is
+a fresh object every render. The check walks into it, so an inline handler inside still counts.
 
 **One thing to expect:** a `render()` with a side effect performs it twice in development. `RMD001`
 already makes a state write there an error, so "render is pure" is the rule either way — but a

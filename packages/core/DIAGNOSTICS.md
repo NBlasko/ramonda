@@ -623,8 +623,11 @@ else — components are constructed by the diff, `hostTag` is already cached, a 
 registers no signal dependencies, and `@memoizedHandler` returns the same function
 for the same arguments, so it reads as stable rather than as a fault.
 
-The same check runs on a hook's props callback (`useCommon`), which is the other place
-values are built per render.
+**Not** a hook's props callback. That was implemented and then removed after auditing
+what it said about real code: the callback exists in order to re-run per owner render,
+so the bag and the closures in it are fresh by design, and the reports had no action
+behind them. A vnode passed as a prop is likewise walked rather than called a rebuilt
+object — JSX is a fresh object every render.
 
 **The hazard, and the switch.** A render with a side effect runs it twice. RMD001
 already makes a state write there an error, so "render is pure" is the position — but

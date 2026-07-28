@@ -9,6 +9,8 @@ export { Hook } from "./base/Hook";
 export { createContext, type ContextOptions } from "./base/Context";
 export { AsyncLoad } from "./base/AsyncLoad";
 export { ErrorBoundary } from "./base/ErrorBoundary";
+// Needed to type a `fallback` written as a bound method rather than an inline arrow.
+export type { ErrorBoundaryFallbackProps } from "./base/ErrorBoundary";
 export { Ref, createRef } from "./base/Ref";
 export type { RefCallback, RefTarget } from "./base/Ref";
 export type { AsyncLoadProps, AsyncLoadFailure, Lazy } from "./base/AsyncLoad";

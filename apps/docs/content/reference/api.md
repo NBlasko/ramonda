@@ -101,7 +101,7 @@ Everything the three packages export. Each entry links to the page that explains
 `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
 `DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
 `AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
-`SubscriptionOwner` · `Disconnect` · `DevFlags`
+`SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps`
 
 ---
 

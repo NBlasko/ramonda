@@ -13,7 +13,8 @@
     "serve": "node scripts/serve.mjs",
     "manifest": "node scripts/build-manifest.mjs",
     "check-api": "node scripts/check-api-coverage.mjs",
-    "index": "pagefind --site dist"
+    "index": "pagefind --site dist",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ramonda/core": "workspace:^",
@@ -28,6 +29,7 @@
     "markdown-it": "^14.3.0",
     "pagefind": "^1.5.2",
     "shiki": "^4.3.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }

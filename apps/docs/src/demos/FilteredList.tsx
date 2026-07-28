@@ -13,15 +13,14 @@ interface Person {
 class PersonRow extends Component<{ item: Person }> {
   @state starred = false;
 
+  toggleStar() {
+    this.starred = !this.starred;
+  }
+
   render() {
     return (
       <span>
-        <button
-          type="button"
-          className="star"
-          aria-pressed={this.starred ? "true" : "false"}
-          onClick={() => (this.starred = !this.starred)}
-        >
+        <button type="button" className="star" aria-pressed={this.starred ? "true" : "false"} onClick={this.toggleStar}>
           {this.starred ? "★" : "☆"}
         </button>{" "}
         {this.props.item.name} <span className="demo-note">{this.props.item.role}</span>

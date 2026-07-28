@@ -1,4 +1,4 @@
-import { Component, Host, state, effect } from "@ramonda/core";
+import { Component, Host, state, effect, memoizedHandler } from "@ramonda/core";
 
 // An @effect runs after the DOM is committed, and again whenever a signal it
 // READ changes. Return a function and it becomes the cleanup.
@@ -25,8 +25,15 @@ export class EffectCleanup extends Component {
     this.log = [...this.log, line].slice(-4);
   }
 
+  // `@memoizedHandler`, not an inline arrow: it caches the returned function by
+  // its arguments, per instance, so the same button gets the same handler on every
+  // render. A fresh one would be re-attached to the element each time (and RMD020
+  // reports it).
+  @memoizedHandler
   switchTo(next: string) {
-    this.channel = next;
+    return () => {
+      this.channel = next;
+    };
   }
 
   render() {
@@ -34,7 +41,7 @@ export class EffectCleanup extends Component {
       <div>
         <p className="demo-row">
           {["news", "sport", "weather"].map((name) => (
-            <button type="button" disabled={this.channel === name} onClick={() => this.switchTo(name)}>
+            <button type="button" disabled={this.channel === name} onClick={this.switchTo(name)}>
               {name}
             </button>
           ))}

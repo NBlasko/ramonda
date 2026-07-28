@@ -44,6 +44,10 @@ export class LifecycleLog extends Component {
     this.shown = !this.shown;
   }
 
+  clear() {
+    this.lines = [];
+  }
+
   render() {
     return (
       <div>
@@ -51,7 +55,7 @@ export class LifecycleLog extends Component {
           <button type="button" onClick={this.toggle}>
             {this.shown ? "unmount it" : "mount it"}
           </button>
-          <button type="button" onClick={() => (this.lines = [])}>
+          <button type="button" onClick={this.clear}>
             clear log
           </button>
         </p>

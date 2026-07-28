@@ -1,4 +1,4 @@
-import { Component, state } from "@ramonda/core";
+import { Component, memoizedHandler, state } from "@ramonda/core";
 import { Link } from "@ramonda/router";
 import { Mutation, Query, QueryClientAccess, mutationOptions, queryOptions, type FetchContext } from "@ramonda/query";
 
@@ -89,6 +89,10 @@ class ProfileCard extends Component<{ id: string; label: string }> {
     }),
   );
 
+  refresh() {
+    void this.profile.refetch();
+  }
+
   render() {
     const p = this.profile;
     return (
@@ -109,7 +113,7 @@ class ProfileCard extends Component<{ id: string; label: string }> {
           status <code>{p.status}</code> · fetch <code>{p.fetchStatus}</code>
           {p.isRestored ? " · from the server" : ""}
         </p>
-        <button onClick={() => p.refetch()}>refetch (ignores staleTime)</button>
+        <button onClick={this.refresh}>refetch (ignores staleTime)</button>
       </div>
     );
   }
@@ -129,9 +133,12 @@ class FlakyCard extends Component {
     }),
   );
 
+  @memoizedHandler
   arm(count: number) {
-    failuresLeft = count;
-    this.flaky.refetch();
+    return () => {
+      failuresLeft = count;
+      void this.flaky.refetch();
+    };
   }
 
   render() {
@@ -153,8 +160,8 @@ class FlakyCard extends Component {
           failures so far: <strong>{String(q.failureCount)}</strong>
         </p>
         <div className="row">
-          <button onClick={() => this.arm(1)}>fail once, then recover</button>
-          <button onClick={() => this.arm(9)}>fail past the retry limit</button>
+          <button onClick={this.arm(1)}>fail once, then recover</button>
+          <button onClick={this.arm(9)}>fail past the retry limit</button>
         </div>
       </div>
     );
@@ -188,6 +195,10 @@ class TodoPanel extends Component {
     }),
   );
 
+  typed(event: Event) {
+    this.draft = (event.target as HTMLInputElement).value;
+  }
+
   submit() {
     const title = this.draft.trim();
     if (!title) return;
@@ -207,13 +218,7 @@ class TodoPanel extends Component {
           ))}
         </ul>
         <div className="row">
-          <input
-            value={this.draft}
-            placeholder="new todo"
-            onInput={(event: Event) => {
-              this.draft = (event.target as HTMLInputElement).value;
-            }}
-          />
+          <input value={this.draft} placeholder="new todo" onInput={this.typed} />
           <button disabled={this.add.isPending} onClick={this.submit}>
             {this.add.isPending ? "saving…" : "add"}
           </button>
@@ -246,8 +251,23 @@ export class QueryPage extends Component {
    */
   @state logCleared = 0;
 
+  @memoizedHandler
   select(id: string) {
-    this.id = id;
+    return () => {
+      this.id = id;
+    };
+  }
+
+  toggleSecond() {
+    this.second = !this.second;
+  }
+
+  togglePolling() {
+    this.pollMs = this.pollMs ? 0 : 2000;
+  }
+
+  invalidateProfiles() {
+    this.queries.client.invalidate(["profile"]);
   }
 
   clearLog() {
@@ -278,13 +298,11 @@ export class QueryPage extends Component {
           <div className="row">
             <h3>1 · cache, dedup, and a key that moves</h3>
             {["ada", "grace", "alan"].map((id) => (
-              <button disabled={this.id === id} onClick={() => this.select(id)}>
+              <button disabled={this.id === id} onClick={this.select(id)}>
                 {id}
               </button>
             ))}
-            <button onClick={() => (this.second = !this.second)}>
-              {this.second ? "one observer" : "two observers"}
-            </button>
+            <button onClick={this.toggleSecond}>{this.second ? "one observer" : "two observers"}</button>
           </div>
           <p className="muted small">
             Switch person and come back: within <code>staleTime</code> (10s) the cache answers and the log stays quiet.
@@ -314,10 +332,8 @@ export class QueryPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>4 · triggers</h3>
-            <button onClick={() => (this.pollMs = this.pollMs ? 0 : 2000)}>
-              {this.pollMs ? "stop polling" : "poll every 2s"}
-            </button>
-            <button onClick={() => this.queries.client.invalidate(["profile"])}>invalidate ["profile"]</button>
+            <button onClick={this.togglePolling}>{this.pollMs ? "stop polling" : "poll every 2s"}</button>
+            <button onClick={this.invalidateProfiles}>invalidate ["profile"]</button>
             <button onClick={this.signOut}>sign out (client.remove)</button>
           </div>
           <p className="muted small">

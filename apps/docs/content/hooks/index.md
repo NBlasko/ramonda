@@ -149,9 +149,16 @@ when a group of elements needs shared state but no wrapper (inside a `<tr>` or
 class Toolbar extends Hook<{ actions: Action[] }> {
   @state busy = false;
 
+  // Cached by its argument, per instance — so each button keeps one handler across
+  // renders instead of getting a fresh closure (which RMD020 reports).
+  @memoizedHandler
+  runner(id: string) {
+    return () => this.run(id);
+  }
+
   buttons() {
     return this.props.actions.map((action) => (
-      <button disabled={this.busy} onClick={() => this.run(action)}>{action.label}</button>
+      <button disabled={this.busy} onClick={this.runner(action.id)}>{action.label}</button>
     ));
   }
 }

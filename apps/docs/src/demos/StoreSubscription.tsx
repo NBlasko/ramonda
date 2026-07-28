@@ -75,11 +75,15 @@ export class StoreSubscription extends Component {
     this.listeners = likes.listenerCount;
   }
 
+  like() {
+    likes.increment();
+  }
+
   render() {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={() => likes.increment()}>
+          <button type="button" onClick={this.like}>
             like
           </button>
           {this.mounted ? <LikeCount /> : <span className="demo-note">unmounted</span>}

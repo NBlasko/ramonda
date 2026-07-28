@@ -46,8 +46,12 @@ If you need to change something a prop gave you, there are two honest ways:
 
 ```tsx
 export class Row extends Component<{ item: Item; onRemove: (id: string) => void }> {
+  remove() {
+    this.props.onRemove(this.props.item.id);
+  }
+
   render() {
-    return <button onClick={() => this.props.onRemove(this.props.item.id)}>remove</button>;
+    return <button onClick={this.remove}>remove</button>;
   }
 }
 ```

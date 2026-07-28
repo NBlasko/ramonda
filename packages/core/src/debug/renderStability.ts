@@ -135,6 +135,13 @@ function classify(a: unknown, b: unknown): Kind | undefined {
   return bothPrimitive ? "nondeterministic" : undefined;
 }
 
+/** A built vnode: `createRamonda` stamps every one with a `type` and a `name`. */
+function isVNode(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const node = value as { type?: unknown; name?: unknown };
+  return node.type !== undefined && node.name !== undefined;
+}
+
 function isObjectish(value: unknown): boolean {
   return (typeof value === "object" && value !== null) || typeof value === "function";
 }
@@ -179,13 +186,21 @@ export function checkRenderStability(component: BaseComponent, first: unknown, s
   compareNode(first, second, "", 0, walk);
 }
 
-/** The same check for a hook's props bag, which is built by a callback per render. */
-export function checkPropsStability(owner: object, hookName: string, first: unknown, second: unknown): void {
-  const walk: Walk = { owner: `${owner.constructor.name} → ${hookName}`, budget: MAX_NODES };
-  if (isPlainObject(first) && isPlainObject(second)) {
-    compareAttributes(first, second, "props", walk);
-  }
-}
+/**
+ * **A hook's props bag is deliberately NOT checked**, and that decision came from
+ * auditing what the check actually said about one.
+ *
+ * The callback form of `this.use(Hook, …)` exists in order to be re-evaluated on
+ * every owner render — that is its documented contract, and what keeps a hook in step
+ * with its owner. So the bag is a fresh object by design, and the values inside it are
+ * too: a fetcher closing over `self.props.id` cannot be a stable function, and a query
+ * key is an array literal that `@ramonda/query` handles on purpose (it compares the
+ * parts, measured at 31 ns). Reporting those produced a warning per hook per app with
+ * no action behind it, which is how a diagnostic teaches people to ignore it.
+ *
+ * The churn is real and it is documented where it belongs — a `@compute` bag is the
+ * cure when an effect or a compute reads the bag — but it is not this check's business.
+ */
 
 function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: Walk): void {
   if (depth > MAX_DEPTH || walk.budget <= 0) return;
@@ -201,7 +216,14 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
   if (aList && bList) {
     const aOptions = (a as { options?: Attributes }).options ?? {};
     const bOptions = (b as { options?: Attributes }).options ?? {};
-    compareAttributes(aOptions, bOptions, path ? `${path}.list` : "list", walk);
+
+    // `each` only — the function options (`render`, `as`, `key`) are declared inline
+    // by design, and a fresh one costs nothing: an item scope is reused on
+    // `existing.item === item && !existing.dirty` (listEngine.ts), so the mapper's
+    // identity is never compared and never re-invokes anything. Reporting them would
+    // put a warning on every list in the app, which is how a diagnostic becomes noise
+    // people scroll past.
+    compareAttributes(aOptions, bOptions, path ? `${path}.list` : "list", walk, true);
     return;
   }
 
@@ -239,7 +261,7 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
   if (kind) report(kind, walk.owner, path || "the render output", a, b);
 }
 
-function compareAttributes(a: Attributes, b: Attributes, path: string, walk: Walk): void {
+function compareAttributes(a: Attributes, b: Attributes, path: string, walk: Walk, skipFunctions = false): void {
   for (const key of Object.keys(a)) {
     if (walk.budget <= 0) return;
     // `children` is walked as a tree, not compared as an attribute.
@@ -247,9 +269,20 @@ function compareAttributes(a: Attributes, b: Attributes, path: string, walk: Wal
 
     const aValue = a[key];
     const bValue = b[key];
+    if (skipFunctions && (typeof aValue === "function" || typeof bValue === "function")) continue;
     if (Object.is(aValue, bValue)) continue;
 
     walk.budget--;
+
+    // A vnode passed as a PROP — `onLoading={<p>…</p>}`, a fallback, children handed
+    // down — is a fresh object on every render because that is what JSX is. Walk into
+    // it (an inline handler inside it still counts) rather than calling the vnode
+    // itself an object built in place.
+    if (isVNode(aValue) && isVNode(bValue)) {
+      compareNode(aValue, bValue, `${path}.${key}`, 0, walk);
+      continue;
+    }
+
     const kind = classify(aValue, bValue);
     if (kind) report(kind, walk.owner, `${path}.${key}`, aValue, bValue);
   }

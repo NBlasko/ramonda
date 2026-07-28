@@ -1,4 +1,4 @@
-import { Component, Host, state } from "@ramonda/core";
+import { Component, Host, memoizedHandler, state } from "@ramonda/core";
 import { Query, QueryClientProvider, type FetchContext } from "@ramonda/query";
 
 interface Profile {
@@ -78,8 +78,16 @@ export class QueryDemo extends Component {
    */
   @state requests = 0;
 
+  // Cached by its argument: the same button keeps the same handler across renders.
+  @memoizedHandler
   select(id: string) {
-    this.id = id;
+    return () => {
+      this.id = id;
+    };
+  }
+
+  toggleSecond() {
+    this.twice = !this.twice;
   }
 
   countRequest() {
@@ -91,11 +99,11 @@ export class QueryDemo extends Component {
       <div>
         <p className="demo-row">
           {["ada", "grace", "alan"].map((id) => (
-            <button type="button" disabled={this.id === id} onClick={() => this.select(id)}>
+            <button type="button" disabled={this.id === id} onClick={this.select(id)}>
               {id}
             </button>
           ))}
-          <button type="button" onClick={() => (this.twice = !this.twice)}>
+          <button type="button" onClick={this.toggleSecond}>
             {this.twice ? "one card" : "two cards"}
           </button>
         </p>

@@ -46,8 +46,18 @@ export class MatrixGrid extends Component {
     this.cols = has ? this.cols.filter((c) => c.key !== "c") : [...this.cols, { key: "c", label: "Col C" }];
   }
 
+  /**
+   * The grid template as a `@compute`, not an inline object literal.
+   *
+   * A literal would be a new object on every render, so the attribute is re-applied
+   * every time and RMD020 reports it. A compute recomputes only when what it reads
+   * changes — here the column count — so both grids below share one stable identity.
+   */
+  @compute get gridStyle(): { gridTemplateColumns: string } {
+    return { gridTemplateColumns: `repeat(${this.cols.length}, 1fr)` };
+  }
+
   render() {
-    const template = `repeat(${this.cols.length}, 1fr)`;
     return (
       <div className="matrix-wrap">
         <div className="row">
@@ -55,14 +65,14 @@ export class MatrixGrid extends Component {
           <button onClick={this.toggleC}>toggle Col C</button>
         </div>
         {/* List #1: column headers */}
-        <div className="matrix" style={{ gridTemplateColumns: template }}>
+        <div className="matrix" style={this.gridStyle}>
           {list({
             each: this.cols,
             render: (c: Col) => <div className="mcell head">{c.label}</div>,
           })}
         </div>
         {/* List #2: body cells over @compute(rows × cols) */}
-        <div className="matrix" style={{ gridTemplateColumns: template }}>
+        <div className="matrix" style={this.gridStyle}>
           {list({
             each: this.grid,
             render: (cell: { id: string; value: string }) => <div className="mcell">{cell.value}</div>,
