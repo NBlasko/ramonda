@@ -200,3 +200,49 @@ so a devtools panel or a test can capture them:
 window.addEventListener("ramonda:diagnostic", (event) => { … });
 ```
 
+
+## RMD020 — `render()` produced a different value the second time
+
+A development build renders **every component twice** and compares the two outputs. Two calls in the
+same tick, with no state change between them, must produce the same values — so anything that
+differs was built by the render itself, or does not come from state at all.
+
+That is what makes this precise: comparing against the *previous* render cannot tell a value that
+was created in place from one that genuinely changed. Two calls in one tick can.
+
+Three things get reported, each with its own fix.
+
+**A function built in place.** The source is identical between the two calls, only the identity is
+fresh. That is not just an allocation: an event handler whose identity changed is removed and re-added
+on the element on every render, and a function passed to a child re-renders that child.
+
+```tsx
+<button onClick={() => this.save()}>   // ✗ a new function every render
+<button onClick={this.save}>           // ✓ a bound method
+```
+
+For a handler that must be built per item, [`@memoizedHandler`](/concepts/events) caches it by its
+arguments, per instance — so the second render hands back the same function and nothing is reported.
+
+**An object or array built in place**, with the same contents. A child receiving it re-renders every
+time, a [`@compute`](/concepts/compute) reading it recomputes every time, and if it is a
+[list's](/lists) items then every row loses its identity and the whole list is rebuilt — per-item
+state lost, `@destroy` and `@create` run again.
+
+```tsx
+<Chart config={{ smooth: true }} />    // ✗ rebuilt every render
+@compute get config() { … }            // ✓ recomputed only when its inputs change
+```
+
+**A value that does not come from state** — `Date.now()`, `Math.random()`. This is the same mistake
+[RMD007](#rmd007-server-and-client-rendered-different-output) reports after a hydration mismatch,
+caught here without needing a server render to disagree with. Decide the value once in `@create` and
+keep it in `@state`.
+
+The check also runs on a hook's props callback, which is the other place values are built per render:
+a props bag rebuilt with equal contents fires every key's signal, so anything reading it — an
+`@effect`, a `connect`, a `@compute` — re-runs on every render of the owner.
+
+**One thing to expect:** a `render()` with a side effect performs it twice in development. `RMD001`
+already makes a state write there an error, so "render is pure" is the rule either way — but a
+`console.log` in a render really will appear twice. That is the check working.

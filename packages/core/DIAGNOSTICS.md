@@ -52,6 +52,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD014` | error | A `For` hook was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | warning | A component updated while its element is not in the document |
+| `RMD020` | warning | `render()` produced a different value the second time |
 
 ### RMD001 — State written during render()
 
@@ -597,3 +598,37 @@ queue time a perfectly healthy component can be momentarily disconnected — mor
 so since children are now built detached and inserted by `reorderChildren`. A
 drain runs in a microtask, after the synchronous commit, by which point anything
 still disconnected really is orphaned.
+
+### RMD020 — render() produced a different value the second time
+
+A development build calls each component's `render()` **twice** and compares the two
+outputs. With no state change between the two calls, anything that differs was built
+by the render itself — an inline function, a rebuilt object or array — or does not
+come from state at all (`Date.now()`, `Math.random()`).
+
+**Why twice rather than comparing against the previous render.** That comparison
+conflates "created in place" with "genuinely changed", and cannot tell them apart at
+all. Two calls in one tick can, with no false positives. It also catches
+non-determinism, which the previous-render comparison never could — RMD007 sees the
+same class of mistake, but only after a hydration mismatch has already happened.
+
+**Why it can run on every render.** Measured here: `render()` is 3-4% of a commit
+(1.56 µs of 48.69 for one element, 9.27 of 211.63 for twenty) and 0.04% for a table
+of 500 rows — `list()` is lazy, so a second render rebuilds the descriptor and not
+the items. And checking only the first render would miss every branch not taken then,
+which is exactly where handlers live.
+
+Building the second output is safe: `buildRenderOutput` produces vnodes and nothing
+else — components are constructed by the diff, `hostTag` is already cached, a render
+registers no signal dependencies, and `@memoizedHandler` returns the same function
+for the same arguments, so it reads as stable rather than as a fault.
+
+The same check runs on a hook's props callback (`useCommon`), which is the other place
+values are built per render.
+
+**The hazard, and the switch.** A render with a side effect runs it twice. RMD001
+already makes a state write there an error, so "render is pure" is the position — but
+a `fetch()` or a `console.log` in a render really does happen twice in development.
+The framework's own test suites turn the check off in their setup files
+(`strictRender.enabled = false`), because they observe render ORDER by logging from
+`render()` — precisely the impurity this reports.

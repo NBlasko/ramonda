@@ -26,7 +26,8 @@ export type DiagnosticCode =
   | "RMD016"
   | "RMD017"
   | "RMD018"
-  | "RMD019";
+  | "RMD019"
+  | "RMD020";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -118,6 +119,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "State set to a value that cannot be serialized",
     fix: "@state is carried to the client in the hydration blob as JSON, so it can only hold JSON-serializable data — a function, symbol or bigint is silently lost there, and the client would hydrate with a hole where this field was. Keep behaviour off state: a function belongs on the class as a method, or is passed in as a prop; a symbol/bigint should be a string or number in state. If this field is genuinely local to the client and never meant to travel, it should not be @state at all — use a plain field.",
+  },
+  RMD020: {
+    severity: "warning",
+    title: "render() produced a different value the second time",
+    fix: "Two renders in the same tick, with no state change between them, must produce the same values — anything that differs was built in place by the render itself, or does not come from state at all. Development builds render twice to check; production renders once and this check is stripped.",
   },
   RMD013: {
     severity: "error",

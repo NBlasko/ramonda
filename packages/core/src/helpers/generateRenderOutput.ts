@@ -6,6 +6,7 @@ import { createRamonda } from "../vdom/CreateRamonda";
 import { isArray } from "./utils";
 import { HOST_META, hostStyle, HOST_TAG, IS_LIST, HAS_LIST } from "./constants";
 import { renderPhase } from "../debug/renderPhase";
+import { checkRenderStability, strictRender } from "../debug/renderStability";
 import { currentOrigin } from "../core/origin";
 
 export function generateRenderOutput(component: BaseComponent) {
@@ -15,7 +16,19 @@ export function generateRenderOutput(component: BaseComponent) {
     // props callback too, since it also runs while building the output.
     renderPhase.component = component;
     try {
-      return buildRenderOutput(component);
+      const output = buildRenderOutput(component);
+
+      // Rendered a SECOND time, and the second output thrown away, so anything that
+      // differs between them can be named: an inline handler, a rebuilt object, a
+      // value that does not come from state. Two calls in the same tick cannot
+      // confuse "created in place" with "genuinely changed" — see RMD020, and
+      // `debug/renderStability.ts` for what this costs (3-4% of a commit) and why
+      // discarding the second output is safe.
+      if (strictRender.enabled) {
+        checkRenderStability(component, output, buildRenderOutput(component));
+      }
+
+      return output;
     } finally {
       renderPhase.component = undefined;
     }

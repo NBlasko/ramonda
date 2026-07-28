@@ -289,6 +289,94 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
 }
 
 /**
+ * Runs after the DOM of an **update** is committed. The post-commit door, and the
+ * only place an app can read or correct its own committed DOM.
+ *
+ * ```tsx
+ * class Row extends Component<{ selected: boolean }> {
+ *   @updated
+ *   keepVisible() {
+ *     if (!this.props.selected || this.wasVisible) return;
+ *     this.wasVisible = true;
+ *     this.element.scrollIntoView({ block: "nearest" });
+ *   }
+ * }
+ * ```
+ *
+ * ## Why it exists at all
+ *
+ * Two reasons, and the second is the one that makes it irreplaceable.
+ *
+ * 1. **You cannot measure your own DOM at the write site.** Updates are batched
+ *    through a microtask, so when the handler that changed state returns, the DOM
+ *    is not committed yet. "Change it, then measure it" in one function is
+ *    impossible by construction.
+ * 2. **Not every update has a write site you own.** A parent re-renders you with
+ *    new props; a context value changes; a hook you use writes its state; a query
+ *    you observe resolves. *Your code never ran* — there is nowhere to hang "and
+ *    now measure". Only the framework knows you just committed.
+ *
+ * `requestAnimationFrame` is the workaround, and it is worse: it lands a frame
+ * late, so correcting layout in it (a tooltip's position, an autosizing textarea,
+ * a restored scroll offset) shows one frame of the wrong layout. This runs in the
+ * same task, before paint.
+ *
+ * ## It is not `@effect`, and the difference is the point
+ *
+ * **No dependencies.** Nothing is tracked while it runs, so there is no dependency
+ * list to get wrong — and no repeat of the trap that makes an effect the wrong
+ * tool here: an effect re-runs when a dependency *changes*, and a dependency that
+ * is an array or object rebuilt by a props callback changes on every render. Such
+ * an effect fires constantly while looking framework-guarded, and its cleanup tears
+ * down whatever it set up each time.
+ *
+ * **No cleanup contract.** Return nothing. Teardown belongs to `@destroy`, and a
+ * subscription belongs to `createSubscriptionDecorator`.
+ *
+ * **No previous props or state**, deliberately. The `if` that would need them —
+ * `if (previous.id !== this.props.id)` — is reconstructing what changed, and that
+ * is `@watchProp`'s job, done before the render and compared by value. The `if`
+ * that belongs *here* asks something else: "is the DOM already how I want it?"
+ * Only the author can answer that, and it needs nothing from the framework.
+ *
+ * So the division is:
+ *
+ * - reacting to a value → `@watchProp` (before the render, one pass)
+ * - touching the DOM afterwards → `@updated` (after the commit, unconditional)
+ *
+ * ## What to know
+ *
+ * **Not on the first commit** — that is `@mount`, which runs once with the element
+ * already in the document. `@updated` is every commit after it.
+ *
+ * **It runs unconditionally**, so guard the body if the body is expensive. A
+ * `getBoundingClientRect` forces a synchronous layout, which costs orders of
+ * magnitude more than the dispatch (~270ns): one field comparison in front of it
+ * pays for itself many times over.
+ *
+ * **Client only.** A server render has no layout and no paint, so there is nothing
+ * to measure and nothing to correct.
+ *
+ * **Children before parents**, so a parent sees its children updated — which is
+ * the order measuring wants.
+ *
+ * **Writing state here schedules another render**, and that is the canonical use:
+ * measure, store, render with it. Guard it, or it loops — a runaway is reported as
+ * RMD009 in development and stopped in production.
+ */
+export function updated(value: (...args: any[]) => void, context: EnhancedClassMethodDecoratorContext) {
+  if (__DEV__) {
+    assertMethod(context.kind, "updated", context.name);
+  }
+
+  ensureStringContextName(context.name, "updated");
+
+  context.addInitializer(function (this) {
+    this[GLOBAL_RUNTIME].updates.push(() => value.call(this));
+  });
+}
+
+/**
  * Marks a method whose promise hydration should wait for, keeping the server's
  * markup on screen until it settles.
  *

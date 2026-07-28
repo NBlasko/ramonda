@@ -28,6 +28,15 @@ export interface Runtime {
    */
   shouldUpdateOnPropsChange?: (prev: unknown, next: unknown) => boolean;
   effects: Effect[];
+  /**
+   * `@updated` methods, bound. Run after the DOM of an UPDATE is committed —
+   * never for the first commit, which is `@mount`'s.
+   *
+   * Plain thunks rather than `Effect`s, and that is the whole point of the
+   * decorator: nothing here is tracked, so there are no dependencies to record,
+   * nothing to attach or detach, and no cleanup to run. See `runComponentUpdates`.
+   */
+  updates: (() => void)[];
   clearReactives: ClearReactives;
   hooksOptions: (() => any)[];
   reBuild(): void;
@@ -114,6 +123,7 @@ export const createRuntime = (that: any, context: Context): Runtime => {
     mounts: [],
     hooksOptions: [],
     effects: [],
+    updates: [],
     context,
     clearReactives: [],
     id: createId(),

@@ -7,6 +7,7 @@ import type { ComponentChild } from "../types/vdom";
 import { unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
 import { h } from "../vdom/h";
+import { strictRender } from "../debug/renderStability";
 (globalThis as any).h = h;
 
 const originalWindow = { ...window };
@@ -140,3 +141,10 @@ export function restoreWindowObjectChanges() {
  * commit semantics a test sees are therefore the same on both sides, and the
  * part most likely to drift cannot.
  */
+
+// RMD020 renders every component twice in a development build to catch values built
+// in place. These suites deliberately log from `render()` to observe render ORDER —
+// which is exactly the impurity the check reports — so a doubled render would double
+// those logs and break assertions that count them. Off here; the RMD020 tests turn
+// it back on for themselves.
+strictRender.enabled = false;

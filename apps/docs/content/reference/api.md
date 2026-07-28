@@ -60,10 +60,12 @@ Everything the three packages export. Each entry links to the page that explains
 |---|---|
 | `@create(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
 | `@mount(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
+| `@updated` | Runs after every commit **after** the first, with the new DOM in place. No deps, no previous values, no cleanup. [Lifecycle](/concepts/lifecycle) |
 | `@destroy` | Runs on teardown, while state is still readable. |
 | `@effect` | After the commit, and again when a signal it read changes. Return a cleanup. [Effects](/concepts/effects) |
 
-All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [Which to use](/ssr/env)
+`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`. [Which to use](/ssr/env)
+`@updated` does not: a server render has no layout and no paint, so it is client-only.
 
 ### Decorators — reacting
 

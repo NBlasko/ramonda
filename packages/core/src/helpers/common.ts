@@ -2,6 +2,7 @@ import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../co
 import type { HookClassKind } from "../types/commonTypes";
 import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
+import { checkPropsStability, strictRender } from "../debug/renderStability";
 
 export function useCommon<T extends BaseHook<any>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
@@ -23,6 +24,15 @@ export function useCommon<T extends BaseHook<any>, P>(
   const runtime = that[GLOBAL_RUNTIME];
 
   const initialProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
+
+  // The same check `render()` gets, on the other place values are built per render.
+  // A props bag rebuilt with equal contents is not free: every key that changed
+  // identity fires its signal, so an `@effect` or a `connect` reading it re-runs on
+  // every owner render — measured at 3× the update-pass cost, and the reason a
+  // query's in-flight fetch used to be aborted by an unrelated re-render. See RMD020.
+  if (__DEV__ && typeof hookProps === "function" && strictRender.enabled) {
+    checkPropsStability(that, hook.name, initialProps, hookProps(that));
+  }
   const hookInstance = new hook(runtime, initialProps);
   const hookRuntime = hookInstance[HOOK_RUNTIME];
 
@@ -42,6 +52,10 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const updateFn = () => {
     const nextProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
+
+    if (__DEV__ && typeof hookProps === "function" && strictRender.enabled) {
+      checkPropsStability(that, hook.name, nextProps, hookProps(that));
+    }
     const prevProps = hookRuntime.rawProps;
     hookRuntime.rawProps = nextProps;
     const sigs = hookRuntime.propsSignals;

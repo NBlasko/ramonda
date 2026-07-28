@@ -45,6 +45,7 @@ const EXPECTED = [
   "create",
   "mount",
   "destroy",
+  "updated",
   "watchProp",
   "deferHydration",
   "shouldUpdateOnPropsChange",
