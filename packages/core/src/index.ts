@@ -31,6 +31,8 @@ export type { DocumentOptions } from "./hydration/document";
 export { hydrateRoot } from "./hydration/hydrate";
 
 export * from "./base/decorators";
+// A development-time switch, and a no-op in a production build — see config.ts.
+export { configureDev, type DevFlags } from "./config";
 // The vocabulary for building vnodes by hand. `h` is callable directly — a route
 // table generated from a content directory, a registry of components — and these
 // are the types that call needs. Type-only: nothing is added to the runtime API.

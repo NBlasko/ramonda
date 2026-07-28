@@ -1,3 +1,4 @@
+import { devFlags } from "../config";
 import { IS_LIST } from "../helpers/constants";
 import type { BaseComponent } from "../types/vdom";
 import { diagnose } from "./diagnostics";
@@ -39,11 +40,14 @@ import { diagnose } from "./diagnostics";
  * `fetch()` or a `console.log` in render really will happen twice in development.
  * That is the check working, not a malfunction.
  *
- * The framework's own test suites turn this off (`strictRender.enabled = false` in
- * their setup files): they observe render ORDER by logging from `render()`, which is
+ * An app turns it off with `configureDev({ strictRender: false })` — the devtools and
+ * every other diagnostic stay. The framework's own test suites do exactly that in
+ * their setup files: they observe render ORDER by logging from `render()`, which is
  * precisely the impurity this reports.
  */
-export const strictRender = { enabled: true };
+export function isStrictRender(): boolean {
+  return devFlags.strictRender;
+}
 
 /** Bounds one comparison, so a deep or wide tree cannot make a render expensive. */
 const MAX_DEPTH = 50;

@@ -58,6 +58,8 @@ const EXPECTED = [
   "Host",
   // building your own decorators
   "createSubscriptionDecorator",
+  // development-time switches
+  "configureDev",
 ];
 
 /** Reactivity plumbing an app must not be able to touch. */

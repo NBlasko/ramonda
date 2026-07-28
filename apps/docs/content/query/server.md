@@ -141,4 +141,4 @@ a server render has.
 
 ## Next
 
-- [Testing](/testing) — including [an SSR round trip](/testing/ssr).
+- [Testing queries](/query/testing) — including a server render, end to end.

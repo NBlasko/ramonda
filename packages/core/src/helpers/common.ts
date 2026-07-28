@@ -2,7 +2,7 @@ import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../co
 import type { HookClassKind } from "../types/commonTypes";
 import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
-import { checkPropsStability, strictRender } from "../debug/renderStability";
+import { checkPropsStability, isStrictRender } from "../debug/renderStability";
 
 export function useCommon<T extends BaseHook<any>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
@@ -30,7 +30,7 @@ export function useCommon<T extends BaseHook<any>, P>(
   // identity fires its signal, so an `@effect` or a `connect` reading it re-runs on
   // every owner render — measured at 3× the update-pass cost, and the reason a
   // query's in-flight fetch used to be aborted by an unrelated re-render. See RMD020.
-  if (__DEV__ && typeof hookProps === "function" && strictRender.enabled) {
+  if (__DEV__ && typeof hookProps === "function" && isStrictRender()) {
     checkPropsStability(that, hook.name, initialProps, hookProps(that));
   }
   const hookInstance = new hook(runtime, initialProps);
@@ -53,7 +53,7 @@ export function useCommon<T extends BaseHook<any>, P>(
   const updateFn = () => {
     const nextProps = typeof hookProps === "function" ? hookProps(that) : (hookProps ?? {});
 
-    if (__DEV__ && typeof hookProps === "function" && strictRender.enabled) {
+    if (__DEV__ && typeof hookProps === "function" && isStrictRender()) {
       checkPropsStability(that, hook.name, nextProps, hookProps(that));
     }
     const prevProps = hookRuntime.rawProps;

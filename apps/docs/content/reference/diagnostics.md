@@ -246,3 +246,16 @@ a props bag rebuilt with equal contents fires every key's signal, so anything re
 **One thing to expect:** a `render()` with a side effect performs it twice in development. `RMD001`
 already makes a state write there an error, so "render is pure" is the rule either way — but a
 `console.log` in a render really will appear twice. That is the check working.
+
+**Turning it off.** When that is in the way — you are logging from `render()` to watch render order,
+or a render is heavy enough that doubling it makes development uncomfortable — switch it off at your
+entry point:
+
+```ts
+import { bootstrap, configureDev } from "@ramonda/core";
+
+configureDev({ strictRender: false });   // keeps devtools and every other check
+bootstrap(<App />, document.querySelector("#app")!);
+```
+
+It is a no-op in a production build, where the check is not compiled in at all.

@@ -7,7 +7,7 @@ import type { ComponentChild } from "../types/vdom";
 import { unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
 import { h } from "../vdom/h";
-import { strictRender } from "../debug/renderStability";
+import { configureDev } from "../";
 (globalThis as any).h = h;
 
 const originalWindow = { ...window };
@@ -147,4 +147,4 @@ export function restoreWindowObjectChanges() {
 // which is exactly the impurity the check reports — so a doubled render would double
 // those logs and break assertions that count them. Off here; the RMD020 tests turn
 // it back on for themselves.
-strictRender.enabled = false;
+configureDev({ strictRender: false });

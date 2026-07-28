@@ -15,6 +15,10 @@ different acts, and neither should show the other's spinner or the other's error
 ```tsx
 import { Mutation, mutationOptions } from "@ramonda/query";
 
+// The host IS the form. `@onElement` listens on the component's host element, so a
+// `submit` handler needs the host to be the thing that emits `submit` — see
+// [the host element](/concepts/host).
+@Host("form")
 class AddTodo extends Component {
   @state draft = "";
 
@@ -34,9 +38,12 @@ class AddTodo extends Component {
 
   render() {
     return (
-      <button type="submit" disabled={this.add.isPending}>
-        {this.add.isPending ? "saving…" : "add"}
-      </button>
+      <div>
+        <input value={this.draft} onInput={this.typed} />
+        <button type="submit" disabled={this.add.isPending}>
+          {this.add.isPending ? "saving…" : "add"}
+        </button>
+      </div>
     );
   }
 }

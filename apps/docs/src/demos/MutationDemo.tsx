@@ -22,7 +22,11 @@ function createTodo(title: string): Promise<string> {
   });
 }
 
-@Host("div")
+// The host IS the form, and that is not decoration: `@onElement` listens on the
+// component's HOST element, so a `submit` handler needs the host to be the thing
+// that emits `submit`. With the default host it would only work by bubbling — and
+// only if a <form> happened to be inside.
+@Host("form")
 export class MutationDemo extends Component {
   private query = this.use(QueryClientProvider);
 
@@ -65,9 +69,14 @@ export class MutationDemo extends Component {
     this.add.mutate(title);
   }
 
+  /** A bound method, not an inline arrow: RMD020 reports a handler built per render. */
+  onDraftInput(event: Event) {
+    this.draft = (event.target as HTMLInputElement).value;
+  }
+
   render() {
     return (
-      <form>
+      <div>
         <ul>
           {(this.list.data ?? []).map((title) => (
             <li>{title}</li>
@@ -75,13 +84,7 @@ export class MutationDemo extends Component {
         </ul>
 
         <p className="demo-row">
-          <input
-            value={this.draft}
-            placeholder="new todo"
-            onInput={(event: Event) => {
-              this.draft = (event.target as HTMLInputElement).value;
-            }}
-          />
+          <input value={this.draft} placeholder="new todo" onInput={this.onDraftInput} />
           <button type="submit" disabled={this.add.isPending}>
             {this.add.isPending ? "saving…" : "add"}
           </button>
@@ -94,7 +97,7 @@ export class MutationDemo extends Component {
         ) : (
           <p className="demo-note">try adding "write the docs" twice to see the rollback</p>
         )}
-      </form>
+      </div>
     );
   }
 }

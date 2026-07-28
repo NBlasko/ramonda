@@ -5,7 +5,7 @@ import { Hook } from "../base/Hook";
 import { list } from "../base/list";
 import { compute, memoizedHandler, state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
-import { strictRender } from "../debug/renderStability";
+import { configureDev } from "../index";
 
 /**
  * RMD020 — the development build renders every component twice and reports what
@@ -24,7 +24,7 @@ import { strictRender } from "../debug/renderStability";
 let logs: string[] = [];
 
 beforeEach(() => {
-  strictRender.enabled = true;
+  configureDev({ strictRender: true });
   resetDiagnostics();
   logs = [];
   // `ramondaLog` writes on console.log — that is the devtools Logs channel too.
@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  strictRender.enabled = false;
+  configureDev({ strictRender: false });
   vi.restoreAllMocks();
 });
 
@@ -343,7 +343,7 @@ describe("RMD020 — values built inside a hook's props callback", () => {
 
 describe("the switch", () => {
   test("nothing is checked when it is off", async () => {
-    strictRender.enabled = false;
+    configureDev({ strictRender: false });
 
     class Panel extends Component {
       render() {

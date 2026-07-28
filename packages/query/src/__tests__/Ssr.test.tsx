@@ -1,6 +1,6 @@
 import { Component, renderToString } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
-import { act, render } from "@ramonda/testing-library";
+import { act, render, waitFor } from "@ramonda/testing-library";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ServerQueryError } from "../errors";
 import { Query } from "../Query";
@@ -84,6 +84,29 @@ describe("server rendering", () => {
     // the hook's own `@state`, which core already serializes per component.
     expect(html).toContain("ada");
     expect(html).toMatch(/data-ramonda-state|ramonda-state/);
+  });
+
+  test("`waitFor` is the tool when a real round trip is involved", async () => {
+    // The boundary worth showing: `act` commits work already SCHEDULED — it does not
+    // wait for a timer, and this fetcher waits on one. `waitFor` retries the
+    // assertion, and Ramonda's renders are microtask-batched, so the DOM catches up
+    // between attempts with nothing else to arrange.
+    class Card extends Component {
+      private provider = this.use(QueryClientProvider);
+      private user = this.use(Query, () => ({ key: ["user", 9], fetch: getUser }));
+      render(): RamondaNode {
+        return <p id="out">{this.user.data?.name ?? "pending"}</p>;
+      }
+    }
+
+    const { container } = render((<Card />) as VNode);
+
+    await act(async () => {});
+    expect(container.querySelector("#out")!.textContent).toBe("pending");
+
+    await waitFor(() => {
+      expect(container.querySelector("#out")!.textContent).toBe("ada");
+    });
   });
 
   test("the client renders the server's data on its FIRST render, and does not refetch", async () => {

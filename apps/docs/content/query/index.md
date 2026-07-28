@@ -133,3 +133,4 @@ private todo = this.use(Query, (self: TodoCard) =>
 - [Queries](/query/queries) — keys, staleness, and when it refetches.
 - [Mutations](/query/mutations) — writing, optimistically.
 - [On the server](/query/server) — what crosses the boundary, and how.
+- [Testing queries](/query/testing) — which of `act` and `waitFor`, and why a fresh client per test.

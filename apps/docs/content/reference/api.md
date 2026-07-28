@@ -90,12 +90,18 @@ Everything the three packages export. Each entry links to the page that explains
 |---|---|
 | `createSubscriptionDecorator(name, connect, validate?)` | Turns "subscribe, and unsubscribe on unmount" into a decorator. [Your own decorators](/hooks/own-decorators) |
 
+### Development switches
+
+| | |
+|---|---|
+| `configureDev({ strictRender })` | Turns off the double render behind [RMD020](/reference/diagnostics). A no-op in production. |
+
 ### Types
 
 `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
 `DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
 `AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
-`SubscriptionOwner` · `Disconnect`
+`SubscriptionOwner` · `Disconnect` · `DevFlags`
 
 ---
 

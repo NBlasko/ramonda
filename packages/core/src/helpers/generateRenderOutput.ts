@@ -6,7 +6,7 @@ import { createRamonda } from "../vdom/CreateRamonda";
 import { isArray } from "./utils";
 import { HOST_META, hostStyle, HOST_TAG, IS_LIST, HAS_LIST } from "./constants";
 import { renderPhase } from "../debug/renderPhase";
-import { checkRenderStability, strictRender } from "../debug/renderStability";
+import { checkRenderStability, isStrictRender } from "../debug/renderStability";
 import { currentOrigin } from "../core/origin";
 
 export function generateRenderOutput(component: BaseComponent) {
@@ -24,7 +24,7 @@ export function generateRenderOutput(component: BaseComponent) {
       // confuse "created in place" with "genuinely changed" — see RMD020, and
       // `debug/renderStability.ts` for what this costs (3-4% of a commit) and why
       // discarding the second output is safe.
-      if (strictRender.enabled) {
+      if (isStrictRender()) {
         checkRenderStability(component, output, buildRenderOutput(component));
       }
 

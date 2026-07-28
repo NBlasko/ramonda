@@ -37,7 +37,7 @@ const V = {
 };
 
 type Mode = "spa" | "ssr";
-type AddOn = "router" | "lens" | "testing" | "devtools" | "biome";
+type AddOn = "router" | "query" | "lens" | "testing" | "devtools" | "biome";
 
 interface Deps {
   dependencies: Record<string, string>;
@@ -125,6 +125,7 @@ async function main(): Promise<void> {
       required: false,
       options: [
         { value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" },
+        { value: "query" as AddOn, label: "Query", hint: "@ramonda/query — cached, race-free async data" },
         { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
         { value: "testing" as AddOn, label: "Testing", hint: "vitest + @ramonda/testing-library" },
         { value: "devtools" as AddOn, label: "Devtools", hint: "@ramonda/devtools — dev inspector" },
@@ -195,6 +196,7 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   deps.dependencies["@ramonda/core"] = V.ramonda;
 
   if (addons.includes("router")) deps.dependencies["@ramonda/router"] = V.ramonda;
+  if (addons.includes("query")) deps.dependencies["@ramonda/query"] = V.ramonda;
   if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = V.ramonda;
   if (addons.includes("devtools")) deps.devDependencies["@ramonda/devtools"] = V.ramonda;
 

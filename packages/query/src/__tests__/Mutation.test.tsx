@@ -22,12 +22,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
+/**
+ * Commits everything already scheduled.
+ *
+ * `act` alone does this — with an async callback it gives the continuations ten
+ * microtask turns and flushes after each — so this is a name, not a mechanism. What
+ * it does NOT do is wait for a timer or a real round trip; that is `waitFor`, and
+ * `Ssr.test.tsx` uses it where it matters.
+ */
+const settle = () => act(async () => {});
 
 describe("Mutation", () => {
   test("idle → pending → success, and the data is readable", async () => {
