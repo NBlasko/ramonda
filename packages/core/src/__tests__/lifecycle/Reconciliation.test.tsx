@@ -24,7 +24,7 @@ class ItemHook extends Hook<{ id: number }> {
 }
 
 class ListItem extends Component<{ id: number; text: string; key?: number }> {
-  hook = this.use(ItemHook, (bag) => ({ id: bag.props.id }));
+  hook = this.use(ItemHook, (bag: ListItem) => ({ id: bag.props.id }));
 
   @create init() {
     log.push(`ListItem:Init:${this.props.id}`);

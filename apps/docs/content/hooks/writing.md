@@ -43,6 +43,11 @@ counter = this.use(Counter, (self: Panel) => ({ start: self.props.initial }));
 The callback receives the owner (`self`), so a hook's props can be built from the
 owner's own props or state — that is what keeps them in sync.
 
+**Annotate that parameter** — `(self: Panel)` — as above. It is what gives the owner
+its type; leaving it off is an error rather than a silent `any`, the same stance
+[`@watchProp`](/concepts/props) takes for its selector. (Annotating it is also what
+lets a *generic* hook infer its type parameter from what the callback returns.)
+
 ## Props are read-only
 
 A hook's props belong to the caller, exactly like a component's — assigning to one

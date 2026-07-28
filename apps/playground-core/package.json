@@ -12,7 +12,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@ramonda/core": "workspace:^"
+    "@ramonda/core": "workspace:^",
+    "@ramonda/query": "workspace:^",
+    "@ramonda/router": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

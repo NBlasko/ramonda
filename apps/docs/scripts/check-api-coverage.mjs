@@ -48,7 +48,7 @@ function publicSurfaceOf(pkg, atLeast) {
   return names;
 }
 
-const expected = [...publicSurfaceOf("core", 20), ...publicSurfaceOf("lens", 1)];
+const expected = [...publicSurfaceOf("core", 20), ...publicSurfaceOf("lens", 1), ...publicSurfaceOf("query", 8)];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
 

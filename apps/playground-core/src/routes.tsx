@@ -4,6 +4,7 @@ import { ShowcasePage } from "./pages/ShowcasePage";
 import { TablePage } from "./pages/TablePage";
 import { SlotsPage } from "./pages/SlotsPage";
 import { AsyncPage } from "./pages/AsyncPage";
+import { QueryPage } from "./pages/QueryPage";
 import { UserPage } from "./pages/UserPage";
 import { AboutPage } from "./pages/AboutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -15,6 +16,7 @@ export const routes = createRoutes({
   "/table": <TablePage />,
   "/slots": <SlotsPage />,
   "/async": <AsyncPage />,
+  "/query": <QueryPage />,
   "/users/:id": <UserPage />,
   "/about": <AboutPage />,
   "*": <NotFoundPage />,

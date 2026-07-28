@@ -1,4 +1,4 @@
-import type { BaseHook, HookProps } from "../types/HookTypes";
+import type { BaseHook, HookProps, PropsFactory } from "../types/HookTypes";
 import { useCommon } from "../helpers/common";
 import type { HookClassKind } from "../types/commonTypes";
 import { createHookRuntime, HOOK_RUNTIME, type HookRuntime, type Runtime, GLOBAL_RUNTIME } from "../core/runtime";
@@ -63,14 +63,9 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
   }
 
   protected use<T extends BaseHook<undefined>>(hook: HookClassKind<T, undefined>): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps, R extends (bag: this) => Q>(
-    hook: HookClassKind<T, Q>,
-    props: Q | R,
-  ): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps, R extends (bag: this) => Q>(
-    hook: HookClassKind<T, Q>,
-    props?: Q | R,
-  ): T {
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: PropsFactory<Q>): T;
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: Q): T;
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props?: Q | PropsFactory<Q>): T {
     return useCommon(this, hook, props);
   }
 }

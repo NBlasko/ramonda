@@ -1,6 +1,6 @@
 import type { Context, HookClassKind, DefaultProps, RenderableProps } from "../types/commonTypes";
 import type { BaseComponent, ComponentProps, RamondaNode } from "../types/vdom";
-import type { BaseHook, HookProps } from "../types/HookTypes";
+import type { BaseHook, HookProps, PropsFactory } from "../types/HookTypes";
 
 import { useCommon } from "../helpers/common";
 import {
@@ -88,14 +88,9 @@ export abstract class Component<P extends ComponentProps = DefaultProps> impleme
   }
 
   protected use<T extends BaseHook<undefined>>(hook: HookClassKind<T, undefined>): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps, R extends (bag: this) => Q>(
-    hook: HookClassKind<T, Q>,
-    props: Q | R,
-  ): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps, R extends (bag: this) => Q>(
-    hook: HookClassKind<T, Q>,
-    props?: Q | R,
-  ): T {
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: PropsFactory<Q>): T;
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: Q): T;
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props?: Q | PropsFactory<Q>): T {
     return useCommon(this, hook, props);
   }
 

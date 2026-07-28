@@ -28,7 +28,7 @@ class GrandChildHook extends Hook<{ val: number; label: string }> {
  * Intermediate hook containing a nested GrandChildHook
  */
 class ChildHook extends Hook<{ count: number; label: string }> {
-  nested = this.use(GrandChildHook, (bag) => ({
+  nested = this.use(GrandChildHook, (bag: ChildHook) => ({
     val: bag.props.count * 2,
     label: `${bag.props.label}->Nested`,
   }));
@@ -57,7 +57,7 @@ class ChildHook extends Hook<{ count: number; label: string }> {
 class LifecycleTester extends Component<{ trigger: number }> {
   @state local = 0;
 
-  hookA = this.use(ChildHook, (bag) => ({
+  hookA = this.use(ChildHook, (bag: LifecycleTester) => ({
     count: bag.props.trigger + bag.local,
     label: "HookA",
   }));

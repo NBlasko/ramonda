@@ -5,8 +5,8 @@
   "scripts": {
     "content": "node scripts/build-content.mjs",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('.build',{recursive:true,force:true})\"",
-    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=false --target=es2022 --minify --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=dist/assets --entry-names=client --chunk-names=chunk-[hash] --metafile=.build/meta.json",
-    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=false --target=es2022 --platform=node --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=.build --entry-names=entry-server --chunk-names=chunk-[hash]",
+    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=false --target=es2022 --minify --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=dist/assets --entry-names=client --chunk-names=chunk-[hash] --metafile=.build/meta.json",
+    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=false --target=es2022 --platform=node --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=.build --entry-names=entry-server --chunk-names=chunk-[hash]",
     "prerender": "node scripts/prerender.mjs",
     "build": "npm run clean && npm run content && npm run check-api && npm run build:client && npm run manifest && npm run build:client && npm run build:server && ramonda-check-bundle dist/assets .build && npm run prerender && npm run index",
     "check-types": "npm run content && tsc --noEmit",
@@ -18,6 +18,7 @@
   "dependencies": {
     "@ramonda/core": "workspace:^",
     "@ramonda/lens": "workspace:^",
+    "@ramonda/query": "workspace:^",
     "@ramonda/router": "workspace:^"
   },
   "devDependencies": {

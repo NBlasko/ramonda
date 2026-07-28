@@ -13,6 +13,8 @@ import { HostTag } from "./HostTag";
 import { KeyboardShortcut } from "./KeyboardShortcut";
 import { LifecycleLog } from "./LifecycleLog";
 import { MemoHandlers } from "./MemoHandlers";
+import { MutationDemo } from "./MutationDemo";
+import { QueryDemo } from "./QueryDemo";
 import { PersistDemo } from "./PersistDemo";
 import { RefFocus } from "./RefFocus";
 import { RouteInfo } from "./RouteInfo";
@@ -54,6 +56,8 @@ export const demos: Record<string, ComponentClassKind> = {
   FilteredList,
   LensSharing,
   RouteInfo,
+  QueryDemo,
+  MutationDemo,
   InheritanceDemo,
   LazyPanel,
 };
@@ -79,6 +83,8 @@ export const demoTitles: Record<string, string> = {
   ListDemo: "list() — lists without keys",
   FilteredList: "list() — a filtered, conditional list",
   LensSharing: "focusOn — what an immutable edit copies",
+  QueryDemo: "Query — one request per key, cached",
+  MutationDemo: "Mutation — optimistic, with rollback",
   RouteInfo: "Navigator — the live route of this site",
   InheritanceDemo: "Inheritance — the unit of reuse",
   LazyPanel: "AsyncLoad — a component in its own chunk",

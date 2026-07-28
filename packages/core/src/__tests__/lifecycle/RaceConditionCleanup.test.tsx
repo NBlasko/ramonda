@@ -40,7 +40,7 @@ class AsyncHook extends Hook<{ userId: number; label: string }> {
  * Child component that uses the async hook
  */
 class AsyncChild extends Component<{ userId: number }> {
-  userHook = this.use(AsyncHook, (bag) => ({
+  userHook = this.use(AsyncHook, (bag: AsyncChild) => ({
     userId: bag.props.userId,
     label: "ChildHook",
   }));

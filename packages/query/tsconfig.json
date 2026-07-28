@@ -7,10 +7,11 @@
     "jsxFactory": "h",
     "strict": true,
     "skipLibCheck": true,
+    "types": ["vitest/globals"],
     "paths": {
-      "@ramonda/core": ["../../packages/core/src/index.ts"],
-      "@ramonda/query": ["../../packages/query/src/index.ts"],
-      "@ramonda/router": ["../../packages/router/src/index.ts"]
+      "@ramonda/core": ["../core/src/index.ts"],
+      "@ramonda/core/testing": ["../core/src/testing.ts"],
+      "@ramonda/testing-library": ["../testing-library/src/index.ts"]
     }
   },
   "include": ["src", "global.d.ts"]

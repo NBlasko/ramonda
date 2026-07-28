@@ -116,6 +116,31 @@ Types: `RouteConfig` · `RouteParams` · `RoutePaths` · `RouterState` · `Route
 
 ---
 
+## `@ramonda/query`
+
+Cached, deduplicated, race-free async state. [Async data](/query)
+
+| | |
+|---|---|
+| `QueryClientProvider` | A **hook** on the app root; owns the cache and publishes it, adds no element. Takes `{ client?, defaults? }`. [Setup](/query) |
+| `Query` | Reads one query. `status` · `data` · `error` · `isPending` · `isFetching` · `isSuccess` · `isError` · `failureCount` · `updatedAt` · `isRestored` · `result` · `refetch()`. [Queries](/query/queries) |
+| `Mutation` | Writes. `mutate(vars)` · `mutateAsync(vars)` · `reset()` · `cancel()` · `isIdle` · `isPending` · `isSuccess` · `isError` · `data` · `error`. [Mutations](/query/mutations) |
+| `QueryClientAccess` | A hook that hands you the client, for imperative work. [Reaching the cache](/query/queries) |
+| `QueryClient` | The cache itself: `fetch` · `prefetch` · `setData` · `peek` · `getEntry` · `all` · `isStale` · `invalidate` · `cancel` · `remove` · `sweep` · `subscribe` · `dehydrate` · `hydrate` |
+| `queryOptions(options)` | Types a query's options so its callbacks' parameters are inferred. [Typing](/query) |
+| `mutationOptions(options)` | The same, for a mutation. |
+| `ServerQueryError` | What a failure from a server render arrives as. A real `Error`. [On the server](/query/server) |
+| `hashKey(key)` · `keyStartsWith(key, prefix)` | Key hashing and prefix matching, for tooling. |
+
+Types: `QueryKey` · `QueryStatus` · `FetchStatus` · `FetchContext` · `QueryFetcher` ·
+`QueryProps` · `QueryResult` · `QuerySnapshot` · `QueryEntry` · `QueryBehaviour` ·
+`ObserverBehaviour` · `QueryDefaults` · `RefetchOnMount` · `RetryPolicy` ·
+`RetryDelayPolicy` · `QueryEvent` · `QueryObserver` · `QueryClientOptions` ·
+`QueryClientProviderProps` · `MutationProps` · `MutationContext` · `MutationStatus` ·
+`Rollback` · `DehydratedQuery` · `DehydratedState` · `SerializedError`
+
+---
+
 ## `@ramonda/lens`
 
 Immutable updates by path. Zero dependencies, usable on its own. [Immutable updates](/lens)

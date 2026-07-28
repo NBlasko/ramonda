@@ -550,6 +550,15 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  * An explicit generic, `watchProp<UserProps>(...)`, is deliberately NOT the way
  * in: TypeScript has no partial inference, so naming `P` forces `V` to fall back
  * to `unknown` and the method's parameters lose their types.
+ *
+ * **On a hook it watches the HOOK's props** — the bag its `this.use()` callback
+ * produces — not the owner component's. That is the only reading that makes sense
+ * (a hook's selector is typed against its own props), but it was not what happened
+ * until 2026-07-28: a hook shares its owner's runtime, so every entry landed in one
+ * list and the runtime handed all of them the COMPONENT's props. A hook watching
+ * `p => p.userId` therefore read the owner's `userId` if it happened to have one,
+ * and never fired when the hook's own prop changed. Fixed by recording which
+ * instance each entry belongs to; see `WatchPropEntry.owner`.
  */
 export function watchProp<P = unknown, V = unknown>(selector: (props: P) => V) {
   if (__DEV__) {
@@ -570,6 +579,9 @@ export function watchProp<P = unknown, V = unknown>(selector: (props: P) => V) {
         selector: selector as (props: unknown) => unknown,
         cb: this[contextName].bind(this),
         lastValue: undefined,
+        // The instance the decorator was put on — a component or a hook. The
+        // runtime is shared; the props are not.
+        owner: this,
       });
     });
   };
