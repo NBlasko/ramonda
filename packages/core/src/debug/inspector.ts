@@ -1,4 +1,4 @@
-import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
+import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS } from "../helpers/constants";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 
 export interface InspectedNode {
@@ -9,6 +9,11 @@ export interface InspectedNode {
   props?: Record<string, unknown>;
   /** A hook's current options (its `this.use(Hook, () => options)` inputs / provided value). */
   options?: Record<string, unknown>;
+  /**
+   * A context consumer's reads: the keys it is subscribed to with their values, and the keys it has
+   * never read named as such. Only a consumer has this — see `CONTEXT_READS`.
+   */
+  reads?: Record<string, unknown>;
   /** Child hooks (and their nested hooks), in use() order. */
   hooks: InspectedNode[];
   /** Nested child components (only for component nodes). */
@@ -22,6 +27,7 @@ interface Inspectable {
   [PERSIST_KEYS]?: Set<string>;
   [CHILD_HOOKS]?: Inspectable[];
   [HOOK_RUNTIME]?: { rawProps?: Record<string, unknown> };
+  [CONTEXT_READS]?: () => Record<string, unknown>;
   [COMPONENT_RUNTIME]?: { rawProps?: Record<string, unknown> };
   constructor?: { name?: string };
 }
@@ -61,6 +67,20 @@ function readOptions(instance: Inspectable): Record<string, unknown> | undefined
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * A context consumer's reads, asked OF the consumer.
+ *
+ * The inspector cannot work these out itself: a consumer's values are accessors that subscribe on
+ * read, so walking them would change what the owning component re-renders on. The consumer knows
+ * which keys it has already subscribed to, and only those are safe to read.
+ */
+function readContextReads(instance: Inspectable): Record<string, unknown> | undefined {
+  const report = instance[CONTEXT_READS];
+  if (typeof report !== "function") return undefined;
+  const reads = report.call(instance);
+  return Object.keys(reads).length > 0 ? reads : undefined;
+}
+
 /** Reads a component's current props (raw), minus framework internals. */
 function readProps(instance: Inspectable): Record<string, unknown> | undefined {
   const raw = instance[COMPONENT_RUNTIME]?.rawProps;
@@ -83,6 +103,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
     kind: "hook" as const,
     state: readState(hook),
     options: readOptions(hook),
+    reads: readContextReads(hook),
     hooks: readHooks(hook),
     children: [],
   }));

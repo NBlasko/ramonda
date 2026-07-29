@@ -1,4 +1,5 @@
 import { createId } from "../helpers/createId";
+import { CONTEXT_READS } from "../helpers/constants";
 import { type Runtime, HOOK_RUNTIME } from "../core/runtime";
 import { attach, detach } from "../helpers/constants";
 import { Hook } from "./Hook";
@@ -10,6 +11,12 @@ import { diagnose } from "../debug/diagnostics";
  * Internal payload published on a component's runtime context. It hands out one
  * reactive signal per context key, created lazily on first access.
  */
+/**
+ * Stands in for a key this consumer has never read. Not `undefined`, which would claim the provider
+ * supplies nothing — and not the value either, because fetching it would subscribe.
+ */
+const NOT_READ = "— not read by this consumer";
+
 interface ContextChannel {
   getSignal(key: string): State<unknown> | undefined;
 }
@@ -17,7 +24,7 @@ interface ContextChannel {
 export interface ContextOptions {
   /**
    * Display name for devtools. The framework cannot see the names you
-   * destructure into (`ThemeProvider`/`ThemeContext` exist only at the call
+   * destructure into (`ThemeProvider`/`ThemeConsumer` exist only at the call
    * site), so without this every context shows up as `Provider`/`Consumer`.
    * Set it and they become `<label>Provider` / `<label>Consumer`.
    * Purely cosmetic and DEV-only — stripped from production builds.
@@ -28,11 +35,11 @@ export interface ContextOptions {
 /**
  * Creates a context as a pair of hooks:
  *
- *   const [ThemeProvider, ThemeContext] = createContext({ color: "default" });
+ *   const [ThemeProvider, ThemeConsumer] = createContext({ color: "default" });
  *
  * Optionally label it for devtools:
  *
- *   const [ThemeProvider, ThemeContext] = createContext(
+ *   const [ThemeProvider, ThemeConsumer] = createContext(
  *     { color: "default" },
  *     { label: "Theme" },
  *   ); // → "ThemeProvider" / "ThemeConsumer" in devtools
@@ -47,7 +54,7 @@ export interface ContextOptions {
  *     render() { return <div>{this.theme.color}</div>; }
  *   }
  *   class Child extends Component {
- *     theme = this.use(ThemeContext); // read (any descendant)
+ *     theme = this.use(ThemeConsumer); // read (any descendant)
  *   }
  *
  * Performance model: the channel exposes the provider's own option signals as
@@ -186,6 +193,34 @@ export function createContext<T extends object>(
       Object.defineProperty(Provider, "name", { value: `${label}Provider` });
       Object.defineProperty(Consumer, "name", { value: `${label}Consumer` });
     }
+
+    /**
+     * What devtools shows for a consumer, and why the consumer has to be the one to say it.
+     *
+     * A consumer has no state and no props: every value it exposes is an accessor over the
+     * provider's signals. So it used to appear in the panel as a node with nothing in it — the
+     * emptiest thing in the tree being the hook whose entire job is reading.
+     *
+     * The panel cannot fix that by reading the accessors, because READING IS SUBSCRIBING: the
+     * getter attaches a listener on first read, so a panel walking all the keys would widen what
+     * the owning component re-renders on. Inspecting must not change behaviour, and here the
+     * ordinary read does.
+     *
+     * So only the already-subscribed keys are read — for those the getter's subscribe branch is a
+     * no-op, and `State.get()` registers nothing outside an effect or tracker, which is where the
+     * inspector runs. The rest are named rather than valued, which is worth seeing on its own: it
+     * is the fine-grained subscription made visible, the difference between "this consumer wakes on
+     * `color`" and "on anything in the theme".
+     */
+    Object.defineProperty(Consumer.prototype, CONTEXT_READS, {
+      value(this: InstanceType<typeof Consumer>): Record<string, unknown> {
+        const reads: Record<string, unknown> = {};
+        for (const key of contextKeys) {
+          reads[key] = this._subscribedKeys.has(key) ? (this as unknown as Record<string, unknown>)[key] : NOT_READ;
+        }
+        return reads;
+      },
+    });
   }
 
   return [Provider, Consumer] as unknown as readonly [

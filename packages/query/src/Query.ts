@@ -1,6 +1,6 @@
 import { Hook, create, destroy, mount, onDocument, onWindow, StableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
-import { ClientContext, requireClient } from "./context";
+import { ClientConsumer, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
 import { warnOnce } from "./diagnostics";
 import { hashKey, sameKeyParts } from "./hashKey";
@@ -182,7 +182,7 @@ interface Observed {
 
 @StableProps("key")
 export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps<TData, K>> {
-  private ctx = this.use(ClientContext);
+  private ctx = this.use(ClientConsumer);
 
   /**
    * The re-render trigger, and nothing else — what is KNOWN lives in the cache,

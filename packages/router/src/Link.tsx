@@ -1,6 +1,6 @@
 import { Component, onElement, Host } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { RouteContext } from "./Router";
+import { RouteConsumer } from "./Router";
 import { buildUrl, parseUrlString, sanitizeHref } from "./urlUtils";
 import type { StateUpdater } from "./types";
 
@@ -47,7 +47,7 @@ function shouldSkipIntercept(href: string, e: MouseEvent): boolean {
   className: self.props.className,
 }))
 export class Link extends Component<LinkProps> {
-  private ctx = this.use(RouteContext);
+  private ctx = this.use(RouteConsumer);
 
   /**
    * The ONE destination this link names. Both the rendered `href` attribute and

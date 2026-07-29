@@ -13,7 +13,7 @@ describe("Context API: Lazy Selectors & Lifecycle", () => {
     theme: string;
   }
 
-  const [AppProvider, AppContext] = createContext<AppState>({
+  const [AppProvider, AppConsumer] = createContext<AppState>({
     counter: 0,
     theme: "light",
   });
@@ -26,7 +26,7 @@ describe("Context API: Lazy Selectors & Lifecycle", () => {
    * Komponenta koja prati temu.
    */
   class ThemeWatcher extends Component {
-    data = this.use(AppContext);
+    data = this.use(AppConsumer);
     render() {
       log.push(`Render:ThemeWatcher:${this.data.theme}`);
       return <div>{this.data.theme}</div>;
@@ -37,7 +37,7 @@ describe("Context API: Lazy Selectors & Lifecycle", () => {
    * Komponenta sa kompleksnim lifecycle-om koja prati counter.
    */
   class ComplexCounterWatcher extends Component {
-    data = this.use(AppContext);
+    data = this.use(AppConsumer);
 
     @create init() {
       log.push(`Unit:Complex:${this.data.counter}`);

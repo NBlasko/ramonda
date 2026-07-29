@@ -8,7 +8,7 @@ describe("Context API: Hierarchy and Performance", () => {
   let log: string[] = [];
 
   // Defined outside the tests to verify stability across instances.
-  const [ThemeProvider, ThemeContext] = createContext({ color: "default" });
+  const [ThemeProvider, ThemeConsumer] = createContext({ color: "default" });
 
   beforeEach(() => {
     log = [];
@@ -19,7 +19,7 @@ describe("Context API: Hierarchy and Performance", () => {
    */
   test("should propagate updates and skip pure components", async () => {
     class ThemeDisplay extends Component {
-      theme = this.use(ThemeContext);
+      theme = this.use(ThemeConsumer);
       render() {
         log.push(`Render:Display:${this.theme.color}`);
         return <div id="display-1">{this.theme.color}</div>;
@@ -70,7 +70,7 @@ describe("Context API: Hierarchy and Performance", () => {
    */
   test("should correctly resolve nested scoping", async () => {
     class NestedDisplay extends Component {
-      theme = this.use(ThemeContext);
+      theme = this.use(ThemeConsumer);
       render() {
         log.push(`Render:Nested:${this.theme.color}`);
         return <div id="display-nested">{this.theme.color}</div>;
@@ -104,10 +104,10 @@ describe("Context API: Hierarchy and Performance", () => {
    * TEST 3: Isolation with a completely fresh context instance.
    */
   test("should work with fresh context instances", async () => {
-    const [FreshProvider, FreshContext] = createContext({ val: "init" });
+    const [FreshProvider, FreshConsumer] = createContext({ val: "init" });
 
     class FreshDisplay extends Component {
-      ctx = this.use(FreshContext);
+      ctx = this.use(FreshConsumer);
       render() {
         return <div id="display-fresh">{this.ctx.val}</div>;
       }
@@ -130,10 +130,10 @@ describe("Context API: Hierarchy and Performance", () => {
 
 describe("Lifecycle: Cleanup & Memory Management", () => {
   let log: string[] = [];
-  const [UserProvider, UserContext] = createContext({ name: "Guest" });
+  const [UserProvider, UserConsumer] = createContext({ name: "Guest" });
 
   class Profile extends Component {
-    user = this.use(UserContext);
+    user = this.use(UserConsumer);
 
     render() {
       log.push(`Render:Profile:${this.user.name}`);

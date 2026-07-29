@@ -15,6 +15,8 @@ interface InspectedNode {
   state: Record<string, unknown>;
   props?: Record<string, unknown>;
   options?: Record<string, unknown>;
+  /** A context consumer's reads — the keys it subscribed to, and the ones it never touched. */
+  reads?: Record<string, unknown>;
   hooks: InspectedNode[];
   children: InspectedNode[];
   node?: Node;
@@ -88,8 +90,28 @@ const MAX_LOG_NODES = 200;
 
 /** Narrow enough to peek past, wide enough that the drag handle is still there to grab. */
 const MIN_PANEL_WIDTH = 280;
+/**
+ * Two stores, because the panel holds two different kinds of thing.
+ *
+ * A **preference** is about the tool: how wide you like it, docked or floating, whether you keep
+ * state and props collapsed. That is how you work, it is the same tomorrow, and it belongs in
+ * `localStorage`.
+ *
+ * A **session** is about the task: the panel being open, which tab, what you were filtering for,
+ * which component you had focused. That is where you are in one piece of debugging, and it is
+ * meaningless in another tab or next week — a focused path names a tree that no longer exists. It
+ * belongs in `sessionStorage`, which the browser scopes to exactly this tab and clears when it is
+ * closed. Nothing is written to the URL and nothing survives the tab, so a devtools session cannot
+ * follow a shared link.
+ */
 const WIDTH_KEY = "ramonda:devtools-width";
 const MODE_KEY = "ramonda:devtools-mode";
+const HIDE_VALUES_KEY = "ramonda:devtools-hide-values";
+const HIDE_HOOKS_KEY = "ramonda:devtools-hide-hooks";
+const OPEN_KEY = "ramonda:devtools-open";
+const TAB_KEY = "ramonda:devtools-tab";
+const FILTER_KEY = "ramonda:devtools-filter";
+const PIN_KEY = "ramonda:devtools-pin";
 
 /**
  * `localStorage` throws rather than returning null in a sandboxed iframe or with site data
@@ -106,7 +128,23 @@ const write = (key: string, value: string): void => {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* not storable here; the width simply does not persist */
+    /* not storable here; the preference simply does not persist */
+  }
+};
+
+const readSession = (key: string): string | null => {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const writeSession = (key: string, value: string | null): void => {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    /* not storable here; the session simply does not survive a reload */
   }
 };
 
@@ -180,7 +218,46 @@ class RamondaDevTools extends HTMLElement {
       if (this.alive && this.watching) this.refreshComponents();
     });
 
+    this.restoreSession();
+
     window.dispatchEvent(new CustomEvent("ramonda:devtools-ready"));
+  }
+
+  /**
+   * Picks the reader's debugging session back up: the tab they were on, what they were filtering
+   * for, the component they had focused, and whether the panel was open at all.
+   *
+   * Last in `connectedCallback`, after every listener exists, and it goes through the same paths a
+   * click does — the tab is restored by dispatching a click on it — so there is one code path that
+   * opens a tab and not two that have to agree.
+   *
+   * A reload during a debugging session is not an interruption to recover from; it is part of the
+   * session. What does NOT come back is anything from another tab or another day: `sessionStorage`
+   * ends with the tab, which is right for a focused path, since it names a tree that no longer
+   * exists.
+   */
+  private restoreSession(): void {
+    const root = this.shadowRoot!;
+
+    const filter = readSession(FILTER_KEY);
+    if (filter) {
+      const input = root.querySelector("#tree-filter") as HTMLInputElement | null;
+      if (input) input.value = filter;
+      this.filter = filter;
+    }
+
+    const pin = readSession(PIN_KEY);
+    if (pin) this.pinned = pin;
+
+    const tab = readSession(TAB_KEY);
+    if (tab && tab !== "logs") root.querySelector(`.tab[data-tab="${tab}"]`)?.dispatchEvent(new Event("click"));
+
+    if (readSession(OPEN_KEY) === "1") {
+      this.setAttribute("open", "");
+      this.applyLayout();
+      this.updateWatchState();
+      this.updateQueryWatch();
+    }
   }
 
   /**
@@ -831,6 +908,7 @@ class RamondaDevTools extends HTMLElement {
   toggle() {
     this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
     if (this.hasAttribute("open")) this.clearErrorAlert();
+    writeSession(OPEN_KEY, this.hasAttribute("open") ? "1" : null);
     // Opened by hand: the reader's own preference applies.
     this.forcedFloat = false;
     this.applyLayout();
@@ -889,6 +967,7 @@ class RamondaDevTools extends HTMLElement {
     if (!this.hasAttribute("open")) this.forcedFloat = true;
     this.setAttribute("open", "");
     this.clearErrorAlert();
+    writeSession(OPEN_KEY, "1");
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
@@ -979,18 +1058,28 @@ class RamondaDevTools extends HTMLElement {
         }
 
         const className = tool === "values" ? "no-values" : "no-hooks";
-        const hidden = container.classList.toggle(className);
-        button.classList.toggle("on", hidden);
-        button.textContent =
-          tool === "values"
-            ? hidden
-              ? "show state & props"
-              : "hide state & props"
-            : hidden
-              ? "show hooks"
-              : "hide hooks";
+        this.setTool(tool === "values" ? "values" : "hooks", !container.classList.contains(className));
       });
     }
+
+    // Restored before anything is rendered, so the tree never appears in a state the reader turned
+    // off and then flickers into the one they chose.
+    if (read(HIDE_VALUES_KEY) === "1") this.setTool("values", true);
+    if (read(HIDE_HOOKS_KEY) === "1") this.setTool("hooks", true);
+  }
+
+  /** One place for the class, the button's look, its label and the stored preference. */
+  private setTool(tool: "values" | "hooks", hidden: boolean): void {
+    const root = this.shadowRoot!;
+    const container = root.querySelector("#components-container");
+    const button = root.querySelector(`[data-tool="${tool}"]`);
+    if (!container || !button) return;
+
+    container.classList.toggle(tool === "values" ? "no-values" : "no-hooks", hidden);
+    button.classList.toggle("on", hidden);
+    const label = tool === "values" ? "state &amp; props" : "hooks";
+    button.innerHTML = `${tool === "values" ? "◧" : "⬡"}<span class="tw"> ${hidden ? "show" : "hide"} ${label}</span>`;
+    write(tool === "values" ? HIDE_VALUES_KEY : HIDE_HOOKS_KEY, hidden ? "1" : "0");
   }
 
   /**
@@ -1044,6 +1133,7 @@ class RamondaDevTools extends HTMLElement {
     const input = root.querySelector("#tree-filter") as HTMLInputElement | null;
     input?.addEventListener("input", () => {
       this.filter = input.value;
+      writeSession(FILTER_KEY, input.value || null);
       this.applyFilter();
       // A hit inside a collapsed branch is a hit you cannot see. Typing opens everything; the
       // reader can collapse again afterwards, and clearing the filter leaves it as they left it.
@@ -1082,6 +1172,7 @@ class RamondaDevTools extends HTMLElement {
         tab.classList.add("active");
         const target = (tab as HTMLElement).dataset.tab;
         this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add("active");
+        if (target) writeSession(TAB_KEY, target);
         this.componentsTabActive = target === "components";
         this.queryTabActive = target === "query";
         this.updateQueryWatch();
@@ -1373,6 +1464,9 @@ class RamondaDevTools extends HTMLElement {
       // A hook's inputs are its PROPS. They were called options once, the framework renamed
       // them, and this label kept saying the old word to everyone inspecting a hook.
       const optionsHtml = this.renderValueBlock("Props", n.options, path, "o", acc);
+      // A consumer holds no state and no props, so this is the only block it has — and it is the
+      // interesting one: which keys it actually reads is what decides when it re-renders.
+      const readsHtml = this.renderValueBlock("Reads from context", n.reads, path, "r", acc);
 
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);
@@ -1387,7 +1481,7 @@ class RamondaDevTools extends HTMLElement {
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
           : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
-      const body = `${propsHtml}${stateHtml}${optionsHtml}${hooksHtml}${childrenHtml}`;
+      const body = `${propsHtml}${stateHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
 
       // A leaf gets no disclosure triangle: a component with no state, no props, no hooks and
       // no children has nothing to open, and a triangle that reveals emptiness is a lie the
@@ -1781,6 +1875,7 @@ class RamondaDevTools extends HTMLElement {
   /** Focuses one component, or the whole tree when given `undefined`. */
   private pin(path: string | undefined): void {
     this.pinned = path;
+    writeSession(PIN_KEY, path ?? null);
     this.renderComponentsFull();
   }
 

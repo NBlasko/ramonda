@@ -124,6 +124,18 @@ export const HAS_LIST = Symbol("hasList");
  */
 export const CHILD_RECORD = Symbol("childRecord");
 export const STATE_KEYS = Symbol("stateKeys");
+/**
+ * DEV-only, on a context Consumer: hands the inspector the context keys this consumer reads and
+ * their current values.
+ *
+ * A consumer holds no state and no props — its values are accessors over the PROVIDER's signals —
+ * so it appeared in devtools as an empty node, which is exactly the wrong answer for the hook whose
+ * whole job is reading. It cannot be inspected by reading those accessors either: reading a key
+ * SUBSCRIBES the consumer to it, so a panel that read all of them would silently widen what the
+ * component re-renders on. The consumer therefore answers for itself, reporting the keys it has
+ * already subscribed to and naming the rest as unread.
+ */
+export const CONTEXT_READS = Symbol("contextReads");
 export const PERSIST_KEYS = Symbol("persistKeys");
 
 // Attribute on a component's carrier element holding its serialized state blob.

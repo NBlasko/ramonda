@@ -46,13 +46,23 @@ function tree(withDetail = true): Node[] {
 
 type Panel = HTMLElement & { shadowRoot: ShadowRoot };
 
-function mount(inspect: () => Node[]): Panel {
+/**
+ * A fresh page: the element is created and left exactly as the session store puts it, which is what
+ * a reload looks like. Nothing is opened and no tab is clicked.
+ */
+function reload(inspect: () => Node[] = () => tree()): Panel {
   document.body.innerHTML = "";
   (window as unknown as { __RAMONDA_INSPECT__: unknown }).__RAMONDA_INSPECT__ = inspect;
 
   const panel = document.createElement("ramonda-devtools") as Panel;
   document.body.append(panel);
-  panel.setAttribute("open", "");
+  return panel;
+}
+
+/** A fresh page with the panel opened the way a reader opens it — through the badge's `toggle`. */
+function mount(inspect: () => Node[]): Panel {
+  const panel = reload(inspect);
+  (panel as unknown as { toggle(): void }).toggle();
   openTab(panel, "components");
   return panel;
 }
@@ -88,8 +98,10 @@ function devError(id: string, message = "RMD001"): void {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  // The dock/float preference is persisted, so a test that changes it would leak into the next.
+  // Preferences live in localStorage and the debugging session in sessionStorage; both would leak
+  // from one test into the next — a focused component most visibly.
   localStorage.clear();
+  sessionStorage.clear();
   /**
    * The app's own margin, and every layout assertion is written against it.
    *
@@ -935,5 +947,73 @@ describe("a dev error", () => {
     for (let i = 0; i < 120; i++) devError(String(i));
 
     expect(count(panel)).toBe("99+");
+  });
+});
+
+describe("what survives a reload", () => {
+  /** A reload: a new element, inheriting nothing but the two stores. */
+  const remount = () => reload();
+
+  it("keeps the preferences: width, layout, and the two filters", () => {
+    const panel = mount(() => tree());
+    (panel as unknown as { toggle(): void }).toggle();
+
+    panel.shadowRoot.querySelector("#mode-btn")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    panel.shadowRoot.querySelector('[data-tool="values"]')!.dispatchEvent(new Event("click"));
+    panel.shadowRoot.querySelector('[data-tool="hooks"]')!.dispatchEvent(new Event("click"));
+
+    const next = remount();
+    const container = next.shadowRoot.querySelector("#components-container")!;
+
+    expect(container.classList.contains("no-values")).toBe(true);
+    expect(container.classList.contains("no-hooks")).toBe(true);
+    // The label has to follow the state, or the button lies about what it will do.
+    expect(next.shadowRoot.querySelector('[data-tool="values"]')!.textContent).toContain("show");
+    expect(localStorage.getItem("ramonda:devtools-mode")).toBe("float");
+  });
+
+  it("picks the debugging session back up: open, tab, filter and focus", () => {
+    const panel = mount(() => tree());
+    openTab(panel, "query");
+    openTab(panel, "components");
+    focus(panel, "ProductDetail");
+
+    const input = panel.shadowRoot.querySelector("#tree-filter") as HTMLInputElement;
+    input.value = "detail";
+    input.dispatchEvent(new Event("input"));
+
+    const next = remount();
+
+    expect(next.hasAttribute("open")).toBe(true);
+    expect(next.shadowRoot.querySelector(".tab.active")!.textContent).toBe("COMPONENTS");
+    expect((next.shadowRoot.querySelector("#tree-filter") as HTMLInputElement).value).toBe("detail");
+    expect(summaries(next)).toEqual(["/0:component:App/0:component:ProductsPage/0:component:ProductDetail"]);
+    expect(next.shadowRoot.querySelector("#crumbs")!.classList.contains("on")).toBe(true);
+  });
+
+  it("stays closed if it was closed", () => {
+    const panel = mount(() => tree());
+    (panel as unknown as { toggle(): void }).toggle();
+    expect(panel.hasAttribute("open")).toBe(false);
+
+    expect(remount().hasAttribute("open")).toBe(false);
+  });
+
+  /**
+   * A focused path names a tree, so it cannot outlive the tab that was looking at it — and when the
+   * page IS different, the breadcrumb already says the component is no longer mounted rather than
+   * showing an empty panel.
+   */
+  it("keeps the session in sessionStorage, never in localStorage", () => {
+    const panel = mount(() => tree());
+    focus(panel, "ProductDetail");
+    const input = panel.shadowRoot.querySelector("#tree-filter") as HTMLInputElement;
+    input.value = "detail";
+    input.dispatchEvent(new Event("input"));
+
+    expect(sessionStorage.getItem("ramonda:devtools-pin")).toContain("ProductDetail");
+    expect(sessionStorage.getItem("ramonda:devtools-filter")).toBe("detail");
+    expect(localStorage.getItem("ramonda:devtools-pin")).toBe(null);
+    expect(localStorage.getItem("ramonda:devtools-filter")).toBe(null);
   });
 });

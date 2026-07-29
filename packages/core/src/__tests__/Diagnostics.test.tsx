@@ -198,10 +198,10 @@ describe("DEV diagnostics", () => {
   });
 
   test("RMD003: reports a consumer with no provider above it", async () => {
-    const [, ThemeContext] = createContext({ theme: "light" }, { label: "Theme" });
+    const [, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
     class Orphan extends Component {
-      ctx = this.use(ThemeContext);
+      ctx = this.use(ThemeConsumer);
       render() {
         return <span>{this.ctx.theme}</span>;
       }
@@ -214,12 +214,12 @@ describe("DEV diagnostics", () => {
   });
 
   test("RMD003: stays quiet for a consumer that is held but never read", async () => {
-    const [, ThemeContext] = createContext({ theme: "light" });
+    const [, ThemeConsumer] = createContext({ theme: "light" });
 
     class Quiet extends Component {
       // Constructed, never read — holding a consumer down a branch you don't
       // take is not a mistake, so it must not be reported.
-      ctx = this.use(ThemeContext);
+      ctx = this.use(ThemeConsumer);
       render() {
         return <span>no theme here</span>;
       }
@@ -231,10 +231,10 @@ describe("DEV diagnostics", () => {
   });
 
   test("RMD003: stays quiet when a provider is above", async () => {
-    const [ThemeProvider, ThemeContext] = createContext({ theme: "light" });
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" });
 
     class Reader extends Component {
-      ctx = this.use(ThemeContext);
+      ctx = this.use(ThemeConsumer);
       render() {
         return <span>{this.ctx.theme}</span>;
       }

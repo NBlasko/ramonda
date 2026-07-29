@@ -1,5 +1,5 @@
 import { Hook, destroy, StableProps, state } from "@ramonda/core";
-import { ClientContext, requireClient } from "./context";
+import { ClientConsumer, requireClient } from "./context";
 import type { QueryClient } from "./QueryClient";
 import type { QueryKey } from "./types";
 
@@ -97,7 +97,7 @@ export interface MutationProps<TData, TVars> {
  */
 @StableProps("invalidates")
 export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVars>> {
-  private ctx = this.use(ClientContext);
+  private ctx = this.use(ClientConsumer);
 
   /**
    * The status, and the only reactive field here.
