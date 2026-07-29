@@ -121,6 +121,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/router
     devDependencies:
+      '@ramonda/devtools':
+        specifier: workspace:^
+        version: link:../../packages/devtools
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../../packages/shared

@@ -650,3 +650,11 @@ class RamondaDevTools extends HTMLElement {
 if (!customElements.get("ramonda-devtools")) {
   customElements.define("ramonda-devtools", RamondaDevTools);
 }
+
+/**
+ * A side-effect module: importing it registers `<ramonda-devtools>` and nothing else. This
+ * marks it as an ES module for TypeScript, which otherwise rejects an import of a file with no
+ * import or export in it ("is not a module") — which is what an app hits when it imports the
+ * panel explicitly, as it must.
+ */
+export {};
