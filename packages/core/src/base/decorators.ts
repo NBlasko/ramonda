@@ -207,7 +207,7 @@ export function createSubscriptionDecorator<
       validateArgs(...args);
     }
 
-    return function <This extends Owner>(
+    return function <This>(
       value: Handler,
       // Deliberately NOT `ClassMethodDecoratorContext<This, Handler>`. That type
       // constrains its Value to `(this: This, ...args: any) => any`, which a
@@ -217,7 +217,18 @@ export function createSubscriptionDecorator<
       // The context is left at its default; the shape of the decorated method is
       // enforced by `value: Handler` above, which is the parameter TypeScript
       // actually checks it against.
-      context: ClassMethodDecoratorContext<This>,
+      //
+      // The owner requirement is a BRAND rather than `This extends Owner`, and the
+      // difference is only in the error. With the constraint, a mismatching class
+      // produced a message about `access.has` being contravariant and about the
+      // decorated method missing from the owner type — true, and unreadable. The
+      // brand fails on a named property instead, so the message says what is wrong.
+      context: ClassMethodDecoratorContext<This> &
+        (This extends Owner
+          ? unknown
+          : {
+              "this decorator's connect() requires an owner this class does not satisfy": Owner;
+            }),
     ): void {
       if (__DEV__) {
         assertMethod(context.kind, decoratorName, context.name);
@@ -225,7 +236,9 @@ export function createSubscriptionDecorator<
       ensureStringContextName(context.name, decoratorName);
 
       context.addInitializer(function (this: This) {
-        const owner = this;
+        // Safe because of the brand above: a class that does not satisfy `Owner` cannot
+        // reach this line, it fails to compile at the decoration site.
+        const owner = this as unknown as Owner;
         // Registered from the initializer, not later: see attachEffect for what
         // "later" costs. A dependency-free connect therefore runs once, on the
         // first commit, and its cleanup runs on destroy.

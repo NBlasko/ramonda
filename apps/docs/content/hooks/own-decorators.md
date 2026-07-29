@@ -21,6 +21,25 @@ export const onStore = createSubscriptionDecorator(
 );
 ```
 
+`handler` and the decorator's own arguments (`store`) are annotated because they are the
+**contract**: `handler`'s signature is what the decorated method is checked against, and
+those annotations are the only place that shape is written down.
+
+`owner` is different — it is optional, and annotating it is how a decorator demands
+something of the class it goes on:
+
+```tsx
+export const onRowStore = createSubscriptionDecorator(
+  "onRowStore",
+  (owner: Component<{ id: string }>, handler: (state: ThemeState) => void, store: ThemeStore) =>
+    store.subscribe(handler, owner.props.id),   // reads the real instance
+);
+```
+
+Put that on a component without an `id` prop and it does not compile, with a message naming
+the owner type it wanted. Leave `owner` unannotated and the decorator works on any component
+or hook, which is what the built-in ones do.
+
 Then use it like the built-in ones:
 
 ```tsx
@@ -33,6 +52,11 @@ export class Panel extends Component {
   }
 }
 ```
+
+**The method's parameter needs its annotation** (`next: ThemeState`), even though `connect`
+already declared the handler's shape. A decorator cannot contextually type the signature it
+decorates — an unannotated parameter is an implicit `any` (TS7006) — which is a TypeScript
+limitation rather than a choice, and the same one [`@watchProp`](/concepts/props) lives with.
 
 ```demo:StoreSubscription
 ```
