@@ -1017,3 +1017,292 @@ describe("what survives a reload", () => {
     expect(localStorage.getItem("ramonda:devtools-filter")).toBe(null);
   });
 });
+
+describe("keeping the reader's place", () => {
+  const container = (panel: Panel) => panel.shadowRoot.querySelector("#components-container")!;
+  const detailsFor = (panel: Panel, name: string) =>
+    Array.from(container(panel).querySelectorAll("details")).find((d) =>
+      d.querySelector(".comp-summary")?.getAttribute("data-path")?.endsWith(`:${name}`),
+    ) as HTMLDetailsElement;
+
+  /**
+   * The controls are how you FIND a component, and they used to scroll away with the tree — so the
+   * moment you found something and scrolled to read it, the search you found it with was gone.
+   */
+  it("puts the toolbar and the breadcrumb in one sticky header", () => {
+    const panel = mount(() => tree());
+    const head = panel.shadowRoot.querySelector(".tree-head")!;
+
+    expect(head.querySelector("#tree-filter")).not.toBe(null);
+    expect(head.querySelector('[data-tool="pick"]')).not.toBe(null);
+    expect(head.querySelector("#crumbs")).not.toBe(null);
+    // Sticky needs the scroll container to carry no padding of its own; the tree carries it.
+    const css = panel.shadowRoot.querySelector("style")!.textContent!;
+    expect(css).toContain(".tree-head { position: sticky");
+    expect(css).toContain("#components-tab { padding: 0; }");
+  });
+
+  /**
+   * A structural change replaces this subtree's markup, and `innerHTML` resets its container's
+   * scroll to the top — so reading a component while the app did anything at all threw you back to
+   * the root of the tree.
+   */
+  it("keeps the scroll position across a structural re-render", () => {
+    let extra = false;
+    const panel = mount(() => {
+      const base = tree();
+      if (extra) base[0].children.push(node("Later", "component", { state: { a: 1 } }));
+      return base;
+    });
+
+    /**
+     * jsdom has no layout and does not reset `scrollTop` when `innerHTML` is written, so asserting
+     * the final value would pass even with the restore deleted — the first version of this test did
+     * exactly that. What is asserted instead is the WRITE: the panel put the reader's position back
+     * after the rebuild, which is the part a browser needs.
+     */
+    const scroller = panel.shadowRoot.querySelector("#components-tab") as HTMLElement;
+    let position = 0;
+    const writes: number[] = [];
+    Object.defineProperty(scroller, "scrollTop", {
+      get: () => position,
+      set: (value: number) => {
+        position = value;
+        writes.push(value);
+      },
+      configurable: true,
+    });
+
+    scroller.scrollTop = 240;
+    extra = true;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(summaries(panel)).toHaveLength(5);
+    expect(writes).toEqual([240, 240]);
+  });
+
+  /** Without this, a tree the reader folded down to what they cared about unfolded itself. */
+  it("keeps a folded branch folded across a structural re-render", () => {
+    let extra = false;
+    const panel = mount(() => {
+      const base = tree();
+      if (extra) base[0].children.push(node("Later", "component", { state: { a: 1 } }));
+      return base;
+    });
+
+    detailsFor(panel, "ProductsPage").open = false;
+
+    extra = true;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(detailsFor(panel, "ProductsPage").open).toBe(false);
+    // Everything else is untouched: absent from the set means open, the default for a new node.
+    expect(detailsFor(panel, "App").open).toBe(true);
+    expect(detailsFor(panel, "Later").open).toBe(true);
+  });
+
+  it("folds and unfolds everything through the same record", () => {
+    const panel = mount(() => tree());
+
+    panel.shadowRoot.querySelector('[data-tool="collapse"]')!.dispatchEvent(new Event("click"));
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+    expect(Array.from(container(panel).querySelectorAll("details")).every((d) => !d.open)).toBe(true);
+
+    panel.shadowRoot.querySelector('[data-tool="expand"]')!.dispatchEvent(new Event("click"));
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+    expect(Array.from(container(panel).querySelectorAll("details")).every((d) => d.open)).toBe(true);
+  });
+});
+
+describe("resizing the panel", () => {
+  const width = (panel: Panel) => panel.style.getPropertyValue("--panel-w");
+
+  const drag = (panel: Panel, from: number, to: number) => {
+    const handle = panel.shadowRoot.querySelector(".ramonda-resize")!;
+    handle.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: from, bubbles: true, cancelable: true }),
+    );
+    window.dispatchEvent(new PointerEvent("pointermove", { clientX: to }));
+    window.dispatchEvent(new PointerEvent("pointerup", { clientX: to }));
+  };
+
+  it("widens as the handle is dragged left, and remembers the width", () => {
+    const panel = mount(() => tree());
+
+    // jsdom reports a 0px panel, so the drag delta IS the width — which is the arithmetic under
+    // test: dragging left must widen, because the panel is anchored to the right.
+    drag(panel, 800, 400);
+
+    expect(width(panel)).toBe("400px");
+    expect(localStorage.getItem("ramonda:devtools-width")).not.toBe(null);
+  });
+
+  /** A panel dragged to 20px is unrecoverable: the handle goes with it. */
+  it("refuses to shrink past the point where the handle is still grabbable", () => {
+    const panel = mount(() => tree());
+
+    drag(panel, 400, 800);
+
+    expect(width(panel)).toBe("280px");
+  });
+
+  it("restores a remembered width on the next page", () => {
+    localStorage.setItem("ramonda:devtools-width", "512");
+
+    expect(width(reload())).toBe("512px");
+  });
+});
+
+describe("the logs tab", () => {
+  const rows = (panel: Panel) => panel.shadowRoot.querySelectorAll(".log-item");
+
+  const log = (id: string, type = "info", data?: unknown) => {
+    window.dispatchEvent(
+      new CustomEvent("ramonda:dev-log", { detail: { type, message: `msg ${id}`, id, timestamp: "12:00", data } }),
+    );
+  };
+
+  it("shows the newest first and lets a row be dismissed", () => {
+    const panel = mount(() => tree());
+    log("1");
+    log("2");
+
+    expect(rows(panel)).toHaveLength(2);
+    expect(rows(panel)[0].textContent).toContain("msg 2");
+
+    (rows(panel)[0].querySelector(".delete-btn") as HTMLElement).dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    expect(rows(panel)).toHaveLength(1);
+    expect(rows(panel)[0].textContent).toContain("msg 1");
+  });
+
+  /** A long session must not grow the panel's DOM without limit; the oldest row goes. */
+  it("keeps at most 200 rows", () => {
+    const panel = mount(() => tree());
+    for (let i = 0; i < 205; i++) log(String(i));
+
+    expect(rows(panel)).toHaveLength(200);
+    expect(rows(panel)[0].textContent).toContain("msg 204");
+  });
+
+  it("escapes a message rather than rendering it", () => {
+    const panel = mount(() => tree());
+    window.dispatchEvent(
+      new CustomEvent("ramonda:dev-log", {
+        detail: { type: "info", message: "<img src=x>", id: "x", timestamp: "12:00" },
+      }),
+    );
+
+    expect(rows(panel)[0].querySelector("img")).toBe(null);
+    expect(rows(panel)[0].textContent).toContain("<img src=x>");
+  });
+});
+
+describe("what the panel does while nobody is looking", () => {
+  const bridge = () => ({
+    snapshot: vi.fn(() => ({ clients: [] })),
+    invalidate: vi.fn(),
+    remove: vi.fn(),
+  });
+
+  /**
+   * The cost model the whole panel is built on: it PULLS, and only while its tab is open. A poll
+   * that outlived the tab would read every live cache four times a second, forever, in every
+   * development build.
+   */
+  it("stops polling the cache when its tab is left", () => {
+    const spy = bridge();
+    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = spy;
+
+    vi.useFakeTimers();
+    try {
+      const panel = mount(() => tree());
+      openTab(panel, "query");
+      const opened = spy.snapshot.mock.calls.length;
+      expect(opened).toBeGreaterThan(0);
+
+      // Twice a second while the tab is open.
+      vi.advanceTimersByTime(1100);
+      expect(spy.snapshot.mock.calls.length).toBeGreaterThan(opened);
+
+      openTab(panel, "components");
+      const left = spy.snapshot.mock.calls.length;
+      vi.advanceTimersByTime(5000);
+
+      expect(spy.snapshot.mock.calls.length).toBe(left);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops reading the tree when the panel is closed", () => {
+    let reads = 0;
+    const panel = mount(() => {
+      reads++;
+      return tree();
+    });
+
+    (panel as unknown as { toggle(): void }).toggle();
+    const after = reads;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(reads).toBe(after);
+  });
+
+  /** A panel taken out of the DOM must leave the page as it found it. */
+  it("gives the body's margin back when it is removed", () => {
+    const panel = mount(() => tree());
+    (panel as unknown as { applyLayout(): void }).applyLayout();
+    expect(document.body.style.marginRight).toBe("0px");
+
+    panel.remove();
+
+    expect(document.body.style.marginRight).toBe("17px");
+  });
+});
+
+describe("an older query package", () => {
+  /**
+   * A panel can be newer than the `@ramonda/query` beside it, and then a row arrives with the old
+   * one-line `dataPreview` and no `data`. It has to render as text rather than as an empty box —
+   * the fallback is a fact about mixed versions, not a second code path to keep working.
+   */
+  it("falls back to the one-line preview when a row carries no structured value", () => {
+    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+      snapshot: () => ({
+        clients: [
+          {
+            index: 0,
+            queries: [
+              {
+                key: ["products"],
+                hash: '["products"]',
+                status: "success",
+                fetchStatus: "idle",
+                observers: 1,
+                updatedAt: 1,
+                failureCount: 0,
+                restored: false,
+                dataPreview: '{"products":[…]}',
+              },
+            ],
+          },
+        ],
+      }),
+      invalidate: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const panel = mount(() => tree());
+    openTab(panel, "query");
+
+    const data = panel.shadowRoot.querySelector(".q-data")!;
+    expect(data.textContent).toBe('{"products":[…]}');
+    expect(data.querySelector(".jv")).toBe(null);
+    // And no ⤢, because there is no value to open.
+    expect(panel.shadowRoot.querySelector(".q-row [data-full]")).toBe(null);
+    openTab(panel, "logs");
+  });
+});

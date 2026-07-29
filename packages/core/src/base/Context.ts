@@ -11,12 +11,6 @@ import { diagnose } from "../debug/diagnostics";
  * Internal payload published on a component's runtime context. It hands out one
  * reactive signal per context key, created lazily on first access.
  */
-/**
- * Stands in for a key this consumer has never read. Not `undefined`, which would claim the provider
- * supplies nothing — and not the value either, because fetching it would subscribe.
- */
-const NOT_READ = "— not read by this consumer";
-
 interface ContextChannel {
   getSignal(key: string): State<unknown> | undefined;
 }
@@ -212,6 +206,18 @@ export function createContext<T extends object>(
      * is the fine-grained subscription made visible, the difference between "this consumer wakes on
      * `color`" and "on anything in the theme".
      */
+    /**
+     * Stands in for a key this consumer has never read. Not `undefined`, which would claim the
+     * provider supplies nothing — and not the value either, because fetching it would subscribe.
+     *
+     * Declared INSIDE the guard rather than beside it. At module scope it would be a live string in
+     * every build and its removal would depend on the bundler noticing that its only reader was
+     * eliminated with the block — the same DCE the diagnostics already lean on, but with no reason
+     * to. Nothing that only development needs should have to be dead-code-eliminated when it can
+     * simply not exist.
+     */
+    const NOT_READ = "— not read by this consumer";
+
     Object.defineProperty(Consumer.prototype, CONTEXT_READS, {
       value(this: InstanceType<typeof Consumer>): Record<string, unknown> {
         const reads: Record<string, unknown> = {};

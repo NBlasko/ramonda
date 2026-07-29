@@ -178,6 +178,8 @@ class RamondaDevTools extends HTMLElement {
   private valueElements = new Map<string, HTMLElement>();
   private nodeMap = new Map<string, Node>();
   private highlighted: HTMLElement | null = null;
+  /** Paths the reader folded shut. Absent means open, which is the default for a new node. */
+  private collapsed = new Set<string>();
   /** False once the element leaves the DOM — see `disconnectedCallback`. */
   private alive = false;
   /**
@@ -614,6 +616,17 @@ class RamondaDevTools extends HTMLElement {
 
         .component-node.leaf .comp-summary { padding-left: 13px; }
 
+        /**
+         * The controls stay on screen while the tree scrolls under them.
+         *
+         * They are how you FIND a component, and they were at the top of a scrolling column — so
+         * the moment you found something and scrolled to read it, the search you used to find it
+         * was gone. Sticky needs a scroll container with no padding of its own, which is why the
+         * padding moved onto the tree below.
+         */
+        #components-tab { padding: 0; }
+        #components-container { padding: 12px 20px 20px; }
+        .tree-head { position: sticky; top: 0; z-index: 4; background: #171717; }
         .tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 20px; background: #171717;
                  border-bottom: 1px solid #2a2a2a; }
         .tools button { background: #262626; border: 1px solid #383838; color: #ccc; font: inherit;
@@ -814,6 +827,7 @@ class RamondaDevTools extends HTMLElement {
         <div id="logs-container"></div>
       </div>
       <div id="components-tab" class="tab-content">
+        <div class="tree-head">
         <div class="tools">
           <input id="tree-filter" class="tool-search" type="search" placeholder="filter by name" />
           <button type="button" data-tool="pick" title="pick a component from the page">⌖<span class="tw"> pick</span></button>
@@ -823,6 +837,7 @@ class RamondaDevTools extends HTMLElement {
           <button type="button" data-tool="hooks" title="hide hooks">⬡<span class="tw"> hide hooks</span></button>
         </div>
         <div class="crumbs" id="crumbs"></div>
+        </div>
         <div id="components-container">
           <small style="color:#666">No active components…</small>
         </div>
@@ -1054,6 +1069,8 @@ class RamondaDevTools extends HTMLElement {
           for (const details of Array.from(container.querySelectorAll("details"))) {
             (details as HTMLDetailsElement).open = tool === "expand";
           }
+          // The record follows the DOM, so the next structural rebuild comes back this way too.
+          this.syncCollapsed(container);
           return;
         }
 
@@ -1483,13 +1500,16 @@ class RamondaDevTools extends HTMLElement {
 
       const body = `${propsHtml}${stateHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
 
+      // Collapsed is the reader's decision, so it survives a rebuild — the default is open.
+      const openAttr = this.collapsed.has(path) ? "" : " open";
+
       // A leaf gets no disclosure triangle: a component with no state, no props, no hooks and
       // no children has nothing to open, and a triangle that reveals emptiness is a lie the
       // reader has to click to disprove.
       html += body
         ? `
         <div class="component-node">
-          <details open>
+          <details${openAttr}>
             <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</summary>
             <div class="node-body">${body}</div>
           </details>
@@ -1555,6 +1575,19 @@ class RamondaDevTools extends HTMLElement {
     const inspect = this.inspect;
     if (!container || !inspect) return;
 
+    /**
+     * Where the reader was, kept across the rebuild.
+     *
+     * A structural change — one component mounting anywhere in the app — replaces this whole
+     * subtree's markup, and `innerHTML` resets the scroll of its container to the top. So reading
+     * a component while the app was doing anything at all threw you back to the root of the tree.
+     * The collapsed set does the same job for the disclosures: without it every `<details>` came
+     * back open, and a tree the reader had folded down to what they cared about unfolded itself.
+     */
+    const scroller = this.shadowRoot!.querySelector("#components-tab") as HTMLElement | null;
+    const scrollTop = scroller?.scrollTop ?? 0;
+    this.syncCollapsed(container);
+
     const tree = inspect();
 
     /**
@@ -1600,10 +1633,29 @@ class RamondaDevTools extends HTMLElement {
     this.lastSig = acc.sig.join(";");
     this.attachInspectorEvents(container);
     this.applyFilter();
+    if (scroller && scrollTop > 0) scroller.scrollTop = scrollTop;
     // Also here, not only on the value-patch path: a STRUCTURAL change is how an open value most
     // often moves or disappears, and `refreshComponents` hands straight over to this method when
     // the signature moved — so a check only there never ran for the case that matters most.
     this.markFullView();
+  }
+
+  /**
+   * Records which branches are folded, read straight off the DOM about to be replaced.
+   *
+   * Read rather than listened to, deliberately: `toggle` is dispatched as a QUEUED TASK, so a
+   * structural rebuild landing in the same task as the reader's click would replace the markup
+   * before the event arrived and the fold would be lost. The elements themselves cannot be out of
+   * date. Only the paths currently rendered are touched, so a fold inside a branch that is not on
+   * screen — because something else is focused — keeps whatever it had.
+   */
+  private syncCollapsed(container: Element): void {
+    for (const details of Array.from(container.querySelectorAll("details"))) {
+      const path = details.querySelector(".comp-summary")?.getAttribute("data-path");
+      if (!path) continue;
+      if ((details as HTMLDetailsElement).open) this.collapsed.delete(path);
+      else this.collapsed.add(path);
+    }
   }
 
   /**
