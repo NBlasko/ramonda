@@ -17,21 +17,6 @@ export type DefaultProps = {};
 
 export type HookClassKind<T, R> = new (runtime: Runtime, options: R) => T;
 
-/**
- * The static a hook may declare to say which of its props are VALUES rather than
- * references — read by `useCommon`, which then keeps one identity for as long as the
- * contents are equal.
- *
- * Deliberately not part of `HookClassKind`. It was, for one commit: intersecting the
- * constructor type with `{ stableProps?: … }` made TypeScript stop inferring a generic
- * hook's type parameter from the props callback, and `GenericHookProps.test.tsx` caught it
- * (`TData` came out `unknown`). Inference through an intersection is weaker than through a
- * plain construct signature, and that inference is worth more than a typed static.
- */
-export interface StablePropsDeclaration {
-  stableProps?: readonly string[];
-}
-
 type BaseElements = HTMLElement | SVGElement | SVGRect;
 
 type ObservableEvents<T extends BaseElements> = {

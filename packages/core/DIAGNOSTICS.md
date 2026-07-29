@@ -705,3 +705,57 @@ or ambient state during a render — `getBoundingClientRect()`, `window.innerWid
 `scrollY`, `localStorage`, `document.activeElement`. Those are not non-deterministic so
 much as a forced layout and a dependency on something outside the tree; `@updated` is
 where that work belongs.
+
+### RMD022 — a hook's props callback built a new value for the same contents
+
+The callback is called twice in one tick and the bags compared, key by key, with the same
+`classify` RMD020 uses — so the three findings and their names are the same: `handler`,
+`object`, `nondeterministic`. Gated on `isStrictRender()`, so one switch turns off both
+double calls.
+
+**Why a bag deserves its own check even though it is documented as re-running.** Every
+prop is a signal, and a signal compares by reference (`common.ts`: `newVal !==
+prevProps[key]`), so a rebuilt array is a change with real consequences downstream.
+Measured, three renders of the owner: a hook `@compute` reading a rebuilt array runs 3
+times vs 1 for a scalar prop; `@watchProp` on a rebuilt array fires on every update
+render; a child handed a rebuilt function re-renders 3/3.
+
+**Why the fix had to come with the check.** An earlier version of this comparison existed
+inside `renderStability.ts` and was deleted, because the only thing it could say was
+"your query key is an array literal" — true, and with nothing to do about it. The two
+answers are `@stableProps` on the hook (the author states that a prop is a value, once,
+for every caller) and `stable()` at the call site (the same thing from outside, for a hook
+that declared nothing). That is the same reason `list()` exists next to RMD020's report
+about a rebuilt `each`.
+
+**Why a declared prop is skipped outright.** `@stableProps` means the framework already
+holds one identity for equal contents, so reporting it would ask the app to fix what the
+hook took care of. **Functions are the exception**: a declaration cannot make a closure
+comparable, so `resolveStable` leaves it exactly as it came and this still reports it —
+unstable AND silent would be the worst of both.
+
+**Why `stable()` markers are unwrapped before comparing.** Two calls produce two marker
+objects, so comparing them by identity would report the fix as the fault. Contents that
+DIFFER between the two calls are still reported: a wrapper cannot launder
+non-determinism.
+
+### RMD023 — components built from an array, with no keys
+
+Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the
+mapper goes to `Array.prototype.map` and is never stored, and the output is a run of fresh
+vnodes, which is what all JSX is. The evidence is the SHAPE: JSX passes children as
+separate arguments, so a nested array among them was built by an expression.
+
+`normalizeChildren` brands every array it builds with `OWN_CHILDREN` (DEV only), which is
+what makes `{this.props.children}` — the framework's own array, one level down —
+distinguishable from a mapped one. Without that brand it fired on every component that
+forwards children.
+
+**Narrowed twice, and the history is the point.** The first version reported every raw
+array and broke 10 of core's own tests, all of them exercising child groups on purpose —
+a mapped array is supported here, and `SlotKeys.test.tsx` even carries the note that an
+earlier, broader check was rejected for firing on the safe shape. What shipped reports only
+what is genuinely unhandled: unkeyed COMPONENT rows, of which there are at least two. Plain
+markup is patched in place and correct; a component's row moving takes its state and its
+DOM with it. One keyed child anywhere means the app is managing identity and the framework
+does not second-guess it.

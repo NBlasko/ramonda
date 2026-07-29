@@ -1,9 +1,9 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
-import { STABLE } from "./constants";
+import { STABLE, STABLE_PROPS } from "./constants";
 import { valueEqual } from "./valueEqual";
 import { checkPropsStability } from "../debug/propsStability";
 import { isStrictRender } from "../debug/renderStability";
-import type { HookClassKind, StablePropsDeclaration } from "../types/commonTypes";
+import type { HookClassKind } from "../types/commonTypes";
 import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
 import { propsPhase } from "../debug/purityGuard";
@@ -113,8 +113,9 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const runtime = that[GLOBAL_RUNTIME];
 
-  // Read once per use() site rather than per render: a static on the class cannot change.
-  const declaredStable = (hook as unknown as StablePropsDeclaration).stableProps;
+  // Read once per use() site rather than per render: `@stableProps` writes a
+  // non-configurable symbol on the class, so it cannot change afterwards.
+  const declaredStable = (hook as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
 
   const initialProps = resolveStable(buildProps(that, hook.name, hookProps, declaredStable), undefined, declaredStable);
 

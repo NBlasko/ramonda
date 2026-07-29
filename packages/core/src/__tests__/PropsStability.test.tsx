@@ -4,6 +4,7 @@ import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { compute, memoizedHandler, state, watchProp } from "../base/decorators";
 import { stable } from "../base/stable";
+import { stableProps } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -299,9 +300,8 @@ describe("static stableProps — the hook declares it, the call site does not", 
    * literal, and the framework holds the identity — `stable()` stays for hooks that
    * declared nothing.
    */
+  @stableProps("key")
   class Declared extends Hook<Bag> {
-    static stableProps = ["key"] as const;
-
     keys: unknown[] = [];
 
     @compute get seen(): string {
@@ -354,10 +354,10 @@ describe("static stableProps — the hook declares it, the call site does not", 
   });
 
   test("a function cannot be declared away — it is still reported", async () => {
+    // A hook author cannot make a closure comparable by saying so: two closures with the
+    // same body are not equal by any comparison that is safe to make.
+    @stableProps("key", "fetch")
     class Fn extends Hook<Bag> {
-      // A hook author cannot make a closure comparable by saying so: two closures with
-      // the same body are not equal by any comparison that is safe to make.
-      static stableProps = ["key", "fetch"] as const;
       get seen(): string {
         return String(this.props.fetch?.());
       }
@@ -376,15 +376,8 @@ describe("static stableProps — the hook declares it, the call site does not", 
 });
 
 describe("stableProps is a property of the KIND, not of an instance", () => {
+  @stableProps("key")
   class Base extends Hook<Bag> {
-    /**
-     * Typed as a plain array rather than `as const`, so the shadowing test below can
-     * compile. With `as const` TypeScript refuses an incompatible override outright
-     * (`readonly ["filter"]` is not assignable to `readonly ["key"]`) — a better guard
-     * than the runtime one, and the reason a hook author should write `as const`.
-     */
-    static stableProps: readonly string[] = ["key"];
-
     keys: unknown[] = [];
 
     @compute get seen(): string {
@@ -414,26 +407,28 @@ describe("stableProps is a property of the KIND, not of an instance", () => {
     expect(reported()).not.toContain("RMD022");
   });
 
-  test("a subclass that shadows it gets the report, not silence", async () => {
-    class Shadowing extends Base {
-      // Forgot `...Base.stableProps`. This is the one footgun of a static, and it is a
-      // loud one: `key` stops being declared, so the check the declaration was
-      // suppressing comes back. (With `as const` on the base, TypeScript rejects this
-      // line before it can run at all.)
-      static override stableProps: readonly string[] = ["filter"];
-    }
+  test("a subclass declaring more keeps what the parent declared", async () => {
+    // A subclass declaring MORE. The decorator merges with what the parent declared
+    // rather than replacing it, so `key` cannot be dropped by forgetting to spread it —
+    // which is exactly what a `static` field would have done.
+    @stableProps("filter")
+    class Adding extends Base {}
 
     class Panel extends Component {
-      probe = this.use(Shadowing, () => ({ key: ["a", 1] }));
+      @state unrelated = 0;
+      probe = this.use(Adding, () => ({ key: ["a", 1], filter: { tag: "x" } }));
       render() {
-        return <div>{this.probe.seen}</div>;
+        return <div>{`${this.probe.seen}:${this.unrelated}`}</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    instance.unrelated = 1;
+    await settle();
 
-    expect(reported()).toContain("RMD022");
-    expect(reported()).toContain("`key`");
+    // Both are held: the parent's `key` and the subclass's `filter`.
+    expect(instance.probe.keys.length).toBe(1);
+    expect(reported()).not.toContain("RMD022");
   });
 
   test("two different hook classes do not share a declaration", async () => {

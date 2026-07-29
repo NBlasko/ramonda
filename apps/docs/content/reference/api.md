@@ -21,6 +21,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
 | `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
 | `list<T>(options)` | Renders a list, minting identity from the items. [Lists](/lists) |
+| `@stableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `stable(value)` | Keeps an array or object in a hook's props at one identity while its contents are equal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |

@@ -121,10 +121,14 @@ twice in the same tick and the two bags compared, the same check `render()` gets
 something every call site should have to encode:
 
 ```tsx
-export class Query extends Hook<QueryProps> {
-  static stableProps = ["key"] as const;
-}
+@stableProps("key")
+export class Query extends Hook<QueryProps> {}
 ```
+
+A class decorator, like [`@Host`](/concepts/host), because the declaration is about the
+hook rather than about any one member — props are not members at all, they live behind the
+`this.props` proxy. A subclass that declares more **adds** to what its parent declared
+rather than replacing it, so nothing can be dropped by forgetting to carry it over.
 
 Now the framework keeps one identity for those props for as long as their contents are
 equal (nested objects included), and the call site writes the plain literal:
@@ -148,8 +152,9 @@ private chart = this.use(SomeChart, (self: Panel) => ({
 ```
 
 **A function: a bound method.** Two closures with the same body are not equal by any
-comparison that is safe to make, so neither `stable()` nor a declaration can help — a hook
-that lists a function prop still gets the report. A method
+comparison that is safe to make, so neither `stable()` nor `@stableProps` can help — a hook
+that lists a function prop still gets the report, because unstable *and* silent would be
+the worst of both. A method
 reads `this` when it is *called*, so there is nothing to capture — and methods are bound,
 so the identity never changes:
 
@@ -211,7 +216,7 @@ diagnostics are stripped from production, and none of them run for a caller who 
 off. A check is how a mistake gets *found*; it is not what makes your hook safe.
 
 The rule that follows: **compare by value what is a value, and be idempotent about the
-rest.** That is the whole of it — and it is why `static stableProps` exists, so a hook can
+rest.** That is the whole of it — and it is why `@stableProps` exists, so a hook can
 state the first half once rather than hoping every caller does.
 
 ## Next

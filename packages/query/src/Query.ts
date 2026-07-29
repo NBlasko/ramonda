@@ -1,4 +1,4 @@
-import { Hook, create, destroy, mount, onWindow, state, watchProp } from "@ramonda/core";
+import { Hook, create, destroy, mount, onWindow, stableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
 import { ClientContext, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
@@ -103,24 +103,18 @@ export type QueryResult<TData> =
  *   touches the same key: another component's refetch, a mutation's `invalidate`,
  *   a manual `setData`.
  */
+/**
+ * `key` is a VALUE — `["user", 7]` built again is the same question — and that fact belongs
+ * to this hook, not to every component that uses it. Declaring it means the framework hands
+ * back one array identity for as long as the parts are equal, so a caller writes the plain
+ * literal (`key: ["user", self.props.id]`) and nothing downstream sees a change.
+ *
+ * `onKeyChanged` therefore runs only on a real key change. Its own comparison stays: it is
+ * what makes a hand-written options object cheap too, and it is the thing that decides
+ * between "different objects" and "different question".
+ */
+@stableProps("key")
 export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps<TData, K>> {
-  /**
-   * `key` is a VALUE — `["user", 7]` built again is the same question — and that fact
-   * belongs to this hook, not to every component that uses it. Declaring it means the
-   * framework hands back one identity for as long as the parts are equal, so the call site
-   * writes the plain literal and nothing downstream sees a change:
-   *
-   * ```tsx
-   * key: ["user", self.props.id]   // no stable() needed at the call site
-   * ```
-   *
-   * `onKeyChanged` below therefore runs only on a real key change. Its own comparison
-   * stays: it is what makes a key built by a hand-written object (or by a caller who
-   * bypassed the props callback) cheap too, and it is the thing that decides between
-   * "different objects" and "different question".
-   */
-  static stableProps = ["key"] as const;
-
   private ctx = this.use(ClientContext);
 
   /**

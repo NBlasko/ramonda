@@ -10,6 +10,7 @@ import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME 
 import { ramondaLog } from "../debug/logger";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
+import { STABLE_PROPS } from "../helpers/constants";
 import {
   assertMethod,
   assertField,
@@ -22,6 +23,7 @@ import {
   assertHostProps,
   assertSelector,
   assertEnv,
+  assertStablePropKeys,
 } from "../debug/validateDecorator";
 
 type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
@@ -834,6 +836,86 @@ export function Host<This = unknown, P = Record<string, unknown>>(
 
     Object.defineProperty(ctor, HOST_META, {
       value: meta,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  };
+}
+
+/**
+ * Declares which of a hook's props are **values** rather than references — so the
+ * framework hands back one identity for as long as their contents are equal, and the call
+ * site writes the plain literal.
+ *
+ * ```tsx
+ * @stableProps("key")
+ * export class Query extends Hook<QueryProps> {}
+ * ```
+ *
+ * ```tsx
+ * // …and every caller, with nothing to wrap:
+ * private user = this.use(Query, (self: UserCard) => ({
+ *   key: ["user", self.props.id],
+ * }));
+ * ```
+ *
+ * ## Why the hook declares it, and not the call site
+ *
+ * That a query key is a value — `["user", 7]` built again is the same question — is the
+ * hook's knowledge. Every prop is a signal and a signal compares by reference, so without
+ * this the rebuilt array is a *changed* prop at every call site: a `@compute` reading it
+ * recomputes, a `@watchProp` on it fires, a subscription reconnects. Measured across three
+ * renders of the owner, a compute reading a rebuilt array runs three times where one
+ * reading a scalar prop runs once. Stating it here fixes it once instead of asking every
+ * caller to know it. [`stable()`](../base/stable.ts) is the same thing from the outside,
+ * for a hook that declared nothing.
+ *
+ * ## What it cannot cover
+ *
+ * **Functions.** Two closures with the same body are not equal by any comparison that is
+ * safe to make, so a listed function prop is left exactly as it came and RMD022 still
+ * reports it — unstable AND silent would be the worst of both. Pass a bound method
+ * instead, or `@memoizedHandler` when it has to be built per argument.
+ *
+ * Contents are compared to a bounded depth, so a deeply nested literal gets a fresh
+ * reference rather than a wrong one — the safe direction.
+ *
+ * ## Notes on the shape
+ *
+ * A class decorator, like `@Host`, because the declaration is about the hook rather than
+ * about any one member — and props are not members at all, they live behind the
+ * `this.props` proxy, so there is nothing per-prop to decorate.
+ *
+ * **It merges with what a parent class declared** rather than replacing it, so a subclass
+ * adds to the list and cannot silently drop what the parent relied on.
+ *
+ * **Hooks only**, and it throws on a component in every build rather than sitting there
+ * doing nothing: a component's props come from the parent's JSX and are compared by the
+ * diff, which is a different mechanism with its own control (`@shouldUpdateOnPropsChange`).
+ */
+export function stableProps(...keys: string[]) {
+  if (__DEV__) {
+    assertStablePropKeys(keys);
+  }
+
+  return <T extends new (...args: any[]) => object>(ctor: T) => {
+    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
+      throw new Error(
+        `[Ramonda] @stableProps is for hooks, not components. A component's props come from the parent's ` +
+          `JSX and are compared by the diff — use @shouldUpdateOnPropsChange to control that. Move the ` +
+          `decorator to the hook whose props these are, or drop it.`,
+      );
+    }
+
+    // Read BEFORE defining: a symbol on a constructor is inherited through the class
+    // chain, so this is the parent's list when there is one. Merging means a subclass
+    // adds rather than shadows.
+    const inherited = (ctor as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
+    const merged = inherited ? [...new Set([...inherited, ...keys])] : keys;
+
+    Object.defineProperty(ctor, STABLE_PROPS, {
+      value: merged,
       writable: false,
       enumerable: false,
       configurable: false,

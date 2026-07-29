@@ -102,6 +102,8 @@ export const IS_LIST = Symbol("isList");
  * previous render's value for that key. Unwrapped before it ever reaches `this.props`.
  */
 export const STABLE = Symbol("stable");
+/** The prop names a hook declared with `@stableProps`, held on the class. */
+export const STABLE_PROPS = Symbol("stableProps");
 /**
  * DEV only. Marks a children array that `normalizeChildren` built — so a nested array
  * WITHOUT it came from the app (a `.map`, a `filter`, an array literal) rather than from

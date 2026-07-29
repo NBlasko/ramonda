@@ -1,4 +1,4 @@
-import { Hook, destroy, state } from "@ramonda/core";
+import { Hook, destroy, stableProps, state } from "@ramonda/core";
 import { ClientContext, requireClient } from "./context";
 import type { QueryClient } from "./QueryClient";
 import type { QueryKey } from "./types";
@@ -90,14 +90,13 @@ export interface MutationProps<TData, TVars> {
  * the other's spinner or the other's error. So the state lives on the hook, and
  * nothing is keyed.
  */
+/**
+ * `invalidates` is a list of keys, so it is a value for the same reason a key is — see
+ * `Query`. Declared here so `invalidates: [["todos"]]` at a call site is one identity
+ * rather than a fresh array every render.
+ */
+@stableProps("invalidates")
 export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVars>> {
-  /**
-   * `invalidates` is a list of keys, so it is a value for the same reason a key is — see
-   * `Query.stableProps`. Declared here so `invalidates: [["todos"]]` at a call site is one
-   * identity rather than a fresh array every render.
-   */
-  static stableProps = ["invalidates"] as const;
-
   private ctx = this.use(ClientContext);
 
   /**

@@ -21,6 +21,7 @@ const EXPECTED = [
   "Hook",
   "list",
   "stable",
+  "stableProps",
   "AsyncLoad",
   "ErrorBoundary",
   "createContext",
