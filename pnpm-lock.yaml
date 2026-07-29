@@ -114,6 +114,9 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/query':
+        specifier: workspace:^
+        version: link:../../packages/query
       '@ramonda/router':
         specifier: workspace:^
         version: link:../../packages/router

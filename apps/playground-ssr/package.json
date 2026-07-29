@@ -3,14 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=true --target=es2022 --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/devtools=../../packages/devtools/src/index.ts --outfile=dist/client/assets/client.js && node -e \"const fs=require('fs');fs.mkdirSync('dist/client',{recursive:true});fs.writeFileSync('dist/client/index.html',fs.readFileSync('index.html','utf8').replace('/src/entry-client.tsx','/assets/client.js'))\"",
-    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=true --target=es2022 --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --platform=node --alias:@ramonda/devtools=./devtools-stub.ts --outfile=dist/server/entry-server.js",
+    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=true --target=es2022 --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=../../packages/devtools/src/index.ts --outfile=dist/client/assets/client.js && node -e \"const fs=require('fs');fs.mkdirSync('dist/client',{recursive:true});fs.writeFileSync('dist/client/index.html',fs.readFileSync('index.html','utf8').replace('/src/entry-client.tsx','/assets/client.js'))\"",
+    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --define:__DEV__=true --target=es2022 --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --platform=node --alias:@ramonda/devtools=./devtools-stub.ts --outfile=dist/server/entry-server.js",
     "build": "npm run build:client && npm run build:server && ramonda-check-bundle dist",
     "start": "node server.mjs",
     "dev": "npm run build && node server.mjs"
   },
   "dependencies": {
     "@ramonda/core": "workspace:^",
+    "@ramonda/query": "workspace:^",
     "@ramonda/router": "workspace:^"
   },
   "devDependencies": {

@@ -1,5 +1,7 @@
 import { Component, Host, state } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
+import { QueryClientProvider } from "@ramonda/query";
+import { ProductsPage } from "./ProductsPage";
 
 /**
  * Deliberately small. This app exists to answer questions a jsdom test cannot:
@@ -81,12 +83,19 @@ const routes = createRoutes({
   "/": <HomePage />,
   "/about": <AboutPage />,
   "/users/:id": <UserPage />,
+  "/products": <ProductsPage />,
   "*": <NotFoundPage />,
 });
 
 @Host("div")
 export class App extends Component {
   router = this.use(Router);
+  /**
+   * One cache for the whole app, mounted here. A hook and not a component, so it costs no
+   * element — and on the server it is per request, which is the reason there is no global
+   * client to import.
+   */
+  queries = this.use(QueryClientProvider);
   route = this.use(Navigator);
   render() {
     return (
@@ -95,6 +104,7 @@ export class App extends Component {
           <Link href="/">Home</Link>
           <Link href="/about">About</Link>
           <Link href="/users/42">User 42</Link>
+          <Link href="/products">Products</Link>
           <Link href="/nope">Missing</Link>
         </nav>
         <code id="path">{this.route.pathname}</code>
