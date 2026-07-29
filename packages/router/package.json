@@ -3,7 +3,7 @@
   "version": "0.0.4",
   "description": "Client-side router for Ramonda: state-first, race-free navigation with nested route outlets.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -43,9 +43,6 @@
     "lint": "oxlint",
     "format": "biome format --write src"
   },
-  "dependencies": {
-    "@ramonda/core": "workspace:^"
-  },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",
     "@ramonda/testing-library": "workspace:^",
@@ -54,5 +51,8 @@
     "typescript": "^5.9.3",
     "vite": "7.3.6",
     "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@ramonda/core": ">=0.1.0 <1.0.0"
   }
 }
