@@ -3,7 +3,7 @@
   "version": "0.0.2",
   "description": "Testing utilities for Ramonda components and hooks, built on @testing-library/dom.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -45,7 +45,7 @@
     "format": "biome format --write src"
   },
   "peerDependencies": {
-    "@ramonda/core": "workspace:^"
+    "@ramonda/core": ">=0.0.2 <1.0.0"
   },
   "dependencies": {
     "@testing-library/dom": "^10.4.1"
