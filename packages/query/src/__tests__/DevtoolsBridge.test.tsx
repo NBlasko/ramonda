@@ -340,4 +340,86 @@ describe("the devtools bridge", () => {
       unmount();
     }
   });
+
+  /**
+   * The panel renders a tree, so it needs the structure and not a line of it. What crosses the
+   * bridge is a bounded COPY: the panel must not be able to hold the app's objects, a cache can
+   * hold anything a fetcher returned, and both bounds are load-bearing — the depth cap is what
+   * makes a cycle safe, the budget is what makes a huge answer safe.
+   */
+  test("sends the value as a bounded copy, not a reference", async () => {
+    const payload = { products: [{ id: 1, title: "Mascara" }] };
+
+    class Card extends Component {
+      private provider = this.use(QueryClientProvider);
+      user = this.use(Query, () => ({ key: ["structured"], fetch: async () => payload }));
+      render() {
+        void this.provider;
+        return <span>{this.user.status}</span>;
+      }
+    }
+
+    const { unmount } = render(<Card />);
+
+    try {
+      await settle();
+      const sent = bridge().snapshot().clients[0]!.queries[0]!.data as typeof payload;
+      expect(sent).toEqual(payload);
+      // A copy: the panel holding it cannot keep the cached object alive, and cannot mutate it.
+      expect(sent).not.toBe(payload);
+      expect(sent.products).not.toBe(payload.products);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("names a cycle instead of hanging on it", async () => {
+    const loop: Record<string, unknown> = { name: "a" };
+    loop.self = loop;
+
+    class Card extends Component {
+      private provider = this.use(QueryClientProvider);
+      user = this.use(Query, () => ({ key: ["cyclic-structured"], fetch: async () => loop }));
+      render() {
+        void this.provider;
+        return <span>{this.user.status}</span>;
+      }
+    }
+
+    const { unmount } = render(<Card />);
+
+    try {
+      await settle();
+      const sent = bridge().snapshot().clients[0]!.queries[0]!.data as Record<string, unknown>;
+      expect(sent.name).toBe("a");
+      expect(sent.self).toBe("[circular]");
+    } finally {
+      unmount();
+    }
+  });
+
+  test("bounds a value too large to copy, and says so", async () => {
+    const huge = { rows: Array.from({ length: 30_000 }, (_, i) => ({ i })) };
+
+    class Card extends Component {
+      private provider = this.use(QueryClientProvider);
+      user = this.use(Query, () => ({ key: ["huge"], fetch: async () => huge }));
+      render() {
+        void this.provider;
+        return <span>{this.user.status}</span>;
+      }
+    }
+
+    const { unmount } = render(<Card />);
+
+    try {
+      await settle();
+      const sent = bridge().snapshot().clients[0]!.queries[0]!.data as { rows: unknown[] };
+      expect(sent.rows).toHaveLength(30_000);
+      // Past the budget the copy stops carrying values and starts saying that it stopped.
+      expect(sent.rows.at(-1)).toBe("[… budget]");
+    } finally {
+      unmount();
+    }
+  });
 });

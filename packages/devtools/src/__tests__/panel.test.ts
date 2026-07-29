@@ -278,13 +278,18 @@ describe("the Query tab", () => {
     failureCount: 0,
     restored: true,
     dataPreview: '{"products":[]}',
+    data: { products: [{ id: 1, title: "Mascara" }] },
   };
 
-  function withBridge(): { panel: Panel; invalidate: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> } {
+  function withBridge(rows: () => unknown[] = () => [row]): {
+    panel: Panel;
+    invalidate: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  } {
     const invalidate = vi.fn();
     const remove = vi.fn();
     (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
-      snapshot: () => ({ clients: [{ index: 0, queries: [row] }] }),
+      snapshot: () => ({ clients: [{ index: 0, queries: rows() }] }),
       invalidate,
       remove,
     };
@@ -438,5 +443,181 @@ describe("picking a component from the page", () => {
 
     expect(picking(panel)).toBe(false);
     expect(document.body.style.cursor).toBe("");
+  });
+});
+
+describe("values as trees", () => {
+  const treeText = (panel: Panel, index = 0) =>
+    Array.from(panel.shadowRoot.querySelectorAll(".sv"))[index]!.textContent!;
+
+  it("labels a container by its size instead of printing it", () => {
+    const panel = mount(() => [
+      node("App", "component", {
+        state: { feed: { pages: [{ products: [{ id: 1, title: "Mascara" }] }], total: 194 } },
+      }),
+    ]);
+
+    const text = treeText(panel);
+    expect(text).toContain("pages");
+    expect(text).toContain("Array(1)");
+    // Past the first level it is collapsed, so the row is a label — not 100kB of products.
+    const nested = panel.shadowRoot.querySelectorAll(".jv-node");
+    expect(Array.from(nested).some((n) => !(n as HTMLDetailsElement).open)).toBe(true);
+  });
+
+  it("says what it dropped when a value is larger than the inline budget", () => {
+    const many = Array.from({ length: 600 }, (_, i) => ({ id: i }));
+    const panel = mount(() => [node("App", "component", { state: { many } })]);
+
+    expect(treeText(panel)).toContain("more — open the full view");
+  });
+
+  it("names a cycle rather than walking into it", () => {
+    const loop: Record<string, unknown> = { name: "a" };
+    loop.self = loop;
+    const panel = mount(() => [node("App", "component", { state: { loop } })]);
+
+    expect(treeText(panel)).toContain("[circular]");
+  });
+
+  /**
+   * A value id carries a prop name, and a prop name can carry a quote — the same shape as the
+   * query hash that made `querySelector` throw on every poll. The patch path looks its element up
+   * in a Map, so there is no selector to break.
+   */
+  it("updates a value whose key contains a quote", () => {
+    let count = 1;
+    const panel = mount(() => [node("App", "component", { state: { 'a"b': { count } } })]);
+    expect(treeText(panel)).toContain("1");
+
+    count = 2;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(treeText(panel)).toContain("2");
+  });
+
+  it("re-renders the tree on a change, and flashes the row", () => {
+    let items = [1, 2];
+    const panel = mount(() => [node("App", "component", { state: { items } })]);
+
+    items = [1, 2, 3];
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(treeText(panel)).toContain("Array(3)");
+    expect(panel.shadowRoot.querySelector(".state-row.updated")).not.toBe(null);
+  });
+});
+
+describe("the full view", () => {
+  const open = (panel: Panel) => {
+    panel.shadowRoot.querySelector("[data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  };
+  const modal = (panel: Panel) => panel.shadowRoot.querySelector("#jv-modal")!;
+
+  function withValue(): Panel {
+    const many = Array.from({ length: 600 }, (_, i) => ({ id: i, title: `p${i}` }));
+    return mount(() => [node("App", "component", { state: { feed: { products: many } } })]);
+  }
+
+  it("opens one value on the whole panel, past the inline budget", () => {
+    const panel = withValue();
+    open(panel);
+
+    expect(modal(panel).classList.contains("on")).toBe(true);
+    expect(panel.shadowRoot.querySelector("#jv-modal-title")!.textContent).toContain("feed");
+    // The inline tree stopped at 400 rows; this one holds all 600 products.
+    expect(panel.shadowRoot.querySelector("#jv-modal-body")!.textContent).toContain("p599");
+  });
+
+  it("switches to pretty JSON and back", () => {
+    const panel = withValue();
+    open(panel);
+
+    panel.shadowRoot.querySelector("#jv-raw")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const raw = panel.shadowRoot.querySelector(".jv-raw");
+    expect(raw).not.toBe(null);
+    expect(raw!.textContent).toContain('"title": "p0"');
+
+    panel.shadowRoot.querySelector("#jv-raw")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(panel.shadowRoot.querySelector(".jv-raw")).toBe(null);
+  });
+
+  /** Innermost first: Escape must close the value, not release the focused component under it. */
+  it("takes Escape before the focus does", () => {
+    const panel = withValue();
+    focus(panel, "App");
+    open(panel);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(modal(panel).classList.contains("on")).toBe(false);
+    expect(panel.shadowRoot.querySelector("#crumbs")!.classList.contains("on")).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(panel.shadowRoot.querySelector("#crumbs")!.classList.contains("on")).toBe(false);
+  });
+});
+
+describe("the Query tab's value", () => {
+  const base = {
+    key: ["products"],
+    hash: '["products"]',
+    status: "success",
+    fetchStatus: "idle",
+    observers: 1,
+    failureCount: 0,
+    restored: false,
+  };
+
+  function bridgeWith(rows: () => unknown[]): Panel {
+    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+      snapshot: () => ({ clients: [{ index: 0, queries: rows() }] }),
+      invalidate: vi.fn(),
+      remove: vi.fn(),
+    };
+    const panel = mount(() => tree());
+    openTab(panel, "query");
+    return panel;
+  }
+
+  it("renders the cached value as a tree", () => {
+    const panel = bridgeWith(() => [
+      { ...base, updatedAt: 1, dataPreview: "…", data: { pages: [{ products: [{ id: 1 }] }] } },
+    ]);
+
+    const data = panel.shadowRoot.querySelector(".q-data")!;
+    expect(data.querySelector(".jv")).not.toBe(null);
+    expect(data.textContent).toContain("pages");
+    openTab(panel, "logs");
+  });
+
+  /**
+   * The bug this would otherwise have: the list rebuilt only when its one-line preview changed,
+   * and a preview is capped — so appending an eighth page to an infinite query changed nothing
+   * within the cap and the panel kept showing the seventh. A write moves `updatedAt`, always.
+   */
+  it("rebuilds when the data changes past the end of the preview", () => {
+    let pages = [{ id: 1 }];
+    let updatedAt = 1;
+    const panel = bridgeWith(() => [{ ...base, updatedAt, dataPreview: "x".repeat(2000), data: { pages } }]);
+
+    expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toContain("Array(1)");
+
+    pages = [{ id: 1 }, { id: 2 }];
+    updatedAt = 2;
+    (panel as unknown as { renderQueries(): void }).renderQueries();
+
+    expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toContain("Array(2)");
+    openTab(panel, "logs");
+  });
+
+  it("opens a query's value on the whole panel", () => {
+    const many = Array.from({ length: 600 }, (_, i) => ({ id: i, title: `p${i}` }));
+    const panel = bridgeWith(() => [{ ...base, updatedAt: 1, dataPreview: "…", data: { products: many } }]);
+
+    panel.shadowRoot.querySelector(".q-row [data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(panel.shadowRoot.querySelector("#jv-modal")!.classList.contains("on")).toBe(true);
+    expect(panel.shadowRoot.querySelector("#jv-modal-body")!.textContent).toContain("p599");
+    openTab(panel, "logs");
   });
 });

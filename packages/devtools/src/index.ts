@@ -1,3 +1,6 @@
+import { escapeHtml, safeStringify } from "./format";
+import { FULL, INLINE, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
+
 interface DevLogPayload {
   data: any;
   id: string;
@@ -37,7 +40,13 @@ interface QueryRow {
   updatedAt: number;
   failureCount: number;
   restored: boolean;
+  /** One line, kept as the change signal for the list. */
   dataPreview: string;
+  /**
+   * The cached value, bounded by the bridge. Optional because a panel can be newer than the query
+   * package installed next to it — the preview is the fallback, not a second code path to keep.
+   */
+  data?: unknown;
   error?: string;
 }
 
@@ -65,41 +74,13 @@ interface Located {
 }
 
 interface WalkAcc {
+  /** One line per value, for change detection only. */
   values: Map<string, string>;
+  /** The value itself, for the tree and for the full view. */
+  raw: Map<string, unknown>;
   nodes: Map<string, Node>;
   sig: string[];
 }
-
-/**
- * Escapes for BOTH text and attribute positions, which is why the quotes are in here.
- *
- * They were missing, and it broke the Query tab twice over. A query's hash is JSON, so it
- * carries `"` — and `data-q-hash="["products"]"` ends the attribute at the second quote. The
- * parser then read the rest as bare attributes, so `dataset.qHash` was `[` and both buttons
- * looked up an entry that could not exist: invalidate and remove did nothing, silently. The
- * same broken markup is why the age element could never be found either.
- */
-const escapeHtml = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-// Values may hold functions/DOM/circular refs — never let JSON.stringify throw
-// and break the panel.
-//
-// 200 was chosen when a value was rendered on one clipped line, and it is the reason a props
-// block showed `{"entries":{},"defaults":{…` and stopped exactly where the interesting part
-// began. A value now scrolls inside its own box, so the cap only has to keep a pathological blob
-// off the wire — 8000 characters is a long read and a small string.
-const MAX_VALUE_LEN = 8000;
-const safeStringify = (v: unknown): string => {
-  if (typeof v === "function") return "ƒ()";
-  let s: string;
-  try {
-    s = JSON.stringify(v) ?? String(v);
-  } catch {
-    return "[unserializable]";
-  }
-  return s.length > MAX_VALUE_LEN ? s.slice(0, MAX_VALUE_LEN) + "…" : s;
-};
 
 // Cap the number of log rows kept in the DOM so a long session can't grow the
 // panel unboundedly. Newest are prepended, so the oldest is the last child.
@@ -146,6 +127,10 @@ class RamondaDevTools extends HTMLElement {
   private watching = false;
   private lastSig = "";
   private lastValues = new Map<string, string>();
+  /** The live values behind the rendered trees, by value id — read when a full view opens. */
+  private rawValues = new Map<string, unknown>();
+  /** Value id → the element holding its tree, so no selector is ever built from a prop name. */
+  private valueElements = new Map<string, HTMLElement>();
   private nodeMap = new Map<string, Node>();
   private highlighted: HTMLElement | null = null;
   /**
@@ -421,16 +406,17 @@ class RamondaDevTools extends HTMLElement {
                        line-height: 1.55; border-left: 2px solid #00ffaa; border-radius: 4px; }
         .state-title { color: #00ffaa; margin-bottom: 4px; font-weight: bold; font-size: 12px;
                        text-transform: uppercase; letter-spacing: .4px; }
-        .state-row { display: flex; gap: 6px; align-items: flex-start; }
-        .state-row .sk { color: #9a9aa2; flex-shrink: 0; }
+        .state-row { margin: 2px 0; }
+        .state-head { display: flex; gap: 4px; align-items: center; }
+        .state-row .sk { color: #9a9aa2; flex-shrink: 0; font-family: ui-monospace, Menlo, monospace;
+                         font-size: 12.5px; }
 
         /**
          * A long value is scrollable rather than truncated. The bridge still caps what it sends,
          * but what it sends should be readable in full — a value ending in "…" is the one you
          * needed to see.
          */
-        .state-row .sv { color: #eee; white-space: pre-wrap; word-break: break-word;
-                         max-height: 6.2em; overflow-y: auto; flex: 1; }
+        .state-row .sv { color: #eee; max-height: 16em; overflow: auto; }
         .state-row .sv::-webkit-scrollbar { width: 8px; }
         .state-row .sv::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
 
@@ -502,8 +488,7 @@ class RamondaDevTools extends HTMLElement {
         .q-idle { color: #888; font-style: italic; }
         .q-error { color: #ff6b6b; font-size: 11px; margin-top: 4px; }
         /* Same treatment as a state value: scrollable, not clipped. */
-        .q-data { color: #ccc; font-size: 11px; margin-top: 6px; word-break: break-word;
-                  white-space: pre-wrap; max-height: 8em; overflow-y: auto; }
+        .q-data { color: #ccc; font-size: 11px; margin-top: 6px; max-height: 16em; overflow: auto; }
         .q-data::-webkit-scrollbar { width: 8px; }
         .q-data::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
         .q-actions { display: flex; gap: 6px; margin-top: 8px; }
@@ -562,6 +547,17 @@ class RamondaDevTools extends HTMLElement {
         <div id="components-container">
           <small style="color:#666">No active components…</small>
         </div>
+      </div>
+      <div class="jv-modal" id="jv-modal">
+        <div class="jv-modal-head">
+          <span class="jv-modal-title" id="jv-modal-title"></span>
+          <div class="jv-modal-tools">
+            <button type="button" id="jv-raw" title="switch between the tree and pretty JSON">raw</button>
+            <button type="button" id="jv-copy" title="copy the whole value as JSON">copy</button>
+            <button type="button" id="jv-close" title="close (Escape)">×</button>
+          </div>
+        </div>
+        <div class="jv-modal-body" id="jv-modal-body"></div>
       </div>
       <div id="query-tab" class="tab-content">
         <div id="query-container">
@@ -727,6 +723,28 @@ class RamondaDevTools extends HTMLElement {
       this.pin(crumb.dataset.crumb || undefined);
     });
 
+    root.querySelector("#jv-close")?.addEventListener("click", () => this.closeFullView());
+    root.querySelector("#jv-raw")?.addEventListener("click", (event) => {
+      this.fullRaw = !this.fullRaw;
+      (event.currentTarget as HTMLElement).classList.toggle("on", this.fullRaw);
+      this.paintFullView();
+    });
+    root.querySelector("#jv-copy")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget as HTMLElement;
+      const text = toPrettyText(this.fullValue);
+      try {
+        // Absent on http:// and when the document is not focused, which is common enough here that
+        // failing silently would look like the button doing nothing.
+        await navigator.clipboard.writeText(text);
+        button.textContent = "copied";
+      } catch {
+        button.textContent = "cannot copy";
+      }
+      setTimeout(() => {
+        button.textContent = "copy";
+      }, 1200);
+    });
+
     const input = root.querySelector("#tree-filter") as HTMLInputElement | null;
     input?.addEventListener("input", () => {
       this.filter = input.value;
@@ -747,9 +765,15 @@ class RamondaDevTools extends HTMLElement {
      * with nothing pinned this listener does nothing at all.
      */
     window.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (!this.hasAttribute("open") || this.pinned === undefined) return;
-      this.pin(undefined);
+      if (event.key !== "Escape" || !this.hasAttribute("open")) return;
+
+      // Innermost first: the value you opened, then the component you focused. Picking has its own
+      // handler, which captures and stops the event before this one runs.
+      if (this.fullViewOpen) {
+        this.closeFullView();
+        return;
+      }
+      if (this.pinned !== undefined) this.pin(undefined);
     });
   }
 
@@ -883,6 +907,10 @@ class RamondaDevTools extends HTMLElement {
             row.observers,
             row.failureCount,
             row.restored,
+            // `updatedAt` rather than the preview: a preview is one capped line, so a change past
+            // its end — an eighth page appended to an infinite query — would not show up here and
+            // the list would keep showing the seventh. A write moves `updatedAt`, always.
+            row.updatedAt,
             row.dataPreview,
             row.error,
           ].join("|"),
@@ -969,8 +997,11 @@ class RamondaDevTools extends HTMLElement {
           updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
         </div>
         ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
-        <div class="q-data">${escapeHtml(row.dataPreview)}</div>
+        <div class="q-data">${
+          row.data === undefined ? escapeHtml(row.dataPreview) : renderJsonHtml(row.data, INLINE)
+        }</div>
         <div class="q-actions">
+          ${this.fullViewButton(`q::${clientIndex}::${row.hash}`, row.data)}
           <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
             row.hash,
           )}">invalidate</button>
@@ -990,6 +1021,23 @@ class RamondaDevTools extends HTMLElement {
   private bindQueryActions() {
     const container = this.shadowRoot!.querySelector("#query-container");
     if (!container) return;
+
+    // The rows are rebuilt whenever the cache moves, so the values behind their full-view buttons
+    // are re-registered here rather than kept from the last render.
+    const { clients } = this.queries?.snapshot() ?? { clients: [] };
+    for (const client of clients) {
+      for (const row of client.queries) {
+        this.rawValues.set(`q::${client.index}::${row.hash}`, row.data);
+      }
+    }
+
+    for (const button of Array.from(container.querySelectorAll("[data-full]"))) {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        const id = (button as HTMLElement).dataset.full ?? "";
+        this.openFullView(id.slice(id.lastIndexOf("::") + 2), this.rawValues.get(id));
+      });
+    }
 
     for (const button of Array.from(container.querySelectorAll("[data-q-action]"))) {
       button.addEventListener("click", () => {
@@ -1083,15 +1131,33 @@ class RamondaDevTools extends HTMLElement {
     const rows = keys
       .map((k) => {
         const vid = `${path}::${slot}::${k}`;
-        const val = safeStringify(obj![k]);
-        acc.values.set(vid, val);
-        return `<div class="state-row"><span class="sk">${escapeHtml(
-          k,
-        )}:</span> <span class="sv" data-sv="${escapeHtml(vid)}">${escapeHtml(val)}</span></div>`;
+        const value = obj![k];
+        // The one-line form is kept, but only as a CHANGE SIGNATURE — comparing two strings is
+        // cheaper than diffing two trees, and the reader never sees it.
+        acc.values.set(vid, safeStringify(value));
+        acc.raw.set(vid, value);
+        return `<div class="state-row">
+          <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${this.fullViewButton(vid, value)}</div>
+          <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
+        </div>`;
       })
       .join("");
     const titleHtml = title ? `<div class="state-title">${title}</div>` : "";
     return `<div class="state-block">${titleHtml}${rows}</div>`;
+  }
+
+  /**
+   * The button that opens one value on the whole panel.
+   *
+   * Only for a value with something to open. A number does not need a full view, and a button
+   * that opens a bigger box containing `3` is noise on every row.
+   */
+  private fullViewButton(id: string, value: unknown): string {
+    const container = (Array.isArray(value) || (typeof value === "object" && value !== null)) && value !== null;
+    if (!container) return "";
+    return `<button type="button" class="jv-open" data-full="${escapeHtml(id)}" title="open ${escapeHtml(
+      summarize(value),
+    )} in the full view">⤢</button>`;
   }
 
   private renderComponentsFull() {
@@ -1110,7 +1176,7 @@ class RamondaDevTools extends HTMLElement {
      * — the flicker, back again, and only while pinned. The same reason `nodeMap` and the value
      * map are the full ones: a path in them is the same path either way.
      */
-    const acc: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
+    const acc: WalkAcc = { values: new Map(), raw: new Map(), nodes: new Map(), sig: [] };
     const fullHtml = this.walkTree(tree, "", acc);
 
     let html = fullHtml;
@@ -1119,7 +1185,7 @@ class RamondaDevTools extends HTMLElement {
     if (this.pinned !== undefined) {
       const found = this.locate(tree, "", this.pinned, []);
       if (found) {
-        const sub: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
+        const sub: WalkAcc = { values: new Map(), raw: new Map(), nodes: new Map(), sig: [] };
         html = this.walkTree([found.node], found.parentPrefix, sub, found.index);
         crumbs = this.renderCrumbs(found.trail, false);
       } else {
@@ -1137,6 +1203,7 @@ class RamondaDevTools extends HTMLElement {
 
     container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
     this.lastValues = acc.values;
+    this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
     this.elementPaths = new WeakMap();
     for (const [path, node] of acc.nodes) this.elementPaths.set(node, path);
@@ -1315,6 +1382,48 @@ class RamondaDevTools extends HTMLElement {
     label.style.top = `${Math.min(y + 18, window.innerHeight - label.offsetHeight - 8)}px`;
   }
 
+  /**
+   * One value, on the whole panel.
+   *
+   * A snapshot rather than a live view, on purpose: this is opened to READ something carefully,
+   * and a tree that re-renders under the cursor while you are three levels into it is unreadable.
+   * Close and re-open for the current value.
+   *
+   * `raw` switches to pretty-printed JSON, which is what you want when the answer is "paste this
+   * into a test" rather than "what shape is this".
+   */
+  private openFullView(title: string, value: unknown): void {
+    if (value === undefined) return;
+
+    this.fullValue = value;
+    this.fullRaw = false;
+
+    const root = this.shadowRoot!;
+    (root.querySelector("#jv-modal-title") as HTMLElement).textContent = `${title} — ${summarize(value)}`;
+    (root.querySelector("#jv-raw") as HTMLElement).classList.remove("on");
+    this.paintFullView();
+    root.querySelector("#jv-modal")!.classList.add("on");
+  }
+
+  private paintFullView(): void {
+    const body = this.shadowRoot!.querySelector("#jv-modal-body") as HTMLElement;
+    body.innerHTML = this.fullRaw
+      ? `<pre class="jv-raw">${escapeHtml(toPrettyText(this.fullValue))}</pre>`
+      : renderJsonHtml(this.fullValue, FULL);
+  }
+
+  private closeFullView(): void {
+    this.shadowRoot!.querySelector("#jv-modal")?.classList.remove("on");
+    this.fullValue = undefined;
+  }
+
+  private get fullViewOpen(): boolean {
+    return this.shadowRoot!.querySelector("#jv-modal")?.classList.contains("on") === true;
+  }
+
+  private fullValue: unknown;
+  private fullRaw = false;
+
   /** Focuses one component, or the whole tree when given `undefined`. */
   private pin(path: string | undefined): void {
     this.pinned = path;
@@ -1356,7 +1465,7 @@ class RamondaDevTools extends HTMLElement {
     if (!container || !inspect) return;
 
     const tree = inspect();
-    const acc: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
+    const acc: WalkAcc = { values: new Map(), raw: new Map(), nodes: new Map(), sig: [] };
     this.walkTree(tree, "", acc); // fills acc (html discarded)
 
     if (acc.sig.join(";") !== this.lastSig) {
@@ -1366,9 +1475,12 @@ class RamondaDevTools extends HTMLElement {
 
     for (const [vid, val] of acc.values) {
       if (this.lastValues.get(vid) !== val) {
-        const span = container.querySelector(`[data-sv="${vid}"]`);
+        // From a MAP, not from `[data-sv="…"]`. A value id carries a prop name, and a prop name
+        // can carry a quote — the same shape as the query hash that made `querySelector` throw on
+        // every poll. There is no selector here to break.
+        const span = this.valueElements.get(vid);
         if (span) {
-          span.textContent = val;
+          span.innerHTML = renderJsonHtml(acc.raw.get(vid), INLINE);
           const row = span.closest(".state-row");
           if (row) {
             row.classList.remove("updated");
@@ -1381,11 +1493,26 @@ class RamondaDevTools extends HTMLElement {
     }
 
     this.lastValues = acc.values;
+    this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
   }
 
   // Highlight the real DOM node on hover (direct reference — no name matching).
   private attachInspectorEvents(container: Element) {
+    this.valueElements = new Map();
+    for (const element of Array.from(container.querySelectorAll("[data-sv]"))) {
+      this.valueElements.set((element as HTMLElement).dataset.sv ?? "", element as HTMLElement);
+    }
+
+    for (const button of Array.from(container.querySelectorAll("[data-full]"))) {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = (button as HTMLElement).dataset.full ?? "";
+        this.openFullView(id.slice(id.lastIndexOf("::") + 2), this.rawValues.get(id));
+      });
+    }
+
     container.querySelectorAll(".comp-summary").forEach((summary) => {
       const path = summary.getAttribute("data-path")!;
       summary.addEventListener("mouseenter", () => this.highlight(path));
