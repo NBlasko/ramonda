@@ -63,12 +63,7 @@ interface WalkAcc {
  * same broken markup is why the age element could never be found either.
  */
 const escapeHtml = (s: string) =>
-  s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // Values may hold functions/DOM/circular refs — never let JSON.stringify throw
 // and break the panel.
@@ -157,14 +152,12 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private get inspect(): InspectFn | undefined {
-    return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn })
-      .__RAMONDA_INSPECT__;
+    return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn }).__RAMONDA_INSPECT__;
   }
 
   /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
   private get queries(): QueryBridge | undefined {
-    return (window as unknown as { __RAMONDA_QUERY__?: QueryBridge })
-      .__RAMONDA_QUERY__;
+    return (window as unknown as { __RAMONDA_QUERY__?: QueryBridge }).__RAMONDA_QUERY__;
   }
 
   private setupEventListeners() {
@@ -199,16 +192,11 @@ class RamondaDevTools extends HTMLElement {
    * so it is the reader's to set.
    */
   private setupResize() {
-    const panel = this.shadowRoot!.querySelector(
-      ".ramonda-panel"
-    ) as HTMLElement;
-    const handle = this.shadowRoot!.querySelector(
-      ".ramonda-resize"
-    ) as HTMLElement;
+    const panel = this.shadowRoot!.querySelector(".ramonda-panel") as HTMLElement;
+    const handle = this.shadowRoot!.querySelector(".ramonda-resize") as HTMLElement;
 
     const stored = Number(read(WIDTH_KEY));
-    if (Number.isFinite(stored) && stored > 0)
-      panel.style.width = `${this.clampWidth(stored)}px`;
+    if (Number.isFinite(stored) && stored > 0) panel.style.width = `${this.clampWidth(stored)}px`;
 
     handle.addEventListener("pointerdown", (event: PointerEvent) => {
       if (event.button !== 0) return;
@@ -221,18 +209,13 @@ class RamondaDevTools extends HTMLElement {
 
       // Dragging LEFT widens, so the delta is inverted: the panel is anchored to the right.
       const onMove = (move: PointerEvent) => {
-        panel.style.width = `${this.clampWidth(
-          startWidth + (startX - move.clientX)
-        )}px`;
+        panel.style.width = `${this.clampWidth(startWidth + (startX - move.clientX))}px`;
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         panel.classList.remove("resizing");
-        write(
-          WIDTH_KEY,
-          String(Math.round(panel.getBoundingClientRect().width))
-        );
+        write(WIDTH_KEY, String(Math.round(panel.getBoundingClientRect().width)));
       };
 
       window.addEventListener("pointermove", onMove);
@@ -249,17 +232,12 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private setupDrag() {
-    const badge = this.shadowRoot!.querySelector(
-      ".ramonda-badge"
-    ) as HTMLElement;
+    const badge = this.shadowRoot!.querySelector(".ramonda-badge") as HTMLElement;
     let hasMoved = false;
 
     const onPointerMove = (e: PointerEvent) => {
       if (!this.isDragging) return;
-      if (
-        Math.abs(e.clientX - this.startX) > 5 ||
-        Math.abs(e.clientY - this.startY) > 5
-      ) {
+      if (Math.abs(e.clientX - this.startX) > 5 || Math.abs(e.clientY - this.startY) > 5) {
         hasMoved = true;
       }
       this.currentX = window.innerWidth - e.clientX - 25;
@@ -478,14 +456,8 @@ class RamondaDevTools extends HTMLElement {
     this.setupTabSwitching();
     this.setupTools();
     this.setupResize();
-    this.shadowRoot!.querySelector("#close-btn")?.addEventListener(
-      "click",
-      () => this.toggle()
-    );
-    this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener(
-      "click",
-      () => this.toggle()
-    );
+    this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
+    this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener("click", () => this.toggle());
   }
 
   private addLogToUI(detail: DevLogPayload) {
@@ -493,8 +465,7 @@ class RamondaDevTools extends HTMLElement {
     if (!container || !detail) return;
 
     const { type, message, timestamp, data, id } = detail;
-    const color =
-      type === "error" ? "#ff4444" : type === "warning" ? "#ffcc00" : "#00aaff";
+    const color = type === "error" ? "#ff4444" : type === "warning" ? "#ffcc00" : "#00aaff";
 
     const logEl = document.createElement("div");
     logEl.className = "log-item";
@@ -502,11 +473,8 @@ class RamondaDevTools extends HTMLElement {
 
     let dataHtml = "";
     if (data) {
-      const dataString =
-        data instanceof Error ? data.message : JSON.stringify(data, null, 2);
-      dataHtml = `<div class="data-preview">Data: ${escapeHtml(
-        dataString
-      )}</div>`;
+      const dataString = data instanceof Error ? data.message : JSON.stringify(data, null, 2);
+      dataHtml = `<div class="data-preview">Data: ${escapeHtml(dataString)}</div>`;
     }
 
     logEl.innerHTML = `
@@ -536,9 +504,7 @@ class RamondaDevTools extends HTMLElement {
   }
 
   toggle() {
-    this.hasAttribute("open")
-      ? this.removeAttribute("open")
-      : this.setAttribute("open", "");
+    this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
     this.updateWatchState();
     this.updateQueryWatch();
   }
@@ -567,9 +533,7 @@ class RamondaDevTools extends HTMLElement {
         const tool = (button as HTMLElement).dataset.tool;
 
         if (tool === "expand" || tool === "collapse") {
-          for (const details of Array.from(
-            container.querySelectorAll("details")
-          )) {
+          for (const details of Array.from(container.querySelectorAll("details"))) {
             (details as HTMLDetailsElement).open = tool === "expand";
           }
           return;
@@ -584,8 +548,8 @@ class RamondaDevTools extends HTMLElement {
               ? "show state & props"
               : "hide state & props"
             : hidden
-            ? "show hooks"
-            : "hide hooks";
+              ? "show hooks"
+              : "hide hooks";
       });
     }
   }
@@ -595,14 +559,10 @@ class RamondaDevTools extends HTMLElement {
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => {
         tabs.forEach((t) => t.classList.remove("active"));
-        this.shadowRoot!.querySelectorAll(".tab-content").forEach((c) =>
-          c.classList.remove("active")
-        );
+        this.shadowRoot!.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
         tab.classList.add("active");
         const target = (tab as HTMLElement).dataset.tab;
-        this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add(
-          "active"
-        );
+        this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add("active");
         this.componentsTabActive = target === "components";
         this.queryTabActive = target === "query";
         this.updateQueryWatch();
@@ -670,7 +630,7 @@ class RamondaDevTools extends HTMLElement {
     if (!bridge) {
       this.write(
         container,
-        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>'
+        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>',
       );
       return;
     }
@@ -679,10 +639,7 @@ class RamondaDevTools extends HTMLElement {
     const total = clients.reduce((sum, c) => sum + c.queries.length, 0);
 
     if (total === 0) {
-      this.write(
-        container,
-        '<small style="color:#666">The cache is empty.</small>'
-      );
+      this.write(container, '<small style="color:#666">The cache is empty.</small>');
       return;
     }
 
@@ -726,8 +683,8 @@ class RamondaDevTools extends HTMLElement {
             row.restored,
             row.dataPreview,
             row.error,
-          ].join("|")
-        )
+          ].join("|"),
+        ),
       )
       .join("\n");
 
@@ -754,11 +711,7 @@ class RamondaDevTools extends HTMLElement {
    * This is the whole reason the ages are in their own element: a text node written directly is
    * the cheapest DOM change there is, and it does not disturb what the reader is doing.
    */
-  private refreshAges(
-    container: Element,
-    clients: { index: number; queries: QueryRow[] }[],
-    now: number
-  ): void {
+  private refreshAges(container: Element, clients: { index: number; queries: QueryRow[] }[], now: number): void {
     /**
      * Collected and matched in JS, never through an attribute SELECTOR.
      *
@@ -769,9 +722,7 @@ class RamondaDevTools extends HTMLElement {
      * do. Reading `dataset` instead has no parser to offend.
      */
     const ages = new Map<string, Element>();
-    for (const element of Array.from(
-      container.querySelectorAll("[data-q-age]")
-    )) {
+    for (const element of Array.from(container.querySelectorAll("[data-q-age]"))) {
       ages.set((element as HTMLElement).dataset.qAge ?? "", element);
     }
 
@@ -786,22 +737,11 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private ageOf(row: QueryRow, now: number): string {
-    return row.updatedAt === 0
-      ? "never"
-      : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
+    return row.updatedAt === 0 ? "never" : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
   }
 
-  private renderQueryRow(
-    clientIndex: number,
-    row: QueryRow,
-    now: number
-  ): string {
-    const colour =
-      row.status === "error"
-        ? "#ff4444"
-        : row.status === "success"
-        ? "#54c98a"
-        : "#ffcc00";
+  private renderQueryRow(clientIndex: number, row: QueryRow, now: number): string {
+    const colour = row.status === "error" ? "#ff4444" : row.status === "success" ? "#54c98a" : "#ffcc00";
     const fetching = row.fetchStatus === "fetching";
     const age = this.ageOf(row, now);
 
@@ -810,9 +750,7 @@ class RamondaDevTools extends HTMLElement {
     const observers =
       row.observers === 0
         ? '<span class="q-idle">0 observers · waiting for gc</span>'
-        : `<span class="q-obs">${row.observers} observer${
-            row.observers === 1 ? "" : "s"
-          }</span>`;
+        : `<span class="q-obs">${row.observers} observer${row.observers === 1 ? "" : "s"}</span>`;
 
     return `
       <div class="q-row">
@@ -824,25 +762,19 @@ class RamondaDevTools extends HTMLElement {
         </div>
         <div class="q-meta">
           ${row.status}${
-      row.failureCount > 0
-        ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}`
-        : ""
-    } ·
-          updated <span data-q-age="${clientIndex}:${escapeHtml(
-      row.hash
-    )}">${age}</span> · ${observers}
+            row.failureCount > 0 ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}` : ""
+          } ·
+          updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
         </div>
-        ${
-          row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""
-        }
+        ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
         <div class="q-data">${escapeHtml(row.dataPreview)}</div>
         <div class="q-actions">
           <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
-      row.hash
-    )}">invalidate</button>
+            row.hash,
+          )}">invalidate</button>
           <button type="button" data-q-action="remove" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
-      row.hash
-    )}">remove</button>
+            row.hash,
+          )}">remove</button>
         </div>
       </div>`;
   }
@@ -857,9 +789,7 @@ class RamondaDevTools extends HTMLElement {
     const container = this.shadowRoot!.querySelector("#query-container");
     if (!container) return;
 
-    for (const button of Array.from(
-      container.querySelectorAll("[data-q-action]")
-    )) {
+    for (const button of Array.from(container.querySelectorAll("[data-q-action]"))) {
       button.addEventListener("click", () => {
         const bridge = this.queries;
         if (!bridge) return;
@@ -868,8 +798,7 @@ class RamondaDevTools extends HTMLElement {
         const clientIndex = Number(element.dataset.qClient);
         const hash = element.dataset.qHash ?? "";
 
-        if (element.dataset.qAction === "invalidate")
-          bridge.invalidate(clientIndex, hash);
+        if (element.dataset.qAction === "invalidate") bridge.invalidate(clientIndex, hash);
         else bridge.remove(clientIndex, hash);
 
         this.renderQueries();
@@ -878,11 +807,7 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /** Recursively walks the inspected tree, building HTML + refresh metadata. */
-  private walkTree(
-    nodes: InspectedNode[],
-    prefix: string,
-    acc: WalkAcc
-  ): string {
+  private walkTree(nodes: InspectedNode[], prefix: string, acc: WalkAcc): string {
     let html = "";
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
@@ -893,25 +818,15 @@ class RamondaDevTools extends HTMLElement {
       const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
       // A hook's inputs are its PROPS. They were called options once, the framework renamed
       // them, and this label kept saying the old word to everyone inspecting a hook.
-      const optionsHtml = this.renderValueBlock(
-        "Props",
-        n.options,
-        path,
-        "o",
-        acc
-      );
+      const optionsHtml = this.renderValueBlock("Props", n.options, path, "o", acc);
 
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);
-      const badge = `<span class="kind-badge kind-${n.kind}">${
-        n.kind === "hook" ? "HOOK" : "CMP"
-      }</span>`;
+      const badge = `<span class="kind-badge kind-${n.kind}">${n.kind === "hook" ? "HOOK" : "CMP"}</span>`;
       const label =
         n.kind === "hook"
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
-          : `<span style="color:#B18AE6">&lt;${escapeHtml(
-              n.name
-            )} /&gt;</span>`;
+          : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
       const body = `${propsHtml}${stateHtml}${optionsHtml}${hooksHtml}${childrenHtml}`;
 
@@ -922,17 +837,13 @@ class RamondaDevTools extends HTMLElement {
         ? `
         <div class="component-node">
           <details open>
-            <summary class="comp-summary" data-path="${escapeHtml(
-              path
-            )}">${badge}${label}</summary>
+            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</summary>
             <div class="node-body">${body}</div>
           </details>
         </div>`
         : `
         <div class="component-node leaf">
-          <div class="comp-summary" data-path="${escapeHtml(
-            path
-          )}">${badge}${label}</div>
+          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</div>
         </div>`;
     }
     return html;
@@ -948,7 +859,7 @@ class RamondaDevTools extends HTMLElement {
     obj: Record<string, unknown> | undefined,
     path: string,
     slot: string,
-    acc: WalkAcc
+    acc: WalkAcc,
   ): string {
     const keys = obj ? Object.keys(obj) : [];
     acc.sig.push(`${path}#${slot}[${keys.join(",")}]`);
@@ -960,10 +871,8 @@ class RamondaDevTools extends HTMLElement {
         const val = safeStringify(obj![k]);
         acc.values.set(vid, val);
         return `<div class="state-row"><span class="sk">${escapeHtml(
-          k
-        )}:</span> <span class="sv" data-sv="${escapeHtml(vid)}">${escapeHtml(
-          val
-        )}</span></div>`;
+          k,
+        )}:</span> <span class="sv" data-sv="${escapeHtml(vid)}">${escapeHtml(val)}</span></div>`;
       })
       .join("");
     const titleHtml = title ? `<div class="state-title">${title}</div>` : "";
@@ -979,8 +888,7 @@ class RamondaDevTools extends HTMLElement {
     const acc: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
     const html = this.walkTree(tree, "", acc);
 
-    container.innerHTML =
-      html || `<small style="color:#666">No active components…</small>`;
+    container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
     this.lastValues = acc.values;
     this.nodeMap = acc.nodes;
     this.lastSig = acc.sig.join(";");
@@ -1057,14 +965,8 @@ class RamondaDevTools extends HTMLElement {
 
   /** Fades the drawer while a row is hovered, so the highlight underneath is visible. */
   private peek(on: boolean): void {
-    this.shadowRoot!.querySelector(".ramonda-panel")?.classList.toggle(
-      "peek",
-      on
-    );
-    this.shadowRoot!.querySelector(".ramonda-overlay")?.classList.toggle(
-      "peek",
-      on
-    );
+    this.shadowRoot!.querySelector(".ramonda-panel")?.classList.toggle("peek", on);
+    this.shadowRoot!.querySelector(".ramonda-overlay")?.classList.toggle("peek", on);
   }
 
   private clearHighlight() {

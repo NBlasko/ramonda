@@ -1,11 +1,4 @@
-import {
-  Component,
-  Host,
-  createRef,
-  createSubscriptionDecorator,
-  list,
-  state,
-} from "@ramonda/core";
+import { Component, Host, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
 import {
   InfiniteQuery,
   Query,
@@ -79,7 +72,7 @@ async function loadPage(ctx: PageContext): Promise<ProductPage> {
     `${API}/products?limit=${PAGE_SIZE}&skip=${skip}&select=title,brand,price,rating,category`,
     {
       signal: ctx.signal,
-    }
+    },
   );
   if (!response.ok) throw new Error(`products ${response.status}`);
   return (await response.json()) as ProductPage;
@@ -99,21 +92,16 @@ async function loadProduct(id: number, signal: AbortSignal): Promise<Product> {
  * server has no `IntersectionObserver`; nothing here needs guarding for that, because a
  * subscription decorator is built on the effect primitive and effects are client-only.
  */
-const onVisible = createSubscriptionDecorator(
-  "onVisible",
-  (owner: Component, handler: () => void) => {
-    const element = (
-      owner as unknown as { sentinel: { current: HTMLElement | null } }
-    ).sentinel.current;
-    if (!element || typeof IntersectionObserver === "undefined") return;
+const onVisible = createSubscriptionDecorator("onVisible", (owner: Component, handler: () => void) => {
+  const element = (owner as unknown as { sentinel: { current: HTMLElement | null } }).sentinel.current;
+  if (!element || typeof IntersectionObserver === "undefined") return;
 
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) handler();
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }
-);
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) handler();
+  });
+  observer.observe(element);
+  return () => observer.disconnect();
+});
 
 @Host("li")
 class ProductRow extends Component<{
@@ -186,7 +174,7 @@ class ProductDetail extends Component<{ id: number }> {
       fetch: self.loadOne,
       staleTime: 60_000,
       placeholderData: self.skeleton,
-    })
+    }),
   );
 
   /** The fetcher. `key` comes from the context, so nothing about the component is captured. */
@@ -229,12 +217,7 @@ class ProductDetail extends Component<{ id: number }> {
           ${String(p.data?.price ?? 0)} · ★{String(p.data?.rating ?? 0)}
           {p.isFetching ? " · refreshing…" : ""}
         </p>
-        <button
-          type="button"
-          id="refresh-product"
-          onClick={this.refresh}
-          disabled={p.isPlaceholder}
-        >
+        <button type="button" id="refresh-product" onClick={this.refresh} disabled={p.isPlaceholder}>
           invalidate this product
         </button>
       </div>
@@ -261,7 +244,7 @@ export class ProductsPage extends Component {
       loadPage,
       // `undefined` ends the list. `skip + limit` past `total` is exactly that.
       getNextPageParam: nextSkip,
-    })
+    }),
   );
 
   /**
@@ -288,10 +271,8 @@ export class ProductsPage extends Component {
       <div className="page products">
         <h2>Products</h2>
         <p className="meta">
-          Server-rendered first page, then infinite scroll.{" "}
-          {String(feed.pages.length)} page(s) ·{" "}
-          {String(feed.pages.reduce((n, page) => n + page.products.length, 0))}{" "}
-          of {String(feed.pages[0]?.total ?? 0)}
+          Server-rendered first page, then infinite scroll. {String(feed.pages.length)} page(s) ·{" "}
+          {String(feed.pages.reduce((n, page) => n + page.products.length, 0))} of {String(feed.pages[0]?.total ?? 0)}
         </p>
 
         {feed.isError ? (
@@ -299,8 +280,8 @@ export class ProductsPage extends Component {
             <h3>Could not load the feed</h3>
             <p>{(feed.error as Error).message}</p>
             <p className="meta">
-              With no network this is what the server renders — a failed query
-              is a state, not an exception that aborts the page.
+              With no network this is what the server renders — a failed query is a state, not an exception that aborts
+              the page.
             </p>
           </div>
         ) : null}
@@ -311,11 +292,7 @@ export class ProductsPage extends Component {
 
             {/* The sentinel: scrolling it into view asks for the next page. */}
             <div id="sentinel" ref={this.sentinel} className="sentinel">
-              {feed.isFetchingNextPage
-                ? "loading more…"
-                : feed.hasNextPage
-                ? "scroll for more"
-                : "that is all"}
+              {feed.isFetchingNextPage ? "loading more…" : feed.hasNextPage ? "scroll for more" : "that is all"}
             </div>
 
             <button
