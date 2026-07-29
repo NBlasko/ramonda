@@ -1,10 +1,18 @@
-import { Component, Host, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
+import {
+  Component,
+  Host,
+  createRef,
+  createSubscriptionDecorator,
+  list,
+  state,
+} from "@ramonda/core";
 import {
   InfiniteQuery,
   Query,
   QueryClientAccess,
   infiniteQueryOptions,
   queryOptions,
+  type FetchContext,
   type PageContext,
 } from "@ramonda/query";
 
@@ -71,7 +79,7 @@ async function loadPage(ctx: PageContext): Promise<ProductPage> {
     `${API}/products?limit=${PAGE_SIZE}&skip=${skip}&select=title,brand,price,rating,category`,
     {
       signal: ctx.signal,
-    },
+    }
   );
   if (!response.ok) throw new Error(`products ${response.status}`);
   return (await response.json()) as ProductPage;
@@ -91,19 +99,27 @@ async function loadProduct(id: number, signal: AbortSignal): Promise<Product> {
  * server has no `IntersectionObserver`; nothing here needs guarding for that, because a
  * subscription decorator is built on the effect primitive and effects are client-only.
  */
-const onVisible = createSubscriptionDecorator("onVisible", (owner: Component, handler: () => void) => {
-  const element = (owner as unknown as { sentinel: { current: HTMLElement | null } }).sentinel.current;
-  if (!element || typeof IntersectionObserver === "undefined") return;
+const onVisible = createSubscriptionDecorator(
+  "onVisible",
+  (owner: Component, handler: () => void) => {
+    const element = (
+      owner as unknown as { sentinel: { current: HTMLElement | null } }
+    ).sentinel.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
 
-  const observer = new IntersectionObserver((entries) => {
-    if (entries.some((entry) => entry.isIntersecting)) handler();
-  });
-  observer.observe(element);
-  return () => observer.disconnect();
-});
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) handler();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }
+);
 
 @Host("li")
-class ProductRow extends Component<{ item: Product; onPick: (id: number) => void }> {
+class ProductRow extends Component<{
+  item: Product;
+  onPick: (id: number) => void;
+}> {
   pick() {
     this.props.onPick(this.props.item.id);
   }
@@ -123,7 +139,10 @@ class ProductRow extends Component<{ item: Product; onPick: (id: number) => void
 
 /** One page of the feed. `as` cannot take a second prop, so the row comes from `render`. */
 @Host("ul")
-class ProductPageRows extends Component<{ item: ProductPage; onPick: (id: number) => void }> {
+class ProductPageRows extends Component<{
+  item: ProductPage;
+  onPick: (id: number) => void;
+}> {
   render() {
     return list({ each: this.props.item.products, render: this.renderRow });
   }
@@ -147,21 +166,45 @@ class ProductPageRows extends Component<{ item: ProductPage; onPick: (id: number
 class ProductDetail extends Component<{ id: number }> {
   private queries = this.use(QueryClientAccess);
 
+  /**
+   * Every function here is a BOUND METHOD, and the first version of this example was written
+   * the other way — with two arrows inline — which is what RMD022 reported the moment the page
+   * was served:
+   *
+   * > A hook's props callback built a new value for the same contents: `ProductDetail → Query`
+   * > builds a new function for the `fetch` prop on every render.
+   *
+   * The callback runs on every render of the owner, and every prop is a signal — so a fresh
+   * function is a *change*, on every render, forever. A bound method has nothing to capture:
+   * `loadOne` reads its argument and `skeleton` reads `this.props` when they are CALLED, so the
+   * identity never moves. Worth keeping the story rather than quietly writing the fixed version:
+   * the diagnostic caught the framework author writing the framework's own example wrong.
+   */
   private product = this.use(Query, (self: ProductDetail) =>
     queryOptions({
       key: ["product", self.props.id],
-      fetch: ({ signal, key }) => loadProduct(key[1] as number, signal),
+      fetch: self.loadOne,
       staleTime: 60_000,
-      placeholderData: (): Product => ({
-        id: self.props.id,
-        title: "Loading…",
-        price: 0,
-        rating: 0,
-        category: "",
-        description: "",
-      }),
-    }),
+      placeholderData: self.skeleton,
+    })
   );
+
+  /** The fetcher. `key` comes from the context, so nothing about the component is captured. */
+  loadOne({ signal, key }: FetchContext) {
+    return loadProduct(key[1] as number, signal);
+  }
+
+  /** What the panel shows on the very first selection, instead of flashing a spinner. */
+  skeleton(): Product {
+    return {
+      id: this.props.id,
+      title: "Loading…",
+      price: 0,
+      rating: 0,
+      category: "",
+      description: "",
+    };
+  }
 
   refresh() {
     this.queries.client.invalidate(["product", this.props.id]);
@@ -186,7 +229,12 @@ class ProductDetail extends Component<{ id: number }> {
           ${String(p.data?.price ?? 0)} · ★{String(p.data?.rating ?? 0)}
           {p.isFetching ? " · refreshing…" : ""}
         </p>
-        <button type="button" id="refresh-product" onClick={this.refresh} disabled={p.isPlaceholder}>
+        <button
+          type="button"
+          id="refresh-product"
+          onClick={this.refresh}
+          disabled={p.isPlaceholder}
+        >
           invalidate this product
         </button>
       </div>
@@ -213,7 +261,7 @@ export class ProductsPage extends Component {
       loadPage,
       // `undefined` ends the list. `skip + limit` past `total` is exactly that.
       getNextPageParam: nextSkip,
-    }),
+    })
   );
 
   /**
@@ -240,8 +288,10 @@ export class ProductsPage extends Component {
       <div className="page products">
         <h2>Products</h2>
         <p className="meta">
-          Server-rendered first page, then infinite scroll. {String(feed.pages.length)} page(s) ·{" "}
-          {String(feed.pages.reduce((n, page) => n + page.products.length, 0))} of {String(feed.pages[0]?.total ?? 0)}
+          Server-rendered first page, then infinite scroll.{" "}
+          {String(feed.pages.length)} page(s) ·{" "}
+          {String(feed.pages.reduce((n, page) => n + page.products.length, 0))}{" "}
+          of {String(feed.pages[0]?.total ?? 0)}
         </p>
 
         {feed.isError ? (
@@ -249,8 +299,8 @@ export class ProductsPage extends Component {
             <h3>Could not load the feed</h3>
             <p>{(feed.error as Error).message}</p>
             <p className="meta">
-              With no network this is what the server renders — a failed query is a state, not an exception that aborts
-              the page.
+              With no network this is what the server renders — a failed query
+              is a state, not an exception that aborts the page.
             </p>
           </div>
         ) : null}
@@ -261,7 +311,11 @@ export class ProductsPage extends Component {
 
             {/* The sentinel: scrolling it into view asks for the next page. */}
             <div id="sentinel" ref={this.sentinel} className="sentinel">
-              {feed.isFetchingNextPage ? "loading more…" : feed.hasNextPage ? "scroll for more" : "that is all"}
+              {feed.isFetchingNextPage
+                ? "loading more…"
+                : feed.hasNextPage
+                ? "scroll for more"
+                : "that is all"}
             </div>
 
             <button

@@ -61,7 +61,12 @@ interface QueryBridge {
 
 const clients: QueryClient[] = [];
 
-const MAX_PREVIEW = 120;
+/**
+ * 120 showed `{"products":[{"id":1,"title":"Essence Mascara…` and stopped there, which tells
+ * you nothing you did not already know from the key. The panel scrolls a long value now, so the
+ * cap is only here to keep a megabyte of cached data off the wire on every poll.
+ */
+const MAX_PREVIEW = 2000;
 
 function preview(value: unknown): string {
   if (value === undefined) return "—";

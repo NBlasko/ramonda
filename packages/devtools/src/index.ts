@@ -53,7 +53,22 @@ interface WalkAcc {
   sig: string[];
 }
 
-const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/**
+ * Escapes for BOTH text and attribute positions, which is why the quotes are in here.
+ *
+ * They were missing, and it broke the Query tab twice over. A query's hash is JSON, so it
+ * carries `"` — and `data-q-hash="["products"]"` ends the attribute at the second quote. The
+ * parser then read the rest as bare attributes, so `dataset.qHash` was `[` and both buttons
+ * looked up an entry that could not exist: invalidate and remove did nothing, silently. The
+ * same broken markup is why the age element could never be found either.
+ */
+const escapeHtml = (s: string) =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 // Values may hold functions/DOM/circular refs — never let JSON.stringify throw
 // and break the panel.
@@ -77,6 +92,29 @@ const safeStringify = (v: unknown): string => {
 // Cap the number of log rows kept in the DOM so a long session can't grow the
 // panel unboundedly. Newest are prepended, so the oldest is the last child.
 const MAX_LOG_NODES = 200;
+
+/** Narrow enough to peek past, wide enough that the drag handle is still there to grab. */
+const MIN_PANEL_WIDTH = 280;
+const WIDTH_KEY = "ramonda:devtools-width";
+
+/**
+ * `localStorage` throws rather than returning null in a sandboxed iframe or with site data
+ * blocked, and a devtools panel is the last thing that should take an app down with it.
+ */
+const read = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const write = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* not storable here; the width simply does not persist */
+  }
+};
 
 // packages/devtools/src/index.ts
 
@@ -119,12 +157,14 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private get inspect(): InspectFn | undefined {
-    return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn }).__RAMONDA_INSPECT__;
+    return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn })
+      .__RAMONDA_INSPECT__;
   }
 
   /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
   private get queries(): QueryBridge | undefined {
-    return (window as unknown as { __RAMONDA_QUERY__?: QueryBridge }).__RAMONDA_QUERY__;
+    return (window as unknown as { __RAMONDA_QUERY__?: QueryBridge })
+      .__RAMONDA_QUERY__;
   }
 
   private setupEventListeners() {
@@ -150,13 +190,76 @@ class RamondaDevTools extends HTMLElement {
     });
   }
 
+  /**
+   * The left edge resizes the panel, and the width survives a reload.
+   *
+   * Worth saying why this exists at all: the panel OVERLAYS the app, so its width is a direct
+   * trade against how much of the app you can see — and the right answer differs per app and
+   * per task. A default cannot be right for both a query table and a narrow highlight check,
+   * so it is the reader's to set.
+   */
+  private setupResize() {
+    const panel = this.shadowRoot!.querySelector(
+      ".ramonda-panel"
+    ) as HTMLElement;
+    const handle = this.shadowRoot!.querySelector(
+      ".ramonda-resize"
+    ) as HTMLElement;
+
+    const stored = Number(read(WIDTH_KEY));
+    if (Number.isFinite(stored) && stored > 0)
+      panel.style.width = `${this.clampWidth(stored)}px`;
+
+    handle.addEventListener("pointerdown", (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      // Otherwise the drag starts a text selection in the app underneath.
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startWidth = panel.getBoundingClientRect().width;
+      panel.classList.add("resizing");
+
+      // Dragging LEFT widens, so the delta is inverted: the panel is anchored to the right.
+      const onMove = (move: PointerEvent) => {
+        panel.style.width = `${this.clampWidth(
+          startWidth + (startX - move.clientX)
+        )}px`;
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        panel.classList.remove("resizing");
+        write(
+          WIDTH_KEY,
+          String(Math.round(panel.getBoundingClientRect().width))
+        );
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+  }
+
+  /**
+   * A width the panel can actually be used at. The floor is not cosmetic — a panel dragged to
+   * 20px is unrecoverable, because the handle goes with it.
+   */
+  private clampWidth(width: number): number {
+    return Math.max(MIN_PANEL_WIDTH, Math.min(width, window.innerWidth * 0.96));
+  }
+
   private setupDrag() {
-    const badge = this.shadowRoot!.querySelector(".ramonda-badge") as HTMLElement;
+    const badge = this.shadowRoot!.querySelector(
+      ".ramonda-badge"
+    ) as HTMLElement;
     let hasMoved = false;
 
     const onPointerMove = (e: PointerEvent) => {
       if (!this.isDragging) return;
-      if (Math.abs(e.clientX - this.startX) > 5 || Math.abs(e.clientY - this.startY) > 5) {
+      if (
+        Math.abs(e.clientX - this.startX) > 5 ||
+        Math.abs(e.clientY - this.startY) > 5
+      ) {
         hasMoved = true;
       }
       this.currentX = window.innerWidth - e.clientX - 25;
@@ -210,10 +313,13 @@ class RamondaDevTools extends HTMLElement {
           position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
           z-index: 2147483645; display: none; backdrop-filter: blur(2px);
         }
-        /* Twice the old 450px, capped so it cannot swallow a narrow window: the panel is for
-           reading a component tree and a query table, both of which are wide. */
+        /* 620px sits between the original 450 and the 900 that turned out to cover too much of
+           the app. It is only a STARTING width — the left edge is a drag handle and the choice
+           is remembered, so the default just has to be reasonable rather than right. */
         .ramonda-panel {
-          position: fixed; top: 0; right: 0; width: min(900px, 92vw); height: 100vh;
+          position: fixed; top: 0; right: 0; width: min(620px, 92vw); height: 100vh;
+          min-width: 280px; max-width: 96vw;
+          container-type: inline-size;
           background: #111; color: #eee; z-index: 2147483647;
           box-shadow: -5px 0 25px rgba(0,0,0,0.5);
           transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -221,6 +327,16 @@ class RamondaDevTools extends HTMLElement {
           border-left: 3px solid #7A4FBF; font-family: sans-serif;
         }
         :host([open]) .ramonda-panel { transform: translateX(0); }
+        /* Grab-anywhere-on-the-edge: 8px wide, sitting half outside so the cursor changes just
+           before the panel begins. touch-action none, or a pen/touch drag scrolls instead. */
+        .ramonda-resize {
+          position: absolute; top: 0; bottom: 0; left: -4px; width: 8px;
+          cursor: ew-resize; z-index: 2; touch-action: none;
+        }
+        .ramonda-resize:hover, .ramonda-panel.resizing .ramonda-resize { background: #7A4FBF; }
+        /* While dragging, the pointer is over the app, not the handle — without this every
+           move selects a paragraph behind the panel. */
+        .ramonda-panel.resizing { user-select: none; }
         :host([open]) .ramonda-overlay { display: block; }
         .header { padding: 20px; background: #7A4FBF; color: white; display: flex; justify-content: space-between; align-items: center; }
         .log-item { position: relative; border-bottom: 1px solid #222; padding: 12px 30px 12px 0; font-family: monospace; }
@@ -230,10 +346,16 @@ class RamondaDevTools extends HTMLElement {
         .tabs { display: flex; background: #1a1a1a; border-bottom: 1px solid #333; flex-shrink: 0; }
         .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-bottom: 2px solid transparent; color: #888; font-weight: bold; transition: 0.2s; }
         .tab.active { color: #B18AE6; border-bottom: 2px solid #B18AE6; background: #222; }
-        .tab-content { display: none; padding: 20px; overflow-y: auto; flex-grow: 1; }
+        /* overflow auto on BOTH axes, because the panel is now as narrow as the reader wants
+           it: a deep tree row or a wide query key must be reachable by scrolling rather than
+           be reflowed into something unreadable. */
+        .tab-content { display: none; padding: 20px; overflow: auto; flex-grow: 1; }
         .tab-content.active { display: block; }
         .component-node { margin-top: 4px; }
-        .comp-summary { outline: none; cursor: pointer; }
+        /* Never wrapped: at 300px a nested &lt;ProductDetail /&gt; row would otherwise break across
+           lines and the indentation — the only thing telling you where you are — would be lost.
+           The row extends past the edge instead, and the tab content scrolls to it. */
+        .comp-summary { outline: none; cursor: pointer; white-space: nowrap; }
         .kind-badge { font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
         .kind-component { background: #7A4FBF; color: #fff; }
         .kind-hook { background: #6a3; color: #fff; }
@@ -287,15 +409,41 @@ class RamondaDevTools extends HTMLElement {
         .q-obs { color: #54c98a; }
         .q-idle { color: #888; font-style: italic; }
         .q-error { color: #ff6b6b; font-size: 11px; margin-top: 4px; }
-        .q-data { color: #ccc; font-size: 11px; margin-top: 6px; word-break: break-all; }
+        /* Same treatment as a state value: scrollable, not clipped. */
+        .q-data { color: #ccc; font-size: 11px; margin-top: 6px; word-break: break-word;
+                  white-space: pre-wrap; max-height: 8em; overflow-y: auto; }
+        .q-data::-webkit-scrollbar { width: 8px; }
+        .q-data::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
         .q-actions { display: flex; gap: 6px; margin-top: 8px; }
         .q-actions button { background: #2a2a2a; border: 1px solid #3a3a3a; color: #ccc; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
         .q-actions button:hover { background: #333; color: #fff; }
+
+        /**
+         * Narrow-panel layout, driven by a CONTAINER query rather than a media query.
+         *
+         * The width here is the reader's, set by dragging — the window may be 2560px wide while
+         * the panel is 300px. A media rule would read the window and never fire.
+         */
+        @container (max-width: 440px) {
+          .header { padding: 12px 14px; }
+          .header h2 { font-size: 15px; }
+          .tab { padding: 9px 4px; font-size: 11px; }
+          .tab-content { padding: 12px 14px; }
+          .tools { padding: 7px 14px; gap: 5px; }
+          .tools button { font-size: 11px; padding: 3px 7px; }
+          .q-row { padding: 8px 10px; }
+        }
+        @container (max-width: 320px) {
+          /* Every control keeps its icon and drops its words — four buttons still fit a row. */
+          .tools button { flex: 1 1 auto; }
+          .tools button .tw { display: none; }
+        }
       </style>
 
     <div class="ramonda-badge">R</div>
     <div class="ramonda-overlay"></div>
     <div class="ramonda-panel">
+      <div class="ramonda-resize" title="drag to resize"></div>
       <div class="header">
         <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="-32 -32 64 64" aria-hidden="true"><g fill="#fff"><ellipse cy="-14" rx="8.6" ry="14"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(72)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(144)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(216)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(288)"/></g><circle r="6.6" fill="#E9B44C"/></svg>Ramonda</h2>
         <button id="close-btn" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer">×</button>
@@ -310,10 +458,10 @@ class RamondaDevTools extends HTMLElement {
       </div>
       <div id="components-tab" class="tab-content">
         <div class="tools">
-          <button type="button" data-tool="expand">expand all</button>
-          <button type="button" data-tool="collapse">collapse all</button>
-          <button type="button" data-tool="values">hide state &amp; props</button>
-          <button type="button" data-tool="hooks">hide hooks</button>
+          <button type="button" data-tool="expand" title="expand all">▾<span class="tw"> expand all</span></button>
+          <button type="button" data-tool="collapse" title="collapse all">▸<span class="tw"> collapse all</span></button>
+          <button type="button" data-tool="values" title="hide state &amp; props">◧<span class="tw"> hide state &amp; props</span></button>
+          <button type="button" data-tool="hooks" title="hide hooks">⬡<span class="tw"> hide hooks</span></button>
         </div>
         <div id="components-container">
           <small style="color:#666">No active components…</small>
@@ -329,8 +477,15 @@ class RamondaDevTools extends HTMLElement {
 
     this.setupTabSwitching();
     this.setupTools();
-    this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
-    this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener("click", () => this.toggle());
+    this.setupResize();
+    this.shadowRoot!.querySelector("#close-btn")?.addEventListener(
+      "click",
+      () => this.toggle()
+    );
+    this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener(
+      "click",
+      () => this.toggle()
+    );
   }
 
   private addLogToUI(detail: DevLogPayload) {
@@ -338,7 +493,8 @@ class RamondaDevTools extends HTMLElement {
     if (!container || !detail) return;
 
     const { type, message, timestamp, data, id } = detail;
-    const color = type === "error" ? "#ff4444" : type === "warning" ? "#ffcc00" : "#00aaff";
+    const color =
+      type === "error" ? "#ff4444" : type === "warning" ? "#ffcc00" : "#00aaff";
 
     const logEl = document.createElement("div");
     logEl.className = "log-item";
@@ -346,8 +502,11 @@ class RamondaDevTools extends HTMLElement {
 
     let dataHtml = "";
     if (data) {
-      const dataString = data instanceof Error ? data.message : JSON.stringify(data, null, 2);
-      dataHtml = `<div class="data-preview">Data: ${escapeHtml(dataString)}</div>`;
+      const dataString =
+        data instanceof Error ? data.message : JSON.stringify(data, null, 2);
+      dataHtml = `<div class="data-preview">Data: ${escapeHtml(
+        dataString
+      )}</div>`;
     }
 
     logEl.innerHTML = `
@@ -377,7 +536,9 @@ class RamondaDevTools extends HTMLElement {
   }
 
   toggle() {
-    this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
+    this.hasAttribute("open")
+      ? this.removeAttribute("open")
+      : this.setAttribute("open", "");
     this.updateWatchState();
     this.updateQueryWatch();
   }
@@ -406,7 +567,9 @@ class RamondaDevTools extends HTMLElement {
         const tool = (button as HTMLElement).dataset.tool;
 
         if (tool === "expand" || tool === "collapse") {
-          for (const details of Array.from(container.querySelectorAll("details"))) {
+          for (const details of Array.from(
+            container.querySelectorAll("details")
+          )) {
             (details as HTMLDetailsElement).open = tool === "expand";
           }
           return;
@@ -421,8 +584,8 @@ class RamondaDevTools extends HTMLElement {
               ? "show state & props"
               : "hide state & props"
             : hidden
-              ? "show hooks"
-              : "hide hooks";
+            ? "show hooks"
+            : "hide hooks";
       });
     }
   }
@@ -432,10 +595,14 @@ class RamondaDevTools extends HTMLElement {
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => {
         tabs.forEach((t) => t.classList.remove("active"));
-        this.shadowRoot!.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+        this.shadowRoot!.querySelectorAll(".tab-content").forEach((c) =>
+          c.classList.remove("active")
+        );
         tab.classList.add("active");
         const target = (tab as HTMLElement).dataset.tab;
-        this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add("active");
+        this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add(
+          "active"
+        );
         this.componentsTabActive = target === "components";
         this.queryTabActive = target === "query";
         this.updateQueryWatch();
@@ -503,7 +670,7 @@ class RamondaDevTools extends HTMLElement {
     if (!bridge) {
       this.write(
         container,
-        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>',
+        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>'
       );
       return;
     }
@@ -512,7 +679,10 @@ class RamondaDevTools extends HTMLElement {
     const total = clients.reduce((sum, c) => sum + c.queries.length, 0);
 
     if (total === 0) {
-      this.write(container, '<small style="color:#666">The cache is empty.</small>');
+      this.write(
+        container,
+        '<small style="color:#666">The cache is empty.</small>'
+      );
       return;
     }
 
@@ -523,9 +693,9 @@ class RamondaDevTools extends HTMLElement {
       // The index is only worth showing when there IS more than one — an app usually has a
       // single provider, and a label for it would be noise.
       if (clients.length > 1) {
-        html += `<div class="q-client">client ${client.index + 1} · ${client.queries.length} ${
-          client.queries.length === 1 ? "query" : "queries"
-        }</div>`;
+        html += `<div class="q-client">client ${client.index + 1} · ${
+          client.queries.length
+        } ${client.queries.length === 1 ? "query" : "queries"}</div>`;
       }
 
       for (const row of client.queries) {
@@ -556,8 +726,8 @@ class RamondaDevTools extends HTMLElement {
             row.restored,
             row.dataPreview,
             row.error,
-          ].join("|"),
-        ),
+          ].join("|")
+        )
       )
       .join("\n");
 
@@ -584,7 +754,11 @@ class RamondaDevTools extends HTMLElement {
    * This is the whole reason the ages are in their own element: a text node written directly is
    * the cheapest DOM change there is, and it does not disturb what the reader is doing.
    */
-  private refreshAges(container: Element, clients: { index: number; queries: QueryRow[] }[], now: number): void {
+  private refreshAges(
+    container: Element,
+    clients: { index: number; queries: QueryRow[] }[],
+    now: number
+  ): void {
     /**
      * Collected and matched in JS, never through an attribute SELECTOR.
      *
@@ -595,7 +769,9 @@ class RamondaDevTools extends HTMLElement {
      * do. Reading `dataset` instead has no parser to offend.
      */
     const ages = new Map<string, Element>();
-    for (const element of Array.from(container.querySelectorAll("[data-q-age]"))) {
+    for (const element of Array.from(
+      container.querySelectorAll("[data-q-age]")
+    )) {
       ages.set((element as HTMLElement).dataset.qAge ?? "", element);
     }
 
@@ -610,11 +786,22 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private ageOf(row: QueryRow, now: number): string {
-    return row.updatedAt === 0 ? "never" : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
+    return row.updatedAt === 0
+      ? "never"
+      : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
   }
 
-  private renderQueryRow(clientIndex: number, row: QueryRow, now: number): string {
-    const colour = row.status === "error" ? "#ff4444" : row.status === "success" ? "#54c98a" : "#ffcc00";
+  private renderQueryRow(
+    clientIndex: number,
+    row: QueryRow,
+    now: number
+  ): string {
+    const colour =
+      row.status === "error"
+        ? "#ff4444"
+        : row.status === "success"
+        ? "#54c98a"
+        : "#ffcc00";
     const fetching = row.fetchStatus === "fetching";
     const age = this.ageOf(row, now);
 
@@ -623,7 +810,9 @@ class RamondaDevTools extends HTMLElement {
     const observers =
       row.observers === 0
         ? '<span class="q-idle">0 observers · waiting for gc</span>'
-        : `<span class="q-obs">${row.observers} observer${row.observers === 1 ? "" : "s"}</span>`;
+        : `<span class="q-obs">${row.observers} observer${
+            row.observers === 1 ? "" : "s"
+          }</span>`;
 
     return `
       <div class="q-row">
@@ -634,14 +823,26 @@ class RamondaDevTools extends HTMLElement {
           ${row.restored ? '<span class="q-badge">from server</span>' : ""}
         </div>
         <div class="q-meta">
-          ${row.status}${row.failureCount > 0 ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}` : ""} ·
-          updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
+          ${row.status}${
+      row.failureCount > 0
+        ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}`
+        : ""
+    } ·
+          updated <span data-q-age="${clientIndex}:${escapeHtml(
+      row.hash
+    )}">${age}</span> · ${observers}
         </div>
-        ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
+        ${
+          row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""
+        }
         <div class="q-data">${escapeHtml(row.dataPreview)}</div>
         <div class="q-actions">
-          <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(row.hash)}">invalidate</button>
-          <button type="button" data-q-action="remove" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(row.hash)}">remove</button>
+          <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
+      row.hash
+    )}">invalidate</button>
+          <button type="button" data-q-action="remove" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
+      row.hash
+    )}">remove</button>
         </div>
       </div>`;
   }
@@ -656,7 +857,9 @@ class RamondaDevTools extends HTMLElement {
     const container = this.shadowRoot!.querySelector("#query-container");
     if (!container) return;
 
-    for (const button of Array.from(container.querySelectorAll("[data-q-action]"))) {
+    for (const button of Array.from(
+      container.querySelectorAll("[data-q-action]")
+    )) {
       button.addEventListener("click", () => {
         const bridge = this.queries;
         if (!bridge) return;
@@ -665,7 +868,8 @@ class RamondaDevTools extends HTMLElement {
         const clientIndex = Number(element.dataset.qClient);
         const hash = element.dataset.qHash ?? "";
 
-        if (element.dataset.qAction === "invalidate") bridge.invalidate(clientIndex, hash);
+        if (element.dataset.qAction === "invalidate")
+          bridge.invalidate(clientIndex, hash);
         else bridge.remove(clientIndex, hash);
 
         this.renderQueries();
@@ -674,7 +878,11 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /** Recursively walks the inspected tree, building HTML + refresh metadata. */
-  private walkTree(nodes: InspectedNode[], prefix: string, acc: WalkAcc): string {
+  private walkTree(
+    nodes: InspectedNode[],
+    prefix: string,
+    acc: WalkAcc
+  ): string {
     let html = "";
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
@@ -685,15 +893,25 @@ class RamondaDevTools extends HTMLElement {
       const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
       // A hook's inputs are its PROPS. They were called options once, the framework renamed
       // them, and this label kept saying the old word to everyone inspecting a hook.
-      const optionsHtml = this.renderValueBlock("Props", n.options, path, "o", acc);
+      const optionsHtml = this.renderValueBlock(
+        "Props",
+        n.options,
+        path,
+        "o",
+        acc
+      );
 
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);
-      const badge = `<span class="kind-badge kind-${n.kind}">${n.kind === "hook" ? "HOOK" : "CMP"}</span>`;
+      const badge = `<span class="kind-badge kind-${n.kind}">${
+        n.kind === "hook" ? "HOOK" : "CMP"
+      }</span>`;
       const label =
         n.kind === "hook"
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
-          : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
+          : `<span style="color:#B18AE6">&lt;${escapeHtml(
+              n.name
+            )} /&gt;</span>`;
 
       const body = `${propsHtml}${stateHtml}${optionsHtml}${hooksHtml}${childrenHtml}`;
 
@@ -704,13 +922,17 @@ class RamondaDevTools extends HTMLElement {
         ? `
         <div class="component-node">
           <details open>
-            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</summary>
+            <summary class="comp-summary" data-path="${escapeHtml(
+              path
+            )}">${badge}${label}</summary>
             <div class="node-body">${body}</div>
           </details>
         </div>`
         : `
         <div class="component-node leaf">
-          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</div>
+          <div class="comp-summary" data-path="${escapeHtml(
+            path
+          )}">${badge}${label}</div>
         </div>`;
     }
     return html;
@@ -726,7 +948,7 @@ class RamondaDevTools extends HTMLElement {
     obj: Record<string, unknown> | undefined,
     path: string,
     slot: string,
-    acc: WalkAcc,
+    acc: WalkAcc
   ): string {
     const keys = obj ? Object.keys(obj) : [];
     acc.sig.push(`${path}#${slot}[${keys.join(",")}]`);
@@ -737,7 +959,11 @@ class RamondaDevTools extends HTMLElement {
         const vid = `${path}::${slot}::${k}`;
         const val = safeStringify(obj![k]);
         acc.values.set(vid, val);
-        return `<div class="state-row"><span class="sk">${escapeHtml(k)}:</span> <span class="sv" data-sv="${escapeHtml(vid)}">${escapeHtml(val)}</span></div>`;
+        return `<div class="state-row"><span class="sk">${escapeHtml(
+          k
+        )}:</span> <span class="sv" data-sv="${escapeHtml(vid)}">${escapeHtml(
+          val
+        )}</span></div>`;
       })
       .join("");
     const titleHtml = title ? `<div class="state-title">${title}</div>` : "";
@@ -753,7 +979,8 @@ class RamondaDevTools extends HTMLElement {
     const acc: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
     const html = this.walkTree(tree, "", acc);
 
-    container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
+    container.innerHTML =
+      html || `<small style="color:#666">No active components…</small>`;
     this.lastValues = acc.values;
     this.nodeMap = acc.nodes;
     this.lastSig = acc.sig.join(";");
@@ -830,8 +1057,14 @@ class RamondaDevTools extends HTMLElement {
 
   /** Fades the drawer while a row is hovered, so the highlight underneath is visible. */
   private peek(on: boolean): void {
-    this.shadowRoot!.querySelector(".ramonda-panel")?.classList.toggle("peek", on);
-    this.shadowRoot!.querySelector(".ramonda-overlay")?.classList.toggle("peek", on);
+    this.shadowRoot!.querySelector(".ramonda-panel")?.classList.toggle(
+      "peek",
+      on
+    );
+    this.shadowRoot!.querySelector(".ramonda-overlay")?.classList.toggle(
+      "peek",
+      on
+    );
   }
 
   private clearHighlight() {
