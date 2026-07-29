@@ -57,7 +57,12 @@ const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 
 // Values may hold functions/DOM/circular refs — never let JSON.stringify throw
 // and break the panel.
-const MAX_VALUE_LEN = 200;
+//
+// 200 was chosen when a value was rendered on one clipped line, and it is the reason a props
+// block showed `{"entries":{},"defaults":{…` and stopped exactly where the interesting part
+// began. A value now scrolls inside its own box, so the cap only has to keep a pathological blob
+// off the wire — 8000 characters is a long read and a small string.
+const MAX_VALUE_LEN = 8000;
 const safeStringify = (v: unknown): string => {
   if (typeof v === "function") return "ƒ()";
   let s: string;
@@ -580,9 +585,23 @@ class RamondaDevTools extends HTMLElement {
    * the cheapest DOM change there is, and it does not disturb what the reader is doing.
    */
   private refreshAges(container: Element, clients: { index: number; queries: QueryRow[] }[], now: number): void {
+    /**
+     * Collected and matched in JS, never through an attribute SELECTOR.
+     *
+     * A hash is built from the key, so it carries quotes and brackets —
+     * `0:["products"]` — and interpolating that into `[data-q-age="…"]` produces a selector the
+     * parser rejects: `Failed to execute 'querySelector': not a valid selector`. It threw on
+     * every poll, four times a second, which is exactly the kind of thing an idle panel must not
+     * do. Reading `dataset` instead has no parser to offend.
+     */
+    const ages = new Map<string, Element>();
+    for (const element of Array.from(container.querySelectorAll("[data-q-age]"))) {
+      ages.set((element as HTMLElement).dataset.qAge ?? "", element);
+    }
+
     for (const client of clients) {
       for (const row of client.queries) {
-        const age = container.querySelector(`[data-q-age="${client.index}:${row.hash}"]`);
+        const age = ages.get(`${client.index}:${row.hash}`);
         if (!age) continue;
         const text = this.ageOf(row, now);
         if (age.textContent !== text) age.textContent = text;
