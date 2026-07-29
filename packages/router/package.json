@@ -1,9 +1,9 @@
 {
   "name": "@ramonda/router",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "Client-side router for Ramonda: state-first, race-free navigation with nested route outlets.",
   "license": "MIT",
-  "author": "Nikola Blagojevi\u0107",
+  "author": "Nikola Blagojević",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",

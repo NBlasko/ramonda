@@ -1,5 +1,93 @@
 # @ramonda/core
 
+## 0.2.0
+
+### Minor Changes
+
+- 2562896: A context consumer is no longer an empty node in devtools, and the pair is named Provider/Consumer
+  throughout.
+
+  **What a consumer reads is now visible.** A consumer holds no state and no props — every value it
+  exposes is an accessor over the provider's signals — so it appeared in the panel as a node with
+  nothing in it: the emptiest thing in the tree being the hook whose entire job is reading. It now
+  reports, under `Reads from context`, the keys it is subscribed to with their current values, and
+  names the keys it has never read.
+
+  The catch, and the reason the consumer answers for itself rather than the panel walking its
+  properties: **reading is subscribing.** A consumer's getter attaches a listener on first read, so a
+  panel that read every key would silently widen what the owning component re-renders on. Only
+  already-subscribed keys are read, where the subscribe branch is a no-op. There is a test that
+  changes a key the consumer never reads and asserts it did not rebuild — inspecting must not change
+  behaviour, and here the ordinary read does.
+
+  Seeing which keys a consumer actually reads is worth it on its own: it is the fine-grained
+  subscription made visible, the difference between "this one wakes on `color`" and "on anything in
+  the theme".
+
+  **Naming.** The docs already destructured `[ThemeProvider, ThemeConsumer]` while the framework's own
+  source, tests and playground said `ThemeContext` — and devtools, which labels the hook
+  `${label}Consumer`, disagreed with the code in front of you. `Consumer` everywhere now. It is also
+  the more accurate name: the pair is a provider and a consumer, and unlike React's context object
+  there is nothing here to take a `.Provider` off. Only local destructuring names changed; no API did.
+
+- 8caeaf5: `RMD024` — a `@compute` that recomputes over and over and keeps producing the same answer.
+
+  A compute is invalidated by the signals it READ, so if one of them is a rebuilt reference — an
+  array literal in a hook's props bag, a fresh object handed down as a prop — it recomputes on
+  every pass and answers the same thing. Its cache does nothing, and the work is silent: the
+  answer is correct, so nothing looks wrong.
+
+  **Neither neighbouring check can see it.** RMD020 renders twice, and inside one strict render
+  the compute is _cached_ between the two calls, so both get the same value. RMD022 compares two
+  props bags, but skips a prop declared with `@StableProps` or wrapped in `stable()` — and a
+  compute reading a component's prop is outside its reach entirely.
+
+  Three consecutive equal recomputes, not one: a dependency moving while the answer happens not
+  to change is ordinary, and reporting that would put a warning on correct code. One bounded
+  `valueEqual` per recompute, development only.
+
+  Keyed by instance and member rather than by the cache, because two instances of one component
+  are two questions and one churning says nothing about the other. The test for that asserts the
+  report count, not its presence.
+
+  The honest limit is stated in the docs: a compute reading _only_ something non-reactive — a
+  counter, `Date.now()` — is never invalidated, so it never recomputes and is never seen. Nothing
+  can report a value nobody asked for again.
+
+  Also in this release: **`@ramonda/devtools` is type-checked.** It had no `tsconfig.json` and no
+  `check-types` script, so 600+ lines of TypeScript that ship to users were checked by nothing;
+  `turbo run check-types` now covers 8 packages instead of 7. Found while looking into whether
+  five packages needed `@types/node` — none of them did (the `node:` match in the router was
+  `vnode:`), so five dead dependencies were not added, and this was the real hole behind that
+  note.
+
+### Patch Changes
+
+- 38274cd: The development-only browser setup is guarded on `customElements`, not on `document`.
+
+  A server render can have a `document` — this repo's own SSR playground gives its Node process a
+  jsdom one — so `typeof document !== "undefined"` never meant "browser". It did not matter while
+  every browser API in that block sat inside the dynamic import's `.then()`, which fails on the
+  server. Moving the devtools mount out of that callback put `customElements.whenDefined` on the
+  top level, and the SSR playground died at import:
+
+  ```
+  ReferenceError: customElements is not defined
+  ```
+
+  The panel IS a custom element, so the registry is the capability that actually has to exist.
+  Guarding on what the code needs, rather than on a proxy for the environment, is the fix.
+
+  **And the reason nothing caught it: `apps/playground-ssr` had no `test` script**, so CI ran
+  nothing against the one thing in this repo that is a real server. It has one now — a smoke test
+  that spawns the built server as a child process and asks it for `/`, checking the root element,
+  server-rendered content and a hydration blob. Deliberately shallow and deliberately real: no
+  jsdom substitute, no mock. `/` rather than `/products`, because that route fetches from a public
+  API and a smoke test must not depend on the network.
+
+  Verified to have teeth: with the old `document` guard restored, it fails with
+  `the server exited with code 1 before serving anything` and prints the `ReferenceError`.
+
 ## 0.1.0
 
 ### Minor Changes

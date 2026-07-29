@@ -1,7 +1,7 @@
 {
   "name": "create-ramonda",
-  "version": "0.0.4",
-  "description": "Scaffold a Ramonda app \u2014 pick your packages and rendering mode, then just run it.",
+  "version": "0.1.0",
+  "description": "Scaffold a Ramonda app — pick your packages and rendering mode, then just run it.",
   "type": "module",
   "bin": {
     "create-ramonda": "dist/index.js"
@@ -25,7 +25,7 @@
     "template",
     "cli"
   ],
-  "author": "Nikola Blagojevi\u0107",
+  "author": "Nikola Blagojević",
   "license": "MIT",
   "repository": {
     "type": "git",
