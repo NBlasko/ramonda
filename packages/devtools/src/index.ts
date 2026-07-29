@@ -129,6 +129,12 @@ class RamondaDevTools extends HTMLElement {
   private lastValues = new Map<string, string>();
   /** The live values behind the rendered trees, by value id — read when a full view opens. */
   private rawValues = new Map<string, unknown>();
+  /**
+   * Query values are kept apart from component values because the component map is REPLACED on
+   * every structural render. Sharing one map meant that switching to the Components tab with a
+   * query value open would report it as gone, which it was not.
+   */
+  private queryValues = new Map<string, unknown>();
   /** Value id → the element holding its tree, so no selector is ever built from a prop name. */
   private valueElements = new Map<string, HTMLElement>();
   private nodeMap = new Map<string, Node>();
@@ -383,7 +389,7 @@ class RamondaDevTools extends HTMLElement {
         .log-item { position: relative; border-bottom: 1px solid #222; padding: 12px 30px 12px 0; font-family: monospace; }
         .delete-btn { position: absolute; right: 0; top: 12px; background: none; border: none; color: #666; cursor: pointer; font-size: 16px; }
         .delete-btn:hover { color: #ff4444; }
-        .data-preview { background: #1a1a1a; padding: 8px; border-radius: 4px; margin-top: 8px; font-size: 12px; color: #00ffaa; max-height: 150px; overflow: auto; white-space: pre-wrap; cursor: pointer; }
+        .data-preview { background: #1a1a1a; padding: 8px; border-radius: 4px; margin-top: 8px; font-size: 13px; color: #00ffaa; max-height: 150px; overflow: auto; white-space: pre-wrap; cursor: pointer; }
         .tabs { display: flex; background: #1a1a1a; border-bottom: 1px solid #333; flex-shrink: 0; }
         .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-bottom: 2px solid transparent; color: #888; font-weight: bold; transition: 0.2s; }
         .tab.active { color: #B18AE6; border-bottom: 2px solid #B18AE6; background: #222; }
@@ -397,19 +403,19 @@ class RamondaDevTools extends HTMLElement {
            lines and the indentation — the only thing telling you where you are — would be lost.
            The row extends past the edge instead, and the tab content scrolls to it. */
         .comp-summary { outline: none; cursor: pointer; white-space: nowrap; }
-        .kind-badge { font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+        .kind-badge { font-size: 10.5px; padding: 1px 4px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
         .kind-component { background: #7A4FBF; color: #fff; }
         .kind-hook { background: #6a3; color: #fff; }
         .node-body { padding-left: 12px; border-left: 1px solid #333; margin-left: 5px; }
         /* 11px was unreadable, which is the whole point of this panel. */
-        .state-block { background: #1a1a1a; padding: 8px 10px; margin: 6px 0; font-size: 13px;
+        .state-block { background: #1a1a1a; padding: 8px 10px; margin: 6px 0; font-size: 14px;
                        line-height: 1.55; border-left: 2px solid #00ffaa; border-radius: 4px; }
-        .state-title { color: #00ffaa; margin-bottom: 4px; font-weight: bold; font-size: 12px;
+        .state-title { color: #00ffaa; margin-bottom: 4px; font-weight: bold; font-size: 13px;
                        text-transform: uppercase; letter-spacing: .4px; }
         .state-row { margin: 2px 0; }
         .state-head { display: flex; gap: 4px; align-items: center; }
         .state-row .sk { color: #9a9aa2; flex-shrink: 0; font-family: ui-monospace, Menlo, monospace;
-                         font-size: 12.5px; }
+                         font-size: 14px; }
 
         /**
          * A long value is scrollable rather than truncated. The bridge still caps what it sends,
@@ -427,18 +433,18 @@ class RamondaDevTools extends HTMLElement {
         .tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 20px; background: #171717;
                  border-bottom: 1px solid #2a2a2a; }
         .tools button { background: #262626; border: 1px solid #383838; color: #ccc; font: inherit;
-                        font-size: 12px; padding: 4px 9px; border-radius: 5px; cursor: pointer; }
+                        font-size: 13px; padding: 4px 9px; border-radius: 5px; cursor: pointer; }
         .tools button:hover { background: #303030; color: #fff; }
         .tools button.on { background: #7A4FBF; border-color: #7A4FBF; color: #fff; }
         .tool-search { flex: 1 1 130px; min-width: 90px; background: #101010; border: 1px solid #383838;
-                       color: #eee; font: inherit; font-size: 12px; padding: 4px 8px; border-radius: 5px; }
+                       color: #eee; font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 5px; }
         .tool-search::placeholder { color: #666; }
         .tool-search:focus { outline: none; border-color: #7A4FBF; }
 
         .crumbs { display: none; align-items: center; flex-wrap: wrap; gap: 4px;
-                  padding: 8px 20px; background: #14121a; border-bottom: 1px solid #2a2a2a; font-size: 12px; }
+                  padding: 8px 20px; background: #14121a; border-bottom: 1px solid #2a2a2a; font-size: 13px; }
         .crumbs.on { display: flex; }
-        .crumb { background: none; border: none; color: #9a8fb5; font: inherit; font-size: 12px;
+        .crumb { background: none; border: none; color: #9a8fb5; font: inherit; font-size: 13px;
                  padding: 2px 4px; border-radius: 4px; cursor: pointer; }
         .crumb:hover { background: #241f30; color: #fff; }
         .crumb.here { color: #B18AE6; font-weight: bold; cursor: default; }
@@ -447,13 +453,13 @@ class RamondaDevTools extends HTMLElement {
 
         .pick-label {
           position: fixed; left: 0; top: 0; z-index: 2147483647; display: none;
-          background: #7A4FBF; color: #fff; font-family: sans-serif; font-size: 12px;
+          background: #7A4FBF; color: #fff; font-family: sans-serif; font-size: 13px;
           padding: 3px 7px; border-radius: 4px; pointer-events: none;
           box-shadow: 0 2px 8px rgba(0,0,0,.4); white-space: nowrap;
         }
         .pick-label.on { display: block; }
 
-        .pin-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 12px;
+        .pin-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 13px;
                    padding: 0 4px; cursor: pointer; }
         .comp-summary:hover .pin-btn { color: #9a8fb5; }
         .pin-btn:hover { color: #B18AE6; }
@@ -480,7 +486,7 @@ class RamondaDevTools extends HTMLElement {
 
         /* The value tree. Rows are dense on purpose — this is a listing, and vertical space is
            what you run out of first when a value has forty keys. */
-        .jv { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
+        .jv { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.55; }
         .jv-row, .jv-sum { white-space: pre-wrap; word-break: break-word; }
         .jv-node > .jv-body { padding-left: 14px; border-left: 1px solid #2c2c2c; margin-left: 4px; }
         .jv-sum { cursor: pointer; list-style: none; border-radius: 3px; }
@@ -506,7 +512,7 @@ class RamondaDevTools extends HTMLElement {
            are not forty bright buttons. */
         .jv-open {
           background: #232028; border: 1px solid #322c3a; color: #6a6472;
-          font: inherit; font-size: 11px; line-height: 1; padding: 2px 5px;
+          font: inherit; font-size: 12.5px; line-height: 1; padding: 2px 5px;
           border-radius: 4px; cursor: pointer; flex-shrink: 0; transition: .15s;
         }
         .state-row:hover .jv-open, .q-row:hover .jv-open { color: #b9aecd; border-color: #443a52; }
@@ -520,12 +526,12 @@ class RamondaDevTools extends HTMLElement {
         .jv-modal.on { display: flex; }
         .jv-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
                          padding: 10px 14px; background: #191622; border-bottom: 1px solid #2a2532; }
-        .jv-modal-title { color: #B18AE6; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+        .jv-modal-title { color: #B18AE6; font-family: ui-monospace, Menlo, monospace; font-size: 13px;
                           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .jv-modal-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
         .jv-modal-tools button {
           background: #262230; border: 1px solid #383142; color: #cfc6dd;
-          font: inherit; font-size: 12px; line-height: 1; padding: 5px 10px;
+          font: inherit; font-size: 13px; line-height: 1; padding: 5px 10px;
           border-radius: 5px; cursor: pointer; transition: .15s;
         }
         .jv-modal-tools button:hover { background: #322b3d; color: #fff; border-color: #4a4058; }
@@ -534,32 +540,50 @@ class RamondaDevTools extends HTMLElement {
         /* The raw switch is a toggle, so it has to LOOK held down when it is on — the same purple
            the toolbar filters use, so one visual language covers every toggle in the panel. */
         .jv-modal-tools button.on { background: #7A4FBF; border-color: #7A4FBF; color: #fff; }
+        /**
+         * The full view is a SNAPSHOT — it has to be, or the tree would move under the cursor while
+         * you are four levels into it. But a snapshot that has quietly gone stale is a lie, so the
+         * refresh button says which of the two you are looking at: dim while the value it was
+         * opened with is still current, lit and pulsing once the app has written a different one.
+         */
+        #jv-refresh { opacity: .45; }
+        #jv-refresh.stale {
+          opacity: 1; background: #E9B44C; border-color: #E9B44C; color: #241f30; font-weight: bold;
+          animation: jv-pulse 1.6s ease-out infinite;
+        }
+        #jv-refresh.stale:hover { background: #f3c463; border-color: #f3c463; color: #241f30; }
+        #jv-refresh.gone { opacity: .8; color: #ff8080; border-color: #5c3040; }
+        @keyframes jv-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(233,180,76,.55); }
+          70% { box-shadow: 0 0 0 7px rgba(233,180,76,0); }
+          100% { box-shadow: 0 0 0 0 rgba(233,180,76,0); }
+        }
         /* Closing is the destructive one of the three, and it is the one hit by accident. */
         #jv-close { padding: 3px 9px; font-size: 17px; color: #8b8b93; background: none; border-color: transparent; }
         #jv-close:hover { background: #3a2230; border-color: #5c3040; color: #ff8080; }
         .jv-modal-body { flex: 1; overflow: auto; padding: 12px 14px; }
         .jv-raw { margin: 0; color: #d8d8d8; font-family: ui-monospace, Menlo, monospace;
-                  font-size: 12.5px; line-height: 1.5; white-space: pre; }
+                  font-size: 14px; line-height: 1.5; white-space: pre; }
 
-        .q-client { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
+        .q-client { color: #888; font-size: 12.5px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
         .q-row { border: 1px solid #333; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #1c1c1c; }
         .q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         /* Same control, same place as in a component row: on the label of the value it opens. */
         .q-head .jv-open { margin-left: auto; }
         .q-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-        .q-key { color: #B18AE6; font-size: 12px; word-break: break-all; }
-        .q-fetching { color: #00aaff; font-size: 11px; }
-        .q-badge { color: #E9B44C; font-size: 10px; border: 1px solid #E9B44C; border-radius: 3px; padding: 0 4px; }
-        .q-meta { color: #888; font-size: 11px; margin-top: 4px; }
+        .q-key { color: #B18AE6; font-size: 13px; word-break: break-all; }
+        .q-fetching { color: #00aaff; font-size: 12.5px; }
+        .q-badge { color: #E9B44C; font-size: 11.5px; border: 1px solid #E9B44C; border-radius: 3px; padding: 0 4px; }
+        .q-meta { color: #888; font-size: 12.5px; margin-top: 4px; }
         .q-obs { color: #54c98a; }
         .q-idle { color: #888; font-style: italic; }
-        .q-error { color: #ff6b6b; font-size: 11px; margin-top: 4px; }
+        .q-error { color: #ff6b6b; font-size: 12.5px; margin-top: 4px; }
         /* Same treatment as a state value: scrollable, not clipped. */
         .q-data { color: #ccc; margin-top: 6px; max-height: 16em; overflow: auto; padding: 2px 4px 2px 2px; }
         .q-data::-webkit-scrollbar { width: 8px; }
         .q-data::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
         .q-actions { display: flex; gap: 6px; margin-top: 8px; }
-        .q-actions button { background: #2a2a2a; border: 1px solid #3a3a3a; color: #ccc; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+        .q-actions button { background: #2a2a2a; border: 1px solid #3a3a3a; color: #ccc; font-size: 12.5px; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
         .q-actions button:hover { background: #333; color: #fff; }
 
         /**
@@ -571,11 +595,11 @@ class RamondaDevTools extends HTMLElement {
         @container (max-width: 440px) {
           .header { padding: 12px 14px; }
           .header h2 { font-size: 15px; }
-          .tab { padding: 9px 4px; font-size: 11px; }
+          .tab { padding: 9px 4px; font-size: 12.5px; }
           .tab-content { padding: 12px 14px; }
           .tools { padding: 7px 14px; gap: 5px; }
           .crumbs { padding: 7px 14px; }
-          .tools button { font-size: 11px; padding: 3px 7px; }
+          .tools button { font-size: 12.5px; padding: 3px 7px; }
           .q-row { padding: 8px 10px; }
         }
         @container (max-width: 320px) {
@@ -619,6 +643,7 @@ class RamondaDevTools extends HTMLElement {
         <div class="jv-modal-head">
           <span class="jv-modal-title" id="jv-modal-title"></span>
           <div class="jv-modal-tools">
+            <button type="button" id="jv-refresh" title="the value has not changed">refresh</button>
             <button type="button" id="jv-raw" title="switch between the tree and pretty JSON">raw</button>
             <button type="button" id="jv-copy" title="copy the whole value as JSON">copy</button>
             <button type="button" id="jv-close" title="close (Escape)">×</button>
@@ -791,6 +816,15 @@ class RamondaDevTools extends HTMLElement {
     });
 
     root.querySelector("#jv-close")?.addEventListener("click", () => this.closeFullView());
+    root.querySelector("#jv-refresh")?.addEventListener("click", () => {
+      if (this.fullId === undefined) return;
+      const current = this.valueById(this.fullId);
+      if (current === undefined) return;
+      this.fullValue = current;
+      this.fullSig = safeStringify(current);
+      this.paintFullView();
+      this.markFullView(false);
+    });
     root.querySelector("#jv-raw")?.addEventListener("click", (event) => {
       this.fullRaw = !this.fullRaw;
       (event.currentTarget as HTMLElement).classList.toggle("on", this.fullRaw);
@@ -993,6 +1027,7 @@ class RamondaDevTools extends HTMLElement {
     this.queryShape = shape;
     container.innerHTML = html;
     this.bindQueryActions();
+    this.markFullView();
   }
 
   /** Writes only if the content differs, so an idle panel does not touch the DOM at all. */
@@ -1094,15 +1129,14 @@ class RamondaDevTools extends HTMLElement {
     const { clients } = this.queries?.snapshot() ?? { clients: [] };
     for (const client of clients) {
       for (const row of client.queries) {
-        this.rawValues.set(`q::${client.index}::${row.hash}`, row.data);
+        this.queryValues.set(`q::${client.index}::${row.hash}`, row.data);
       }
     }
 
     for (const button of Array.from(container.querySelectorAll("[data-full]"))) {
       button.addEventListener("click", (event) => {
         event.preventDefault();
-        const id = (button as HTMLElement).dataset.full ?? "";
-        this.openFullView(id.slice(id.lastIndexOf("::") + 2), this.rawValues.get(id));
+        this.openFullView((button as HTMLElement).dataset.full ?? "");
       });
     }
 
@@ -1277,6 +1311,10 @@ class RamondaDevTools extends HTMLElement {
     this.lastSig = acc.sig.join(";");
     this.attachInspectorEvents(container);
     this.applyFilter();
+    // Also here, not only on the value-patch path: a STRUCTURAL change is how an open value most
+    // often moves or disappears, and `refreshComponents` hands straight over to this method when
+    // the signature moved — so a check only there never ran for the case that matters most.
+    this.markFullView();
   }
 
   /**
@@ -1459,20 +1497,69 @@ class RamondaDevTools extends HTMLElement {
    * `raw` switches to pretty-printed JSON, which is what you want when the answer is "paste this
    * into a test" rather than "what shape is this".
    */
-  private openFullView(title: string, value: unknown): void {
+  private openFullView(id: string): void {
+    const value = this.valueById(id);
     if (value === undefined) return;
 
+    this.fullId = id;
     this.fullValue = value;
+    this.fullSig = safeStringify(value);
     this.fullRaw = false;
 
     const root = this.shadowRoot!;
-    (root.querySelector("#jv-modal-title") as HTMLElement).textContent = `${title} — ${summarize(value)}`;
     (root.querySelector("#jv-raw") as HTMLElement).classList.remove("on");
     this.paintFullView();
     root.querySelector("#jv-modal")!.classList.add("on");
+    this.markFullView(false);
+  }
+
+  /** A value id is either a component's `path::slot::key` or a query's `q::client::hash`. */
+  private valueById(id: string): unknown {
+    return id.startsWith("q::") ? this.queryValues.get(id) : this.rawValues.get(id);
+  }
+
+  /**
+   * Notices that the app wrote a different value while the full view was open.
+   *
+   * Compared as one line rather than by identity: structural sharing hands back the SAME object
+   * when an answer did not change, so identity alone would be enough for a query — but a component
+   * has no such guarantee, and a rebuilt-but-equal object must not light the button. The reader
+   * asked for "tell me it moved, and let me choose when to look", and that is a comparison of
+   * contents.
+   */
+  private markFullView(check = true): void {
+    const button = this.shadowRoot!.querySelector("#jv-refresh") as HTMLElement | null;
+    if (!button || this.fullId === undefined) return;
+
+    if (!check) {
+      button.classList.remove("stale", "gone");
+      button.title = "the value has not changed";
+      return;
+    }
+
+    const current = this.valueById(this.fullId);
+    if (current === undefined) {
+      // Unmounted, or collected out of the cache. There is nothing to refresh TO, and pretending
+      // otherwise would replace the value being read with an empty tree.
+      button.classList.remove("stale");
+      button.classList.add("gone");
+      button.title = "the value is no longer there — this is the last snapshot of it";
+      return;
+    }
+
+    const stale = safeStringify(current) !== this.fullSig;
+    button.classList.toggle("stale", stale);
+    button.classList.remove("gone");
+    button.title = stale ? "the app wrote a new value — click to show it" : "the value has not changed";
   }
 
   private paintFullView(): void {
+    // The title carries the size, so it is painted with the body — a refresh that brought two more
+    // pages has to stop saying Array(2).
+    const title = this.shadowRoot!.querySelector("#jv-modal-title") as HTMLElement;
+    const id = this.fullId ?? "";
+    title.textContent = `${id.slice(id.lastIndexOf("::") + 2)} — ${summarize(this.fullValue)}`;
+
     const body = this.shadowRoot!.querySelector("#jv-modal-body") as HTMLElement;
     body.innerHTML = this.fullRaw
       ? `<pre class="jv-raw">${escapeHtml(toPrettyText(this.fullValue))}</pre>`
@@ -1482,6 +1569,7 @@ class RamondaDevTools extends HTMLElement {
   private closeFullView(): void {
     this.shadowRoot!.querySelector("#jv-modal")?.classList.remove("on");
     this.fullValue = undefined;
+    this.fullId = undefined;
   }
 
   private get fullViewOpen(): boolean {
@@ -1490,6 +1578,10 @@ class RamondaDevTools extends HTMLElement {
 
   private fullValue: unknown;
   private fullRaw = false;
+  /** Which value the full view is showing, so it can be re-read on demand. */
+  private fullId: string | undefined;
+  /** The one-line form of what it is showing, which is what "has it changed" compares against. */
+  private fullSig = "";
 
   /** Focuses one component, or the whole tree when given `undefined`. */
   private pin(path: string | undefined): void {
@@ -1562,6 +1654,7 @@ class RamondaDevTools extends HTMLElement {
     this.lastValues = acc.values;
     this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
+    this.markFullView();
   }
 
   // Highlight the real DOM node on hover (direct reference — no name matching).
@@ -1575,8 +1668,7 @@ class RamondaDevTools extends HTMLElement {
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const id = (button as HTMLElement).dataset.full ?? "";
-        this.openFullView(id.slice(id.lastIndexOf("::") + 2), this.rawValues.get(id));
+        this.openFullView((button as HTMLElement).dataset.full ?? "");
       });
     }
 

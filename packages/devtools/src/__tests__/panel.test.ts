@@ -658,6 +658,20 @@ describe("the stylesheet", () => {
     expect(unstyled).toEqual([]);
   });
 
+  /**
+   * A floor, because the panel is a listing of code and the smallest text in it is the keys and
+   * the values — the text you actually read. Everything was sized for a 900px drawer and was too
+   * small once the panel became something you dock at 620.
+   */
+  it("sets no font smaller than 10.5px", () => {
+    const sizes = Array.from(styleText(mount(() => tree())).matchAll(/font-size: ([0-9.]+)px/g)).map((m) =>
+      Number(m[1]),
+    );
+
+    expect(sizes.length).toBeGreaterThan(10);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(10.5);
+  });
+
   it("keeps the disclosure triangles as single-backslash CSS escapes", () => {
     const panel = mount(() => tree());
 
@@ -666,5 +680,103 @@ describe("the stylesheet", () => {
     // a literal backslash-2-5 in the content in the other.
     expect(styleText(panel)).toContain('content: "\\25B8"');
     expect(styleText(panel)).toContain('content: "\\25BE"');
+  });
+});
+
+describe("a full view that has gone stale", () => {
+  const refresh = (panel: Panel) => panel.shadowRoot.querySelector("#jv-refresh") as HTMLElement;
+  const body = (panel: Panel) => panel.shadowRoot.querySelector("#jv-modal-body")!;
+  const title = (panel: Panel) => panel.shadowRoot.querySelector("#jv-modal-title")!.textContent!;
+
+  it("lights the refresh button when the app writes a different value, and shows it on click", () => {
+    let items = [1, 2];
+    const panel = mount(() => [node("App", "component", { state: { items } })]);
+    panel.shadowRoot.querySelector("[data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(title(panel)).toContain("Array(2)");
+    expect(refresh(panel).classList.contains("stale")).toBe(false);
+
+    items = [1, 2, 3, 4];
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    // Lit, but NOT repainted: the tree must not move while it is being read.
+    expect(refresh(panel).classList.contains("stale")).toBe(true);
+    expect(title(panel)).toContain("Array(2)");
+
+    refresh(panel).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(title(panel)).toContain("Array(4)");
+    expect(body(panel).textContent).toContain("3");
+    expect(refresh(panel).classList.contains("stale")).toBe(false);
+  });
+
+  it("stays dark when the value is rebuilt but equal", () => {
+    const panel = mount(() => [node("App", "component", { state: { items: [1, 2] } })]);
+    panel.shadowRoot.querySelector("[data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    // A fresh array with the same contents on every read — the shape a props callback produces.
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(refresh(panel).classList.contains("stale")).toBe(false);
+  });
+
+  it("says so when the value is gone rather than refreshing to nothing", () => {
+    let mounted = true;
+    const panel = mount(() =>
+      mounted
+        ? [node("App", "component", { children: [node("Leaf", "component", { state: { items: [1] } })] })]
+        : [node("App", "component", {})],
+    );
+    panel.shadowRoot.querySelector("[data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(body(panel).textContent).toContain("Array(1)");
+
+    mounted = false;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(refresh(panel).classList.contains("gone")).toBe(true);
+    refresh(panel).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // The last snapshot is kept: replacing it with an empty tree would destroy what was being read.
+    expect(body(panel).textContent).toContain("Array(1)");
+  });
+
+  it("keeps a query value readable while the Components tab is open", () => {
+    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+      snapshot: () => ({
+        clients: [
+          {
+            index: 0,
+            queries: [
+              {
+                key: ["products"],
+                hash: '["products"]',
+                status: "success",
+                fetchStatus: "idle",
+                observers: 1,
+                updatedAt: 1,
+                failureCount: 0,
+                restored: false,
+                dataPreview: "…",
+                data: { pages: [{ id: 1 }] },
+              },
+            ],
+          },
+        ],
+      }),
+      invalidate: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const panel = mount(() => tree());
+    openTab(panel, "query");
+    panel.shadowRoot.querySelector(".q-row [data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(body(panel).textContent).toContain("pages");
+
+    // Component values live in a map that is replaced on every structural render; a query value
+    // must not be swept away with it.
+    openTab(panel, "components");
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(refresh(panel).classList.contains("gone")).toBe(false);
+    expect(body(panel).textContent).toContain("pages");
   });
 });

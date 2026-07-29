@@ -13,12 +13,29 @@
  * a smoke test must not depend on the network.
  */
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
-const PORT = 5181;
+
+/**
+ * A port the OS says is free, not a constant.
+ *
+ * 5181 was hard-coded, and it failed once under a parallel turbo run: the second server hit
+ * EADDRINUSE and died before answering. The worse version of that bug is silent — a leftover
+ * server from an earlier run still listening on 5181 would have ANSWERED, and the smoke test would
+ * have passed against a build that no longer exists.
+ */
+const PORT = await new Promise((resolve, reject) => {
+  const probe = createServer();
+  probe.on("error", reject);
+  probe.listen(0, "127.0.0.1", () => {
+    const { port } = probe.address();
+    probe.close(() => resolve(port));
+  });
+});
 
 const server = spawn("node", ["server.mjs"], {
   cwd: root,
