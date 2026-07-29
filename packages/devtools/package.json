@@ -1,9 +1,9 @@
 {
   "name": "@ramonda/devtools",
   "version": "0.1.0",
-  "description": "Development-time devtools panel for Ramonda — component tree, state, and logs.",
+  "description": "Development-time devtools panel for Ramonda \u2014 component tree, state, and logs.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -32,7 +32,9 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean && ramonda-check-bundle dist",
-    "dev": "tsup src/index.ts --format esm --watch"
+    "check-types": "tsc --noEmit",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "lint": "oxlint src"
   },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",

@@ -383,6 +383,32 @@ Reading any one of those four silences it, per render: a component that showed t
 then stopped (a collapsed panel, a switched tab) is reported again, because each render is
 judged on its own reads.
 
+## RMD024 — a `@compute` recomputes without its answer changing
+
+Four recomputes in a row, each producing a value equal to the last. The cache is doing
+nothing.
+
+A `@compute` is invalidated by the signals it **read**, so if it recomputes on every pass while
+answering the same thing, something it reads is being replaced every time — most often an array
+or object literal rebuilt in a [hook's props bag](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
+or a value derived from one. Declare that prop with `@StableProps` if you own the hook, wrap it
+in `stable()` at the call site if you do not, or hold the value somewhere stable.
+
+**Neither neighbour can see this one.** [RMD020](#rmd020-render-produced-a-different-value-the-second-time)
+renders twice, and inside one strict render the compute is *cached* between the two calls, so
+both get the same value and there is nothing to compare. [RMD022](#rmd022-a-hooks-props-callback-built-a-new-value-for-the-same-contents)
+compares two props bags, but skips a prop that was declared or wrapped — and a compute reading a
+*component's* prop is outside its reach entirely.
+
+Three consecutive equal recomputes, not one: a dependency moving while the answer happens not to
+change is ordinary, and reporting that would put a warning on correct code.
+
+If nothing is being rebuilt, the compute is reading something that is not reactive at all — a
+counter, `Date.now()`, a module variable. A `@compute` is the wrong place for that: read it once
+in `@create` and keep it in [`@state`](/concepts/state). (The honest limit: a compute reading
+*only* something non-reactive is never invalidated, so it is never observed either. Nothing can
+report a value nobody asked for again.)
+
 ## What is non-deterministic in JavaScript, and what catches it
 
 The inventory, because "collect how many of these exist" is the right instinct — and
