@@ -117,6 +117,30 @@ if (this.user.isError && this.user.data) {
 }
 ```
 
+## When the failure means the page cannot be shown
+
+Sometimes an error is not something to render beside the content — it *is* the answer. Say so
+in the render:
+
+```tsx
+render() {
+  if (this.user.isError) return <NotFound />;
+  if (this.user.isPending) return <p>Loading…</p>;
+  return <p>{this.user.data!.name}</p>;
+}
+```
+
+**There is no `throwOnError`**, and that is deliberate rather than missing. Handing a failed
+fetch to an [error boundary](/composition/error-boundaries) replaces the whole subtree, which
+means unmounting: `@destroy` runs, cleanups run, local state goes, focus and scroll position
+go — and a retry has to rebuild all of it. A failed request is not an unexpected situation.
+The network fails routinely, which is why a failure is *state* here and the data you had is
+kept. The two lines above unmount exactly what you chose to unmount, and nothing else.
+
+What an app does lose without a boundary is the reminder to handle the error at all — so
+development builds report a query that failed while the render never read `isError`, `error`,
+`status` or `result` (`RMQ002`).
+
 ## Holding a query back
 
 A query that depends on something not there yet takes `enabled`:

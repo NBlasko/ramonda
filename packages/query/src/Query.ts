@@ -1,7 +1,8 @@
-import { Hook, create, destroy, mount, onWindow, StableProps, state, watchProp } from "@ramonda/core";
+import { Hook, create, destroy, mount, onWindow, StableProps, state, updated, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
 import { ClientContext, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
+import { warnOnce } from "./diagnostics";
 import { hashKey, sameKeyParts } from "./hashKey";
 import type { QueryClient } from "./QueryClient";
 import type {
@@ -659,6 +660,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
   /** What is known about the DATA — independent of whether a request is running. */
   get status(): QueryStatus {
+    if (__DEV__) this.sawError = true;
     return this.entry.status;
   }
 
@@ -678,7 +680,16 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   }
 
   /** Whatever the fetcher rejected with, untouched. A restored one is a `ServerQueryError`. */
+  /**
+   * DEV only: whether this render looked at the failure. See `reportIgnoredError`.
+   *
+   * A plain field, not `@state`: reading it must not make anything reactive, and nothing
+   * renders from it.
+   */
+  private sawError = false;
+
   get error(): unknown {
+    if (__DEV__) this.sawError = true;
     return this.entry.error;
   }
 
@@ -694,6 +705,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
   /** The last attempt failed. `data` may still hold the last known good value. */
   get isError(): boolean {
+    if (__DEV__) this.sawError = true;
     return this.entry.status === "error";
   }
 
@@ -707,6 +719,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
   /** Consecutive failed attempts for the request in progress. 0 once it succeeds. */
   get failureCount(): number {
+    if (__DEV__) this.sawError = true;
     return this.entry.failureCount;
   }
 
@@ -730,6 +743,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * ```
    */
   get result(): QueryResult<TData> {
+    if (__DEV__) this.sawError = true;
     const entry = this.entry;
     if (entry.status === "success") {
       return { status: "success", data: entry.data as TData, error: undefined };
@@ -750,5 +764,57 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   refetch(): Promise<void> {
     return this.fetchIfNeeded(true);
+  }
+
+  /**
+   * RMQ002 — the query failed and the render never looked.
+   *
+   * ## Why this instead of `throwOnError`
+   *
+   * TanStack has an option that rethrows a failure so an error boundary catches it. It is not
+   * built here, and the reason is what a boundary DOES: it replaces the subtree, which means
+   * unmounting — `@destroy`, cleanups, lost local state, lost focus and scroll position — and
+   * a retry then has to rebuild all of it. A failed fetch is not an unexpected situation; the
+   * network fails routinely, which is why `Query` models it as state and keeps the data it
+   * had. Handing that to a boundary punishes the reader for somebody else's timeout.
+   *
+   * What people actually get from `throwOnError` is *noticing*. That is a diagnostic, not an
+   * API — so this is the diagnostic. If the failure genuinely means the page cannot be shown,
+   * the render says so itself (`if (this.user.isError) return <NotFound />`), which unmounts
+   * exactly what the app chose to unmount.
+   *
+   * ## How it knows
+   *
+   * The getters that expose a failure — `error`, `isError`, `status`, `failureCount`,
+   * `result` — set a flag when read. `@updated` runs after the commit, so by then the flag
+   * reflects the render that just happened; it is cleared afterwards, so the next render is
+   * judged on its own reads rather than being excused by an earlier one.
+   *
+   * `@mount` checks too, for the one case an update never covers: an error restored from a
+   * server render is already on screen at the first paint, with no second render to follow it.
+   */
+  @updated
+  @mount
+  reportIgnoredError(): void {
+    if (!__DEV__) return;
+
+    const looked = this.sawError;
+    this.sawError = false;
+    if (looked) return;
+
+    // The ATTACHED entry, not `peek(this.props.key)`: peeking hashes the key, and this runs
+    // after every render — which would undo the whole point of the identity fast path
+    // (measured at 723 ns → 31 ns per render, and there is a test that holds it).
+    const entry = this.attachedEntry;
+    if (entry?.status !== "error") return;
+
+    const reason = entry.error instanceof Error ? entry.error.message : String(entry.error);
+    warnOnce(
+      `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing rendered it: ${reason}\n` +
+        `Read \`isError\`, \`error\`, \`status\` or \`result\` so the reader learns something went wrong — a ` +
+        `failed refetch keeps the data it had, so the page may look fine while showing values nobody can refresh. ` +
+        `If the failure means the page cannot be shown at all, return your own markup for it ` +
+        `(\`if (q.isError) return <NotFound />\`) rather than letting an error boundary unmount the subtree.`,
+    );
   }
 }

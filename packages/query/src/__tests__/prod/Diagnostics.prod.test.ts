@@ -15,6 +15,32 @@ import { QueryClient } from "../../QueryClient";
  */
 
 describe("production build", () => {
+  test("an ignored failure is reported by nothing", async () => {
+    /**
+     * RMQ002's whole body is behind `__DEV__`, so here it must not even look. Behaviour is
+     * what this run can check: that the string is absent from a production BUNDLE is a build
+     * property, and `apps/docs`' production-build test greps every emitted chunk for
+     * `RM[DQ]\d{3}` to prove it.
+     */
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { QueryClient } = await import("../../QueryClient");
+      const client = new QueryClient();
+      await client.fetch(
+        ["boom"],
+        async () => {
+          throw new Error("no");
+        },
+        { retry: 0 },
+      );
+
+      expect(client.peek(["boom"])!.status).toBe("error");
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   test("the devtools bridge is not installed", async () => {
     // The registration is behind `__DEV__` inside QueryClientProvider, so importing the
     // package must not put anything on the global — a production page has no panel, and a

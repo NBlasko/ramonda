@@ -364,6 +364,25 @@ is a run of freshly built vnodes — which is what all JSX looks like. The shape
 only evidence, and it is conclusive: JSX passes children as separate arguments, so a
 nested array among them was built by an expression.
 
+## RMQ002 — a query failed and nothing rendered it
+
+The query is in `error`, and the render that just happened read none of `isError`, `error`,
+`status` or `result`. The report names the key and the failure.
+
+It matters because **a failed refetch keeps the data it had**: the page can look perfectly
+healthy while showing values that no longer refresh. Nothing throws, nothing is blank, and the
+only sign is that a number stopped moving.
+
+This is the answer to [`throwOnError`](/query/queries#when-the-failure-means-the-page-cannot-be-shown),
+which `@ramonda/query` does not have. What that option is really for is *noticing*, and
+noticing is a development-time report — where rethrowing into an error boundary would unmount
+the subtree, run every cleanup, and throw away local state, focus and scroll for something as
+ordinary as a timeout.
+
+Reading any one of those four silences it, per render: a component that showed the error and
+then stopped (a collapsed panel, a switched tab) is reported again, because each render is
+judged on its own reads.
+
 ## What is non-deterministic in JavaScript, and what catches it
 
 The inventory, because "collect how many of these exist" is the right instinct — and

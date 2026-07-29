@@ -1,3 +1,4 @@
+import { warnOnce } from "./diagnostics";
 import type { QueryKey } from "./types";
 
 /**
@@ -68,8 +69,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** Deduped by MESSAGE: the same bad key shape is one problem, however many times it is hashed. */
-const reported = new Set<string>();
-
 /**
  * Walks a key and reports anything whose hash is not stable, or not unique.
  *
@@ -121,16 +120,12 @@ function assertStableKey(value: unknown, depth = 0): void {
   );
 }
 
-function warnOnce(message: string): void {
-  if (reported.has(message)) return;
-  reported.add(message);
-  console.error(message);
-}
-
-/** Clears the dedup set. For tests, mirroring core's `resetDiagnostics`. */
-export function resetKeyDiagnostics(): void {
-  reported.clear();
-}
+/**
+ * Kept as a named re-export: the dedup set now lives in `diagnostics.ts`, shared with
+ * RMQ002, so a test that resets one code's reports resets them all rather than leaving the
+ * other's set primed from an earlier case.
+ */
+export { resetQueryDiagnostics as resetKeyDiagnostics } from "./diagnostics";
 
 /**
  * Whether two keys are equal PART BY PART, by identity — no hashing, no allocation.
