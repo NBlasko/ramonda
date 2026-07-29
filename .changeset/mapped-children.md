@@ -3,7 +3,7 @@
 "@ramonda/query": minor
 ---
 
-RMD023, `static stableProps`, and `each` that takes nothing.
+RMD023, `static StableProps`, and `each` that takes nothing.
 
 **RMD023 — components built from an array with no keys.** The check RMD020 cannot make: a
 mapper is handed to `Array.prototype.map` and never stored anywhere a comparison can reach,
@@ -20,7 +20,7 @@ inserting or removing anywhere but the end moves state and DOM to the wrong item
 markup is not reported (the diff patches it and the result is correct), keyed children are
 not reported, forwarded children are not reported.
 
-**`static stableProps` — the hook declares which props are values, so the call site does
+**`static StableProps` — the hook declares which props are values, so the call site does
 not.** A query key is a value: `["user", 7]` built again is the same question, and that is
 the hook's knowledge rather than something every component using it should encode. `Query`
 declares `key`, `Mutation` declares `invalidates`, and the framework hands back one identity

@@ -4,7 +4,7 @@ import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { compute, memoizedHandler, state, watchProp } from "../base/decorators";
 import { stable } from "../base/stable";
-import { stableProps } from "../base/decorators";
+import { StableProps } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -292,7 +292,7 @@ describe("RMD022", () => {
   });
 });
 
-describe("static stableProps — the hook declares it, the call site does not", () => {
+describe("static StableProps — the hook declares it, the call site does not", () => {
   /**
    * The DX question this answers: a query key is a value, and the hook AUTHOR knows that.
    * Making every call site wrap it in `stable()` puts the hook's own semantics in the
@@ -300,7 +300,7 @@ describe("static stableProps — the hook declares it, the call site does not", 
    * literal, and the framework holds the identity — `stable()` stays for hooks that
    * declared nothing.
    */
-  @stableProps("key")
+  @StableProps("key")
   class Declared extends Hook<Bag> {
     keys: unknown[] = [];
 
@@ -356,7 +356,7 @@ describe("static stableProps — the hook declares it, the call site does not", 
   test("a function cannot be declared away — it is still reported", async () => {
     // A hook author cannot make a closure comparable by saying so: two closures with the
     // same body are not equal by any comparison that is safe to make.
-    @stableProps("key", "fetch")
+    @StableProps("key", "fetch")
     class Fn extends Hook<Bag> {
       get seen(): string {
         return String(this.props.fetch?.());
@@ -375,7 +375,7 @@ describe("static stableProps — the hook declares it, the call site does not", 
   });
 });
 
-describe("@stableProps is type-checked at the decoration site", () => {
+describe("@StableProps is type-checked at the decoration site", () => {
   /**
    * The names are checked against the hook's OWN props, with no type argument written at
    * the call site. `C` is inferred from the decorated class and the keys are compared
@@ -390,15 +390,15 @@ describe("@stableProps is type-checked at the decoration site", () => {
   }
 
   test("a real prop name compiles, a typo does not", () => {
-    @stableProps("key")
+    @StableProps("key")
     class Fine extends Hook<Shape> {}
 
     // An OPTIONAL prop is still a prop — checked through `keyof`, not by assignability.
-    @stableProps("key", "filter")
+    @StableProps("key", "filter")
     class Both extends Hook<Shape> {}
 
     // @ts-expect-error — "kye" is not a prop of Shape, and the error names it.
-    @stableProps("kye")
+    @StableProps("kye")
     class Typo extends Hook<Shape> {}
 
     expect([Fine, Both, Typo].length).toBe(3);
@@ -408,7 +408,7 @@ describe("@stableProps is type-checked at the decoration site", () => {
     expect(() => {
       // @ts-expect-error — a component instance is not structurally a hook (no
       // HOOK_RUNTIME), which is what makes this a compile error and not just a runtime one.
-      @stableProps("key")
+      @StableProps("key")
       class NotAHook extends Component<Shape> {
         render() {
           return <div />;
@@ -417,20 +417,20 @@ describe("@stableProps is type-checked at the decoration site", () => {
       return NotAHook;
       // The throw is the backstop for a build with no types, and it points at the
       // mechanism a component actually has.
-    }).toThrow(/@stableProps is for hooks, not components/);
+    }).toThrow(/@StableProps is for hooks, not components/);
   });
 
   test("a hook with no props rejects any name", () => {
     // @ts-expect-error — nothing to declare on a hook that takes no props.
-    @stableProps("key")
+    @StableProps("key")
     class NoProps extends Hook {}
 
     expect(NoProps).toBeTypeOf("function");
   });
 });
 
-describe("stableProps is a property of the KIND, not of an instance", () => {
-  @stableProps("key")
+describe("@StableProps is a property of the KIND, not of an instance", () => {
+  @StableProps("key")
   class Base extends Hook<Bag> {
     keys: unknown[] = [];
 
@@ -456,7 +456,7 @@ describe("stableProps is a property of the KIND, not of an instance", () => {
     await settle();
 
     // A static lives on the constructor, and `extends` chains constructors — so this
-    // needs no `[...Base.stableProps]` ceremony.
+    // needs no `[...Base.StableProps]` ceremony.
     expect(instance.probe.keys.length).toBe(1);
     expect(reported()).not.toContain("RMD022");
   });
@@ -465,7 +465,7 @@ describe("stableProps is a property of the KIND, not of an instance", () => {
     // A subclass declaring MORE. The decorator merges with what the parent declared
     // rather than replacing it, so `key` cannot be dropped by forgetting to spread it —
     // which is exactly what a `static` field would have done.
-    @stableProps("filter")
+    @StableProps("filter")
     class Adding extends Base {}
 
     class Panel extends Component {

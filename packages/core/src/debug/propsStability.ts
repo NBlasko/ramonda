@@ -64,7 +64,7 @@ const FIX: Record<Kind, string> = {
  * Compares two bags built by the same callback.
  *
  * Two things are skipped, for the same reason: a prop the hook declared in
- * `static stableProps`, and a value the call site wrapped in `stable()`. Both are already
+ * `static StableProps`, and a value the call site wrapped in `stable()`. Both are already
  * held at one identity by the framework, so reporting them would report the fix as the
  * fault. A `stable()` marker is compared by its CONTENTS rather than skipped outright,
  * because contents that differ between two calls in one tick is non-determinism no wrapper
@@ -79,7 +79,7 @@ export function checkPropsStability(
   if (!isBag(first) || !isBag(second)) return;
 
   for (const key of Object.keys(first)) {
-    // The hook declared this prop as a value (`static stableProps`), so the framework
+    // The hook declared this prop as a value (`static StableProps`), so the framework
     // already keeps one identity for equal contents. Reporting it would be asking the app
     // to fix something the hook took care of.
     //

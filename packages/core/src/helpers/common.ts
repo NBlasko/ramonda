@@ -113,7 +113,7 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const runtime = that[GLOBAL_RUNTIME];
 
-  // Read once per use() site rather than per render: `@stableProps` writes a
+  // Read once per use() site rather than per render: `@StableProps` writes a
   // non-configurable symbol on the class, so it cannot change afterwards.
   const declaredStable = (hook as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
 

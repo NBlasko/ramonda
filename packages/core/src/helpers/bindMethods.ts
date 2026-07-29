@@ -43,6 +43,34 @@
  * semantics — the plan keeps the first definition found walking from the
  * most-derived prototype up, which is exactly what an override means.
  *
+ * ## Why `_`-prefixed methods are bound like any other
+ *
+ * They were skipped until 2026-07-29, as an opt-out: internal by convention, so binding was
+ * not paid for them. Removed, because the convention is not this framework's to claim.
+ * typescript-eslint's `naming-convention` rule is commonly configured with
+ * `leadingUnderscore: "require"` for private members, so a project with that rule wrote
+ * `private _apply()` and got a method that silently did not bind — `onClick={this._apply}`
+ * then lost `this`, with no error and no diagnostic. A lint rule the developer chose for
+ * unrelated reasons broke the framework's central promise about methods.
+ *
+ * And it bought very little. Measured per instance, binding every method against binding
+ * all but a third of them:
+ *
+ * ```
+ *   methods   construct   bind all   bind all but N   saved      per 1000 instances
+ *   3         22 ns       146 ns     105 ns            41 ns     0.04 ms
+ *   5         29 ns       253 ns     243 ns            10 ns     0.01 ms
+ *   8         32 ns       352 ns     268 ns            84 ns     0.08 ms
+ *   12        29 ns       565 ns     353 ns           212 ns     0.21 ms
+ * ```
+ *
+ * A fifth of a millisecond across a thousand rows, at twelve methods, for a silent
+ * `this`-loss. If an opt-out is ever wanted back it should be an explicit `@unbound`
+ * decorator: it says what it does where it does it, and no lint rule can trigger it.
+ *
+ * (The old comment here pointed at "the note in Component.ts" for the trade-off. There was
+ * no such note.)
+ *
  * ## The one thing to know about the cache
  *
  * The plan is keyed by prototype, so a class whose prototype is modified AFTER
@@ -70,9 +98,6 @@ function buildPlan(prototype: object, stopAt: object, skipNames: ReadonlySet<str
     for (const key of Object.getOwnPropertyNames(current)) {
       if (key === "constructor") continue;
       if (claimed.has(key)) continue;
-      // Internal by convention, and deliberately left unbound — see the note in
-      // Component.ts for what that buys and what it costs.
-      if (key.startsWith("_")) continue;
       if (skipNames !== undefined && skipNames.has(key)) continue;
       // A user override of one of the framework's own methods stays unbound.
       if (hasOwn(stopAt, key)) continue;

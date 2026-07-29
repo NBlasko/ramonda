@@ -45,7 +45,10 @@ owner's own props or state — that is what keeps them in sync.
 
 **If you use that parameter, annotate it** — `(self: Panel)` — as above. It is what
 gives the owner its type; leaving the annotation off is an error rather than a silent
-`any`, the same stance [`@watchProp`](/concepts/props) takes for its selector.
+`any`, the same stance [`@watchProp`](/concepts/props) takes for its selector. (A *class*
+decorator like [`@Host`](/concepts/host) needs no annotation, because there the decorated
+class supplies the type. Here there is no class to read it from — the callback is an
+argument to a method call.)
 
 **Or just write `this`,** which is equally correct: the callback is an arrow function in a
 field initializer, so `this` is the instance both at runtime and to the type-checker —
@@ -121,7 +124,7 @@ twice in the same tick and the two bags compared, the same check `render()` gets
 something every call site should have to encode:
 
 ```tsx
-@stableProps("key")
+@StableProps("key")
 export class Query extends Hook<QueryProps> {}
 ```
 
@@ -131,7 +134,7 @@ hook rather than about any one member — props are not members at all, they liv
 rather than replacing it, so nothing can be dropped by forgetting to carry it over.
 
 **The names are checked against your props**, with no type argument to write:
-`@stableProps("kye")` is a compile error that names `"kye"`, and an optional prop counts as
+`@StableProps("kye")` is a compile error that names `"kye"`, and an optional prop counts as
 a prop. Putting it on a component is a compile error too — a component's props come from
 the parent's JSX, where [`@shouldUpdateOnPropsChange`](/concepts/props) is the control.
 
@@ -157,7 +160,7 @@ private chart = this.use(SomeChart, (self: Panel) => ({
 ```
 
 **A function: a bound method.** Two closures with the same body are not equal by any
-comparison that is safe to make, so neither `stable()` nor `@stableProps` can help — a hook
+comparison that is safe to make, so neither `stable()` nor `@StableProps` can help — a hook
 that lists a function prop still gets the report, because unstable *and* silent would be
 the worst of both. A method
 reads `this` when it is *called*, so there is nothing to capture — and methods are bound,
@@ -221,7 +224,7 @@ diagnostics are stripped from production, and none of them run for a caller who 
 off. A check is how a mistake gets *found*; it is not what makes your hook safe.
 
 The rule that follows: **compare by value what is a value, and be idempotent about the
-rest.** That is the whole of it — and it is why `@stableProps` exists, so a hook can
+rest.** That is the whole of it — and it is why `@StableProps` exists, so a hook can
 state the first half once rather than hoping every caller does.
 
 ## Next

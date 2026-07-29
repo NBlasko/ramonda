@@ -723,12 +723,12 @@ render; a child handed a rebuilt function re-renders 3/3.
 **Why the fix had to come with the check.** An earlier version of this comparison existed
 inside `renderStability.ts` and was deleted, because the only thing it could say was
 "your query key is an array literal" — true, and with nothing to do about it. The two
-answers are `@stableProps` on the hook (the author states that a prop is a value, once,
+answers are `@StableProps` on the hook (the author states that a prop is a value, once,
 for every caller) and `stable()` at the call site (the same thing from outside, for a hook
 that declared nothing). That is the same reason `list()` exists next to RMD020's report
 about a rebuilt `each`.
 
-**Why a declared prop is skipped outright.** `@stableProps` means the framework already
+**Why a declared prop is skipped outright.** `@StableProps` means the framework already
 holds one identity for equal contents, so reporting it would ask the app to fix what the
 hook took care of. **Functions are the exception**: a declaration cannot make a closure
 comparable, so `resolveStable` leaves it exactly as it came and this still reports it —

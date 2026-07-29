@@ -812,16 +812,16 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * resolve to a different tag does not mutate the host; it fails to match in the
  * diff, and a fresh component is built in its place.
  */
-export function Host<This = unknown, P = Record<string, unknown>>(
-  tag: string | ((props: P) => string),
-  props?: (self: This) => Record<string, unknown>,
+export function Host<C extends new (...args: any[]) => object>(
+  tag: string | ((props: PropsOf<C>) => string),
+  props?: (self: InstanceOf<C>) => Record<string, unknown>,
 ) {
   if (__DEV__) {
     assertHostTag(tag);
     assertHostProps(props);
   }
 
-  return <T extends new (...args: any[]) => object>(ctor: T) => {
+  return (ctor: C) => {
     // Exactly one of `tag` / `tagFromProps` is set, so the render and diff paths
     // never have to decide which of two sources wins.
     const meta: HostMeta =
@@ -845,6 +845,23 @@ export function Host<This = unknown, P = Record<string, unknown>>(
 }
 
 /**
+ * The instance a class constructs, and the props its constructor takes.
+ *
+ * **Both are conditional types on purpose**, and that is the whole mechanism behind
+ * `@Host`'s and `@StableProps`' type inference. A conditional type is not an inference
+ * site, so TypeScript cannot resolve `C` from the decorator's ARGUMENTS — it defers until
+ * the decorator is applied, where the decorated class supplies `C`. Only then are the
+ * arguments checked, contextually, against a `C` that is finally known.
+ *
+ * Measured while writing this: the obvious shape — a type parameter sitting directly in the
+ * callback's parameter position (`props?: (self: This) => …`) — fixes `This` to `unknown`
+ * from an unannotated arrow before the class is ever looked at, which is why `@Host` used to
+ * need `(self: Card)` spelled out.
+ */
+type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
+type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : never;
+
+/**
  * A hook's props, read off its construct signature — `new (runtime, options: Q) => …`.
  *
  * The constraint on the decorated class is `=> BaseHook<any>` rather than `=> object`, and
@@ -861,7 +878,7 @@ type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q 
  * site writes the plain literal.
  *
  * ```tsx
- * @stableProps("key")
+ * @StableProps("key")
  * export class Query extends Hook<QueryProps> {}
  * ```
  *
@@ -907,10 +924,10 @@ type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q 
  * are compared by the diff, which is a different mechanism with its own control
  * (`@shouldUpdateOnPropsChange`).
  *
- * **The names are type-checked** against the hook's props — `@stableProps("kye")` is a
+ * **The names are type-checked** against the hook's props — `@StableProps("kye")` is a
  * compile error that names `"kye"` — with no type argument to write at the call site.
  */
-export function stableProps<const K extends readonly string[]>(...keys: K) {
+export function StableProps<const K extends readonly string[]>(...keys: K) {
   if (__DEV__) {
     assertStablePropKeys(keys as readonly string[]);
   }
@@ -927,11 +944,11 @@ export function stableProps<const K extends readonly string[]>(...keys: K) {
       // the correct ones.
       ([K[number]] extends [keyof HookPropsOf<C>]
         ? unknown
-        : { "@stableProps was given a name that is not a prop of this hook": K[number] }),
+        : { "@StableProps was given a name that is not a prop of this hook": K[number] }),
   ) => {
     if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
       throw new Error(
-        `[Ramonda] @stableProps is for hooks, not components. A component's props come from the parent's ` +
+        `[Ramonda] @StableProps is for hooks, not components. A component's props come from the parent's ` +
           `JSX and are compared by the diff — use @shouldUpdateOnPropsChange to control that. Move the ` +
           `decorator to the hook whose props these are, or drop it.`,
       );

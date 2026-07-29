@@ -1,4 +1,4 @@
-import { Hook, destroy, stableProps, state } from "@ramonda/core";
+import { Hook, destroy, StableProps, state } from "@ramonda/core";
 import { ClientContext, requireClient } from "./context";
 import type { QueryClient } from "./QueryClient";
 import type { QueryKey } from "./types";
@@ -95,7 +95,7 @@ export interface MutationProps<TData, TVars> {
  * `Query`. Declared here so `invalidates: [["todos"]]` at a call site is one identity
  * rather than a fresh array every render.
  */
-@stableProps("invalidates")
+@StableProps("invalidates")
 export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVars>> {
   private ctx = this.use(ClientContext);
 

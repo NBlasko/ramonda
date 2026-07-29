@@ -1,4 +1,4 @@
-import { Hook, create, destroy, mount, onWindow, stableProps, state, watchProp } from "@ramonda/core";
+import { Hook, create, destroy, mount, onWindow, StableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
 import { ClientContext, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
@@ -113,7 +113,7 @@ export type QueryResult<TData> =
  * what makes a hand-written options object cheap too, and it is the thing that decides
  * between "different objects" and "different question".
  */
-@stableProps("key")
+@StableProps("key")
 export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps<TData, K>> {
   private ctx = this.use(ClientContext);
 

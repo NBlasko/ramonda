@@ -51,7 +51,7 @@ name under the new user's heading for a frame. The request for the old key is
 abandoned, and if you forwarded `ctx.signal` the browser stops it too.
 
 Write the key array as a literal — that is the whole point of it. `Query` declares `key`
-as a value (`static stableProps`), so the framework hands back **one array identity** for
+as a value (`static StableProps`), so the framework hands back **one array identity** for
 as long as the parts are equal: nothing that reads the key sees a change, and the
 comparison costs 31 ns. You do not wrap it in anything.
 
