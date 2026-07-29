@@ -177,3 +177,48 @@ export interface ResolvedObserverOptions {
   refetchOnReconnect: boolean;
   refetchInterval: number;
 }
+
+/**
+ * What one page load is told: the key, the abort signal, and which page is being asked
+ * for. `pageParam` is whatever `getNextPageParam` returned (or `initialPageParam` for the
+ * first) — a cursor, an offset, a URL, anything.
+ */
+export interface PageContext<K extends QueryKey = QueryKey> extends FetchContext<K> {
+  pageParam: unknown;
+}
+
+/**
+ * A paginated answer, held as ONE cache entry: the pages in order, and the param each was
+ * loaded with.
+ *
+ * The params are kept because a refresh has to reload the pages it already has — page N+1's
+ * cursor comes out of page N's data, so without the params there would be no way to reload
+ * page 3 without walking pages 1 and 2 again.
+ */
+export interface InfiniteData<TPage> {
+  pages: TPage[];
+  pageParams: unknown[];
+}
+
+/** What an `InfiniteQuery` takes. */
+export interface InfiniteQueryProps<TPage, K extends QueryKey = QueryKey> extends QueryBehaviour, ObserverBehaviour {
+  key: K;
+  /** Loads one page. Forward `ctx.signal` so an abandoned list stops fetching. */
+  loadPage: (context: PageContext<K>) => Promise<TPage>;
+  /** The param for the first page — an offset of 0, a null cursor, page 1. */
+  initialPageParam: unknown;
+  /**
+   * The param for one more page, or `undefined` when the list has ended. Returning
+   * `undefined` is what makes `hasNextPage` false, so it is the end-of-list signal.
+   */
+  getNextPageParam: (lastPage: TPage, pages: TPage[], lastPageParam: unknown, pageParams: unknown[]) => unknown;
+  /** The same, backwards. Omit it and `hasPreviousPage` is always false. */
+  getPreviousPageParam?: (firstPage: TPage, pages: TPage[], firstPageParam: unknown, pageParams: unknown[]) => unknown;
+  /**
+   * Keep at most this many pages, dropping from the far end. Off by default — a list that
+   * is scrolled forever otherwise grows forever.
+   */
+  maxPages?: number;
+  /** Fetch nothing while this is false, and stay `pending`. */
+  enabled?: boolean;
+}

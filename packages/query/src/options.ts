@@ -1,6 +1,6 @@
 import type { MutationProps } from "./Mutation";
 import type { QueryProps } from "./Query";
-import type { QueryKey } from "./types";
+import type { InfiniteQueryProps, QueryKey } from "./types";
 
 /**
  * Wraps a query's options so **sibling callbacks get their parameter types**.
@@ -73,5 +73,38 @@ export function queryOptions<TData, K extends QueryKey>(options: QueryProps<TDat
  * the input nothing else can tell you.
  */
 export function mutationOptions<TData, TVars>(options: MutationProps<TData, TVars>): MutationProps<TData, TVars> {
+  return options;
+}
+
+/**
+ * The same thing for an infinite query, where it is closest to necessary.
+ *
+ * `TPage` comes from `loadPage`'s return type, and `getNextPageParam`'s first parameter is
+ * a page — but nothing flows between two properties of the same object literal, so written
+ * inline it is an implicit `any`:
+ *
+ * ```ts
+ * loadPage: (ctx: PageContext) => api.posts(ctx.pageParam),
+ * getNextPageParam: (last) => last.next,       // ✗ 'last' implicitly has an 'any' type
+ * getNextPageParam: (last: Page) => last.next, // ✓ annotate, and it is fine
+ * ```
+ *
+ * Through here the object is CHECKED against `InfiniteQueryProps<TPage, K>` with `TPage`
+ * inferred from `loadPage`, so every callback beside it gets a contextual type:
+ *
+ * ```ts
+ * private feed = this.use(InfiniteQuery, (self: Feed) =>
+ *   infiniteQueryOptions({
+ *     key: ["posts", self.props.tag],
+ *     initialPageParam: 0,
+ *     loadPage: ({ pageParam, signal }) => api.posts(pageParam as number, { signal }),
+ *     getNextPageParam: (last) => last.next,   // typed
+ *   }),
+ * );
+ * ```
+ */
+export function infiniteQueryOptions<TPage, K extends QueryKey>(
+  options: InfiniteQueryProps<TPage, K>,
+): InfiniteQueryProps<TPage, K> {
   return options;
 }

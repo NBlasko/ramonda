@@ -2,7 +2,7 @@
 title: Testing queries
 description: Which of act and waitFor to reach for, and why a fresh client per test is not optional.
 section: Async data
-order: 97
+order: 98
 ---
 
 # Testing queries

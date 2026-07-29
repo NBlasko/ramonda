@@ -2,7 +2,7 @@
 title: Queries on the server
 description: The data lands in the HTML, the client renders it on the first pass, and nothing refetches — with nothing to wire up.
 section: Async data
-order: 96
+order: 97
 ---
 
 # Queries on the server

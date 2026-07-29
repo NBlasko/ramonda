@@ -14,6 +14,7 @@ import * as api from "../index";
  */
 const EXPECTED = [
   "Query",
+  "InfiniteQuery",
   "Mutation",
   "QueryClient",
   "QueryClientProvider",
@@ -22,6 +23,7 @@ const EXPECTED = [
   "hashKey",
   "keyStartsWith",
   "queryOptions",
+  "infiniteQueryOptions",
   "mutationOptions",
 ];
 
