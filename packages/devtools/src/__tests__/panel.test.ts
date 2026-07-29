@@ -78,6 +78,16 @@ function focus(panel: Panel, name: string): void {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  // The dock/float preference is persisted, so a test that changes it would leak into the next.
+  localStorage.clear();
+  /**
+   * The app's own margin, and every layout assertion is written against it.
+   *
+   * jsdom has no layout, so a docked panel writes `0px` — which is indistinguishable from "not
+   * docked" if the body starts empty. Starting at 17px makes the two states tell each other apart:
+   * docking overwrites it, floating leaves it exactly alone.
+   */
+  document.body.style.marginRight = "17px";
 });
 
 describe("the component tree", () => {
@@ -340,18 +350,86 @@ describe("the Query tab", () => {
 });
 
 describe("docking", () => {
+  const layout = (panel: Panel) => (panel as unknown as { applyLayout(): void }).applyLayout();
+  const toggle = (panel: Panel) => (panel as unknown as { toggle(): void }).toggle();
+  const margin = () => document.body.style.marginRight;
+
   it("squeezes the page while open and puts the margin back on close", () => {
-    document.body.style.marginRight = "17px"; // the app's own margin
     const panel = mount(() => tree());
 
-    // Opened by `mount` through the attribute, so dock explicitly the way the badge does.
-    (panel as unknown as { applyDock(): void }).applyDock();
-    expect(document.body.style.marginRight).not.toBe("17px");
-    expect(document.body.style.marginRight).toMatch(/px$/);
+    // Opened by `mount` through the attribute, so apply the layout the way the badge does.
+    layout(panel);
+    expect(margin()).not.toBe("17px");
+    expect(margin()).toMatch(/px$/);
 
-    (panel as unknown as { toggle(): void }).toggle();
-    expect(document.body.style.marginRight).toBe("17px");
-    document.body.style.marginRight = "";
+    toggle(panel);
+    expect(margin()).toBe("17px");
+  });
+
+  /**
+   * The reason two layouts exist. The panel opens ITSELF on a dev error, and squeezing the page
+   * then is destructive: the app reflows, a media query flips, and the layout you are shown is not
+   * the one the error happened in. An error must not change the evidence.
+   */
+  it("does not reflow the app when it opens itself on an error", () => {
+    const panel = mount(() => tree());
+    toggle(panel); // start closed, at the app's own layout
+    expect(margin()).toBe("17px");
+
+    window.dispatchEvent(
+      new CustomEvent("ramonda:dev-log", { detail: { type: "error", message: "RMD001", id: "1", timestamp: "t" } }),
+    );
+
+    expect(panel.hasAttribute("open")).toBe(true);
+    expect(margin()).toBe("17px");
+    expect(panel.classList.contains("floating")).toBe(true);
+    // It says why, because the reader did not choose this layout.
+    expect(panel.shadowRoot.querySelector(".mode-note")).not.toBe(null);
+  });
+
+  it("leaves a docked panel alone when a second error arrives", () => {
+    const panel = mount(() => tree());
+    layout(panel);
+    const docked = margin();
+    expect(docked).toBe("0px");
+
+    window.dispatchEvent(
+      new CustomEvent("ramonda:dev-log", { detail: { type: "error", message: "RMD001", id: "2", timestamp: "t" } }),
+    );
+
+    // Reflowing on the second error would destroy the layout being read.
+    expect(margin()).toBe(docked);
+    expect(panel.classList.contains("floating")).toBe(false);
+  });
+
+  it("docks on request, and remembers the choice", () => {
+    const panel = mount(() => tree());
+    toggle(panel);
+    window.dispatchEvent(
+      new CustomEvent("ramonda:dev-log", { detail: { type: "error", message: "RMD001", id: "3", timestamp: "t" } }),
+    );
+    expect(margin()).toBe("17px");
+
+    panel.shadowRoot.querySelector("#mode-btn")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(margin()).toBe("0px");
+    expect(panel.classList.contains("floating")).toBe(false);
+    expect(localStorage.getItem("ramonda:devtools-mode")).toBe("dock");
+
+    panel.shadowRoot.querySelector("#mode-btn")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(margin()).toBe("17px");
+    expect(localStorage.getItem("ramonda:devtools-mode")).toBe("float");
+  });
+
+  it("honours a remembered float preference on a manual open", () => {
+    localStorage.setItem("ramonda:devtools-mode", "float");
+    const panel = mount(() => tree());
+    layout(panel);
+
+    expect(margin()).toBe("17px");
+    expect(panel.classList.contains("floating")).toBe(true);
+    // Not an error, so no explanation is owed.
+    expect(panel.classList.contains("forced-float")).toBe(false);
   });
 });
 

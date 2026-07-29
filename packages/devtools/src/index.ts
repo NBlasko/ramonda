@@ -89,6 +89,7 @@ const MAX_LOG_NODES = 200;
 /** Narrow enough to peek past, wide enough that the drag handle is still there to grab. */
 const MIN_PANEL_WIDTH = 280;
 const WIDTH_KEY = "ramonda:devtools-width";
+const MODE_KEY = "ramonda:devtools-mode";
 
 /**
  * `localStorage` throws rather than returning null in a sandboxed iframe or with site data
@@ -139,6 +140,8 @@ class RamondaDevTools extends HTMLElement {
   private valueElements = new Map<string, HTMLElement>();
   private nodeMap = new Map<string, Node>();
   private highlighted: HTMLElement | null = null;
+  /** False once the element leaves the DOM — see `disconnectedCallback`. */
+  private alive = false;
   /**
    * The path of the component the reader is working on, or `undefined` for the whole tree.
    *
@@ -166,6 +169,7 @@ class RamondaDevTools extends HTMLElement {
   }
 
   connectedCallback() {
+    this.alive = true;
     this.render();
     this.setupEventListeners();
     this.setupDrag();
@@ -173,7 +177,7 @@ class RamondaDevTools extends HTMLElement {
     // Pull model: the core pings a cheap "tick"; we re-read the live tree only
     // while actively watching (panel open + components tab).
     window.addEventListener("ramonda:tick", () => {
-      if (this.watching) this.refreshComponents();
+      if (this.alive && this.watching) this.refreshComponents();
     });
 
     window.dispatchEvent(new CustomEvent("ramonda:devtools-ready"));
@@ -188,6 +192,15 @@ class RamondaDevTools extends HTMLElement {
    * the panel repeatedly, which is where that leak shows up first.
    */
   disconnectedCallback() {
+    /**
+     * Every window listener here is guarded on this flag rather than removed.
+     *
+     * A removed panel that still listens is not a hypothetical: a test mounts several, and the
+     * first `ramonda:dev-log` after that reached ALL of them — so a dead panel opened itself and
+     * wrote a margin onto the live document's body. Guarding is provably complete in a way that
+     * bookkeeping a dozen listener references is not, and it costs one comparison per event.
+     */
+    this.alive = false;
     this.setPicking(false);
     if (this.docked) {
       document.body.style.marginRight = this.savedMargin;
@@ -207,6 +220,7 @@ class RamondaDevTools extends HTMLElement {
 
   private setupEventListeners() {
     window.addEventListener("ramonda:logs-sync", (e: any) => {
+      if (!this.alive) return;
       const history: DevLogPayload[] = e.detail;
       if (history && Array.isArray(history)) {
         let atLeastOneIsError = false;
@@ -219,11 +233,13 @@ class RamondaDevTools extends HTMLElement {
     });
 
     window.addEventListener("ramonda:dev-log", (e: any) => {
+      if (!this.alive) return;
       this.addLogToUI(e.detail);
       if (e.detail.type === "error") this.openDevTools();
     });
 
     window.addEventListener("ramonda:toggle-devtools", (e: any) => {
+      if (!this.alive) return;
       e.detail?.forceOpen ? this.openDevTools() : this.toggle();
     });
   }
@@ -246,10 +262,11 @@ class RamondaDevTools extends HTMLElement {
     // A window narrowed below the panel's width would otherwise leave the page squeezed to
     // nothing, with no way to see what happened.
     window.addEventListener("resize", () => {
+      if (!this.alive) return;
       const width = this.panelWidth();
       const clamped = this.clampWidth(width);
       if (clamped !== width) this.style.setProperty("--panel-w", `${clamped}px`);
-      this.applyDock();
+      this.applyLayout();
     });
 
     handle.addEventListener("pointerdown", (event: PointerEvent) => {
@@ -266,7 +283,7 @@ class RamondaDevTools extends HTMLElement {
         // The custom property rather than `style.width`, so the badge offset and the body margin
         // read the same number the panel is drawn at.
         this.style.setProperty("--panel-w", `${this.clampWidth(startWidth + (startX - move.clientX))}px`);
-        this.applyDock();
+        this.applyLayout();
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
@@ -385,6 +402,23 @@ class RamondaDevTools extends HTMLElement {
         /* A fixed badge is not squeezed by the body margin, so while open it would sit ON the
            panel. The header's × closes it, and so does the keyboard shortcut. */
         :host([open]) .ramonda-badge { display: none; }
+        .head-tools { display: flex; align-items: center; gap: 10px; }
+        .mode-btn {
+          background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); color: #fff;
+          font: inherit; font-size: 12.5px; line-height: 1; padding: 5px 10px; border-radius: 5px;
+          cursor: pointer; transition: .15s;
+        }
+        .mode-btn:hover { background: rgba(255,255,255,.26); }
+        .mode-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+        /* Shown only when the panel opened itself: the reader did not choose this layout, so it
+           says why it is the one they got. */
+        .mode-note { display: none; padding: 6px 20px; background: #2a2033; color: #E9B44C;
+                     font-size: 12.5px; border-bottom: 1px solid #3a2d47; }
+        :host([open].forced-float) .mode-note { display: block; }
+        /* Floating: the panel covers the page instead of squeezing it, so nothing about the app's
+           layout changes when it opens. A heavier shadow, because now it is above rather than
+           beside. */
+        :host(.floating) .ramonda-panel { box-shadow: -12px 0 40px rgba(0,0,0,.65); }
         .header { padding: 20px; background: #7A4FBF; color: white; display: flex; justify-content: space-between; align-items: center; }
         .log-item { position: relative; border-bottom: 1px solid #222; padding: 12px 30px 12px 0; font-family: monospace; }
         .delete-btn { position: absolute; right: 0; top: 12px; background: none; border: none; color: #666; cursor: pointer; font-size: 16px; }
@@ -615,8 +649,12 @@ class RamondaDevTools extends HTMLElement {
       <div class="ramonda-resize" title="drag to resize"></div>
       <div class="header">
         <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="-32 -32 64 64" aria-hidden="true"><g fill="#fff"><ellipse cy="-14" rx="8.6" ry="14"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(72)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(144)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(216)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(288)"/></g><circle r="6.6" fill="#E9B44C"/></svg>Ramonda</h2>
-        <button id="close-btn" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer">×</button>
+        <div class="head-tools">
+          <button type="button" id="mode-btn" class="mode-btn">float</button>
+          <button id="close-btn" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer">×</button>
+        </div>
       </div>
+      <div class="mode-note">floating, so the error did not reflow the app it happened in</div>
       <div class="tabs">
         <div class="tab active" data-tab="logs">LOGS</div>
         <div class="tab" data-tab="components">COMPONENTS</div>
@@ -664,6 +702,14 @@ class RamondaDevTools extends HTMLElement {
     this.setupResize();
     this.setupNavigation();
     this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
+    this.shadowRoot!.querySelector("#mode-btn")?.addEventListener("click", () => {
+      // An explicit choice, so it also becomes the preference for the next manual open — and it
+      // clears the error's override, which is the whole point of the button being there.
+      this.mode = this.mode === "float" || this.forcedFloat ? "dock" : "float";
+      this.forcedFloat = false;
+      write(MODE_KEY, this.mode);
+      this.applyLayout();
+    });
   }
 
   private addLogToUI(detail: DevLogPayload) {
@@ -711,35 +757,65 @@ class RamondaDevTools extends HTMLElement {
 
   toggle() {
     this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
-    this.applyDock();
-    this.updateWatchState();
-    this.updateQueryWatch();
-  }
-
-  private openDevTools() {
-    this.setAttribute("open", "");
-    this.applyDock();
+    // Opened by hand: the reader's own preference applies.
+    this.forcedFloat = false;
+    this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
   }
 
   /**
-   * Squeezes the page beside the panel, and puts it back exactly as it was.
+   * Opened by the framework, not by the reader — a dev error, a diagnostic.
    *
-   * The body's own inline `margin-right` is saved on the first open and restored on close — an app
-   * that sets one itself gets it back, and the panel leaves no trace in the DOM it borrowed.
-   * `--panel-w` carries the width so the CSS and this margin cannot disagree.
+   * `forcedFloat` is only set when the panel was CLOSED. An error arriving while it is already
+   * open and docked must change nothing: reflowing the app on the second error would destroy the
+   * layout the reader is in the middle of reading.
    */
-  private applyDock(): void {
-    const open = this.hasAttribute("open");
-    const body = document.body;
+  private openDevTools() {
+    if (!this.hasAttribute("open")) this.forcedFloat = true;
+    this.setAttribute("open", "");
+    this.applyLayout();
+    this.updateWatchState();
+    this.updateQueryWatch();
+  }
 
-    if (!open) {
-      body.style.marginRight = this.savedMargin;
+  /**
+   * Docked, or floating — and the difference exists for one reason.
+   *
+   * Docking squeezes the page, which is right when you open the panel yourself: nothing is hidden
+   * behind it. But the panel also opens ITSELF, on a dev error, and there squeezing is destructive:
+   * the app reflows, a media query flips, and what you are then looking at is a different layout
+   * from the one that produced the error. The evidence changes because the tool arrived.
+   *
+   * So an error-triggered open floats — it is exactly the case that needs the old overlay
+   * behaviour, and the only one. What the overlay was really providing was "does not reflow", so
+   * that is what floating is; the dimming is not back, because dimming the app you are debugging
+   * was never the useful part. One click docks it when you want the space instead.
+   */
+  private applyLayout(): void {
+    const open = this.hasAttribute("open");
+    const floating = this.mode === "float" || this.forcedFloat;
+
+    this.classList.toggle("floating", floating);
+    this.classList.toggle("forced-float", this.forcedFloat);
+    const button = this.shadowRoot?.querySelector("#mode-btn") as HTMLElement | null;
+    if (button) {
+      button.textContent = floating ? "dock" : "float";
+      button.title = floating ? "squeeze the page beside the panel" : "let the panel cover the page instead";
+    }
+
+    const body = document.body;
+    if (!open || floating) {
+      if (this.docked) {
+        body.style.marginRight = this.savedMargin;
+        this.docked = false;
+      }
       return;
     }
 
     if (!this.docked) {
+      // The app's own inline margin, so it comes back exactly — the panel leaves no trace in the
+      // DOM it borrowed.
       this.savedMargin = body.style.marginRight;
       this.docked = true;
     }
@@ -748,6 +824,10 @@ class RamondaDevTools extends HTMLElement {
 
   private docked = false;
   private savedMargin = "";
+  /** The reader's preference, remembered. Errors override it for the open they trigger. */
+  private mode: "dock" | "float" = read(MODE_KEY) === "float" ? "float" : "dock";
+  /** True while the panel is open because something went wrong rather than because you asked. */
+  private forcedFloat = false;
 
   private panelWidth(): number {
     const panel = this.shadowRoot!.querySelector(".ramonda-panel");
@@ -866,7 +946,7 @@ class RamondaDevTools extends HTMLElement {
      * with nothing pinned this listener does nothing at all.
      */
     window.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !this.hasAttribute("open")) return;
+      if (!this.alive || event.key !== "Escape" || !this.hasAttribute("open")) return;
 
       // Innermost first: the value you opened, then the component you focused. Picking has its own
       // handler, which captures and stops the event before this one runs.
