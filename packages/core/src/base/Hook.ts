@@ -1,4 +1,5 @@
 import type { BaseHook, HookProps, PropsFactory } from "../types/HookTypes";
+import type { PROPS_TYPE } from "../types/HookTypes";
 import { useCommon } from "../helpers/common";
 import type { HookClassKind } from "../types/commonTypes";
 import { createHookRuntime, HOOK_RUNTIME, type HookRuntime, type Runtime, GLOBAL_RUNTIME } from "../core/runtime";
@@ -53,6 +54,13 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
   [GLOBAL_RUNTIME]: Runtime;
   [HOOK_RUNTIME]: HookRuntime;
   protected props: R;
+
+  /**
+   * Type-only: carries `R` where a conditional type can read it, because `props` is
+   * protected and therefore structurally invisible. `declare` means nothing is emitted.
+   * See `PROPS_TYPE`.
+   */
+  declare readonly [PROPS_TYPE]?: R;
 
   constructor(runtime: Runtime, initialProps: R) {
     this[GLOBAL_RUNTIME] = runtime;

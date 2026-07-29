@@ -40,6 +40,20 @@ export type HookProps = Record<string, any> | undefined;
  */
 export type PropsFactory<Q> = (bag: never) => Q;
 
+/**
+ * A type-only carrier for a hook's props type.
+ *
+ * `Hook.props` is `protected`, which makes it invisible to a conditional type — so
+ * `This extends { props: infer P }` yields `never` for a hook, and a decorator cannot read
+ * the props type off the instance the way it can for a component (whose `props` is public
+ * on `BaseComponent`). This phantom fixes that without changing the surface: it is
+ * `declare`d, so it emits nothing; symbol-keyed, so it cannot collide or show up in
+ * autocomplete; and optional, so nothing has to assign it.
+ *
+ * It is what lets `@watchProp` type its selector from the class it is placed on.
+ */
+export declare const PROPS_TYPE: unique symbol;
+
 // The type parameter is a phantom (a variance marker only — callers write
 // `BaseHook<T>`, nothing in the body reads it). Named `_`-prefixed so it is not
 // mistaken for the `HookProps` type above and is understood as intentionally

@@ -11,7 +11,7 @@ import { ramondaLog } from "../debug/logger";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { STABLE_PROPS } from "../helpers/constants";
-import type { BaseHook } from "../types/HookTypes";
+import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
 import {
   assertMethod,
   assertField,
@@ -631,17 +631,21 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  * and old value. It does NOT fire on mount; use `@create` for the initial seed.
  *
  * ```ts
- * @watchProp((p: UserProps) => p.userId)
+ * @watchProp((p) => p.userId)
  * reload(next: string, previous: string) { … }
  * ```
  *
- * **Give the props type by ANNOTATING the selector parameter**, as above. That
- * fills in both `P` and `V` by inference (the method must be `(V, V) => void`).
- * Without the annotation `p` is `unknown` — strict, never `any`.
+ * **The selector needs no annotation**: `props` is typed from the class the decorator is
+ * placed on. `This` is only ever mentioned in the decorator CONTEXT and in a conditional
+ * type (`PropsOfInstance<This>`), and a conditional is not somewhere TypeScript infers
+ * from — so it stays open until the decorator is applied, and the class supplies it. The
+ * selector's return type still fixes `V`, so the method is checked as `(V, V) => void`.
  *
- * An explicit generic, `watchProp<UserProps>(...)`, is deliberately NOT the way
- * in: TypeScript has no partial inference, so naming `P` forces `V` to fall back
- * to `unknown` and the method's parameters lose their types.
+ * (Annotating it anyway is harmless when the annotation matches.)
+ *
+ * **The METHOD's parameters still need annotating**, and that is a TypeScript limitation
+ * rather than a choice: a decorator does not contextually type the signature it decorates,
+ * so unannotated parameters are an implicit `any` (TS7006). Measured while writing this.
  *
  * **On a hook it watches the HOOK's props** — the bag its `this.use()` callback
  * produces — not the owner component's. That is the only reading that makes sense
@@ -652,14 +656,14 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  * and never fired when the hook's own prop changed. Fixed by recording which
  * instance each entry belongs to; see `WatchPropEntry.owner`.
  */
-export function watchProp<P = unknown, V = unknown>(selector: (props: P) => V) {
+export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V) {
   if (__DEV__) {
     assertSelector(selector, "watchProp");
   }
 
   return function <M extends (newValue: V, oldValue: V) => void>(
     _value: M,
-    context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime } & Record<string, any>, M>,
+    context: ClassMethodDecoratorContext<This & { [GLOBAL_RUNTIME]: Runtime } & Record<string, any>, M>,
   ): void {
     if (__DEV__) {
       assertMethod(context.kind, "watchProp", context.name);
@@ -859,6 +863,16 @@ export function Host<C extends new (...args: any[]) => object>(
  * need `(self: Card)` spelled out.
  */
 type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
+
+/**
+ * The props of a component or a hook INSTANCE — which is what a method decorator has to
+ * work from, since its context is generic in the instance type rather than in the class.
+ *
+ * Two branches because the two base classes expose it differently: `BaseComponent.props` is
+ * public, and a hook's is `protected` and therefore structurally invisible, so `Hook`
+ * carries the type in a phantom (`PROPS_TYPE`).
+ */
+type PropsOfInstance<T> = T extends { props: infer P } ? P : T extends { [PROPS_TYPE]?: infer P } ? P : never;
 type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : never;
 
 /**

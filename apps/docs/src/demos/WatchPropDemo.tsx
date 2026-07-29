@@ -12,7 +12,7 @@ class Profile extends Component<{ userId: string }> {
   @state loadedFor = "—";
   @state loads = 0;
 
-  @watchProp((props: { userId: string }) => props.userId)
+  @watchProp((props) => props.userId)
   reload(next: string, previous: string) {
     this.loadedFor = `${previous} → ${next}`;
     this.loads = this.loads + 1;

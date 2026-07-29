@@ -159,7 +159,7 @@ export class DerivedSync extends Component<DerivedSyncProps> {
     this.doubled = this.props.source * 2;
   }
 
-  @watchProp((p: DerivedSyncProps) => p.source) onSource(next: number) {
+  @watchProp((p) => p.source) onSource(next: number) {
     this.doubled = next * 2;
   }
 

@@ -497,3 +497,85 @@ describe("watchProp", () => {
     expect(log).toEqual(["component:a->b"]);
   });
 });
+
+describe("the selector is typed from the class it is on", () => {
+  /**
+   * No annotation, no type argument. `This` appears only in the decorator CONTEXT and
+   * inside a conditional type (`PropsOfInstance<This>`), and a conditional is not an
+   * inference site — so TypeScript defers it to the application, where the decorated class
+   * supplies it. The selector's RETURN still fixes the value type, so the method is checked
+   * as `(V, V) => void`.
+   *
+   * A hook needs a phantom for this: `Hook.props` is protected, so a conditional type reads
+   * `never` off it, where `BaseComponent.props` is public. See `PROPS_TYPE`.
+   */
+  test("a component's selector, with the method's values typed from it", async () => {
+    const seen: string[] = [];
+
+    class Row extends Component<{ userId: string; other: number }> {
+      @watchProp((props) => props.userId)
+      onUser(next: string, previous: string) {
+        seen.push(`${previous}->${next}`);
+      }
+
+      render() {
+        return <span>{this.props.userId}</span>;
+      }
+    }
+
+    class Parent extends Component {
+      @state id = "a";
+      render() {
+        return <Row userId={this.id} other={1} />;
+      }
+    }
+
+    const app = await getDOM<Parent>(<Parent />);
+    app.instance.id = "b";
+    await app.settle();
+
+    expect(seen).toEqual(["a->b"]);
+  });
+
+  test("a hook's selector reads the HOOK's props, unannotated", async () => {
+    const seen: number[] = [];
+
+    class Watcher extends Hook<{ target: number }> {
+      @watchProp((props) => props.target)
+      onTarget(next: number) {
+        seen.push(next);
+      }
+    }
+
+    class Panel extends Component {
+      @state base = 1;
+      w = this.use(Watcher, (self: Panel) => ({ target: self.base * 10 }));
+      render() {
+        return <div>{String(this.base)}</div>;
+      }
+    }
+
+    const app = await getDOM<Panel>(<Panel />);
+    app.instance.base = 3;
+    await app.settle();
+
+    expect(seen).toEqual([30]);
+  });
+
+  test("a selector for a prop that does not exist is a compile error", async () => {
+    class Row extends Component<{ userId: string }> {
+      // @ts-expect-error — `usreId` is not a prop, and this used to be `unknown` (so
+      // anything compiled) until the selector was typed from the class.
+      @watchProp((props) => props.usreId)
+      onUser(next: string) {
+        void next;
+      }
+
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    expect(Row).toBeTypeOf("function");
+  });
+});

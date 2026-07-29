@@ -83,7 +83,7 @@ changes, say. `@watchProp` runs a method just before the render, whenever the pr
 you name changes:
 
 ```tsx
-@watchProp((props: UserProps) => props.userId)
+@watchProp((props) => props.userId)
 reload(next: string, previous: string) {
   this.data = undefined;
   void this.fetch(next);
@@ -95,10 +95,14 @@ reload(next: string, previous: string) {
 
 - **It doesn't run on the first render** — only on a later change. Use `@create` for
   the initial load.
-- **Type it by annotating the selector's parameter** (`props: UserProps` above); that
-  infers the rest. An explicit `watchProp<UserProps>(...)` does *not* work.
+- **The selector needs no annotation.** `props` is typed from the class the decorator is
+  on, so `props.usreId` is a compile error. (The method's `next` / `previous` do still need
+  annotating — a decorator cannot type the signature it decorates, which is a TypeScript
+  limitation rather than a choice.)
 - **It's a selector function, not a string** — so it can go as deep as
   `p => p.filters[0].value`, and the compiler checks it.
+- **On a hook it watches the HOOK's props** — the bag its `this.use()` callback produced,
+  not the owner's.
 
 ### `@watchProp` or `@effect`? (optional)
 

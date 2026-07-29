@@ -257,7 +257,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * phase starts, so `version++` from the notification below joins the render already
    * in flight instead of scheduling one from inside it.
    */
-  @watchProp((props: QueryProps<unknown>) => props.key)
+  @watchProp((props) => props.key)
   onKeyChanged(next: QueryKey, previous: QueryKey): void {
     if (sameKeyParts(next, previous)) return;
 
@@ -538,7 +538,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * - **It runs before the render**, so the request is in flight when the component
    *   draws its loading state, rather than one commit later.
    */
-  @watchProp((props: QueryProps<unknown>) => props.enabled)
+  @watchProp((props) => props.enabled)
   onEnabledChanged(enabled: boolean | undefined): void {
     if (enabled === false) return;
     void this.fetchIfNeeded(false);
@@ -571,7 +571,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     this.schedulePoll();
   }
 
-  @watchProp((props: QueryProps<unknown>) => props.refetchInterval)
+  @watchProp((props) => props.refetchInterval)
   onIntervalChanged(): void {
     this.schedulePoll();
   }
