@@ -1,10 +1,11 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import { getDOM } from "../../test/setup";
 import { create, destroy, effect, mount, state, updated } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { Hook } from "../../base/Hook";
 import { ErrorBoundary } from "../../base/ErrorBoundary";
 import { renderToString } from "../../hydration/ssr";
+import { resetDiagnostics } from "../../debug/diagnostics";
 
 /**
  * `@updated` — the post-commit door.
@@ -441,5 +442,62 @@ describe("@updated", () => {
       }
       return Wrong;
     }).toThrow(/updated/);
+  });
+});
+
+describe("an @updated that writes state unconditionally", () => {
+  /**
+   * The hazard `@updated` inherits from any post-render phase: writing state from it
+   * schedules a render, whose `@updated` writes again. There is no prev/next to write an
+   * `if` against, so this is the shape people will reach for by accident.
+   *
+   * It is already guarded, and by the guard that was there all along — `@updated` writes
+   * state, state schedules a BUILD, and RMD009 counts builds per drain. Measured: it stops
+   * at 50 and names the component. A dedicated `@updated` counter was drafted and then not
+   * written, because it would have duplicated this.
+   *
+   * (The measurement that suggested otherwise had its own counter at 20, below the
+   * threshold, so it stopped before the framework did and looked unguarded.)
+   */
+  test("is stopped by RMD009 rather than hanging", async () => {
+    resetDiagnostics();
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    let runs = 0;
+
+    class Panel extends Component {
+      @state tick = 0;
+
+      @updated
+      after() {
+        runs++;
+        this.tick = this.tick + 1;
+      }
+
+      render() {
+        return <span>{String(this.tick)}</span>;
+      }
+    }
+
+    try {
+      const app = await getDOM<Panel>(<Panel />);
+      app.instance.tick = 1;
+      await app.settle();
+
+      expect(runs).toBe(50);
+      const reported = logs.join("\n");
+      expect(reported).toContain("RMD009");
+      expect(reported).toContain("<Panel />");
+      expect(reported).toContain("stopped rendering it");
+    } finally {
+      spy.mockRestore();
+      errors.mockRestore();
+    }
   });
 });
