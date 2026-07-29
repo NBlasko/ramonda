@@ -30,7 +30,8 @@ export type DiagnosticCode =
   | "RMD020"
   | "RMD021"
   | "RMD022"
-  | "RMD023";
+  | "RMD023"
+  | "RMD024";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -142,6 +143,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "An array was rendered straight into children",
     fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
+  },
+  RMD024: {
+    severity: "warning",
+    title: "A @compute recomputes without its answer changing",
+    fix: "A @compute is invalidated by the signals it READ, so if it recomputes on every pass while producing an equal value, something it reads is being replaced every time — most often an array or object literal rebuilt in a hook's props bag, or a value derived from one. Declare that prop with @StableProps if you own the hook, wrap it in stable() at the call site if you do not, or hold the value somewhere stable (a field, a module constant, a @compute of its own). If nothing is being rebuilt, the compute is reading something that is not reactive at all — a counter, Date.now(), a module variable — and a @compute is the wrong place for that: read it once in @create and keep it in @state.",
   },
   RMD013: {
     severity: "error",

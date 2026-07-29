@@ -101,8 +101,17 @@ describe("refetchOnMount", () => {
   });
 });
 
+/** Puts the tab in a visibility state and fires the event the browser would. */
+function becomeVisible(visible: boolean): void {
+  Object.defineProperty(document, "visibilityState", {
+    value: visible ? "visible" : "hidden",
+    configurable: true,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 describe("window triggers", () => {
-  test("focus refreshes stale data", async () => {
+  test("becoming visible refreshes stale data", async () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher);
 
@@ -112,7 +121,7 @@ describe("window triggers", () => {
       expect(fetcher).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        window.dispatchEvent(new Event("focus"));
+        becomeVisible(true);
         await Promise.resolve();
       });
       await settle();
@@ -123,9 +132,49 @@ describe("window triggers", () => {
     }
   });
 
-  test("focus leaves fresh data alone", async () => {
+  test("becoming visible leaves fresh data alone", async () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { staleTime: 60_000 });
+
+    const { unmount } = render((<Page />) as VNode);
+    try {
+      await settle();
+      await act(async () => {
+        becomeVisible(true);
+        await Promise.resolve();
+      });
+      await settle();
+
+      // The point of the default: an alt-tab is not a request.
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("going hidden asks for nothing", async () => {
+    const fetcher = vi.fn(async () => "v");
+    const Page = pageWith(fetcher);
+
+    const { unmount } = render((<Page />) as VNode);
+    try {
+      await settle();
+      await act(async () => {
+        becomeVisible(false);
+        await Promise.resolve();
+      });
+      await settle();
+
+      // The event fires in both directions; only one of them means somebody is looking.
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a plain window focus no longer refetches — the behaviour that changed", async () => {
+    const fetcher = vi.fn(async () => "v");
+    const Page = pageWith(fetcher);
 
     const { unmount } = render((<Page />) as VNode);
     try {
@@ -136,7 +185,13 @@ describe("window triggers", () => {
       });
       await settle();
 
-      // The point of the default: an alt-tab is not a request.
+      /**
+       * This used to be a request. It is deliberate that it is not: a page can gain focus
+       * having been visible the whole time — a second monitor, a split screen, DevTools — and
+       * with the default `staleTime: 0` that was a fetch per click into the window. What the
+       * option means is "somebody is looking at this again", and `visibilityState` is the
+       * thing that answers it.
+       */
       expect(fetcher).toHaveBeenCalledTimes(1);
     } finally {
       unmount();
@@ -151,7 +206,7 @@ describe("window triggers", () => {
     try {
       await settle();
       await act(async () => {
-        window.dispatchEvent(new Event("focus"));
+        becomeVisible(true);
         await Promise.resolve();
       });
       await settle();

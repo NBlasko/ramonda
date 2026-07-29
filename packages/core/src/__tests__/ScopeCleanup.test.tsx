@@ -14,7 +14,7 @@ import { HOOK_RUNTIME } from "../core/runtime";
  * subtrees it removed.
  */
 
-const [ThemeProvider, ThemeContext] = createContext({ theme: "light" });
+const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" });
 
 interface Row {
   t: string;
@@ -22,7 +22,7 @@ interface Row {
 
 @Host("div")
 class Consumer extends Component {
-  ctx = this.use(ThemeContext);
+  ctx = this.use(ThemeConsumer);
   @state rows: Row[] = [{ t: "a" }, { t: "b" }, { t: "c" }];
   render() {
     return (

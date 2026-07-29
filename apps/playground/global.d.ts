@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // `h` is already declared globally by core's `global.ts`, which this app pulls in via
 // `export * from "./global"` — re-declaring it here collided with that declaration, and
 // left `__DEV__` undeclared, so type-checking this app reported every `if (__DEV__)` in

@@ -1,0 +1,169 @@
+---
+title: Devtools
+description: The panel that shows the component tree, state, props, hooks and the query cache — and how to get from something on screen to the component that drew it.
+section: Devtools
+order: 105
+---
+
+# Devtools
+
+```
+pnpm add -D @ramonda/devtools
+```
+
+```ts
+// main.ts — anywhere before your app mounts
+if (import.meta.env.DEV) await import("@ramonda/devtools");
+```
+
+The import registers a `<ramonda-devtools>` element and nothing else. A purple **R** appears in the
+bottom-right corner; click it, or press <kbd>Alt</kbd>+<kbd>D</kbd>, to open the panel.
+
+The explicit import is the reliable route. Core also *attempts* to import the panel itself in a
+development build, but a bare specifier is not resolvable in a browser unless your bundler rewrites
+it — so if you have never seen the badge, this line is why.
+
+## Finding a component
+
+Three ways, and the third is usually the fastest.
+
+**Scroll the tree.** The `COMPONENTS` tab is your app: components in purple, hooks in green, each
+with its state, props and nested hooks. The toolbar and breadcrumb stay pinned to the top while the
+tree scrolls under them.
+
+**Filter by name.** Type in the toolbar's search box. Branches with no match disappear, and the
+ancestors of a match stay — so the result still reads as a tree and you can see *where* the thing
+you searched for lives. State and props are hidden while filtering, because they are what you scroll
+past while looking. Typing also opens collapsed branches, so a hit is never hidden inside one.
+
+**Point at it on the page.** This is the reverse of the other two, and it matches how you actually
+think about a UI: you know what on screen you care about, not where it sits in the tree.
+
+1. Click **⌖ pick** in the toolbar. The cursor becomes a crosshair.
+2. Move over your app. The component under the cursor is outlined, and its name appears next to the
+   cursor — a `<strong>` inside a row names the *component* that owns it, not the element.
+3. Click. The picker turns off and that component becomes the focus of the panel.
+
+While picking, the app does not see your clicks: a pick that also submitted the form it was aimed at
+would be useless. <kbd>Esc</kbd> cancels, and closing the panel or leaving the tab stops it, so the
+page is never left with a crosshair.
+
+## Working on one component
+
+Clicking **◎** on any row *focuses* it: that component becomes the root of the panel, so its state,
+props, hooks and children are all that is left on screen. Above it, a breadcrumb says where it sits:
+
+```
+all components  ›  <App />  ›  <ProductsPage />  ›  <ProductDetail />
+```
+
+Every crumb is itself a focus target, so the view widens one step at a time. `all components` — or
+<kbd>Esc</kbd> — releases it.
+
+Focus is what makes the panel usable while an app is running. The tree is re-read continuously, and
+without focus you are reading a list that grows and shrinks under you. If the focused component
+unmounts, the breadcrumb says so and the whole tree comes back, rather than leaving you with an
+empty panel and no way out.
+
+Hovering any row highlights the real element on the page — by direct reference, not by matching
+names, so it is exactly the element that component owns.
+
+## Reading a value
+
+Every value — state, a component's props, a hook's props, a query's data — renders as a collapsible
+tree: keys and types coloured, containers labelled by size (`pages: Array(8)`), everything past the
+first level collapsed until you open it. What you scan is the shape, not the first two thousand
+characters of it.
+
+**⤢** on a row opens that one value on the whole panel, where it can be scrolled, switched to
+pretty-printed JSON with **raw**, and copied with **copy**.
+
+The full view is a **snapshot**, deliberately: a tree that moved while you were four levels into it
+could not be read. When the app writes a different value, **refresh** lights up and pulses — click
+it to see the new one. Nothing repaints until you ask. If the value is gone entirely, the button says
+so and keeps the last snapshot.
+
+A value tree is bounded twice: a node budget and a depth cap, with cycles named as `[circular]`.
+Whatever is dropped says so in the row where it was dropped, so a large value is never quietly
+truncated into something that looks complete.
+
+### What a context consumer shows
+
+A consumer has no state and no props — its values are accessors over the provider's signals — so it
+reports something of its own instead: **Reads from context**, listing the keys it is subscribed to
+with their values, and naming the keys it has never read.
+
+That second part is worth reading carefully, because it is the fine-grained subscription made
+visible. A consumer that only ever read `theme.color` is not woken by a change to `theme.width`, and
+this is where you can see which of the two you have.
+
+The panel deliberately does not read a key the consumer has not read, because **reading is
+subscribing**: doing so would widen what the owning component re-renders on. Inspecting never
+changes behaviour.
+
+## The query cache
+
+The `QUERY` tab lists every live cache, with each entry's key, status, freshness, observer count and
+data. `0 observers · waiting for gc` is the interesting state: the entry is alive but nothing is
+watching it, so it is sitting out its `gcTime`.
+
+Two actions per entry:
+
+- **invalidate** — marks it stale and asks whoever is watching to refresh.
+- **remove** — throws the data away. A query still being watched will fetch again from nothing.
+
+There is no *refetch* button, and that is the design rather than an omission: the fetcher belongs to
+the observer, not to the cache, so an entry nobody is watching has no function to call. `invalidate`
+is the honest equivalent.
+
+## Docked or floating
+
+Opening the panel **docks** it: the app reflows into the space beside it, so nothing is hidden behind
+the panel and a highlight is always visible. Drag its left edge to resize; the width is remembered.
+
+The header's **dock**/**float** button switches to an overlay instead, for a layout that does not
+take being narrowed. What docking cannot squeeze is an element your app positions `fixed`, or a
+layout pinned to `100vw` — browser devtools has the same limit, and floating is the answer when it
+bites.
+
+One case chooses for you. When the framework opens the panel itself, it floats, and says why under
+the header: docking would reflow your app, which can flip a media query — and then the layout you
+are looking at is not the one the problem happened in.
+
+## When something goes wrong
+
+A dev error does **not** open the panel. The badge detonates instead — a burst, then a red badge with
+a count that stays until you look. Nothing about your app moves, and what you were doing is exactly
+where you left it. Open the panel when you are ready; the `LOGS` tab has the error, with its data
+logged to the console when you click it.
+
+Diagnostics (`RMD*`, `RMQ*`) land there too. Each one is explained in the
+[diagnostics reference](/reference/diagnostics).
+
+## What is remembered
+
+Two kinds of thing, kept in two places:
+
+- **Preferences** — width, docked or floating, and the two toolbar filters. Stored per origin, so
+  they are the same tomorrow.
+- **Your debugging session** — whether the panel is open, which tab, what you were filtering for and
+  the component you had focused. Stored per tab, so a reload in the middle of a session picks up
+  where you were, and a new tab starts clean.
+
+Nothing goes into the URL, so a link you share carries none of it.
+
+## Shortcuts
+
+| | |
+| --- | --- |
+| <kbd>Alt</kbd>+<kbd>D</kbd> | open or close the panel |
+| <kbd>Esc</kbd> | close the full value view, then release the focused component |
+| Drag the left edge | resize |
+| Drag the badge | move it out of the way |
+
+## In production
+
+Nothing here ships. The panel is a separate package you import behind a development-only condition,
+and the framework's own inspection hooks are inside `if (__DEV__)` blocks that your bundler removes —
+which the framework tests by building a real app and asserting that no diagnostic code or
+development-only string is in the output.

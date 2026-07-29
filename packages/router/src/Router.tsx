@@ -42,7 +42,7 @@ const EMPTY_STATE: RouterState = {
   hashTags: [],
 };
 
-const [RouteProvider, RouteContext] = createContext<RouteContextValue>(
+const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
   {
     state: EMPTY_STATE,
     baseUrl: "/",
@@ -53,9 +53,9 @@ const [RouteProvider, RouteContext] = createContext<RouteContextValue>(
   { label: "Route" },
 );
 
-const [ParamsProvider, ParamsContext] = createContext<ParamsContextValue>({ params: {} }, { label: "RouteParams" });
+const [ParamsProvider, ParamsConsumer] = createContext<ParamsContextValue>({ params: {} }, { label: "RouteParams" });
 
-export { RouteContext };
+export { RouteConsumer };
 
 /**
  * Live routers. Two cannot coexist: both would listen to popstate and both would
@@ -250,7 +250,7 @@ export interface RouteOutletProps {
  * :params to its own subtree.
  */
 export class RouteOutlet extends Component<RouteOutletProps> {
-  private ctx = this.use(RouteContext);
+  private ctx = this.use(RouteConsumer);
 
   // Computed ONCE per path/routes change (cached). Both the params provider and
   // render read it, so a navigation runs the regex match a single time.
@@ -278,8 +278,8 @@ export class RouteOutlet extends Component<RouteOutletProps> {
  * the outlet can use everything here except `params()`.
  */
 export class Navigator extends Hook {
-  private ctx = this.use(RouteContext);
-  private paramsCtx = this.use(ParamsContext);
+  private ctx = this.use(RouteConsumer);
+  private paramsCtx = this.use(ParamsConsumer);
 
   get pathname(): string {
     return this.ctx.baseUrl;

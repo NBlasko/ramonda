@@ -120,6 +120,23 @@ writeFileSync(join(dist, "404.html"), notFoundHtml);
 bytes += Buffer.byteLength(notFoundHtml);
 console.log(`[docs] ${"(not found)".padEnd(24)} → dist/404.html  ${Buffer.byteLength(notFoundHtml)} B`);
 
+/**
+ * Redirects for pages that have moved, as a Cloudflare Pages `_redirects` file.
+ *
+ * `/concepts/effects` became `/concepts/subscriptions` when `@effect` was removed, and the
+ * old URL started returning 404 on the deployed site the moment that shipped — measured,
+ * not assumed. A renamed page is a broken link for everyone who saved the old one, and for
+ * every search index that has it.
+ *
+ * A file rather than a route: the host answers with a 301 before the app is ever loaded, so
+ * the redirect works for a crawler and costs no JavaScript. `301` because these are
+ * permanent — the old paths are not coming back.
+ */
+const redirects = [["/concepts/effects", "/concepts/subscriptions", 301]];
+
+writeFileSync(join(dist, "_redirects"), `${redirects.map(([from, to, code]) => `${from} ${to} ${code}`).join("\n")}\n`);
+console.log(`[docs] ${"(redirects)".padEnd(24)} → dist/_redirects  ${redirects.length} rule(s)`);
+
 // Static assets. `public/` is copied verbatim so a favicon or a stylesheet needs
 // no build entry of its own.
 const publicDir = join(root, "public");

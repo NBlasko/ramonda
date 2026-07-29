@@ -267,6 +267,18 @@ describe("a production application build", () => {
     }
   });
 
+  test("development-only strings do not reach the build", () => {
+    /**
+     * Text that exists only to be read in devtools. Unlike a diagnostic code this never appears in
+     * the docs, so its presence in the bundle would mean exactly one thing: a development-only
+     * value declared where the guard could not remove it.
+     */
+    for (const text of ["not read by this consumer"]) {
+      expect(prod.code, `"${text}" reached the production build`).not.toContain(text);
+      expect(prodNames.code, `"${text}" reached the names-kept build`).not.toContain(text);
+    }
+  });
+
   test("configureDev survives as a callable no-op", () => {
     // The one piece of the development surface that must NOT be stripped: an app calls
     // it unconditionally at startup, so a production build that dropped it would fail

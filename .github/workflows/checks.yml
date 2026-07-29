@@ -42,11 +42,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
-      # `playground` and `playground-core` are scratch apps whose `test` script is
-      # still the `npm init` placeholder (`echo "no test specified" && exit 1`).
-      # Excluded so they cannot fail CI; drop the filters once they have real tests
-      # (or a passing/empty test script). Every real suite lives elsewhere and runs.
-      - run: pnpm exec turbo run test --filter='!playground' --filter='!playground-core'
+      # No filters: every package that HAS a `test` script runs it, and turbo skips the ones
+      # that do not. The two scratch playgrounds used to carry the `npm init` placeholder
+      # (`echo "no test specified" && exit 1`), which failed forever and forced a filter here —
+      # a script that can only fail hides whether the app works, so it is gone. Both are still
+      # covered by the build job.
+      - run: pnpm exec turbo run test
 
   build:
     name: Build

@@ -17,24 +17,37 @@ import pc from "picocolors";
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = resolve(here, "..", "templates");
 
-// Version specifiers written into the generated package.json. Kept together so a
-// release only has to touch this block.
+// Version specifiers written into the generated package.json.
 //
-// `@ramonda/*` use `~0.0.1`, NOT `^0.0.1`: on a `0.0.z` version the caret pins to
-// that exact patch (`^0.0.1` === only 0.0.1), so a scaffold would never pick up
-// 0.0.2 — including whatever new API a freshly-published template already uses.
-// The tilde is `>=0.0.1 <0.1.0`, so a scaffold gets the latest 0.0.x, and the
-// scaffolder itself still gates the 0.1 / 1.0 line by bumping this when it adopts one.
-const V = {
-  ramonda: "~0.0.1",
-  vite: "^7.3.6",
-  typescript: "^5.9.3",
-  typesNode: "^26.1.1",
-  vitest: "^3.2.4",
-  jsdom: "^28.0.0",
-  esbuild: "^0.28.1",
-  biome: "^2.5.5",
-};
+// `ramonda` is NOT a constant here: it is replaced at build time with a caret range over
+// core's workspace version (see tsup.config.ts). It used to be `~0.0.1`, hand-maintained,
+// and it went stale the moment core and query reached 0.1.0 — a fresh project's first
+// install then failed with `No matching version found for @ramonda/query@~0.0.1`. Deriving
+// it means a release cannot ship a scaffolder that pins versions it did not publish.
+declare const __RAMONDA_RANGES__: Record<string, string>;
+
+/**
+ * The published range for a first-party package. Per package, not one for all of them: they
+ * do not share a version line, and pinning them as if they did is exactly what broke a fresh
+ * project's install.
+ */
+function ramonda(name: string): string {
+  const range = __RAMONDA_RANGES__[name];
+  if (!range) throw new Error(`[create-ramonda] no version known for ${name} — see tsup.config.ts`);
+  return range;
+}
+
+declare const __TOOL_RANGES__: Record<string, string>;
+
+/**
+ * The range for a build tool, from whichever workspace package uses it (see tsup.config.ts).
+ * Hand-written constants drifted: the template pinned vitest 3 while the framework moved to 4.
+ */
+function tool(name: string): string {
+  const range = __TOOL_RANGES__[name];
+  if (!range) throw new Error(`[create-ramonda] no version known for ${name} — see tsup.config.ts`);
+  return range;
+}
 
 type Mode = "spa" | "ssr";
 type AddOn = "router" | "query" | "lens" | "testing" | "devtools" | "biome";
@@ -156,9 +169,17 @@ async function main(): Promise<void> {
   if (doInstall) {
     const inst = p.spinner();
     inst.start(`Installing with ${pm}`);
-    const res = spawnSync(pm, ["install"], { cwd: targetDir, stdio: "ignore" });
-    if (res.status === 0) inst.stop("Installed dependencies");
-    else inst.stop(pc.yellow(`\`${pm} install\` failed — run it yourself in the project.`));
+    // `pipe`, not `ignore`: this step swallowed its own output, so the pnpm error that made
+    // every fresh SSR project fail to start was invisible until someone ran the install by
+    // hand. The reason is the useful part of a failure.
+    const res = spawnSync(pm, ["install"], { cwd: targetDir, encoding: "utf8" });
+    if (res.status === 0) {
+      inst.stop("Installed dependencies");
+    } else {
+      inst.stop(pc.yellow(`\`${pm} install\` failed — run it yourself in the project.`));
+      const reason = firstUsefulLine(`${res.stderr ?? ""}\n${res.stdout ?? ""}`);
+      if (reason) p.log.warn(reason);
+    }
   }
 
   const run = pm === "npm" ? "npm run" : pm;
@@ -180,6 +201,19 @@ export interface ScaffoldOptions {
   addons: AddOn[];
 }
 
+/**
+ * The line worth showing from a failed install: an explicit error if there is one, otherwise
+ * the last non-empty line. A package manager's output is mostly progress.
+ */
+function firstUsefulLine(output: string): string | undefined {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.find((line) => /err|error|fail/i.test(line)) ?? lines[lines.length - 1];
+}
+
 export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): void {
   mkdirSync(targetDir, { recursive: true });
 
@@ -193,34 +227,44 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
 
   // Compose dependencies from the base + the chosen add-ons.
   const deps: Deps = { dependencies: {}, devDependencies: {} };
-  deps.dependencies["@ramonda/core"] = V.ramonda;
+  deps.dependencies["@ramonda/core"] = ramonda("@ramonda/core");
 
-  if (addons.includes("router")) deps.dependencies["@ramonda/router"] = V.ramonda;
-  if (addons.includes("query")) deps.dependencies["@ramonda/query"] = V.ramonda;
-  if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = V.ramonda;
-  if (addons.includes("devtools")) deps.devDependencies["@ramonda/devtools"] = V.ramonda;
+  if (addons.includes("router")) deps.dependencies["@ramonda/router"] = ramonda("@ramonda/router");
+  if (addons.includes("query")) deps.dependencies["@ramonda/query"] = ramonda("@ramonda/query");
+  if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = ramonda("@ramonda/lens");
+  if (addons.includes("devtools")) {
+    deps.devDependencies["@ramonda/devtools"] = ramonda("@ramonda/devtools");
+    importDevtools(targetDir, mode);
+  }
 
   if (mode === "spa") {
-    deps.devDependencies["vite"] = V.vite;
+    deps.devDependencies["vite"] = tool("vite");
   } else {
     // SSR builds with esbuild and serves through a Node process that needs a DOM.
-    deps.devDependencies["esbuild"] = V.esbuild;
-    deps.devDependencies["jsdom"] = V.jsdom;
+    deps.devDependencies["esbuild"] = tool("esbuild");
+    deps.devDependencies["jsdom"] = tool("jsdom");
   }
-  deps.devDependencies["typescript"] = V.typescript;
-  deps.devDependencies["@types/node"] = V.typesNode;
+  deps.devDependencies["typescript"] = tool("typescript");
+  deps.devDependencies["@types/node"] = tool("@types/node");
 
   if (addons.includes("testing")) {
-    deps.devDependencies["vitest"] = V.vitest;
-    deps.devDependencies["@ramonda/testing-library"] = V.ramonda;
-    if (mode === "spa") deps.devDependencies["jsdom"] = V.jsdom;
+    deps.devDependencies["vitest"] = tool("vitest");
+    deps.devDependencies["@ramonda/testing-library"] = ramonda("@ramonda/testing-library");
+    if (mode === "spa") deps.devDependencies["jsdom"] = tool("jsdom");
+    // `vite` is a PEER dependency of vitest (`^6 || ^7 || ^8`), and without it vitest has no
+    // transform: measured on a scaffolded SSR project, where the .tsx reached the runtime
+    // unchanged and the suite died with `SyntaxError: Invalid or unexpected token`. The SPA
+    // template had it already, which is why only SSR was broken.
+    deps.devDependencies["vite"] = tool("vite");
     writeTestingFiles(targetDir, mode);
   }
 
   if (addons.includes("biome")) {
-    deps.devDependencies["@biomejs/biome"] = V.biome;
+    deps.devDependencies["@biomejs/biome"] = tool("@biomejs/biome");
     writeBiomeConfig(targetDir);
   }
+
+  writePnpmSettings(targetDir);
 
   // Merge into the template's package.json, keeping its scripts.
   const pkgPath = join(targetDir, "package.json");
@@ -238,6 +282,84 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   }
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+}
+
+/**
+ * Imports the devtools panel from the app's entry, so it actually appears.
+ *
+ * ## Why the app has to ask
+ *
+ * Core loads the panel itself in a development build, but through a dynamic import whose
+ * specifier is a VARIABLE and marked `@vite-ignore` — deliberately, so that `@ramonda/core`
+ * does not make `@ramonda/devtools` a resolution requirement for every project that
+ * type-checks it. A bundler therefore leaves the string alone, the browser tries to fetch
+ * `@ramonda/devtools` as a URL, and core's `.catch()` swallows the failure by design (the
+ * panel is optional). The result is silence: the add-on was installed and no badge ever
+ * appeared. Measured on a scaffolded project before this.
+ *
+ * One line in the entry fixes it, and it belongs there rather than in core: the app is what
+ * knows the panel was installed.
+ *
+ * Guarded so a production build drops it — `import.meta.env.DEV` for vite, `__DEV__` for the
+ * esbuild templates, which now define it per build.
+ */
+function importDevtools(targetDir: string, mode: Mode): void {
+  const entry = mode === "spa" ? join(targetDir, "src", "main.tsx") : join(targetDir, "src", "entry-client.tsx");
+  if (!existsSync(entry)) return;
+
+  const guard = mode === "spa" ? "import.meta.env.DEV" : "__DEV__";
+  const line = `
+// The devtools panel — press Alt+D, or click the flower badge. Development only: this
+// branch is dropped from a production build, so the panel is never shipped.
+if (${guard}) void import("@ramonda/devtools");
+`;
+
+  writeFileSync(entry, `${readFileSync(entry, "utf8").trimEnd()}\n${line}`);
+}
+
+/**
+ * Lets pnpm run esbuild's install script, without which a scaffolded project does not start.
+ *
+ * ## What goes wrong without it
+ *
+ * pnpm 10 and 11 refuse to run a dependency's build scripts until the project says which are
+ * allowed, and they exit NON-ZERO when any were skipped:
+ *
+ * ```
+ * [ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: esbuild@0.28.1
+ * ```
+ *
+ * esbuild's script is what puts its platform binary in place, so `pnpm dev` then fails on
+ * every fresh project — measured on both templates, because SSR depends on esbuild directly
+ * and the SPA gets it through vite.
+ *
+ * This monorepo could not have caught it: it pins `pnpm@9.0.0`, which has no such gate.
+ *
+ * ## Why both keys, and why a YAML file rather than package.json
+ *
+ * `pnpm-workspace.yaml` is where pnpm 10+ keeps settings, workspace or not — pnpm 11 writes
+ * one itself when it wants an answer. The key changed between versions, so both are written:
+ * `allowBuilds` is pnpm 11's, `onlyBuiltDependencies` is pnpm 10's. Verified against both
+ * (11: exit 0 with either, 10: exit 0 with both, no complaint about the key it does not
+ * know).
+ *
+ * The `pnpm` field in package.json is deliberately NOT used: pnpm 11 warns that it no longer
+ * reads it.
+ *
+ * Written for every project rather than only for pnpm users. It is four lines, npm and yarn
+ * ignore it, and the alternative is a project that breaks for whoever clones it with pnpm.
+ */
+function writePnpmSettings(targetDir: string): void {
+  writeFileSync(
+    join(targetDir, "pnpm-workspace.yaml"),
+    `# esbuild needs its install script to put the platform binary in place. pnpm 11 reads
+# \`allowBuilds\`, pnpm 10 reads \`onlyBuiltDependencies\`; both are here so either works.
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild
+`,
+  );
 }
 
 /** A vitest config + one example test, dropped in when the Testing add-on is picked. */
@@ -279,10 +401,10 @@ test("renders the heading", () => {
  * A Biome config, dropped in when the Biome add-on is picked — one tool for both
  * linting and formatting. `preset: "recommended"` is Biome 2.x's non-deprecated way
  * to turn on the recommended lint rules; `vcs.useIgnoreFile` keeps it off .gitignored
- * paths (dist, node_modules). The schema version tracks V.biome so the two never drift.
+ * paths (dist, node_modules). The schema version tracks tool("@biomejs/biome") so the two never drift.
  */
 function writeBiomeConfig(targetDir: string): void {
-  const version = V.biome.replace(/^\D*/, "");
+  const version = tool("@biomejs/biome").replace(/^\D*/, "");
   const config = {
     $schema: `https://biomejs.dev/schemas/${version}/schema.json`,
     vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },

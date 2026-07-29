@@ -83,6 +83,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/core
     devDependencies:
+      '@ramonda/devtools':
+        specifier: workspace:^
+        version: link:../../packages/devtools
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -102,6 +105,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/router
     devDependencies:
+      '@ramonda/devtools':
+        specifier: workspace:^
+        version: link:../../packages/devtools
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -114,10 +120,16 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/query':
+        specifier: workspace:^
+        version: link:../../packages/query
       '@ramonda/router':
         specifier: workspace:^
         version: link:../../packages/router
     devDependencies:
+      '@ramonda/devtools':
+        specifier: workspace:^
+        version: link:../../packages/devtools
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../../packages/shared
@@ -185,18 +197,30 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vite:
+        specifier: ^7.3.6
+        version: 7.3.6(@types/node@26.1.1)(lightningcss@1.33.0)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.1)(lightningcss@1.33.0))
 
   packages/devtools:
     devDependencies:
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../shared
+      jsdom:
+        specifier: 28.0.0
+        version: 28.0.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@microsoft/api-extractor@7.58.12(@types/node@26.1.1))(postcss@8.5.22)(typescript@5.9.3)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.1)(lightningcss@1.33.0))
 
   packages/lens:
     devDependencies:
@@ -225,8 +249,8 @@ importers:
   packages/query:
     dependencies:
       '@ramonda/core':
-        specifier: workspace:^
-        version: link:../core
+        specifier: '>=0.1.0 <1.0.0'
+        version: 0.1.0
     devDependencies:
       '@ramonda/shared':
         specifier: workspace:^
@@ -253,8 +277,8 @@ importers:
   packages/router:
     dependencies:
       '@ramonda/core':
-        specifier: workspace:^
-        version: link:../core
+        specifier: '>=0.1.0 <1.0.0'
+        version: 0.1.0
     devDependencies:
       '@ramonda/shared':
         specifier: workspace:^
@@ -1075,6 +1099,9 @@ packages:
     resolution: {integrity: sha512-Fa2Iyw7kaDRzGMfNYNUXNW2zbL5FQVDgSOcbDHdzBrDEdpqOqg8TcZ68F22ol6NJ9IGzvUdmeyZypLW5dyhqsg==}
     cpu: [x64]
     os: [win32]
+
+  '@ramonda/core@0.1.0':
+    resolution: {integrity: sha512-7h1DKyQ96Em5knboPYkWDhKTwY44+o5LI1JBqPFgsi7wfHZrxwhOUYUxTjlPbMoyax4W/cMisj2nPK5/PfRyRA==}
 
   '@rolldown/binding-android-arm64@1.2.0':
     resolution: {integrity: sha512-9yB1l95IrJuNGDFdOYe79vdApdz6WWBCObE+rQ2LUliYUlcyFwSYIb2xb5/Ifw7dAtMy2ZqNyd8QTSOc7duAKw==}
@@ -3442,6 +3469,8 @@ snapshots:
 
   '@pagefind/windows-x64@1.5.2':
     optional: true
+
+  '@ramonda/core@0.1.0': {}
 
   '@rolldown/binding-android-arm64@1.2.0':
     optional: true

@@ -1,7 +1,8 @@
-import { Hook, create, destroy, mount, onWindow, StableProps, state, watchProp } from "@ramonda/core";
+import { Hook, create, destroy, mount, onDocument, onWindow, StableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
-import { ClientContext, requireClient } from "./context";
+import { ClientConsumer, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
+import { warnOnce } from "./diagnostics";
 import { hashKey, sameKeyParts } from "./hashKey";
 import type { QueryClient } from "./QueryClient";
 import type {
@@ -49,6 +50,46 @@ export interface QueryProps<TData, K extends QueryKey = QueryKey> extends QueryD
    * cannot act on.
    */
   enabled?: boolean;
+  /**
+   * Data to put IN THE CACHE for this key, if nothing is there yet.
+   *
+   * It behaves exactly like a fetched answer, because that is what it becomes: every observer
+   * of the key sees it, `status` is `"success"`, and staleness applies — with the default
+   * `staleTime: 0` it is stale on arrival and `refetchOnMount` will refresh it. That is usually
+   * what you want from data you already had lying around (a list the previous page fetched, a
+   * value from `localStorage`).
+   *
+   * Pass a function when producing it is not free: the props callback runs on every render of
+   * the owner, so `initialData: build()` builds it every time, while `initialData: build` is
+   * called only when the cache is actually empty.
+   *
+   * Use `initialDataUpdatedAt` when the data is not new — see below.
+   */
+  initialData?: TData | (() => TData);
+  /**
+   * When `initialData` was actually obtained, as a timestamp. Defaults to now.
+   *
+   * Without it, seeded data looks freshly fetched, so a `staleTime` of a minute would keep a
+   * value from `localStorage` for a minute before checking. Pass what you know and staleness
+   * does the right thing — including refetching immediately if it is already older than
+   * `staleTime`.
+   */
+  initialDataUpdatedAt?: number;
+  /**
+   * What THIS observer renders while there is nothing real yet. Never written to the cache.
+   *
+   * The difference from `initialData` is the whole point of having both: initial data IS the
+   * answer until something better arrives, shared by every observer and subject to staleness;
+   * placeholder data is a stand-in this one component shows instead of a spinner, and it is
+   * gone the moment the fetch lands.
+   *
+   * While it is showing, `status` is `"success"` and `data` is the placeholder, so the ordinary
+   * `if (isPending) return <Spinner />` gives way to the stand-in — which is the point.
+   * `isPlaceholder` is how you tell: dim it, or hide the actions that would act on it.
+   *
+   * Pass a function when producing it is not free, for the same reason as `initialData`.
+   */
+  placeholderData?: TData | (() => TData);
 }
 
 /**
@@ -113,9 +154,35 @@ export type QueryResult<TData> =
  * what makes a hand-written options object cheap too, and it is the thing that decides
  * between "different objects" and "different question".
  */
+/**
+ * The parts of a query an app can observe, one bit each. A read is recorded per FACET rather
+ * than per getter, because several getters answer the same question — `isPending`, `isSuccess`
+ * and `isError` are all "what is the status".
+ */
+const enum Facet {
+  Data = 1,
+  Status = 2,
+  Error = 4,
+  Fetching = 8,
+  Failure = 16,
+  UpdatedAt = 32,
+  Restored = 64,
+}
+
+/** A snapshot of the facets, taken whenever the owner is woken. */
+interface Observed {
+  data: unknown;
+  status: QueryStatus;
+  fetchStatus: FetchStatus;
+  error: unknown;
+  failureCount: number;
+  updatedAt: number;
+  restored: boolean;
+}
+
 @StableProps("key")
 export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps<TData, K>> {
-  private ctx = this.use(ClientContext);
+  private ctx = this.use(ClientConsumer);
 
   /**
    * The re-render trigger, and nothing else — what is KNOWN lives in the cache,
@@ -213,6 +280,22 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * getter from writing state mid-render (RMD001).
    */
   private get entry(): QueryEntry<TData> {
+    /**
+     * Reading `version` is load-bearing, and it is what makes a `@compute` over this query
+     * CORRECT rather than frozen.
+     *
+     * The cache is not reactive: an entry is a plain object, and what wakes an observer is the
+     * `version` increment in `notify`. A render re-reads these getters every time, so it never
+     * noticed — but a `@compute` caches, and a compute that read no signal is never invalidated.
+     * Measured before this line existed: `@compute get name() { return this.query.data?.name }`
+     * returned `undefined` forever while the render, reading `data` directly, showed `Ada 4`.
+     *
+     * Touching the signal here means every reader — render, compute, watcher — depends on the
+     * one thing that changes when the entry does. No extra render comes of it: the version
+     * write IS the wake-up, so there is nothing else to schedule.
+     */
+    void this.version;
+
     // The fallback covers the window before the first `@create`: a getter read from a
     // field initializer, which nothing does today but which must not throw.
     return this.attachedEntry ?? this.client.getEntry<TData>(this.props.key);
@@ -308,7 +391,32 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   private rekey(hash: string): void {
     this.attachedHash = hash;
     this.seedFromSnapshot(hash);
+    this.seedInitialData();
     this.attach();
+  }
+
+  /**
+   * Puts `initialData` into the cache, if the cache has nothing for this key.
+   *
+   * From `rekey` rather than a lifecycle, so it also runs when the KEY moves: a new key is a
+   * new question, and if the app has initial data for it, the first render of it should show
+   * that rather than a spinner.
+   *
+   * "If nothing is there" is what makes it safe with several observers and with a key that
+   * comes back: seeding never overwrites an answer, and a value that was already fetched — or
+   * restored from the server — outranks one the app had lying around.
+   */
+  private seedInitialData(): void {
+    const given = this.props.initialData;
+    if (given === undefined) return;
+
+    const entry = this.client.peek<TData>(this.props.key);
+    if (entry !== undefined && entry.status !== "pending") return;
+
+    // Called only now, which is why the function form exists: the props callback runs on every
+    // render, so an inline value would be rebuilt every time for the one render that needs it.
+    const data = typeof given === "function" ? (given as () => TData)() : given;
+    this.client.seed(this.props.key, data, this.props.initialDataUpdatedAt);
   }
 
   /**
@@ -408,8 +516,57 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     // too, for data that was already there and so never notified anyone.
     if (this.onServer) this.captureSnapshot();
 
-    this.version++;
+    this.wake();
   };
+
+  /**
+   * Wakes the owner, unless nothing it has read actually changed.
+   *
+   * The comparison is by identity for `data` and `error` and by value for the rest, because
+   * that is what the cache guarantees: it REPLACES `data` when a fetch lands, so a refetch
+   * returning an equal-but-new object counts as a change. Closing that last gap is what
+   * `select` or structural sharing would be for, and it is deliberately not this.
+   *
+   * Before the first render nothing has been read, and then everything counts — the first
+   * paint must not be skipped on the grounds that the app has not asked for anything yet.
+   */
+  private wake(): void {
+    const next = this.observed();
+    const previous = this.lastSeen;
+    this.lastSeen = next;
+
+    if (__DEV__) this.reportIgnoredError();
+
+    if (previous !== undefined && this.read !== 0 && !this.changed(previous, next)) return;
+
+    this.version++;
+  }
+
+  /** The facets, as the app could observe them right now. */
+  private observed(): Observed {
+    const entry = this.attachedEntry ?? this.client.getEntry<TData>(this.props.key);
+    return {
+      data: entry.data,
+      status: entry.status,
+      fetchStatus: entry.fetchStatus,
+      error: entry.error,
+      failureCount: entry.failureCount,
+      updatedAt: entry.updatedAt,
+      restored: entry.restored === true,
+    };
+  }
+
+  /** Whether anything the app has READ differs between two observations. */
+  private changed(a: Observed, b: Observed): boolean {
+    if (this.read & Facet.Data && !Object.is(a.data, b.data)) return true;
+    if (this.read & Facet.Status && a.status !== b.status) return true;
+    if (this.read & Facet.Fetching && a.fetchStatus !== b.fetchStatus) return true;
+    if (this.read & Facet.Error && !Object.is(a.error, b.error)) return true;
+    if (this.read & Facet.Failure && a.failureCount !== b.failureCount) return true;
+    if (this.read & Facet.UpdatedAt && a.updatedAt !== b.updatedAt) return true;
+    if (this.read & Facet.Restored && a.restored !== b.restored) return true;
+    return false;
+  }
 
   /**
    * Subscribes, and seeds whatever the server sent for this key.
@@ -492,25 +649,44 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   }
 
   /**
-   * Refreshes stale data when the window regains focus.
+   * Refreshes stale data when the tab becomes visible again.
    *
-   * **Only when it is stale**, so a tab switched away from and back inside
-   * `staleTime` costs nothing — which is what makes this a defensible default
-   * rather than a request per alt-tab.
+   * **Only when it is stale**, so a tab switched away from and back inside `staleTime` costs
+   * nothing — which is what makes this a defensible default rather than a request per switch.
    *
-   * `@onWindow` rather than a hand-rolled listener: it is built on an effect, so it
-   * is attached on the client only and removed on destroy with nothing to forget.
-   * Reading props in the HANDLER is safe — an event is not an effect run, so
-   * nothing is recording dependencies, and the key array cannot pull this into the
-   * re-run loop described on `attach`.
+   * ## Why visibility and not focus
+   *
+   * This listened to the window's `focus` event until 2026-07-29, and that signal is wrong in
+   * both directions:
+   *
+   * - **It misses.** On a phone, leaving the browser and coming back reliably fires
+   *   `visibilitychange`; `focus` and `blur` are unreliable there. So the reader returned to
+   *   stale data and nothing refreshed it.
+   * - **It over-fires.** A page that was visible the whole time — a second monitor, a split
+   *   screen, or simply DevTools having focus — fires `focus` when you click into it, though
+   *   nothing was ever hidden. With the default `staleTime: 0` that is a request per click.
+   *
+   * `document.visibilityState` answers the question the option is actually asking: is somebody
+   * looking at this again. TanStack reached the same conclusion and dropped its focus listener.
+   *
+   * ## Why the option is still called `refetchOnWindowFocus`
+   *
+   * Because that is the name people arrive with, and it describes the intent even where it no
+   * longer describes the mechanism. Renaming it would cost every reader a lookup to learn that
+   * nothing about their app changed.
+   *
+   * `@onDocument`, because `visibilitychange` fires on the document — and like `@onWindow` it is
+   * built on an effect, so it attaches on the client only and is removed on destroy with
+   * nothing to forget.
    */
-  @onWindow("focus")
-  refreshOnFocus(): void {
+  @onDocument("visibilitychange")
+  refreshOnVisible(): void {
+    if (document.visibilityState !== "visible") return;
     if (!this.client.resolveObserver(this.observerBehaviour()).refetchOnWindowFocus) return;
     void this.fetchIfNeeded(false);
   }
 
-  /** Refreshes stale data when the browser comes back online. Same shape as focus. */
+  /** Refreshes stale data when the browser comes back online. Same shape as visibility. */
   @onWindow("online")
   refreshOnReconnect(): void {
     if (!this.client.resolveObserver(this.observerBehaviour()).refetchOnReconnect) return;
@@ -659,11 +835,17 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
   /** What is known about the DATA — independent of whether a request is running. */
   get status(): QueryStatus {
+    this.read |= Facet.Status;
+    // `"success"` while a placeholder shows, because that is what a placeholder is FOR: the
+    // ordinary `if (isPending) return <Spinner />` has to give way to the stand-in. Read
+    // `isPlaceholder` to tell the two apart.
+    if (this.showsPlaceholder) return "success";
     return this.entry.status;
   }
 
   /** Whether a request is in flight right now. */
   get fetchStatus(): FetchStatus {
+    this.read |= Facet.Fetching;
     return this.entry.fetchStatus;
   }
 
@@ -674,27 +856,63 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * arrived — see `QueryResult`.
    */
   get data(): TData | undefined {
+    this.read |= Facet.Data;
+    if (this.showsPlaceholder) return this.placeholder();
     return this.entry.data;
   }
 
   /** Whatever the fetcher rejected with, untouched. A restored one is a `ServerQueryError`. */
+  /**
+   * What the app has actually READ off this query, and what those parts looked like when it
+   * was last woken. Together they decide whether a change is worth a render.
+   *
+   * ## Why this exists
+   *
+   * A cache entry changes three times per refetch — the fetch starts, the data arrives, the
+   * freshness moves — and every one of them used to wake the owner. Measured on a query whose
+   * rendered value never changed: three refetches, **nine renders**. Two of the three are for
+   * facts the component never asked about, which is the cheapest kind of wasted work to
+   * remove: it needs no new API, only knowing what was read.
+   *
+   * The same shape TanStack and SWR arrived at, by different means — they proxy the result
+   * object and record field access. Here the getters ARE the access points, so a bit per facet
+   * is enough.
+   *
+   * ## Why the read set only ever grows
+   *
+   * It is never cleared, and that is deliberate: a component that reads `isFetching` inside a
+   * branch would otherwise stop being woken for it the moment the branch is not taken, and the
+   * next time the branch IS taken it would render a stale spinner. Accumulating errs towards
+   * more renders, which is the safe direction — the same reason TanStack tracks from the first
+   * render rather than per render.
+   */
+  private read = 0;
+  private lastSeen: Observed | undefined;
+
+  /** Built at most once — see `placeholder()`. */
+  private placeholderValue: TData | undefined;
+
   get error(): unknown {
+    this.read |= Facet.Error;
     return this.entry.error;
   }
 
   /** No data yet, and no failure to show for it. This is the "loading" case. */
   get isPending(): boolean {
-    return this.entry.status === "pending";
+    // Through `status`, not straight to the entry: a placeholder reports `"success"`, and three
+    // getters that disagree with the one they are shorthand for is the trap `result` already
+    // showed. A test caught this one — `isPending` stayed true under a placeholder.
+    return this.status === "pending";
   }
 
   /** There is data. It may be refetching; check `isFetching` for that. */
   get isSuccess(): boolean {
-    return this.entry.status === "success";
+    return this.status === "success";
   }
 
   /** The last attempt failed. `data` may still hold the last known good value. */
   get isError(): boolean {
-    return this.entry.status === "error";
+    return this.status === "error";
   }
 
   /**
@@ -702,21 +920,63 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * screen, which is the case `isPending` deliberately does not cover.
    */
   get isFetching(): boolean {
+    this.read |= Facet.Fetching;
     return this.entry.fetchStatus === "fetching";
   }
 
   /** Consecutive failed attempts for the request in progress. 0 once it succeeds. */
   get failureCount(): number {
+    this.read |= Facet.Failure;
     return this.entry.failureCount;
   }
 
   /** When the data arrived, by this side's clock. 0 means it never has. */
   get updatedAt(): number {
+    this.read |= Facet.UpdatedAt;
     return this.entry.updatedAt;
   }
 
   /** Whether the data came from a server render rather than a fetch on this side. */
+  /**
+   * Whether what `data` returns is the stand-in rather than an answer.
+   *
+   * Worth rendering: a placeholder is not wrong, but it is not the user's data either, so an
+   * action taken against it may be acting on nothing. Dim it, or hide the buttons.
+   */
+  get isPlaceholder(): boolean {
+    this.read |= Facet.Data | Facet.Status;
+    return this.showsPlaceholder;
+  }
+
+  /**
+   * A placeholder shows only while there is genuinely nothing — no data and no error.
+   *
+   * Not "while pending": a failed query with no data must keep reporting the failure, or a
+   * placeholder would hide it forever and RMQ002 would be the only sign.
+   */
+  private get showsPlaceholder(): boolean {
+    if (this.props.placeholderData === undefined) return false;
+    const entry = this.entry;
+    return entry.status === "pending" && entry.data === undefined;
+  }
+
+  /**
+   * Builds the placeholder, once per instance.
+   *
+   * The function form exists because the props callback runs on every render of the owner, so
+   * an inline value would be rebuilt every time — and a rebuilt object handed to `data` would
+   * change identity on every render, which access tracking would then have to wake for.
+   */
+  private placeholder(): TData | undefined {
+    if (this.placeholderValue === undefined) {
+      const given = this.props.placeholderData;
+      this.placeholderValue = typeof given === "function" ? (given as () => TData)() : given;
+    }
+    return this.placeholderValue;
+  }
+
   get isRestored(): boolean {
+    this.read |= Facet.Restored;
     return this.entry.restored === true;
   }
 
@@ -730,6 +990,12 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * ```
    */
   get result(): QueryResult<TData> {
+    // The union exposes all three at once, so reading it subscribes to all three.
+    this.read |= Facet.Data | Facet.Status | Facet.Error;
+
+    // The union has to agree with the getters, or a component that narrows through `result`
+    // would see `pending` while one reading `data` sees the placeholder.
+    if (this.showsPlaceholder) return { status: "success", data: this.placeholder() as TData, error: undefined };
     const entry = this.entry;
     if (entry.status === "success") {
       return { status: "success", data: entry.data as TData, error: undefined };
@@ -750,5 +1016,62 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   refetch(): Promise<void> {
     return this.fetchIfNeeded(true);
+  }
+
+  /**
+   * RMQ002 — the query failed and the app never looks at failures.
+   *
+   * ## Why this instead of `throwOnError`
+   *
+   * TanStack has an option that rethrows a failure so an error boundary catches it. It is not
+   * built here, and the reason is what a boundary DOES: it replaces the subtree, which means
+   * unmounting — `@destroy`, cleanups, lost local state, lost focus and scroll position — and a
+   * retry then has to rebuild all of it. A failed fetch is not an unexpected situation; the
+   * network fails routinely, which is why `Query` models it as state and keeps the data it had.
+   * Handing that to a boundary punishes the reader for somebody else's timeout.
+   *
+   * What people actually get from `throwOnError` is *noticing*. That is a diagnostic, not an
+   * API — so this is the diagnostic. If the failure genuinely means the page cannot be shown,
+   * the render says so itself (`if (q.isError) return <NotFound />`), which unmounts exactly
+   * what the app chose to unmount.
+   *
+   * ## What it asks
+   *
+   * Not "did this render look" but "does this query's reader EVER look" — the read set is the
+   * same one access tracking keeps, and it never shrinks. That is the better question anyway: a
+   * component that has read `isError` once has the branch, and one that never has cannot show
+   * the failure in any state.
+   *
+   * It follows that the tracking had to come first. Before it, a query read only through `data`
+   * would fail, change nothing visible, and never render again — so a render-based check could
+   * not see it either.
+   */
+  /**
+   * The one case a notification never covers: an error restored from a server render is on
+   * screen at the first paint, and nothing notifies afterwards.
+   */
+  @mount
+  reportRestoredError(): void {
+    if (__DEV__) this.reportIgnoredError();
+  }
+
+  private reportIgnoredError(): void {
+    if (!__DEV__) return;
+    if (this.read & (Facet.Status | Facet.Error)) return;
+
+    // The ATTACHED entry, not `peek(this.props.key)`: peeking hashes the key, and this runs on
+    // every notification — which would undo the identity fast path (measured at 723 ns → 31 ns,
+    // and there is a test that holds it).
+    const entry = this.attachedEntry;
+    if (entry?.status !== "error") return;
+
+    const reason = entry.error instanceof Error ? entry.error.message : String(entry.error);
+    warnOnce(
+      `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing reads its failure: ${reason}\n` +
+        `Read \`isError\`, \`error\`, \`status\` or \`result\` so the reader learns something went wrong — a ` +
+        `failed refetch keeps the data it had, so the page may look fine while showing values nobody can refresh. ` +
+        `If the failure means the page cannot be shown at all, return your own markup for it ` +
+        `(\`if (q.isError) return <NotFound />\`) rather than letting an error boundary unmount the subtree.`,
+    );
   }
 }

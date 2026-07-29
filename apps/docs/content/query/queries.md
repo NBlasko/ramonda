@@ -82,16 +82,41 @@ A query with data can be refetching at the same time, and those are separate fac
 flight". Rendering a spinner for the second one blanks a screen that has something on
 it.
 
+## An equal answer is the same answer
+
+When a fetch returns data equal to what is already cached, the cache **keeps the object it
+had** — so nothing re-renders. And when the answer did change, every part that did not keeps
+its identity, which is what lets [`list()`](/lists) re-render the rows that moved instead of
+all of them.
+
+Measured in jsdom against the render it prevents, on rows of six fields: 28 µs of comparison
+versus 5.4 ms of commit at ten rows, 811 µs versus 272 ms at a thousand. A polled query that
+returns the same page is the common case, not the exception, so this is on by default.
+
+```tsx
+{ structuralSharing: false }   // for a payload that is always different and big
+```
+
+Turn it off only for that: a response large enough for the walk to matter *and* different on
+every fetch, where the comparison is pure cost. Arrays and plain objects are compared; a
+`Date`, a `Map` or a class instance is compared by identity, because equality for those is
+yours to define.
+
 ## When it asks again
 
 | Trigger | Default | Notes |
 |---|---|---|
 | `refetchOnMount` | `"stale"` | `"always"` ignores freshness; `false` never refreshes on mount. Data from the server counts as fresh — see [on the server](/query/server) |
-| `refetchOnWindowFocus` | `true` | Only when STALE, so an alt-tab inside `staleTime` costs nothing |
+| `refetchOnWindowFocus` | `true` | When the tab becomes **visible** again, and only when STALE — an alt-tab inside `staleTime` costs nothing |
 | `refetchOnReconnect` | `true` | Same, when the browser comes back online |
 | `refetchInterval` | off | Polls every N ms, and ignores staleness — an interval *is* the freshness policy |
 | `refetch()` | — | Manual, ignores freshness, and joins a request already in flight rather than starting a second |
 | `invalidate(key)` | — | Marks stale and asks whoever is watching to refresh; the data stays on screen while it does |
+
+The visibility trigger keeps its `focus` name but watches `document.visibilityState`, which
+is the question it is really asking. A window that gains focus having been visible all along —
+a second monitor, a split screen, DevTools — no longer refetches; a phone returning from the
+background now does, which `focus` did not reliably report.
 
 A query with **no** data fetches under all of these: `refetchOnMount` decides whether
 to REFRESH, and there is nothing to refresh yet.
@@ -116,6 +141,62 @@ if (this.user.isError && this.user.data) {
   return <p>{this.user.data.name} <small>could not refresh</small></p>;
 }
 ```
+
+## When the failure means the page cannot be shown
+
+Sometimes an error is not something to render beside the content — it *is* the answer. Say so
+in the render:
+
+```tsx
+render() {
+  if (this.user.isError) return <NotFound />;
+  if (this.user.isPending) return <p>Loading…</p>;
+  return <p>{this.user.data!.name}</p>;
+}
+```
+
+**There is no `throwOnError`**, and that is deliberate rather than missing. Handing a failed
+fetch to an [error boundary](/composition/error-boundaries) replaces the whole subtree, which
+means unmounting: `@destroy` runs, cleanups run, local state goes, focus and scroll position
+go — and a retry has to rebuild all of it. A failed request is not an unexpected situation.
+The network fails routinely, which is why a failure is *state* here and the data you had is
+kept. The two lines above unmount exactly what you chose to unmount, and nothing else.
+
+What an app does lose without a boundary is the reminder to handle the error at all — so
+development builds report a query that failed while the render never read `isError`, `error`,
+`status` or `result` (`RMQ002`).
+
+## Starting with something already in hand
+
+Two options, and the difference between them is the reason both exist.
+
+**`initialData` goes in the cache.** It *is* the answer until something better arrives: every
+observer of the key sees it, and staleness applies to it — so with the default `staleTime: 0`
+it shows on the first render and is refreshed immediately.
+
+```tsx
+{ initialData: cachedTodos, initialDataUpdatedAt: savedAt }
+```
+
+Pass `initialDataUpdatedAt` when the data is not new. Without it, seeded data looks freshly
+fetched, so a one-minute `staleTime` would keep a value from `localStorage` for a minute
+before checking.
+
+**`placeholderData` never touches the cache.** It is a stand-in *this* component shows
+instead of a spinner, and it is gone the moment the fetch lands:
+
+```tsx
+{ placeholderData: emptyPage }
+```
+
+While it shows, `status` is `"success"` and `data` is the stand-in — which is the point, so
+that the ordinary `if (isPending) return <Spinner />` gives way to it. `isPlaceholder` is how
+you tell: dim it, or hide the actions that would act on nothing. A **failure is never hidden**
+by it; a placeholder covers "nothing yet", not "it went wrong".
+
+Both take a function, and it is worth using for anything that is not free to build: the props
+callback runs on every render of the owner, so `placeholderData: buildEmpty()` builds it every
+time, while `placeholderData: buildEmpty` is called once.
 
 ## Holding a query back
 

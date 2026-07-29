@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Async state for Ramonda: cached, deduped, race-free queries and mutations that survive a server render.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -50,9 +50,6 @@
     "format": "biome format --write src",
     "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts"
   },
-  "dependencies": {
-    "@ramonda/core": "workspace:^"
-  },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",
     "@ramonda/testing-library": "workspace:^",
@@ -61,5 +58,8 @@
     "typescript": "^5.9.3",
     "vite": "7.3.6",
     "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@ramonda/core": ">=0.1.0 <1.0.0"
   }
 }

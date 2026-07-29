@@ -71,6 +71,21 @@ export interface QueryBehaviour {
    */
   staleTime?: number;
   /**
+   * Keep the previous data when a fetch returns something equal to it. Defaults to `true`.
+   *
+   * A fetch hands back a fresh object every time, even when the bytes are identical, so
+   * without this every poll looks like a change and re-renders every observer. With it, an
+   * unchanged answer keeps its identity and nothing wakes; a changed answer keeps the identity
+   * of every part that did not change, so `list()` re-renders the rows that moved rather than
+   * all of them.
+   *
+   * Measured in jsdom against the render it prevents: 28 µs of comparison against 5.4 ms of
+   * commit for 10 rows, 811 µs against 272 ms for 1000. Turn it off for a payload that is
+   * always different and large enough for the walk to matter — then the comparison is pure
+   * cost.
+   */
+  structuralSharing?: boolean;
+  /**
    * How long an entry with no observers is kept before it is dropped, in
    * milliseconds. Defaults to five minutes.
    *
@@ -123,6 +138,7 @@ export interface ResolvedFetchOptions {
   gcTime: number;
   retry: RetryPolicy;
   retryDelay: RetryDelayPolicy;
+  structuralSharing: boolean;
 }
 
 /**
@@ -150,10 +166,18 @@ export interface ObserverBehaviour {
   /** See `RefetchOnMount`. Defaults to `"stale"`. */
   refetchOnMount?: RefetchOnMount;
   /**
-   * Refresh stale data when the window regains focus. Defaults to `true`.
+   * Refresh stale data when the tab becomes visible again. Defaults to `true`.
    *
-   * Only when it is STALE: a tab switched away from and back within `staleTime`
-   * fetches nothing, so the default is not a request per alt-tab.
+   * Only when it is STALE: a tab switched away from and back within `staleTime` fetches
+   * nothing, so the default is not a request per alt-tab.
+   *
+   * **The name says focus, the mechanism is visibility**, and that is deliberate. It listened
+   * to the window's `focus` event until 2026-07-29, which is wrong in both directions: on a
+   * phone, leaving the browser and returning does not reliably fire it, so the reader came back
+   * to stale data; and a page that was visible all along — a second monitor, a split screen,
+   * DevTools holding focus — fires it on a click, which with the default `staleTime: 0` was a
+   * request per click. `document.visibilityState` answers the question the option is asking.
+   * The name stays because it is the one people arrive with.
    */
   refetchOnWindowFocus?: boolean;
   /** Refresh stale data when the browser comes back online. Defaults to `true`. */

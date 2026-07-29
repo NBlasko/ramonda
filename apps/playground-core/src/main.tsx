@@ -11,6 +11,7 @@ import "./styles";
    - "/showcase" mounts a grid exercising every decorator + nested hooks.
    - "/table" exercises list(): nested lists, two lists in one component, a matrix.
    - Open devtools (🌸 badge / Alt+D) → COMPONENTS to inspect the live tree.
+     (The import at the bottom is what makes that badge exist — see the note there.)
 
    Pages live in ./pages (one per route), the bigger demos in ./demos.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -44,6 +45,9 @@ class NavBar extends Component {
         </Link>
         <Link href="/about" className="navlink">
           About
+        </Link>
+        <Link href="/diagnostics" className="navlink">
+          Diagnostics
         </Link>
         <button onClick={this.route.back}>← Back</button>
         <button onClick={this.route.forward}>Forward →</button>
@@ -90,3 +94,17 @@ class App extends Component {
 
 // biome-ignore lint/style/noNonNullAssertion: #app exists in index.html
 bootstrap(<App />, document.querySelector<HTMLDivElement>("#app")!);
+
+/**
+ * The devtools panel — the flower badge, or Alt+D.
+ *
+ * The app has to ask for it. Core loads the panel itself in a development build, but through a
+ * dynamic import whose specifier is a VARIABLE marked `@vite-ignore` — deliberately, so
+ * `@ramonda/core` does not make `@ramonda/devtools` a resolution requirement for every project
+ * that type-checks it. Vite therefore leaves the string alone, the browser tries to fetch
+ * `@ramonda/devtools` as a URL, and core's `.catch()` swallows the failure because the panel is
+ * genuinely optional. The result is silence: the development logs appear, and no badge does.
+ *
+ * `import.meta.env.DEV` so a production build drops it.
+ */
+if (import.meta.env.DEV) void import("@ramonda/devtools");

@@ -73,27 +73,62 @@ if (__DEV__) {
   // And `.catch` is not optional — devtools is genuinely optional, so a project
   // that never installed it (e.g. a scaffold with tests but no devtools add-on)
   // must not eat an unhandled "Cannot find package '@ramonda/devtools'" rejection.
-  if (typeof document !== "undefined") {
-    const devtoolsSpecifier = "@ramonda/devtools";
-    import(/* @vite-ignore */ devtoolsSpecifier)
-      .then(() => {
-        if (!document.querySelector("ramonda-devtools")) {
-          const devTools = document.createElement("ramonda-devtools");
-          document.body.appendChild(devTools);
-        }
+  /**
+   * `customElements`, not `document`.
+   *
+   * A server render can have a `document` — this repo's own SSR playground gives its Node
+   * process a jsdom one — so `typeof document !== "undefined"` does not mean "browser". It never
+   * mattered while every browser API here sat inside the dynamic import's `.then()`, which fails
+   * on the server; moving the mount out of that callback put `customElements` on the top level
+   * of this block, and the SSR playground died at import with `ReferenceError: customElements is
+   * not defined`.
+   *
+   * The panel IS a custom element, so the registry is the capability that actually has to exist.
+   * `NodeEnvironment.test.ts` imports this module with no DOM at all, which is the check that
+   * would have caught it.
+   */
+  if (typeof customElements !== "undefined" && typeof window !== "undefined") {
+    /**
+     * The panel is mounted by whoever DEFINES it, not by whoever imports it.
+     *
+     * This used to live inside the dynamic import's `.then()`, and that was the bug behind
+     * "the logs appear but no badge does". An app that imports `@ramonda/devtools` itself —
+     * which it must, because the specifier below is a variable a bundler cannot resolve —
+     * registered the custom element and nothing else: the append, and the Alt+D listener,
+     * were both waiting on an import that fails in the browser. It looked right in Node,
+     * where the bare specifier resolves, which is exactly how it survived being tested.
+     *
+     * `whenDefined` is the honest hook: it fires for either route — core's own import when
+     * the specifier happens to resolve, or the app's explicit one.
+     */
+    void customElements.whenDefined("ramonda-devtools").then(() => {
+      if (!document.querySelector("ramonda-devtools")) {
+        document.body.appendChild(document.createElement("ramonda-devtools"));
+      }
+    });
 
-        window.addEventListener("keydown", (e) => {
-          // Check for Alt + D (`code` is more stable than `key`).
-          if (e.altKey && e.code === "KeyD") {
-            console.log("🌸 Ramonda Core: Alt+D pressed, sending the signal...");
-            window.dispatchEvent(new CustomEvent("ramonda:toggle-devtools"));
-          }
-        });
-      })
-      .catch(() => {
-        // No devtools installed (or it failed to load) → no in-page inspector.
-        // That is a fine state, not an error worth surfacing.
-      });
+    // Outside the import entirely: the shortcut costs nothing when no panel is listening, and
+    // tying it to the import is what made it disappear along with the badge.
+    window.addEventListener("keydown", (e) => {
+      // Alt + D (`code` is more stable than `key`).
+      if (e.altKey && e.code === "KeyD") {
+        window.dispatchEvent(new CustomEvent("ramonda:toggle-devtools"));
+      }
+    });
+
+    /**
+     * Still attempted, for the app that installed devtools and did not import it: in an
+     * environment where a bare specifier resolves at runtime (Node, an import map) this is all
+     * that is needed. The specifier is a variable so the type-checker does not make
+     * `@ramonda/devtools` a requirement for every package that reads core's source, and
+     * `.catch()` is not optional — devtools is genuinely optional, and an unhandled rejection
+     * would be worse than a missing panel.
+     */
+    const devtoolsSpecifier = "@ramonda/devtools";
+    import(/* @vite-ignore */ devtoolsSpecifier).catch(() => {
+      // Not installed, or not resolvable from the browser. An app that imports it explicitly
+      // has already covered this; either way the page is fine without a panel.
+    });
   }
 }
 

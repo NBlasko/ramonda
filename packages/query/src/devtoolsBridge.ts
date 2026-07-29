@@ -44,8 +44,17 @@ interface QueryRow {
   updatedAt: number;
   failureCount: number;
   restored: boolean;
-  /** Serialized shallowly — the panel shows a shape, not the data. */
+  /** One capped line, which the panel uses as the change signal for its list. */
   dataPreview: string;
+  /**
+   * The cached value, bounded — what the panel renders as a collapsible tree.
+   *
+   * A preview was all the panel got at first, and it kept being the wrong answer: 120 characters
+   * showed the key back to you, 2000 stopped in the middle of the second page of an infinite
+   * query. The size that matters is not near any cap, so the panel gets the structure and decides
+   * how much of it to draw.
+   */
+  data: unknown;
   error: string | undefined;
 }
 
@@ -61,7 +70,12 @@ interface QueryBridge {
 
 const clients: QueryClient[] = [];
 
-const MAX_PREVIEW = 120;
+/**
+ * 120 showed `{"products":[{"id":1,"title":"Essence Mascara…` and stopped there, which tells
+ * you nothing you did not already know from the key. The panel scrolls a long value now, so the
+ * cap is only here to keep a megabyte of cached data off the wire on every poll.
+ */
+const MAX_PREVIEW = 2000;
 
 function preview(value: unknown): string {
   if (value === undefined) return "—";
@@ -73,6 +87,58 @@ function preview(value: unknown): string {
     // A cache can hold anything a fetcher returned, including something cyclic.
     return "[unserializable]";
   }
+}
+
+/**
+ * A JSON-safe copy, bounded twice.
+ *
+ * The panel is a devtools panel, so it must not be able to hold the app's objects: what crosses
+ * the bridge is a copy, and a cache can hold anything a fetcher returned — something enormous,
+ * something cyclic, a class instance. A node budget bounds the width and a depth cap bounds the
+ * recursion, and it takes both (the budget alone was tried in `structuralSharing`, where a cycle
+ * blew the call stack long before 20 000 visits). Anything not walked is replaced by a string that
+ * SAYS what it was, because a copy that quietly drops half the answer is worse than no copy.
+ */
+const SNAPSHOT_BUDGET = 20_000;
+const SNAPSHOT_DEPTH = 12;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function snapshotValue(value: unknown, budget: { left: number }, depth: number, seen: Set<unknown>): unknown {
+  if (budget.left-- <= 0) return "[… budget]";
+
+  if (Array.isArray(value) || isPlainObject(value)) {
+    if (seen.has(value)) return "[circular]";
+    if (depth >= SNAPSHOT_DEPTH) return Array.isArray(value) ? `[Array(${value.length}) — too deep]` : "[… too deep]";
+
+    seen.add(value);
+    try {
+      if (Array.isArray(value)) return value.map((item) => snapshotValue(item, budget, depth + 1, seen));
+      const out: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(value)) out[key] = snapshotValue(item, budget, depth + 1, seen);
+      return out;
+    } finally {
+      seen.delete(value);
+    }
+  }
+
+  // A Date, a Map, a class instance, a function: named rather than copied. Reproducing one
+  // faithfully is guesswork, and guessing wrong in a panel is worse than saying what it is.
+  if (typeof value === "function") return "ƒ()";
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value === "symbol") return value.toString();
+  if (typeof value === "object" && value !== null) {
+    try {
+      return `${value.constructor?.name ?? "Object"}(${String(value)})`;
+    } catch {
+      return "[object]";
+    }
+  }
+  return value;
 }
 
 function describeError(error: unknown): string | undefined {
@@ -97,6 +163,7 @@ function bridge(): QueryBridge {
             failureCount: entry.failureCount,
             restored: entry.restored === true,
             dataPreview: preview(entry.data),
+            data: snapshotValue(entry.data, { left: SNAPSHOT_BUDGET }, 0, new Set()),
             error: describeError(entry.error),
           })),
         })),

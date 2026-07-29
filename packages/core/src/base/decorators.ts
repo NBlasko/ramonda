@@ -10,6 +10,7 @@ import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME 
 import { ramondaLog } from "../debug/logger";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
+import { recordCompute } from "../debug/computeChurn";
 import { STABLE_PROPS } from "../helpers/constants";
 import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
 import {
@@ -1176,6 +1177,10 @@ export function compute<T, R>(
             // Run the original getter — this is where cache.deps gets filled.
             cache.value = originalMethod.call(this);
             cache.isDirty = false;
+
+            // RMD024: recomputing to the same answer, over and over, means the cache is doing
+            // nothing — see computeChurn.ts for why neither RMD020 nor RMD022 can see it.
+            if (__DEV__) recordCompute(this as object, String(context.name), cache.value);
           } finally {
             // Restore the previous tracker — it matters for nested @compute
             // reads, where an inner one would otherwise steal the outer's deps.

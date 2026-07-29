@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --conditions=production --target=es2022 --outfile=dist/client/assets/client.js",
-    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --conditions=production --platform=node --target=es2022 --outfile=dist/server/entry-server.js",
+    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --target=es2022 --conditions=production --define:__DEV__=false --outfile=dist/client/assets/client.js",
+    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --target=es2022 --conditions=production --define:__DEV__=false --platform=node --outfile=dist/server/entry-server.js",
     "build": "npm run build:client && npm run build:server",
     "start": "node server.mjs",
-    "dev": "npm run build && npm run start"
+    "dev": "npm run dev:client && npm run dev:server && npm run start",
+    "dev:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --target=es2022 --conditions=development --define:__DEV__=true --outfile=dist/client/assets/client.js",
+    "dev:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=h --inject:./jsx-shim.ts --target=es2022 --conditions=development --define:__DEV__=true --platform=node --outfile=dist/server/entry-server.js"
   }
 }

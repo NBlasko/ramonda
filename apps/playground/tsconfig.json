@@ -8,7 +8,8 @@
     "strict": true,
     "skipLibCheck": true,
     "paths": {
-      "@ramonda/core": ["../../packages/core/src/index.ts"]
+      "@ramonda/core": ["../../packages/core/src/index.ts"],
+      "@ramonda/devtools": ["../../packages/devtools/src/index.ts"]
     }
   },
   "include": ["src", "global.d.ts"]

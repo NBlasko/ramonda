@@ -56,6 +56,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD021` | warning | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
 | `RMD022` | warning | A hook's props callback built a new value for the same contents |
 | `RMD023` | warning | Components built from an array, with no keys |
+| `RMD024` | warning | A `@compute` recomputes without its answer changing |
 
 ### RMD001 — State written during render()
 
@@ -759,3 +760,25 @@ what is genuinely unhandled: unkeyed COMPONENT rows, of which there are at least
 markup is patched in place and correct; a component's row moving takes its state and its
 DOM with it. One keyed child anywhere means the app is managing identity and the framework
 does not second-guess it.
+
+### RMD024 — a @compute recomputes without its answer changing
+
+Recorded in `debug/computeChurn.ts`, from the recompute site in the `compute` decorator: one
+bounded `valueEqual` against the previous value, per recompute, DEV only. Reported after three
+consecutive equal answers.
+
+**Why three.** One recompute that returns an equal value is ordinary — a dependency moved and
+the answer happened not to. Below three, correct code gets warned at for coincidences.
+
+**Why neither neighbour covers it.** RMD020 renders twice and the compute is CACHED between the
+two calls, so both see the same value. RMD022 compares props bags and skips anything declared
+with `@StableProps` or wrapped in `stable()`, and a compute reading a component prop is outside
+it entirely.
+
+**Keyed by instance and member**, in a `WeakMap` of instances to a map of member names: two
+instances of one component are two questions, and one churning says nothing about the other. A
+test asserts the report COUNT for that reason rather than its presence.
+
+**The honest limit**, stated in the docs too: a compute that reads only something non-reactive
+is never invalidated, so it never recomputes and is never observed. The counter case is caught
+only when the compute is invalidated by something else.

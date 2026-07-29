@@ -20,9 +20,9 @@ interface QueryContextValue {
  * and only under real traffic. So the absence of a provider is a null, and asking
  * for a client without one throws with instructions.
  */
-const [ClientProvider, ClientContext] = createContext<QueryContextValue>({ client: null }, { label: "QueryClient" });
+const [ClientProvider, ClientConsumer] = createContext<QueryContextValue>({ client: null }, { label: "QueryClient" });
 
-export { ClientContext };
+export { ClientConsumer };
 
 /**
  * Every field is optional, and the props bag itself may be left out — so the
@@ -138,7 +138,7 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
  * ```
  */
 export class QueryClientAccess extends Hook {
-  private ctx = this.use(ClientContext);
+  private ctx = this.use(ClientConsumer);
 
   get client(): QueryClient {
     return requireClient(this.ctx.client, this.constructor.name);
