@@ -203,8 +203,10 @@ class RamondaDevTools extends HTMLElement {
           position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
           z-index: 2147483645; display: none; backdrop-filter: blur(2px);
         }
+        /* Twice the old 450px, capped so it cannot swallow a narrow window: the panel is for
+           reading a component tree and a query table, both of which are wide. */
         .ramonda-panel {
-          position: fixed; top: 0; right: 0; width: 450px; height: 100vh;
+          position: fixed; top: 0; right: 0; width: min(900px, 92vw); height: 100vh;
           background: #111; color: #eee; z-index: 2147483647;
           box-shadow: -5px 0 25px rgba(0,0,0,0.5);
           transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
