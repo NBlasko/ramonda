@@ -214,6 +214,22 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * getter from writing state mid-render (RMD001).
    */
   private get entry(): QueryEntry<TData> {
+    /**
+     * Reading `version` is load-bearing, and it is what makes a `@compute` over this query
+     * CORRECT rather than frozen.
+     *
+     * The cache is not reactive: an entry is a plain object, and what wakes an observer is the
+     * `version` increment in `notify`. A render re-reads these getters every time, so it never
+     * noticed — but a `@compute` caches, and a compute that read no signal is never invalidated.
+     * Measured before this line existed: `@compute get name() { return this.query.data?.name }`
+     * returned `undefined` forever while the render, reading `data` directly, showed `Ada 4`.
+     *
+     * Touching the signal here means every reader — render, compute, watcher — depends on the
+     * one thing that changes when the entry does. No extra render comes of it: the version
+     * write IS the wake-up, so there is nothing else to schedule.
+     */
+    void this.version;
+
     // The fallback covers the window before the first `@create`: a getter read from a
     // field initializer, which nothing does today but which must not throw.
     return this.attachedEntry ?? this.client.getEntry<TData>(this.props.key);
