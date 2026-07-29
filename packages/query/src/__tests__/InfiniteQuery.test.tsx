@@ -58,7 +58,7 @@ function mountFeed(server: ReturnType<typeof makeServer>, options?: { maxPages?:
      * nothing flows between two properties of the same literal. Measured — that is what
      * this helper exists for.
      */
-    feed = this.use(InfiniteQuery, (self: Feed) =>
+    feed = this.use(InfiniteQuery, () =>
       infiniteQueryOptions({
         key: ["posts"],
         initialPageParam: 0,

@@ -1,7 +1,7 @@
 import { Hook, StableProps, state } from "@ramonda/core";
 import { QueryClientAccess } from "./context";
 import { Query, type QueryResult } from "./Query";
-import type { FetchContext, InfiniteData, InfiniteQueryProps, PageContext, QueryKey, QueryStatus } from "./types";
+import type { FetchContext, InfiniteData, InfiniteQueryProps, QueryKey, QueryStatus } from "./types";
 
 /**
  * A query whose answer arrives a page at a time, held as one cache entry.

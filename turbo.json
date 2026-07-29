@@ -3,13 +3,13 @@
   "ui": "tui",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "content"],
       "env": ["VITE_APP_TYPE", "NODE_ENV"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**"]
     },
     "test": {
-      "dependsOn": ["build"],
+      "dependsOn": ["build", "content"],
       "inputs": ["$TURBO_DEFAULT$", "src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"]
     },
     "lint": {
@@ -18,11 +18,14 @@
       "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"]
     },
     "check-types": {
-      "dependsOn": ["^check-types"]
+      "dependsOn": ["^check-types", "content"]
     },
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "content": {
+      "outputs": ["src/generated/**"]
     }
   }
 }
