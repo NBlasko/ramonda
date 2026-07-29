@@ -2,11 +2,16 @@ import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
 /**
- * The docs app has one test, and it guards the thing this app IS: the examples.
+ * The docs app's tests guard the two things this app IS: the examples, and the build.
  *
  * Every demo on the site is code people copy, so a demo that trips a diagnostic
  * teaches the mistake the diagnostic exists to prevent. `src/__tests__/demos.test.tsx`
- * mounts all of them with RMD020's double render on and fails if any reports.
+ * mounts all of them with the strict render on and fails if any reports.
+ *
+ * `src/__tests__/ProdAppBuild.test.ts` is the other one, and it is here rather than in
+ * core because this is where a real application build lives: it builds a fixture app with
+ * this app's own aliases and asserts that no diagnostic and no devtools reached the
+ * output. It runs in node and shells out to esbuild, so it needs `.ts` in `include`.
  *
  * The aliases matter more here than anywhere else: the demos import `@ramonda/core` by
  * specifier, and resolving that to the built package while the harness uses source
@@ -28,5 +33,5 @@ export default defineConfig({
       "@ramonda/devtools": resolve(__dirname, "./devtools-stub.ts"),
     },
   },
-  test: { globals: true, environment: "jsdom", include: ["src/__tests__/*.test.tsx"] },
+  test: { globals: true, environment: "jsdom", include: ["src/__tests__/*.test.{ts,tsx}"] },
 });

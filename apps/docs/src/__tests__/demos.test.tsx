@@ -7,18 +7,20 @@ import { demos } from "../demos/index";
 (globalThis as unknown as { h: typeof h }).h = h;
 
 /**
- * Every demo on the site, mounted with RMD020's double render ON.
+ * Every demo on the site, mounted with the strict render ON — so both stability checks
+ * run: RMD020 over what `render()` returned, RMD022 over what a hook's props callback
+ * returned.
  *
  * A demo is code people copy, so one that builds a handler inline teaches exactly what
- * the diagnostic exists to prevent. This is the tripwire: add a demo with an inline
- * arrow, an inline style object or a rebuilt list `each`, and this fails with the
- * component and the attribute named.
+ * the diagnostics exist to prevent. This is the tripwire: add a demo with an inline
+ * arrow, an inline style object, a rebuilt list `each` or a rebuilt query key, and this
+ * fails with the component and the attribute named.
  *
  * It also catches a demo that cannot mount at all, which the prerender would only
  * catch later and less clearly.
  */
 describe("published demos", () => {
-  test("none of them report RMD020", () => {
+  test("none of them report RMD020 or RMD022", () => {
     const offenders: string[] = [];
 
     for (const [name, Demo] of Object.entries(demos)) {
@@ -47,14 +49,18 @@ describe("published demos", () => {
         spy.mockRestore();
       }
 
-      for (const report of logs.filter((line) => line.includes("RMD020"))) {
+      for (const report of logs.filter((line) => line.includes("RMD020") || line.includes("RMD022"))) {
         // Keep what the message says, so a failure names the attribute rather than
         // only the demo.
+        // Strip the console styling only — CSS argument groups look like `a: b; c: d`,
+        // and a blanket "drop everything up to a semicolon" swallowed the message itself,
+        // which has semicolons of its own.
         const detail = report
           .replace(/%c/g, " ")
-          .replace(/[^;]*;/g, "")
-          .replace(/\s+/g, " ");
-        offenders.push(`${name}: ${detail.slice(0, 160)}`);
+          .replace(/(?:[a-z-]+\s*:[^;]*;\s*)+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        offenders.push(`${name}: ${detail.slice(0, 200)}`);
       }
     }
 

@@ -16,6 +16,7 @@ export { Ref, createRef } from "./base/Ref";
 export type { RefCallback, RefTarget } from "./base/Ref";
 export type { AsyncLoadProps, AsyncLoadFailure, Lazy } from "./base/AsyncLoad";
 export { list } from "./base/list";
+export { stable } from "./base/stable";
 export type { ListOptions } from "./types/list";
 export { Head } from "./base/Head";
 export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";

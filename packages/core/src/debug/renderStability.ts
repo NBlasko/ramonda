@@ -1,4 +1,5 @@
 import { devFlags } from "../config";
+import { isPlainObject, valueEqual } from "../helpers/valueEqual";
 import { IS_LIST } from "../helpers/constants";
 import type { BaseComponent } from "../types/vdom";
 import { diagnose } from "./diagnostics";
@@ -69,53 +70,7 @@ interface VNodeLike {
 }
 
 /** What kind of instability a differing pair is. */
-type Kind = "handler" | "object" | "nondeterministic";
-
-function isPlainObject(value: unknown): value is Attributes {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-/** How deep `looksRebuilt` compares, and how many array elements it looks at. */
-const COMPARE_DEPTH = 2;
-const COMPARE_WIDTH = 50;
-
-/**
- * Whether two values are equal by CONTENT while being different objects — which is
- * what "rebuilt in place" looks like.
- *
- * Two levels deep, not one, and a test is the reason: a list's `each` built as
- * `rows.map((row) => ({ ...row }))` is a fresh array of fresh objects, so a
- * one-level compare called it "different contents" and reported non-determinism —
- * a true finding with a misleading message. The interesting fact is that the array
- * was rebuilt, and that only shows one level further in.
- *
- * Bounded in both directions, because this runs on every render in a development
- * build: a long list is compared for its first `COMPARE_WIDTH` elements, and if
- * those match it is called rebuilt. Under-reporting past that is acceptable; a
- * render that is slow to check is not.
- */
-function looksRebuilt(a: unknown, b: unknown, depth = 0): boolean {
-  if (Object.is(a, b)) return true;
-  if (depth >= COMPARE_DEPTH) return false;
-
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    const width = Math.min(a.length, COMPARE_WIDTH);
-    for (let i = 0; i < width; i++) if (!looksRebuilt(a[i], b[i], depth + 1)) return false;
-    return true;
-  }
-
-  if (isPlainObject(a) && isPlainObject(b)) {
-    const aKeys = Object.keys(a);
-    if (aKeys.length !== Object.keys(b).length) return false;
-    for (const key of aKeys) if (!looksRebuilt(a[key], b[key], depth + 1)) return false;
-    return true;
-  }
-
-  return false;
-}
+export type Kind = "handler" | "object" | "nondeterministic";
 
 /**
  * Classifies a pair that is not `Object.is`-equal.
@@ -123,7 +78,7 @@ function looksRebuilt(a: unknown, b: unknown, depth = 0): boolean {
  * `undefined` means "this is not instability" — the two values differ in a way that
  * says nothing about how they were built (one side missing entirely, say).
  */
-function classify(a: unknown, b: unknown): Kind | undefined {
+export function classify(a: unknown, b: unknown): Kind | undefined {
   if (typeof a === "function" && typeof b === "function") {
     // Same source text, different identity: a closure built in place. A DIFFERENT
     // source means the render picked a different function, which two calls in one
@@ -132,7 +87,7 @@ function classify(a: unknown, b: unknown): Kind | undefined {
   }
 
   if ((isPlainObject(a) && isPlainObject(b)) || (Array.isArray(a) && Array.isArray(b))) {
-    return looksRebuilt(a, b) ? "object" : "nondeterministic";
+    return valueEqual(a, b) ? "object" : "nondeterministic";
   }
 
   // Two primitives that differ between two calls in the same tick: the render is not

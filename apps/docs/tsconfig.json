@@ -7,6 +7,9 @@
     "jsxFactory": "h",
     "strict": true,
     "skipLibCheck": true,
+    // `src/__tests__/ProdAppBuild.test.ts` runs a real esbuild build and reads what it
+    // emitted, so it needs node's fs/path/child_process.
+    "types": ["node"],
     "paths": {
       "@ramonda/core": ["../../packages/core/src/index.ts"],
       "@ramonda/lens": ["../../packages/lens/src/index.ts"],

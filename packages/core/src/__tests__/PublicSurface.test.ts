@@ -20,6 +20,7 @@ const EXPECTED = [
   "Component",
   "Hook",
   "list",
+  "stable",
   "AsyncLoad",
   "ErrorBoundary",
   "createContext",

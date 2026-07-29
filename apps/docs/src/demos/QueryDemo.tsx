@@ -1,4 +1,4 @@
-import { Component, Host, memoizedHandler, state } from "@ramonda/core";
+import { Component, Host, memoizedHandler, stable, state } from "@ramonda/core";
 import { Query, QueryClientProvider, type FetchContext } from "@ramonda/query";
 
 interface Profile {
@@ -36,12 +36,19 @@ interface CardProps {
 // 10 seconds the cache answers and no request is made.
 @Host("div")
 class ProfileCard extends Component<CardProps> {
+  /**
+   * A bound method rather than a closure, and `stable()` around the key: the callback
+   * runs on every render, so both would otherwise be fresh every time and RMD022 would
+   * say so. `load` reads `this.props` when it is CALLED, so there is nothing to capture.
+   */
+  load(ctx: FetchContext) {
+    this.props.onRequest();
+    return getProfile(this.props.id, ctx);
+  }
+
   private profile = this.use(Query, (self: ProfileCard) => ({
-    key: ["profile", self.props.id],
-    fetch: (ctx: FetchContext) => {
-      self.props.onRequest();
-      return getProfile(self.props.id, ctx);
-    },
+    key: stable(["profile", self.props.id]),
+    fetch: self.load,
     staleTime: 10_000,
   }));
 

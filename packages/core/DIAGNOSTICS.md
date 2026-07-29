@@ -54,6 +54,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD016` | warning | A component updated while its element is not in the document |
 | `RMD020` | warning | `render()` produced a different value the second time |
 | `RMD021` | warning | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
+| `RMD022` | warning | A hook's props callback built a new value for the same contents |
 
 ### RMD001 — State written during render()
 

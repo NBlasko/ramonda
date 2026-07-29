@@ -28,7 +28,8 @@ export type DiagnosticCode =
   | "RMD018"
   | "RMD019"
   | "RMD020"
-  | "RMD021";
+  | "RMD021"
+  | "RMD022";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -130,6 +131,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "A clock or a random number was read during render() or a @compute",
     fix: "Both have to be a function of their inputs. In render() a value read from outside makes the output depend on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute it is quieter and worse: the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. Read it once in @create and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it.",
+  },
+  RMD022: {
+    severity: "warning",
+    title: "A hook's props callback built a new value for the same contents",
+    fix: 'The callback runs on every render of the owner, and every prop is a signal — so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects, on every render. For an array or an object, wrap it in stable(): stable(["user", self.props.id]) keeps one identity while the contents are equal, the counterpart of list() for a props bag. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @create and keep it in @state.',
   },
   RMD013: {
     severity: "error",

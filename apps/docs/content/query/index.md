@@ -34,9 +34,15 @@ class App extends Component {
 
 class UserCard extends Component<{ id: string }> {
   private user = this.use(Query, (self: UserCard) => ({
-    key: ["user", self.props.id],
-    fetch: ({ signal }: FetchContext) => api.getUser(self.props.id, { signal }),
+    // `stable()` and a bound method, because the callback runs on every render: a fresh
+    // array or closure is a changed prop. See writing a hook.
+    key: stable(["user", self.props.id]),
+    fetch: self.load,
   }));
+
+  load({ signal }: FetchContext) {
+    return api.getUser(this.props.id, { signal });
+  }
 
   render() {
     if (this.user.isPending) return <p>Loading…</p>;
@@ -119,7 +125,7 @@ is checked against a target type, so every parameter is typed, `key` included:
 ```tsx
 private todo = this.use(Query, (self: TodoCard) =>
   queryOptions({
-    key: ["todo", self.props.id] as const,
+    key: stable(["todo", self.props.id] as const),
     fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
   }),
 );

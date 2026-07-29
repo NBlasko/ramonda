@@ -40,8 +40,8 @@ The key usually depends on a prop, so a prop change is a key change:
 
 ```tsx
 private user = this.use(Query, (self: UserCard) => ({
-  key: ["user", self.props.id],
-  fetch: ({ signal }: FetchContext) => api.getUser(self.props.id, { signal }),
+  key: stable(["user", self.props.id]),
+  fetch: self.load,
 }));
 ```
 
@@ -50,8 +50,12 @@ key's state — pending, or whatever is cached for it — rather than the previo
 name under the new user's heading for a frame. The request for the old key is
 abandoned, and if you forwarded `ctx.signal` the browser stops it too.
 
-Building the key array fresh on every render is fine and expected. The comparison is
-by value, so a rebuilt `["user", 42]` changes nothing.
+A rebuilt key finds the same query — the comparison is by value, measured at 31 ns, so
+`["user", 42]` built again is the same question. But the array is also a **prop**, and a
+prop compares by reference, so rebuilding it wakes everything that reads it on every
+render. That is why the example above wraps it in
+[`stable()`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) and passes a
+bound method for `fetch`; development builds report the rebuilt forms as `RMD022`.
 
 ## Freshness
 
@@ -116,8 +120,8 @@ A query that depends on something not there yet takes `enabled`:
 
 ```tsx
 private orders = this.use(Query, (self: Panel) => ({
-  key: ["orders", self.props.userId],
-  fetch: ({ signal }: FetchContext) => api.getOrders(self.props.userId, { signal }),
+  key: stable(["orders", self.props.userId]),
+  fetch: self.load,
   enabled: self.props.userId !== undefined,
 }));
 ```
@@ -168,17 +172,6 @@ prefetch above the tree is how a page stays under it.
 Also on the client: `setData` (write straight into the cache — a fetch in flight is
 abandoned, because an explicit write is newer information than a request made before
 it), `peek`, `invalidate`, `remove` for a logout, and `cancel`.
-
-## When the options should be one stable object
-
-`key` is an array literal and `fetch` is usually a closure, so the options object is
-rebuilt on every render of the owner. `Query` is built for that — it compares the key
-part by part, measured at 31 ns — so there is nothing to do in the ordinary case.
-
-If you want the whole thing stable anyway (a `@compute` of your own reads it, say), the
-two forms are in [writing a hook](/hooks/writing#when-the-bag-should-stay-the-same-object):
-a method instead of a closure for `fetch`, or a `@compute` holding the options, which
-makes the key and the closure stable together.
 
 ## Next
 

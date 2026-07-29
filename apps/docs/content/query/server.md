@@ -14,9 +14,13 @@ again. There is nothing to configure for any of that.
 ```tsx
 class UserCard extends Component<{ id: string }> {
   private user = this.use(Query, (self: UserCard) => ({
-    key: ["user", self.props.id],
-    fetch: ({ signal }: FetchContext) => api.getUser(self.props.id, { signal }),
+    key: stable(["user", self.props.id]),
+    fetch: self.load,
   }));
+
+  load({ signal }: FetchContext) {
+    return api.getUser(this.props.id, { signal });
+  }
 
   render() {
     return <p>{this.user.data?.name ?? "…"}</p>;

@@ -293,6 +293,38 @@ differently in each, so the message differs with it:
 Read it once in `@create` and keep it in `@state` (or `@persist`, so it survives
 hydration), take it as a prop, or read it in the event handler that needs it.
 
+## RMD022 — a hook's props callback built a new value for the same contents
+
+The props callback is called **twice in the same tick** and the two bags compared — the
+same check [RMD020](#rmd020-render-produced-a-different-value-the-second-time) runs on
+`render()`, on the other place the framework asks the app for a value on every render. It
+is part of the strict render, so `configureDev({ strictRender: false })` turns both off.
+
+Why it matters more here than it looks: **every prop is a signal**, and a signal compares
+by reference. A rebuilt array is a *changed* prop, so a `@compute` reading it recomputes, a
+`@watchProp` on it fires, and a subscription whose `connect` reads it reconnects — on
+every render of the owner. Measured across three renders: a compute reading a rebuilt
+array runs three times where one reading a scalar prop runs once, and a child component
+handed a rebuilt function re-renders 3/3.
+
+Three findings, three fixes:
+
+- **an array or object** — wrap it in [`stable()`](/reference/api), which keeps one
+  identity while the contents are equal (nested objects included). It is the counterpart
+  of [`list()`](/lists) for a props bag.
+- **a function** — a bound method (`fetch: self.load`) reads `this` when it is called, so
+  there is nothing to capture and the identity never changes;
+  [`@memoizedHandler`](/concepts/events) when it has to be built per argument. Functions
+  cannot go through `stable()`: two closures with the same body are not equal by any
+  comparison that is safe to make.
+- **different contents from two calls in one tick** — the callback is not a function of
+  state. Read the value once in `@create` and keep it in `@state`, or read it where it is
+  needed. `stable()` cannot hide this one; what is compared is the contents, not the
+  wrapper.
+
+A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
+answer when several are unstable together.
+
 ## What is non-deterministic in JavaScript, and what catches it
 
 The inventory, because "collect how many of these exist" is the right instinct — and

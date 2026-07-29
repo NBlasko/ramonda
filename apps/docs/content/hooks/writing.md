@@ -91,34 +91,52 @@ rerender({ start: 99 }); // like a parent passing new props
 `current` stays the same object between renders — a hook is built once and lives as
 long as its owner; only its fields change.
 
-## When the bag should stay the same object
+## When a value in the bag should keep its identity
 
 The callback runs on every render of the owner, so the bag it returns is a new object
-each time, with new arrays and new closures inside it. That is almost always fine — the
-values are equal, and the framework compares each prop and wakes only the signals whose
-value actually moved.
+each time — and so is every array and closure inside it. **Every prop is a signal**, and a
+signal compares by reference, so a rebuilt array is a *changed* prop: a `@compute` reading
+it recomputes, a `@watchProp` on it fires, and a subscription whose `connect` reads it
+reconnects. Every render. Measured in core's tests, across three renders of the owner: a
+compute reading a rebuilt array runs three times where one reading a scalar prop runs
+once.
 
-It stops being fine when something **reactive** reads the bag. A `@compute` that reads a
-rebuilt array recomputes every render, so its cache does nothing; a subscription whose
-`connect` reads one disconnects and reconnects every render. Two ways to fix that, both
-using what you already have.
+Development builds report it as [RMD022](/reference/diagnostics) — the callback is called
+twice in the same tick and the two bags compared, the same check `render()` gets. There
+are two fixes, one per kind of value.
 
-**A method instead of a closure.** It reads `this` when it is called, so there is
-nothing to capture — and methods are bound, so the identity never changes:
+**An array or an object: `stable()`.** It keeps one identity for as long as the contents
+are equal — the counterpart of [`list()`](/lists) for a props bag:
+
+```tsx
+import { stable } from "@ramonda/core";
+
+private user = this.use(Query, (self: UserCard) => ({
+  key: stable(["user", self.props.id]),   // the same array until `id` moves
+  fetch: self.load,
+}));
+```
+
+Contents are compared by value, nested objects included, so
+`stable(["posts", { page, tag }])` survives a render where neither moved. Write the
+literal exactly as you would have; what changes is which reference comes out the other
+side.
+
+**A function: a bound method.** Two closures with the same body are not equal by any
+comparison that is safe to make, so functions cannot go through `stable()`. A method
+reads `this` when it is *called*, so there is nothing to capture — and methods are bound,
+so the identity never changes:
 
 ```tsx
 load(ctx: FetchContext) {
   return api.getUser(this.props.id, ctx);   // read at call time
 }
-
-private user = this.use(Query, (self: UserCard) => ({
-  key: ["user", self.props.id],
-  fetch: self.load,                          // the same function every render
-}));
 ```
 
-**A [`@compute`](/concepts/compute) for the whole bag**, which fixes the arrays and the
-closures in one move:
+[`@memoizedHandler`](/concepts/events) covers the case where the function has to be built
+per argument; it caches by its arguments, so it is stable too.
+
+**Or a `@compute` for the whole bag**, which fixes every value in it at once:
 
 ```tsx
 @compute get userQuery() {
@@ -129,14 +147,13 @@ private user = this.use(Query, (self: UserCard) => self.userQuery);
 ```
 
 A compute recomputes only when something it **read** changes, so on an unrelated render
-the bag, the key array and the closure are all the same objects as last time. Measured
-in core's own tests: three renders, one bag.
+the bag, the key array and the closure are all the same objects as last time.
 
 **The rule for a compute is one sentence: read what you need.** If it is reactive, the
 compute refreshes itself when it moves. If it is *not* reactive — `Date.now()`, a module
 variable, the DOM — the compute freezes it at the moment it was first asked for and
-nothing ever refreshes it. Development builds report randomness read inside a compute
-for exactly that reason ([RMD021](/reference/diagnostics)).
+nothing ever refreshes it. Development builds report randomness read inside a compute for
+exactly that reason ([RMD021](/reference/diagnostics)).
 
 ## Next
 

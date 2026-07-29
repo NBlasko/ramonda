@@ -1,9 +1,16 @@
-import { Component, Host, onElement, state } from "@ramonda/core";
-import { Mutation, Query, QueryClientProvider, mutationOptions, queryOptions } from "@ramonda/query";
+import { Component, Host, list, onElement, stable, state } from "@ramonda/core";
+import { Mutation, Query, QueryClient, QueryClientProvider, mutationOptions, queryOptions } from "@ramonda/query";
 
 // The "server": a list, and a rule that rejects anything already there. The
 // rejection is what makes the rollback visible.
 let todos = ["write the docs"];
+
+/**
+ * One array for "nothing yet", because `each: this.list.data ?? []` would build a fresh
+ * empty array on every render while the query is pending — a changed `each`, which costs
+ * the list its row identities. RMD020 reports it.
+ */
+const NONE: string[] = [];
 
 function loadTodos(): Promise<string[]> {
   return new Promise((resolve) => setTimeout(() => resolve([...todos]), 300));
@@ -22,6 +29,21 @@ function createTodo(title: string): Promise<string> {
   });
 }
 
+/**
+ * Optimistic: the item is on screen before the request answers. What this returns is the
+ * ROLLBACK — the same "return the cleanup" contract `@effect` and
+ * `createSubscriptionDecorator` use — and it runs only if the mutation fails.
+ *
+ * A module function, so its identity never changes. Declared inline it would be a fresh
+ * closure on every render of the owner, which is a changed prop (RMD022) — and it needs
+ * nothing from the component, only what the mutation hands it.
+ */
+function optimisticAdd(title: string, { client }: { client: QueryClient }): () => void {
+  const previous = client.peek<string[]>(["todos"])?.data;
+  client.setData<string[]>(["todos"], (list) => [...(list ?? []), title]);
+  return () => client.setData<string[]>(["todos"], previous ?? []);
+}
+
 // The host IS the form, and that is not decoration: `@onElement` listens on the
 // component's HOST element, so a `submit` handler needs the host to be the thing
 // that emits `submit`. With the default host it would only work by bubbling — and
@@ -34,27 +56,22 @@ export class MutationDemo extends Component {
 
   private list = this.use(Query, () =>
     queryOptions({
-      key: ["todos"],
-      fetch: () => loadTodos(),
+      // `stable()` and bound methods, because the callback runs on every render: a fresh
+      // array or closure is a changed prop, and RMD022 reports it. See the diagnostics
+      // reference for what it costs.
+      key: stable(["todos"]),
+      fetch: loadTodos,
       staleTime: 10_000,
     }),
   );
 
   private add = this.use(Mutation, () =>
     mutationOptions({
-      mutate: (title: string) => createTodo(title),
-      // Optimistic: the item is on screen before the request answers. What this
-      // returns is the ROLLBACK — the same "return the cleanup" contract
-      // `@effect` and `createSubscriptionDecorator` use — and it runs only if
-      // the mutation fails.
-      onMutate: (title, { client }) => {
-        const previous = client.peek<string[]>(["todos"])?.data;
-        client.setData<string[]>(["todos"], (list) => [...(list ?? []), title]);
-        return () => client.setData<string[]>(["todos"], previous ?? []);
-      },
+      mutate: createTodo,
+      onMutate: optimisticAdd,
       // On success the list is refetched, so the optimistic guess is replaced by
       // whatever the server actually has.
-      invalidates: [["todos"]],
+      invalidates: stable([["todos"]]),
     }),
   );
 
@@ -69,6 +86,10 @@ export class MutationDemo extends Component {
     this.add.mutate(title);
   }
 
+  renderTodo(title: string) {
+    return <li>{title}</li>;
+  }
+
   /** A bound method, not an inline arrow: RMD020 reports a handler built per render. */
   onDraftInput(event: Event) {
     this.draft = (event.target as HTMLInputElement).value;
@@ -77,11 +98,13 @@ export class MutationDemo extends Component {
   render() {
     return (
       <div>
-        <ul>
-          {(this.list.data ?? []).map((title) => (
-            <li>{title}</li>
-          ))}
-        </ul>
+        {/*
+          `list()`, not `.map()`. A map builds every vnode on every render and gives the
+          diff nothing to match rows by; a list is lazy — the descriptor is built in
+          render, the items by the diff, and an unchanged row's scope is reused. Its
+          `render` is a bound method for the same reason.
+        */}
+        <ul>{list({ each: this.list.data ?? NONE, render: this.renderTodo })}</ul>
 
         <p className="demo-row">
           <input value={this.draft} placeholder="new todo" onInput={this.onDraftInput} />
