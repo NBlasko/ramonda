@@ -157,6 +157,17 @@ class RamondaDevTools extends HTMLElement {
    */
   private pinned: string | undefined;
   private filter = "";
+  /** Picking from the page: see `setPicking`. */
+  private picking = false;
+  /**
+   * Element → path, the reverse of `nodeMap`, rebuilt on every structural render.
+   *
+   * A `WeakMap` because the keys are the app's live elements and this panel must never be the
+   * reason one of them is kept alive. Insertion follows the walk, so a parent is written before
+   * its children — and when a parent and a child share a host element, the deeper one wins, which
+   * is the one the cursor is actually over.
+   */
+  private elementPaths = new WeakMap<Node, string>();
 
   constructor() {
     super();
@@ -175,6 +186,23 @@ class RamondaDevTools extends HTMLElement {
     });
 
     window.dispatchEvent(new CustomEvent("ramonda:devtools-ready"));
+  }
+
+  /**
+   * Leaves the page exactly as it was found.
+   *
+   * In an app the panel is mounted once and never removed, so this is not a cleanup anybody
+   * waits for — but a docked panel puts a margin on the body and a picking one puts a crosshair
+   * on the cursor, and both would outlive the element that owns them. A test mounts and drops
+   * the panel repeatedly, which is where that leak shows up first.
+   */
+  disconnectedCallback() {
+    this.setPicking(false);
+    if (this.docked) {
+      document.body.style.marginRight = this.savedMargin;
+      this.docked = false;
+    }
+    this.watching = false;
   }
 
   private get inspect(): InspectFn | undefined {
@@ -222,7 +250,16 @@ class RamondaDevTools extends HTMLElement {
     const handle = this.shadowRoot!.querySelector(".ramonda-resize") as HTMLElement;
 
     const stored = Number(read(WIDTH_KEY));
-    if (Number.isFinite(stored) && stored > 0) panel.style.width = `${this.clampWidth(stored)}px`;
+    if (Number.isFinite(stored) && stored > 0) this.style.setProperty("--panel-w", `${this.clampWidth(stored)}px`);
+
+    // A window narrowed below the panel's width would otherwise leave the page squeezed to
+    // nothing, with no way to see what happened.
+    window.addEventListener("resize", () => {
+      const width = this.panelWidth();
+      const clamped = this.clampWidth(width);
+      if (clamped !== width) this.style.setProperty("--panel-w", `${clamped}px`);
+      this.applyDock();
+    });
 
     handle.addEventListener("pointerdown", (event: PointerEvent) => {
       if (event.button !== 0) return;
@@ -235,7 +272,10 @@ class RamondaDevTools extends HTMLElement {
 
       // Dragging LEFT widens, so the delta is inverted: the panel is anchored to the right.
       const onMove = (move: PointerEvent) => {
-        panel.style.width = `${this.clampWidth(startWidth + (startX - move.clientX))}px`;
+        // The custom property rather than `style.width`, so the badge offset and the body margin
+        // read the same number the panel is drawn at.
+        this.style.setProperty("--panel-w", `${this.clampWidth(startWidth + (startX - move.clientX))}px`);
+        this.applyDock();
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
@@ -313,15 +353,25 @@ class RamondaDevTools extends HTMLElement {
           font-weight: bold; font-size: 20px; cursor: grab; z-index: 2147483647;
           box-shadow: 0 4px 15px rgba(0,0,0,0.3); user-select: none; touch-action: none;
         }
-        .ramonda-overlay {
-          position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
-          z-index: 2147483645; display: none; backdrop-filter: blur(2px);
-        }
-        /* 620px sits between the original 450 and the 900 that turned out to cover too much of
-           the app. It is only a STARTING width — the left edge is a drag handle and the choice
-           is remembered, so the default just has to be reasonable rather than right. */
+        /**
+         * The panel DOCKS: opening it puts a right margin on the body, so the app reflows into
+         * what is left instead of sitting underneath.
+         *
+         * This is the fix for a whole class of problem rather than one annoyance. As an overlay,
+         * highlighting a component often highlighted something the panel was covering — which is
+         * why the drawer used to fade after a delay, and a panel that disappears while you read it
+         * is its own kind of wrong. Nothing is behind the panel now, so there is nothing to fade,
+         * and the highlight is simply visible.
+         *
+         * What it cannot squeeze: an element the app itself positions as fixed, and a layout pinned
+         * to the full viewport width. Browser devtools has the same limit for the same reason, and
+         * the drag handle is the answer when it bites.
+         *
+         * 620px sits between the original 450 and the 900 that covered too much. It is only a
+         * STARTING width — the left edge is a drag handle and the choice is remembered.
+         */
         .ramonda-panel {
-          position: fixed; top: 0; right: 0; width: min(620px, 92vw); height: 100vh;
+          position: fixed; top: 0; right: 0; width: var(--panel-w, min(620px, 92vw)); height: 100vh;
           min-width: 280px; max-width: 96vw;
           container-type: inline-size;
           background: #111; color: #eee; z-index: 2147483647;
@@ -341,7 +391,9 @@ class RamondaDevTools extends HTMLElement {
         /* While dragging, the pointer is over the app, not the handle — without this every
            move selects a paragraph behind the panel. */
         .ramonda-panel.resizing { user-select: none; }
-        :host([open]) .ramonda-overlay { display: block; }
+        /* A fixed badge is not squeezed by the body margin, so while open it would sit ON the
+           panel. The header's × closes it, and so does the keyboard shortcut. */
+        :host([open]) .ramonda-badge { display: none; }
         .header { padding: 20px; background: #7A4FBF; color: white; display: flex; justify-content: space-between; align-items: center; }
         .log-item { position: relative; border-bottom: 1px solid #222; padding: 12px 30px 12px 0; font-family: monospace; }
         .delete-btn { position: absolute; right: 0; top: 12px; background: none; border: none; color: #666; cursor: pointer; font-size: 16px; }
@@ -384,13 +436,6 @@ class RamondaDevTools extends HTMLElement {
 
         .component-node.leaf .comp-summary { padding-left: 13px; }
 
-        /* A tree row hovered long enough fades the panel, so the highlight it draws on the page
-           is not hidden behind the panel drawing it. Delayed, so passing the cursor over the
-           tree does not strobe. */
-        .ramonda-panel.peek { opacity: 0.12; transition: opacity .25s ease .55s; }
-        .ramonda-panel.peek:hover { opacity: 0.12; }
-        :host([open]) .ramonda-overlay.peek { opacity: 0; }
-
         .tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 20px; background: #171717;
                  border-bottom: 1px solid #2a2a2a; }
         .tools button { background: #262626; border: 1px solid #383838; color: #ccc; font: inherit;
@@ -411,6 +456,14 @@ class RamondaDevTools extends HTMLElement {
         .crumb.here { color: #B18AE6; font-weight: bold; cursor: default; }
         .crumb.gone { color: #ffcc00; cursor: default; }
         .crumb-sep { color: #555; }
+
+        .pick-label {
+          position: fixed; left: 0; top: 0; z-index: 2147483647; display: none;
+          background: #7A4FBF; color: #fff; font-family: sans-serif; font-size: 12px;
+          padding: 3px 7px; border-radius: 4px; pointer-events: none;
+          box-shadow: 0 2px 8px rgba(0,0,0,.4); white-space: nowrap;
+        }
+        .pick-label.on { display: block; }
 
         .pin-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 12px;
                    padding: 0 4px; cursor: pointer; }
@@ -481,7 +534,7 @@ class RamondaDevTools extends HTMLElement {
       </style>
 
     <div class="ramonda-badge">R</div>
-    <div class="ramonda-overlay"></div>
+    <div class="pick-label" id="pick-label"></div>
     <div class="ramonda-panel">
       <div class="ramonda-resize" title="drag to resize"></div>
       <div class="header">
@@ -499,6 +552,7 @@ class RamondaDevTools extends HTMLElement {
       <div id="components-tab" class="tab-content">
         <div class="tools">
           <input id="tree-filter" class="tool-search" type="search" placeholder="filter by name" />
+          <button type="button" data-tool="pick" title="pick a component from the page">⌖<span class="tw"> pick</span></button>
           <button type="button" data-tool="expand" title="expand all">▾<span class="tw"> expand all</span></button>
           <button type="button" data-tool="collapse" title="collapse all">▸<span class="tw"> collapse all</span></button>
           <button type="button" data-tool="values" title="hide state &amp; props">◧<span class="tw"> hide state &amp; props</span></button>
@@ -522,7 +576,6 @@ class RamondaDevTools extends HTMLElement {
     this.setupResize();
     this.setupNavigation();
     this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
-    this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener("click", () => this.toggle());
   }
 
   private addLogToUI(detail: DevLogPayload) {
@@ -570,14 +623,47 @@ class RamondaDevTools extends HTMLElement {
 
   toggle() {
     this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
+    this.applyDock();
     this.updateWatchState();
     this.updateQueryWatch();
   }
 
   private openDevTools() {
     this.setAttribute("open", "");
+    this.applyDock();
     this.updateWatchState();
     this.updateQueryWatch();
+  }
+
+  /**
+   * Squeezes the page beside the panel, and puts it back exactly as it was.
+   *
+   * The body's own inline `margin-right` is saved on the first open and restored on close — an app
+   * that sets one itself gets it back, and the panel leaves no trace in the DOM it borrowed.
+   * `--panel-w` carries the width so the CSS and this margin cannot disagree.
+   */
+  private applyDock(): void {
+    const open = this.hasAttribute("open");
+    const body = document.body;
+
+    if (!open) {
+      body.style.marginRight = this.savedMargin;
+      return;
+    }
+
+    if (!this.docked) {
+      this.savedMargin = body.style.marginRight;
+      this.docked = true;
+    }
+    body.style.marginRight = `${this.panelWidth()}px`;
+  }
+
+  private docked = false;
+  private savedMargin = "";
+
+  private panelWidth(): number {
+    const panel = this.shadowRoot!.querySelector(".ramonda-panel");
+    return panel ? Math.round(panel.getBoundingClientRect().width) : 0;
   }
 
   /**
@@ -596,6 +682,11 @@ class RamondaDevTools extends HTMLElement {
     for (const button of Array.from(root.querySelectorAll("[data-tool]"))) {
       button.addEventListener("click", () => {
         const tool = (button as HTMLElement).dataset.tool;
+
+        if (tool === "pick") {
+          this.setPicking(!this.picking);
+          return;
+        }
 
         if (tool === "expand" || tool === "collapse") {
           for (const details of Array.from(container.querySelectorAll("details"))) {
@@ -697,6 +788,9 @@ class RamondaDevTools extends HTMLElement {
     } else {
       window.dispatchEvent(new CustomEvent("ramonda:devtools-unwatch"));
       this.clearHighlight();
+      // Closing the panel or leaving the tab leaves the page with a crosshair cursor and a
+      // handler eating its clicks, with nothing on screen to explain either.
+      this.setPicking(false);
     }
   }
 
@@ -1044,6 +1138,8 @@ class RamondaDevTools extends HTMLElement {
     container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
     this.lastValues = acc.values;
     this.nodeMap = acc.nodes;
+    this.elementPaths = new WeakMap();
+    for (const [path, node] of acc.nodes) this.elementPaths.set(node, path);
     this.lastSig = acc.sig.join(";");
     this.attachInspectorEvents(container);
     this.applyFilter();
@@ -1099,6 +1195,124 @@ class RamondaDevTools extends HTMLElement {
       .join("");
 
     return `${all}${steps}`;
+  }
+
+  /**
+   * Picking a component by pointing at it on the page — the navigation the tree cannot give you.
+   *
+   * You almost always know what on SCREEN you care about, and almost never where it sits in the
+   * tree. This inverts the search: hover the page, the component under the cursor is outlined and
+   * named, and a click focuses it in the panel.
+   *
+   * Three things make it work, and each is load-bearing:
+   *
+   * - **The listeners capture on `window`.** Ramonda attaches a handler to its element directly,
+   *   in the bubble phase, so capturing before it and stopping propagation is what keeps a pick
+   *   from ALSO submitting the form or opening the menu you pointed at.
+   * - **The cursor becomes a crosshair.** The only signal that the next click will not reach the
+   *   app; a mode you cannot see is a mode you forget you are in.
+   */
+  private setPicking(on: boolean): void {
+    if (on === this.picking) return;
+    this.picking = on;
+
+    this.classList.toggle("picking", on);
+    this.shadowRoot!.querySelector('[data-tool="pick"]')?.classList.toggle("on", on);
+
+    const events = ["pointermove", "pointerdown", "pointerup", "click", "keydown"] as const;
+    for (const type of events) {
+      if (on) window.addEventListener(type, this.onPick, true);
+      else window.removeEventListener(type, this.onPick, true);
+    }
+
+    if (on) {
+      this.previousCursor = document.body.style.cursor;
+      document.body.style.cursor = "crosshair";
+    } else {
+      document.body.style.cursor = this.previousCursor;
+      this.clearHighlight();
+      this.showPickLabel(undefined, 0, 0);
+    }
+  }
+
+  private previousCursor = "";
+
+  /**
+   * One handler for every pointer event, and it swallows all of them.
+   *
+   * A field holding an arrow function rather than a method: the same reference has to come back
+   * out for `removeEventListener`, and `this.onPick.bind(this)` would produce a new one each time
+   * and leave the old listener attached forever.
+   */
+  private onPick = (event: Event): void => {
+    if (!this.picking) return;
+
+    // Anything inside the panel is retargeted to the host element, which is how a hover over the
+    // panel itself is told apart from a hover over the page.
+    const target = event.target;
+    if (target === this || (target instanceof Node && this.contains(target))) return;
+
+    if (event.type === "keydown") {
+      if ((event as KeyboardEvent).key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.setPicking(false);
+      return;
+    }
+
+    const path = this.pathForElement(target);
+
+    if (event.type === "pointermove") {
+      const pointer = event as PointerEvent;
+      if (path) this.highlight(path);
+      else this.clearHighlight();
+      this.showPickLabel(path, pointer.clientX, pointer.clientY);
+      return;
+    }
+
+    // Every remaining event is a press or a click on the app, and the app must not see it: a pick
+    // that also triggers what it pointed at is worse than no picker.
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.type !== "click") return;
+    this.setPicking(false);
+    if (path) this.pin(path);
+  };
+
+  /** The nearest ancestor that IS a component — the cursor is usually over some child element. */
+  private pathForElement(target: EventTarget | null): string | undefined {
+    let element = target instanceof HTMLElement ? target : null;
+    while (element) {
+      const path = this.elementPaths.get(element);
+      if (path) return path;
+      element = element.parentElement;
+    }
+    return undefined;
+  }
+
+  /**
+   * The name of what is under the cursor, next to the cursor.
+   *
+   * It has to be here rather than in the tree, because while picking the reader is looking at the
+   * page: a name in a panel they are not reading is a name they do not see. Clamped so it cannot
+   * push itself off the bottom-right edge, where the cursor spends much of its time.
+   */
+  private showPickLabel(path: string | undefined, x: number, y: number): void {
+    const label = this.shadowRoot!.querySelector("#pick-label") as HTMLElement | null;
+    if (!label) return;
+
+    if (path === undefined) {
+      label.classList.remove("on");
+      return;
+    }
+
+    const name = path.slice(path.lastIndexOf(":") + 1);
+    const kind = path.includes(`:hook:${name}`) ? "hook" : "component";
+    label.textContent = kind === "hook" ? name : `<${name} />`;
+    label.classList.add("on");
+    label.style.left = `${Math.min(x + 14, window.innerWidth - label.offsetWidth - 8)}px`;
+    label.style.top = `${Math.min(y + 18, window.innerHeight - label.offsetHeight - 8)}px`;
   }
 
   /** Focuses one component, or the whole tree when given `undefined`. */
@@ -1191,34 +1405,24 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /**
-   * Highlights the real element, and gets out of the way.
+   * Highlights the real element, by direct reference rather than by name.
    *
-   * The panel is 900px of opaque drawer over the page it is describing, so highlighting a
-   * component often highlights something behind the panel. `peek` fades the drawer — after a
-   * delay carried by the CSS transition, so sweeping the cursor down the tree does not strobe —
-   * and it comes straight back on `mouseleave`. Nothing is unmounted and no layout moves, which
-   * matters: the element being highlighted must not shift because the panel changed.
+   * It used to fade the panel first, because the panel covered the page it was describing and the
+   * highlight was often behind it. The panel docks now, so the app is beside it and there is
+   * nothing to get out of the way of. Nothing is unmounted and no layout moves either, which
+   * matters: the element being highlighted must not shift because the panel reacted.
    */
   private highlight(path: string) {
     const node = this.nodeMap.get(path);
     if (!node || !(node instanceof HTMLElement)) return;
     this.clearHighlight();
-    this.peek(true);
     this.highlighted = node;
     node.dataset.ramondaPrevOutline = node.style.outline;
     node.style.outline = "2px solid #7A4FBF";
     node.style.backgroundColor = "rgba(255, 0, 85, 0.1)";
   }
 
-  /** Fades the drawer while a row is hovered, so the highlight underneath is visible. */
-  private peek(on: boolean): void {
-    this.shadowRoot!.querySelector(".ramonda-panel")?.classList.toggle("peek", on);
-    this.shadowRoot!.querySelector(".ramonda-overlay")?.classList.toggle("peek", on);
-  }
-
   private clearHighlight() {
-    this.peek(false);
-
     const node = this.highlighted;
     if (!node) return;
     node.style.outline = node.dataset.ramondaPrevOutline || "";

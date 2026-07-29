@@ -144,7 +144,9 @@ describe("focusing one component", () => {
     const panel = mount(() => tree());
     focus(panel, "ProductDetail");
 
-    panel.shadowRoot.querySelector('#crumbs [data-crumb=""]')!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    panel.shadowRoot
+      .querySelector('#crumbs [data-crumb=""]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     expect(summaries(panel)).toHaveLength(4);
     expect(panel.shadowRoot.querySelector("#crumbs")!.classList.contains("on")).toBe(false);
@@ -323,12 +325,118 @@ describe("the Query tab", () => {
 
     expect(age.dataset.qAge).toBe('0:["products"]');
 
-    const refresh = () =>
-      (panel as unknown as { renderQueries(): void }).renderQueries.call(panel);
+    const refresh = () => (panel as unknown as { renderQueries(): void }).renderQueries.call(panel);
     expect(refresh).not.toThrow();
     // The same element, updated in place: rebuilding the list is what made the tab flicker.
     expect(container.querySelector("[data-q-age]")).toBe(age);
 
     openTab(panel, "logs");
+  });
+});
+
+describe("docking", () => {
+  it("squeezes the page while open and puts the margin back on close", () => {
+    document.body.style.marginRight = "17px"; // the app's own margin
+    const panel = mount(() => tree());
+
+    // Opened by `mount` through the attribute, so dock explicitly the way the badge does.
+    (panel as unknown as { applyDock(): void }).applyDock();
+    expect(document.body.style.marginRight).not.toBe("17px");
+    expect(document.body.style.marginRight).toMatch(/px$/);
+
+    (panel as unknown as { toggle(): void }).toggle();
+    expect(document.body.style.marginRight).toBe("17px");
+    document.body.style.marginRight = "";
+  });
+});
+
+describe("picking a component from the page", () => {
+  const start = (panel: Panel) => {
+    panel.shadowRoot.querySelector('[data-tool="pick"]')!.dispatchEvent(new Event("click"));
+  };
+  const picking = (panel: Panel) => panel.classList.contains("picking");
+
+  function withHosts(): { panel: Panel; page: HTMLElement; inner: HTMLElement } {
+    const page = document.createElement("section");
+    const inner = document.createElement("strong");
+    page.append(inner);
+
+    const detailNode = node("ProductDetail", "component", { props: { id: 3 }, node: page });
+    const panel = mount(() => [
+      node("App", "component", {
+        children: [node("ProductsPage", "component", { children: [detailNode] })],
+      }),
+    ]);
+
+    // AFTER mounting, because `mount` clears the body — and a detached element's events never
+    // reach the `window` listener the picker captures on, so the test would be testing nothing.
+    document.body.append(page);
+    return { panel, page, inner };
+  }
+
+  it("names the component under the cursor, from a child element", () => {
+    const { panel, inner } = withHosts();
+    start(panel);
+    expect(picking(panel)).toBe(true);
+
+    inner.dispatchEvent(new PointerEvent("pointermove", { bubbles: true }));
+
+    const label = panel.shadowRoot.querySelector("#pick-label")!;
+    expect(label.classList.contains("on")).toBe(true);
+    // The cursor was over a <strong> INSIDE the component's host: the nearest mapped ancestor is
+    // the answer, because a component is almost never the element you point at.
+    expect(label.textContent).toBe("<ProductDetail />");
+  });
+
+  it("focuses what was clicked, and stops picking", () => {
+    const { panel, inner } = withHosts();
+    start(panel);
+    inner.dispatchEvent(new PointerEvent("pointermove", { bubbles: true }));
+    inner.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+    expect(picking(panel)).toBe(false);
+    expect(summaries(panel)).toEqual(["/0:component:App/0:component:ProductsPage/0:component:ProductDetail"]);
+  });
+
+  /**
+   * The one that makes a picker usable at all. Ramonda attaches a handler to its element directly,
+   * in the bubble phase, so picking captures on `window` and stops the event — otherwise a pick
+   * would also submit the form or open the menu it was aimed at.
+   */
+  it("does not let the app see the click it picked with", () => {
+    const { panel, page, inner } = withHosts();
+    const clicked = vi.fn();
+    page.addEventListener("click", clicked);
+
+    start(panel);
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    inner.dispatchEvent(event);
+
+    expect(clicked).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("is cancelled by Escape, leaving the app's click alone again", () => {
+    const { panel, page, inner } = withHosts();
+    const clicked = vi.fn();
+    page.addEventListener("click", clicked);
+
+    start(panel);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(picking(panel)).toBe(false);
+
+    inner.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops when the panel closes, so the page is not left with a crosshair", () => {
+    const { panel } = withHosts();
+    start(panel);
+    expect(document.body.style.cursor).toBe("crosshair");
+
+    (panel as unknown as { toggle(): void }).toggle();
+
+    expect(picking(panel)).toBe(false);
+    expect(document.body.style.cursor).toBe("");
   });
 });
