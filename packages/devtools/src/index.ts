@@ -626,6 +626,18 @@ class RamondaDevTools extends HTMLElement {
          */
         #components-tab { padding: 0; }
         #components-container { padding: 12px 20px 20px; }
+        /**
+         * The layers inside the panel, and the order is the whole point:
+         *
+         *   2  the resize handle, over the panel's own edge
+         *   4  the sticky tree head, over the tree scrolling under it
+         *   10 the full value view, over EVERYTHING — it is the thing you opened
+         *
+         * The head was 4 and the value view was 3, which is exactly the bug you found: opening a
+         * value drew the toolbar and the breadcrumb on top of it and cut the tree off two rows in.
+         * The gap to 10 is deliberate, so the next sticky thing added to the panel cannot climb
+         * over the modal by accident.
+         */
         .tree-head { position: sticky; top: 0; z-index: 4; background: #171717; }
         .tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 20px; background: #171717;
                  border-bottom: 1px solid #2a2a2a; }
@@ -718,7 +730,7 @@ class RamondaDevTools extends HTMLElement {
 
         /* One value on the whole panel: inside the panel, not over the page, so the app stays
            visible beside it and the tree behind keeps its place. */
-        .jv-modal { position: absolute; inset: 0; background: #0d0d0d; z-index: 3;
+        .jv-modal { position: absolute; inset: 0; background: #0d0d0d; z-index: 10;
                     display: none; flex-direction: column; }
         .jv-modal.on { display: flex; }
         .jv-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;

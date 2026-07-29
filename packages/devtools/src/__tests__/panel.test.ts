@@ -1306,3 +1306,29 @@ describe("an older query package", () => {
     openTab(panel, "logs");
   });
 });
+
+describe("the stacking order inside the panel", () => {
+  /**
+   * The bug this exists for: the sticky tree head was `z-index: 4` and the full value view was `3`,
+   * so opening a value drew the toolbar and the breadcrumb ON TOP of it and cut the tree off two
+   * rows in. Every other test here reads structure or classes, and neither can see a z-order — so
+   * this one reads the numbers and asserts the order they have to be in.
+   */
+  it("puts the full value view above the sticky header, which is above the resize handle", () => {
+    const css = mount(() => tree()).shadowRoot.querySelector("style")!.textContent!;
+
+    const layer = (selector: string): number => {
+      const rule = css.slice(css.indexOf(selector));
+      const found = /z-index:\s*(\d+)/.exec(rule.slice(0, rule.indexOf("}")));
+      if (!found) throw new Error(`${selector} declares no z-index`);
+      return Number(found[1]);
+    };
+
+    const handle = layer(".ramonda-resize {");
+    const head = layer(".tree-head {");
+    const modal = layer(".jv-modal {");
+
+    expect(head).toBeGreaterThan(handle);
+    expect(modal).toBeGreaterThan(head);
+  });
+});
