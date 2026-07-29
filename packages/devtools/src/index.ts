@@ -47,6 +47,23 @@ interface QueryBridge {
   remove(clientIndex: number, hash: string): void;
 }
 
+/** One step of the pinned component's ancestry, rendered as a breadcrumb. */
+interface Crumb {
+  name: string;
+  kind: "component" | "hook";
+  path: string;
+}
+
+/** Where a pinned path sits in the freshly read tree — see `locate`. */
+interface Located {
+  node: InspectedNode;
+  /** Its position among its siblings, so the rendered path reproduces the full-tree one. */
+  index: number;
+  parentPrefix: string;
+  /** Ancestors first, the node itself last. */
+  trail: Crumb[];
+}
+
 interface WalkAcc {
   values: Map<string, string>;
   nodes: Map<string, Node>;
@@ -131,6 +148,15 @@ class RamondaDevTools extends HTMLElement {
   private lastValues = new Map<string, string>();
   private nodeMap = new Map<string, Node>();
   private highlighted: HTMLElement | null = null;
+  /**
+   * The path of the component the reader is working on, or `undefined` for the whole tree.
+   *
+   * Deliberately not persisted. A path is built from indices and names, so it survives a
+   * re-render but says nothing about a different page — restoring it after a reload would
+   * usually mean opening on "that component is gone".
+   */
+  private pinned: string | undefined;
+  private filter = "";
 
   constructor() {
     super();
@@ -371,6 +397,41 @@ class RamondaDevTools extends HTMLElement {
                         font-size: 12px; padding: 4px 9px; border-radius: 5px; cursor: pointer; }
         .tools button:hover { background: #303030; color: #fff; }
         .tools button.on { background: #7A4FBF; border-color: #7A4FBF; color: #fff; }
+        .tool-search { flex: 1 1 130px; min-width: 90px; background: #101010; border: 1px solid #383838;
+                       color: #eee; font: inherit; font-size: 12px; padding: 4px 8px; border-radius: 5px; }
+        .tool-search::placeholder { color: #666; }
+        .tool-search:focus { outline: none; border-color: #7A4FBF; }
+
+        .crumbs { display: none; align-items: center; flex-wrap: wrap; gap: 4px;
+                  padding: 8px 20px; background: #14121a; border-bottom: 1px solid #2a2a2a; font-size: 12px; }
+        .crumbs.on { display: flex; }
+        .crumb { background: none; border: none; color: #9a8fb5; font: inherit; font-size: 12px;
+                 padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+        .crumb:hover { background: #241f30; color: #fff; }
+        .crumb.here { color: #B18AE6; font-weight: bold; cursor: default; }
+        .crumb.gone { color: #ffcc00; cursor: default; }
+        .crumb-sep { color: #555; }
+
+        .pin-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 12px;
+                   padding: 0 4px; cursor: pointer; }
+        .comp-summary:hover .pin-btn { color: #9a8fb5; }
+        .pin-btn:hover { color: #B18AE6; }
+
+        /**
+         * Filtering hides a branch with no match in it. The :has() rule keeps the ancestors of a
+         * match, which is what makes the result readable as a TREE rather than as a flat list —
+         * you see where the thing you searched for lives.
+         *
+         * State and props go away while filtering on purpose: a search is for finding, and they
+         * are what you scroll past while looking. Focus the component and they are all back.
+         */
+        #components-container.filtering .component-node { display: none; }
+        #components-container.filtering .component-node.hit,
+        #components-container.filtering .component-node:has(.hit) { display: block; }
+        #components-container.filtering .state-block { display: none; }
+        #components-container.filtering .component-node.hit > details > .comp-summary,
+        #components-container.filtering .component-node.hit > .comp-summary { background: rgba(122,79,191,.28); border-radius: 4px; }
+
         #components-container.no-values .state-block { display: none; }
         #components-container.no-hooks .kind-hook { opacity: .5; }
         #components-container.no-hooks .component-node:has(> details > summary .kind-hook),
@@ -408,6 +469,7 @@ class RamondaDevTools extends HTMLElement {
           .tab { padding: 9px 4px; font-size: 11px; }
           .tab-content { padding: 12px 14px; }
           .tools { padding: 7px 14px; gap: 5px; }
+          .crumbs { padding: 7px 14px; }
           .tools button { font-size: 11px; padding: 3px 7px; }
           .q-row { padding: 8px 10px; }
         }
@@ -436,11 +498,13 @@ class RamondaDevTools extends HTMLElement {
       </div>
       <div id="components-tab" class="tab-content">
         <div class="tools">
+          <input id="tree-filter" class="tool-search" type="search" placeholder="filter by name" />
           <button type="button" data-tool="expand" title="expand all">▾<span class="tw"> expand all</span></button>
           <button type="button" data-tool="collapse" title="collapse all">▸<span class="tw"> collapse all</span></button>
           <button type="button" data-tool="values" title="hide state &amp; props">◧<span class="tw"> hide state &amp; props</span></button>
           <button type="button" data-tool="hooks" title="hide hooks">⬡<span class="tw"> hide hooks</span></button>
         </div>
+        <div class="crumbs" id="crumbs"></div>
         <div id="components-container">
           <small style="color:#666">No active components…</small>
         </div>
@@ -456,6 +520,7 @@ class RamondaDevTools extends HTMLElement {
     this.setupTabSwitching();
     this.setupTools();
     this.setupResize();
+    this.setupNavigation();
     this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
     this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener("click", () => this.toggle());
   }
@@ -552,6 +617,49 @@ class RamondaDevTools extends HTMLElement {
               : "hide hooks";
       });
     }
+  }
+
+  /**
+   * The breadcrumb bar and the name filter.
+   *
+   * Bound once, on the bar rather than on each crumb, because the bar is rewritten on every
+   * structural render — a listener per crumb would be re-attached each time and would leak the
+   * previous ones.
+   */
+  private setupNavigation() {
+    const root = this.shadowRoot!;
+
+    root.querySelector("#crumbs")?.addEventListener("click", (event) => {
+      const crumb = (event.target as HTMLElement).closest("[data-crumb]") as HTMLElement | null;
+      if (!crumb) return;
+      // An empty value is the "all components" crumb: unpin.
+      this.pin(crumb.dataset.crumb || undefined);
+    });
+
+    const input = root.querySelector("#tree-filter") as HTMLInputElement | null;
+    input?.addEventListener("input", () => {
+      this.filter = input.value;
+      this.applyFilter();
+      // A hit inside a collapsed branch is a hit you cannot see. Typing opens everything; the
+      // reader can collapse again afterwards, and clearing the filter leaves it as they left it.
+      if (this.filter.trim() !== "") {
+        for (const details of Array.from(root.querySelectorAll("#components-container details"))) {
+          (details as HTMLDetailsElement).open = true;
+        }
+      }
+    });
+
+    /**
+     * Escape widens the focus back to the whole tree.
+     *
+     * Guarded on being open AND pinned, so the panel never swallows an Escape the app wanted —
+     * with nothing pinned this listener does nothing at all.
+     */
+    window.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (!this.hasAttribute("open") || this.pinned === undefined) return;
+      this.pin(undefined);
+    });
   }
 
   private setupTabSwitching() {
@@ -806,12 +914,20 @@ class RamondaDevTools extends HTMLElement {
     }
   }
 
-  /** Recursively walks the inspected tree, building HTML + refresh metadata. */
-  private walkTree(nodes: InspectedNode[], prefix: string, acc: WalkAcc): string {
+  /**
+   * Recursively walks the inspected tree, building HTML + refresh metadata.
+   *
+   * `indexOffset` exists for the pinned view: rendering one node means passing a single-element
+   * array, and its path has to come out as the path it has in the WHOLE tree — otherwise the pin
+   * would not match itself on the next tick, and every value id would move. Offsetting by the
+   * node's real sibling index reproduces it exactly, without a second path format to keep in
+   * sync with this one.
+   */
+  private walkTree(nodes: InspectedNode[], prefix: string, acc: WalkAcc, indexOffset = 0): string {
     let html = "";
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
-      const path = `${prefix}/${i}:${n.kind}:${n.name}`;
+      const path = `${prefix}/${indexOffset + i}:${n.kind}:${n.name}`;
       if (n.node) acc.nodes.set(path, n.node);
 
       const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc);
@@ -823,6 +939,11 @@ class RamondaDevTools extends HTMLElement {
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);
       const badge = `<span class="kind-badge kind-${n.kind}">${n.kind === "hook" ? "HOOK" : "CMP"}</span>`;
+      // Focus, not select: the button makes this node the root of the panel so its state, props,
+      // hooks and children are all that is left on screen. Inside the summary, so it is on the
+      // row you are already reading — `preventDefault` in the handler stops it toggling the
+      // disclosure it lives in.
+      const pin = `<button type="button" class="pin-btn" data-pin="${escapeHtml(path)}" title="focus this ${n.kind}">◎</button>`;
       const label =
         n.kind === "hook"
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
@@ -837,13 +958,13 @@ class RamondaDevTools extends HTMLElement {
         ? `
         <div class="component-node">
           <details open>
-            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</summary>
+            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</summary>
             <div class="node-body">${body}</div>
           </details>
         </div>`
         : `
         <div class="component-node leaf">
-          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</div>
+          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</div>
         </div>`;
     }
     return html;
@@ -885,14 +1006,129 @@ class RamondaDevTools extends HTMLElement {
     if (!container || !inspect) return;
 
     const tree = inspect();
+
+    /**
+     * The FULL tree fills `acc`, even when only a subtree is drawn.
+     *
+     * `refreshComponents` compares a signature read from the whole tree against `lastSig` to
+     * decide whether the structure moved. A signature covering only the pinned subtree would
+     * differ from it on every single tick, so the panel would rebuild itself four times a second
+     * — the flicker, back again, and only while pinned. The same reason `nodeMap` and the value
+     * map are the full ones: a path in them is the same path either way.
+     */
     const acc: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
-    const html = this.walkTree(tree, "", acc);
+    const fullHtml = this.walkTree(tree, "", acc);
+
+    let html = fullHtml;
+    let crumbs = "";
+
+    if (this.pinned !== undefined) {
+      const found = this.locate(tree, "", this.pinned, []);
+      if (found) {
+        const sub: WalkAcc = { values: new Map(), nodes: new Map(), sig: [] };
+        html = this.walkTree([found.node], found.parentPrefix, sub, found.index);
+        crumbs = this.renderCrumbs(found.trail, false);
+      } else {
+        // Unmounted, or a route away. Say so and show the whole tree again rather than an empty
+        // panel: the pin is still there to click off, and the reader can see where they are.
+        crumbs = this.renderCrumbs([], true);
+      }
+    }
+
+    const crumbBar = this.shadowRoot!.querySelector("#crumbs");
+    if (crumbBar) {
+      crumbBar.innerHTML = crumbs;
+      crumbBar.classList.toggle("on", crumbs !== "");
+    }
 
     container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
     this.lastValues = acc.values;
     this.nodeMap = acc.nodes;
     this.lastSig = acc.sig.join(";");
     this.attachInspectorEvents(container);
+    this.applyFilter();
+  }
+
+  /**
+   * Finds a path in a freshly read tree, and the ancestry that leads to it.
+   *
+   * It rebuilds each candidate path exactly the way `walkTree` does instead of parsing the
+   * pinned one. Parsing would need to know that a name cannot contain a separator and that
+   * `|h` marks the hooks list — two assumptions that would rot the moment either changes.
+   * Recomputing has neither, and one walk of a component tree costs nothing here.
+   */
+  private locate(nodes: InspectedNode[], prefix: string, target: string, trail: Crumb[]): Located | undefined {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const path = `${prefix}/${i}:${n.kind}:${n.name}`;
+      const here = [...trail, { name: n.name, kind: n.kind, path }];
+
+      if (path === target) return { node: n, index: i, parentPrefix: prefix, trail: here };
+
+      const inHooks = this.locate(n.hooks, `${path}|h`, target, here);
+      if (inHooks) return inHooks;
+      const inChildren = this.locate(n.children, path, target, here);
+      if (inChildren) return inChildren;
+    }
+    return undefined;
+  }
+
+  /**
+   * The breadcrumb: where the pinned component sits, and a way back up.
+   *
+   * Its real job is orientation. A pinned subtree looks exactly like a whole app, so without the
+   * ancestry you cannot tell whether you are looking at the root or at something six levels
+   * down — and every crumb is also a pin, which is how you widen the focus one step at a time.
+   */
+  private renderCrumbs(trail: Crumb[], missing: boolean): string {
+    const all = `<button type="button" class="crumb root" data-crumb="">all components</button>`;
+    if (missing) {
+      return `${all}<span class="crumb-sep">›</span><span class="crumb gone">the pinned component is no longer mounted</span>`;
+    }
+
+    const steps = trail
+      .map((crumb, i) => {
+        const last = i === trail.length - 1;
+        const label = crumb.kind === "hook" ? escapeHtml(crumb.name) : `&lt;${escapeHtml(crumb.name)} /&gt;`;
+        return `<span class="crumb-sep">›</span>${
+          last
+            ? `<span class="crumb here">${label}</span>`
+            : `<button type="button" class="crumb" data-crumb="${escapeHtml(crumb.path)}">${label}</button>`
+        }`;
+      })
+      .join("");
+
+    return `${all}${steps}`;
+  }
+
+  /** Focuses one component, or the whole tree when given `undefined`. */
+  private pin(path: string | undefined): void {
+    this.pinned = path;
+    this.renderComponentsFull();
+  }
+
+  /**
+   * Hides every branch with no match in it, by class rather than by re-rendering.
+   *
+   * A keystroke must not rebuild the tree: that would drop the reader's open/closed state and
+   * their scroll position on every letter typed. So a match is a class on the row and the
+   * ancestors follow from `:has()` in CSS — which also means the filter survives a structural
+   * re-render for free, because it is re-applied from the query and not from the DOM.
+   */
+  private applyFilter(): void {
+    const container = this.shadowRoot!.querySelector("#components-container");
+    if (!container) return;
+
+    const query = this.filter.trim().toLowerCase();
+    container.classList.toggle("filtering", query !== "");
+
+    for (const summary of Array.from(container.querySelectorAll(".comp-summary"))) {
+      const path = summary.getAttribute("data-path") ?? "";
+      // The name is the tail of the path, which beats reading `textContent`: that would also
+      // match the badge, the pin button and — inside a leaf — nothing predictable.
+      const name = path.slice(path.lastIndexOf(":") + 1).toLowerCase();
+      summary.closest(".component-node")?.classList.toggle("hit", query !== "" && name.includes(query));
+    }
   }
 
   /**
@@ -940,6 +1176,17 @@ class RamondaDevTools extends HTMLElement {
       const path = summary.getAttribute("data-path")!;
       summary.addEventListener("mouseenter", () => this.highlight(path));
       summary.addEventListener("mouseleave", () => this.clearHighlight());
+    });
+
+    container.querySelectorAll("[data-pin]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        // The button lives inside a `<summary>`, and opening the disclosure is that summary's
+        // DEFAULT ACTION — so preventing it is what stops a focus click from also collapsing
+        // the row it was on.
+        event.preventDefault();
+        event.stopPropagation();
+        this.pin((button as HTMLElement).dataset.pin);
+      });
     });
   }
 

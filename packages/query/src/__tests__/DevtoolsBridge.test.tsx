@@ -284,11 +284,18 @@ describe("the devtools bridge", () => {
     }
   });
 
-  test("a long preview is cut, so one row cannot fill the panel", async () => {
+  /**
+   * The cap was 120, and 120 showed the shape of the answer and nothing in it — the panel
+   * displayed `{"products":[{"id":1,"title":"Essence Masc…`, which is the key read back to you.
+   * A preview scrolls in its own box now, so the cap is only here to keep a megabyte of cached
+   * data off the wire on every poll. Both ends are worth holding: an ordinary payload arrives
+   * whole, a pathological one is still bounded.
+   */
+  test("an ordinary payload arrives whole", async () => {
     class Card extends Component {
       private provider = this.use(QueryClientProvider);
       user = this.use(Query, () => ({
-        key: ["long"],
+        key: ["ordinary"],
         fetch: async () => ({ text: "x".repeat(500) }),
       }));
       render() {
@@ -302,7 +309,32 @@ describe("the devtools bridge", () => {
     try {
       await settle();
       const preview = bridge().snapshot().clients[0]!.queries[0]!.dataPreview;
-      expect(preview.length).toBeLessThan(140);
+      expect(preview.endsWith("…")).toBe(false);
+      expect(preview).toBe(JSON.stringify({ text: "x".repeat(500) }));
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a pathological one is still cut, so one row cannot fill the panel", async () => {
+    class Card extends Component {
+      private provider = this.use(QueryClientProvider);
+      user = this.use(Query, () => ({
+        key: ["long"],
+        fetch: async () => ({ text: "x".repeat(50_000) }),
+      }));
+      render() {
+        void this.provider;
+        return <span>{this.user.status}</span>;
+      }
+    }
+
+    const { unmount } = render(<Card />);
+
+    try {
+      await settle();
+      const preview = bridge().snapshot().clients[0]!.queries[0]!.dataPreview;
+      expect(preview.length).toBeLessThan(2100);
       expect(preview.endsWith("…")).toBe(true);
     } finally {
       unmount();
