@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "paths": {
       "@ramonda/core": ["../../packages/core/src/index.ts"],
+      "@ramonda/devtools": ["../../packages/devtools/src/index.ts"],
       "@ramonda/query": ["../../packages/query/src/index.ts"],
       "@ramonda/router": ["../../packages/router/src/index.ts"]
     }

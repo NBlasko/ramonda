@@ -83,6 +83,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/core
     devDependencies:
+      '@ramonda/devtools':
+        specifier: workspace:^
+        version: link:../../packages/devtools
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -102,6 +105,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/router
     devDependencies:
+      '@ramonda/devtools':
+        specifier: workspace:^
+        version: link:../../packages/devtools
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
