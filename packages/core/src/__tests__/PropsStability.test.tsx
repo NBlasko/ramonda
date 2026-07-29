@@ -374,3 +374,90 @@ describe("static stableProps — the hook declares it, the call site does not", 
     expect(reported()).toContain("builds a new function for the `fetch` prop");
   });
 });
+
+describe("stableProps is a property of the KIND, not of an instance", () => {
+  class Base extends Hook<Bag> {
+    /**
+     * Typed as a plain array rather than `as const`, so the shadowing test below can
+     * compile. With `as const` TypeScript refuses an incompatible override outright
+     * (`readonly ["filter"]` is not assignable to `readonly ["key"]`) — a better guard
+     * than the runtime one, and the reason a hook author should write `as const`.
+     */
+    static stableProps: readonly string[] = ["key"];
+
+    keys: unknown[] = [];
+
+    @compute get seen(): string {
+      this.keys.push(this.props.key);
+      return JSON.stringify(this.props.key ?? null);
+    }
+  }
+
+  test("a subclass inherits the declaration without repeating it", async () => {
+    class Special extends Base {}
+
+    class Panel extends Component {
+      @state unrelated = 0;
+      probe = this.use(Special, () => ({ key: ["a", 1] }));
+      render() {
+        return <div>{`${this.probe.seen}:${this.unrelated}`}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    instance.unrelated = 1;
+    await settle();
+
+    // A static lives on the constructor, and `extends` chains constructors — so this
+    // needs no `[...Base.stableProps]` ceremony.
+    expect(instance.probe.keys.length).toBe(1);
+    expect(reported()).not.toContain("RMD022");
+  });
+
+  test("a subclass that shadows it gets the report, not silence", async () => {
+    class Shadowing extends Base {
+      // Forgot `...Base.stableProps`. This is the one footgun of a static, and it is a
+      // loud one: `key` stops being declared, so the check the declaration was
+      // suppressing comes back. (With `as const` on the base, TypeScript rejects this
+      // line before it can run at all.)
+      static override stableProps: readonly string[] = ["filter"];
+    }
+
+    class Panel extends Component {
+      probe = this.use(Shadowing, () => ({ key: ["a", 1] }));
+      render() {
+        return <div>{this.probe.seen}</div>;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+
+    expect(reported()).toContain("RMD022");
+    expect(reported()).toContain("`key`");
+  });
+
+  test("two different hook classes do not share a declaration", async () => {
+    class Undeclared extends Hook<Bag> {
+      keys: unknown[] = [];
+      @compute get seen(): string {
+        this.keys.push(this.props.key);
+        return String(this.props.key?.length ?? 0);
+      }
+    }
+
+    class Panel extends Component {
+      declared = this.use(Base, () => ({ key: ["a"] }));
+      plain = this.use(Undeclared, () => ({ key: ["a"] }));
+      render() {
+        return <div>{`${this.declared.seen}:${this.plain.seen}`}</div>;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+
+    // Read from the same bag shape, in the same component: only the hook that declared
+    // `key` is exempt. A static is per class, not a global switch.
+    expect(reported()).toContain("Panel → Undeclared");
+    expect(reported()).not.toContain("Panel → Base");
+  });
+});
