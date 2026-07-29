@@ -1,8 +1,9 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, effect, create, destroy } from "../../base/decorators";
+import { state, create, destroy } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
+import { effectLike } from "../../test/effectLike";
 
 let log: string[] = [];
 
@@ -18,13 +19,13 @@ class ItemHook extends Hook<{ id: number }> {
     log.push(`ItemHook:Cleanup:${this.props.id}`);
   }
 
-  @effect onUpdate() {
+  @effectLike() onUpdate() {
     log.push(`ItemHook:Effect:${this.props.id}`);
   }
 }
 
 class ListItem extends Component<{ id: number; text: string; key?: number }> {
-  hook = this.use(ItemHook, (bag) => ({ id: bag.props.id }));
+  hook = this.use(ItemHook, (bag: ListItem) => ({ id: bag.props.id }));
 
   @create init() {
     log.push(`ListItem:Init:${this.props.id}`);

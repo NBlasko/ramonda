@@ -108,6 +108,18 @@ export interface WatchPropEntry {
   cb: (newValue: unknown, oldValue: unknown) => void;
   // The selector's last seen value, seeded at mount without firing the callback.
   lastValue: unknown;
+  /**
+   * WHOSE props this entry watches — the component or the hook the decorator was
+   * put on.
+   *
+   * A hook shares its owner's runtime, so every `@watchProp` in a tree of hooks
+   * lands in one list; without this, running that list means guessing, and the
+   * guess used to be "the component's props" for all of them. A hook's selector
+   * was then handed a bag it has no relationship to: `p => p.userId` read the
+   * OWNER's `userId`, silently, and a hook whose own prop changed never fired.
+   * See `readWatchedProps` in helpers/watchProps.ts.
+   */
+  owner: object;
 }
 
 export interface EnhancedHTMLNode extends HTMLElement, EnhancedElement {}

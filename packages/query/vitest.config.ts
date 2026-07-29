@@ -1,0 +1,40 @@
+import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
+
+export default defineConfig({
+  define: {
+    __DEV__: 'process.env.NODE_ENV !== "production"',
+    __TEST__: "true",
+  },
+  // Vite 7 transforms with esbuild, Vite 8 with oxc — and when both are
+  // configured it takes oxc and IGNORES the esbuild block entirely. This package
+  // has no vite of its own, so it follows whatever the workspace hoists. Both are
+  // set so it works either way. (Copied from the router, where a hoisted Vite 8
+  // silently dropped the JSX factory and every test stopped parsing.)
+  esbuild: {
+    jsxFactory: "h",
+    jsxFragment: "Fragment",
+    target: "es2022",
+  },
+  resolve: {
+    alias: {
+      // Run tests against framework source (live), like the router does. The
+      // `/testing` alias must come FIRST — a string alias matches by prefix, so
+      // the bare "@ramonda/core" entry would otherwise swallow it.
+      "@ramonda/core/testing": resolve(__dirname, "../core/src/testing.ts"),
+      "@ramonda/core": resolve(__dirname, "../core/src/index.ts"),
+      "@ramonda/testing-library": resolve(__dirname, "../testing-library/src/index.ts"),
+      // core dynamically imports devtools in dev; alias it so it resolves.
+      "@ramonda/devtools": resolve(__dirname, "../devtools/src/index.ts"),
+    },
+  },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    // The `*.prod.test.*` files belong to `test:prod`, which runs them in a separate
+    // process with NODE_ENV=production — `__DEV__` is baked in per process, so they
+    // would test the development path here. See vitest.prod.config.ts.
+    exclude: ["**/node_modules/**", "**/dist/**", "src/**/*.prod.test.{ts,tsx}"],
+  },
+});

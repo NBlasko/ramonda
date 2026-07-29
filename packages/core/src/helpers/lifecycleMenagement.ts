@@ -2,7 +2,7 @@ import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
 import type { BaseComponent } from "../types/vdom";
 import { detach } from "./constants";
 import { reportLeakedTimers } from "../debug/timerGuard";
-import { discardPendingWork } from "../core/commit";
+import { discardPendingUpdates, discardPendingWork } from "../core/commit";
 
 /**
  * Runs one piece of user cleanup, and does not let it take the rest down.
@@ -91,4 +91,7 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
   // cleanup that already ran cannot undo it. Dropping the entry here also stops
   // the queue holding a dead component alive until the next flush.
   discardPendingWork(component);
+  // Same reasoning for the post-commit `@updated` phase: the flush checks
+  // `isDestroyed` anyway, but the queue should not hold a dead component until then.
+  discardPendingUpdates(component);
 }

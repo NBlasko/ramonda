@@ -29,7 +29,7 @@ because a tracker missed a read.
 ## Where fine-grained tracking *does* live
 
 The framework does track individual reads — just not in `render()`.
-[`@compute`](/concepts/compute) and [`@effect`](/concepts/effects) watch exactly the
+[`@compute`](/concepts/compute) and [a subscription](/concepts/subscriptions) watch exactly the
 signals their body reads and re-run only when one of those changes. That is where
 precise tracking earns its keep: a derived total that is expensive to recompute, or a
 subscription that should only reconnect when its channel changes. Reach for them when
@@ -43,7 +43,7 @@ It is worth being precise about two things that look alike but aren't.
 a shallowly-different set of [props](/concepts/props) — regardless of which props
 `render()` actually reads. A change to a prop the component never touches still
 re-renders it. (Per-prop signals do exist, but they serve `@compute`, `@watchProp` and
-`@effect` that read a specific prop — not the component's own render.) To skip a
+`@watchProp` on a specific prop — not the component's own render.) To skip a
 prop-driven re-render in the rare case it matters, gate it with
 `@shouldUpdateOnPropsChange`.
 
@@ -55,4 +55,4 @@ between. It is why a `Navigator` reading only `pathname` doesn't re-render when 
 parameter changes.
 
 The division of labour, then: **`@state` and props are coarse and simple; `@compute`,
-`@effect`, `@watchProp` and context are fine-grained where it matters.**
+`@watchProp`, subscriptions and context are fine-grained where it matters.**

@@ -1,5 +1,5 @@
 import type { BaseComponent } from "../types/vdom";
-import { COMPONENT_RUNTIME } from "./runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
 import { errorHandler } from "./errorHandler";
 import { addServerWork, isThenable } from "./serverWork";
 
@@ -52,6 +52,95 @@ const MAX_WORK_PER_FLUSH = 100_000;
 
 export function queuePostCommit(component: BaseComponent, cb: () => unknown): void {
   pending.push({ component, cb });
+}
+
+/**
+ * Components with `@updated` methods to run once this drain's DOM work is done.
+ *
+ * **A phase of its own, not an entry in `pending`, because the ORDER has to be the
+ * opposite.** Mounts are FIFO, which puts children before parents on a first
+ * commit — children are built inside their parent's diff, so their entries are
+ * queued first. An UPDATE does not work that way: a child that already exists is
+ * not rebuilt inside the parent's diff, it is *scheduled* (the diff writes its prop
+ * signals), so its build — and anything it queues — comes AFTER the parent's.
+ * Measured: `['parent', 'child']`, which is exactly wrong for the thing this
+ * decorator exists for. A parent measuring its own subtree needs its children
+ * updated first.
+ *
+ * So these are collected and run deepest-first. A `Set`, so a component that
+ * rebuilt twice inside one drain runs its `@updated` once — the DOM only reflects
+ * the last build, and running it per build would be reporting a state nobody can
+ * see.
+ */
+const pendingUpdates = new Set<BaseComponent>();
+
+/** A flush already running; same reasoning as `flushing` above. */
+let flushingUpdates = false;
+
+export function queueUpdated(component: BaseComponent): void {
+  pendingUpdates.add(component);
+}
+
+/** Whether any `@updated` is still waiting. Part of what "settled" means. */
+export function hasPendingUpdated(): boolean {
+  return pendingUpdates.size > 0;
+}
+
+/**
+ * Runs every pending `@updated`, deepest component first.
+ *
+ * **Client only**, like effects, and read off the component rather than the
+ * module-level env (the same reason `runComponentEffects` does): this runs from a
+ * drain that continues long after the render env flag has been put back. A server
+ * render has no layout and no paint, so measuring there is meaningless work.
+ *
+ * Nothing is tracked while these run, and that is the decorator's reason to exist:
+ * an effect re-runs when a dependency changes, and a dependency that is an array or
+ * object rebuilt by a props callback "changes" on every render — so an effect used
+ * for post-commit DOM work fires constantly and tears down its own cleanup each
+ * time. `@updated` has no dependencies to get wrong.
+ *
+ * A destroyed component is skipped, the same guarantee `@mount` has: between being
+ * queued and being run, the component may have been torn down, and a lifecycle
+ * callback must not fire after `@destroy` has already cleaned up.
+ *
+ * A throw goes through `errorHandler` like a throwing `@mount` — caught by an
+ * `ErrorBoundary` above it, and rethrown if there is none. One decorator does not
+ * get its own error semantics.
+ */
+export function flushUpdated(): void {
+  if (flushingUpdates || pendingUpdates.size === 0) return;
+  flushingUpdates = true;
+
+  try {
+    // Snapshotted and cleared first: a body may write state, which schedules
+    // another build whose own `@updated` belongs to the NEXT pass, not this one.
+    const components = Array.from(pendingUpdates);
+    pendingUpdates.clear();
+
+    // Deepest first. `sort` is stable, so components at the same depth keep the
+    // order they were built in.
+    components.sort((a, b) => b[COMPONENT_RUNTIME].depth - a[COMPONENT_RUNTIME].depth);
+
+    for (const component of components) {
+      const componentRuntime = component[COMPONENT_RUNTIME];
+      if (componentRuntime.isDestroyed || componentRuntime.env === "server") continue;
+
+      const updates = component[GLOBAL_RUNTIME].updates;
+      try {
+        for (let i = 0; i < updates.length; i++) updates[i]();
+      } catch (e) {
+        errorHandler(e, component);
+      }
+    }
+  } finally {
+    flushingUpdates = false;
+  }
+}
+
+/** Drops a torn-down component's pending `@updated`, mirroring `discardPendingWork`. */
+export function discardPendingUpdates(component: BaseComponent): void {
+  pendingUpdates.delete(component);
 }
 
 /**

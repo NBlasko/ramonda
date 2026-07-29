@@ -1,0 +1,65 @@
+{
+  "name": "@ramonda/query",
+  "version": "0.1.0",
+  "description": "Async state for Ramonda: cached, deduped, race-free queries and mutations that survive a server render.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/query"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "query",
+    "cache",
+    "fetch",
+    "async",
+    "mutation",
+    "ssr"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "development": "./dist/index.js",
+        "production": "./dist/index.prod.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && ramonda-check-bundle dist",
+    "dev": "tsup --watch",
+    "test": "vitest run && pnpm test:prod",
+    "test:watch": "vitest",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src",
+    "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts"
+  },
+  "dependencies": {
+    "@ramonda/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@ramonda/shared": "workspace:^",
+    "@ramonda/testing-library": "workspace:^",
+    "jsdom": "28.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vitest": "^4.1.10"
+  }
+}

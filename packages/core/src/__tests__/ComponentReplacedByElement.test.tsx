@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { Host, effect, state, destroy, interval } from "../base/decorators";
+import { Host, state, destroy, interval } from "../base/decorators";
 import { getDOM } from "../test/setup";
+import { effectLike } from "../test/effectLike";
 
 /**
  * A component swapped out for a plain element of the SAME TAG must be torn down.
@@ -26,7 +27,7 @@ const log: string[] = [];
 
 @Host("div")
 class Panel extends Component {
-  @effect subscribe() {
+  @effectLike() subscribe() {
     log.push("effect");
     return () => log.push("cleanup");
   }

@@ -1,5 +1,6 @@
 import { Component, bootstrap, state } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator, Link } from "@ramonda/router";
+import { QueryClientProvider } from "@ramonda/query";
 import { ThemeProvider, ThemedBadge } from "./theme";
 import { routes } from "./routes";
 import "./styles";
@@ -35,6 +36,9 @@ class NavBar extends Component {
         <Link href="/async" className="navlink">
           Async
         </Link>
+        <Link href="/query" className="navlink">
+          Query
+        </Link>
         <Link href="/users/42" className="navlink">
           User 42
         </Link>
@@ -57,6 +61,12 @@ class App extends Component {
   // subtree, so the NavBar has context and the RouteOutlet swaps on navigation.
   // No wrapper element — the app root stays a single <div>.
   router = this.use(Router);
+  // The query cache belongs to this tree and reaches every page through context.
+  // On the app root because that is where a real app puts it — one cache per
+  // render tree, never a module-level singleton.
+  query = this.use(QueryClientProvider, () => ({
+    defaults: { staleTime: 5_000, retry: 1 },
+  }));
   toggleTheme() {
     this.theme = this.theme === "light" ? "dark" : "light";
   }

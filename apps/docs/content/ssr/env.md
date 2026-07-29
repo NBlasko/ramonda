@@ -28,7 +28,7 @@ stampBuildTime() {} // only during a server render
 | `"client"` | | ✓ |
 | `"server"` | ✓ | |
 
-(Effects — `@effect`, `@interval`, timers, `@onWindow` — have no `env`; they are
+(Subscriptions — `@interval`, timers, `@onWindow`, your own — have no `env`; they are
 always client-only. That is why a subscription never leaks into a server render.)
 
 ## Knowing the side inside a shared method

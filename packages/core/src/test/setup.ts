@@ -7,6 +7,7 @@ import type { ComponentChild } from "../types/vdom";
 import { unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
 import { h } from "../vdom/h";
+import { configureDev } from "../";
 (globalThis as any).h = h;
 
 const originalWindow = { ...window };
@@ -82,7 +83,7 @@ export async function getDOM<T = any>(component: ComponentChild) {
      *
      * It used to be `() => Promise.resolve()` — one microtask turn — and that
      * left the COUNT to the caller. Measured: a plain state write needs one
-     * `await settle()`, but a cascade (an @effect writing state that its own
+     * `await settle()`, but a cascade (an @updated writing state that its own
      * render reads) needs two, and a deeper one needs three. Nothing said which
      * you were in, so tests were written with an extra await "to be safe" and
      * the ones with too few read stale DOM.
@@ -140,3 +141,10 @@ export function restoreWindowObjectChanges() {
  * commit semantics a test sees are therefore the same on both sides, and the
  * part most likely to drift cannot.
  */
+
+// RMD020 renders every component twice in a development build to catch values built
+// in place. These suites deliberately log from `render()` to observe render ORDER —
+// which is exactly the impurity the check reports — so a doubled render would double
+// those logs and break assertions that count them. Off here; the RMD020 tests turn
+// it back on for themselves.
+configureDev({ strictRender: false });

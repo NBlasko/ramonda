@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, effect } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { Component } from "../../base/Component";
+import { effectLike } from "../../test/effectLike";
 
 let log: string[] = [];
 
@@ -11,7 +12,7 @@ let log: string[] = [];
 class MutationGuardComponent extends Component {
   @state count = 0;
 
-  @effect onCountChange() {
+  @effectLike() onCountChange() {
     log.push(`Effect:Run:Count:${this.count}`);
 
     if (this.count < 5) {

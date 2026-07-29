@@ -1,4 +1,5 @@
 import { Component, Host, state, ErrorBoundary } from "@ramonda/core";
+import type { ErrorBoundaryFallbackProps } from "@ramonda/core";
 
 // A component that throws while rendering. Without a boundary the error
 // propagates and takes the tree with it.
@@ -24,8 +25,41 @@ class Fragile extends Component<{ crash: boolean }> {
 export class ErrorBoundaryDemo extends Component {
   @state crash = false;
 
+  /**
+   * The boundary's own `reset`, kept from the last fallback render so the retry
+   * button can be a bound method.
+   *
+   * A plain field, not `@state`: nothing renders it, and writing state during a
+   * render is RMD001. The assignment below is idempotent, which matters because a
+   * development build renders twice (RMD020).
+   */
+  private resetBoundary: (() => void) | undefined;
+
   toggle() {
     this.crash = !this.crash;
+  }
+
+  /**
+   * A bound method rather than an inline arrow. `fallback` is a render prop, so an
+   * arrow at the call site is a fresh prop for `ErrorBoundary` on every render —
+   * which RMD020 reports, and which re-renders the boundary for nothing.
+   */
+  renderFallback({ message, reset }: ErrorBoundaryFallbackProps) {
+    this.resetBoundary = reset;
+
+    return (
+      <p className="demo-error">
+        Caught: {message}{" "}
+        <button type="button" onClick={this.retry}>
+          retry
+        </button>
+      </p>
+    );
+  }
+
+  retry() {
+    this.crash = false;
+    this.resetBoundary?.();
   }
 
   render() {
@@ -37,22 +71,7 @@ export class ErrorBoundaryDemo extends Component {
           </button>
           <span className="demo-note">this row is outside the boundary</span>
         </p>
-        <ErrorBoundary
-          fallback={({ message, reset }) => (
-            <p className="demo-error">
-              Caught: {message}{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  this.crash = false;
-                  reset();
-                }}
-              >
-                retry
-              </button>
-            </p>
-          )}
-        >
+        <ErrorBoundary fallback={this.renderFallback}>
           <Fragile crash={this.crash} />
         </ErrorBoundary>
       </div>

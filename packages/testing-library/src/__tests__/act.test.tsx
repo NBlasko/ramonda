@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, state, mount, effect, type RamondaNode } from "@ramonda/core";
+import { Component, mount, state, type RamondaNode, updated } from "@ramonda/core";
 import { render, act, waitFor } from "../index";
 
 /**
@@ -50,7 +50,7 @@ describe("act", () => {
         this.a = 1;
       }
 
-      @effect step() {
+      @updated step() {
         if (this.a === 1 && this.b === 0) this.b = 2;
         if (this.b === 2 && this.c === 0) this.c = 3;
         seen.push(this.c);

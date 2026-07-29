@@ -13,11 +13,17 @@ order: 73
 export class Toolbar extends Component {
   route = this.use(Navigator);
 
+  // A method, not an inline arrow: a handler built during render is re-attached to
+  // the element on every render, and development builds report it (RMD020).
+  showPlayer() {
+    this.route.push("/players/9");
+  }
+
   render() {
     return (
       <nav>
         <button onClick={this.route.back}>← Back</button>
-        <button onClick={() => this.route.push("/players/9")}>Player 9</button>
+        <button onClick={this.showPlayer}>Player 9</button>
       </nav>
     );
   }
@@ -65,10 +71,14 @@ surface, from the piece that owns the state:
 export class App extends Component {
   router = this.use(Router);
 
+  goHome() {
+    this.router.push("/");
+  }
+
   render() {
     return (
       <div className="app">
-        <button onClick={() => this.router.push("/")}>{this.router.pathname}</button>
+        <button onClick={this.goHome}>{this.router.pathname}</button>
         <RouteOutlet routes={routes} />
       </div>
     );

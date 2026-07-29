@@ -7,6 +7,11 @@ order: 111
 
 # API
 
+**Casing tells you where a decorator goes.** `PascalCase` is a class decorator —
+`@Host`, `@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mount`,
+`@watchProp`. Nothing else distinguishes them at a glance, and the two groups are used in
+different places, so the convention carries its weight.
+
 Everything the three packages export. Each entry links to the page that explains it.
 
 ---
@@ -21,6 +26,8 @@ Everything the three packages export. Each entry links to the page that explains
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
 | `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
 | `list<T>(options)` | Renders a list, minting identity from the items. [Lists](/lists) |
+| `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
+| `stable(value)` | Keeps an array or object in a hook's props at one identity while its contents are equal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
@@ -60,10 +67,12 @@ Everything the three packages export. Each entry links to the page that explains
 |---|---|
 | `@create(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
 | `@mount(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
+| `@updated` | Runs after every commit **after** the first, with the new DOM in place. No deps, no previous values, no cleanup. [Lifecycle](/concepts/lifecycle) |
 | `@destroy` | Runs on teardown, while state is still readable. |
-| `@effect` | After the commit, and again when a signal it read changes. Return a cleanup. [Effects](/concepts/effects) |
+| `createSubscriptionDecorator(name, connect)` | Your own subscription decorator: connect after the commit, and what it returns is the cleanup. [Subscriptions](/concepts/subscriptions) |
 
-All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [Which to use](/ssr/env)
+`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`. [Which to use](/ssr/env)
+`@updated` does not: a server render has no layout and no paint, so it is client-only.
 
 ### Decorators — reacting
 
@@ -88,12 +97,18 @@ All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [
 |---|---|
 | `createSubscriptionDecorator(name, connect, validate?)` | Turns "subscribe, and unsubscribe on unmount" into a decorator. [Your own decorators](/hooks/own-decorators) |
 
+### Development switches
+
+| | |
+|---|---|
+| `configureDev({ strictRender })` | Turns off the double render behind [RMD020](/reference/diagnostics). A no-op in production. |
+
 ### Types
 
 `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
 `DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
 `AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
-`SubscriptionOwner` · `Disconnect`
+`SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps`
 
 ---
 
@@ -113,6 +128,34 @@ All three lifecycle decorators take `{ env: "client" | "server" | "shared" }`. [
 Types: `RouteConfig` · `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` ·
 `NavigateOptions` · `PartialNavigateOptions` · `SearchParamsUpdater` · `HashTagsUpdater` ·
 `HashTag` · `StateUpdater` · `RouteOutletProps` · `LinkProps`
+
+---
+
+## `@ramonda/query`
+
+Cached, deduplicated, race-free async state. [Async data](/query)
+
+| | |
+|---|---|
+| `QueryClientProvider` | A **hook** on the app root; owns the cache and publishes it, adds no element. Takes `{ client?, defaults? }`. [Setup](/query) |
+| `Query` | Reads one query. `status` · `data` · `error` · `isPending` · `isFetching` · `isSuccess` · `isError` · `failureCount` · `updatedAt` · `isRestored` · `result` · `refetch()`. [Queries](/query/queries) |
+| `InfiniteQuery` | Reads one paginated query, pages under one key. `pages` · `pageParams` · `fetchNextPage()` · `fetchPreviousPage()` · `hasNextPage` · `hasPreviousPage` · `isFetchingNextPage` · `isFetchingPreviousPage` · `maxPages`, plus everything `Query` has. [Infinite queries](/query/infinite) |
+| `Mutation` | Writes. `mutate(vars)` · `mutateAsync(vars)` · `reset()` · `cancel()` · `isIdle` · `isPending` · `isSuccess` · `isError` · `data` · `error`. [Mutations](/query/mutations) |
+| `QueryClientAccess` | A hook that hands you the client, for imperative work. [Reaching the cache](/query/queries) |
+| `QueryClient` | The cache itself: `fetch` · `prefetch` · `setData` · `peek` · `getEntry` · `all` · `isStale` · `invalidate` · `cancel` · `remove` · `sweep` · `subscribe` · `dehydrate` · `hydrate` |
+| `queryOptions(options)` | Types a query's options so its callbacks' parameters are inferred. [Typing](/query) |
+| `infiniteQueryOptions(options)` | The same for an infinite query, where `getNextPageParam` needs it. [Infinite queries](/query/infinite) |
+| `mutationOptions(options)` | The same, for a mutation. |
+| `ServerQueryError` | What a failure from a server render arrives as. A real `Error`. [On the server](/query/server) |
+| `hashKey(key)` · `keyStartsWith(key, prefix)` | Key hashing and prefix matching, for tooling. |
+
+Types: `QueryKey` · `QueryStatus` · `FetchStatus` · `FetchContext` · `QueryFetcher` ·
+`QueryProps` · `QueryResult` · `QuerySnapshot` · `QueryEntry` · `QueryBehaviour` ·
+`ObserverBehaviour` · `QueryDefaults` · `RefetchOnMount` · `RetryPolicy` ·
+`RetryDelayPolicy` · `QueryEvent` · `QueryObserver` · `QueryClientOptions` ·
+`QueryClientProviderProps` · `MutationProps` · `MutationContext` · `MutationStatus` ·
+`InfiniteQueryProps` · `InfiniteData` · `PageContext` ·
+`Rollback` · `DehydratedQuery` · `DehydratedState` · `SerializedError`
 
 ---
 

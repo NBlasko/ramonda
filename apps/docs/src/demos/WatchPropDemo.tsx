@@ -1,4 +1,4 @@
-import { Component, Host, state, watchProp } from "@ramonda/core";
+import { Component, Host, state, watchProp, memoizedHandler } from "@ramonda/core";
 
 // @watchProp reacts to one prop changing, BEFORE the render — so derived state is
 // already correct when render() runs, with no second pass. An @effect would work
@@ -12,7 +12,7 @@ class Profile extends Component<{ userId: string }> {
   @state loadedFor = "—";
   @state loads = 0;
 
-  @watchProp((props: { userId: string }) => props.userId)
+  @watchProp((props) => props.userId)
   reload(next: string, previous: string) {
     this.loadedFor = `${previous} → ${next}`;
     this.loads = this.loads + 1;
@@ -38,8 +38,12 @@ class Profile extends Component<{ userId: string }> {
 export class WatchPropDemo extends Component {
   @state userId = "ada";
 
+  // Cached by its argument, so the buttons keep their handlers across renders.
+  @memoizedHandler
   select(id: string) {
-    this.userId = id;
+    return () => {
+      this.userId = id;
+    };
   }
 
   render() {
@@ -47,7 +51,7 @@ export class WatchPropDemo extends Component {
       <div>
         <p className="demo-row">
           {["ada", "grace", "alan"].map((id) => (
-            <button type="button" disabled={this.userId === id} onClick={() => this.select(id)}>
+            <button type="button" disabled={this.userId === id} onClick={this.select(id)}>
               {id}
             </button>
           ))}

@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { state, mount, create, effect, Host } from "../../base/decorators";
+import { state, mount, create, Host } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 import { getRenderEnv } from "../../core/renderEnv";
+import { effectLike } from "../../test/effectLike";
 
 /**
  * The render env is a module-level variable, and on the server module scope is
@@ -31,7 +32,7 @@ class Late extends Component<{ tag: string }> {
   @create({ env: "server" }) onServer() {
     serverRan.push(this.props.tag);
   }
-  @effect ranEffect() {
+  @effectLike() ranEffect() {
     effectsRan.push(this.props.tag);
   }
   render() {

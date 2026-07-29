@@ -22,6 +22,7 @@ export default defineConfig({
       "@ramonda/core": resolve(__dirname, "../../packages/core/src/index.ts"),
       "@ramonda/devtools": resolve(__dirname, "../../packages/devtools/src/index.ts"),
       "@ramonda/router": resolve(__dirname, "../../packages/router/src/index.ts"),
+      "@ramonda/query": resolve(__dirname, "../../packages/query/src/index.ts"),
     },
   },
 });

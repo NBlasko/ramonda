@@ -1,5 +1,5 @@
 import { Hook } from "./Hook";
-import { create, destroy, effect } from "./decorators";
+import { create, destroy, watchProp } from "./decorators";
 import { HEAD_ATTR } from "../helpers/constants";
 
 /**
@@ -104,12 +104,11 @@ export class Head extends Hook<HeadOptions> {
   private previousTitle: string | undefined;
   /** The last title this hook set, to tell "still mine" from "someone else's". */
   private appliedTitle: string | undefined;
-  /** The options as last applied, so the effect can tell a change from a re-run. */
-  private appliedSnapshot: string | undefined;
 
   /**
-   * `shared`, so the server gets the head too — the entire reason this exists.
-   * An `@effect` alone would not: effects never run during a server render.
+   * `shared`, so the server gets the head too — the entire reason this runs here rather
+   * than in the reactive half: a `@watchProp` does not fire on mount, and nothing reactive
+   * runs during a server render at all.
    */
   @create({ env: "shared" })
   applyOnCreate(): void {
@@ -117,31 +116,30 @@ export class Head extends Hook<HeadOptions> {
   }
 
   /**
-   * The reactive half, client only. Reading the options registers them as
-   * dependencies, so a computed title follows its value.
+   * The reactive half, client only: re-applies when the options actually change.
    *
-   * **It applies only when something actually changed**, and that is not an
-   * optimisation — it is what keeps the deeper Head winning. Measured:
+   * ## Why `@watchProp` with a selector that returns a STRING
    *
-   * ```
-   *   create:layout, create:inner, effect:inner, effect:layout
-   * ```
+   * The selector reads all four options, so every one of them is a dependency, and it
+   * hands back a serialized form — which `@watchProp` then compares by value, because a
+   * string does. So this runs exactly when the options moved, and never for a render that
+   * changed something else. No snapshot field to keep, and no comparison of its own.
    *
-   * Creates run parent→child, so a route nested in a layout applies last and
-   * wins, which is the semantics anyone would expect. Effects run the other way
-   * (child→parent, so a parent's @mount sees its children mounted). An effect
-   * that re-applied unconditionally therefore handed the title straight back to
-   * the layout on the very first commit. A test caught it; the docstring I wrote
-   * first claimed the opposite and was simply wrong.
+   * ## Why this is not an `@effect`, which is what it used to be
    *
-   * Comparing against the last applied snapshot means the first run is a no-op —
-   * `@create` has already done it, in the right order — and later runs only fire
-   * for the hook whose value moved.
+   * Order. `@create` runs parent→child, so a route nested in a layout applies last and
+   * wins — the semantics anyone would expect. Effects run the other way (child→parent, so
+   * a parent's `@mount` sees its children mounted), so an effect that re-applied handed the
+   * title straight back to the layout on the first commit. That needed a guard: compare
+   * against the last applied snapshot, and let the first run be a no-op because `@create`
+   * had already done it in the right order.
+   *
+   * A `@watchProp` runs in the build phase, in the same parent→child order as `@create`, and
+   * **does not fire on mount at all** — so the first application belongs to `@create`, later
+   * ones to this, and the deeper Head wins in both. The guard field went with the effect.
    */
-  @effect
+  @watchProp((props) => JSON.stringify([props.title, props.description, props.meta, props.link]))
   applyOnChange(): void {
-    const next = JSON.stringify(this.readOptions());
-    if (next === this.appliedSnapshot) return;
     this.apply();
   }
 
@@ -170,7 +168,6 @@ export class Head extends Hook<HeadOptions> {
 
   private apply(): void {
     const { title, description, meta, link } = this.readOptions();
-    this.appliedSnapshot = JSON.stringify({ title, description, meta, link });
 
     if (title !== undefined) {
       if (this.previousTitle === undefined) this.previousTitle = document.title;

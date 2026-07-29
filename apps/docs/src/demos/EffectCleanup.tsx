@@ -1,32 +1,50 @@
-import { Component, Host, state, effect } from "@ramonda/core";
+import { Component, Host, createSubscriptionDecorator, memoizedHandler, state } from "@ramonda/core";
 
-// An @effect runs after the DOM is committed, and again whenever a signal it
-// READ changes. Return a function and it becomes the cleanup.
-//
-// That is the whole contract, and it works on both ends: the cleanup runs before
-// the effect re-runs, and once more when the component is destroyed. Here the
-// effect reads `channel`, so switching channels disconnects the old one first —
-// exactly what an external subscription needs.
+/**
+ * A subscription decorator, which is where the "return the cleanup" contract lives.
+ *
+ * `connect` runs once the DOM is committed, and again whenever a signal it READ changes —
+ * here `owner.channel`, so switching channels disconnects the old one first, which is
+ * exactly what an external subscription needs. What it returns is the cleanup: it runs
+ * before the next connect, and once more when the component is destroyed.
+ *
+ * Annotating `owner` is what makes the concrete component reachable inside — see writing
+ * your own decorators.
+ */
+interface ChannelFeed extends Component {
+  channel: string;
+}
+
+const onChannel = createSubscriptionDecorator("onChannel", (owner: ChannelFeed, handler: (line: string) => void) => {
+  const channel = owner.channel;
+  handler(`connected to ${channel}`);
+  return () => handler(`disconnected from ${channel}`);
+});
+
 @Host("div")
 export class EffectCleanup extends Component {
   @state channel = "news";
   @state log: string[] = [];
 
-  @effect
-  connect() {
-    const channel = this.channel;
-    this.append(`connected to ${channel}`);
-    return () => this.append(`disconnected from ${channel}`);
+  @onChannel()
+  onLine(line: string) {
+    this.append(line);
   }
 
-  // Not reactive state the effect reads — writing to a signal the effect READS
-  // would make it re-run forever.
+  // Not state the connect READS — writing to a signal it reads would reconnect forever.
   private append(line: string) {
     this.log = [...this.log, line].slice(-4);
   }
 
+  // `@memoizedHandler`, not an inline arrow: it caches the returned function by
+  // its arguments, per instance, so the same button gets the same handler on every
+  // render. A fresh one would be re-attached to the element each time (and RMD020
+  // reports it).
+  @memoizedHandler
   switchTo(next: string) {
-    this.channel = next;
+    return () => {
+      this.channel = next;
+    };
   }
 
   render() {
@@ -34,7 +52,7 @@ export class EffectCleanup extends Component {
       <div>
         <p className="demo-row">
           {["news", "sport", "weather"].map((name) => (
-            <button type="button" disabled={this.channel === name} onClick={() => this.switchTo(name)}>
+            <button type="button" disabled={this.channel === name} onClick={this.switchTo(name)}>
               {name}
             </button>
           ))}

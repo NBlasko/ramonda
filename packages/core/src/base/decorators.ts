@@ -9,6 +9,9 @@ import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { ramondaLog } from "../debug/logger";
 import { computePhase } from "../debug/renderPhase";
+import { memoPhase } from "../debug/purityGuard";
+import { STABLE_PROPS } from "../helpers/constants";
+import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
 import {
   assertMethod,
   assertField,
@@ -21,6 +24,7 @@ import {
   assertHostProps,
   assertSelector,
   assertEnv,
+  assertStablePropKeys,
 } from "../debug/validateDecorator";
 
 type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
@@ -46,8 +50,10 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * `alwaysRebuild` (only `@memoizedHandler` has a use for it) and a raw effect
  * body with no contract about what it returns.
  *
- * `createSubscriptionDecorator` is the public door onto it — same machinery,
- * with the cleanup made the point rather than an option.
+ * `createSubscriptionDecorator` is the public door onto it — same machinery, with the
+ * cleanup made the point rather than an option. There used to be a second door, `@effect`,
+ * which handed the raw body straight through; it was removed in favour of naming what each
+ * use of it was for. See the changeset for where each case went.
  *
  * **Registration is not open-ended.** Effects run once per commit, from a queue
  * flushed after the DOM work. Anything pushed here during construction, `@create`
@@ -70,54 +76,6 @@ function attachEffect(instance: { [GLOBAL_RUNTIME]: Runtime }, value: (...args: 
   };
 
   instance[GLOBAL_RUNTIME].effects.push(newEffect);
-}
-
-/**
- * Runs after the DOM is committed, and again whenever a signal it READ changes.
- *
- * **Return a function and it becomes the cleanup.** That is the whole external
- * subscription contract, and it is the same one on both ends: the cleanup runs
- * before the effect re-runs, and once more when the component is destroyed.
- * Measured, on an effect that reads `this.channel`:
- *
- * ```
- *   mount                 subscribe:a
- *   channel = "b"         unsubscribe:a, subscribe:b
- *   unmount               unsubscribe:b
- * ```
- *
- * So an effect that reads NO signal runs exactly once and is cleaned up exactly
- * once — which is what a store subscription usually wants:
- *
- * ```ts
- * @effect
- * fromStore() {
- *   return store.subscribe(() => { this.snapshot = store.getState(); });
- * }
- * ```
- *
- * Read a signal in there instead and the subscription follows it, unsubscribing
- * from the old target first. Nothing else re-runs an effect: a re-render caused
- * by some other state leaves it alone.
- *
- * Client only — an effect never runs during a server render.
- *
- * To package this as a reusable decorator of your own, see
- * `createSubscriptionDecorator`, which is what `@interval` is built on.
- */
-export function effect(value: (...args: any[]) => any, context: EnhancedClassMethodDecoratorContext) {
-  if (__DEV__) {
-    assertMethod(context.kind, "effect", context.name);
-  }
-
-  ensureStringContextName(context.name, "effect");
-
-  context.addInitializer(function (this) {
-    if (__DEV__) {
-      ramondaLog("info", `Effect initialized in <${this.constructor.name} />: ${String(context.name)}`);
-    }
-    attachEffect(this, value, false);
-  });
 }
 
 // --- Building your own subscription decorators -----------------------------
@@ -203,7 +161,7 @@ export function createSubscriptionDecorator<
       validateArgs(...args);
     }
 
-    return function <This extends Owner>(
+    return function <This>(
       value: Handler,
       // Deliberately NOT `ClassMethodDecoratorContext<This, Handler>`. That type
       // constrains its Value to `(this: This, ...args: any) => any`, which a
@@ -213,7 +171,18 @@ export function createSubscriptionDecorator<
       // The context is left at its default; the shape of the decorated method is
       // enforced by `value: Handler` above, which is the parameter TypeScript
       // actually checks it against.
-      context: ClassMethodDecoratorContext<This>,
+      //
+      // The owner requirement is a BRAND rather than `This extends Owner`, and the
+      // difference is only in the error. With the constraint, a mismatching class
+      // produced a message about `access.has` being contravariant and about the
+      // decorated method missing from the owner type — true, and unreadable. The
+      // brand fails on a named property instead, so the message says what is wrong.
+      context: ClassMethodDecoratorContext<This> &
+        (This extends Owner
+          ? unknown
+          : {
+              "this decorator's connect() requires an owner this class does not satisfy": Owner;
+            }),
     ): void {
       if (__DEV__) {
         assertMethod(context.kind, decoratorName, context.name);
@@ -221,7 +190,9 @@ export function createSubscriptionDecorator<
       ensureStringContextName(context.name, decoratorName);
 
       context.addInitializer(function (this: This) {
-        const owner = this;
+        // Safe because of the brand above: a class that does not satisfy `Owner` cannot
+        // reach this line, it fails to compile at the decoration site.
+        const owner = this as unknown as Owner;
         // Registered from the initializer, not later: see attachEffect for what
         // "later" costs. A dependency-free connect therefore runs once, on the
         // first commit, and its cleanup runs on destroy.
@@ -285,6 +256,94 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
         state.set(value);
       },
     });
+  });
+}
+
+/**
+ * Runs after the DOM of an **update** is committed. The post-commit door, and the
+ * only place an app can read or correct its own committed DOM.
+ *
+ * ```tsx
+ * class Row extends Component<{ selected: boolean }> {
+ *   @updated
+ *   keepVisible() {
+ *     if (!this.props.selected || this.wasVisible) return;
+ *     this.wasVisible = true;
+ *     this.element.scrollIntoView({ block: "nearest" });
+ *   }
+ * }
+ * ```
+ *
+ * ## Why it exists at all
+ *
+ * Two reasons, and the second is the one that makes it irreplaceable.
+ *
+ * 1. **You cannot measure your own DOM at the write site.** Updates are batched
+ *    through a microtask, so when the handler that changed state returns, the DOM
+ *    is not committed yet. "Change it, then measure it" in one function is
+ *    impossible by construction.
+ * 2. **Not every update has a write site you own.** A parent re-renders you with
+ *    new props; a context value changes; a hook you use writes its state; a query
+ *    you observe resolves. *Your code never ran* — there is nowhere to hang "and
+ *    now measure". Only the framework knows you just committed.
+ *
+ * `requestAnimationFrame` is the workaround, and it is worse: it lands a frame
+ * late, so correcting layout in it (a tooltip's position, an autosizing textarea,
+ * a restored scroll offset) shows one frame of the wrong layout. This runs in the
+ * same task, before paint.
+ *
+ * ## It is not `@effect`, and the difference is the point
+ *
+ * **No dependencies.** Nothing is tracked while it runs, so there is no dependency
+ * list to get wrong — and no repeat of the trap that makes an effect the wrong
+ * tool here: an effect re-runs when a dependency *changes*, and a dependency that
+ * is an array or object rebuilt by a props callback changes on every render. Such
+ * an effect fires constantly while looking framework-guarded, and its cleanup tears
+ * down whatever it set up each time.
+ *
+ * **No cleanup contract.** Return nothing. Teardown belongs to `@destroy`, and a
+ * subscription belongs to `createSubscriptionDecorator`.
+ *
+ * **No previous props or state**, deliberately. The `if` that would need them —
+ * `if (previous.id !== this.props.id)` — is reconstructing what changed, and that
+ * is `@watchProp`'s job, done before the render and compared by value. The `if`
+ * that belongs *here* asks something else: "is the DOM already how I want it?"
+ * Only the author can answer that, and it needs nothing from the framework.
+ *
+ * So the division is:
+ *
+ * - reacting to a value → `@watchProp` (before the render, one pass)
+ * - touching the DOM afterwards → `@updated` (after the commit, unconditional)
+ *
+ * ## What to know
+ *
+ * **Not on the first commit** — that is `@mount`, which runs once with the element
+ * already in the document. `@updated` is every commit after it.
+ *
+ * **It runs unconditionally**, so guard the body if the body is expensive. A
+ * `getBoundingClientRect` forces a synchronous layout, which costs orders of
+ * magnitude more than the dispatch (~270ns): one field comparison in front of it
+ * pays for itself many times over.
+ *
+ * **Client only.** A server render has no layout and no paint, so there is nothing
+ * to measure and nothing to correct.
+ *
+ * **Children before parents**, so a parent sees its children updated — which is
+ * the order measuring wants.
+ *
+ * **Writing state here schedules another render**, and that is the canonical use:
+ * measure, store, render with it. Guard it, or it loops — a runaway is reported as
+ * RMD009 in development and stopped in production.
+ */
+export function updated(value: (...args: any[]) => void, context: EnhancedClassMethodDecoratorContext) {
+  if (__DEV__) {
+    assertMethod(context.kind, "updated", context.name);
+  }
+
+  ensureStringContextName(context.name, "updated");
+
+  context.addInitializer(function (this) {
+    this[GLOBAL_RUNTIME].updates.push(() => value.call(this));
   });
 }
 
@@ -539,26 +598,39 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  * and old value. It does NOT fire on mount; use `@create` for the initial seed.
  *
  * ```ts
- * @watchProp((p: UserProps) => p.userId)
+ * @watchProp((p) => p.userId)
  * reload(next: string, previous: string) { … }
  * ```
  *
- * **Give the props type by ANNOTATING the selector parameter**, as above. That
- * fills in both `P` and `V` by inference (the method must be `(V, V) => void`).
- * Without the annotation `p` is `unknown` — strict, never `any`.
+ * **The selector needs no annotation**: `props` is typed from the class the decorator is
+ * placed on. `This` is only ever mentioned in the decorator CONTEXT and in a conditional
+ * type (`PropsOfInstance<This>`), and a conditional is not somewhere TypeScript infers
+ * from — so it stays open until the decorator is applied, and the class supplies it. The
+ * selector's return type still fixes `V`, so the method is checked as `(V, V) => void`.
  *
- * An explicit generic, `watchProp<UserProps>(...)`, is deliberately NOT the way
- * in: TypeScript has no partial inference, so naming `P` forces `V` to fall back
- * to `unknown` and the method's parameters lose their types.
+ * (Annotating it anyway is harmless when the annotation matches.)
+ *
+ * **The METHOD's parameters still need annotating**, and that is a TypeScript limitation
+ * rather than a choice: a decorator does not contextually type the signature it decorates,
+ * so unannotated parameters are an implicit `any` (TS7006). Measured while writing this.
+ *
+ * **On a hook it watches the HOOK's props** — the bag its `this.use()` callback
+ * produces — not the owner component's. That is the only reading that makes sense
+ * (a hook's selector is typed against its own props), but it was not what happened
+ * until 2026-07-28: a hook shares its owner's runtime, so every entry landed in one
+ * list and the runtime handed all of them the COMPONENT's props. A hook watching
+ * `p => p.userId` therefore read the owner's `userId` if it happened to have one,
+ * and never fired when the hook's own prop changed. Fixed by recording which
+ * instance each entry belongs to; see `WatchPropEntry.owner`.
  */
-export function watchProp<P = unknown, V = unknown>(selector: (props: P) => V) {
+export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V) {
   if (__DEV__) {
     assertSelector(selector, "watchProp");
   }
 
   return function <M extends (newValue: V, oldValue: V) => void>(
     _value: M,
-    context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime } & Record<string, any>, M>,
+    context: ClassMethodDecoratorContext<This & { [GLOBAL_RUNTIME]: Runtime } & Record<string, any>, M>,
   ): void {
     if (__DEV__) {
       assertMethod(context.kind, "watchProp", context.name);
@@ -570,6 +642,9 @@ export function watchProp<P = unknown, V = unknown>(selector: (props: P) => V) {
         selector: selector as (props: unknown) => unknown,
         cb: this[contextName].bind(this),
         lastValue: undefined,
+        // The instance the decorator was put on — a component or a hook. The
+        // runtime is shared; the props are not.
+        owner: this,
       });
     });
   };
@@ -628,8 +703,23 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
     if (entry) {
       entry.used = true;
     } else {
-      const fn = originalMethod.call(this, ...args);
-      entry = { fn, used: true };
+      // Named as the phase it is, so randomness read while BUILDING the handler is
+      // reported against the builder rather than against the render that asked for
+      // it (RMD021). The distinction matters: whatever the builder captures is cached
+      // with the handler, so it is frozen for every later call.
+      const previousMemoPhase = __DEV__ ? memoPhase.label : undefined;
+      if (__DEV__) {
+        memoPhase.label = `${(this as { constructor: { name: string } }).constructor.name}.${String(context.name)}`;
+      }
+
+      let fn: unknown;
+      try {
+        fn = originalMethod.call(this, ...args);
+      } finally {
+        if (__DEV__) memoPhase.label = previousMemoPhase;
+      }
+
+      entry = { fn: fn as (...a: any[]) => any, used: true };
       instanceMap.set(key, entry);
     }
 
@@ -693,16 +783,16 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * resolve to a different tag does not mutate the host; it fails to match in the
  * diff, and a fresh component is built in its place.
  */
-export function Host<This = unknown, P = Record<string, unknown>>(
-  tag: string | ((props: P) => string),
-  props?: (self: This) => Record<string, unknown>,
+export function Host<C extends new (...args: any[]) => object>(
+  tag: string | ((props: PropsOf<C>) => string),
+  props?: (self: InstanceOf<C>) => Record<string, unknown>,
 ) {
   if (__DEV__) {
     assertHostTag(tag);
     assertHostProps(props);
   }
 
-  return <T extends new (...args: any[]) => object>(ctor: T) => {
+  return (ctor: C) => {
     // Exactly one of `tag` / `tagFromProps` is set, so the render and diff paths
     // never have to decide which of two sources wins.
     const meta: HostMeta =
@@ -718,6 +808,141 @@ export function Host<This = unknown, P = Record<string, unknown>>(
 
     Object.defineProperty(ctor, HOST_META, {
       value: meta,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  };
+}
+
+/**
+ * The instance a class constructs, and the props its constructor takes.
+ *
+ * **Both are conditional types on purpose**, and that is the whole mechanism behind
+ * `@Host`'s and `@StableProps`' type inference. A conditional type is not an inference
+ * site, so TypeScript cannot resolve `C` from the decorator's ARGUMENTS — it defers until
+ * the decorator is applied, where the decorated class supplies `C`. Only then are the
+ * arguments checked, contextually, against a `C` that is finally known.
+ *
+ * Measured while writing this: the obvious shape — a type parameter sitting directly in the
+ * callback's parameter position (`props?: (self: This) => …`) — fixes `This` to `unknown`
+ * from an unannotated arrow before the class is ever looked at, which is why `@Host` used to
+ * need `(self: Card)` spelled out.
+ */
+type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
+
+/**
+ * The props of a component or a hook INSTANCE — which is what a method decorator has to
+ * work from, since its context is generic in the instance type rather than in the class.
+ *
+ * Two branches because the two base classes expose it differently: `BaseComponent.props` is
+ * public, and a hook's is `protected` and therefore structurally invisible, so `Hook`
+ * carries the type in a phantom (`PROPS_TYPE`).
+ */
+type PropsOfInstance<T> = T extends { props: infer P } ? P : T extends { [PROPS_TYPE]?: infer P } ? P : never;
+type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : never;
+
+/**
+ * A hook's props, read off its construct signature — `new (runtime, options: Q) => …`.
+ *
+ * The constraint on the decorated class is `=> BaseHook<any>` rather than `=> object`, and
+ * that is what rejects a COMPONENT at compile time: a component instance has no
+ * `HOOK_RUNTIME`, so it is not structurally a hook. Constraining the parameters instead
+ * does not work — a component's constructor is `(props, context)`, and `keyof` of a loose
+ * context type accepts any name, so every check passed.
+ */
+type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q : never;
+
+/**
+ * Declares which of a hook's props are **values** rather than references — so the
+ * framework hands back one identity for as long as their contents are equal, and the call
+ * site writes the plain literal.
+ *
+ * ```tsx
+ * @StableProps("key")
+ * export class Query extends Hook<QueryProps> {}
+ * ```
+ *
+ * ```tsx
+ * // …and every caller, with nothing to wrap:
+ * private user = this.use(Query, (self: UserCard) => ({
+ *   key: ["user", self.props.id],
+ * }));
+ * ```
+ *
+ * ## Why the hook declares it, and not the call site
+ *
+ * That a query key is a value — `["user", 7]` built again is the same question — is the
+ * hook's knowledge. Every prop is a signal and a signal compares by reference, so without
+ * this the rebuilt array is a *changed* prop at every call site: a `@compute` reading it
+ * recomputes, a `@watchProp` on it fires, a subscription reconnects. Measured across three
+ * renders of the owner, a compute reading a rebuilt array runs three times where one
+ * reading a scalar prop runs once. Stating it here fixes it once instead of asking every
+ * caller to know it. [`stable()`](../base/stable.ts) is the same thing from the outside,
+ * for a hook that declared nothing.
+ *
+ * ## What it cannot cover
+ *
+ * **Functions.** Two closures with the same body are not equal by any comparison that is
+ * safe to make, so a listed function prop is left exactly as it came and RMD022 still
+ * reports it — unstable AND silent would be the worst of both. Pass a bound method
+ * instead, or `@memoizedHandler` when it has to be built per argument.
+ *
+ * Contents are compared to a bounded depth, so a deeply nested literal gets a fresh
+ * reference rather than a wrong one — the safe direction.
+ *
+ * ## Notes on the shape
+ *
+ * A class decorator, like `@Host`, because the declaration is about the hook rather than
+ * about any one member — and props are not members at all, they live behind the
+ * `this.props` proxy, so there is nothing per-prop to decorate.
+ *
+ * **It merges with what a parent class declared** rather than replacing it, so a subclass
+ * adds to the list and cannot silently drop what the parent relied on.
+ *
+ * **Hooks only.** A component fails to type-check here, and throws in every build as the
+ * backstop for a build with no types: a component's props come from the parent's JSX and
+ * are compared by the diff, which is a different mechanism with its own control
+ * (`@shouldUpdateOnPropsChange`).
+ *
+ * **The names are type-checked** against the hook's props — `@StableProps("kye")` is a
+ * compile error that names `"kye"` — with no type argument to write at the call site.
+ */
+export function StableProps<const K extends readonly string[]>(...keys: K) {
+  if (__DEV__) {
+    assertStablePropKeys(keys as readonly string[]);
+  }
+
+  return <C extends new (runtime: any, options: any) => BaseHook<any>>(
+    ctor: C &
+      // The names are checked against the hook's OWN props: `C` is inferred from the
+      // decorated class, and when a name is not one of its props the parameter type gains a
+      // property the class cannot have, so the error names the offending key. Checked
+      // through `keyof` rather than by assignability, so an OPTIONAL prop counts as a prop.
+      //
+      // Written this way round because `Q` cannot be inferred from a constructor PARAMETER:
+      // measured, it falls back to its constraint, and every call then failed — including
+      // the correct ones.
+      ([K[number]] extends [keyof HookPropsOf<C>]
+        ? unknown
+        : { "@StableProps was given a name that is not a prop of this hook": K[number] }),
+  ) => {
+    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
+      throw new Error(
+        `[Ramonda] @StableProps is for hooks, not components. A component's props come from the parent's ` +
+          `JSX and are compared by the diff — use @shouldUpdateOnPropsChange to control that. Move the ` +
+          `decorator to the hook whose props these are, or drop it.`,
+      );
+    }
+
+    // Read BEFORE defining: a symbol on a constructor is inherited through the class
+    // chain, so this is the parent's list when there is one. Merging means a subclass
+    // adds rather than shadows.
+    const inherited = (ctor as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
+    const merged = inherited ? [...new Set([...inherited, ...keys])] : [...keys];
+
+    Object.defineProperty(ctor, STABLE_PROPS, {
+      value: merged,
       writable: false,
       enumerable: false,
       configurable: false,

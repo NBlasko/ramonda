@@ -1,7 +1,8 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, compute, effect, watchProp, createContext, list } from "../index";
+import { Component, Host, Hook, state, compute, watchProp, createContext, list } from "../index";
 import { renderToString } from "../hydration/ssr";
+import { effectLike } from "../test/effectLike";
 
 /**
  * The reactive graph, probed across the ways its pieces reach each other.
@@ -26,7 +27,7 @@ describe("reactivity graph", () => {
       @compute get double() {
         return this.n * 2;
       }
-      @effect track() {
+      @effectLike() track() {
         seen.push(this.double);
       }
       render() {
@@ -219,7 +220,7 @@ describe("reactivity graph", () => {
       @state useX = true;
       @state x = "x1";
       @state y = "y1";
-      @effect watch() {
+      @effectLike() watch() {
         seen.push(this.useX ? this.x : this.y);
       }
       render() {
@@ -291,7 +292,7 @@ describe("reactivity graph", () => {
 
     @Host("div")
     class Child extends Component<{ n: number }> {
-      @effect watch() {
+      @effectLike() watch() {
         seen.push(this.props.n);
       }
       render() {
@@ -325,10 +326,10 @@ describe("reactivity graph", () => {
     class C extends Component {
       @state a = 1;
       @state b = 0;
-      @effect first() {
+      @effectLike() first() {
         this.b = this.a * 2;
       }
-      @effect second() {
+      @effectLike() second() {
         seen.push(`b=${this.b}`);
       }
       render() {

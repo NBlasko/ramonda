@@ -39,8 +39,11 @@ onInput(event: Event) {
 }
 ```
 
-(An inline arrow like `onClick={(e) => …}` types `e` for you; a method referenced by
-name, as above, needs the annotation.)
+An inline arrow — `onClick={(e) => …}` — types `e` for you, and that is the only
+thing it does better. It also builds a new function on every render, so the listener
+is removed and re-added on the element every time, and a development build reports it
+(`RMD020`). Annotate the method instead; when a handler has to be built per item,
+[`@memoizedHandler`](#a-handler-per-item) caches it by its arguments.
 
 ## On window, document, or the component's own element
 
@@ -83,6 +86,41 @@ Development warns you when this bites.
 
 `@onWindow` and `@onDocument` also work on a [Hook](/hooks); `@onElement`
 does not, because a hook has no element of its own.
+
+## A handler per item
+
+A row usually needs a handler that knows *which* row it is, and the obvious way to
+write that is a closure per item — which is a new function on every render, re-attached
+to every button, every time. `@memoizedHandler` caches the function **by its
+arguments, per instance**, so asking twice gives the same function back:
+
+```tsx
+@memoizedHandler
+remove(name: string) {
+  return () => {
+    this.items = this.items.filter((item) => item !== name);
+  };
+}
+
+// in render:
+<button onClick={this.remove(name)}>remove</button>
+```
+
+The decorated method **returns** the handler rather than being one — that is what
+gives the cache something to key. Arguments must be strings, numbers or booleans; the
+key is built from them, and an object has no stable form to build one out of. When the
+value you have is an object, pass the index the list's mapper already hands you, or an
+id from the item.
+
+Entries whose arguments were not asked for during a render are dropped, so the cache
+follows the list instead of growing with every value ever seen.
+
+```demo:MemoHandlers
+```
+
+Press the identity button: the same arguments give back the same function, which is
+what keeps the listener from being re-attached — and what stops
+[RMD020](/reference/diagnostics) reporting the row.
 
 ## Which to use
 

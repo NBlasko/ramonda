@@ -84,7 +84,7 @@ Cancel the work in `@destroy`, or check before writing.
 
 ## RMD009 — Update loop
 
-A component kept re-rendering without settling. Two `@effect` methods writing what the other reads
+A component kept re-rendering without settling. Two `@updated` methods writing what the other reads
 is the usual cause; a write inside `render()` is the other.
 
 The guard **stops** it rather than only reporting it, because a synchronous loop freezes the tab.
@@ -92,7 +92,7 @@ Production has a blunter version of the same stop that throws — a frozen tab i
 than an error, and leaves nothing to debug.
 
 Note that a *single* effect writing what it reads does **not** loop: the framework detaches a
-signal an effect mutated itself. See [Effects](/concepts/effects).
+signal an effect mutated itself. See [Subscriptions](/concepts/subscriptions).
 
 ## RMD010 — The default host is not allowed in this parent
 
@@ -167,7 +167,7 @@ it reads another, every read of the compute now fires that signal's listeners to
 whatever only wanted a derived value.
 
 To **produce** a value, return it. To **cause** an effect, use an event handler or
-[`@effect`](/concepts/effects). To **count runs** or otherwise instrument the compute, use a plain
+[a subscription](/concepts/subscriptions). To **count runs** or otherwise instrument the compute, use a plain
 (non-`@state`) field — render re-runs on the same changes and reads its latest value.
 
 ## RMD019 — State set to a value that cannot be serialized
@@ -200,3 +200,201 @@ so a devtools panel or a test can capture them:
 window.addEventListener("ramonda:diagnostic", (event) => { … });
 ```
 
+
+## RMD020 — `render()` produced a different value the second time
+
+A development build renders **every component twice** and compares the two outputs. Two calls in the
+same tick, with no state change between them, must produce the same values — so anything that
+differs was built by the render itself, or does not come from state at all.
+
+That is what makes this precise: comparing against the *previous* render cannot tell a value that
+was created in place from one that genuinely changed. Two calls in one tick can.
+
+Three things get reported, each with its own fix.
+
+**A function built in place.** The source is identical between the two calls, only the identity is
+fresh. That is not just an allocation: an event handler whose identity changed is removed and re-added
+on the element on every render, and a function passed to a child re-renders that child.
+
+```tsx
+<button onClick={() => this.save()}>   // ✗ a new function every render
+<button onClick={this.save}>           // ✓ a bound method
+```
+
+For a handler that must be built per item, [`@memoizedHandler`](/concepts/events) caches it by its
+arguments, per instance — so the second render hands back the same function and nothing is reported.
+
+**An object or array built in place**, with the same contents. A child receiving it re-renders every
+time, a [`@compute`](/concepts/compute) reading it recomputes every time, and if it is a
+[list's](/lists) items then every row loses its identity and the whole list is rebuilt — per-item
+state lost, `@destroy` and `@create` run again.
+
+```tsx
+<Chart config={{ smooth: true }} />    // ✗ rebuilt every render
+@compute get config() { … }            // ✓ recomputed only when its inputs change
+```
+
+**A value that does not come from state** — `Math.random()`, `performance.now()`, `new Date()`. Decide
+the value once in `@create` and keep it in `@state`.
+
+Only the part of that class which varies **within a tick**, though: the two renders are microseconds
+apart, so a millisecond clock reads the same both times. Measured over 200,000 tries, two consecutive
+`Date.now()` calls differ in 0.006% of them. `Date.now()` is caught by
+[RMD007](#rmd007-server-and-client-rendered-different-output) instead — a server render and its
+hydration are milliseconds to seconds apart. The two checks cover the class between them; neither
+covers it alone.
+
+**What is deliberately not checked.** A hook's props callback exists in order to re-run on every
+render of its owner — that is its contract — so the bag it returns is a fresh object by design, and so
+are the values in it: a fetcher that closes over a prop cannot be a stable function. That churn is
+real, and a [`@compute`](/concepts/compute) bag is the cure when a subscription's `connect` or a `@compute` reads
+one, but reporting it would be a warning per hook with nothing to do about it. A **vnode** passed as a
+prop — `onLoading={<p>…</p>}` — is not reported either, for the same reason at a smaller scale: JSX is
+a fresh object every render. The check walks into it, so an inline handler inside still counts.
+
+**One thing to expect:** a `render()` with a side effect performs it twice in development. `RMD001`
+already makes a state write there an error, so "render is pure" is the rule either way — but a
+`console.log` in a render really will appear twice. That is the check working.
+
+**Turning it off.** When that is in the way — you are logging from `render()` to watch render order,
+or a render is heavy enough that doubling it makes development uncomfortable — switch it off at your
+entry point:
+
+```ts
+import { bootstrap, configureDev } from "@ramonda/core";
+
+configureDev({ strictRender: false });   // keeps devtools and every other check
+bootstrap(<App />, document.querySelector("#app")!);
+```
+
+It is a no-op in a production build, where the check is not compiled in at all.
+
+## RMD021 — randomness during a render, a `@compute`, a memoised handler or a hook's props
+
+`Math.random()`, `crypto.randomUUID()` and `crypto.getRandomValues()` are reported when
+they are called while one of the four pure phases is running. The same call fails
+differently in each, so the message differs with it:
+
+- **In a `render()`** the output depends on when it ran, so a server render and its
+  hydration disagree and the markup is thrown away
+  ([RMD007](#rmd007-server-and-client-rendered-different-output)).
+- **In a [`@compute`](/concepts/compute)** it is quieter and worse: the answer is
+  cached, so the value is frozen at the moment it was first asked for, and only a
+  dependency the compute actually READ can refresh it — which may be never.
+- **In a [`@memoizedHandler`](/concepts/events) builder** it is cached *with the
+  handler*, keyed by the arguments, so every call to that handler uses the one value.
+  The builder runs during a render, so without its own report the fix would look like a
+  render problem.
+- **In a [hook's props callback](/hooks/writing)** it is the sharpest of the four: the
+  callback runs on every render, so the prop holds a different value every time. As a
+  [query key](/query/queries) that is a new cache entry per render and a fetch that
+  never settles.
+
+Read it once in `@create` and keep it in `@state` (or `@persist`, so it survives
+hydration), take it as a prop, or read it in the event handler that needs it.
+
+## RMD022 — a hook's props callback built a new value for the same contents
+
+The props callback is called **twice in the same tick** and the two bags compared — the
+same check [RMD020](#rmd020-render-produced-a-different-value-the-second-time) runs on
+`render()`, on the other place the framework asks the app for a value on every render. It
+is part of the strict render, so `configureDev({ strictRender: false })` turns both off.
+
+Why it matters more here than it looks: **every prop is a signal**, and a signal compares
+by reference. A rebuilt array is a *changed* prop, so a `@compute` reading it recomputes, a
+`@watchProp` on it fires, and a subscription whose `connect` reads it reconnects — on
+every render of the owner. Measured across three renders: a compute reading a rebuilt
+array runs three times where one reading a scalar prop runs once, and a child component
+handed a rebuilt function re-renders 3/3.
+
+Three findings, three fixes:
+
+- **an array or object** — wrap it in [`stable()`](/reference/api), which keeps one
+  identity while the contents are equal (nested objects included). It is the counterpart
+  of [`list()`](/lists) for a props bag.
+- **a function** — a bound method (`fetch: self.load`) reads `this` when it is called, so
+  there is nothing to capture and the identity never changes;
+  [`@memoizedHandler`](/concepts/events) when it has to be built per argument. Functions
+  cannot go through `stable()`: two closures with the same body are not equal by any
+  comparison that is safe to make.
+- **different contents from two calls in one tick** — the callback is not a function of
+  state. Read the value once in `@create` and keep it in `@state`, or read it where it is
+  needed. `stable()` cannot hide this one; what is compared is the contents, not the
+  wrapper.
+
+A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
+answer when several are unstable together.
+
+## RMD023 — components built from an array, with no keys
+
+```tsx
+{this.items.map((item) => <Row item={item} />)}   // reported
+```
+
+A mapped array is a **supported** shape — it becomes its own region with its own key
+space, so it cannot reach past itself and claim a sibling. What is not handled is
+identity: a region's rows are matched by POSITION unless they carry keys. Insert or
+remove anywhere but the end and every row after it takes the previous row's place. For
+plain markup that is invisible, because the diff patches the text and the result is
+correct. For a **component** it is state landing on the wrong item — the `@state` that
+was row 2's is now row 3's, and the DOM goes with it: focus, scroll position, an open
+menu, a half-typed input.
+
+So the report is narrow, and deliberately so. It needs all of: built by an expression,
+more than one child, no `key` on any of them, and at least one component among them.
+`{items.map((i) => <li>{i}</li>)}` is not reported. `{this.props.children}` is not
+reported — that array is the framework's own.
+
+Two fixes:
+
+```tsx
+list({ each: this.items, as: Row })              // identity from the items themselves
+{this.items.map((i) => <Row key={i.id} item={i} />)}   // or take it over yourself
+```
+
+[`list()`](/lists) is the better one for a second reason: it is lazy. The descriptor is
+built in `render()` and the items by the diff, so a 500-row table's render is 0.04% of
+its commit — and `each` accepts `null` and `undefined`, so there is no `?? []` to rebuild
+every render.
+
+**Why this is a structural check and not part of the double render.** [RMD020](#rmd020-render-produced-a-different-value-the-second-time)
+compares two renders, and it cannot see this at all: the mapper is handed to
+`Array.prototype.map` and never stored anywhere the comparison can reach, and its output
+is a run of freshly built vnodes — which is what all JSX looks like. The shape is the
+only evidence, and it is conclusive: JSX passes children as separate arguments, so a
+nested array among them was built by an expression.
+
+## What is non-deterministic in JavaScript, and what catches it
+
+The inventory, because "collect how many of these exist" is the right instinct — and
+the answer is that they fall into groups with different checks:
+
+| read | RMD020 (render twice) | RMD021 (watch the call) |
+|---|---|---|
+| `Math.random()` | every time | yes |
+| `crypto.randomUUID()` | every time | yes |
+| `crypto.getRandomValues()` | every time | yes |
+| `new Date()` (kept as an object) | every time | — |
+| `performance.now()` | every time | — |
+| `Date.now()` | **0.006%** | — |
+| `new Date().toISOString()` | 0.091% | — |
+| `process.hrtime()` (SSR) | every time | — |
+| an app's own `let seq = 0; seq++` | every time | — |
+
+RMD021 patches only the randomness family, and that is a finding rather than a
+preference: a patched clock catches the PLATFORM's reads too. An `Event` constructor
+stamps `timeStamp`, which under jsdom is a JS-visible `Date.now()` — so any diagnostic
+raised during a render tripped it, and under jsdom is where every app runs its own
+tests. Nothing in the platform generates randomness behind your back, so that half of
+the check can be trusted.
+
+**The residual gap, stated rather than papered over:** `Date.now()` read during a render
+in a client-only app, with the value rendered. RMD020 misses it (same millisecond),
+RMD021 does not watch it, and RMD007 never sees it because there is no server render to
+disagree with. Server-render the app and RMD007 catches it immediately.
+
+Not in scope for either, and a different mistake with a different fix: reading LAYOUT
+or ambient state during a render — `getBoundingClientRect()`, `window.innerWidth`,
+`scrollY`, `localStorage`, `document.activeElement`. Those are not non-deterministic so
+much as a forced layout and a dependency on something outside the tree; `@updated` is
+where that work belongs.

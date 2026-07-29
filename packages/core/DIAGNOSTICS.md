@@ -52,6 +52,10 @@ so a component that misuses the same property on every render reports once.
 | `RMD014` | error | A `For` hook was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | warning | A component updated while its element is not in the document |
+| `RMD020` | warning | `render()` produced a different value the second time |
+| `RMD021` | warning | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
+| `RMD022` | warning | A hook's props callback built a new value for the same contents |
+| `RMD023` | warning | Components built from an array, with no keys |
 
 ### RMD001 — State written during render()
 
@@ -122,7 +126,7 @@ Two invariants this must not break:
 
 ### RMD006 — Timer still running after unmount
 
-A raw `setInterval` started in `@create`/`@mount`/`@effect` keeps running after the
+A raw `setInterval` started in `@create`/`@mount` or a subscription keeps running after the
 component is gone: it holds the component alive and keeps firing against state
 nobody is showing.
 
@@ -224,7 +228,7 @@ stays silent.
 ### RMD009 — Update loop
 
 Rendering wrote state that scheduled another render of the same component, with
-no end. Two ways in: two `@effect`s that write what the other reads, and a write
+no end. Two ways in: two `@updated`s that write what the other reads, and a write
 in `render()` itself (RMD001 names that one, but naming it does not help if the
 tab freezes before the message can be read).
 
@@ -340,14 +344,14 @@ component: *how do I keep a piece with its own state and lifecycle — React's
 is an element?*
 
 **Most of the time the question dissolves: just write the component.** Let
-`render()` return `null`. It keeps `@state`, `@create`, `@effect`, `@onWindow`,
+`render()` return `null`. It keeps `@state`, `@create`, `@watchProp`, `@onWindow`,
 and its own re-render boundary, and leaves behind
 `<ramonda-host style="display: contents">` — an element that takes part in **no
 layout at all**.
 
 ```tsx
 class Analytics extends Component<{ page: string }> {
-  @effect track() { send(this.props.page); }
+  @watchProp((props) => props.page) track(page: string) { send(page); }
   render() { return null; }
 }
 ```
@@ -357,7 +361,7 @@ means the box does not exist. This covers everywhere except the three parents
 that reject even an inert element — `<table>`, `<select>`, `<svg>`.
 
 **There, the answer is a Hook.** A Hook is precisely "state and lifecycle with no
-element": it has `@state`, `@create`/`@destroy`, `@effect`, `@onWindow`, it can
+element": it has `@state`, `@create`/`@destroy`, `@watchProp`, `@onWindow`, it can
 provide context, and it adds no node for the parser to destroy.
 
 ```tsx
@@ -597,3 +601,161 @@ queue time a perfectly healthy component can be momentarily disconnected — mor
 so since children are now built detached and inserted by `reorderChildren`. A
 drain runs in a microtask, after the synchronous commit, by which point anything
 still disconnected really is orphaned.
+
+### RMD020 — render() produced a different value the second time
+
+A development build calls each component's `render()` **twice** and compares the two
+outputs. With no state change between the two calls, anything that differs was built
+by the render itself — an inline function, a rebuilt object or array — or does not
+come from state at all (`Math.random()`, `performance.now()`, `new Date()`).
+
+**It does not catch a millisecond clock**, and that is worth stating rather than
+discovering: the two renders are microseconds apart, so `Date.now()` reads the same
+both times — measured, two consecutive calls differ in 0.006% of 200,000 tries.
+RMD007 catches those, because a server render and its hydration are milliseconds to
+seconds apart. Neither check covers the class alone.
+
+**Why twice rather than comparing against the previous render.** That comparison
+conflates "created in place" with "genuinely changed", and cannot tell them apart at
+all. Two calls in one tick can, with no false positives. It also catches
+non-determinism, which the previous-render comparison never could — RMD007 sees the
+same class of mistake, but only after a hydration mismatch has already happened.
+
+**Why it can run on every render.** Measured here: `render()` is 3-4% of a commit
+(1.56 µs of 48.69 for one element, 9.27 of 211.63 for twenty) and 0.04% for a table
+of 500 rows — `list()` is lazy, so a second render rebuilds the descriptor and not
+the items. And checking only the first render would miss every branch not taken then,
+which is exactly where handlers live.
+
+Building the second output is safe: `buildRenderOutput` produces vnodes and nothing
+else — components are constructed by the diff, `hostTag` is already cached, a render
+registers no signal dependencies, and `@memoizedHandler` returns the same function
+for the same arguments, so it reads as stable rather than as a fault.
+
+**Not** a hook's props callback. That was implemented and then removed after auditing
+what it said about real code: the callback exists in order to re-run per owner render,
+so the bag and the closures in it are fresh by design, and the reports had no action
+behind them. A vnode passed as a prop is likewise walked rather than called a rebuilt
+object — JSX is a fresh object every render.
+
+**The hazard, and the switch.** A render with a side effect runs it twice. RMD001
+already makes a state write there an error, so "render is pure" is the position — but
+a `fetch()` or a `console.log` in a render really does happen twice in development.
+The framework's own test suites turn the check off in their setup files
+(`strictRender.enabled = false`), because they observe render ORDER by logging from
+`render()` — precisely the impurity this reports.
+
+### RMD021 — randomness during a render, a @compute, a memoised handler or a hook's props
+
+`Math.random`, `crypto.randomUUID` and `crypto.getRandomValues` are patched in a
+development build (the trick `timerGuard` already uses) and report when they are called
+while `renderPhase`, `computePhase`, `memoPhase` or `propsPhase` is set. Four messages,
+because the consequence differs: a render disagrees with its own hydration, a `@compute`
+freezes the value until a dependency it READ changes, a memoised handler caches the
+value with the handler so every call uses the same one, and a hook's props callback runs
+on EVERY render, so the prop holds a different value each time — as a query key, a new
+cache entry per render.
+
+`propsPhase` is also the answer to "should the props callback run twice in a strict
+render, like `render()` does". It should not: watching the call catches the same mistake,
+and a callback may do more than build an object — running it twice would do that twice.
+
+**Why the clock is not patched**, which was the first version: a patched global catches
+the PLATFORM's calls too. An `Event` constructor stamps `timeStamp`, and under jsdom
+that is a JS-visible `Date.now()` — so raising any diagnostic during a render tripped
+it, because `ramondaLog` dispatches a `CustomEvent` for the devtools stream. Three of
+core's own diagnostic tests failed with RMD021 instead of the code they asserted. Under
+jsdom is where every app runs its tests, so that is disqualifying rather than fixable.
+Randomness has no such problem: the platform never generates it behind your back.
+
+`logger.ts` captures `crypto.randomUUID` before the patch is installed, for the same
+reason — otherwise the framework reports itself.
+
+## What is non-deterministic in JavaScript, and what catches it
+
+The inventory, because "collect how many of these exist" is the right instinct — and
+the answer is that they fall into groups with different checks:
+
+| read | RMD020 (render twice) | RMD021 (watch the call) |
+|---|---|---|
+| `Math.random()` | every time | yes |
+| `crypto.randomUUID()` | every time | yes |
+| `crypto.getRandomValues()` | every time | yes |
+| `new Date()` (kept as an object) | every time | — |
+| `performance.now()` | every time | — |
+| `Date.now()` | **0.006%** | — |
+| `new Date().toISOString()` | 0.091% | — |
+| `process.hrtime()` (SSR) | every time | — |
+| an app's own `let seq = 0; seq++` | every time | — |
+
+RMD021 patches only the randomness family, and that is a finding rather than a
+preference: a patched clock catches the PLATFORM's reads too. An `Event` constructor
+stamps `timeStamp`, which under jsdom is a JS-visible `Date.now()` — so any diagnostic
+raised during a render tripped it, and under jsdom is where every app runs its own
+tests. Nothing in the platform generates randomness behind your back, so that half of
+the check can be trusted.
+
+**The residual gap, stated rather than papered over:** `Date.now()` read during a render
+in a client-only app, with the value rendered. RMD020 misses it (same millisecond),
+RMD021 does not watch it, and RMD007 never sees it because there is no server render to
+disagree with. Server-render the app and RMD007 catches it immediately.
+
+Not in scope for either, and a different mistake with a different fix: reading LAYOUT
+or ambient state during a render — `getBoundingClientRect()`, `window.innerWidth`,
+`scrollY`, `localStorage`, `document.activeElement`. Those are not non-deterministic so
+much as a forced layout and a dependency on something outside the tree; `@updated` is
+where that work belongs.
+
+### RMD022 — a hook's props callback built a new value for the same contents
+
+The callback is called twice in one tick and the bags compared, key by key, with the same
+`classify` RMD020 uses — so the three findings and their names are the same: `handler`,
+`object`, `nondeterministic`. Gated on `isStrictRender()`, so one switch turns off both
+double calls.
+
+**Why a bag deserves its own check even though it is documented as re-running.** Every
+prop is a signal, and a signal compares by reference (`common.ts`: `newVal !==
+prevProps[key]`), so a rebuilt array is a change with real consequences downstream.
+Measured, three renders of the owner: a hook `@compute` reading a rebuilt array runs 3
+times vs 1 for a scalar prop; `@watchProp` on a rebuilt array fires on every update
+render; a child handed a rebuilt function re-renders 3/3.
+
+**Why the fix had to come with the check.** An earlier version of this comparison existed
+inside `renderStability.ts` and was deleted, because the only thing it could say was
+"your query key is an array literal" — true, and with nothing to do about it. The two
+answers are `@StableProps` on the hook (the author states that a prop is a value, once,
+for every caller) and `stable()` at the call site (the same thing from outside, for a hook
+that declared nothing). That is the same reason `list()` exists next to RMD020's report
+about a rebuilt `each`.
+
+**Why a declared prop is skipped outright.** `@StableProps` means the framework already
+holds one identity for equal contents, so reporting it would ask the app to fix what the
+hook took care of. **Functions are the exception**: a declaration cannot make a closure
+comparable, so `resolveStable` leaves it exactly as it came and this still reports it —
+unstable AND silent would be the worst of both.
+
+**Why `stable()` markers are unwrapped before comparing.** Two calls produce two marker
+objects, so comparing them by identity would report the fix as the fault. Contents that
+DIFFER between the two calls are still reported: a wrapper cannot launder
+non-determinism.
+
+### RMD023 — components built from an array, with no keys
+
+Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the
+mapper goes to `Array.prototype.map` and is never stored, and the output is a run of fresh
+vnodes, which is what all JSX is. The evidence is the SHAPE: JSX passes children as
+separate arguments, so a nested array among them was built by an expression.
+
+`normalizeChildren` brands every array it builds with `OWN_CHILDREN` (DEV only), which is
+what makes `{this.props.children}` — the framework's own array, one level down —
+distinguishable from a mapped one. Without that brand it fired on every component that
+forwards children.
+
+**Narrowed twice, and the history is the point.** The first version reported every raw
+array and broke 10 of core's own tests, all of them exercising child groups on purpose —
+a mapped array is supported here, and `SlotKeys.test.tsx` even carries the note that an
+earlier, broader check was rejected for firing on the safe shape. What shipped reports only
+what is genuinely unhandled: unkeyed COMPONENT rows, of which there are at least two. Plain
+markup is patched in place and correct; a component's row moving takes its state and its
+DOM with it. One keyed child anywhere means the app is managing identity and the framework
+does not second-guess it.

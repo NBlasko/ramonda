@@ -1,8 +1,9 @@
 import { test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, effect, mount, create, destroy } from "../../base/decorators";
+import { state, mount, create, destroy } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
+import { effectLike } from "../../test/effectLike";
 
 let log: string[] = [];
 
@@ -18,7 +19,7 @@ class GrandChildHook extends Hook<{ val: number; label: string }> {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
-  @effect onUpdate() {
+  @effectLike() onUpdate() {
     log.push(`${this.props.label}:Effect:Value:${this.props.val}`);
     return () => log.push(`${this.props.label}:Effect:Cleanup`);
   }
@@ -28,7 +29,7 @@ class GrandChildHook extends Hook<{ val: number; label: string }> {
  * Intermediate hook containing a nested GrandChildHook
  */
 class ChildHook extends Hook<{ count: number; label: string }> {
-  nested = this.use(GrandChildHook, (bag) => ({
+  nested = this.use(GrandChildHook, (bag: ChildHook) => ({
     val: bag.props.count * 2,
     label: `${bag.props.label}->Nested`,
   }));
@@ -45,7 +46,7 @@ class ChildHook extends Hook<{ count: number; label: string }> {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
-  @effect onUpdate() {
+  @effectLike() onUpdate() {
     log.push(`${this.props.label}:Effect:Count:${this.props.count}`);
     return () => log.push(`${this.props.label}:Effect:Cleanup`);
   }
@@ -57,7 +58,7 @@ class ChildHook extends Hook<{ count: number; label: string }> {
 class LifecycleTester extends Component<{ trigger: number }> {
   @state local = 0;
 
-  hookA = this.use(ChildHook, (bag) => ({
+  hookA = this.use(ChildHook, (bag: LifecycleTester) => ({
     count: bag.props.trigger + bag.local,
     label: "HookA",
   }));

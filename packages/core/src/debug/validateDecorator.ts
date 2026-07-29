@@ -169,3 +169,19 @@ export function assertEnv(env: unknown, decorator: string): void {
     fail(decorator, `env must be one of ${ENVS.map((e) => `"${e}"`).join(", ")}, got ${show(env)}.`);
   }
 }
+
+/**
+ * `@StableProps()` with nothing to declare is a mistake rather than a no-op, and a
+ * non-string key means the call site passed something that will never match a prop name.
+ */
+export function assertStablePropKeys(keys: readonly string[]): void {
+  if (keys.length === 0) {
+    throw new Error('[Ramonda] @StableProps needs at least one prop name: @StableProps("key").');
+  }
+
+  for (const key of keys) {
+    if (typeof key !== "string" || key.length === 0) {
+      throw new Error(`[Ramonda] @StableProps takes prop names as strings; got ${JSON.stringify(key)}.`);
+    }
+  }
+}

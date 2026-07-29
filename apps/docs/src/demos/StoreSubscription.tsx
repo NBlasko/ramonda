@@ -1,4 +1,4 @@
-import { Component, Host, state, effect, createSubscriptionDecorator } from "@ramonda/core";
+import { Component, Host, createSubscriptionDecorator, mount, state, updated } from "@ramonda/core";
 
 // An external store, standing in for Zustand or anything else that hands back an
 // unsubscribe function.
@@ -61,25 +61,33 @@ export class StoreSubscription extends Component {
     this.mounted = !this.mounted;
   }
 
-  // Read in an @effect, not in render(). render() is the BUILD phase — it runs
-  // before the child below is mounted or destroyed, so a count read there is
-  // always one commit stale (it showed 1 while unmounted and 0 after remounting).
-  // Effects run after the DOM is committed, which is when the subscription has
-  // actually been made or dropped.
+  // Read AFTER the render, not in render(). render() is the build phase — it runs
+  // before the child below is mounted or destroyed, so a count read there is always
+  // one commit stale (it showed 1 while unmounted and 0 after remounting).
   //
-  // Reading `this.mounted` is what makes this re-run; writing `this.listeners`
-  // is safe because the effect never reads it back.
-  @effect
-  countListeners() {
-    void this.mounted;
+  // @mount for the first count, @updated for every one after it: @updated runs once
+  // the commit is done, which is when the subscription has actually been made or
+  // dropped. Writing state from it is safe here because the value converges — the
+  // same count is not a change, so it schedules nothing.
+  @mount
+  countOnMount() {
     this.listeners = likes.listenerCount;
+  }
+
+  @updated
+  countAfterCommit() {
+    this.listeners = likes.listenerCount;
+  }
+
+  like() {
+    likes.increment();
   }
 
   render() {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={() => likes.increment()}>
+          <button type="button" onClick={this.like}>
             like
           </button>
           {this.mounted ? <LikeCount /> : <span className="demo-note">unmounted</span>}

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, create, effect } from "../index";
+import { Component, Host, Hook, state, create, watchProp } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -45,17 +45,16 @@ describe("state and lifecycle without markup", () => {
     // The everyday answer. The default host is display:contents, so the element
     // exists but takes part in no layout — the wrapper is not a cost.
     let created = 0;
-    let effects = 0;
+    let tracked = 0;
 
     class Analytics extends Component<{ page: string }> {
       @create init() {
         created++;
       }
 
-      @effect
+      @watchProp((props) => props.page)
       track() {
-        void this.props.page;
-        effects++;
+        tracked++;
       }
 
       render() {
@@ -83,12 +82,14 @@ describe("state and lifecycle without markup", () => {
     expect(host.childNodes.length).toBe(0);
     expect(host.getAttribute("style")).toBe("display: contents;");
     expect(created).toBe(1);
-    expect(effects).toBe(1);
+    // `@watchProp` does not fire on mount — `@create` is the initial pass — so nothing
+    // has been tracked yet.
+    expect(tracked).toBe(0);
 
-    // It keeps its own reactivity: the effect re-runs on a prop change.
+    // It keeps its own reactivity: a prop change reaches it, element or no element.
     app.instance.page = "about";
     await app.settle();
-    expect(effects).toBe(2);
+    expect(tracked).toBe(1);
 
     expect(captured.codes).toEqual([]);
   });

@@ -46,7 +46,7 @@ value it already holds and nothing happens — there is nothing to change.)
 
 This is deliberately simple: a component re-renders on any of its own state changes,
 full stop. When you need to react to one *specific* value — recompute a total, run a
-side effect — that is what [compute](/concepts/compute) and [effects](/concepts/effects)
+side effect — that is what [compute](/concepts/compute) and [subscriptions](/concepts/subscriptions)
 are for, and those *do* track the individual values they read.
 
 ## Replace, don't change in place
@@ -140,7 +140,7 @@ field changes. It deliberately doesn't. When you change a component's state, you
 almost always change what it shows — so the bookkeeping to ask "did this particular
 change matter?" usually costs more than re-running one `render()` and updating only
 the DOM that differs, which is already cheap. The fine-grained tracking lives where
-it earns its keep: [compute](/concepts/compute) and [effects](/concepts/effects).
+it earns its keep: [compute](/concepts/compute) and [subscriptions](/concepts/subscriptions).
 
 ## Next
 

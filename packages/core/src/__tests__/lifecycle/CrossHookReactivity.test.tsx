@@ -1,8 +1,9 @@
 import { test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, effect, create, destroy } from "../../base/decorators";
+import { state, create, destroy } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
+import { effectLike } from "../../test/effectLike";
 
 let log: string[] = [];
 
@@ -25,7 +26,7 @@ class ProducerHook extends Hook<{ label: string }> {
  * Consumer hook that will receive data from ProducerHook
  */
 class ConsumerHook extends Hook<{ val: number; label: string }> {
-  @effect onUpdate() {
+  @effectLike() onUpdate() {
     log.push(`${this.props.label}:Effect:Value:${this.props.val}`);
     return () => log.push(`${this.props.label}:Effect:Cleanup`);
   }

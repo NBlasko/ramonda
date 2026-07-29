@@ -2,6 +2,16 @@
 
 // packages/core/src/debug/logger.ts
 
+/**
+ * Captured before `installPurityGuard` patches it.
+ *
+ * Without this the framework reports ITSELF: a diagnostic raised during a render calls
+ * `randomUUID` for the log entry's id, the guard sees randomness in a render, and
+ * RMD021 fires attributed to whatever was rendering. Measured — it broke three of
+ * core's own diagnostic tests, which asserted one code and got that one.
+ */
+const nativeRandomUUID = typeof crypto !== "undefined" ? crypto.randomUUID.bind(crypto) : () => "no-crypto";
+
 // In-memory log history, replayed to the devtools when it connects. Bounded by
 // a ring buffer so a long session can't grow it without limit.
 const MAX_VAULT_LOGS = 500;
@@ -14,7 +24,7 @@ export const ramondaLog = (type: "warning" | "error" | "info", message: string, 
       message,
       data,
       timestamp: new Date().toLocaleTimeString(),
-      id: crypto.randomUUID(),
+      id: nativeRandomUUID(),
     };
     // All the presentation — colours, labels — lives here.
     const COLORS = {

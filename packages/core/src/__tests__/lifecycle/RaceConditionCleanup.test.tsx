@@ -1,8 +1,9 @@
 import { test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, effect, create, destroy } from "../../base/decorators";
+import { state, create, destroy } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
+import { effectLike } from "../../test/effectLike";
 
 let log: string[] = [];
 
@@ -20,7 +21,7 @@ class AsyncHook extends Hook<{ userId: number; label: string }> {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
-  @effect onUpdate() {
+  @effectLike() onUpdate() {
     const id = this.props.userId;
     log.push(`${this.props.label}:Effect:Start:User:${id}`);
 
@@ -40,7 +41,7 @@ class AsyncHook extends Hook<{ userId: number; label: string }> {
  * Child component that uses the async hook
  */
 class AsyncChild extends Component<{ userId: number }> {
-  userHook = this.use(AsyncHook, (bag) => ({
+  userHook = this.use(AsyncHook, (bag: AsyncChild) => ({
     userId: bag.props.userId,
     label: "ChildHook",
   }));

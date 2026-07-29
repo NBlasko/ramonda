@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, effect, mount, state } from "../../base/decorators";
+import { Host, mount, state } from "../../base/decorators";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { bootstrap } from "../../index";
+import { effectLike } from "../../test/effectLike";
 
 /**
  * A component's effects run AFTER its children's — on every path, including the
@@ -24,7 +25,7 @@ const order: string[] = [];
 
 @Host("span")
 class Child extends Component {
-  @effect e() {
+  @effectLike() e() {
     order.push("child:effect");
   }
   @mount m() {
@@ -37,7 +38,7 @@ class Child extends Component {
 
 @Host("div")
 class Panel extends Component<{ withChild: boolean }> {
-  @effect e() {
+  @effectLike() e() {
     order.push("parent:effect");
   }
   @mount m() {
@@ -73,7 +74,7 @@ describe("effects run children-first on an UPDATE too", () => {
     @Host("div")
     class Toggler extends Component {
       @state on = false;
-      @effect e() {
+      @effectLike() e() {
         // Reading `on` is what makes this effect re-run when it changes — the
         // same shape as an effect that observes something a child set up.
         void this.on;

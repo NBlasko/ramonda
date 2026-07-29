@@ -42,6 +42,9 @@ importers:
       '@ramonda/lens':
         specifier: workspace:^
         version: link:../../packages/lens
+      '@ramonda/query':
+        specifier: workspace:^
+        version: link:../../packages/query
       '@ramonda/router':
         specifier: workspace:^
         version: link:../../packages/router
@@ -49,6 +52,9 @@ importers:
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../../packages/shared
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
       esbuild:
         specifier: 0.28.1
         version: 0.28.1
@@ -67,6 +73,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.1)(lightningcss@1.33.0))
 
   apps/playground:
     dependencies:
@@ -86,6 +95,12 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/query':
+        specifier: workspace:^
+        version: link:../../packages/query
+      '@ramonda/router':
+        specifier: workspace:^
+        version: link:../../packages/router
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
@@ -194,6 +209,34 @@ importers:
       immer:
         specifier: ^11.1.15
         version: 11.1.15
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@microsoft/api-extractor@7.58.12(@types/node@26.1.1))(postcss@8.5.22)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 7.3.6
+        version: 7.3.6(@types/node@26.1.1)(lightningcss@1.33.0)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.1)(lightningcss@1.33.0))
+
+  packages/query:
+    dependencies:
+      '@ramonda/core':
+        specifier: workspace:^
+        version: link:../core
+    devDependencies:
+      '@ramonda/shared':
+        specifier: workspace:^
+        version: link:../shared
+      '@ramonda/testing-library':
+        specifier: workspace:^
+        version: link:../testing-library
+      jsdom:
+        specifier: 28.0.0
+        version: 28.0.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@microsoft/api-extractor@7.58.12(@types/node@26.1.1))(postcss@8.5.22)(typescript@5.9.3)

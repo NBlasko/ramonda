@@ -185,7 +185,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * route change already reads the right cache key instead of showing the old
    * module for one frame.
    */
-  @watchProp((props: AsyncLoadProps) => props.cacheKey ?? props.lazy.toString())
+  @watchProp((props) => props.cacheKey ?? props.lazy.toString())
   onSourceChanged() {
     this.loading = false;
     this.hasError = false;

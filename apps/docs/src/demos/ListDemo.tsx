@@ -14,11 +14,15 @@ class TaskRow extends Component<{ item: Task }> {
   // the task, which is exactly the bug a hand-written key gets wrong.
   @state clicks = 0;
 
+  bump() {
+    this.clicks = this.clicks + 1;
+  }
+
   render() {
     return (
       <span className={this.props.item.done ? "done" : ""}>
         {this.props.item.title}{" "}
-        <button type="button" onClick={() => (this.clicks = this.clicks + 1)}>
+        <button type="button" onClick={this.bump}>
           clicked {this.clicks}×
         </button>
       </span>

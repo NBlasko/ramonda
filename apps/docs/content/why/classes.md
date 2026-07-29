@@ -21,7 +21,7 @@ framework's composition story comes from.
 
 ## Why decorators, not reserved method names
 
-Lifecycle and state are decorators — `@state`, `@create`, `@mount`, `@effect` — rather
+Lifecycle and state are decorators — `@state`, `@create`, `@mount`, `@updated` — rather
 than special method names you are expected to implement.
 
 The reason is collisions. If "the method named `mount` runs on mount", then `mount` is

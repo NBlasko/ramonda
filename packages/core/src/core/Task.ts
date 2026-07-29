@@ -2,11 +2,18 @@ import type { BaseComponent } from "../types/vdom";
 import { diffAndMerge } from "./DiffAndMerge";
 import { errorHandler } from "./errorHandler";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
-import { COMPONENT_RUNTIME, INTERNAL_HOOKS } from "./runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "./runtime";
 import { runComponentEffects } from "../reactivity/effect";
 import { runWatchProps } from "../helpers/watchProps";
 import { notifyComponentUpdate } from "../debug/devtoolsBridge";
-import { flushPostCommit, hasPendingPostCommit, queuePostCommit } from "./commit";
+import {
+  flushPostCommit,
+  flushUpdated,
+  hasPendingPostCommit,
+  hasPendingUpdated,
+  queuePostCommit,
+  queueUpdated,
+} from "./commit";
 import { reportWriteAfterUnmount, reportOrphanedUpdate, isRunawayUpdate, startDrain } from "../debug/updateRules";
 
 const taskQueue: BaseComponent<any>[] = [];
@@ -81,7 +88,7 @@ export async function flushTaskQueue(maxTicks = 50): Promise<void> {
  */
 export function drainSync(maxRounds = 50): void {
   for (let round = 0; round < maxRounds; round++) {
-    if (taskQueue.length === 0 && !hasPendingPostCommit()) return;
+    if (taskQueue.length === 0 && !hasPendingPostCommit() && !hasPendingUpdated()) return;
     processTask();
   }
 
@@ -119,6 +126,22 @@ function updateBuild(component: BaseComponent<any>) {
   const rendered = generateRenderOutput(component);
 
   diffAndMerge(rendered, component, componentRuntime.enhancedNode);
+
+  // `@updated` — the post-commit door, and only on this path: the first commit
+  // belongs to @mount, so neither the build path nor hydration queues these.
+  //
+  // Queued only when the component has any, so a component without `@updated`
+  // pays one length check rather than an entry in the flush (measured at ~267 ns
+  // per queued callback, which is not free when every component in a tree pays it).
+  //
+  // Collected, not queued into `pending`: `@updated` runs in a phase of its own,
+  // AFTER the mounts and effects of this drain and deepest-component-first. See
+  // `flushUpdated` — an update does not reach children through the parent's diff
+  // the way a first mount does, so FIFO would run a parent before its children,
+  // which is backwards for anything that measures a subtree.
+  if (component[GLOBAL_RUNTIME].updates.length > 0) {
+    queueUpdated(component);
+  }
 
   // Queued, not inline — the third place this had to be fixed, after the build
   // path and hydration. `diffAndMerge` above can create components, and a new
@@ -195,7 +218,11 @@ function processTask() {
   do {
     drainBuilds();
     flushPostCommit();
-  } while (taskQueue.length > 0);
+    // After the mounts and effects this commit queued, and in its own phase — see
+    // `flushUpdated` for why the order has to be the opposite of theirs. A body
+    // that writes state schedules another build, which the `while` picks up.
+    flushUpdated();
+  } while (taskQueue.length > 0 || hasPendingUpdated());
 
   if (__DEV__) {
     // Cheap, gated ping — no-op unless the devtools is actively watching.

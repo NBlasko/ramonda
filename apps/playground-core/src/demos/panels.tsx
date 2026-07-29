@@ -4,7 +4,6 @@ import {
   state,
   persist,
   compute,
-  effect,
   create,
   mount,
   destroy,
@@ -20,9 +19,17 @@ import {
 /* ── Nested hooks: CounterHook uses HistoryHook (hook-of-a-hook) ────────── */
 class HistoryHook extends Hook<{ value: number }> {
   @state history: number[] = [];
-  @effect track() {
-    const v = this.props.value;
-    this.history = [...this.history, v].slice(-5);
+
+  // `@create` seeds the first value, `@watchProp` records every one after it. This was a
+  // single `@effect` before that decorator was removed — and it reads better as two named
+  // halves than as one body whose reactivity came from what it happened to read.
+  @create seed() {
+    this.history = [this.props.value];
+  }
+
+  @watchProp((props) => props.value)
+  track(next: number) {
+    this.history = [...this.history, next].slice(-5);
   }
 }
 
@@ -159,7 +166,7 @@ export class DerivedSync extends Component<DerivedSyncProps> {
     this.doubled = this.props.source * 2;
   }
 
-  @watchProp((p: DerivedSyncProps) => p.source) onSource(next: number) {
+  @watchProp((p) => p.source) onSource(next: number) {
     this.doubled = next * 2;
   }
 

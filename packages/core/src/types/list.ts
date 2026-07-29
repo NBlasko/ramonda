@@ -1,8 +1,15 @@
 import type { VNode, ComponentClassKind } from "./vdom";
 
 interface ListBase<T> {
-  /** The list. Read reactively: the owner re-renders when it is replaced. */
-  each: readonly T[];
+  /**
+   * The list. Read reactively: the owner re-renders when it is replaced.
+   *
+   * **Nullish is allowed and renders nothing**, which is the point: data that has not
+   * arrived yet is `undefined`, and `each: this.query.data ?? []` would build a fresh
+   * empty array on every render — a changed `each`, so the list drops its item scopes and
+   * RMD020 reports it. Pass the value straight through.
+   */
+  each: readonly T[] | null | undefined;
   /**
    * Only for items that are re-created as fresh objects but mean the same
    * entity — a refetch, a deserialize. Then identity has to come from a field:

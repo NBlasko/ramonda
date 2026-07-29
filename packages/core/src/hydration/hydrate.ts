@@ -294,7 +294,7 @@ function hydrateComponent(
   }
 
   // Effects are always client-only: this attaches @onElement/@onWindow/@onDocument
-  // listeners, starts @interval/@timeout, and runs @effect against the live DOM.
+  // listeners, starts @interval/@timeout, and connects subscriptions against the live DOM.
   //
   // Queued, not called inline — for the same reason the mounts above are, and it
   // was a real bug that only these were left behind. Hydration walks top-down,

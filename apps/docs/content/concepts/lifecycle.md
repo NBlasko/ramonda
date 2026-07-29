@@ -47,6 +47,53 @@ page: focus an input, measure an element, hand a node to a chart library.
 Children mount before their parent, so by the time a parent's `@mount` runs, its
 children are already on the page.
 
+## `@updated` — after an update is committed
+
+`@mount` runs once. `@updated` runs after **every commit after that**, with the new
+DOM already in place — so it is where you read or correct the page once it has
+changed.
+
+```tsx
+class Row extends Component<{ selected: boolean }> {
+  @updated
+  keepVisible() {
+    if (!this.props.selected || this.scrolled) return;
+    this.scrolled = true;
+    this.element.scrollIntoView({ block: "nearest" });
+  }
+}
+```
+
+**Why it has to exist.** You cannot do this where the state changed: updates are
+batched, so when your handler returns the DOM has not been touched yet. And not every
+update *has* a place of yours to stand in — a parent re-renders you with new props, a
+context value changes, a hook you use writes its state. Your code never ran, so only
+the framework can tell you that you just committed.
+
+**It has no dependencies, no previous values, and no cleanup**, and each of those is
+deliberate:
+
+- It fires on **every** update, so guard the body if the body is expensive. A
+  `getBoundingClientRect` forces a layout; one field comparison in front of it pays
+  for itself many times over.
+- The `if` that wants previous props — `if (previous.id !== this.props.id)` — is
+  reconstructing what changed, and that is [`@watchProp`](/concepts/props)'s job,
+  done *before* the render. The `if` that belongs here asks something else: **is the
+  DOM already how I want it?**
+- Cleanup belongs to `@destroy`; a subscription belongs to
+  [your own decorator](/hooks/own-decorators).
+
+So the division is: **reacting to a value → `@watchProp`. Touching the DOM afterwards
+→ `@updated`.**
+
+**Children before parents**, so a parent measuring its own subtree finds it updated.
+It runs after this commit's `@mount`s and effects, and **never on the server** —
+there is no layout and no paint there to correct.
+
+Writing state here schedules another render, and that is the point for the
+measure-store-render pattern. Guard it, or it loops (reported as `RMD009` in
+development).
+
 ## `@destroy` — being removed
 
 Runs when the component is removed. Your state and computed values are still readable,
@@ -117,5 +164,5 @@ See [timers](/concepts/timers).
 
 ## Next
 
-- [Effects](/concepts/effects) — reacting to state, with cleanup.
+- [Subscriptions](/concepts/subscriptions) — reacting to state, with cleanup.
 - [The host element](/concepts/host) — the element `@mount` is talking about.

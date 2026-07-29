@@ -98,6 +98,19 @@ export const STYLE_SYM = Symbol("style");
 export const ORIGIN_SYM = Symbol("origin");
 export const IS_LIST = Symbol("isList");
 /**
+ * Wraps a value returned by `stable()`, so the props pass can resolve it against the
+ * previous render's value for that key. Unwrapped before it ever reaches `this.props`.
+ */
+export const STABLE = Symbol("stable");
+/** The prop names a hook declared with `@StableProps`, held on the class. */
+export const STABLE_PROPS = Symbol("stableProps");
+/**
+ * DEV only. Marks a children array that `normalizeChildren` built — so a nested array
+ * WITHOUT it came from the app (a `.map`, a `filter`, an array literal) rather than from
+ * JSX or from `{this.props.children}` being passed down. See RMD023.
+ */
+export const OWN_CHILDREN = Symbol("ownChildren");
+/**
  * Set by `flattenMixedArray` on a children array that contains at least one
  * list, so the diff can take the cheap path (a strict equality check) instead of
  * scanning every child of every element on every render to find out.

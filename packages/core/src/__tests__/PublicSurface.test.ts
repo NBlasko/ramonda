@@ -20,6 +20,8 @@ const EXPECTED = [
   "Component",
   "Hook",
   "list",
+  "stable",
+  "StableProps",
   "AsyncLoad",
   "ErrorBoundary",
   "createContext",
@@ -41,10 +43,10 @@ const EXPECTED = [
   "state",
   "persist",
   "compute",
-  "effect",
   "create",
   "mount",
   "destroy",
+  "updated",
   "watchProp",
   "deferHydration",
   "shouldUpdateOnPropsChange",
@@ -57,6 +59,8 @@ const EXPECTED = [
   "Host",
   // building your own decorators
   "createSubscriptionDecorator",
+  // development-time switches
+  "configureDev",
 ];
 
 /** Reactivity plumbing an app must not be able to touch. */
