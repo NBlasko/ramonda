@@ -150,7 +150,7 @@ export class QueryClient {
   /**
    * Registers an observer and hands back the way to remove it.
    *
-   * The return value is the unsubscribe, in the shape core's `@effect` and
+   * The return value is the unsubscribe, in the shape core's subscription decorators and
    * `createSubscriptionDecorator` already take as a cleanup — so an observer is
    * one decorator away from being torn down correctly, with nothing to remember.
    */

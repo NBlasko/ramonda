@@ -50,8 +50,10 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * `alwaysRebuild` (only `@memoizedHandler` has a use for it) and a raw effect
  * body with no contract about what it returns.
  *
- * `createSubscriptionDecorator` is the public door onto it — same machinery,
- * with the cleanup made the point rather than an option.
+ * `createSubscriptionDecorator` is the public door onto it — same machinery, with the
+ * cleanup made the point rather than an option. There used to be a second door, `@effect`,
+ * which handed the raw body straight through; it was removed in favour of naming what each
+ * use of it was for. See the changeset for where each case went.
  *
  * **Registration is not open-ended.** Effects run once per commit, from a queue
  * flushed after the DOM work. Anything pushed here during construction, `@create`
@@ -74,54 +76,6 @@ function attachEffect(instance: { [GLOBAL_RUNTIME]: Runtime }, value: (...args: 
   };
 
   instance[GLOBAL_RUNTIME].effects.push(newEffect);
-}
-
-/**
- * Runs after the DOM is committed, and again whenever a signal it READ changes.
- *
- * **Return a function and it becomes the cleanup.** That is the whole external
- * subscription contract, and it is the same one on both ends: the cleanup runs
- * before the effect re-runs, and once more when the component is destroyed.
- * Measured, on an effect that reads `this.channel`:
- *
- * ```
- *   mount                 subscribe:a
- *   channel = "b"         unsubscribe:a, subscribe:b
- *   unmount               unsubscribe:b
- * ```
- *
- * So an effect that reads NO signal runs exactly once and is cleaned up exactly
- * once — which is what a store subscription usually wants:
- *
- * ```ts
- * @effect
- * fromStore() {
- *   return store.subscribe(() => { this.snapshot = store.getState(); });
- * }
- * ```
- *
- * Read a signal in there instead and the subscription follows it, unsubscribing
- * from the old target first. Nothing else re-runs an effect: a re-render caused
- * by some other state leaves it alone.
- *
- * Client only — an effect never runs during a server render.
- *
- * To package this as a reusable decorator of your own, see
- * `createSubscriptionDecorator`, which is what `@interval` is built on.
- */
-export function effect(value: (...args: any[]) => any, context: EnhancedClassMethodDecoratorContext) {
-  if (__DEV__) {
-    assertMethod(context.kind, "effect", context.name);
-  }
-
-  ensureStringContextName(context.name, "effect");
-
-  context.addInitializer(function (this) {
-    if (__DEV__) {
-      ramondaLog("info", `Effect initialized in <${this.constructor.name} />: ${String(context.name)}`);
-    }
-    attachEffect(this, value, false);
-  });
 }
 
 // --- Building your own subscription decorators -----------------------------

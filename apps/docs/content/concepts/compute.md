@@ -69,4 +69,4 @@ recomputes each render, which is exactly as often as it is needed.
 
 ## Next
 
-- [Effects](/concepts/effects) — for work that is *not* a value.
+- [Subscriptions](/concepts/subscriptions) — for work that is *not* a value.

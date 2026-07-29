@@ -83,7 +83,7 @@ export async function getDOM<T = any>(component: ComponentChild) {
      *
      * It used to be `() => Promise.resolve()` — one microtask turn — and that
      * left the COUNT to the caller. Measured: a plain state write needs one
-     * `await settle()`, but a cascade (an @effect writing state that its own
+     * `await settle()`, but a cascade (an @updated writing state that its own
      * render reads) needs two, and a deeper one needs three. Nothing said which
      * you were in, so tests were written with an extra await "to be safe" and
      * the ones with too few read stale DOM.

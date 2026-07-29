@@ -84,7 +84,7 @@ Cancel the work in `@destroy`, or check before writing.
 
 ## RMD009 — Update loop
 
-A component kept re-rendering without settling. Two `@effect` methods writing what the other reads
+A component kept re-rendering without settling. Two `@updated` methods writing what the other reads
 is the usual cause; a write inside `render()` is the other.
 
 The guard **stops** it rather than only reporting it, because a synchronous loop freezes the tab.
@@ -92,7 +92,7 @@ Production has a blunter version of the same stop that throws — a frozen tab i
 than an error, and leaves nothing to debug.
 
 Note that a *single* effect writing what it reads does **not** loop: the framework detaches a
-signal an effect mutated itself. See [Effects](/concepts/effects).
+signal an effect mutated itself. See [Subscriptions](/concepts/subscriptions).
 
 ## RMD010 — The default host is not allowed in this parent
 
@@ -167,7 +167,7 @@ it reads another, every read of the compute now fires that signal's listeners to
 whatever only wanted a derived value.
 
 To **produce** a value, return it. To **cause** an effect, use an event handler or
-[`@effect`](/concepts/effects). To **count runs** or otherwise instrument the compute, use a plain
+[a subscription](/concepts/subscriptions). To **count runs** or otherwise instrument the compute, use a plain
 (non-`@state`) field — render re-runs on the same changes and reads its latest value.
 
 ## RMD019 — State set to a value that cannot be serialized
@@ -247,7 +247,7 @@ covers it alone.
 **What is deliberately not checked.** A hook's props callback exists in order to re-run on every
 render of its owner — that is its contract — so the bag it returns is a fresh object by design, and so
 are the values in it: a fetcher that closes over a prop cannot be a stable function. That churn is
-real, and a [`@compute`](/concepts/compute) bag is the cure when an `@effect` or a `@compute` reads
+real, and a [`@compute`](/concepts/compute) bag is the cure when a subscription's `connect` or a `@compute` reads
 one, but reporting it would be a warning per hook with nothing to do about it. A **vnode** passed as a
 prop — `onLoading={<p>…</p>}` — is not reported either, for the same reason at a smaller scale: JSX is
 a fresh object every render. The check walks into it, so an inline handler inside still counts.

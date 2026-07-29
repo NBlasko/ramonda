@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, effect } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { Component } from "../../base/Component";
+import { effectLike } from "../../test/effectLike";
 
 let log: string[] = [];
 
@@ -12,7 +13,7 @@ class CascadeComponent extends Component {
   @state stage = "initial";
   @state finalValue = 0;
 
-  @effect onStageChange() {
+  @effectLike() onStageChange() {
     log.push(`Effect:Stage:${this.stage}`);
 
     if (this.stage === "triggered") {
@@ -22,7 +23,7 @@ class CascadeComponent extends Component {
     }
   }
 
-  @effect onFinalValueChange() {
+  @effectLike() onFinalValueChange() {
     if (this.finalValue > 0) {
       log.push(`Effect:FinalValue:${this.finalValue}`);
     }

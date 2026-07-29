@@ -4,7 +4,7 @@ import type { BaseComponent } from "../types/vdom";
 /**
  * DEV-only leak detector for timers.
  *
- * A raw `setInterval` started in @create/@mount/@effect keeps running after the
+ * A raw `setInterval` started in @create/@mount or a subscription keeps running after the
  * component is gone — it holds the component alive, and it keeps firing against
  * state nobody is showing. There is no way to see it from the outside, so we
  * watch the timers themselves.

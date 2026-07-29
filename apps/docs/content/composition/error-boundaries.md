@@ -54,7 +54,7 @@ It does **not** catch:
 - **Event handlers.** A click that throws isn't part of a render — use `try/catch`.
 - **Async work.** A rejected promise settles outside the render — catch it and put
   the failure in state.
-- **Errors after the page updates.** An `@effect` that throws is reported, not caught
+- **Errors after the page updates.** An `@updated` or a subscription's `connect` that throws is reported, not caught
   here.
 
 ## For loading failures

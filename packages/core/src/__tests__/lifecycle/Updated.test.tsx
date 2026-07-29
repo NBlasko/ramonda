@@ -1,11 +1,12 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { getDOM } from "../../test/setup";
-import { create, destroy, effect, mount, state, updated } from "../../base/decorators";
+import { create, destroy, mount, state, updated } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { Hook } from "../../base/Hook";
 import { ErrorBoundary } from "../../base/ErrorBoundary";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
+import { effectLike } from "../../test/effectLike";
 
 /**
  * `@updated` — the post-commit door.
@@ -181,7 +182,7 @@ describe("@updated", () => {
         log.push("updated");
       }
 
-      @effect subscribe() {
+      @effectLike() subscribe() {
         log.push(`effect:${this.count}`);
       }
 

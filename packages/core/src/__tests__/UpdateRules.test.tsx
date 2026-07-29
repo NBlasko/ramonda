@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, Host, effect, shouldUpdateOnPropsChange } from "../base/decorators";
+import { state, Host, updated, shouldUpdateOnPropsChange } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { bootstrap } from "../index";
@@ -128,7 +128,7 @@ describe("update rules", () => {
   });
 
   describe("RMD009: update loop", () => {
-    test("two effects writing each other's state are stopped and reported", async () => {
+    test("two post-render writes feeding each other are stopped and reported", async () => {
       let runsA = 0;
       let runsB = 0;
 
@@ -137,7 +137,7 @@ describe("update rules", () => {
         @state x = 0;
         @state y = 0;
 
-        @effect
+        @updated
         a() {
           runsA++;
           // Safety net, not the thing under test: without the guard this loop
@@ -146,7 +146,7 @@ describe("update rules", () => {
           this.y = this.x + 1;
         }
 
-        @effect
+        @updated
         b() {
           runsB++;
           if (runsB > 500) return;
@@ -159,6 +159,8 @@ describe("update rules", () => {
       }
 
       const app = await getDOM<PingPong>(<PingPong />);
+      // `@updated` does not fire on mount, so the cascade needs a first render to follow.
+      app.instance.x = 1;
       await app.settle();
 
       expect(captured.codes).toContain("RMD009");
@@ -216,34 +218,38 @@ describe("update rules", () => {
       expect(app.container.querySelector("span")!.textContent).toBe("60");
     });
 
-    test("an effect that writes the signal it reads is already unsubscribed", async () => {
-      // Not the loop guard — `runComponentEffects` detaches deps an effect
-      // mutated itself, so a self-writing effect runs once and stops. Worth
-      // pinning: it is why the loop above needs *two* effects to reproduce.
+    test("a post-render write that converges is not a loop", async () => {
+      // A write that CONVERGES is not a loop, and this is the line between the two:
+      // assigning the same value is not a change, so it schedules nothing and the
+      // guard never has anything to count.
       let runs = 0;
 
       @Host("div")
-      class SelfWrite extends Component {
+      class Converging extends Component {
         @state count = 0;
+        @state kick = 0;
 
-        @effect
-        climb() {
+        @updated
+        settle() {
           runs++;
           if (runs > 500) return;
-          this.count = this.count + 1;
+          this.count = 1; // the same value from the second run on
         }
 
         render() {
-          return <span>{this.count}</span>;
+          return <span>{`${this.count}:${this.kick}`}</span>;
         }
       }
 
-      const app = await getDOM<SelfWrite>(<SelfWrite />);
+      const app = await getDOM<Converging>(<Converging />);
+      app.instance.kick = 1;
       await app.settle();
 
-      expect(runs).toBe(1);
+      // Two: the write on the first update changed the value, the render that
+      // followed ran it again, and that write changed nothing.
+      expect(runs).toBe(2);
       expect(captured.codes).toEqual([]);
-      expect(app.container.querySelector("span")!.textContent).toBe("1");
+      expect(app.container.querySelector("span")!.textContent).toBe("1:1");
     });
   });
 });

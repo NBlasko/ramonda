@@ -1,9 +1,10 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Component, Hook, Host, state, create, mount, destroy, effect, unmount } from "../../index";
+import { Component, Hook, Host, state, create, mount, destroy, unmount } from "../../index";
 import { queuePostCommit, flushPostCommit } from "../../core/commit";
 import { COMPONENT_RUNTIME } from "../../core/runtime";
 import type { BaseComponent } from "../../types/vdom";
+import { effectLike } from "../../test/effectLike";
 
 /**
  * @mount must mean "my element is in the document".
@@ -284,7 +285,7 @@ describe("hooks take part in the same commit", () => {
 
     class Watcher extends Hook {
       @state ticks = 0;
-      @effect track() {
+      @effectLike() track() {
         // Reading the signal is what registers the effect.
         void this.ticks;
         order.push("hook:effect");

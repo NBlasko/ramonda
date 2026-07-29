@@ -66,18 +66,23 @@ time the owner re-renders, so the hook stays in step with the owner's data.
 export class Resource<T> extends Hook<{ url: string }> {
   @state data: T | null = null;
 
-  @effect
-  load() {
-    let alive = true;
+  @create
+  first() {
+    void this.load(this.props.url);
+  }
+
+  // Runs when `url` changes, before the render — so the "loading" state is on screen in
+  // the same pass rather than one frame later.
+  @watchProp((props) => props.url)
+  reload(next: string) {
+    void this.load(next);
+  }
+
+  private async load(url: string) {
     this.data = null;
-    fetch(this.props.url)
-      .then((r) => r.json())
-      .then((d) => {
-        if (alive) this.data = d;
-      });
-    return () => {
-      alive = false;
-    };
+    const response = await fetch(url);
+    // `@destroy` is where a real one would cancel; RMD008 reports a write after unmount.
+    this.data = await response.json();
   }
 }
 ```
@@ -93,8 +98,8 @@ export class UserCard extends Component<{ id: string }> {
 }
 ```
 
-When the parent passes a new `id`, the callback produces a new `url`; the `@effect`
-that read `this.props.url` re-runs and refetches — with no wiring on your part.
+When the parent passes a new `id`, the callback produces a new `url`, and the
+`@watchProp` on it refetches — with no wiring on your part.
 Props are tracked **per key** (exactly like [props](/concepts/props)), so the hook
 reacts to the prop that changed and not to the others. Authoring them in detail is
 [writing a hook](/hooks/writing).

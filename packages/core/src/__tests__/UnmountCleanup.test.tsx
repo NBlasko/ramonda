@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, destroy, effect, interval, createContext } from "../index";
+import { Component, Host, state, destroy, interval, createContext } from "../index";
+import { effectLike } from "../test/effectLike";
 
 const [Provider, Ctx] = createContext({ v: "a" });
 
@@ -60,7 +61,7 @@ describe("unmount cleanup", () => {
       @interval(1000) tick() {
         this.n++;
       }
-      @effect bad() {
+      @effectLike() bad() {
         ran.push("effect");
         return () => {
           throw new Error("cleanup boom");

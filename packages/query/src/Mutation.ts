@@ -19,7 +19,7 @@ export interface MutationContext {
 
 /**
  * Undoes an optimistic update. Returned by `onMutate`, called if the mutation
- * fails — the same "return the cleanup" contract `@effect` and
+ * fails — the same "return the cleanup" contract
  * `createSubscriptionDecorator` use, so it is one idea to learn rather than three.
  */
 export type Rollback = (() => void) | void;

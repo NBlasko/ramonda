@@ -76,12 +76,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD008: {
     severity: "warning",
     title: "State changed after the component was unmounted",
-    fix: "The component is gone, so the update is dropped and the render it asked for never happens. Something outlived it: almost always an await that resolves late (a fetch, a timer, a subscription callback) and writes state on the way back. Cancel it from @destroy — keep an AbortController or the subscription handle in a class property and tear it down there. @interval / @timeout and @effect cleanups already do this for you.",
+    fix: "The component is gone, so the update is dropped and the render it asked for never happens. Something outlived it: almost always an await that resolves late (a fetch, a timer, a subscription callback) and writes state on the way back. Cancel it from @destroy — keep an AbortController or the subscription handle in a class property and tear it down there. @interval / @timeout and a subscription decorator's cleanup already do this for you.",
   },
   RMD009: {
     severity: "error",
     title: "Update loop — a component never stopped re-rendering",
-    fix: "Rendering wrote state that scheduled another render of the same component, forever; without this guard the tab freezes. The usual causes are an @effect that writes a signal another @effect reads back (they re-trigger each other), and a write in render() itself (see RMD001). An @effect must not write what it reads. Derive values with @compute instead of syncing them with an effect, and if two pieces of state must agree, make one of them @compute from the other rather than writing both.",
+    fix: "Rendering wrote state that scheduled another render of the same component, forever; without this guard the tab freezes. The usual causes are two @updated methods writing what the other reads (they re-trigger each other), and a write in render() itself (see RMD001). A post-render write must converge — assigning the same value is not a change, so it schedules nothing. Derive values with @compute instead of syncing them with an effect, and if two pieces of state must agree, make one of them @compute from the other rather than writing both.",
   },
   RMD010: {
     severity: "warning",
@@ -91,7 +91,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD011: {
     severity: "error",
     title: "A function was used as a JSX tag",
-    fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @create/@destroy, @effect and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
+    fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @create/@destroy, @watchProp and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
   },
   RMD014: {
     severity: "error",
@@ -116,7 +116,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD018: {
     severity: "error",
     title: "State written during a @compute",
-    fix: "A @compute must be a pure function of what it reads — it derives a value, it does not write one. A write here is worse than the same write in render() (RMD001): if the @compute reads the signal it wrote, it invalidates its own cache and recomputes forever; if it reads another, every read of the compute now also fires that signal's listeners, re-rendering components that only wanted to read a derived value. To count runs or otherwise instrument a compute, use a plain (non-@state) field — render re-runs on the same changes and will read its latest value. To produce a value, return it. To cause an effect, do it in an event handler or @effect, never while deriving.",
+    fix: "A @compute must be a pure function of what it reads — it derives a value, it does not write one. A write here is worse than the same write in render() (RMD001): if the @compute reads the signal it wrote, it invalidates its own cache and recomputes forever; if it reads another, every read of the compute now also fires that signal's listeners, re-rendering components that only wanted to read a derived value. To count runs or otherwise instrument a compute, use a plain (non-@state) field — render re-runs on the same changes and will read its latest value. To produce a value, return it. To cause an effect, do it in an event handler, @updated or a subscription, never while deriving.",
   },
   RMD019: {
     severity: "error",

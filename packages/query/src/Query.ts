@@ -224,8 +224,8 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * `@watchProp` is right for this and nothing else is:
    *
    * - It runs **before the render**, so the request for the new key is already in
-   *   flight when the component draws its loading state. An `@effect` runs after the
-   *   commit, one frame later.
+   *   flight when the component draws its loading state. Anything post-commit —
+   *   `@updated`, a subscription's connect — is one frame later.
    * - It watches the HOOK's props. That was a core bug until 0.1 — a hook's selector
    *   was handed the owning COMPONENT's props — and this hook is what surfaced it.
    *
@@ -275,8 +275,8 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /**
    * Subscribes to `hash`, dropping the previous subscription.
    *
-   * Not built on `@effect` or `createSubscriptionDecorator`, and the reason is
-   * worth writing down because the shape looks made for them. An effect that reads
+   * Not built on `createSubscriptionDecorator`, and the reason is worth writing down
+   * because the shape looks made for it. A connect that reads
    * `this.props.key` re-runs on **every owner render**, not on every key change:
    * the key is a fresh array literal each time, the prop signal compares with
    * `!==`, so it reports a change even when the value is equal. The effect's
@@ -520,7 +520,8 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /**
    * Starts the fetch that flipping `enabled` unblocks.
    *
-   * This was an `@effect` reading `this.props.enabled`, and `@watchProp` is better at
+   * This was an `@effect` reading `this.props.enabled` (that decorator is gone now), and
+   * `@watchProp` is better at
    * the same job in every way that can be measured:
    *
    * - **It fires only on a change**, so the "is this the first run?" guard is gone.
@@ -547,8 +548,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /**
    * Polls, when `refetchInterval` asks for it.
    *
-   * Three named methods rather than one `@effect`, and no timer left to an effect's
-   * cleanup:
+   * Three named methods rather than one effect, and no timer left to a cleanup:
    *
    * - `@create({ env: "client" })` starts it, before the first render, and only on
    *   the client — a pending interval on the server is a live handle on the event

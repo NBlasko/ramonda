@@ -73,7 +73,7 @@ finer when you need to:
   rebuilt every parent render but rarely matters.
 - To **react to one specific prop** — recompute a total, refetch when an `id`
   changes — read it inside a [`@compute`](/concepts/compute), a `@watchProp` (below),
-  or an [`@effect`](/concepts/effects); those *do* track the individual props they
+  or an [a subscription](/concepts/subscriptions); those *do* track the individual props they
   read, exactly like state.
 
 ## Reacting to a specific prop changing
@@ -104,10 +104,10 @@ reload(next: string, previous: string) {
 - **On a hook it watches the HOOK's props** — the bag its `this.use()` callback produced,
   not the owner's.
 
-### `@watchProp` or `@effect`? (optional)
+### `@watchProp` or `@updated`? (optional)
 
 Both react to a change; they differ in *when*. `@watchProp` runs **before** the
-render, so derived state is ready with no extra pass. [`@effect`](/concepts/effects)
+render, so derived state is ready with no extra pass. [a subscription](/concepts/subscriptions)
 runs **after** the page updates — the place for side effects like a fetch, a
 subscription, or a measurement, not for working out what to show.
 

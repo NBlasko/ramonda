@@ -164,5 +164,5 @@ See [timers](/concepts/timers).
 
 ## Next
 
-- [Effects](/concepts/effects) — reacting to state, with cleanup.
+- [Subscriptions](/concepts/subscriptions) — reacting to state, with cleanup.
 - [The host element](/concepts/host) — the element `@mount` is talking about.

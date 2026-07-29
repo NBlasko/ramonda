@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../../test/setup";
-import { effect, mount, state, create, destroy } from "../../base/decorators";
+import { mount, state, create, destroy } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { createContext } from "../../base/Context";
+import { effectLike } from "../../test/effectLike";
 
 describe("Context API: Lazy Selectors & Lifecycle", () => {
   let log: string[] = [];
@@ -50,7 +51,7 @@ describe("Context API: Lazy Selectors & Lifecycle", () => {
       log.push(`Mount:Complex:${this.data.counter}`);
     }
 
-    @effect onCounterChange() {
+    @effectLike() onCounterChange() {
       log.push(`Effect:Complex:${this.data.counter}`);
     }
 

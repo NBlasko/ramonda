@@ -43,7 +43,6 @@ const EXPECTED = [
   "state",
   "persist",
   "compute",
-  "effect",
   "create",
   "mount",
   "destroy",

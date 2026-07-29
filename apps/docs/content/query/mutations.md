@@ -75,7 +75,7 @@ try {
 
 Put the change on screen before the request answers, and undo it if the request
 fails. The undo is **the function `onMutate` returns** — the same "return the cleanup"
-contract [`@effect`](/concepts/effects) and
+contract [a subscription](/concepts/subscriptions) and
 [`createSubscriptionDecorator`](/hooks/own-decorators) use, so it is one idea to
 learn rather than three:
 

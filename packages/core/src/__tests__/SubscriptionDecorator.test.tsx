@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { createSubscriptionDecorator, state, effect } from "../base/decorators";
+import { createSubscriptionDecorator, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { getDOM } from "../test/setup";
@@ -252,22 +252,39 @@ describe("createSubscriptionDecorator", () => {
 });
 
 /**
- * The same contract, reached without the factory. Worth pinning separately
- * because it is the answer for a one-off subscription — `createSubscriptionDecorator`
- * is only worth it when the connect is reused.
+ * A one-off subscription, without declaring a reusable decorator.
+ *
+ * This used to be `@effect`'s job, and `@effect` is gone: every case it served has a named
+ * answer now, and having two ways to say the same thing is what made circular updates easy
+ * to write. For a subscription the answer is the factory — declared locally when it is used
+ * once, which is what this pins.
+ *
+ * The reactive half is the part worth keeping: `connect` READS `owner.channel`, so switching
+ * channels tears the old subscription down before making the new one.
  */
-describe("@effect is the same contract for a one-off subscription", () => {
+describe("a locally declared subscription decorator", () => {
   test("the returned function is the cleanup, on re-run and on destroy", async () => {
     const log: string[] = [];
+
+    interface ChannelOwner extends Component {
+      channel: string;
+    }
+
+    const onChannel = createSubscriptionDecorator(
+      "onChannel",
+      (owner: ChannelOwner, handler: (line: string) => void) => {
+        const channel = owner.channel;
+        handler(`subscribe:${channel}`);
+        return () => handler(`unsubscribe:${channel}`);
+      },
+    );
 
     class Panel extends Component {
       @state channel = "a";
 
-      @effect
-      subscribe() {
-        const channel = this.channel;
-        log.push(`subscribe:${channel}`);
-        return () => log.push(`unsubscribe:${channel}`);
+      @onChannel()
+      onLine(line: string) {
+        log.push(line);
       }
 
       render() {

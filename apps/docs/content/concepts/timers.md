@@ -58,7 +58,7 @@ a crash but a handler that quietly does nothing on a page that has moved on.
 
 ## Only in the browser
 
-Both are built on [effects](/concepts/effects), so neither runs during a server
+Both are built on [subscriptions](/concepts/subscriptions), so neither runs during a server
 render — a prerendered page ships with no timer running, and they start when the
 browser takes over.
 

@@ -126,7 +126,7 @@ Two invariants this must not break:
 
 ### RMD006 — Timer still running after unmount
 
-A raw `setInterval` started in `@create`/`@mount`/`@effect` keeps running after the
+A raw `setInterval` started in `@create`/`@mount` or a subscription keeps running after the
 component is gone: it holds the component alive and keeps firing against state
 nobody is showing.
 
@@ -228,7 +228,7 @@ stays silent.
 ### RMD009 — Update loop
 
 Rendering wrote state that scheduled another render of the same component, with
-no end. Two ways in: two `@effect`s that write what the other reads, and a write
+no end. Two ways in: two `@updated`s that write what the other reads, and a write
 in `render()` itself (RMD001 names that one, but naming it does not help if the
 tab freezes before the message can be read).
 
@@ -344,14 +344,14 @@ component: *how do I keep a piece with its own state and lifecycle — React's
 is an element?*
 
 **Most of the time the question dissolves: just write the component.** Let
-`render()` return `null`. It keeps `@state`, `@create`, `@effect`, `@onWindow`,
+`render()` return `null`. It keeps `@state`, `@create`, `@watchProp`, `@onWindow`,
 and its own re-render boundary, and leaves behind
 `<ramonda-host style="display: contents">` — an element that takes part in **no
 layout at all**.
 
 ```tsx
 class Analytics extends Component<{ page: string }> {
-  @effect track() { send(this.props.page); }
+  @watchProp((props) => props.page) track(page: string) { send(page); }
   render() { return null; }
 }
 ```
@@ -361,7 +361,7 @@ means the box does not exist. This covers everywhere except the three parents
 that reject even an inert element — `<table>`, `<select>`, `<svg>`.
 
 **There, the answer is a Hook.** A Hook is precisely "state and lifecycle with no
-element": it has `@state`, `@create`/`@destroy`, `@effect`, `@onWindow`, it can
+element": it has `@state`, `@create`/`@destroy`, `@watchProp`, `@onWindow`, it can
 provide context, and it adds no node for the parser to destroy.
 
 ```tsx

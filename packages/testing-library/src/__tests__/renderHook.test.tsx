@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, Hook, Host, state, create, destroy, effect } from "@ramonda/core";
+import { Component, Hook, Host, create, destroy, state, watchProp } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, renderHook, act } from "../index";
 
@@ -49,8 +49,15 @@ describe("renderHook", () => {
     const seen: number[] = [];
 
     class Watching extends Hook<CounterOptions> {
-      @effect track() {
+      // `@create` for the first value and `@watchProp` for every one after it — a watchProp
+      // does not fire on mount. This was one `@effect` before that decorator was removed.
+      @create seed() {
         seen.push(this.props.start);
+      }
+
+      @watchProp((props) => props.start)
+      track(next: number) {
+        seen.push(next);
       }
     }
 

@@ -111,7 +111,7 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    * `@destroy` does not run there.
    *
    * The cleanup is stored and called from `@destroy` rather than returned: returning a
-   * teardown is `@effect`'s contract and `createSubscriptionDecorator`'s, not `@create`'s,
+   * teardown is `createSubscriptionDecorator`'s contract, not `@create`'s,
    * which ignores what it is handed back. Measured the hard way — the registry grew by one
    * per test until the two halves were written out like this.
    */
