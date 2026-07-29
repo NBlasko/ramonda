@@ -15,6 +15,14 @@ import { QueryClient } from "../../QueryClient";
  */
 
 describe("production build", () => {
+  test("the devtools bridge is not installed", async () => {
+    // The registration is behind `__DEV__` inside QueryClientProvider, so importing the
+    // package must not put anything on the global — a production page has no panel, and a
+    // reachable registry would hold every cache the session built.
+    await import("../../context");
+    expect((globalThis as { __RAMONDA_QUERY__?: unknown }).__RAMONDA_QUERY__).toBeUndefined();
+  });
+
   test("__DEV__ is false in this run", () => {
     // Without this the rest of the file would be testing the development path again.
     expect(__DEV__).toBe(false);

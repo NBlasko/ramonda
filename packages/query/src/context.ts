@@ -1,4 +1,5 @@
-import { Hook, createContext } from "@ramonda/core";
+import { Hook, create, createContext, destroy } from "@ramonda/core";
+import { registerDevtoolsClient } from "./devtoolsBridge";
 import { QueryClient } from "./QueryClient";
 import type { QueryBehaviour } from "./types";
 
@@ -97,6 +98,32 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    */
   get client(): QueryClient {
     return this.ownClient;
+  }
+
+  /** Set while this provider is registered with the devtools panel; DEV and client only. */
+  private unpublish: (() => void) | undefined;
+
+  /**
+   * Publishes this client to the devtools panel in a development build.
+   *
+   * `env: "client"` because there is no panel during a server render — and because a
+   * long-lived server process would otherwise collect one client per request, since
+   * `@destroy` does not run there.
+   *
+   * The cleanup is stored and called from `@destroy` rather than returned: returning a
+   * teardown is `@effect`'s contract and `createSubscriptionDecorator`'s, not `@create`'s,
+   * which ignores what it is handed back. Measured the hard way — the registry grew by one
+   * per test until the two halves were written out like this.
+   */
+  @create({ env: "client" })
+  publishToDevtools(): void {
+    if (__DEV__) this.unpublish = registerDevtoolsClient(this.ownClient);
+  }
+
+  @destroy
+  unpublishFromDevtools(): void {
+    this.unpublish?.();
+    this.unpublish = undefined;
   }
 }
 

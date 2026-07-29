@@ -132,6 +132,24 @@ private todo = this.use(Query, (self: TodoCard) =>
 `mutationOptions` does the same for a mutation, where it earns its keep sooner:
 `onSuccess`, `onError` and `onSettled` would each need an annotation otherwise.
 
+## Seeing the cache
+
+With [`@ramonda/devtools`](/guide/installation) installed, the panel grows a **QUERY** tab
+listing every entry: the key, the status, how many components are watching, how long ago the
+data arrived, a preview of it, and whether it came from the server.
+
+Two actions per row. **invalidate** marks the entry stale and asks whoever is watching to
+refresh — the same thing a mutation's `invalidates` does. **remove** throws the data away;
+if something is still watching that key it starts over, and if nothing is, the row goes.
+
+There is no refetch button, and that is the design rather than an omission: the **fetcher
+belongs to the observer**, not to the cache, so a query nobody is watching has no function
+to call. `invalidate` is the honest equivalent.
+
+The tab reads the cache only while it is open, and it is stripped from a production build
+along with the rest of the development machinery — an entry with `0 observers · waiting for
+gc` is the state worth knowing about, and it is the one people ask a panel for.
+
 ## Next
 
 - [Queries](/query/queries) — keys, staleness, and when it refetches.

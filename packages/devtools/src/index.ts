@@ -19,6 +19,34 @@ interface InspectedNode {
 
 type InspectFn = () => InspectedNode[];
 
+/**
+ * What `@ramonda/query` publishes for this panel, and it is a snapshot rather than a live
+ * object on purpose: the panel must not be able to hold a cache alive, and it has no
+ * business reaching into an entry.
+ *
+ * The same pull model as `__RAMONDA_INSPECT__` — read while the tab is open, and not at all
+ * otherwise. A cache changes on every fetch, observer and invalidate; pushing all of that
+ * into a panel nobody is looking at would cost something in every development build.
+ */
+interface QueryRow {
+  key: unknown[];
+  hash: string;
+  status: string;
+  fetchStatus: string;
+  observers: number;
+  updatedAt: number;
+  failureCount: number;
+  restored: boolean;
+  dataPreview: string;
+  error?: string;
+}
+
+interface QueryBridge {
+  snapshot(): { clients: { index: number; queries: QueryRow[] }[] };
+  invalidate(clientIndex: number, hash: string): void;
+  remove(clientIndex: number, hash: string): void;
+}
+
 interface WalkAcc {
   values: Map<string, string>;
   nodes: Map<string, Node>;
@@ -56,6 +84,8 @@ class RamondaDevTools extends HTMLElement {
 
   // Component-tab state (pull model).
   private componentsTabActive = false;
+  private queryTabActive = false;
+  private queryTimer: ReturnType<typeof setInterval> | undefined;
   private watching = false;
   private lastSig = "";
   private lastValues = new Map<string, string>();
@@ -83,6 +113,11 @@ class RamondaDevTools extends HTMLElement {
 
   private get inspect(): InspectFn | undefined {
     return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn }).__RAMONDA_INSPECT__;
+  }
+
+  /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
+  private get queries(): QueryBridge | undefined {
+    return (window as unknown as { __RAMONDA_QUERY__?: QueryBridge }).__RAMONDA_QUERY__;
   }
 
   private setupEventListeners() {
@@ -198,6 +233,22 @@ class RamondaDevTools extends HTMLElement {
         .state-title { color: #00ffaa; margin-bottom: 3px; font-weight: bold; }
         .state-row .sk { color: #888; }
         .state-row .sv { color: #eee; }
+
+        .q-client { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
+        .q-row { border: 1px solid #333; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #1c1c1c; }
+        .q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .q-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .q-key { color: #B18AE6; font-size: 12px; word-break: break-all; }
+        .q-fetching { color: #00aaff; font-size: 11px; }
+        .q-badge { color: #E9B44C; font-size: 10px; border: 1px solid #E9B44C; border-radius: 3px; padding: 0 4px; }
+        .q-meta { color: #888; font-size: 11px; margin-top: 4px; }
+        .q-obs { color: #54c98a; }
+        .q-idle { color: #888; font-style: italic; }
+        .q-error { color: #ff6b6b; font-size: 11px; margin-top: 4px; }
+        .q-data { color: #ccc; font-size: 11px; margin-top: 6px; word-break: break-all; }
+        .q-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .q-actions button { background: #2a2a2a; border: 1px solid #3a3a3a; color: #ccc; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+        .q-actions button:hover { background: #333; color: #fff; }
       </style>
 
     <div class="ramonda-badge">R</div>
@@ -210,6 +261,7 @@ class RamondaDevTools extends HTMLElement {
       <div class="tabs">
         <div class="tab active" data-tab="logs">LOGS</div>
         <div class="tab" data-tab="components">COMPONENTS</div>
+        <div class="tab" data-tab="query">QUERY</div>
       </div>
       <div id="logs-tab" class="tab-content active">
         <div id="logs-container"></div>
@@ -217,6 +269,11 @@ class RamondaDevTools extends HTMLElement {
       <div id="components-tab" class="tab-content">
         <div id="components-container">
           <small style="color:#666">No active components…</small>
+        </div>
+      </div>
+      <div id="query-tab" class="tab-content">
+        <div id="query-container">
+          <small style="color:#666">No query cache…</small>
         </div>
       </div>
     </div>
@@ -273,11 +330,13 @@ class RamondaDevTools extends HTMLElement {
   toggle() {
     this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
     this.updateWatchState();
+    this.updateQueryWatch();
   }
 
   private openDevTools() {
     this.setAttribute("open", "");
     this.updateWatchState();
+    this.updateQueryWatch();
   }
 
   private setupTabSwitching() {
@@ -290,6 +349,8 @@ class RamondaDevTools extends HTMLElement {
         const target = (tab as HTMLElement).dataset.tab;
         this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add("active");
         this.componentsTabActive = target === "components";
+        this.queryTabActive = target === "query";
+        this.updateQueryWatch();
         this.updateWatchState();
       });
     });
@@ -313,6 +374,133 @@ class RamondaDevTools extends HTMLElement {
     } else {
       window.dispatchEvent(new CustomEvent("ramonda:devtools-unwatch"));
       this.clearHighlight();
+    }
+  }
+
+  // --- Query cache (pull model, polled while its tab is open) ----------------
+
+  /**
+   * Polls while the panel is open AND the query tab is active, and not otherwise.
+   *
+   * A poll rather than a subscription, and the reason is what a cache is: it changes on
+   * every fetch, every observer arriving or leaving, every invalidate and every sweep.
+   * Subscribing to all of that would mean the cache notifying a panel that is usually not
+   * looking. Four times a second is well under what a human reads, and it stops dead the
+   * moment the tab is switched away from.
+   */
+  private updateQueryWatch() {
+    const shouldWatch = this.hasAttribute("open") && this.queryTabActive;
+
+    if (!shouldWatch) {
+      if (this.queryTimer !== undefined) {
+        clearInterval(this.queryTimer);
+        this.queryTimer = undefined;
+      }
+      return;
+    }
+
+    if (this.queryTimer !== undefined) return;
+    this.renderQueries();
+    this.queryTimer = setInterval(() => this.renderQueries(), 250);
+  }
+
+  private renderQueries() {
+    const container = this.shadowRoot!.querySelector("#query-container");
+    if (!container) return;
+
+    const bridge = this.queries;
+    if (!bridge) {
+      container.innerHTML =
+        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>';
+      return;
+    }
+
+    const { clients } = bridge.snapshot();
+    const total = clients.reduce((sum, c) => sum + c.queries.length, 0);
+
+    if (total === 0) {
+      container.innerHTML = '<small style="color:#666">The cache is empty.</small>';
+      return;
+    }
+
+    const now = Date.now();
+    let html = "";
+
+    for (const client of clients) {
+      // The index is only worth showing when there IS more than one — an app usually has a
+      // single provider, and a label for it would be noise.
+      if (clients.length > 1) {
+        html += `<div class="q-client">client ${client.index + 1} · ${client.queries.length} ${
+          client.queries.length === 1 ? "query" : "queries"
+        }</div>`;
+      }
+
+      for (const row of client.queries) {
+        html += this.renderQueryRow(client.index, row, now);
+      }
+    }
+
+    container.innerHTML = html;
+    this.bindQueryActions();
+  }
+
+  private renderQueryRow(clientIndex: number, row: QueryRow, now: number): string {
+    const colour = row.status === "error" ? "#ff4444" : row.status === "success" ? "#54c98a" : "#ffcc00";
+    const fetching = row.fetchStatus === "fetching";
+    const age = row.updatedAt === 0 ? "never" : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
+
+    // `observers: 0` is the interesting one: the entry is alive but nobody is watching, so
+    // it is waiting out its gcTime. That is the state people ask about.
+    const observers =
+      row.observers === 0
+        ? '<span class="q-idle">0 observers · waiting for gc</span>'
+        : `<span class="q-obs">${row.observers} observer${row.observers === 1 ? "" : "s"}</span>`;
+
+    return `
+      <div class="q-row">
+        <div class="q-head">
+          <span class="q-status" style="background:${colour}"></span>
+          <code class="q-key">${escapeHtml(JSON.stringify(row.key))}</code>
+          ${fetching ? '<span class="q-fetching">fetching…</span>' : ""}
+          ${row.restored ? '<span class="q-badge">from server</span>' : ""}
+        </div>
+        <div class="q-meta">
+          ${row.status}${row.failureCount > 0 ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}` : ""} ·
+          updated ${age} · ${observers}
+        </div>
+        ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
+        <div class="q-data">${escapeHtml(row.dataPreview)}</div>
+        <div class="q-actions">
+          <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(row.hash)}">invalidate</button>
+          <button type="button" data-q-action="remove" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(row.hash)}">remove</button>
+        </div>
+      </div>`;
+  }
+
+  /**
+   * There is no "refetch" button, and that is the design rather than an omission: the
+   * FETCHER belongs to the observer, not to the cache, so a query nobody is watching has no
+   * function to call. `invalidate` is the honest equivalent — it marks the entry stale and
+   * asks whoever is watching to refresh.
+   */
+  private bindQueryActions() {
+    const container = this.shadowRoot!.querySelector("#query-container");
+    if (!container) return;
+
+    for (const button of Array.from(container.querySelectorAll("[data-q-action]"))) {
+      button.addEventListener("click", () => {
+        const bridge = this.queries;
+        if (!bridge) return;
+
+        const element = button as HTMLElement;
+        const clientIndex = Number(element.dataset.qClient);
+        const hash = element.dataset.qHash ?? "";
+
+        if (element.dataset.qAction === "invalidate") bridge.invalidate(clientIndex, hash);
+        else bridge.remove(clientIndex, hash);
+
+        this.renderQueries();
+      });
     }
   }
 
