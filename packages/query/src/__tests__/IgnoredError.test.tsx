@@ -114,11 +114,15 @@ describe("RMQ002", () => {
     }
   });
 
-  test("looking once does not excuse a later render that ignores it", async () => {
+  test("reading it once is enough forever — the question is whether the app ever looks", async () => {
     /**
-     * The flag is cleared after each check, so every render is judged on its own reads. A
-     * component that renders the error while a flag is set and then stops — a tab switch, a
-     * collapsed panel — is exactly the case that would otherwise go quiet.
+     * The semantics changed with access tracking, and for the better. The old check asked "did
+     * THIS render look", which meant a collapsed panel was reported. The read set never shrinks,
+     * so the question is now "does this reader ever look" — and a component that has read
+     * `isError` once demonstrably has the branch.
+     *
+     * It also had to change: a query read only through `data` fails, changes nothing visible,
+     * and is no longer woken at all — so a render-based check could not see it either.
      */
     class Card extends Component {
       private provider = this.use(QueryClientProvider);
@@ -141,7 +145,7 @@ describe("RMQ002", () => {
       });
       await settle();
 
-      expect(reported()).toContain("RMQ002");
+      expect(reported()).not.toContain("RMQ002");
     } finally {
       unmount();
     }

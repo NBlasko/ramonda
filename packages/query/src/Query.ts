@@ -1,4 +1,4 @@
-import { Hook, create, destroy, mount, onWindow, StableProps, state, updated, watchProp } from "@ramonda/core";
+import { Hook, create, destroy, mount, onWindow, StableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
 import { ClientContext, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
@@ -114,6 +114,32 @@ export type QueryResult<TData> =
  * what makes a hand-written options object cheap too, and it is the thing that decides
  * between "different objects" and "different question".
  */
+/**
+ * The parts of a query an app can observe, one bit each. A read is recorded per FACET rather
+ * than per getter, because several getters answer the same question — `isPending`, `isSuccess`
+ * and `isError` are all "what is the status".
+ */
+const enum Facet {
+  Data = 1,
+  Status = 2,
+  Error = 4,
+  Fetching = 8,
+  Failure = 16,
+  UpdatedAt = 32,
+  Restored = 64,
+}
+
+/** A snapshot of the facets, taken whenever the owner is woken. */
+interface Observed {
+  data: unknown;
+  status: QueryStatus;
+  fetchStatus: FetchStatus;
+  error: unknown;
+  failureCount: number;
+  updatedAt: number;
+  restored: boolean;
+}
+
 @StableProps("key")
 export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps<TData, K>> {
   private ctx = this.use(ClientContext);
@@ -425,8 +451,57 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     // too, for data that was already there and so never notified anyone.
     if (this.onServer) this.captureSnapshot();
 
-    this.version++;
+    this.wake();
   };
+
+  /**
+   * Wakes the owner, unless nothing it has read actually changed.
+   *
+   * The comparison is by identity for `data` and `error` and by value for the rest, because
+   * that is what the cache guarantees: it REPLACES `data` when a fetch lands, so a refetch
+   * returning an equal-but-new object counts as a change. Closing that last gap is what
+   * `select` or structural sharing would be for, and it is deliberately not this.
+   *
+   * Before the first render nothing has been read, and then everything counts — the first
+   * paint must not be skipped on the grounds that the app has not asked for anything yet.
+   */
+  private wake(): void {
+    const next = this.observed();
+    const previous = this.lastSeen;
+    this.lastSeen = next;
+
+    if (__DEV__) this.reportIgnoredError();
+
+    if (previous !== undefined && this.read !== 0 && !this.changed(previous, next)) return;
+
+    this.version++;
+  }
+
+  /** The facets, as the app could observe them right now. */
+  private observed(): Observed {
+    const entry = this.attachedEntry ?? this.client.getEntry<TData>(this.props.key);
+    return {
+      data: entry.data,
+      status: entry.status,
+      fetchStatus: entry.fetchStatus,
+      error: entry.error,
+      failureCount: entry.failureCount,
+      updatedAt: entry.updatedAt,
+      restored: entry.restored === true,
+    };
+  }
+
+  /** Whether anything the app has READ differs between two observations. */
+  private changed(a: Observed, b: Observed): boolean {
+    if (this.read & Facet.Data && !Object.is(a.data, b.data)) return true;
+    if (this.read & Facet.Status && a.status !== b.status) return true;
+    if (this.read & Facet.Fetching && a.fetchStatus !== b.fetchStatus) return true;
+    if (this.read & Facet.Error && !Object.is(a.error, b.error)) return true;
+    if (this.read & Facet.Failure && a.failureCount !== b.failureCount) return true;
+    if (this.read & Facet.UpdatedAt && a.updatedAt !== b.updatedAt) return true;
+    if (this.read & Facet.Restored && a.restored !== b.restored) return true;
+    return false;
+  }
 
   /**
    * Subscribes, and seeds whatever the server sent for this key.
@@ -676,12 +751,13 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
   /** What is known about the DATA — independent of whether a request is running. */
   get status(): QueryStatus {
-    if (__DEV__) this.sawError = true;
+    this.read |= Facet.Status;
     return this.entry.status;
   }
 
   /** Whether a request is in flight right now. */
   get fetchStatus(): FetchStatus {
+    this.read |= Facet.Fetching;
     return this.entry.fetchStatus;
   }
 
@@ -692,36 +768,58 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * arrived — see `QueryResult`.
    */
   get data(): TData | undefined {
+    this.read |= Facet.Data;
     return this.entry.data;
   }
 
   /** Whatever the fetcher rejected with, untouched. A restored one is a `ServerQueryError`. */
   /**
-   * DEV only: whether this render looked at the failure. See `reportIgnoredError`.
+   * What the app has actually READ off this query, and what those parts looked like when it
+   * was last woken. Together they decide whether a change is worth a render.
    *
-   * A plain field, not `@state`: reading it must not make anything reactive, and nothing
-   * renders from it.
+   * ## Why this exists
+   *
+   * A cache entry changes three times per refetch — the fetch starts, the data arrives, the
+   * freshness moves — and every one of them used to wake the owner. Measured on a query whose
+   * rendered value never changed: three refetches, **nine renders**. Two of the three are for
+   * facts the component never asked about, which is the cheapest kind of wasted work to
+   * remove: it needs no new API, only knowing what was read.
+   *
+   * The same shape TanStack and SWR arrived at, by different means — they proxy the result
+   * object and record field access. Here the getters ARE the access points, so a bit per facet
+   * is enough.
+   *
+   * ## Why the read set only ever grows
+   *
+   * It is never cleared, and that is deliberate: a component that reads `isFetching` inside a
+   * branch would otherwise stop being woken for it the moment the branch is not taken, and the
+   * next time the branch IS taken it would render a stale spinner. Accumulating errs towards
+   * more renders, which is the safe direction — the same reason TanStack tracks from the first
+   * render rather than per render.
    */
-  private sawError = false;
+  private read = 0;
+  private lastSeen: Observed | undefined;
 
   get error(): unknown {
-    if (__DEV__) this.sawError = true;
+    this.read |= Facet.Error;
     return this.entry.error;
   }
 
   /** No data yet, and no failure to show for it. This is the "loading" case. */
   get isPending(): boolean {
+    this.read |= Facet.Status;
     return this.entry.status === "pending";
   }
 
   /** There is data. It may be refetching; check `isFetching` for that. */
   get isSuccess(): boolean {
+    this.read |= Facet.Status;
     return this.entry.status === "success";
   }
 
   /** The last attempt failed. `data` may still hold the last known good value. */
   get isError(): boolean {
-    if (__DEV__) this.sawError = true;
+    this.read |= Facet.Status;
     return this.entry.status === "error";
   }
 
@@ -730,22 +828,25 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * screen, which is the case `isPending` deliberately does not cover.
    */
   get isFetching(): boolean {
+    this.read |= Facet.Fetching;
     return this.entry.fetchStatus === "fetching";
   }
 
   /** Consecutive failed attempts for the request in progress. 0 once it succeeds. */
   get failureCount(): number {
-    if (__DEV__) this.sawError = true;
+    this.read |= Facet.Failure;
     return this.entry.failureCount;
   }
 
   /** When the data arrived, by this side's clock. 0 means it never has. */
   get updatedAt(): number {
+    this.read |= Facet.UpdatedAt;
     return this.entry.updatedAt;
   }
 
   /** Whether the data came from a server render rather than a fetch on this side. */
   get isRestored(): boolean {
+    this.read |= Facet.Restored;
     return this.entry.restored === true;
   }
 
@@ -759,7 +860,8 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * ```
    */
   get result(): QueryResult<TData> {
-    if (__DEV__) this.sawError = true;
+    // The union exposes all three at once, so reading it subscribes to all three.
+    this.read |= Facet.Data | Facet.Status | Facet.Error;
     const entry = this.entry;
     if (entry.status === "success") {
       return { status: "success", data: entry.data as TData, error: undefined };
@@ -783,50 +885,55 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   }
 
   /**
-   * RMQ002 — the query failed and the render never looked.
+   * RMQ002 — the query failed and the app never looks at failures.
    *
    * ## Why this instead of `throwOnError`
    *
    * TanStack has an option that rethrows a failure so an error boundary catches it. It is not
    * built here, and the reason is what a boundary DOES: it replaces the subtree, which means
-   * unmounting — `@destroy`, cleanups, lost local state, lost focus and scroll position — and
-   * a retry then has to rebuild all of it. A failed fetch is not an unexpected situation; the
-   * network fails routinely, which is why `Query` models it as state and keeps the data it
-   * had. Handing that to a boundary punishes the reader for somebody else's timeout.
+   * unmounting — `@destroy`, cleanups, lost local state, lost focus and scroll position — and a
+   * retry then has to rebuild all of it. A failed fetch is not an unexpected situation; the
+   * network fails routinely, which is why `Query` models it as state and keeps the data it had.
+   * Handing that to a boundary punishes the reader for somebody else's timeout.
    *
    * What people actually get from `throwOnError` is *noticing*. That is a diagnostic, not an
    * API — so this is the diagnostic. If the failure genuinely means the page cannot be shown,
-   * the render says so itself (`if (this.user.isError) return <NotFound />`), which unmounts
-   * exactly what the app chose to unmount.
+   * the render says so itself (`if (q.isError) return <NotFound />`), which unmounts exactly
+   * what the app chose to unmount.
    *
-   * ## How it knows
+   * ## What it asks
    *
-   * The getters that expose a failure — `error`, `isError`, `status`, `failureCount`,
-   * `result` — set a flag when read. `@updated` runs after the commit, so by then the flag
-   * reflects the render that just happened; it is cleared afterwards, so the next render is
-   * judged on its own reads rather than being excused by an earlier one.
+   * Not "did this render look" but "does this query's reader EVER look" — the read set is the
+   * same one access tracking keeps, and it never shrinks. That is the better question anyway: a
+   * component that has read `isError` once has the branch, and one that never has cannot show
+   * the failure in any state.
    *
-   * `@mount` checks too, for the one case an update never covers: an error restored from a
-   * server render is already on screen at the first paint, with no second render to follow it.
+   * It follows that the tracking had to come first. Before it, a query read only through `data`
+   * would fail, change nothing visible, and never render again — so a render-based check could
+   * not see it either.
    */
-  @updated
+  /**
+   * The one case a notification never covers: an error restored from a server render is on
+   * screen at the first paint, and nothing notifies afterwards.
+   */
   @mount
-  reportIgnoredError(): void {
+  reportRestoredError(): void {
+    if (__DEV__) this.reportIgnoredError();
+  }
+
+  private reportIgnoredError(): void {
     if (!__DEV__) return;
+    if (this.read & (Facet.Status | Facet.Error)) return;
 
-    const looked = this.sawError;
-    this.sawError = false;
-    if (looked) return;
-
-    // The ATTACHED entry, not `peek(this.props.key)`: peeking hashes the key, and this runs
-    // after every render — which would undo the whole point of the identity fast path
-    // (measured at 723 ns → 31 ns per render, and there is a test that holds it).
+    // The ATTACHED entry, not `peek(this.props.key)`: peeking hashes the key, and this runs on
+    // every notification — which would undo the identity fast path (measured at 723 ns → 31 ns,
+    // and there is a test that holds it).
     const entry = this.attachedEntry;
     if (entry?.status !== "error") return;
 
     const reason = entry.error instanceof Error ? entry.error.message : String(entry.error);
     warnOnce(
-      `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing rendered it: ${reason}\n` +
+      `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing reads its failure: ${reason}\n` +
         `Read \`isError\`, \`error\`, \`status\` or \`result\` so the reader learns something went wrong — a ` +
         `failed refetch keeps the data it had, so the page may look fine while showing values nobody can refresh. ` +
         `If the failure means the page cannot be shown at all, return your own markup for it ` +
