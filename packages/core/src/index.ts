@@ -73,7 +73,21 @@ if (__DEV__) {
   // And `.catch` is not optional — devtools is genuinely optional, so a project
   // that never installed it (e.g. a scaffold with tests but no devtools add-on)
   // must not eat an unhandled "Cannot find package '@ramonda/devtools'" rejection.
-  if (typeof document !== "undefined") {
+  /**
+   * `customElements`, not `document`.
+   *
+   * A server render can have a `document` — this repo's own SSR playground gives its Node
+   * process a jsdom one — so `typeof document !== "undefined"` does not mean "browser". It never
+   * mattered while every browser API here sat inside the dynamic import's `.then()`, which fails
+   * on the server; moving the mount out of that callback put `customElements` on the top level
+   * of this block, and the SSR playground died at import with `ReferenceError: customElements is
+   * not defined`.
+   *
+   * The panel IS a custom element, so the registry is the capability that actually has to exist.
+   * `NodeEnvironment.test.ts` imports this module with no DOM at all, which is the check that
+   * would have caught it.
+   */
+  if (typeof customElements !== "undefined" && typeof window !== "undefined") {
     /**
      * The panel is mounted by whoever DEFINES it, not by whoever imports it.
      *
