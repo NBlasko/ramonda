@@ -621,3 +621,50 @@ describe("the Query tab's value", () => {
     openTab(panel, "logs");
   });
 });
+
+/**
+ * The gap that let an entire stylesheet section ship missing.
+ *
+ * Every other test here asserts STRUCTURE, so the value tree and the full view passed while their
+ * CSS was not in the file at all — a patch anchored on a selector that had been reworded, and the
+ * panel rendered correct markup with browser-default buttons. Structure tests cannot see that, so
+ * this one reads the emitted classes back and asks the stylesheet about each of them.
+ */
+describe("the stylesheet", () => {
+  const styleText = (panel: Panel) => panel.shadowRoot.querySelector("style")!.textContent!;
+
+  function classesIn(root: ParentNode): Set<string> {
+    const found = new Set<string>();
+    for (const element of Array.from(root.querySelectorAll("[class]"))) {
+      for (const name of Array.from(element.classList)) found.add(name);
+    }
+    return found;
+  }
+
+  it("has a rule for every class the panel renders", () => {
+    const panel = mount(() => [
+      node("App", "component", {
+        state: { feed: { pages: [{ id: 1 }] } },
+        props: { title: "x" },
+        hooks: [node("Query", "hook", { options: { key: '["products"]' } })],
+      }),
+    ]);
+    // Open one value on the whole panel, so the modal's own classes are rendered too.
+    panel.shadowRoot.querySelector("[data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const css = styleText(panel);
+    const unstyled = Array.from(classesIn(panel.shadowRoot)).filter((name) => !css.includes(`.${name}`));
+
+    expect(unstyled).toEqual([]);
+  });
+
+  it("keeps the disclosure triangles as single-backslash CSS escapes", () => {
+    const panel = mount(() => tree());
+
+    // The stylesheet lives in a template literal, so `\\25B8` in the source is what puts `\25B8`
+    // in the CSS. Getting that wrong is a TS octal-escape error at build time in one direction and
+    // a literal backslash-2-5 in the content in the other.
+    expect(styleText(panel)).toContain('content: "\\25B8"');
+    expect(styleText(panel)).toContain('content: "\\25BE"');
+  });
+});

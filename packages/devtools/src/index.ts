@@ -416,7 +416,9 @@ class RamondaDevTools extends HTMLElement {
          * but what it sends should be readable in full — a value ending in "…" is the one you
          * needed to see.
          */
-        .state-row .sv { color: #eee; max-height: 16em; overflow: auto; }
+        /* A little air on the left: the first row of a tree pressed against the edge of its box
+           reads as part of the frame, and the nesting has nothing to be measured against. */
+        .state-row .sv { color: #eee; max-height: 16em; overflow: auto; padding: 2px 4px 2px 2px; }
         .state-row .sv::-webkit-scrollbar { width: 8px; }
         .state-row .sv::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
 
@@ -476,9 +478,74 @@ class RamondaDevTools extends HTMLElement {
         #components-container.no-hooks .component-node:has(> details > summary .kind-hook),
         #components-container.no-hooks .component-node.leaf:has(.kind-hook) { display: none; }
 
+        /* The value tree. Rows are dense on purpose — this is a listing, and vertical space is
+           what you run out of first when a value has forty keys. */
+        .jv { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
+        .jv-row, .jv-sum { white-space: pre-wrap; word-break: break-word; }
+        .jv-node > .jv-body { padding-left: 14px; border-left: 1px solid #2c2c2c; margin-left: 4px; }
+        .jv-sum { cursor: pointer; list-style: none; border-radius: 3px; }
+        .jv-sum:hover { background: #1d1a24; }
+        .jv-sum::-webkit-details-marker { display: none; }
+        /* Our own triangle: the native marker cannot be coloured or sized, and at this font size
+           it is the difference between seeing the nesting and guessing at it. */
+        .jv-sum::before { content: "\\25B8"; color: #6a6a72; display: inline-block; width: 12px; }
+        .jv-node[open] > .jv-sum::before { content: "\\25BE"; color: #B18AE6; }
+        .jv-k { color: #9ecbff; }
+        .jv-c { color: #6a6a72; }
+        .jv-s { color: #7ee787; }
+        .jv-n { color: #79c0ff; }
+        .jv-b { color: #ffab70; }
+        .jv-null { color: #8b8b93; font-style: italic; }
+        .jv-f { color: #d2a8ff; }
+        .jv-o { color: #e3b341; }
+        .jv-meta { color: #8b8b93; }
+        .jv-cut { color: #E9B44C; font-style: italic; }
+
+        /* A chip rather than a bare glyph: it is a control, and on a row full of monospace text a
+           button with no edges reads as punctuation. Dim until the row is hovered, so forty rows
+           are not forty bright buttons. */
+        .jv-open {
+          background: #232028; border: 1px solid #322c3a; color: #6a6472;
+          font: inherit; font-size: 11px; line-height: 1; padding: 2px 5px;
+          border-radius: 4px; cursor: pointer; flex-shrink: 0; transition: .15s;
+        }
+        .state-row:hover .jv-open, .q-row:hover .jv-open { color: #b9aecd; border-color: #443a52; }
+        .jv-open:hover { background: #7A4FBF; border-color: #7A4FBF; color: #fff; }
+        .jv-open:focus-visible { outline: 2px solid #B18AE6; outline-offset: 1px; }
+
+        /* One value on the whole panel: inside the panel, not over the page, so the app stays
+           visible beside it and the tree behind keeps its place. */
+        .jv-modal { position: absolute; inset: 0; background: #0d0d0d; z-index: 3;
+                    display: none; flex-direction: column; }
+        .jv-modal.on { display: flex; }
+        .jv-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                         padding: 10px 14px; background: #191622; border-bottom: 1px solid #2a2532; }
+        .jv-modal-title { color: #B18AE6; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+                          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .jv-modal-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .jv-modal-tools button {
+          background: #262230; border: 1px solid #383142; color: #cfc6dd;
+          font: inherit; font-size: 12px; line-height: 1; padding: 5px 10px;
+          border-radius: 5px; cursor: pointer; transition: .15s;
+        }
+        .jv-modal-tools button:hover { background: #322b3d; color: #fff; border-color: #4a4058; }
+        .jv-modal-tools button:active { transform: translateY(1px); }
+        .jv-modal-tools button:focus-visible { outline: 2px solid #B18AE6; outline-offset: 1px; }
+        /* The raw switch is a toggle, so it has to LOOK held down when it is on — the same purple
+           the toolbar filters use, so one visual language covers every toggle in the panel. */
+        .jv-modal-tools button.on { background: #7A4FBF; border-color: #7A4FBF; color: #fff; }
+        /* Closing is the destructive one of the three, and it is the one hit by accident. */
+        #jv-close { padding: 3px 9px; font-size: 17px; color: #8b8b93; background: none; border-color: transparent; }
+        #jv-close:hover { background: #3a2230; border-color: #5c3040; color: #ff8080; }
+        .jv-modal-body { flex: 1; overflow: auto; padding: 12px 14px; }
+        .jv-raw { margin: 0; color: #d8d8d8; font-family: ui-monospace, Menlo, monospace;
+                  font-size: 12.5px; line-height: 1.5; white-space: pre; }
+
         .q-client { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
         .q-row { border: 1px solid #333; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #1c1c1c; }
         .q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        /* Same control, same place as in a component row: on the label of the value it opens. */
+        .q-head .jv-open { margin-left: auto; }
         .q-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
         .q-key { color: #B18AE6; font-size: 12px; word-break: break-all; }
         .q-fetching { color: #00aaff; font-size: 11px; }
@@ -488,7 +555,7 @@ class RamondaDevTools extends HTMLElement {
         .q-idle { color: #888; font-style: italic; }
         .q-error { color: #ff6b6b; font-size: 11px; margin-top: 4px; }
         /* Same treatment as a state value: scrollable, not clipped. */
-        .q-data { color: #ccc; font-size: 11px; margin-top: 6px; max-height: 16em; overflow: auto; }
+        .q-data { color: #ccc; margin-top: 6px; max-height: 16em; overflow: auto; padding: 2px 4px 2px 2px; }
         .q-data::-webkit-scrollbar { width: 8px; }
         .q-data::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
         .q-actions { display: flex; gap: 6px; margin-top: 8px; }
@@ -987,6 +1054,7 @@ class RamondaDevTools extends HTMLElement {
         <div class="q-head">
           <span class="q-status" style="background:${colour}"></span>
           <code class="q-key">${escapeHtml(JSON.stringify(row.key))}</code>
+          ${this.fullViewButton(`q::${clientIndex}::${row.hash}`, row.data)}
           ${fetching ? '<span class="q-fetching">fetching…</span>' : ""}
           ${row.restored ? '<span class="q-badge">from server</span>' : ""}
         </div>
@@ -1001,7 +1069,6 @@ class RamondaDevTools extends HTMLElement {
           row.data === undefined ? escapeHtml(row.dataPreview) : renderJsonHtml(row.data, INLINE)
         }</div>
         <div class="q-actions">
-          ${this.fullViewButton(`q::${clientIndex}::${row.hash}`, row.data)}
           <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
             row.hash,
           )}">invalidate</button>
