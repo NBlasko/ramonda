@@ -44,3 +44,6 @@ apps/docs/src/generated/
 
 # Internal working notes — kept local, not for the public repo
 notes/
+
+# Local agent configuration and skills — machine-local, like notes/.
+.claude/

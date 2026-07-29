@@ -37,15 +37,17 @@ function ramonda(name: string): string {
   return range;
 }
 
-const V = {
-  vite: "^7.3.6",
-  typescript: "^5.9.3",
-  typesNode: "^26.1.1",
-  vitest: "^3.2.4",
-  jsdom: "^28.0.0",
-  esbuild: "^0.28.1",
-  biome: "^2.5.5",
-};
+declare const __TOOL_RANGES__: Record<string, string>;
+
+/**
+ * The range for a build tool, from whichever workspace package uses it (see tsup.config.ts).
+ * Hand-written constants drifted: the template pinned vitest 3 while the framework moved to 4.
+ */
+function tool(name: string): string {
+  const range = __TOOL_RANGES__[name];
+  if (!range) throw new Error(`[create-ramonda] no version known for ${name} — see tsup.config.ts`);
+  return range;
+}
 
 type Mode = "spa" | "ssr";
 type AddOn = "router" | "query" | "lens" | "testing" | "devtools" | "biome";
@@ -236,24 +238,29 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   }
 
   if (mode === "spa") {
-    deps.devDependencies["vite"] = V.vite;
+    deps.devDependencies["vite"] = tool("vite");
   } else {
     // SSR builds with esbuild and serves through a Node process that needs a DOM.
-    deps.devDependencies["esbuild"] = V.esbuild;
-    deps.devDependencies["jsdom"] = V.jsdom;
+    deps.devDependencies["esbuild"] = tool("esbuild");
+    deps.devDependencies["jsdom"] = tool("jsdom");
   }
-  deps.devDependencies["typescript"] = V.typescript;
-  deps.devDependencies["@types/node"] = V.typesNode;
+  deps.devDependencies["typescript"] = tool("typescript");
+  deps.devDependencies["@types/node"] = tool("@types/node");
 
   if (addons.includes("testing")) {
-    deps.devDependencies["vitest"] = V.vitest;
+    deps.devDependencies["vitest"] = tool("vitest");
     deps.devDependencies["@ramonda/testing-library"] = ramonda("@ramonda/testing-library");
-    if (mode === "spa") deps.devDependencies["jsdom"] = V.jsdom;
+    if (mode === "spa") deps.devDependencies["jsdom"] = tool("jsdom");
+    // `vite` is a PEER dependency of vitest (`^6 || ^7 || ^8`), and without it vitest has no
+    // transform: measured on a scaffolded SSR project, where the .tsx reached the runtime
+    // unchanged and the suite died with `SyntaxError: Invalid or unexpected token`. The SPA
+    // template had it already, which is why only SSR was broken.
+    deps.devDependencies["vite"] = tool("vite");
     writeTestingFiles(targetDir, mode);
   }
 
   if (addons.includes("biome")) {
-    deps.devDependencies["@biomejs/biome"] = V.biome;
+    deps.devDependencies["@biomejs/biome"] = tool("@biomejs/biome");
     writeBiomeConfig(targetDir);
   }
 
@@ -394,10 +401,10 @@ test("renders the heading", () => {
  * A Biome config, dropped in when the Biome add-on is picked — one tool for both
  * linting and formatting. `preset: "recommended"` is Biome 2.x's non-deprecated way
  * to turn on the recommended lint rules; `vcs.useIgnoreFile` keeps it off .gitignored
- * paths (dist, node_modules). The schema version tracks V.biome so the two never drift.
+ * paths (dist, node_modules). The schema version tracks tool("@biomejs/biome") so the two never drift.
  */
 function writeBiomeConfig(targetDir: string): void {
-  const version = V.biome.replace(/^\D*/, "");
+  const version = tool("@biomejs/biome").replace(/^\D*/, "");
   const config = {
     $schema: `https://biomejs.dev/schemas/${version}/schema.json`,
     vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },

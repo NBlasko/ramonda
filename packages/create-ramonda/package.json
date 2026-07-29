@@ -1,7 +1,7 @@
 {
   "name": "create-ramonda",
   "version": "0.0.4",
-  "description": "Scaffold a Ramonda app — pick your packages and rendering mode, then just run it.",
+  "description": "Scaffold a Ramonda app \u2014 pick your packages and rendering mode, then just run it.",
   "type": "module",
   "bin": {
     "create-ramonda": "dist/index.js"
@@ -14,7 +14,8 @@
     "build": "tsup",
     "check-types": "tsc --noEmit",
     "lint": "oxlint src",
-    "verify-versions": "node scripts/verify-versions.mjs"
+    "verify-versions": "node scripts/verify-versions.mjs",
+    "test": "vitest run"
   },
   "keywords": [
     "ramonda",
@@ -24,7 +25,7 @@
     "template",
     "cli"
   ],
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -45,6 +46,8 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   }
 }
