@@ -11,6 +11,7 @@ import { ramondaLog } from "../debug/logger";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { STABLE_PROPS } from "../helpers/constants";
+import type { BaseHook } from "../types/HookTypes";
 import {
   assertMethod,
   assertField,
@@ -844,6 +845,17 @@ export function Host<This = unknown, P = Record<string, unknown>>(
 }
 
 /**
+ * A hook's props, read off its construct signature — `new (runtime, options: Q) => …`.
+ *
+ * The constraint on the decorated class is `=> BaseHook<any>` rather than `=> object`, and
+ * that is what rejects a COMPONENT at compile time: a component instance has no
+ * `HOOK_RUNTIME`, so it is not structurally a hook. Constraining the parameters instead
+ * does not work — a component's constructor is `(props, context)`, and `keyof` of a loose
+ * context type accepts any name, so every check passed.
+ */
+type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q : never;
+
+/**
  * Declares which of a hook's props are **values** rather than references — so the
  * framework hands back one identity for as long as their contents are equal, and the call
  * site writes the plain literal.
@@ -890,16 +902,33 @@ export function Host<This = unknown, P = Record<string, unknown>>(
  * **It merges with what a parent class declared** rather than replacing it, so a subclass
  * adds to the list and cannot silently drop what the parent relied on.
  *
- * **Hooks only**, and it throws on a component in every build rather than sitting there
- * doing nothing: a component's props come from the parent's JSX and are compared by the
- * diff, which is a different mechanism with its own control (`@shouldUpdateOnPropsChange`).
+ * **Hooks only.** A component fails to type-check here, and throws in every build as the
+ * backstop for a build with no types: a component's props come from the parent's JSX and
+ * are compared by the diff, which is a different mechanism with its own control
+ * (`@shouldUpdateOnPropsChange`).
+ *
+ * **The names are type-checked** against the hook's props — `@stableProps("kye")` is a
+ * compile error that names `"kye"` — with no type argument to write at the call site.
  */
-export function stableProps(...keys: string[]) {
+export function stableProps<const K extends readonly string[]>(...keys: K) {
   if (__DEV__) {
-    assertStablePropKeys(keys);
+    assertStablePropKeys(keys as readonly string[]);
   }
 
-  return <T extends new (...args: any[]) => object>(ctor: T) => {
+  return <C extends new (runtime: any, options: any) => BaseHook<any>>(
+    ctor: C &
+      // The names are checked against the hook's OWN props: `C` is inferred from the
+      // decorated class, and when a name is not one of its props the parameter type gains a
+      // property the class cannot have, so the error names the offending key. Checked
+      // through `keyof` rather than by assignability, so an OPTIONAL prop counts as a prop.
+      //
+      // Written this way round because `Q` cannot be inferred from a constructor PARAMETER:
+      // measured, it falls back to its constraint, and every call then failed — including
+      // the correct ones.
+      ([K[number]] extends [keyof HookPropsOf<C>]
+        ? unknown
+        : { "@stableProps was given a name that is not a prop of this hook": K[number] }),
+  ) => {
     if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
       throw new Error(
         `[Ramonda] @stableProps is for hooks, not components. A component's props come from the parent's ` +
@@ -912,7 +941,7 @@ export function stableProps(...keys: string[]) {
     // chain, so this is the parent's list when there is one. Merging means a subclass
     // adds rather than shadows.
     const inherited = (ctor as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
-    const merged = inherited ? [...new Set([...inherited, ...keys])] : keys;
+    const merged = inherited ? [...new Set([...inherited, ...keys])] : [...keys];
 
     Object.defineProperty(ctor, STABLE_PROPS, {
       value: merged,

@@ -375,6 +375,60 @@ describe("static stableProps — the hook declares it, the call site does not", 
   });
 });
 
+describe("@stableProps is type-checked at the decoration site", () => {
+  /**
+   * The names are checked against the hook's OWN props, with no type argument written at
+   * the call site. `C` is inferred from the decorated class and the keys are compared
+   * through `keyof`, so an optional prop counts as a prop and a typo does not.
+   *
+   * These cases only have to COMPILE (or fail to), which `@ts-expect-error` asserts —
+   * there is nothing to run.
+   */
+  interface Shape {
+    key: readonly unknown[];
+    filter?: Record<string, unknown>;
+  }
+
+  test("a real prop name compiles, a typo does not", () => {
+    @stableProps("key")
+    class Fine extends Hook<Shape> {}
+
+    // An OPTIONAL prop is still a prop — checked through `keyof`, not by assignability.
+    @stableProps("key", "filter")
+    class Both extends Hook<Shape> {}
+
+    // @ts-expect-error — "kye" is not a prop of Shape, and the error names it.
+    @stableProps("kye")
+    class Typo extends Hook<Shape> {}
+
+    expect([Fine, Both, Typo].length).toBe(3);
+  });
+
+  test("a component is rejected twice over: by the compiler, and at decoration time", () => {
+    expect(() => {
+      // @ts-expect-error — a component instance is not structurally a hook (no
+      // HOOK_RUNTIME), which is what makes this a compile error and not just a runtime one.
+      @stableProps("key")
+      class NotAHook extends Component<Shape> {
+        render() {
+          return <div />;
+        }
+      }
+      return NotAHook;
+      // The throw is the backstop for a build with no types, and it points at the
+      // mechanism a component actually has.
+    }).toThrow(/@stableProps is for hooks, not components/);
+  });
+
+  test("a hook with no props rejects any name", () => {
+    // @ts-expect-error — nothing to declare on a hook that takes no props.
+    @stableProps("key")
+    class NoProps extends Hook {}
+
+    expect(NoProps).toBeTypeOf("function");
+  });
+});
+
 describe("stableProps is a property of the KIND, not of an instance", () => {
   @stableProps("key")
   class Base extends Hook<Bag> {
