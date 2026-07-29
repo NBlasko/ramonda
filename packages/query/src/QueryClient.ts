@@ -124,6 +124,31 @@ export class QueryClient {
     return this.defaults.structuralSharing ? replaceEqualDeep(previous, next) : next;
   }
 
+  /**
+   * Writes data for a key **only if nothing is there yet** — what `initialData` needs.
+   *
+   * Distinct from `setData`, and the difference is the point: `setData` is an assertion ("this
+   * is the value now") and cancels a fetch in flight, while this is an offer ("use this if you
+   * have nothing"). An answer that was fetched, or restored from a server render, outranks one
+   * the app had lying around — and a second observer arriving with its own `initialData` must
+   * not overwrite the first's.
+   *
+   * `updatedAt` is honoured because seeded data usually is not new. Without it a value from
+   * `localStorage` would look freshly fetched, and a long `staleTime` would keep it.
+   */
+  seed<TData>(key: QueryKey, data: TData, updatedAt?: number): void {
+    const entry = this.getEntry<TData>(key);
+    if (entry.status !== "pending") return;
+
+    entry.data = data;
+    entry.status = "success";
+    entry.error = undefined;
+    entry.updatedAt = updatedAt ?? this.now();
+    entry.failureCount = 0;
+    entry.restored = false;
+    this.notify(entry, "updated");
+  }
+
   /** Resolves an observer's triggers against this client's defaults. */
   resolveObserver(options?: ObserverBehaviour): ResolvedObserverOptions {
     if (!options) return this.observerDefaults;

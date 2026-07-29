@@ -166,6 +166,38 @@ What an app does lose without a boundary is the reminder to handle the error at 
 development builds report a query that failed while the render never read `isError`, `error`,
 `status` or `result` (`RMQ002`).
 
+## Starting with something already in hand
+
+Two options, and the difference between them is the reason both exist.
+
+**`initialData` goes in the cache.** It *is* the answer until something better arrives: every
+observer of the key sees it, and staleness applies to it — so with the default `staleTime: 0`
+it shows on the first render and is refreshed immediately.
+
+```tsx
+{ initialData: cachedTodos, initialDataUpdatedAt: savedAt }
+```
+
+Pass `initialDataUpdatedAt` when the data is not new. Without it, seeded data looks freshly
+fetched, so a one-minute `staleTime` would keep a value from `localStorage` for a minute
+before checking.
+
+**`placeholderData` never touches the cache.** It is a stand-in *this* component shows
+instead of a spinner, and it is gone the moment the fetch lands:
+
+```tsx
+{ placeholderData: emptyPage }
+```
+
+While it shows, `status` is `"success"` and `data` is the stand-in — which is the point, so
+that the ordinary `if (isPending) return <Spinner />` gives way to it. `isPlaceholder` is how
+you tell: dim it, or hide the actions that would act on nothing. A **failure is never hidden**
+by it; a placeholder covers "nothing yet", not "it went wrong".
+
+Both take a function, and it is worth using for anything that is not free to build: the props
+callback runs on every render of the owner, so `placeholderData: buildEmpty()` builds it every
+time, while `placeholderData: buildEmpty` is called once.
+
 ## Holding a query back
 
 A query that depends on something not there yet takes `enabled`:

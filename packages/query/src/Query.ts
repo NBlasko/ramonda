@@ -50,6 +50,46 @@ export interface QueryProps<TData, K extends QueryKey = QueryKey> extends QueryD
    * cannot act on.
    */
   enabled?: boolean;
+  /**
+   * Data to put IN THE CACHE for this key, if nothing is there yet.
+   *
+   * It behaves exactly like a fetched answer, because that is what it becomes: every observer
+   * of the key sees it, `status` is `"success"`, and staleness applies — with the default
+   * `staleTime: 0` it is stale on arrival and `refetchOnMount` will refresh it. That is usually
+   * what you want from data you already had lying around (a list the previous page fetched, a
+   * value from `localStorage`).
+   *
+   * Pass a function when producing it is not free: the props callback runs on every render of
+   * the owner, so `initialData: build()` builds it every time, while `initialData: build` is
+   * called only when the cache is actually empty.
+   *
+   * Use `initialDataUpdatedAt` when the data is not new — see below.
+   */
+  initialData?: TData | (() => TData);
+  /**
+   * When `initialData` was actually obtained, as a timestamp. Defaults to now.
+   *
+   * Without it, seeded data looks freshly fetched, so a `staleTime` of a minute would keep a
+   * value from `localStorage` for a minute before checking. Pass what you know and staleness
+   * does the right thing — including refetching immediately if it is already older than
+   * `staleTime`.
+   */
+  initialDataUpdatedAt?: number;
+  /**
+   * What THIS observer renders while there is nothing real yet. Never written to the cache.
+   *
+   * The difference from `initialData` is the whole point of having both: initial data IS the
+   * answer until something better arrives, shared by every observer and subject to staleness;
+   * placeholder data is a stand-in this one component shows instead of a spinner, and it is
+   * gone the moment the fetch lands.
+   *
+   * While it is showing, `status` is `"success"` and `data` is the placeholder, so the ordinary
+   * `if (isPending) return <Spinner />` gives way to the stand-in — which is the point.
+   * `isPlaceholder` is how you tell: dim it, or hide the actions that would act on it.
+   *
+   * Pass a function when producing it is not free, for the same reason as `initialData`.
+   */
+  placeholderData?: TData | (() => TData);
 }
 
 /**
@@ -351,7 +391,32 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   private rekey(hash: string): void {
     this.attachedHash = hash;
     this.seedFromSnapshot(hash);
+    this.seedInitialData();
     this.attach();
+  }
+
+  /**
+   * Puts `initialData` into the cache, if the cache has nothing for this key.
+   *
+   * From `rekey` rather than a lifecycle, so it also runs when the KEY moves: a new key is a
+   * new question, and if the app has initial data for it, the first render of it should show
+   * that rather than a spinner.
+   *
+   * "If nothing is there" is what makes it safe with several observers and with a key that
+   * comes back: seeding never overwrites an answer, and a value that was already fetched — or
+   * restored from the server — outranks one the app had lying around.
+   */
+  private seedInitialData(): void {
+    const given = this.props.initialData;
+    if (given === undefined) return;
+
+    const entry = this.client.peek<TData>(this.props.key);
+    if (entry !== undefined && entry.status !== "pending") return;
+
+    // Called only now, which is why the function form exists: the props callback runs on every
+    // render, so an inline value would be rebuilt every time for the one render that needs it.
+    const data = typeof given === "function" ? (given as () => TData)() : given;
+    this.client.seed(this.props.key, data, this.props.initialDataUpdatedAt);
   }
 
   /**
@@ -771,6 +836,10 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /** What is known about the DATA — independent of whether a request is running. */
   get status(): QueryStatus {
     this.read |= Facet.Status;
+    // `"success"` while a placeholder shows, because that is what a placeholder is FOR: the
+    // ordinary `if (isPending) return <Spinner />` has to give way to the stand-in. Read
+    // `isPlaceholder` to tell the two apart.
+    if (this.showsPlaceholder) return "success";
     return this.entry.status;
   }
 
@@ -788,6 +857,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   get data(): TData | undefined {
     this.read |= Facet.Data;
+    if (this.showsPlaceholder) return this.placeholder();
     return this.entry.data;
   }
 
@@ -819,6 +889,9 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   private read = 0;
   private lastSeen: Observed | undefined;
 
+  /** Built at most once — see `placeholder()`. */
+  private placeholderValue: TData | undefined;
+
   get error(): unknown {
     this.read |= Facet.Error;
     return this.entry.error;
@@ -826,20 +899,20 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
   /** No data yet, and no failure to show for it. This is the "loading" case. */
   get isPending(): boolean {
-    this.read |= Facet.Status;
-    return this.entry.status === "pending";
+    // Through `status`, not straight to the entry: a placeholder reports `"success"`, and three
+    // getters that disagree with the one they are shorthand for is the trap `result` already
+    // showed. A test caught this one — `isPending` stayed true under a placeholder.
+    return this.status === "pending";
   }
 
   /** There is data. It may be refetching; check `isFetching` for that. */
   get isSuccess(): boolean {
-    this.read |= Facet.Status;
-    return this.entry.status === "success";
+    return this.status === "success";
   }
 
   /** The last attempt failed. `data` may still hold the last known good value. */
   get isError(): boolean {
-    this.read |= Facet.Status;
-    return this.entry.status === "error";
+    return this.status === "error";
   }
 
   /**
@@ -864,6 +937,44 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   }
 
   /** Whether the data came from a server render rather than a fetch on this side. */
+  /**
+   * Whether what `data` returns is the stand-in rather than an answer.
+   *
+   * Worth rendering: a placeholder is not wrong, but it is not the user's data either, so an
+   * action taken against it may be acting on nothing. Dim it, or hide the buttons.
+   */
+  get isPlaceholder(): boolean {
+    this.read |= Facet.Data | Facet.Status;
+    return this.showsPlaceholder;
+  }
+
+  /**
+   * A placeholder shows only while there is genuinely nothing — no data and no error.
+   *
+   * Not "while pending": a failed query with no data must keep reporting the failure, or a
+   * placeholder would hide it forever and RMQ002 would be the only sign.
+   */
+  private get showsPlaceholder(): boolean {
+    if (this.props.placeholderData === undefined) return false;
+    const entry = this.entry;
+    return entry.status === "pending" && entry.data === undefined;
+  }
+
+  /**
+   * Builds the placeholder, once per instance.
+   *
+   * The function form exists because the props callback runs on every render of the owner, so
+   * an inline value would be rebuilt every time — and a rebuilt object handed to `data` would
+   * change identity on every render, which access tracking would then have to wake for.
+   */
+  private placeholder(): TData | undefined {
+    if (this.placeholderValue === undefined) {
+      const given = this.props.placeholderData;
+      this.placeholderValue = typeof given === "function" ? (given as () => TData)() : given;
+    }
+    return this.placeholderValue;
+  }
+
   get isRestored(): boolean {
     this.read |= Facet.Restored;
     return this.entry.restored === true;
@@ -881,6 +992,10 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   get result(): QueryResult<TData> {
     // The union exposes all three at once, so reading it subscribes to all three.
     this.read |= Facet.Data | Facet.Status | Facet.Error;
+
+    // The union has to agree with the getters, or a component that narrows through `result`
+    // would see `pending` while one reading `data` sees the placeholder.
+    if (this.showsPlaceholder) return { status: "success", data: this.placeholder() as TData, error: undefined };
     const entry = this.entry;
     if (entry.status === "success") {
       return { status: "success", data: entry.data as TData, error: undefined };
