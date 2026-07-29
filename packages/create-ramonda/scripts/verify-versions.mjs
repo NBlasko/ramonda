@@ -11,10 +11,12 @@
 // map), scaffolding with every add-on in both modes so each dependency the CLI
 // can emit shows up. New dependencies are covered automatically.
 //
-// `@ramonda/*` are skipped on purpose: they are first-party and published in the
-// same monorepo release, so a pre-publish check would race against their own
-// publish. The concern here is external packages, which are already on the
-// registry by the time we pin them.
+// `@ramonda/*` are not checked against the REGISTRY, on purpose: they are first-party and
+// published in the same release, so a registry check would race against their own publish.
+// They are checked against the WORKSPACE instead — the versions on disk are the ones about
+// to be published, so a range that does not match them is a range that will 404 for every
+// user. That hole shipped once: the scaffolder pinned `~0.0.1` while core and query went out
+// at 0.1.0, and a fresh project's first install failed on a version that does not exist.
 //
 // Needs a prior build — it imports the built `dist/index.js`. `pnpm release` runs
 // `pnpm build` first, so in the release flow dist is always present.
@@ -56,7 +58,45 @@ const names = Object.keys(deps)
   .filter((name) => !name.startsWith("@ramonda/"))
   .sort();
 
-console.log(`Verifying ${names.length} third-party dependency ranges on the npm registry…\n`);
+// First party, against the workspace.
+const workspaceDir = join(here, "..", "..");
+let firstPartyBad = 0;
+
+for (const name of Object.keys(deps)
+  .filter((n) => n.startsWith("@ramonda/"))
+  .sort()) {
+  const range = deps[name];
+  const folder = name.replace("@ramonda/", "");
+  let version = "";
+  try {
+    version = JSON.parse(readFileSync(join(workspaceDir, folder, "package.json"), "utf8")).version;
+  } catch {
+    console.error(`  ✗ ${name} — no such package in the workspace (the scaffolder writes ${range})`);
+    firstPartyBad++;
+    continue;
+  }
+
+  // `^0.1.0` must accept `0.1.0`. Comparing the range's own version to the package's is
+  // enough here because the scaffolder writes one derived range for all of them: if core's
+  // version produced the range, every package published in the same release shares it.
+  const wanted = range.replace(/^[\^~]/, "");
+  if (wanted !== version) {
+    console.error(`  ✗ ${name} — the scaffolder writes ${range}, but the workspace is at ${version}`);
+    firstPartyBad++;
+  } else {
+    console.log(`  ✓ ${name}  ${range} → workspace ${version}`);
+  }
+}
+
+if (firstPartyBad > 0) {
+  console.error(
+    `\n${firstPartyBad} first-party range(s) do not match the workspace. The scaffolder would pin versions ` +
+      `that are not being published — see tsup.config.ts, which derives the range from core's version.`,
+  );
+  process.exit(1);
+}
+
+console.log(`\nVerifying ${names.length} third-party dependency ranges on the npm registry…\n`);
 
 let bad = 0;
 for (const name of names) {
