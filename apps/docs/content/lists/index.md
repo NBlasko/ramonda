@@ -46,7 +46,16 @@ sit anywhere an expression can:
 <ul>{list({ each: this.done, as: TaskRow })}</ul>
 ```
 
-`each` is read when the list is built, so it is always the current array.
+`each` is read when the list is built, so it is always the current array. **It accepts
+`null` and `undefined`** and renders nothing for them, which is what data that has not
+arrived yet looks like:
+
+```tsx
+list({ each: this.query.data, render: this.renderRow })   // no `?? []`
+```
+
+That is not politeness — `each: this.query.data ?? []` builds a fresh empty array on every
+render, and a changed `each` costs the list its item scopes. RMD020 reports it.
 
 ## Lists of primitives, and repeated values
 

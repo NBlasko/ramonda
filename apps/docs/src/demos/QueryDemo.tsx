@@ -1,4 +1,4 @@
-import { Component, Host, memoizedHandler, stable, state } from "@ramonda/core";
+import { Component, Host, memoizedHandler, state } from "@ramonda/core";
 import { Query, QueryClientProvider, type FetchContext } from "@ramonda/query";
 
 interface Profile {
@@ -37,9 +37,12 @@ interface CardProps {
 @Host("div")
 class ProfileCard extends Component<CardProps> {
   /**
-   * A bound method rather than a closure, and `stable()` around the key: the callback
-   * runs on every render, so both would otherwise be fresh every time and RMD022 would
-   * say so. `load` reads `this.props` when it is CALLED, so there is nothing to capture.
+   * A bound method rather than a closure: the callback runs on every render, so an inline
+   * `fetch` would be a fresh function every time and RMD022 would say so. `load` reads
+   * `this.props` when it is CALLED, so there is nothing to capture.
+   *
+   * The key needs nothing — `Query` declares it in `static stableProps`, so the framework
+   * keeps one array identity while the parts are equal.
    */
   load(ctx: FetchContext) {
     this.props.onRequest();
@@ -47,7 +50,7 @@ class ProfileCard extends Component<CardProps> {
   }
 
   private profile = this.use(Query, (self: ProfileCard) => ({
-    key: stable(["profile", self.props.id]),
+    key: ["profile", self.props.id],
     fetch: self.load,
     staleTime: 10_000,
   }));

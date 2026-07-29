@@ -3,7 +3,7 @@ import { STABLE } from "./constants";
 import { valueEqual } from "./valueEqual";
 import { checkPropsStability } from "../debug/propsStability";
 import { isStrictRender } from "../debug/renderStability";
-import type { HookClassKind } from "../types/commonTypes";
+import type { HookClassKind, StablePropsDeclaration } from "../types/commonTypes";
 import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
 import { propsPhase } from "../debug/purityGuard";
@@ -18,7 +18,7 @@ import { propsPhase } from "../debug/purityGuard";
  * that happens to come out the same twice; the comparison watches the VALUE, so it catches
  * a rebuilt array or closure, which no patched global can see.
  */
-function buildProps(that: object, hookName: string, hookProps: unknown): any {
+function buildProps(that: object, hookName: string, hookProps: unknown, declared: readonly string[] | undefined): any {
   if (typeof hookProps !== "function") return hookProps ?? {};
 
   const build = hookProps as (bag: unknown) => any;
@@ -39,7 +39,7 @@ function buildProps(that: object, hookName: string, hookProps: unknown): any {
       // A second call, compared against the first — the same check `render()` gets, on
       // the other place the framework asks the app for a value. See
       // debug/propsStability.ts for why twice in one tick, and why on every render.
-      if (isStrictRender()) checkPropsStability(label, bag, build(that));
+      if (isStrictRender()) checkPropsStability(label, bag, build(that), declared);
 
       return bag;
     } finally {
@@ -59,16 +59,25 @@ function buildProps(that: object, hookName: string, hookProps: unknown): any {
  * is skipped entirely for a bag that holds no markers, which is the common case — one
  * `in` check per key and nothing else.
  */
-function resolveStable(next: any, prev: Record<string, any> | undefined): any {
+function resolveStable(next: any, prev: Record<string, any> | undefined, declared: readonly string[] | undefined): any {
   let resolved: Record<string, any> | undefined;
 
   for (const key in next) {
     const value = next[key];
-    if (value === null || typeof value !== "object" || !(STABLE in value)) continue;
+    const wrapped = value !== null && typeof value === "object" && STABLE in value;
+    // A hook that declared this prop gets the same treatment without the call site asking
+    // for it — that is the whole point of the declaration.
+    if (!wrapped && !declared?.includes(key)) continue;
+
+    const inner = wrapped ? value[STABLE] : value;
+
+    // A declaration cannot make a function comparable — two closures with the same body
+    // are not equal by any comparison that is safe to make — so a function prop is left
+    // exactly as it came, and RMD022 still reports it. Silently accepting it would be the
+    // worst of both: unstable AND unreported.
+    if (typeof inner === "function") continue;
 
     const target = resolved ?? (resolved = { ...next });
-
-    const inner = value[STABLE];
     const before = prev?.[key];
     // The previous value is already unwrapped, so an equal one is handed straight back
     // and every signal that reads this prop stays asleep.
@@ -104,7 +113,10 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const runtime = that[GLOBAL_RUNTIME];
 
-  const initialProps = resolveStable(buildProps(that, hook.name, hookProps), undefined);
+  // Read once per use() site rather than per render: a static on the class cannot change.
+  const declaredStable = (hook as unknown as StablePropsDeclaration).stableProps;
+
+  const initialProps = resolveStable(buildProps(that, hook.name, hookProps, declaredStable), undefined, declaredStable);
 
   const hookInstance = new hook(runtime, initialProps);
   const hookRuntime = hookInstance[HOOK_RUNTIME];
@@ -125,7 +137,7 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const updateFn = () => {
     const prevProps = hookRuntime.rawProps;
-    const nextProps = resolveStable(buildProps(that, hook.name, hookProps), prevProps);
+    const nextProps = resolveStable(buildProps(that, hook.name, hookProps, declaredStable), prevProps, declaredStable);
     hookRuntime.rawProps = nextProps;
     const sigs = hookRuntime.propsSignals;
 

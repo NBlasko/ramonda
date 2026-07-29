@@ -103,6 +103,12 @@ export const IS_LIST = Symbol("isList");
  */
 export const STABLE = Symbol("stable");
 /**
+ * DEV only. Marks a children array that `normalizeChildren` built — so a nested array
+ * WITHOUT it came from the app (a `.map`, a `filter`, an array literal) rather than from
+ * JSX or from `{this.props.children}` being passed down. See RMD023.
+ */
+export const OWN_CHILDREN = Symbol("ownChildren");
+/**
  * Set by `flattenMixedArray` on a children array that contains at least one
  * list, so the diff can take the cheap path (a strict equality check) instead of
  * scanning every child of every element on every render to find out.

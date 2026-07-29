@@ -91,6 +91,13 @@ export interface MutationProps<TData, TVars> {
  * nothing is keyed.
  */
 export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVars>> {
+  /**
+   * `invalidates` is a list of keys, so it is a value for the same reason a key is — see
+   * `Query.stableProps`. Declared here so `invalidates: [["todos"]]` at a call site is one
+   * identity rather than a fresh array every render.
+   */
+  static stableProps = ["invalidates"] as const;
+
   private ctx = this.use(ClientContext);
 
   /**

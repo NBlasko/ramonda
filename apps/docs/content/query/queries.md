@@ -40,8 +40,8 @@ The key usually depends on a prop, so a prop change is a key change:
 
 ```tsx
 private user = this.use(Query, (self: UserCard) => ({
-  key: stable(["user", self.props.id]),
-  fetch: self.load,
+  key: ["user", self.props.id],   // a literal; Query holds its identity
+  fetch: self.load,               // a bound method, not a closure
 }));
 ```
 
@@ -50,12 +50,15 @@ key's state — pending, or whatever is cached for it — rather than the previo
 name under the new user's heading for a frame. The request for the old key is
 abandoned, and if you forwarded `ctx.signal` the browser stops it too.
 
-A rebuilt key finds the same query — the comparison is by value, measured at 31 ns, so
-`["user", 42]` built again is the same question. But the array is also a **prop**, and a
-prop compares by reference, so rebuilding it wakes everything that reads it on every
-render. That is why the example above wraps it in
-[`stable()`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) and passes a
-bound method for `fetch`; development builds report the rebuilt forms as `RMD022`.
+Write the key array as a literal — that is the whole point of it. `Query` declares `key`
+as a value (`static stableProps`), so the framework hands back **one array identity** for
+as long as the parts are equal: nothing that reads the key sees a change, and the
+comparison costs 31 ns. You do not wrap it in anything.
+
+`fetch` is the one to watch, because a function cannot be compared that way. Pass a
+**bound method** — `fetch: self.load`, reading `this.props` when it is called — rather than
+an inline closure, which is a new prop on every render. Development builds report the
+closure form as [RMD022](/reference/diagnostics).
 
 ## Freshness
 
@@ -120,7 +123,7 @@ A query that depends on something not there yet takes `enabled`:
 
 ```tsx
 private orders = this.use(Query, (self: Panel) => ({
-  key: stable(["orders", self.props.userId]),
+  key: ["orders", self.props.userId],
   fetch: self.load,
   enabled: self.props.userId !== undefined,
 }));

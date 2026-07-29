@@ -42,6 +42,17 @@ const dump = (c: Element) =>
 describe("an array is its own group among its siblings", () => {
   let captured: ReturnType<typeof captureDiagnostics>;
 
+  /**
+   * These tests are about REGION ISOLATION — that an array cannot reach past itself and
+   * claim a sibling — and several of them are written with unkeyed components on purpose,
+   * because that is the shape the isolation has to survive.
+   *
+   * Unkeyed components built from an array are a separate finding (RMD023: their identity
+   * is their position, so anything but growth at the end moves state to the wrong row).
+   * Both are true at once, so each test below claims "nothing BUT that".
+   */
+  const otherCodes = () => captured.codes.filter((code) => code !== "RMD023");
+
   beforeEach(() => {
     resetDiagnostics();
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -89,7 +100,7 @@ describe("an array is its own group among its siblings", () => {
     // Measured before grouping: "a#0 | b#99 | c#0 | FOOT#0" — #99 had migrated
     // off FOOT and onto `b`.
     expect(dump(app.container)).toBe("a#0 | b#0 | c#0 | FOOT#99");
-    expect(captured.codes).toEqual([]);
+    expect(otherCodes()).toEqual([]);
   });
 
   test("keys fix it, and then nothing is reported", async () => {
@@ -120,7 +131,7 @@ describe("an array is its own group among its siblings", () => {
     await app.settle();
 
     expect(dump(app.container)).toBe("a#0 | b#0 | c#0 | FOOT#99");
-    expect(captured.codes).toEqual([]);
+    expect(otherCodes()).toEqual([]);
   });
 
   test("a list with nothing after it is NOT reported", async () => {
@@ -156,7 +167,7 @@ describe("an array is its own group among its siblings", () => {
 
     // Safe in fact, not just by assumption.
     expect(dump(app.container)).toBe("HEAD#99 | a#0 | b#0 | c#0");
-    expect(captured.codes).toEqual([]);
+    expect(otherCodes()).toEqual([]);
   });
 
   test("a trailing child that renders nothing does not count as following", async () => {
@@ -177,7 +188,7 @@ describe("an array is its own group among its siblings", () => {
     }
 
     await getDOM<List>(<List />);
-    expect(captured.codes).toEqual([]);
+    expect(otherCodes()).toEqual([]);
   });
 
   test("a caller's unkeyed slot cannot corrupt the Card's own chrome", async () => {
@@ -222,6 +233,6 @@ describe("an array is its own group among its siblings", () => {
     await app.settle();
 
     expect(dump(app.container)).toBe("a#0 | b#0 | c#0 | FOOT#99");
-    expect(captured.codes).toEqual([]);
+    expect(otherCodes()).toEqual([]);
   });
 });

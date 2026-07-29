@@ -1,16 +1,9 @@
-import { Component, Host, list, onElement, stable, state } from "@ramonda/core";
+import { Component, Host, list, onElement, state } from "@ramonda/core";
 import { Mutation, Query, QueryClient, QueryClientProvider, mutationOptions, queryOptions } from "@ramonda/query";
 
 // The "server": a list, and a rule that rejects anything already there. The
 // rejection is what makes the rollback visible.
 let todos = ["write the docs"];
-
-/**
- * One array for "nothing yet", because `each: this.list.data ?? []` would build a fresh
- * empty array on every render while the query is pending — a changed `each`, which costs
- * the list its row identities. RMD020 reports it.
- */
-const NONE: string[] = [];
 
 function loadTodos(): Promise<string[]> {
   return new Promise((resolve) => setTimeout(() => resolve([...todos]), 300));
@@ -56,10 +49,9 @@ export class MutationDemo extends Component {
 
   private list = this.use(Query, () =>
     queryOptions({
-      // `stable()` and bound methods, because the callback runs on every render: a fresh
-      // array or closure is a changed prop, and RMD022 reports it. See the diagnostics
-      // reference for what it costs.
-      key: stable(["todos"]),
+      // A bound method, because the callback runs on every render and a fresh closure is
+      // a changed prop (RMD022). The key needs nothing: `Query` declares it as a value.
+      key: ["todos"],
       fetch: loadTodos,
       staleTime: 10_000,
     }),
@@ -71,7 +63,7 @@ export class MutationDemo extends Component {
       onMutate: optimisticAdd,
       // On success the list is refetched, so the optimistic guess is replaced by
       // whatever the server actually has.
-      invalidates: stable([["todos"]]),
+      invalidates: [["todos"]],
     }),
   );
 
@@ -101,10 +93,11 @@ export class MutationDemo extends Component {
         {/*
           `list()`, not `.map()`. A map builds every vnode on every render and gives the
           diff nothing to match rows by; a list is lazy — the descriptor is built in
-          render, the items by the diff, and an unchanged row's scope is reused. Its
-          `render` is a bound method for the same reason.
+          render, the items by the diff, and an unchanged row's scope is reused. `each`
+          takes the query's data straight, undefined and all, so there is no `?? []` to
+          rebuild every render.
         */}
-        <ul>{list({ each: this.list.data ?? NONE, render: this.renderTodo })}</ul>
+        <ul>{list({ each: this.list.data, render: this.renderTodo })}</ul>
 
         <p className="demo-row">
           <input value={this.draft} placeholder="new todo" onInput={this.onDraftInput} />

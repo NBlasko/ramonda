@@ -34,9 +34,7 @@ class App extends Component {
 
 class UserCard extends Component<{ id: string }> {
   private user = this.use(Query, (self: UserCard) => ({
-    // `stable()` and a bound method, because the callback runs on every render: a fresh
-    // array or closure is a changed prop. See writing a hook.
-    key: stable(["user", self.props.id]),
+    key: ["user", self.props.id],
     fetch: self.load,
   }));
 
@@ -125,7 +123,7 @@ is checked against a target type, so every parameter is typed, `key` included:
 ```tsx
 private todo = this.use(Query, (self: TodoCard) =>
   queryOptions({
-    key: stable(["todo", self.props.id] as const),
+    key: ["todo", self.props.id] as const,
     fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
   }),
 );

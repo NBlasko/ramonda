@@ -102,28 +102,42 @@ compute reading a rebuilt array runs three times where one reading a scalar prop
 once.
 
 Development builds report it as [RMD022](/reference/diagnostics) — the callback is called
-twice in the same tick and the two bags compared, the same check `render()` gets. There
-are two fixes, one per kind of value.
+twice in the same tick and the two bags compared, the same check `render()` gets.
 
-**An array or an object: `stable()`.** It keeps one identity for as long as the contents
-are equal — the counterpart of [`list()`](/lists) for a props bag:
+**If you are WRITING the hook: declare which props are values.** A query key is a value —
+`["user", 7]` built again is the same question — and that is the hook's knowledge, not
+something every call site should have to encode:
 
 ```tsx
-import { stable } from "@ramonda/core";
+export class Query extends Hook<QueryProps> {
+  static stableProps = ["key"] as const;
+}
+```
 
+Now the framework keeps one identity for those props for as long as their contents are
+equal (nested objects included), and the call site writes the plain literal:
+
+```tsx
 private user = this.use(Query, (self: UserCard) => ({
-  key: stable(["user", self.props.id]),   // the same array until `id` moves
+  key: ["user", self.props.id],   // one array until `id` moves — nothing to wrap
   fetch: self.load,
 }));
 ```
 
-Contents are compared by value, nested objects included, so
-`stable(["posts", { page, tag }])` survives a render where neither moved. Write the
-literal exactly as you would have; what changes is which reference comes out the other
-side.
+**If you are USING a hook that declared nothing: `stable()`.** The same thing from the
+outside, per value — the counterpart of [`list()`](/lists) for a props bag:
+
+```tsx
+import { stable } from "@ramonda/core";
+
+private chart = this.use(SomeChart, (self: Panel) => ({
+  series: stable([self.props.a, self.props.b]),
+}));
+```
 
 **A function: a bound method.** Two closures with the same body are not equal by any
-comparison that is safe to make, so functions cannot go through `stable()`. A method
+comparison that is safe to make, so neither `stable()` nor a declaration can help — a hook
+that lists a function prop still gets the report. A method
 reads `this` when it is *called*, so there is nothing to capture — and methods are bound,
 so the identity never changes:
 
@@ -154,6 +168,39 @@ compute refreshes itself when it moves. If it is *not* reactive — `Date.now()`
 variable, the DOM — the compute freezes it at the moment it was first asked for and
 nothing ever refreshes it. Development builds report randomness read inside a compute for
 exactly that reason ([RMD021](/reference/diagnostics)).
+
+## What you cannot assume about your props
+
+The framework reports the mistakes it can see, and those reports are development-only. A
+hook — a **reusable** one especially — is written against what it might actually be handed,
+not against what a well-behaved caller would send. Four things you do not know:
+
+**When you will be called.** The props callback runs on every render of the owner, and the
+owner re-renders for reasons that have nothing to do with you. Being called is not news.
+
+**Whether a value is the same object as last time.** A declaration or `stable()` covers the
+props you thought of; everything else arrives fresh whenever the caller's callback rebuilds
+it. So a `@watchProp` handler has to be **cheap and idempotent** — it will run for a
+reference that changed and a value that did not. `Query` does exactly this: the framework
+already compares the key, and `onKeyChanged` still compares the parts itself, then the hash,
+before it will start a request. A handler that fetches, resets a form or scrolls without
+that guard does it on every render of somebody else's component.
+
+**What the value is.** A prop the caller stopped passing becomes `undefined` — a key that
+was there is gone, an array is nullish, a callback prop is missing. And a value can be
+anything the caller's types allowed, which for a generic hook is a lot: `Query` hashes its
+key, so it validates that the key is JSON-serializable and reports `RMQ001` when it is not,
+because a function in a key is silently dropped by `JSON.stringify` and two different
+queries would collide on one cache entry. Where the shape of a prop decides what your hook
+*does*, check it and say so.
+
+**Whether the app is in a development build.** RMD022 needs the strict render, the
+diagnostics are stripped from production, and none of them run for a caller who turned them
+off. A check is how a mistake gets *found*; it is not what makes your hook safe.
+
+The rule that follows: **compare by value what is a value, and be idempotent about the
+rest.** That is the whole of it — and it is why `static stableProps` exists, so a hook can
+state the first half once rather than hoping every caller does.
 
 ## Next
 

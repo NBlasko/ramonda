@@ -14,7 +14,7 @@ again. There is nothing to configure for any of that.
 ```tsx
 class UserCard extends Component<{ id: string }> {
   private user = this.use(Query, (self: UserCard) => ({
-    key: stable(["user", self.props.id]),
+    key: ["user", self.props.id],
     fetch: self.load,
   }));
 

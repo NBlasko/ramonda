@@ -290,3 +290,87 @@ describe("RMD022", () => {
     expect(fired).toBe(1);
   });
 });
+
+describe("static stableProps — the hook declares it, the call site does not", () => {
+  /**
+   * The DX question this answers: a query key is a value, and the hook AUTHOR knows that.
+   * Making every call site wrap it in `stable()` puts the hook's own semantics in the
+   * app's code. So a hook declares which props are values, the app writes the natural
+   * literal, and the framework holds the identity — `stable()` stays for hooks that
+   * declared nothing.
+   */
+  class Declared extends Hook<Bag> {
+    static stableProps = ["key"] as const;
+
+    keys: unknown[] = [];
+
+    @compute get seen(): string {
+      this.keys.push(this.props.key);
+      return JSON.stringify(this.props.key ?? null);
+    }
+  }
+
+  test("a plain array literal gets one identity, and no report", async () => {
+    class Panel extends Component {
+      @state page = 1;
+      @state unrelated = 0;
+      probe = this.use(Declared, (self: Panel) => ({ key: ["posts", { page: self.page }] }));
+      render() {
+        return <div>{`${this.probe.seen}:${this.unrelated}`}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    instance.unrelated = 1;
+    await settle();
+    instance.unrelated = 2;
+    await settle();
+
+    // Three renders, one array — with no `stable()` anywhere at the call site.
+    expect(instance.probe.keys.length).toBe(1);
+    expect(reported()).not.toContain("RMD022");
+
+    // And it still follows its contents, nested object included.
+    instance.page = 2;
+    await settle();
+    expect(instance.probe.keys.length).toBe(2);
+    expect(instance.probe.keys[1]).toEqual(["posts", { page: 2 }]);
+  });
+
+  test("a prop it did NOT declare is still reported", async () => {
+    class Panel extends Component {
+      probe = this.use(Declared, () => ({ key: ["posts"], filter: { tag: "a" } }));
+      render() {
+        return <div>{this.probe.seen}</div>;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+
+    // The declaration is per prop, not a blanket exemption.
+    expect(reported()).toContain("RMD022");
+    expect(reported()).toContain("`filter`");
+    expect(reported()).not.toContain("`key`");
+  });
+
+  test("a function cannot be declared away — it is still reported", async () => {
+    class Fn extends Hook<Bag> {
+      // A hook author cannot make a closure comparable by saying so: two closures with
+      // the same body are not equal by any comparison that is safe to make.
+      static stableProps = ["key", "fetch"] as const;
+      get seen(): string {
+        return String(this.props.fetch?.());
+      }
+    }
+
+    class Panel extends Component {
+      probe = this.use(Fn, (self: Panel) => ({ fetch: () => self.constructor.name }));
+      render() {
+        return <div>{this.probe.seen}</div>;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+    expect(reported()).toContain("builds a new function for the `fetch` prop");
+  });
+});

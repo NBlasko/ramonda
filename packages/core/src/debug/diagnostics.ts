@@ -29,7 +29,8 @@ export type DiagnosticCode =
   | "RMD019"
   | "RMD020"
   | "RMD021"
-  | "RMD022";
+  | "RMD022"
+  | "RMD023";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -136,6 +137,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "A hook's props callback built a new value for the same contents",
     fix: 'The callback runs on every render of the owner, and every prop is a signal — so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects, on every render. For an array or an object, wrap it in stable(): stable(["user", self.props.id]) keeps one identity while the contents are equal, the counterpart of list() for a props bag. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @create and keep it in @state.',
+  },
+  RMD023: {
+    severity: "warning",
+    title: "An array was rendered straight into children",
+    fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
   },
   RMD013: {
     severity: "error",

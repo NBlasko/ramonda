@@ -1,10 +1,19 @@
 import { createRamonda } from "../vdom/CreateRamonda";
 import type { ComponentChild, ComponentKind, ComponentClassKind, UnsupportedTagFn, RamondaNode } from "../types/vdom";
-import { svgElements, COMPONENT_TYPE, TEXT_TYPE, IS_SVG, HOST_TAG, IS_LIST, HAS_LIST } from "../helpers/constants";
+import {
+  svgElements,
+  COMPONENT_TYPE,
+  TEXT_TYPE,
+  IS_SVG,
+  HOST_TAG,
+  IS_LIST,
+  HAS_LIST,
+  OWN_CHILDREN,
+} from "../helpers/constants";
 import { isArray } from "../helpers/utils";
 import { ramondaLog } from "../debug/logger";
 import { currentOrigin } from "../core/origin";
-import { reportFunctionTag } from "../debug/jsxRules";
+import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
 
 /**
  * Normalizes one element's children — and, unlike a plain flatten, **keeps a
@@ -28,6 +37,29 @@ import { reportFunctionTag } from "../debug/jsxRules";
  * a list mixed with other children keeps its own region. The diff walks
  * regions recursively (`reconcileEntries`), so there is no depth limit.
  */
+/**
+ * Collects the unkeyed component children of an expression-built array and reports them
+ * together — one diagnostic per component kind rather than one per row.
+ *
+ * A single child is skipped: `{cond && <Row />}` and `{[<Row />]}` have no siblings to be
+ * reordered against, so position identity cannot go wrong. One keyed child anywhere means
+ * the app is managing identity, and the framework does not second-guess that.
+ */
+function checkMappedComponents(children: unknown[]): void {
+  if (children.length < 2) return;
+
+  const names: string[] = [];
+  for (const child of children) {
+    if (child === null || typeof child !== "object") continue;
+    const vnode = child as { type?: unknown; name?: unknown; attributes?: { key?: unknown } };
+    if (vnode.type !== COMPONENT_TYPE) continue;
+    if (vnode.attributes?.key !== undefined) return;
+    if (typeof vnode.name === "function") names.push((vnode.name as { name: string }).name);
+  }
+
+  if (names.length > 0) reportMappedComponents(names);
+}
+
 function normalizeChildren(arr: unknown[]): unknown[] {
   const result: unknown[] = [];
   let hasList = false;
@@ -36,6 +68,11 @@ function normalizeChildren(arr: unknown[]): unknown[] {
     const el = arr[index];
     if (isArray(el)) {
       const inner = normalizeChildren(el);
+
+      // Built by an expression rather than by JSX or by `{this.props.children}` being
+      // passed down. Only unkeyed components are reported, and only from here, because
+      // structure is the only thing that can see this at all — see RMD023.
+      if (__DEV__ && !(OWN_CHILDREN in el)) checkMappedComponents(inner);
 
       const owner = regionOwner(index);
 
@@ -95,6 +132,10 @@ function normalizeChildren(arr: unknown[]): unknown[] {
   // O(1) signal for the diff. Without it, finding out whether an element owns a
   // list would mean scanning its children on every render, for every element.
   if (hasList) (result as { [HAS_LIST]?: boolean })[HAS_LIST] = true;
+
+  // Brands this array as the framework's own, so `{this.props.children}` — which is this
+  // very array, handed one level down — is not mistaken for a mapped one.
+  if (__DEV__) (result as { [OWN_CHILDREN]?: boolean })[OWN_CHILDREN] = true;
 
   return result;
 }

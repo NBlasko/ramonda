@@ -63,13 +63,31 @@ const FIX: Record<Kind, string> = {
 /**
  * Compares two bags built by the same callback.
  *
- * `stable()` markers are compared by their contents: two calls in one tick produce two
- * marker objects, and reporting those would report the fix as the fault.
+ * Two things are skipped, for the same reason: a prop the hook declared in
+ * `static stableProps`, and a value the call site wrapped in `stable()`. Both are already
+ * held at one identity by the framework, so reporting them would report the fix as the
+ * fault. A `stable()` marker is compared by its CONTENTS rather than skipped outright,
+ * because contents that differ between two calls in one tick is non-determinism no wrapper
+ * can launder.
  */
-export function checkPropsStability(owner: string, first: unknown, second: unknown): void {
+export function checkPropsStability(
+  owner: string,
+  first: unknown,
+  second: unknown,
+  declared: readonly string[] | undefined,
+): void {
   if (!isBag(first) || !isBag(second)) return;
 
   for (const key of Object.keys(first)) {
+    // The hook declared this prop as a value (`static stableProps`), so the framework
+    // already keeps one identity for equal contents. Reporting it would be asking the app
+    // to fix something the hook took care of.
+    //
+    // Functions are the exception: a declaration cannot make one comparable, so
+    // `resolveStable` leaves it alone and this still reports it. A hook author who lists a
+    // function prop gets the report anyway rather than silence.
+    if (declared?.includes(key) && typeof (first as Record<string, unknown>)[key] !== "function") continue;
+
     const a = unwrap(first[key]);
     const b = unwrap(second[key]);
 
