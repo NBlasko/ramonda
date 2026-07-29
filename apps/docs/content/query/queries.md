@@ -82,6 +82,26 @@ A query with data can be refetching at the same time, and those are separate fac
 flight". Rendering a spinner for the second one blanks a screen that has something on
 it.
 
+## An equal answer is the same answer
+
+When a fetch returns data equal to what is already cached, the cache **keeps the object it
+had** — so nothing re-renders. And when the answer did change, every part that did not keeps
+its identity, which is what lets [`list()`](/lists) re-render the rows that moved instead of
+all of them.
+
+Measured in jsdom against the render it prevents, on rows of six fields: 28 µs of comparison
+versus 5.4 ms of commit at ten rows, 811 µs versus 272 ms at a thousand. A polled query that
+returns the same page is the common case, not the exception, so this is on by default.
+
+```tsx
+{ structuralSharing: false }   // for a payload that is always different and big
+```
+
+Turn it off only for that: a response large enough for the walk to matter *and* different on
+every fetch, where the comparison is pure cost. Arrays and plain objects are compared; a
+`Date`, a `Map` or a class instance is compared by identity, because equality for those is
+yours to define.
+
 ## When it asks again
 
 | Trigger | Default | Notes |

@@ -1,6 +1,7 @@
 import { createEntry, isStale, type QueryEntry } from "./cacheEntry";
 import { deserializeError, serializeError, type SerializedError } from "./errors";
 import { hashKey, keyStartsWith } from "./hashKey";
+import { replaceEqualDeep } from "./structuralSharing";
 import type {
   ObserverBehaviour,
   QueryBehaviour,
@@ -88,6 +89,10 @@ export class QueryClient {
       gcTime: given.gcTime ?? DEFAULT_GC_TIME,
       retry: given.retry ?? DEFAULT_RETRY,
       retryDelay: given.retryDelay ?? defaultRetryDelay,
+      // On by default. Measured against the render it prevents: 28 µs of comparison versus
+      // 5.4 ms of commit for ten rows, 811 µs versus 272 ms for a thousand — see
+      // structuralSharing.ts for the table and for what bounds the walk.
+      structuralSharing: given.structuralSharing ?? true,
     };
     this.observerDefaults = {
       refetchOnMount: given.refetchOnMount ?? "stale",
@@ -106,7 +111,17 @@ export class QueryClient {
       gcTime: options.gcTime ?? this.defaults.gcTime,
       retry: options.retry ?? this.defaults.retry,
       retryDelay: options.retryDelay ?? this.defaults.retryDelay,
+      structuralSharing: options.structuralSharing ?? this.defaults.structuralSharing,
     };
+  }
+
+  /**
+   * Applies structural sharing with the client's default, for writes that carry no per-query
+   * options of their own (`setData`). A query's own `structuralSharing: false` is honoured on
+   * the fetch path, where the options are in hand.
+   */
+  private share<TData>(previous: TData | undefined, next: TData): TData {
+    return this.defaults.structuralSharing ? replaceEqualDeep(previous, next) : next;
   }
 
   /** Resolves an observer's triggers against this client's defaults. */
@@ -245,7 +260,9 @@ export class QueryClient {
 
     const value = typeof next === "function" ? (next as (previous: TData | undefined) => TData)(entry.data) : next;
 
-    entry.data = value;
+    // An explicit write goes through the same sharing as a fetch: an optimistic update that
+    // recomputes an equal list should not re-render every row of it.
+    entry.data = this.share(entry.data, value);
     entry.status = "success";
     entry.error = undefined;
     entry.updatedAt = this.now();
@@ -383,6 +400,8 @@ export class QueryClient {
         entry.errorUpdatedAt = now;
       } else {
         entry.status = "success";
+        // Hydration has nothing to share with — there is no previous value on this side — so
+        // this is a plain assignment on purpose.
         entry.data = query.data;
         entry.updatedAt = now;
       }
@@ -430,7 +449,7 @@ export class QueryClient {
           const data = await fetcher({ key: entry.key, signal: controller.signal });
           if (entry.fetchId !== fetchId) return;
 
-          entry.data = data;
+          entry.data = options.structuralSharing ? replaceEqualDeep(entry.data, data) : data;
           entry.status = "success";
           entry.error = undefined;
           entry.updatedAt = this.now();
