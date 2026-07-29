@@ -19,9 +19,11 @@ escape, three symptoms. `escapeHtml` covers `"` and `'` now, and the ages are ma
 did not. Both a preview and a state value scroll inside their own box now, so the cap only keeps
 a megabyte of cached data off the wire.
 
-**The panel opens at 620px and its left edge is a drag handle**, with the width remembered
-across reloads (clamped to 280px…96vw). 900px covered too much of the app; a fixed default cannot
-be right for both a query table and a narrow highlight check, so it is the reader's to set. The
+**The panel opens at 620px and its left edge is a drag handle.** (It was a fixed 450px, set before
+the panel had a nested component tree and a query table in it — both wide, both wrapping into
+unreadable columns. 900px was tried in between and covered too much of the app.) The width is remembered across reloads and
+clamped to 280px…96vw: no fixed default can be right for both a query table and a narrow highlight
+check, so it is the reader's to set. The
 content scrolls on both axes, a tree row no longer wraps, and the toolbar reflows through a
 **container** query — the panel's width is dragged, not the window's, so a media query would
 never fire.
