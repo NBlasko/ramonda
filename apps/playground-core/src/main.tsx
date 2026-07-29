@@ -46,6 +46,9 @@ class NavBar extends Component {
         <Link href="/about" className="navlink">
           About
         </Link>
+        <Link href="/diagnostics" className="navlink">
+          Diagnostics
+        </Link>
         <button onClick={this.route.back}>← Back</button>
         <button onClick={this.route.forward}>Forward →</button>
         <code className="path">{this.route.pathname}</code>
