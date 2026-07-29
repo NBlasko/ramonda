@@ -86,6 +86,8 @@ class RamondaDevTools extends HTMLElement {
   private componentsTabActive = false;
   private queryTabActive = false;
   private queryTimer: ReturnType<typeof setInterval> | undefined;
+  /** The last rendered shape of the query list — see `renderQueries`. */
+  private queryShape = "";
   private watching = false;
   private lastSig = "";
   private lastValues = new Map<string, string>();
@@ -231,10 +233,43 @@ class RamondaDevTools extends HTMLElement {
         .kind-component { background: #7A4FBF; color: #fff; }
         .kind-hook { background: #6a3; color: #fff; }
         .node-body { padding-left: 12px; border-left: 1px solid #333; margin-left: 5px; }
-        .state-block { background: #1a1a1a; padding: 5px; margin: 5px 0; font-size: 11px; border-left: 2px solid #00ffaa; }
-        .state-title { color: #00ffaa; margin-bottom: 3px; font-weight: bold; }
-        .state-row .sk { color: #888; }
-        .state-row .sv { color: #eee; }
+        /* 11px was unreadable, which is the whole point of this panel. */
+        .state-block { background: #1a1a1a; padding: 8px 10px; margin: 6px 0; font-size: 13px;
+                       line-height: 1.55; border-left: 2px solid #00ffaa; border-radius: 4px; }
+        .state-title { color: #00ffaa; margin-bottom: 4px; font-weight: bold; font-size: 12px;
+                       text-transform: uppercase; letter-spacing: .4px; }
+        .state-row { display: flex; gap: 6px; align-items: flex-start; }
+        .state-row .sk { color: #9a9aa2; flex-shrink: 0; }
+
+        /**
+         * A long value is scrollable rather than truncated. The bridge still caps what it sends,
+         * but what it sends should be readable in full — a value ending in "…" is the one you
+         * needed to see.
+         */
+        .state-row .sv { color: #eee; white-space: pre-wrap; word-break: break-word;
+                         max-height: 6.2em; overflow-y: auto; flex: 1; }
+        .state-row .sv::-webkit-scrollbar { width: 8px; }
+        .state-row .sv::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
+
+        .component-node.leaf .comp-summary { padding-left: 13px; }
+
+        /* A tree row hovered long enough fades the panel, so the highlight it draws on the page
+           is not hidden behind the panel drawing it. Delayed, so passing the cursor over the
+           tree does not strobe. */
+        .ramonda-panel.peek { opacity: 0.12; transition: opacity .25s ease .55s; }
+        .ramonda-panel.peek:hover { opacity: 0.12; }
+        :host([open]) .ramonda-overlay.peek { opacity: 0; }
+
+        .tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 20px; background: #171717;
+                 border-bottom: 1px solid #2a2a2a; }
+        .tools button { background: #262626; border: 1px solid #383838; color: #ccc; font: inherit;
+                        font-size: 12px; padding: 4px 9px; border-radius: 5px; cursor: pointer; }
+        .tools button:hover { background: #303030; color: #fff; }
+        .tools button.on { background: #7A4FBF; border-color: #7A4FBF; color: #fff; }
+        #components-container.no-values .state-block { display: none; }
+        #components-container.no-hooks .kind-hook { opacity: .5; }
+        #components-container.no-hooks .component-node:has(> details > summary .kind-hook),
+        #components-container.no-hooks .component-node.leaf:has(.kind-hook) { display: none; }
 
         .q-client { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
         .q-row { border: 1px solid #333; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #1c1c1c; }
@@ -269,6 +304,12 @@ class RamondaDevTools extends HTMLElement {
         <div id="logs-container"></div>
       </div>
       <div id="components-tab" class="tab-content">
+        <div class="tools">
+          <button type="button" data-tool="expand">expand all</button>
+          <button type="button" data-tool="collapse">collapse all</button>
+          <button type="button" data-tool="values">hide state &amp; props</button>
+          <button type="button" data-tool="hooks">hide hooks</button>
+        </div>
         <div id="components-container">
           <small style="color:#666">No active components…</small>
         </div>
@@ -282,6 +323,7 @@ class RamondaDevTools extends HTMLElement {
     `;
 
     this.setupTabSwitching();
+    this.setupTools();
     this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
     this.shadowRoot!.querySelector(".ramonda-overlay")?.addEventListener("click", () => this.toggle());
   }
@@ -339,6 +381,45 @@ class RamondaDevTools extends HTMLElement {
     this.setAttribute("open", "");
     this.updateWatchState();
     this.updateQueryWatch();
+  }
+
+  /**
+   * The toolbar: two collapse controls and two filters.
+   *
+   * All four exist for one task — finding a component in a real app's tree. Expanded state and
+   * props are what you want when you have found it and what stand in the way while looking, so
+   * hiding them is a class on the container rather than a re-render: instant, and it keeps every
+   * `<details>` exactly as the reader left it.
+   */
+  private setupTools() {
+    const root = this.shadowRoot!;
+    const container = root.querySelector("#components-container");
+    if (!container) return;
+
+    for (const button of Array.from(root.querySelectorAll("[data-tool]"))) {
+      button.addEventListener("click", () => {
+        const tool = (button as HTMLElement).dataset.tool;
+
+        if (tool === "expand" || tool === "collapse") {
+          for (const details of Array.from(container.querySelectorAll("details"))) {
+            (details as HTMLDetailsElement).open = tool === "expand";
+          }
+          return;
+        }
+
+        const className = tool === "values" ? "no-values" : "no-hooks";
+        const hidden = container.classList.toggle(className);
+        button.classList.toggle("on", hidden);
+        button.textContent =
+          tool === "values"
+            ? hidden
+              ? "show state & props"
+              : "hide state & props"
+            : hidden
+              ? "show hooks"
+              : "hide hooks";
+      });
+    }
   }
 
   private setupTabSwitching() {
@@ -402,8 +483,11 @@ class RamondaDevTools extends HTMLElement {
     }
 
     if (this.queryTimer !== undefined) return;
+    this.queryShape = "";
     this.renderQueries();
-    this.queryTimer = setInterval(() => this.renderQueries(), 250);
+    // Twice a second. Faster buys nothing a human can read, and every tick is a poll of every
+    // live cache.
+    this.queryTimer = setInterval(() => this.renderQueries(), 500);
   }
 
   private renderQueries() {
@@ -412,8 +496,10 @@ class RamondaDevTools extends HTMLElement {
 
     const bridge = this.queries;
     if (!bridge) {
-      container.innerHTML =
-        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>';
+      this.write(
+        container,
+        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>',
+      );
       return;
     }
 
@@ -421,7 +507,7 @@ class RamondaDevTools extends HTMLElement {
     const total = clients.reduce((sum, c) => sum + c.queries.length, 0);
 
     if (total === 0) {
-      container.innerHTML = '<small style="color:#666">The cache is empty.</small>';
+      this.write(container, '<small style="color:#666">The cache is empty.</small>');
       return;
     }
 
@@ -442,14 +528,76 @@ class RamondaDevTools extends HTMLElement {
       }
     }
 
+    /**
+     * The SHAPE, not the html: the age of each entry is rendered as "12s ago", so the markup
+     * differs on almost every tick even when nothing about the cache has moved. Comparing the
+     * html would therefore rewrite the list twice a second forever.
+     *
+     * That rewrite is what made the tab flicker while idle — `innerHTML` destroys and rebuilds
+     * every row, which resets hover, text selection and focus, and repaints. So the shape (keys,
+     * statuses, observer counts, data previews) decides whether to rebuild, and the ages are
+     * refreshed in place when it has not changed.
+     */
+    const shape = clients
+      .flatMap((client) =>
+        client.queries.map((row) =>
+          [
+            client.index,
+            row.hash,
+            row.status,
+            row.fetchStatus,
+            row.observers,
+            row.failureCount,
+            row.restored,
+            row.dataPreview,
+            row.error,
+          ].join("|"),
+        ),
+      )
+      .join("\n");
+
+    if (shape === this.queryShape) {
+      this.refreshAges(container, clients, now);
+      return;
+    }
+
+    this.queryShape = shape;
     container.innerHTML = html;
     this.bindQueryActions();
+  }
+
+  /** Writes only if the content differs, so an idle panel does not touch the DOM at all. */
+  private write(container: Element, html: string): void {
+    if (this.queryShape === html) return;
+    this.queryShape = html;
+    container.innerHTML = html;
+  }
+
+  /**
+   * Updates just the "updated Ns ago" text, by hash, leaving every node in place.
+   *
+   * This is the whole reason the ages are in their own element: a text node written directly is
+   * the cheapest DOM change there is, and it does not disturb what the reader is doing.
+   */
+  private refreshAges(container: Element, clients: { index: number; queries: QueryRow[] }[], now: number): void {
+    for (const client of clients) {
+      for (const row of client.queries) {
+        const age = container.querySelector(`[data-q-age="${client.index}:${row.hash}"]`);
+        if (!age) continue;
+        const text = this.ageOf(row, now);
+        if (age.textContent !== text) age.textContent = text;
+      }
+    }
+  }
+
+  private ageOf(row: QueryRow, now: number): string {
+    return row.updatedAt === 0 ? "never" : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
   }
 
   private renderQueryRow(clientIndex: number, row: QueryRow, now: number): string {
     const colour = row.status === "error" ? "#ff4444" : row.status === "success" ? "#54c98a" : "#ffcc00";
     const fetching = row.fetchStatus === "fetching";
-    const age = row.updatedAt === 0 ? "never" : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
+    const age = this.ageOf(row, now);
 
     // `observers: 0` is the interesting one: the entry is alive but nobody is watching, so
     // it is waiting out its gcTime. That is the state people ask about.
@@ -468,7 +616,7 @@ class RamondaDevTools extends HTMLElement {
         </div>
         <div class="q-meta">
           ${row.status}${row.failureCount > 0 ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}` : ""} ·
-          updated ${age} · ${observers}
+          updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
         </div>
         ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
         <div class="q-data">${escapeHtml(row.dataPreview)}</div>
@@ -516,7 +664,9 @@ class RamondaDevTools extends HTMLElement {
 
       const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc);
       const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
-      const optionsHtml = this.renderValueBlock("Options", n.options, path, "o", acc);
+      // A hook's inputs are its PROPS. They were called options once, the framework renamed
+      // them, and this label kept saying the old word to everyone inspecting a hook.
+      const optionsHtml = this.renderValueBlock("Props", n.options, path, "o", acc);
 
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);
@@ -526,12 +676,22 @@ class RamondaDevTools extends HTMLElement {
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
           : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
-      html += `
+      const body = `${propsHtml}${stateHtml}${optionsHtml}${hooksHtml}${childrenHtml}`;
+
+      // A leaf gets no disclosure triangle: a component with no state, no props, no hooks and
+      // no children has nothing to open, and a triangle that reveals emptiness is a lie the
+      // reader has to click to disprove.
+      html += body
+        ? `
         <div class="component-node">
           <details open>
             <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</summary>
-            <div class="node-body">${propsHtml}${stateHtml}${optionsHtml}${hooksHtml}${childrenHtml}</div>
+            <div class="node-body">${body}</div>
           </details>
+        </div>`
+        : `
+        <div class="component-node leaf">
+          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}</div>
         </div>`;
     }
     return html;
@@ -629,17 +789,35 @@ class RamondaDevTools extends HTMLElement {
     });
   }
 
+  /**
+   * Highlights the real element, and gets out of the way.
+   *
+   * The panel is 900px of opaque drawer over the page it is describing, so highlighting a
+   * component often highlights something behind the panel. `peek` fades the drawer — after a
+   * delay carried by the CSS transition, so sweeping the cursor down the tree does not strobe —
+   * and it comes straight back on `mouseleave`. Nothing is unmounted and no layout moves, which
+   * matters: the element being highlighted must not shift because the panel changed.
+   */
   private highlight(path: string) {
     const node = this.nodeMap.get(path);
     if (!node || !(node instanceof HTMLElement)) return;
     this.clearHighlight();
+    this.peek(true);
     this.highlighted = node;
     node.dataset.ramondaPrevOutline = node.style.outline;
     node.style.outline = "2px solid #7A4FBF";
     node.style.backgroundColor = "rgba(255, 0, 85, 0.1)";
   }
 
+  /** Fades the drawer while a row is hovered, so the highlight underneath is visible. */
+  private peek(on: boolean): void {
+    this.shadowRoot!.querySelector(".ramonda-panel")?.classList.toggle("peek", on);
+    this.shadowRoot!.querySelector(".ramonda-overlay")?.classList.toggle("peek", on);
+  }
+
   private clearHighlight() {
+    this.peek(false);
+
     const node = this.highlighted;
     if (!node) return;
     node.style.outline = node.dataset.ramondaPrevOutline || "";
