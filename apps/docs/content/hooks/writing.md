@@ -43,10 +43,22 @@ counter = this.use(Counter, (self: Panel) => ({ start: self.props.initial }));
 The callback receives the owner (`self`), so a hook's props can be built from the
 owner's own props or state — that is what keeps them in sync.
 
-**Annotate that parameter** — `(self: Panel)` — as above. It is what gives the owner
-its type; leaving it off is an error rather than a silent `any`, the same stance
-[`@watchProp`](/concepts/props) takes for its selector. (Annotating it is also what
-lets a *generic* hook infer its type parameter from what the callback returns.)
+**If you use that parameter, annotate it** — `(self: Panel)` — as above. It is what
+gives the owner its type; leaving the annotation off is an error rather than a silent
+`any`, the same stance [`@watchProp`](/concepts/props) takes for its selector.
+
+**Or just write `this`,** which is equally correct: the callback is an arrow function in a
+field initializer, so `this` is the instance both at runtime and to the type-checker —
+including for a *generic* hook inferring its type parameter from what the callback
+returns.
+
+```tsx
+counter = this.use(Counter, () => ({ start: this.props.initial }));
+```
+
+The parameter earns its keep in two cases. One, if the callback is ever written as a
+`function` rather than an arrow, where `this` would be `undefined`. Two, if it moves out of
+the class — a shared helper or a module-level function has no `this` to read.
 
 ## Props are read-only
 
