@@ -166,10 +166,18 @@ export interface ObserverBehaviour {
   /** See `RefetchOnMount`. Defaults to `"stale"`. */
   refetchOnMount?: RefetchOnMount;
   /**
-   * Refresh stale data when the window regains focus. Defaults to `true`.
+   * Refresh stale data when the tab becomes visible again. Defaults to `true`.
    *
-   * Only when it is STALE: a tab switched away from and back within `staleTime`
-   * fetches nothing, so the default is not a request per alt-tab.
+   * Only when it is STALE: a tab switched away from and back within `staleTime` fetches
+   * nothing, so the default is not a request per alt-tab.
+   *
+   * **The name says focus, the mechanism is visibility**, and that is deliberate. It listened
+   * to the window's `focus` event until 2026-07-29, which is wrong in both directions: on a
+   * phone, leaving the browser and returning does not reliably fire it, so the reader came back
+   * to stale data; and a page that was visible all along — a second monitor, a split screen,
+   * DevTools holding focus — fires it on a click, which with the default `staleTime: 0` was a
+   * request per click. `document.visibilityState` answers the question the option is asking.
+   * The name stays because it is the one people arrive with.
    */
   refetchOnWindowFocus?: boolean;
   /** Refresh stale data when the browser comes back online. Defaults to `true`. */

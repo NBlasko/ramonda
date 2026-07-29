@@ -1,4 +1,4 @@
-import { Hook, create, destroy, mount, onWindow, StableProps, state, watchProp } from "@ramonda/core";
+import { Hook, create, destroy, mount, onDocument, onWindow, StableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
 import { ClientContext, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
@@ -584,25 +584,44 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   }
 
   /**
-   * Refreshes stale data when the window regains focus.
+   * Refreshes stale data when the tab becomes visible again.
    *
-   * **Only when it is stale**, so a tab switched away from and back inside
-   * `staleTime` costs nothing — which is what makes this a defensible default
-   * rather than a request per alt-tab.
+   * **Only when it is stale**, so a tab switched away from and back inside `staleTime` costs
+   * nothing — which is what makes this a defensible default rather than a request per switch.
    *
-   * `@onWindow` rather than a hand-rolled listener: it is built on an effect, so it
-   * is attached on the client only and removed on destroy with nothing to forget.
-   * Reading props in the HANDLER is safe — an event is not an effect run, so
-   * nothing is recording dependencies, and the key array cannot pull this into the
-   * re-run loop described on `attach`.
+   * ## Why visibility and not focus
+   *
+   * This listened to the window's `focus` event until 2026-07-29, and that signal is wrong in
+   * both directions:
+   *
+   * - **It misses.** On a phone, leaving the browser and coming back reliably fires
+   *   `visibilitychange`; `focus` and `blur` are unreliable there. So the reader returned to
+   *   stale data and nothing refreshed it.
+   * - **It over-fires.** A page that was visible the whole time — a second monitor, a split
+   *   screen, or simply DevTools having focus — fires `focus` when you click into it, though
+   *   nothing was ever hidden. With the default `staleTime: 0` that is a request per click.
+   *
+   * `document.visibilityState` answers the question the option is actually asking: is somebody
+   * looking at this again. TanStack reached the same conclusion and dropped its focus listener.
+   *
+   * ## Why the option is still called `refetchOnWindowFocus`
+   *
+   * Because that is the name people arrive with, and it describes the intent even where it no
+   * longer describes the mechanism. Renaming it would cost every reader a lookup to learn that
+   * nothing about their app changed.
+   *
+   * `@onDocument`, because `visibilitychange` fires on the document — and like `@onWindow` it is
+   * built on an effect, so it attaches on the client only and is removed on destroy with
+   * nothing to forget.
    */
-  @onWindow("focus")
-  refreshOnFocus(): void {
+  @onDocument("visibilitychange")
+  refreshOnVisible(): void {
+    if (document.visibilityState !== "visible") return;
     if (!this.client.resolveObserver(this.observerBehaviour()).refetchOnWindowFocus) return;
     void this.fetchIfNeeded(false);
   }
 
-  /** Refreshes stale data when the browser comes back online. Same shape as focus. */
+  /** Refreshes stale data when the browser comes back online. Same shape as visibility. */
   @onWindow("online")
   refreshOnReconnect(): void {
     if (!this.client.resolveObserver(this.observerBehaviour()).refetchOnReconnect) return;

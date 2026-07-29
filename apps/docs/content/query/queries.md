@@ -107,11 +107,16 @@ yours to define.
 | Trigger | Default | Notes |
 |---|---|---|
 | `refetchOnMount` | `"stale"` | `"always"` ignores freshness; `false` never refreshes on mount. Data from the server counts as fresh — see [on the server](/query/server) |
-| `refetchOnWindowFocus` | `true` | Only when STALE, so an alt-tab inside `staleTime` costs nothing |
+| `refetchOnWindowFocus` | `true` | When the tab becomes **visible** again, and only when STALE — an alt-tab inside `staleTime` costs nothing |
 | `refetchOnReconnect` | `true` | Same, when the browser comes back online |
 | `refetchInterval` | off | Polls every N ms, and ignores staleness — an interval *is* the freshness policy |
 | `refetch()` | — | Manual, ignores freshness, and joins a request already in flight rather than starting a second |
 | `invalidate(key)` | — | Marks stale and asks whoever is watching to refresh; the data stays on screen while it does |
+
+The visibility trigger keeps its `focus` name but watches `document.visibilityState`, which
+is the question it is really asking. A window that gains focus having been visible all along —
+a second monitor, a split screen, DevTools — no longer refetches; a phone returning from the
+background now does, which `focus` did not reliably report.
 
 A query with **no** data fetches under all of these: `refetchOnMount` decides whether
 to REFRESH, and there is nothing to refresh yet.
