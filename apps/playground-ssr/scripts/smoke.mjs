@@ -66,8 +66,15 @@ server.on("exit", (code) => {
   if (code !== null && code !== 0) fail(`the server exited with code ${code} before serving anything`);
 });
 
-/** Waits for the port rather than a fixed sleep, so a slow machine does not fail spuriously. */
-async function waitForServer(attempts = 40) {
+/**
+ * Waits for the port rather than a fixed sleep, so a slow machine does not fail spuriously.
+ *
+ * 40 attempts (6 seconds) was not enough: under a full parallel `turbo run test` — eight vitest
+ * processes saturating the machine — this failed twice while passing every time it was run on its
+ * own. Booting a server that builds a jsdom document is not fast when nothing has a free core.
+ * 15 seconds costs nothing on a quiet machine, because the loop exits on the first answer.
+ */
+async function waitForServer(attempts = 100) {
   for (let i = 0; i < attempts; i++) {
     try {
       const response = await fetch(`http://localhost:${PORT}/`);

@@ -76,6 +76,16 @@ function focus(panel: Panel, name: string): void {
   button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
+/** The framework's own open — a `forceOpen` toggle, the path core uses. */
+function forceOpen(): void {
+  window.dispatchEvent(new CustomEvent("ramonda:toggle-devtools", { detail: { forceOpen: true } }));
+}
+
+/** One dev error, as core reports it. */
+function devError(id: string, message = "RMD001"): void {
+  window.dispatchEvent(new CustomEvent("ramonda:dev-log", { detail: { type: "error", message, id, timestamp: "t" } }));
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
   // The dock/float preference is persisted, so a test that changes it would leak into the next.
@@ -349,10 +359,11 @@ describe("the Query tab", () => {
   });
 });
 
+const margin = () => document.body.style.marginRight;
+
 describe("docking", () => {
   const layout = (panel: Panel) => (panel as unknown as { applyLayout(): void }).applyLayout();
   const toggle = (panel: Panel) => (panel as unknown as { toggle(): void }).toggle();
-  const margin = () => document.body.style.marginRight;
 
   it("squeezes the page while open and puts the margin back on close", () => {
     const panel = mount(() => tree());
@@ -367,18 +378,16 @@ describe("docking", () => {
   });
 
   /**
-   * The reason two layouts exist. The panel opens ITSELF on a dev error, and squeezing the page
+   * The reason two layouts exist. The framework can open the panel itself, and squeezing the page
    * then is destructive: the app reflows, a media query flips, and the layout you are shown is not
-   * the one the error happened in. An error must not change the evidence.
+   * the one the problem happened in. A tool must not change the evidence by arriving.
    */
-  it("does not reflow the app when it opens itself on an error", () => {
+  it("does not reflow the app when the framework opens it", () => {
     const panel = mount(() => tree());
     toggle(panel); // start closed, at the app's own layout
     expect(margin()).toBe("17px");
 
-    window.dispatchEvent(
-      new CustomEvent("ramonda:dev-log", { detail: { type: "error", message: "RMD001", id: "1", timestamp: "t" } }),
-    );
+    forceOpen();
 
     expect(panel.hasAttribute("open")).toBe(true);
     expect(margin()).toBe("17px");
@@ -387,17 +396,15 @@ describe("docking", () => {
     expect(panel.shadowRoot.querySelector(".mode-note")).not.toBe(null);
   });
 
-  it("leaves a docked panel alone when a second error arrives", () => {
+  it("leaves a docked panel alone when the framework asks again", () => {
     const panel = mount(() => tree());
     layout(panel);
     const docked = margin();
     expect(docked).toBe("0px");
 
-    window.dispatchEvent(
-      new CustomEvent("ramonda:dev-log", { detail: { type: "error", message: "RMD001", id: "2", timestamp: "t" } }),
-    );
+    forceOpen();
 
-    // Reflowing on the second error would destroy the layout being read.
+    // Reflowing an already-open panel would destroy the layout being read.
     expect(margin()).toBe(docked);
     expect(panel.classList.contains("floating")).toBe(false);
   });
@@ -405,9 +412,7 @@ describe("docking", () => {
   it("docks on request, and remembers the choice", () => {
     const panel = mount(() => tree());
     toggle(panel);
-    window.dispatchEvent(
-      new CustomEvent("ramonda:dev-log", { detail: { type: "error", message: "RMD001", id: "3", timestamp: "t" } }),
-    );
+    forceOpen();
     expect(margin()).toBe("17px");
 
     panel.shadowRoot.querySelector("#mode-btn")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -856,5 +861,79 @@ describe("a full view that has gone stale", () => {
 
     expect(refresh(panel).classList.contains("gone")).toBe(false);
     expect(body(panel).textContent).toContain("pages");
+  });
+});
+
+describe("a dev error", () => {
+  const badge = (panel: Panel) => panel.shadowRoot.querySelector(".ramonda-badge") as HTMLElement;
+  const count = (panel: Panel) => panel.shadowRoot.querySelector("#badge-count")!.textContent;
+
+  /**
+   * It used to open the panel, and that was wrong twice over: opening is an interruption, and a
+   * docked panel opening also reflowed the app — so a media query flipped and the layout you were
+   * shown was not the one the error happened in. The badge detonates instead. Nothing moves.
+   */
+  it("detonates the badge and leaves the app alone", () => {
+    const panel = mount(() => tree());
+    (panel as unknown as { toggle(): void }).toggle(); // closed
+    expect(margin()).toBe("17px");
+
+    devError("1");
+
+    expect(panel.hasAttribute("open")).toBe(false);
+    expect(margin()).toBe("17px");
+    expect(panel.classList.contains("has-errors")).toBe(true);
+    expect(badge(panel).classList.contains("boom")).toBe(true);
+    expect(count(panel)).toBe("1");
+  });
+
+  it("counts up, and detonates again for each one", () => {
+    const panel = mount(() => tree());
+    devError("1");
+
+    // The burst is one-shot and clears itself when it ends, so a second error has to restart it —
+    // re-adding a class that is already there replays nothing.
+    badge(panel).classList.remove("boom");
+    devError("2");
+
+    expect(count(panel)).toBe("2");
+    expect(badge(panel).classList.contains("boom")).toBe(true);
+  });
+
+  it("counts a whole restored history at once", () => {
+    const panel = mount(() => tree());
+    // `mount` opens the panel to render the tree; a restored history arrives while it is closed.
+    (panel as unknown as { toggle(): void }).toggle();
+    window.dispatchEvent(
+      new CustomEvent("ramonda:logs-sync", {
+        detail: [
+          { type: "error", message: "a", id: "1", timestamp: "t" },
+          { type: "warning", message: "b", id: "2", timestamp: "t" },
+          { type: "error", message: "c", id: "3", timestamp: "t" },
+        ],
+      }),
+    );
+
+    expect(count(panel)).toBe("2");
+    expect(panel.hasAttribute("open")).toBe(false);
+  });
+
+  it("stops shouting once the panel is opened", () => {
+    const panel = mount(() => tree());
+    (panel as unknown as { toggle(): void }).toggle();
+    devError("1");
+    expect(panel.classList.contains("has-errors")).toBe(true);
+
+    (panel as unknown as { toggle(): void }).toggle();
+
+    expect(panel.classList.contains("has-errors")).toBe(false);
+    expect(badge(panel).classList.contains("boom")).toBe(false);
+  });
+
+  it("caps the number rather than widening the badge", () => {
+    const panel = mount(() => tree());
+    for (let i = 0; i < 120; i++) devError(String(i));
+
+    expect(count(panel)).toBe("99+");
   });
 });

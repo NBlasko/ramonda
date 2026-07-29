@@ -223,19 +223,19 @@ class RamondaDevTools extends HTMLElement {
       if (!this.alive) return;
       const history: DevLogPayload[] = e.detail;
       if (history && Array.isArray(history)) {
-        let atLeastOneIsError = false;
+        let errors = 0;
         history.forEach((log) => {
           this.addLogToUI(log);
-          atLeastOneIsError = atLeastOneIsError || log.type === "error";
+          if (log.type === "error") errors++;
         });
-        if (atLeastOneIsError) this.openDevTools();
+        if (errors > 0) this.alertError(errors);
       }
     });
 
     window.addEventListener("ramonda:dev-log", (e: any) => {
       if (!this.alive) return;
       this.addLogToUI(e.detail);
-      if (e.detail.type === "error") this.openDevTools();
+      if (e.detail.type === "error") this.alertError();
     });
 
     window.addEventListener("ramonda:toggle-devtools", (e: any) => {
@@ -330,6 +330,11 @@ class RamondaDevTools extends HTMLElement {
       }, 100);
     };
 
+    badge.addEventListener("animationend", (event: AnimationEvent) => {
+      // Only the burst clears itself; the breathing is meant to keep going until the panel is read.
+      if (event.animationName.startsWith("boom-shake")) badge.classList.remove("boom");
+    });
+
     badge.addEventListener("pointerdown", (e: PointerEvent) => {
       if (e.button !== 0) return;
       this.isDragging = true;
@@ -399,6 +404,74 @@ class RamondaDevTools extends HTMLElement {
         /* While dragging, the pointer is over the app, not the handle — without this every
            move selects a paragraph behind the panel. */
         .ramonda-panel.resizing { user-select: none; }
+        /**
+         * A dev error detonates the badge.
+         *
+         * It has to be unmissable, because it no longer opens anything: a shake that overshoots in
+         * both directions, two rings expanding out of the badge, and a spray of sparks — eight dots
+         * thrown outwards with box-shadow, which needs no extra elements and no JS per frame.
+         *
+         * Then it settles into a red badge with a count, breathing slowly. The burst says "now",
+         * the breathing says "still". A permanent burst would be unbearable in a session with a
+         * hundred diagnostics, and no persistent state at all would mean an error you glanced away
+         * from never happened.
+         */
+        @keyframes boom-shake {
+          0%   { transform: scale(1) rotate(0); }
+          12%  { transform: scale(1.5) rotate(-9deg); }
+          26%  { transform: scale(.9) rotate(8deg); }
+          42%  { transform: scale(1.25) rotate(-6deg); }
+          60%  { transform: scale(.97) rotate(4deg); }
+          78%  { transform: scale(1.08) rotate(-2deg); }
+          100% { transform: scale(1) rotate(0); }
+        }
+        @keyframes boom-ring {
+          0%   { opacity: .95; transform: scale(.55); border-width: 4px; }
+          100% { opacity: 0; transform: scale(2.9); border-width: 1px; }
+        }
+        @keyframes boom-spark {
+          0%   { opacity: 1; transform: scale(.15); }
+          65%  { opacity: .9; }
+          100% { opacity: 0; transform: scale(2.1); }
+        }
+        @keyframes boom-breathe {
+          0%, 100% { box-shadow: 0 4px 15px rgba(0,0,0,.3), 0 0 0 0 rgba(255,68,68,.55); }
+          50%      { box-shadow: 0 4px 15px rgba(0,0,0,.3), 0 0 0 10px rgba(255,68,68,0); }
+        }
+
+        .badge-spark { position: absolute; inset: 0; border-radius: 50%; opacity: 0; pointer-events: none; }
+        .badge-count {
+          position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px;
+          padding: 0 4px; border-radius: 10px; background: #fff; color: #c0392b;
+          font-size: 11.5px; font-weight: bold; line-height: 19px; text-align: center;
+          box-shadow: 0 1px 4px rgba(0,0,0,.4); display: none;
+        }
+        :host(.has-errors) .badge-count { display: block; }
+        :host(.has-errors) .ramonda-badge {
+          background: #c0392b; animation: boom-breathe 2.4s ease-in-out infinite;
+        }
+        /* After the has-errors rule, so the burst wins while it is playing. */
+        .ramonda-badge.boom { animation: boom-shake .8s cubic-bezier(.36,.07,.19,.97) both; }
+        .ramonda-badge.boom::before, .ramonda-badge.boom::after {
+          content: ""; position: absolute; inset: -7px; border-radius: 50%;
+          border: 4px solid #ff4444; animation: boom-ring .95s ease-out both; pointer-events: none;
+        }
+        .ramonda-badge.boom::after { border-color: #E9B44C; animation-delay: .16s; }
+        .ramonda-badge.boom .badge-spark {
+          animation: boom-spark .9s ease-out both;
+          box-shadow:
+            0 -38px 0 -22px #ff4444, 27px -27px 0 -22px #E9B44C,
+            38px 0 0 -22px #ff4444, 27px 27px 0 -22px #E9B44C,
+            0 38px 0 -22px #ff4444, -27px 27px 0 -22px #E9B44C,
+            -38px 0 0 -22px #ff4444, -27px -27px 0 -22px #E9B44C;
+        }
+        /* Someone who asked for less motion gets the colour and the count, and no burst. */
+        @media (prefers-reduced-motion: reduce) {
+          .ramonda-badge.boom, .ramonda-badge.boom .badge-spark { animation: none; }
+          .ramonda-badge.boom::before, .ramonda-badge.boom::after { display: none; }
+          :host(.has-errors) .ramonda-badge { animation: none; outline: 3px solid #ff4444; }
+        }
+
         /* A fixed badge is not squeezed by the body margin, so while open it would sit ON the
            panel. The header's × closes it, and so does the keyboard shortcut. */
         :host([open]) .ramonda-badge { display: none; }
@@ -643,7 +716,7 @@ class RamondaDevTools extends HTMLElement {
         }
       </style>
 
-    <div class="ramonda-badge">R</div>
+    <div class="ramonda-badge">R<span class="badge-spark"></span><span class="badge-count" id="badge-count"></span></div>
     <div class="pick-label" id="pick-label"></div>
     <div class="ramonda-panel">
       <div class="ramonda-resize" title="drag to resize"></div>
@@ -757,12 +830,53 @@ class RamondaDevTools extends HTMLElement {
 
   toggle() {
     this.hasAttribute("open") ? this.removeAttribute("open") : this.setAttribute("open", "");
+    if (this.hasAttribute("open")) this.clearErrorAlert();
     // Opened by hand: the reader's own preference applies.
     this.forcedFloat = false;
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
   }
+
+  /**
+   * An error happened: say so loudly, and take nothing.
+   *
+   * This used to open the panel. Opening is an interruption, and — once the panel docked — it also
+   * reflowed the app, which is how a media query flipped and the layout you were shown stopped
+   * being the one the error happened in. Floating fixed the reflow, but the interruption was still
+   * there: the panel covers the app you were looking at, for a diagnostic you may already know
+   * about.
+   *
+   * So the badge does the work. It detonates — a shake, two expanding rings and a spray of sparks,
+   * about a second of it — and then stays red with a count until you look. Impossible to miss,
+   * costs nothing, and what you were doing is exactly where you left it. A second error detonates
+   * again: the animation is restarted from JS (remove the class, force a reflow, add it back),
+   * because re-adding a class that is already there does not replay anything.
+   */
+  private alertError(count = 1): void {
+    this.unseenErrors += count;
+
+    const badge = this.shadowRoot!.querySelector(".ramonda-badge") as HTMLElement | null;
+    const bubble = this.shadowRoot!.querySelector("#badge-count") as HTMLElement | null;
+    if (!badge || !bubble) return;
+
+    bubble.textContent = this.unseenErrors > 99 ? "99+" : String(this.unseenErrors);
+    this.classList.add("has-errors");
+
+    badge.classList.remove("boom");
+    void badge.offsetWidth;
+    badge.classList.add("boom");
+  }
+
+  /** Read: the count goes, and the badge stops shouting. */
+  private clearErrorAlert(): void {
+    if (this.unseenErrors === 0) return;
+    this.unseenErrors = 0;
+    this.classList.remove("has-errors");
+    this.shadowRoot!.querySelector(".ramonda-badge")?.classList.remove("boom");
+  }
+
+  private unseenErrors = 0;
 
   /**
    * Opened by the framework, not by the reader — a dev error, a diagnostic.
@@ -774,6 +888,7 @@ class RamondaDevTools extends HTMLElement {
   private openDevTools() {
     if (!this.hasAttribute("open")) this.forcedFloat = true;
     this.setAttribute("open", "");
+    this.clearErrorAlert();
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
