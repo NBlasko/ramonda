@@ -12,6 +12,7 @@ import "../index";
 
 interface Node {
   name: string;
+  source?: { file: string; line: number; column: number };
   kind: "component" | "hook";
   state: Record<string, unknown>;
   props?: Record<string, unknown>;
@@ -1330,5 +1331,87 @@ describe("the stacking order inside the panel", () => {
 
     expect(head).toBeGreaterThan(handle);
     expect(modal).toBeGreaterThan(head);
+  });
+});
+
+describe("opening a component in the editor", () => {
+  const withSource = () =>
+    mount(() => [
+      node("App", "component", {
+        source: { file: "http://localhost:3000/src/App.tsx?t=1712345", line: 18, column: 1 },
+        children: [node("Bare", "component", { state: { a: 1 } })],
+      }),
+    ]);
+
+  const buttons = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-src]"));
+
+  it("asks the dev server to open the file, root-relative and without the cache query", async () => {
+    const fetchSpy = vi.fn(async (_url: string) => new Response("", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      const panel = withSource();
+      // Only the node core could locate gets a button — one that does nothing is worse than none.
+      expect(buttons(panel)).toHaveLength(1);
+
+      buttons(panel)[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      // A task, not a microtask: the click resolves the position through the module's sourcemap
+      // before it asks the editor to open anything, and that is two awaited fetches deep.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Two fetches, in this order, and both are the point: the MODULE first, to resolve the stack
+      // position through its inline sourcemap (a served module's lines are not the source's), then
+      // the editor endpoint. This module answers without a map, so the position stands as captured.
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(fetchSpy.mock.calls[0]![0]).toBe("http://localhost:3000/src/App.tsx?t=1712345");
+
+      // `src/App.tsx:18:1` — no origin, no `?t=`, and no leading slash, because Vite resolves what
+      // it is given against the project root and a leading slash would make it absolute.
+      expect(decodeURIComponent(fetchSpy.mock.calls[1]![0])).toBe("/__open-in-editor?file=src/App.tsx:18:1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  /** A custom server has no such endpoint. The location must still reach the reader. */
+  it("falls back to the clipboard, and says so, when there is no endpoint", async () => {
+    vi.stubGlobal("fetch", async () => new Response("", { status: 404 }));
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    try {
+      const panel = withSource();
+      buttons(panel)[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(writeText).toHaveBeenCalledWith("src/App.tsx:18:1");
+      expect(panel.shadowRoot.querySelector(".log-item")!.textContent).toContain("clipboard");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves an absolute filesystem path alone", () => {
+    const panel = mount(() => [
+      node("Server", "component", { source: { file: "/home/me/app/src/App.tsx", line: 4, column: 2 } }),
+    ]);
+
+    expect((buttons(panel)[0] as HTMLElement).dataset.src).toBe("/home/me/app/src/App.tsx|4|2");
+    expect((buttons(panel)[0] as HTMLElement).title).toContain("App.tsx:4");
+  });
+
+  it("does not toggle the row it lives in", () => {
+    const panel = withSource();
+    const details = panel.shadowRoot.querySelector("details") as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+
+    vi.stubGlobal("fetch", async () => new Response("", { status: 200 }));
+    try {
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      buttons(panel)[0].dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

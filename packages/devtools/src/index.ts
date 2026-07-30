@@ -1,4 +1,5 @@
-import { escapeHtml, safeStringify } from "./format";
+import { escapeHtml, safeStringify, toServerPath } from "./format";
+import { resolveOriginal } from "./sourceMap";
 import { FULL, INLINE, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
 
 interface DevLogPayload {
@@ -9,6 +10,13 @@ interface DevLogPayload {
   type: string;
 }
 
+/** Where a class is defined, as core read it off the stack of its first construction. */
+interface SourceLocation {
+  file: string;
+  line: number;
+  column: number;
+}
+
 interface InspectedNode {
   name: string;
   kind: "component" | "hook";
@@ -17,6 +25,8 @@ interface InspectedNode {
   options?: Record<string, unknown>;
   /** A context consumer's reads — the keys it subscribed to, and the ones it never touched. */
   reads?: Record<string, unknown>;
+  /** Where the class is defined, when core could tell. */
+  source?: SourceLocation;
   hooks: InspectedNode[];
   children: InspectedNode[];
   node?: Node;
@@ -87,6 +97,12 @@ interface WalkAcc {
 // Cap the number of log rows kept in the DOM so a long session can't grow the
 // panel unboundedly. Newest are prepended, so the oldest is the last child.
 const MAX_LOG_NODES = 200;
+
+/** `App.tsx:18` — what fits in a tooltip. */
+const shortFile = (source: SourceLocation): string => {
+  const path = toServerPath(source.file);
+  return `${path.slice(path.lastIndexOf("/") + 1)}:${source.line}`;
+};
 
 /** Narrow enough to peek past, wide enough that the drag handle is still there to grab. */
 const MIN_PANEL_WIDTH = 280;
@@ -668,10 +684,11 @@ class RamondaDevTools extends HTMLElement {
         }
         .pick-label.on { display: block; }
 
-        .pin-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 13px;
-                   padding: 0 4px; cursor: pointer; }
-        .comp-summary:hover .pin-btn { color: #9a8fb5; }
-        .pin-btn:hover { color: #B18AE6; }
+        .pin-btn, .src-btn { background: none; border: none; color: #4a4a4a; font: inherit;
+                             font-size: 13px; padding: 0 4px; cursor: pointer; }
+        .comp-summary:hover .pin-btn, .comp-summary:hover .src-btn { color: #9a8fb5; }
+        .pin-btn:hover, .src-btn:hover { color: #B18AE6; }
+        .src-btn { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 
         /**
          * Filtering hides a branch with no match in it. The :has() rule keeps the ancestors of a
@@ -1473,6 +1490,57 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /**
+   * Opens a component's definition in the reader's editor.
+   *
+   * Through the DEV SERVER, not through a `vscode://` link: Vite serves `/__open-in-editor`, which
+   * hands the file to `launch-editor` on the machine running the server — so it works for whatever
+   * editor is actually open, needs no protocol handler registered, and needs no configuration here.
+   * A `vscode://` URL would also need the absolute path, which a browser does not have.
+   *
+   * When there is no such endpoint — a custom server, this repo's own SSR playground — the location
+   * goes to the clipboard instead, with a log row saying so. A button that silently does nothing is
+   * worse than one that hands you something to paste.
+   */
+  private async openInEditor(location: string): Promise<void> {
+    const [file, line, column] = location.split("|");
+
+    /**
+     * Resolved through the module's own sourcemap first, and this is not a nicety.
+     *
+     * A stack reports the file the engine ran. Measured against Vite serving a real playground page,
+     * a class declared on source line 20 appears on served line 51 — esbuild lowers decorators and
+     * prepends a preamble. Opening thirty lines from the class is a button that looks broken.
+     */
+    const position = await resolveOriginal(file, Number(line), Number(column));
+    // The map's own source when it has one: for a bundled development build the module URL is the
+    // bundle, and only the map knows which file the code was written in.
+    const target = `${toServerPath(position.source ?? file)}:${position.line}:${position.column}`;
+
+    try {
+      const response = await fetch(`/__open-in-editor?file=${encodeURIComponent(target)}`);
+      if (response.ok) return;
+      throw new Error(String(response.status));
+    } catch {
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(target);
+        copied = true;
+      } catch {
+        /* no clipboard either; the log row below is the whole answer */
+      }
+      this.addLogToUI({
+        type: "info",
+        message: copied
+          ? `No dev-server editor endpoint here — copied ${target} to the clipboard.`
+          : `No dev-server editor endpoint here. The definition is at ${target}.`,
+        timestamp: new Date().toLocaleTimeString(),
+        id: `open-${position.line}-${position.column}`,
+        data: undefined,
+      });
+    }
+  }
+
+  /**
    * Recursively walks the inspected tree, building HTML + refresh metadata.
    *
    * `indexOffset` exists for the pinned view: rendering one node means passing a single-element
@@ -1505,6 +1573,18 @@ class RamondaDevTools extends HTMLElement {
       // row you are already reading — `preventDefault` in the handler stops it toggling the
       // disclosure it lives in.
       const pin = `<button type="button" class="pin-btn" data-pin="${escapeHtml(path)}" title="focus this ${n.kind}">◎</button>`;
+      /**
+       * The last manual step in the whole flow: you found it, focused it, and then alt-tabbed and
+       * searched for the class by name. This closes it.
+       *
+       * Only when core could say where the class is — a location it could not read is not a button
+       * that does nothing.
+       */
+      const open = n.source
+        ? `<button type="button" class="src-btn" data-src="${escapeHtml(
+            `${n.source.file}|${n.source.line}|${n.source.column}`,
+          )}" title="open ${escapeHtml(shortFile(n.source))} in your editor">&lt;/&gt;</button>`
+        : "";
       const label =
         n.kind === "hook"
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
@@ -1522,13 +1602,13 @@ class RamondaDevTools extends HTMLElement {
         ? `
         <div class="component-node">
           <details${openAttr}>
-            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</summary>
+            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}${open}</summary>
             <div class="node-body">${body}</div>
           </details>
         </div>`
         : `
         <div class="component-node leaf">
-          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</div>
+          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}${open}</div>
         </div>`;
     }
     return html;
@@ -2030,6 +2110,16 @@ class RamondaDevTools extends HTMLElement {
       const path = summary.getAttribute("data-path")!;
       summary.addEventListener("mouseenter", () => this.highlight(path));
       summary.addEventListener("mouseleave", () => this.clearHighlight());
+    });
+
+    container.querySelectorAll("[data-src]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        // Inside a `<summary>`, so the disclosure's default action has to be stopped — the same
+        // reason the focus button does it.
+        event.preventDefault();
+        event.stopPropagation();
+        void this.openInEditor((button as HTMLElement).dataset.src ?? "");
+      });
     });
 
     container.querySelectorAll("[data-pin]").forEach((button) => {

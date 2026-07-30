@@ -60,6 +60,22 @@ all components  ›  <App />  ›  <ProductsPage />  ›  <ProductDetail />
 Every crumb is itself a focus target, so the view widens one step at a time. `all components` — or
 <kbd>Esc</kbd> — releases it.
 
+**`</>` opens the component in your editor.** The panel asks your dev server to launch it — Vite
+serves a `/__open-in-editor` endpoint, so whatever editor is actually open is the one that opens,
+with no protocol handler to register and nothing to configure. On a server without that endpoint the
+location goes to your clipboard instead, and the log says so.
+
+Where the location comes from is worth knowing, because it is the reason this needs nothing from
+you. The framework reads it off the stack the first time a component is constructed — no build
+plugin, no JSX transform, and it works for a class with no decorators at all.
+
+A stack reports positions in the file the *engine* loaded, and `Error.stack` is never sourcemapped
+(a browser applies sourcemaps when it *displays* a stack, never in the string). That is not a small
+gap: a class declared on line 20 of your file appears on line 51 of the module Vite serves, because
+decorators are lowered and a preamble is prepended. So the panel resolves the position through the
+module's own inline sourcemap before asking the editor to open anything — including the file name,
+which is what keeps a bundled development build from opening the bundle.
+
 Focus is what makes the panel usable while an app is running. The tree is re-read continuously, and
 without focus you are reading a list that grows and shrinks under you. If the focused component
 unmounts, the breadcrumb says so and the whole tree comes back, rather than leaving you with an
@@ -158,6 +174,8 @@ Nothing goes into the URL, so a link you share carries none of it.
 | --- | --- |
 | <kbd>Alt</kbd>+<kbd>D</kbd> | open or close the panel |
 | <kbd>Esc</kbd> | close the full value view, then release the focused component |
+| `◎` on a row | focus that component |
+| `</>` on a row | open its definition in your editor |
 | Drag the left edge | resize |
 | Drag the badge | move it out of the way |
 

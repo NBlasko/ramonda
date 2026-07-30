@@ -260,6 +260,7 @@ describe("a production application build", () => {
       "installPurityGuard",
       "installTimerGuard",
       "initDevtoolsBridge",
+      "recordDefinition",
       "diagnose",
       "ramondaLog",
     ]) {

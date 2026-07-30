@@ -1,4 +1,5 @@
 import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS } from "../helpers/constants";
+import { definitionOf, type SourceLocation } from "./sourceLocation";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 
 export interface InspectedNode {
@@ -20,6 +21,8 @@ export interface InspectedNode {
   children: InspectedNode[];
   /** Live DOM node backing a component (used for highlight). Not serialized. */
   node?: Node;
+  /** Where the class is defined, so the panel can open it in an editor. See `sourceLocation`. */
+  source?: SourceLocation;
 }
 
 interface Inspectable {
@@ -104,6 +107,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
     state: readState(hook),
     options: readOptions(hook),
     reads: readContextReads(hook),
+    source: definitionOf(hook.constructor),
     hooks: readHooks(hook),
     children: [],
   }));
@@ -133,6 +137,7 @@ export function scanComponentTree(node: Node = document.body): InspectedNode[] {
         kind: "component",
         state: readState(instance),
         props: readProps(instance),
+        source: definitionOf(instance.constructor),
         hooks: readHooks(instance),
         children: scanComponentTree(enhanced),
         node: enhanced,

@@ -82,9 +82,9 @@ function createTodo(title: string): Promise<string> {
 
 class ProfileCard extends Component<{ id: string; label: string }> {
   private profile = this.use(Query, (self: ProfileCard) =>
-    queryOptions({
+    ({
       key: ["profile", self.props.id],
-      fetch: (ctx) => getProfile(self.props.id, ctx),
+      fetch: (ctx:  FetchContext<string[]>) => getProfile(self.props.id, ctx),
       staleTime: 10_000,
     }),
   );
