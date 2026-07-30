@@ -1707,3 +1707,114 @@ describe("what the panel says about a write", () => {
     expect(toast(panel).textContent).toBe("wrote count = 42");
   });
 });
+
+describe("editing a query's cached data", () => {
+  const row = (extra: Record<string, unknown> = {}) => ({
+    key: ["products"],
+    hash: '["products"]',
+    status: "success",
+    fetchStatus: "idle",
+    observers: 1,
+    updatedAt: 1,
+    failureCount: 0,
+    restored: false,
+    dataPreview: "…",
+    data: { total: 2 },
+    truncated: false,
+    ...extra,
+  });
+
+  /**
+   * `null` means "this query package has no write side", not `undefined` — passing `undefined` hands
+   * the parameter its DEFAULT, which is how the first version of the no-write-side test asserted
+   * against a bridge that had one.
+   */
+  function withBridge(rows = [row()], setData: unknown = vi.fn(() => true)) {
+    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+      snapshot: () => ({ clients: [{ index: 0, queries: rows }] }),
+      invalidate: vi.fn(),
+      remove: vi.fn(),
+      setData: setData ?? undefined,
+    };
+    const panel = mount(() => tree());
+    openTab(panel, "query");
+    return panel;
+  }
+
+  const pencil = (panel: Panel) => panel.shadowRoot.querySelector("#query-container [data-q-edit]") as HTMLElement;
+
+  /**
+   * This is the one value in the panel whose change shows up on the page, because the cache is what a
+   * query renders from — unlike a query hook's own `version`, which is an invalidation counter.
+   */
+  it("writes through the bridge, and says a refetch will replace it", () => {
+    const setData = vi.fn(() => true);
+    const panel = withBridge([row()], setData);
+
+    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+    expect(field.value).toBe('{\n  "total": 2\n}');
+
+    field.value = '{ "total": 99 }';
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+    expect(setData).toHaveBeenCalledWith(0, '["products"]', { total: 99 });
+    expect(panel.shadowRoot.querySelector("#toast")!.textContent).toContain("a refetch will replace it");
+    openTab(panel, "logs");
+  });
+
+  /**
+   * The copy the panel holds is bounded, and a bounded copy contains marker strings where values were
+   * dropped. Writing one back would put `"[… budget]"` into the cache.
+   */
+  it("offers no pencil for a value that arrived truncated", () => {
+    const panel = withBridge([row({ truncated: true })]);
+
+    expect(pencil(panel)).toBe(null);
+    openTab(panel, "logs");
+  });
+
+  it("offers no pencil when the query package has no write side", () => {
+    const panel = withBridge([row()], null);
+
+    expect(pencil(panel)).toBe(null);
+    openTab(panel, "logs");
+  });
+
+  /** A cache event anywhere rebuilds this list twice a second; it must not do it mid-sentence. */
+  it("holds the list still while it is being typed into", () => {
+    let updatedAt = 1;
+    const panel = withBridge();
+    (window as unknown as { __RAMONDA_QUERY__: { snapshot: unknown } }).__RAMONDA_QUERY__.snapshot = () => ({
+      clients: [{ index: 0, queries: [row({ updatedAt })] }],
+    });
+
+    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+    field.value = "typing…";
+
+    // A real cache event: `updatedAt` moves, which is exactly what the list keys its rebuild on — so
+    // without the guard this poll would replace the box mid-sentence.
+    updatedAt = 2;
+    (panel as unknown as { renderQueries(): void }).renderQueries();
+
+    expect(panel.shadowRoot.querySelector(".edit-input")).toBe(field);
+    expect((panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement).value).toBe("typing…");
+    openTab(panel, "logs");
+  });
+
+  it("says so when the entry was collected while the box was open", () => {
+    const panel = withBridge(
+      [row()],
+      vi.fn(() => false),
+    );
+
+    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+    field.value = "{}";
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+    expect(panel.shadowRoot.querySelector(".edit-note")!.textContent).toContain("no longer in the cache");
+    openTab(panel, "logs");
+  });
+});

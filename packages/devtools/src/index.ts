@@ -56,6 +56,8 @@ interface QueryRow {
   restored: boolean;
   /** One line, kept as the change signal for the list. */
   dataPreview: string;
+  /** True when the copy below hit a bound, which is what makes it unsafe to write back. */
+  truncated?: boolean;
   /**
    * The cached value, bounded by the bridge. Optional because a panel can be newer than the query
    * package installed next to it — the preview is the fallback, not a second code path to keep.
@@ -70,6 +72,8 @@ interface QueryBridge {
   snapshot(): { clients: { index: number; queries: QueryRow[] }[] };
   invalidate(clientIndex: number, hash: string): void;
   remove(clientIndex: number, hash: string): void;
+  /** Absent on a query package older than this panel. */
+  setData?: (clientIndex: number, hash: string, data: unknown) => boolean;
 }
 
 /** One step of the pinned component's ancestry, rendered as a breadcrumb. */
@@ -128,6 +132,12 @@ const isJsonLike = (value: unknown): boolean => {
 const isPlainRecord = (value: object): boolean => {
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+};
+
+/** A written value, short enough for a toast. */
+const toOneLine = (value: unknown): string => {
+  const text = safeStringify(value);
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
 };
 
 /**
@@ -1356,6 +1366,10 @@ class RamondaDevTools extends HTMLElement {
     const container = this.shadowRoot!.querySelector("#query-container");
     if (!container) return;
 
+    // Nothing is rebuilt under an open editor. The poll is twice a second and a cache event anywhere
+    // rebuilds this list, so without this the box would vanish mid-sentence.
+    if (container.querySelector(".edit-input")) return;
+
     const bridge = this.queries;
     if (!bridge) {
       this.write(
@@ -1492,6 +1506,7 @@ class RamondaDevTools extends HTMLElement {
         <div class="q-head">
           <span class="q-status" style="background:${colour}"></span>
           <code class="q-key">${escapeHtml(JSON.stringify(row.key))}</code>
+          ${this.queryEditButton(clientIndex, row)}
           ${this.fullViewButton(`q::${clientIndex}::${row.hash}`, row.data)}
           ${fetching ? '<span class="q-fetching">fetching…</span>' : ""}
           ${row.restored ? '<span class="q-badge">from server</span>' : ""}
@@ -1503,7 +1518,7 @@ class RamondaDevTools extends HTMLElement {
           updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
         </div>
         ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
-        <div class="q-data">${
+        <div class="q-data" data-q-data="${clientIndex}:${escapeHtml(row.hash)}">${
           row.data === undefined ? escapeHtml(row.dataPreview) : renderJsonHtml(row.data, INLINE)
         }</div>
         <div class="q-actions">
@@ -1540,6 +1555,14 @@ class RamondaDevTools extends HTMLElement {
       button.addEventListener("click", (event) => {
         event.preventDefault();
         this.openFullView((button as HTMLElement).dataset.full ?? "");
+      });
+    }
+
+    for (const button of Array.from(container.querySelectorAll("[data-q-edit]"))) {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.beginQueryEdit(button as HTMLElement);
       });
     }
 
@@ -1587,9 +1610,75 @@ class RamondaDevTools extends HTMLElement {
     const box = this.valueElements.get(vid);
     const writer = this.writer;
     if (!box || !writer) return;
+
+    this.openValueEditor(box, this.rawValues.get(vid), (parsed) => {
+      const result = writer(Number(rawId), key, parsed);
+      if (result === "not-state") {
+        return `${key} is not @state — props are owned by the parent and cannot be written here`;
+      }
+      if (result === "gone") return "that component is no longer in the tree";
+
+      this.toast(result === "unchanged" ? `${key} is already that value` : `wrote ${key} = ${toOneLine(parsed)}`);
+      // Watched for one refresh: some fields are owned by the machinery around them and are set again
+      // immediately, which is the difference between "it worked" and "it did not".
+      this.pendingWrite = result === "ok" ? { vid, key, text: safeStringify(parsed) } : undefined;
+      return undefined;
+    });
+  }
+
+  /**
+   * The pencil on a query row, when writing that entry back would be honest.
+   *
+   * Absent when the copy the panel holds was BOUNDED: sending back a value containing `"[… budget]"`
+   * where the rest of a list used to be would put those markers into the cache. Absent too when the
+   * query package next door is older than this panel and has no write side.
+   */
+  private queryEditButton(clientIndex: number, row: QueryRow): string {
+    if (row.data === undefined || row.truncated || !this.queries?.setData) return "";
+    const reason = "edit the cached data — this is what the page renders from";
+    return `<button type="button" class="edit-btn" data-q-edit="1" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
+      row.hash,
+    )}" title="${reason}">✎</button>`;
+  }
+
+  /**
+   * Edits a query's cached data — the one value in the panel whose change is immediately visible on
+   * the page, because the cache is what a query renders from.
+   */
+  private beginQueryEdit(button: HTMLElement): void {
+    const clientIndex = Number(button.dataset.qClient);
+    const hash = button.dataset.qHash ?? "";
+    const bridge = this.queries;
+    const row = bridge?.snapshot().clients[clientIndex]?.queries.find((candidate) => candidate.hash === hash);
+    if (!bridge?.setData || !row) return;
+
+    // Found by matching `dataset` in JS, never by a selector built from a hash: a hash is JSON and
+    // carries quotes, which is the bug that once threw on every poll.
+    const target = Array.from(this.shadowRoot!.querySelectorAll("#query-container [data-q-data]")).find(
+      (element) => (element as HTMLElement).dataset.qData === `${clientIndex}:${hash}`,
+    ) as HTMLElement | undefined;
+    if (!target) return;
+
+    this.openValueEditor(target, row.data, (parsed) => {
+      if (!bridge.setData?.(clientIndex, hash, parsed)) return "that entry is no longer in the cache";
+      // Said out loud, because it is the honest behaviour of a cache rather than a limit of the panel:
+      // the next fetch for this key wins.
+      this.toast(`wrote data for ${JSON.stringify(row.key)} — a refetch will replace it`);
+      return undefined;
+    });
+  }
+
+  /**
+   * The inline JSON editor, shared by a component's state and a query's data.
+   *
+   * `commit` returns a message to show in the row when it refuses, or `undefined` when it worked — so
+   * the two callers keep their own vocabulary ("not @state", "no longer in the cache") without the
+   * editor knowing anything about either.
+   */
+  private openValueEditor(box: HTMLElement, value: unknown, commit: (parsed: unknown) => string | undefined): void {
     if (box.querySelector(".edit-input")) return;
 
-    const current = toPrettyText(this.rawValues.get(vid));
+    const current = toPrettyText(value);
     const multiline = current.includes("\n") || current.length > 60;
     const field = document.createElement(multiline ? "textarea" : "input");
     field.className = "edit-input";
@@ -1610,7 +1699,7 @@ class RamondaDevTools extends HTMLElement {
       box.innerHTML = previous;
     };
 
-    const commit = () => {
+    const apply = () => {
       let parsed: unknown;
       try {
         parsed = JSON.parse(field.value);
@@ -1620,28 +1709,15 @@ class RamondaDevTools extends HTMLElement {
         return;
       }
 
-      const result = writer(Number(rawId), key, parsed);
-      if (result === "ok" || result === "unchanged") {
-        /**
-         * Not repainted here: the write wakes the component, and the ordinary refresh redraws this row
-         * with the value the app actually holds — which is the only value worth showing.
-         *
-         * But it has to SAY the write happened, and the reason is a real report: editing a query
-         * hook's `version` did land and looked like nothing, because `version` is an invalidation
-         * counter and the rendered data comes from the cache. "It worked and the app owns that field"
-         * and "it did not work" were indistinguishable. So the panel says what it wrote, and then
-         * watches the field: if the app puts something else there, it says that too.
-         */
-        this.toast(result === "unchanged" ? `${key} is already that value` : `wrote ${key} = ${field.value.trim()}`);
-        this.pendingWrite = result === "ok" ? { vid, key, text: safeStringify(parsed) } : undefined;
+      const refusal = commit(parsed);
+      if (refusal === undefined) {
+        // Not repainted here: the write wakes whoever was watching, and the ordinary refresh redraws
+        // this row with the value the app actually holds — the only value worth showing.
         cancel();
         return;
       }
 
-      note.textContent =
-        result === "not-state"
-          ? `${key} is not @state — props are owned by the parent and cannot be written here`
-          : "that component is no longer in the tree";
+      note.textContent = refusal;
       note.classList.add("bad");
     };
 
@@ -1659,7 +1735,7 @@ class RamondaDevTools extends HTMLElement {
       if (event.key !== "Enter") return;
       if (multiline && !event.metaKey && !event.ctrlKey) return;
       event.preventDefault();
-      commit();
+      apply();
     });
 
     field.addEventListener("blur", () => {

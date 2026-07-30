@@ -156,6 +156,15 @@ Two actions per entry:
 - **invalidate** — marks it stale and asks whoever is watching to refresh.
 - **remove** — throws the data away. A query still being watched will fetch again from nothing.
 
+**✎ on a row edits the cached data**, and this is the one edit in the panel whose effect you see on
+the page immediately — because the cache is what a query renders from. It goes through the same
+`setData` an optimistic update calls, so a fetch in flight is abandoned (it is older information than
+your write), structural sharing keeps the identity of everything that did not change, and every
+observer is notified. A refetch will replace it, which the panel says when it writes.
+
+No pencil appears when the copy the panel holds was **bounded** — a large value arrives with markers
+where the rest was dropped, and writing that back would put the markers into your cache.
+
 There is no *refetch* button, and that is the design rather than an omission: the fetcher belongs to
 the observer, not to the cache, so an entry nobody is watching has no function to call. `invalidate`
 is the honest equivalent.
