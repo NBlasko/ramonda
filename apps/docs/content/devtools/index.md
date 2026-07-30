@@ -103,6 +103,27 @@ A value tree is bounded twice: a node budget and a depth cap, with cycles named 
 Whatever is dropped says so in the row where it was dropped, so a large value is never quietly
 truncated into something that looks complete.
 
+### Changing a value
+
+**✎ on a state row** opens the value as JSON, in place. Enter applies it, <kbd>Esc</kbd> abandons it,
+and a multi-line value takes <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> so plain Enter can still be
+a newline. Invalid JSON never reaches your app: the parse happens first and the row tells you what was
+wrong.
+
+Two things about it are the framework's rules rather than the panel's:
+
+**You edit the whole field.** A signal holds a *value*, not a proxy — mutating inside an object
+notifies nobody — so "change `user.name`" has to become "assign a new `user`". The panel is held to
+the same rule as your code.
+
+**Props have no pencil.** They are owned by whoever rendered the component, and assigning to one
+throws in every build. A box that pretended otherwise would either throw in your face or look like it
+had worked until the next render put the old value back. The same goes for a hook's props, which come
+from its owner's callback.
+
+A write goes through the ordinary setter, so everything downstream is ordinary: the signal notifies,
+the component rebuilds, `@updated` runs, and a diagnostic fires if the value is not serializable.
+
 ### What a context consumer shows
 
 A consumer has no state and no props — its values are accessors over the provider's signals — so it

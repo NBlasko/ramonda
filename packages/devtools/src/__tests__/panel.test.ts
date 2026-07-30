@@ -11,6 +11,8 @@ import "../index";
  */
 
 interface Node {
+  /** Core's handle for the node, which a write is addressed to. */
+  id: number;
   name: string;
   source?: { file: string; line: number; column: number };
   kind: "component" | "hook";
@@ -23,6 +25,7 @@ interface Node {
 }
 
 const node = (name: string, kind: "component" | "hook", extra: Partial<Node> = {}): Node => ({
+  id: 0,
   name,
   kind,
   state: {},
@@ -30,6 +33,22 @@ const node = (name: string, kind: "component" | "hook", extra: Partial<Node> = {
   children: [],
   ...extra,
 });
+
+/**
+ * Numbers a tree the way core does — a node, then its hooks, then its children — because a handle is
+ * an index into the instances ONE scan saw.
+ *
+ * Done on every read rather than once when the tree is built: core renumbers from zero on each scan,
+ * and a test whose ids drifted upward with every re-render would be testing something no app does.
+ */
+function assignIds(nodes: Node[], counter = { next: 0 }): Node[] {
+  for (const item of nodes) {
+    item.id = counter.next++;
+    assignIds(item.hooks, counter);
+    assignIds(item.children, counter);
+  }
+  return nodes;
+}
 
 /** App › ProductsPage (+ a Query hook) › ProductDetail — the playground's shape, trimmed. */
 function tree(withDetail = true): Node[] {
@@ -53,7 +72,7 @@ type Panel = HTMLElement & { shadowRoot: ShadowRoot };
  */
 function reload(inspect: () => Node[] = () => tree()): Panel {
   document.body.innerHTML = "";
-  (window as unknown as { __RAMONDA_INSPECT__: unknown }).__RAMONDA_INSPECT__ = inspect;
+  (window as unknown as { __RAMONDA_INSPECT__: unknown }).__RAMONDA_INSPECT__ = () => assignIds(inspect());
 
   const panel = document.createElement("ramonda-devtools") as Panel;
   document.body.append(panel);
@@ -1417,5 +1436,140 @@ describe("opening a component in the editor", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("editing a state value", () => {
+  const writeSpy = () => {
+    const write = vi.fn(() => "ok" as const);
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = write;
+    return write;
+  };
+
+  const withState = () =>
+    mount(() => [
+      node("App", "component", {
+        state: { count: 3, user: { name: "Ada" }, onPick: () => 1 },
+        props: { label: "x" },
+      }),
+    ]);
+
+  const pencils = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-edit]")) as HTMLElement[];
+  const editorIn = (panel: Panel) => panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement | null;
+  const note = (panel: Panel) => panel.shadowRoot.querySelector(".edit-note")!;
+
+  const openEditor = (panel: Panel, key: string) => {
+    const pencil = pencils(panel).find((p) => p.dataset.edit!.startsWith(`0|${key}|`));
+    if (!pencil) throw new Error(`no pencil for ${key}`);
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  };
+
+  const press = (field: HTMLElement, key: string, modifiers: Partial<KeyboardEventInit> = {}) =>
+    field.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers }));
+
+  /**
+   * Props are owned by whoever rendered the component and assigning to one throws in every build, so
+   * the panel must not offer a box for them. A function in state has no JSON to type back either.
+   */
+  it("offers a pencil for state that round-trips, and for nothing else", () => {
+    writeSpy();
+    const panel = withState();
+
+    const keys = pencils(panel).map((p) => p.dataset.edit!.split("|")[1]);
+    expect(keys).toEqual(["count", "user"]);
+  });
+
+  it("offers none at all when core exposes no write side", () => {
+    (window as unknown as { __RAMONDA_WRITE__?: unknown }).__RAMONDA_WRITE__ = undefined;
+
+    expect(pencils(withState())).toEqual([]);
+  });
+
+  it("commits the parsed value, not the text", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    expect(field.value).toBe("3");
+
+    field.value = "42";
+    press(field, "Enter");
+
+    // `42`, the number — a panel that stored the string would be a panel that changed the type.
+    expect(write).toHaveBeenCalledWith(0, "count", 42);
+    expect(editorIn(panel)).toBe(null);
+  });
+
+  it("replaces a whole object, because a signal holds a value and not a proxy", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "user");
+    const field = editorIn(panel)!;
+    expect(field.value).toBe('{\n  "name": "Ada"\n}');
+
+    field.value = '{ "name": "Grace" }';
+    // Multi-line, so plain Enter has to stay a newline.
+    press(field, "Enter");
+    expect(write).not.toHaveBeenCalled();
+
+    press(field, "Enter", { metaKey: true });
+    expect(write).toHaveBeenCalledWith(0, "user", { name: "Grace" });
+  });
+
+  it("refuses invalid JSON without touching the app", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    field.value = "not json";
+    press(field, "Enter");
+
+    expect(write).not.toHaveBeenCalled();
+    expect(note(panel).textContent).toContain("not valid JSON");
+    // Still open, with what was typed: an error must not throw away the reader's input.
+    expect(editorIn(panel)!.value).toBe("not json");
+  });
+
+  it("reports a refusal from core in the row", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "not-state");
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    field.value = "5";
+    press(field, "Enter");
+
+    expect(note(panel).textContent).toContain("props are owned by the parent");
+  });
+
+  it("cancels on Escape without releasing the focused component", () => {
+    writeSpy();
+    const panel = withState();
+    focus(panel, "App");
+    openEditor(panel, "count");
+
+    const field = editorIn(panel)!;
+    field.value = "99";
+    press(field, "Escape");
+
+    expect(editorIn(panel)).toBe(null);
+    // The panel's own Escape releases focus; an abandoned edit must not.
+    expect(panel.shadowRoot.querySelector("#crumbs")!.classList.contains("on")).toBe(true);
+  });
+
+  it("abandons an edit that is clicked away from", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    field.value = "7";
+    field.dispatchEvent(new FocusEvent("blur"));
+
+    expect(write).not.toHaveBeenCalled();
+    expect(editorIn(panel)).toBe(null);
   });
 });
