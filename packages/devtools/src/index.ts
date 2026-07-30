@@ -1685,8 +1685,30 @@ class RamondaDevTools extends HTMLElement {
 
     try {
       const response = await fetch(`/__open-in-editor?file=${encodeURIComponent(target)}`);
-      if (response.ok) return;
-      throw new Error(String(response.status));
+      if (response.ok) {
+        /**
+         * A toast on SUCCESS too, and it is not decoration.
+         *
+         * An editor that is asked to open a file does not necessarily come to the front — that is the
+         * window manager's decision, not ours. Without this, "the editor did not raise" and "the
+         * button is broken" look identical, which is exactly the report I got. Now the panel always
+         * says what it asked for, and where.
+         */
+        this.toast(`Asked your editor to open ${target}`);
+        return;
+      }
+      /**
+       * 404 means there is no such ENDPOINT — a static server, a hand-written one — and that is the
+       * clipboard's case, handled below. Any other status comes from an endpoint that exists and
+       * refused, so its own words are the useful thing to show: it knows whether the file was there
+       * and whether an editor could be launched.
+       */
+      if (response.status !== 404) {
+        const reason = (await response.text()).trim();
+        this.toast(reason ? `Editor endpoint said: ${reason}` : `Editor endpoint answered ${response.status}`);
+        return;
+      }
+      throw new Error("no endpoint");
     } catch {
       /**
        * Reported where the click happened, not only in the log.

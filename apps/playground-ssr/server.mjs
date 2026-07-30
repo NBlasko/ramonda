@@ -88,18 +88,49 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    const [, relative, line = "1", column = "1"] = /^(.*?):(\d+)?:?(\d+)?$/.exec(target) ?? [, target];
+    const file = resolve(here, relative ?? target);
+
+    /**
+     * Checked here, because `launch-editor` returns SILENTLY when the file does not exist — no
+     * callback, no log, nothing. That silence plus a 200 is how this endpoint managed to report
+     * success while doing absolutely nothing, which is the one failure mode a devtools button must
+     * not have.
+     */
+    if (!existsSync(file)) {
+      // 422, not 404: to the panel a 404 means "this server has no such endpoint" and sends it to the
+      // clipboard fallback. This endpoint exists and is refusing a specific path, which is a different
+      // thing to be told.
+      console.warn(`[open-in-editor] no such file: ${file}`);
+      res.statusCode = 422;
+      res.end(`no such file: ${relative}`);
+      return;
+    }
+
     try {
       const { default: launch } = await import("launch-editor");
-      const [, file, line = "1", column = "1"] = /^(.*?):(\d+)?:?(\d+)?$/.exec(target) ?? [, target];
-      launch(`${resolve(here, file)}:${line}:${column}`);
+      // The error callback is the only way to hear about a spawn that failed; without it the failure
+      // is a line on the server's console and a 200 to the browser.
+      let failure;
+      launch(`${file}:${line}:${column}`, undefined, (_file, message) => {
+        failure = message ?? "no editor found — set $EDITOR, or open the project in one";
+      });
+
+      // `launch` spawns synchronously enough that the callback has run for the cases it can detect.
+      if (failure) {
+        console.warn(`[open-in-editor] ${failure}`);
+        res.statusCode = 500;
+        res.end(failure);
+        return;
+      }
+
+      console.log(`[open-in-editor] ${relative}:${line}:${column}`);
       res.statusCode = 200;
       res.end("ok");
     } catch (error) {
-      // Answered honestly rather than with a 200: the panel falls back to the clipboard on a
-      // failure, and pretending to have opened an editor would take that away.
       console.error("[open-in-editor]", error);
       res.statusCode = 500;
-      res.end("could not launch an editor");
+      res.end(String(error instanceof Error ? error.message : error));
     }
     return;
   }

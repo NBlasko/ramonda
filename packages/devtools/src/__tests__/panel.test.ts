@@ -1387,6 +1387,11 @@ describe("opening a component in the editor", () => {
       // `src/App.tsx:18:1` — no origin, no `?t=`, and no leading slash, because Vite resolves what
       // it is given against the project root and a leading slash would make it absolute.
       expect(decodeURIComponent(fetchSpy.mock.calls[1]![0])).toBe("/__open-in-editor?file=src/App.tsx:18:1");
+
+      // And it says so, because an editor that is asked to open a file does not necessarily come to
+      // the front — without this, "the window did not raise" and "the button is broken" look the same.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(panel.shadowRoot.querySelector("#toast")!.textContent).toContain("Asked your editor to open");
     } finally {
       vi.unstubAllGlobals();
     }
@@ -1409,6 +1414,32 @@ describe("opening a component in the editor", () => {
       const toast = panel.shadowRoot.querySelector("#toast")!;
       expect(toast.classList.contains("on")).toBe(true);
       expect(toast.textContent).toContain("copied src/App.tsx:18:1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  /**
+   * The failure that started this: the endpoint answered 200 while doing nothing, because
+   * `launch-editor` returns silently for a file that is not there. The panel now repeats whatever the
+   * server said, so a path that cannot be resolved is a sentence on screen rather than silence.
+   */
+  it("repeats the server's own reason when it refuses", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url.startsWith("/__open-in-editor")
+        ? // 422, because 404 is how the panel recognises a server with no endpoint at all.
+          new Response("no such file: assets/client.js", { status: 422 })
+        : new Response("", { status: 200 }),
+    );
+
+    try {
+      const panel = withSource();
+      buttons(panel)[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const toast = panel.shadowRoot.querySelector("#toast")!;
+      expect(toast.classList.contains("on")).toBe(true);
+      expect(toast.textContent).toContain("no such file: assets/client.js");
     } finally {
       vi.unstubAllGlobals();
     }
