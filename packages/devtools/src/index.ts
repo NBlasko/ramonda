@@ -1581,7 +1581,9 @@ class RamondaDevTools extends HTMLElement {
    * where plain Enter has to stay a newline.
    */
   private beginEdit(button: HTMLElement): void {
-    const [rawId, key, vid] = (button.dataset.edit ?? "").split("|");
+    const rawId = button.dataset.editNode ?? "";
+    const key = button.dataset.editKey ?? "";
+    const vid = button.dataset.editVid ?? "";
     const box = this.valueElements.get(vid);
     const writer = this.writer;
     if (!box || !writer) return;
@@ -1668,8 +1670,9 @@ class RamondaDevTools extends HTMLElement {
    * goes to the clipboard instead, with a log row saying so. A button that silently does nothing is
    * worse than one that hands you something to paste.
    */
-  private async openInEditor(location: string): Promise<void> {
-    const [file, line, column] = location.split("|");
+  private async openInEditor(file: string, rawLine = "1", rawColumn = "1"): Promise<void> {
+    const line = rawLine;
+    const column = rawColumn;
 
     /**
      * Resolved through the module's own sourcemap first, and this is not a nicety.
@@ -1679,12 +1682,23 @@ class RamondaDevTools extends HTMLElement {
      * prepends a preamble. Opening thirty lines from the class is a button that looks broken.
      */
     const position = await resolveOriginal(file, Number(line), Number(column));
-    // The map's own source when it has one: for a bundled development build the module URL is the
-    // bundle, and only the map knows which file the code was written in.
+
+    /**
+     * `file` is what an editor should open; `from` says what a relative `file` is relative to.
+     *
+     * A map's source for a bundled build is a `../../..` chain out of the bundle's directory on disk,
+     * and nothing in the browser can turn that into a path — resolving it here clamped it at the web
+     * root and produced `packages/router/src/Link.tsx`, which the server looked for under the app and
+     * did not find. So both travel, and the server resolves them together. Vite's own endpoint ignores
+     * the extra parameter and gets what it always got.
+     */
     const target = `${toServerPath(position.source ?? file)}:${position.line}:${position.column}`;
+    const query = position.from
+      ? `file=${encodeURIComponent(target)}&from=${encodeURIComponent(toServerPath(position.from))}`
+      : `file=${encodeURIComponent(target)}`;
 
     try {
-      const response = await fetch(`/__open-in-editor?file=${encodeURIComponent(target)}`);
+      const response = await fetch(`/__open-in-editor?${query}`);
       if (response.ok) {
         /**
          * A toast on SUCCESS too, and it is not decoration.
@@ -1795,9 +1809,9 @@ class RamondaDevTools extends HTMLElement {
        * that does nothing.
        */
       const open = n.source
-        ? `<button type="button" class="src-btn" data-src="${escapeHtml(
-            `${n.source.file}|${n.source.line}|${n.source.column}`,
-          )}" title="open the definition in your editor (served at ${escapeHtml(
+        ? `<button type="button" class="src-btn" data-src-file="${escapeHtml(n.source.file)}" data-src-line="${
+            n.source.line
+          }" data-src-column="${n.source.column}" title="open the definition in your editor (served at ${escapeHtml(
             shortFile(n.source),
           )})">&lt;/&gt;</button>`
         : "";
@@ -1862,10 +1876,23 @@ class RamondaDevTools extends HTMLElement {
          * control that pretends otherwise is worse than none.
          */
         const editable = nodeId !== undefined && this.writer !== undefined && isJsonLike(value);
+        /**
+         * Three attributes, not one packed string.
+         *
+         * It was `${nodeId}|${key}|${vid}` — and a value id contains the node's PATH, which marks a
+         * hooks branch with `|h`. So `split("|")` on `1|routeState|/0:component:App|h/0:hook:Router…`
+         * handed back a truncated id, the lookup missed, and the pencil did nothing on precisely the
+         * rows that have hooks. The unit tests could not see it: their trees put state on components
+         * whose paths have no `|` in them. Found by driving the real bundle.
+         *
+         * The lesson is the one this panel keeps relearning — a query hash in a selector, a prop name
+         * in a selector, now a path in a delimiter: never build a delimited string out of data that
+         * can contain the delimiter.
+         */
         const edit = editable
-          ? `<button type="button" class="edit-btn" data-edit="${escapeHtml(
-              `${nodeId}|${k}|${vid}`,
-            )}" title="edit ${escapeHtml(k)}">✎</button>`
+          ? `<button type="button" class="edit-btn" data-edit-node="${nodeId}" data-edit-key="${escapeHtml(
+              k,
+            )}" data-edit-vid="${escapeHtml(vid)}" title="edit ${escapeHtml(k)}">✎</button>`
           : "";
 
         return `<div class="state-row">
@@ -2345,7 +2372,7 @@ class RamondaDevTools extends HTMLElement {
       summary.addEventListener("mouseleave", () => this.clearHighlight());
     });
 
-    container.querySelectorAll("[data-edit]").forEach((button) => {
+    container.querySelectorAll("[data-edit-node]").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2353,13 +2380,14 @@ class RamondaDevTools extends HTMLElement {
       });
     });
 
-    container.querySelectorAll("[data-src]").forEach((button) => {
+    container.querySelectorAll("[data-src-file]").forEach((button) => {
       button.addEventListener("click", (event) => {
         // Inside a `<summary>`, so the disclosure's default action has to be stopped — the same
         // reason the focus button does it.
         event.preventDefault();
         event.stopPropagation();
-        void this.openInEditor((button as HTMLElement).dataset.src ?? "");
+        const element = button as HTMLElement;
+        void this.openInEditor(element.dataset.srcFile ?? "", element.dataset.srcLine, element.dataset.srcColumn);
       });
     });
 

@@ -99,8 +99,10 @@ describe("resolveOriginal", () => {
       expect(await resolveOriginal("http://localhost:3000/src/App.tsx?t=1", 51, 1)).toEqual({
         line: 20,
         column: 8,
-        // Resolved against the module URL, so a bare basename in the map becomes the real path.
-        source: "http://localhost:3000/src/App.tsx",
+        // The map's own words, unresolved, plus the module they are relative to. Resolving here was
+        // the bug: `new URL()` clamps a `../..` chain at the origin root and loses how far up it went.
+        source: "App.tsx",
+        from: "http://localhost:3000/src/App.tsx?t=1",
       });
     } finally {
       vi.unstubAllGlobals();
@@ -140,9 +142,10 @@ describe("resolveOriginal", () => {
 
 describe("a bundled development build", () => {
   /**
-   * The module URL is the bundle, and only the map knows which file the code was written in. Without
-   * taking the path from the map, the line would be resolved correctly and pointed at the bundle —
-   * worse than not resolving at all, because it looks right.
+   * The module URL is the bundle, and only the map knows which file the code was written in. The
+   * source travels EXACTLY as the map wrote it, `..` and all: resolving it in the browser clamps the
+   * chain at the web root, and the server then looks for a file that was never there — which is the
+   * 422 this replaced.
    */
   it("takes the file from the map, not from the module URL", async () => {
     const mappings = `${";".repeat(1200)}${segment(0, 0, 41, 2)}`;
@@ -158,7 +161,9 @@ describe("a bundled development build", () => {
     try {
       const resolved = await resolveOriginal("http://localhost:5180/assets/client.js", 1201, 1);
       expect(resolved.line).toBe(42);
-      expect(resolved.source).toBe("http://localhost:5180/src/pages/Products.tsx");
+      // Intact, including the `..` — the server resolves it against where the bundle really lives.
+      expect(resolved.source).toBe("../src/pages/Products.tsx");
+      expect(resolved.from).toBe("http://localhost:5180/assets/client.js");
     } finally {
       vi.unstubAllGlobals();
     }

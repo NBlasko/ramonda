@@ -1362,7 +1362,7 @@ describe("opening a component in the editor", () => {
       }),
     ]);
 
-  const buttons = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-src]"));
+  const buttons = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-src-file]"));
 
   it("asks the dev server to open the file, root-relative and without the cache query", async () => {
     const fetchSpy = vi.fn(async (_url: string) => new Response("", { status: 200 }));
@@ -1450,7 +1450,12 @@ describe("opening a component in the editor", () => {
       node("Server", "component", { source: { file: "/home/me/app/src/App.tsx", line: 4, column: 2 } }),
     ]);
 
-    expect((buttons(panel)[0] as HTMLElement).dataset.src).toBe("/home/me/app/src/App.tsx|4|2");
+    const button = buttons(panel)[0] as HTMLElement;
+    // Three attributes rather than one packed string: a path can contain whatever a filesystem
+    // allows, and a delimiter built out of data is the bug this panel keeps rediscovering.
+    expect(button.dataset.srcFile).toBe("/home/me/app/src/App.tsx");
+    expect(button.dataset.srcLine).toBe("4");
+    expect(button.dataset.srcColumn).toBe("2");
     expect((buttons(panel)[0] as HTMLElement).title).toContain("App.tsx:4");
   });
 
@@ -1485,12 +1490,12 @@ describe("editing a state value", () => {
       }),
     ]);
 
-  const pencils = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-edit]")) as HTMLElement[];
+  const pencils = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-edit-node]")) as HTMLElement[];
   const editorIn = (panel: Panel) => panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement | null;
   const note = (panel: Panel) => panel.shadowRoot.querySelector(".edit-note")!;
 
   const openEditor = (panel: Panel, key: string) => {
-    const pencil = pencils(panel).find((p) => p.dataset.edit!.startsWith(`0|${key}|`));
+    const pencil = pencils(panel).find((p) => p.dataset.editKey === key);
     if (!pencil) throw new Error(`no pencil for ${key}`);
     pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   };
@@ -1506,8 +1511,7 @@ describe("editing a state value", () => {
     writeSpy();
     const panel = withState();
 
-    const keys = pencils(panel).map((p) => p.dataset.edit!.split("|")[1]);
-    expect(keys).toEqual(["count", "user"]);
+    expect(pencils(panel).map((p) => p.dataset.editKey)).toEqual(["count", "user"]);
   });
 
   it("offers none at all when core exposes no write side", () => {
@@ -1602,5 +1606,39 @@ describe("editing a state value", () => {
 
     expect(write).not.toHaveBeenCalled();
     expect(editorIn(panel)).toBe(null);
+  });
+});
+
+describe("editing state on a hook", () => {
+  /**
+   * The bug this exists for, found by driving the real built bundle rather than a fixture: the pencil
+   * packed `nodeId|key|valueId` into one attribute, and a value id contains the node's PATH — which
+   * marks a hooks branch with `|h`. Every row that lives under a hook therefore had a pencil that did
+   * nothing, while every test tree happened to put state on components whose paths have no `|`.
+   */
+  it("works for a value whose path contains the old delimiter", () => {
+    const write = vi.fn(() => "ok" as const);
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = write;
+
+    const panel = mount(() => [
+      node("App", "component", {
+        hooks: [node("Router", "hook", { state: { routeState: { path: "/" } } })],
+      }),
+    ]);
+
+    const pencil = panel.shadowRoot.querySelector("[data-edit-node]") as HTMLElement;
+    expect(pencil.dataset.editVid).toContain("|h");
+
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement;
+    expect(field).not.toBe(null);
+    expect(field.value).toBe('{\n  "path": "/"\n}');
+
+    field.value = '{ "path": "/products" }';
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+    // The hook's own handle, not the component's.
+    expect(write).toHaveBeenCalledWith(1, "routeState", { path: "/products" });
   });
 });

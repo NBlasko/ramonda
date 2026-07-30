@@ -89,7 +89,19 @@ const server = createServer(async (req, res) => {
     }
 
     const [, relative, line = "1", column = "1"] = /^(.*?):(\d+)?:?(\d+)?$/.exec(target) ?? [, target];
-    const file = resolve(here, relative ?? target);
+
+    /**
+     * `from` is the module the position came out of, and it is what a RELATIVE source is relative to.
+     *
+     * A bundle's sourcemap names its inputs as a `../../..` chain out of the bundle's own directory on
+     * disk (`dist/client/assets/`), so `packages/router/src/Link.tsx` resolved against the app root is
+     * a file that does not exist — which is exactly the 422 that showed up in the log. Resolving it
+     * against the served module's real location is the arithmetic the map intended, and only this side
+     * can do it: it is the one that knows a URL of `/assets/client.js` is a file under `dist/client`.
+     */
+    const from = new URL(url, `http://localhost:${PORT}`).searchParams.get("from");
+    const base = from ? dirname(resolve(CLIENT, `.${from.startsWith("/") ? from : `/${from}`}`)) : here;
+    const file = resolve(base, relative ?? target);
 
     /**
      * Checked here, because `launch-editor` returns SILENTLY when the file does not exist — no

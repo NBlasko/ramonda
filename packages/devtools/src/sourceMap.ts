@@ -39,11 +39,12 @@ export interface Position {
   line: number;
   column: number;
   /**
-   * The file the map says the code came from, when it says. Absent means "the module itself", which
-   * is right for a dev server serving one module per file and wrong for a bundle — a bundled
-   * development build maps back to a source the module URL knows nothing about.
+   * The file the map says the code came from, exactly as the map wrote it — which for a bundle is
+   * relative to the bundle's place on disk, not to any URL. Absent means the map said nothing.
    */
   source?: string;
+  /** The module the map came from, so whoever resolves `source` knows what it is relative to. */
+  from?: string;
 }
 
 /** What the mappings themselves carry: a position, and WHICH of the map's sources it is in. */
@@ -166,16 +167,17 @@ export async function resolveOriginal(file: string, line: number, column: number
      */
     const name = map.sources[found.sourceIndex];
 
-    let source: string | undefined;
-    if (name) {
-      try {
-        source = new URL(name, file).href;
-      } catch {
-        source = undefined;
-      }
-    }
-
-    return { line: found.line, column: found.column, source };
+    /**
+     * The source is kept EXACTLY as the map wrote it — `../../../../packages/router/src/Link.tsx` —
+     * and not resolved here.
+     *
+     * Resolving it in the browser was the bug: `new URL("../../../../x", origin + "/assets/client.js")`
+     * clamps at the origin root and yields `/packages/router/src/Link.tsx`, which the server then
+     * resolved against its own root and did not find. The `..` chain is relative to the bundle's place
+     * ON DISK, and only the server knows where that is — so it travels intact, with the module it
+     * belongs to, and the server does the arithmetic.
+     */
+    return { line: found.line, column: found.column, source: name, from: file };
   } catch {
     return unresolved;
   }
