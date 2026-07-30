@@ -1385,7 +1385,11 @@ describe("opening a component in the editor", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(writeText).toHaveBeenCalledWith("src/App.tsx:18:1");
-      expect(panel.shadowRoot.querySelector(".log-item")!.textContent).toContain("clipboard");
+      // A toast, not a log row: the first version reported this in the LOGS tab, so on a server with
+      // no endpoint the button looked dead while it was quietly copying the path.
+      const toast = panel.shadowRoot.querySelector("#toast")!;
+      expect(toast.classList.contains("on")).toBe(true);
+      expect(toast.textContent).toContain("copied src/App.tsx:18:1");
     } finally {
       vi.unstubAllGlobals();
     }

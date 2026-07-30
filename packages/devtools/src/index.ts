@@ -18,6 +18,8 @@ interface SourceLocation {
 }
 
 interface InspectedNode {
+  /** The handle core handed out for this scan — what a write is addressed to. */
+  id: number;
   name: string;
   kind: "component" | "hook";
   state: Record<string, unknown>;
@@ -62,6 +64,8 @@ interface QueryRow {
   error?: string;
 }
 
+type WriteFn = (id: number, key: string, value: unknown) => "ok" | "gone" | "not-state" | "unchanged";
+
 interface QueryBridge {
   snapshot(): { clients: { index: number; queries: QueryRow[] }[] };
   invalidate(clientIndex: number, hash: string): void;
@@ -98,7 +102,40 @@ interface WalkAcc {
 // panel unboundedly. Newest are prepended, so the oldest is the last child.
 const MAX_LOG_NODES = 200;
 
-/** `App.tsx:18` — what fits in a tooltip. */
+/**
+ * Whether a value can be edited as JSON and come back the same kind of thing.
+ *
+ * A function, a `Map`, a DOM node, `undefined` — none of them survive `JSON.stringify` followed by
+ * `JSON.parse`, so offering a box that appears to edit one is a lie the reader finds out about after
+ * pressing Enter.
+ */
+const isJsonLike = (value: unknown): boolean => {
+  if (value === null) return true;
+  const kind = typeof value;
+  if (kind === "string" || kind === "number" || kind === "boolean") return true;
+  if (kind !== "object") return false;
+
+  try {
+    const text = JSON.stringify(value);
+    if (text === undefined) return false;
+    // Round-tripped, so a `Date` (which stringifies to a string and parses back as one) is out.
+    return JSON.stringify(JSON.parse(text)) === text && (Array.isArray(value) || isPlainRecord(value as object));
+  } catch {
+    return false;
+  }
+};
+
+const isPlainRecord = (value: object): boolean => {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
+/**
+ * `App.tsx:18` — what fits in a tooltip, and deliberately the SERVED position rather than the source
+ * one. Resolving needs the module's sourcemap, which means a fetch; doing that for every row on
+ * every render to fill in a tooltip would be absurd. So the tooltip says where the code was found
+ * and the click says where it came from.
+ */
 const shortFile = (source: SourceLocation): string => {
   const path = toServerPath(source.file);
   return `${path.slice(path.lastIndexOf("/") + 1)}:${source.line}`;
@@ -306,6 +343,15 @@ class RamondaDevTools extends HTMLElement {
 
   private get inspect(): InspectFn | undefined {
     return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn }).__RAMONDA_INSPECT__;
+  }
+
+  /**
+   * Core's write side. Narrow on purpose: one field, addressed by a handle from the last scan, and
+   * only when that field is `@state` or `@persist`. There is no way through it to an instance, a
+   * method, or a prop.
+   */
+  private get writer(): WriteFn | undefined {
+    return (window as unknown as { __RAMONDA_WRITE__?: WriteFn }).__RAMONDA_WRITE__;
   }
 
   /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
@@ -684,6 +730,19 @@ class RamondaDevTools extends HTMLElement {
         }
         .pick-label.on { display: block; }
 
+        .edit-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 13px;
+                    padding: 0 4px; cursor: pointer; }
+        .state-row:hover .edit-btn { color: #9a8fb5; }
+        .edit-btn:hover { color: #00ffaa; }
+        .edit-input {
+          width: 100%; box-sizing: border-box; background: #0d0d0d; border: 1px solid #7A4FBF;
+          border-radius: 4px; color: #eee; font-family: ui-monospace, Menlo, monospace;
+          font-size: 13px; padding: 4px 6px; resize: vertical;
+        }
+        .edit-input:focus { outline: none; border-color: #B18AE6; }
+        .edit-note { color: #8b8b93; font-size: 11.5px; margin-top: 3px; }
+        .edit-note.bad { color: #ff8080; }
+
         .pin-btn, .src-btn { background: none; border: none; color: #4a4a4a; font: inherit;
                              font-size: 13px; padding: 0 4px; cursor: pointer; }
         .comp-summary:hover .pin-btn, .comp-summary:hover .src-btn { color: #9a8fb5; }
@@ -747,6 +806,17 @@ class RamondaDevTools extends HTMLElement {
 
         /* One value on the whole panel: inside the panel, not over the page, so the app stays
            visible beside it and the tree behind keeps its place. */
+        /* Above the sticky head and below the full value view — see the layer scale there. */
+        .toast {
+          position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 6;
+          background: #241f30; border: 1px solid #7A4FBF; border-radius: 6px;
+          color: #e8e2f2; font-size: 12.5px; line-height: 1.45; padding: 9px 12px;
+          box-shadow: 0 6px 20px rgba(0,0,0,.5); opacity: 0; transform: translateY(6px);
+          transition: opacity .18s ease, transform .18s ease; pointer-events: none;
+          word-break: break-word;
+        }
+        .toast.on { opacity: 1; transform: translateY(0); }
+
         .jv-modal { position: absolute; inset: 0; background: #0d0d0d; z-index: 10;
                     display: none; flex-direction: column; }
         .jv-modal.on { display: flex; }
@@ -871,6 +941,7 @@ class RamondaDevTools extends HTMLElement {
           <small style="color:#666">No active components…</small>
         </div>
       </div>
+      <div class="toast" id="toast"></div>
       <div class="jv-modal" id="jv-modal">
         <div class="jv-modal-head">
           <span class="jv-modal-title" id="jv-modal-title"></span>
@@ -1490,6 +1561,102 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /**
+   * Turns one value into an editable box, in place.
+   *
+   * ## What you are editing
+   *
+   * The WHOLE field, as JSON — not a path inside it. That is the framework's own rule, not a
+   * shortcut: a signal holds a value rather than a proxy, so mutating inside an object notifies
+   * nobody. "Change `user.name`" has to become "assign a new `user`", and the panel is held to the
+   * same rule as application code.
+   *
+   * ## Why JSON and not a friendlier parse
+   *
+   * Because it is unambiguous. `42` is a number, `"42"` is a string, `null` is null — and a reader
+   * who types something that is none of those gets told, rather than silently storing the text
+   * `[object Object]`. Invalid input never reaches the app: the parse happens first, the box stays
+   * open, and the row says what was wrong.
+   *
+   * Escape cancels, Enter commits a single-line value, and ⌘/Ctrl+Enter commits a multi-line one —
+   * where plain Enter has to stay a newline.
+   */
+  private beginEdit(button: HTMLElement): void {
+    const [rawId, key, vid] = (button.dataset.edit ?? "").split("|");
+    const box = this.valueElements.get(vid);
+    const writer = this.writer;
+    if (!box || !writer) return;
+    if (box.querySelector(".edit-input")) return;
+
+    const current = toPrettyText(this.rawValues.get(vid));
+    const multiline = current.includes("\n") || current.length > 60;
+    const field = document.createElement(multiline ? "textarea" : "input");
+    field.className = "edit-input";
+    field.value = current;
+    if (field instanceof HTMLTextAreaElement) field.rows = Math.min(12, current.split("\n").length + 1);
+
+    const note = document.createElement("div");
+    note.className = "edit-note";
+    note.textContent = multiline ? "⌘/Ctrl+Enter to apply · Esc to cancel" : "Enter to apply · Esc to cancel";
+
+    const previous = box.innerHTML;
+    box.innerHTML = "";
+    box.append(field, note);
+    field.focus();
+    field.select();
+
+    const cancel = () => {
+      box.innerHTML = previous;
+    };
+
+    const commit = () => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(field.value);
+      } catch {
+        note.textContent = "not valid JSON — a string needs quotes";
+        note.classList.add("bad");
+        return;
+      }
+
+      const result = writer(Number(rawId), key, parsed);
+      if (result === "ok" || result === "unchanged") {
+        // Not repainted here: the write wakes the component, and the ordinary refresh redraws this
+        // row with the value the app actually holds — which is the only value worth showing.
+        cancel();
+        return;
+      }
+
+      note.textContent =
+        result === "not-state"
+          ? `${key} is not @state — props are owned by the parent and cannot be written here`
+          : "that component is no longer in the tree";
+      note.classList.add("bad");
+    };
+
+    field.addEventListener("keydown", (raw: Event) => {
+      const event = raw as KeyboardEvent;
+      // Contained, so the panel's own Escape handling does not release the focused component while
+      // the reader only meant to abandon an edit.
+      event.stopPropagation();
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancel();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      if (multiline && !event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      commit();
+    });
+
+    field.addEventListener("blur", () => {
+      // Abandoned rather than applied: a value half-typed and clicked away from is not an intention.
+      if (box.contains(field)) cancel();
+    });
+  }
+
+  /**
    * Opens a component's definition in the reader's editor.
    *
    * Through the DEV SERVER, not through a `vscode://` link: Vite serves `/__open-in-editor`, which
@@ -1521,24 +1688,47 @@ class RamondaDevTools extends HTMLElement {
       if (response.ok) return;
       throw new Error(String(response.status));
     } catch {
+      /**
+       * Reported where the click happened, not only in the log.
+       *
+       * The first version wrote a log row and nothing else — so on a server with no editor endpoint
+       * (this repo's own SSR playground) the button looked dead while it was in fact copying the
+       * path to the clipboard in a tab the reader was not looking at. A control must always say what
+       * it did.
+       */
       let copied = false;
       try {
         await navigator.clipboard.writeText(target);
         copied = true;
       } catch {
-        /* no clipboard either; the log row below is the whole answer */
+        /* no clipboard either; the toast below is the whole answer */
       }
-      this.addLogToUI({
-        type: "info",
-        message: copied
-          ? `No dev-server editor endpoint here — copied ${target} to the clipboard.`
-          : `No dev-server editor endpoint here. The definition is at ${target}.`,
-        timestamp: new Date().toLocaleTimeString(),
-        id: `open-${position.line}-${position.column}`,
-        data: undefined,
-      });
+      this.toast(
+        copied
+          ? `No editor endpoint on this server — copied ${target}`
+          : `No editor endpoint on this server. It is at ${target}`,
+      );
     }
   }
+
+  /**
+   * A short message over the panel, for something that happened because of a click.
+   *
+   * The log is for what the FRAMEWORK reports; this is for what the panel itself did, and it belongs
+   * next to the button that did it. One at a time, replaced rather than queued: the newest outcome is
+   * the one being waited for.
+   */
+  private toast(message: string): void {
+    const host = this.shadowRoot!.querySelector("#toast") as HTMLElement | null;
+    if (!host) return;
+
+    host.textContent = message;
+    host.classList.add("on");
+    if (this.toastTimer !== undefined) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => host.classList.remove("on"), 6000);
+  }
+
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
    * Recursively walks the inspected tree, building HTML + refresh metadata.
@@ -1556,7 +1746,9 @@ class RamondaDevTools extends HTMLElement {
       const path = `${prefix}/${indexOffset + i}:${n.kind}:${n.name}`;
       if (n.node) acc.nodes.set(path, n.node);
 
-      const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc);
+      // State is the only block that can be written: props are owned by whoever rendered this
+      // component and assigning to one throws in every build.
+      const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc, n.id);
       const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
       // A hook's inputs are its PROPS. They were called options once, the framework renamed
       // them, and this label kept saying the old word to everyone inspecting a hook.
@@ -1583,7 +1775,9 @@ class RamondaDevTools extends HTMLElement {
       const open = n.source
         ? `<button type="button" class="src-btn" data-src="${escapeHtml(
             `${n.source.file}|${n.source.line}|${n.source.column}`,
-          )}" title="open ${escapeHtml(shortFile(n.source))} in your editor">&lt;/&gt;</button>`
+          )}" title="open the definition in your editor (served at ${escapeHtml(
+            shortFile(n.source),
+          )})">&lt;/&gt;</button>`
         : "";
       const label =
         n.kind === "hook"
@@ -1625,6 +1819,8 @@ class RamondaDevTools extends HTMLElement {
     path: string,
     slot: string,
     acc: WalkAcc,
+    /** Present only for a writable block — see `beginEdit`. */
+    nodeId?: number,
   ): string {
     const keys = obj ? Object.keys(obj) : [];
     acc.sig.push(`${path}#${slot}[${keys.join(",")}]`);
@@ -1638,8 +1834,23 @@ class RamondaDevTools extends HTMLElement {
         // cheaper than diffing two trees, and the reader never sees it.
         acc.values.set(vid, safeStringify(value));
         acc.raw.set(vid, value);
+        /**
+         * A pencil only where a write would actually land, and only for a value that survives a
+         * round trip through JSON. A function or a DOM node in state cannot be typed back in, and a
+         * control that pretends otherwise is worse than none.
+         */
+        const editable = nodeId !== undefined && this.writer !== undefined && isJsonLike(value);
+        const edit = editable
+          ? `<button type="button" class="edit-btn" data-edit="${escapeHtml(
+              `${nodeId}|${k}|${vid}`,
+            )}" title="edit ${escapeHtml(k)}">✎</button>`
+          : "";
+
         return `<div class="state-row">
-          <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${this.fullViewButton(vid, value)}</div>
+          <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${edit}${this.fullViewButton(
+            vid,
+            value,
+          )}</div>
           <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
         </div>`;
       })
@@ -2110,6 +2321,14 @@ class RamondaDevTools extends HTMLElement {
       const path = summary.getAttribute("data-path")!;
       summary.addEventListener("mouseenter", () => this.highlight(path));
       summary.addEventListener("mouseleave", () => this.clearHighlight());
+    });
+
+    container.querySelectorAll("[data-edit]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.beginEdit(button as HTMLElement);
+      });
     });
 
     container.querySelectorAll("[data-src]").forEach((button) => {

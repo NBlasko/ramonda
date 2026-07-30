@@ -1,4 +1,4 @@
-import { scanComponentTree, type InspectedNode } from "./inspector";
+import { scanComponentTree, writeInspectedState, type InspectedNode } from "./inspector";
 
 // Whether the devtools panel is currently open + watching components. While
 // false, the core does NO inspector work — the whole cost is opt-in.
@@ -35,9 +35,16 @@ export function initDevtoolsBridge(): void {
   // updates never tick. Duplicate bundles are the real bug in that case.
   const w = window as unknown as {
     __RAMONDA_INSPECT__?: typeof inspectTree;
+    __RAMONDA_WRITE__?: typeof writeInspectedState;
   };
   if (w.__RAMONDA_INSPECT__) return;
   w.__RAMONDA_INSPECT__ = inspectTree;
+  /**
+   * The write side of the same bridge, and it is deliberately narrow: one field, by a handle THIS
+   * process handed out, and only when that field is `@state` or `@persist`. The panel cannot reach
+   * an instance, call a method, or touch props through it.
+   */
+  w.__RAMONDA_WRITE__ = writeInspectedState;
 
   window.addEventListener("ramonda:devtools-watch", () => {
     devtoolsWatching = true;

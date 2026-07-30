@@ -72,6 +72,38 @@ const template = await readFile(resolve(CLIENT, "index.html"), "utf-8");
 const server = createServer(async (req, res) => {
   const url = req.url ?? "/";
 
+  /**
+   * The endpoint devtools' `</>` button calls, which Vite provides and a hand-written server does
+   * not — so this app had a button that could only ever copy a path to the clipboard.
+   *
+   * `launch-editor` is what Vite uses underneath: it finds the editor already running and opens the
+   * file at the line. The path arrives project-relative (`src/ProductsPage.tsx:42:8`), which is what
+   * the panel sends and what this server resolves against its own root.
+   */
+  if (url.startsWith("/__open-in-editor")) {
+    const target = new URL(url, `http://localhost:${PORT}`).searchParams.get("file");
+    if (!target) {
+      res.statusCode = 400;
+      res.end("no file");
+      return;
+    }
+
+    try {
+      const { default: launch } = await import("launch-editor");
+      const [, file, line = "1", column = "1"] = /^(.*?):(\d+)?:?(\d+)?$/.exec(target) ?? [, target];
+      launch(`${resolve(here, file)}:${line}:${column}`);
+      res.statusCode = 200;
+      res.end("ok");
+    } catch (error) {
+      // Answered honestly rather than with a 200: the panel falls back to the clipboard on a
+      // failure, and pretending to have opened an editor would take that away.
+      console.error("[open-in-editor]", error);
+      res.statusCode = 500;
+      res.end("could not launch an editor");
+    }
+    return;
+  }
+
   const asset = resolve(CLIENT, "." + url);
   if (url !== "/" && asset.startsWith(CLIENT) && existsSync(asset)) {
     res.setHeader("Content-Type", MIME[extname(asset)] ?? "application/octet-stream");
