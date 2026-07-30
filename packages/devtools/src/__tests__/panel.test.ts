@@ -1642,3 +1642,68 @@ describe("editing state on a hook", () => {
     expect(write).toHaveBeenCalledWith(1, "routeState", { path: "/products" });
   });
 });
+
+describe("what the panel says about a write", () => {
+  const toast = (panel: Panel) => panel.shadowRoot.querySelector("#toast")!;
+
+  const edit = (panel: Panel, key: string, text: string) => {
+    const pencil = Array.from(panel.shadowRoot.querySelectorAll("[data-edit-node]")).find(
+      (p) => (p as HTMLElement).dataset.editKey === key,
+    ) as HTMLElement;
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement;
+    field.value = text;
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+  };
+
+  it("says what it wrote", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    const panel = mount(() => [node("App", "component", { state: { count: 1 } })]);
+
+    edit(panel, "count", "42");
+
+    expect(toast(panel).textContent).toBe("wrote count = 42");
+  });
+
+  it("says when the value was already that", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "unchanged");
+    const panel = mount(() => [node("App", "component", { state: { count: 1 } })]);
+
+    edit(panel, "count", "1");
+
+    expect(toast(panel).textContent).toContain("already that value");
+  });
+
+  /**
+   * The report that prompted this: editing a query hook's `version` DID land, and looked like nothing,
+   * because `version` is an invalidation counter and the rendered data comes from the cache — so the
+   * hook set it again immediately. "It worked and the app owns that field" and "it did not work" have
+   * to look different.
+   */
+  it("says when the app replaced what was written", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    let version = 2;
+    const panel = mount(() => [node("App", "component", { hooks: [node("Query", "hook", { state: { version } })] })]);
+
+    edit(panel, "version", "99");
+    expect(toast(panel).textContent).toBe("wrote version = 99");
+
+    // The hook's own machinery moves it on, the way a cache event does.
+    version = 3;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(toast(panel).textContent).toContain("has since set it to 3");
+  });
+
+  it("stays quiet when the write stuck", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    let count = 1;
+    const panel = mount(() => [node("App", "component", { state: { count } })]);
+
+    edit(panel, "count", "42");
+    count = 42;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(toast(panel).textContent).toBe("wrote count = 42");
+  });
+});

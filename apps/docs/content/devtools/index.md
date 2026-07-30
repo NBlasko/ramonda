@@ -124,6 +124,13 @@ from its owner's callback.
 A write goes through the ordinary setter, so everything downstream is ordinary: the signal notifies,
 the component rebuilds, `@updated` runs, and a diagnostic fires if the value is not serializable.
 
+**Some fields are owned by the machinery around them**, and the panel will tell you when you have met
+one. A query hook's `version` is an invalidation counter and its `snapshot` is the hydration transport
+— write either and it lands, is honoured, and is immediately set again by the hook, because what the
+page renders comes from the cache. The panel says `wrote version = 99`, and then
+`version was written, and the app has since set it to 3`. That is the difference between a control that
+looks broken and one that explains the framework.
+
 ### What a context consumer shows
 
 A consumer has no state and no props — its values are accessors over the provider's signals — so it

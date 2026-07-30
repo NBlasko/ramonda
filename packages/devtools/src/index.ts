@@ -1622,8 +1622,18 @@ class RamondaDevTools extends HTMLElement {
 
       const result = writer(Number(rawId), key, parsed);
       if (result === "ok" || result === "unchanged") {
-        // Not repainted here: the write wakes the component, and the ordinary refresh redraws this
-        // row with the value the app actually holds — which is the only value worth showing.
+        /**
+         * Not repainted here: the write wakes the component, and the ordinary refresh redraws this row
+         * with the value the app actually holds — which is the only value worth showing.
+         *
+         * But it has to SAY the write happened, and the reason is a real report: editing a query
+         * hook's `version` did land and looked like nothing, because `version` is an invalidation
+         * counter and the rendered data comes from the cache. "It worked and the app owns that field"
+         * and "it did not work" were indistinguishable. So the panel says what it wrote, and then
+         * watches the field: if the app puts something else there, it says that too.
+         */
+        this.toast(result === "unchanged" ? `${key} is already that value` : `wrote ${key} = ${field.value.trim()}`);
+        this.pendingWrite = result === "ok" ? { vid, key, text: safeStringify(parsed) } : undefined;
         cancel();
         return;
       }
@@ -1765,6 +1775,27 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** The last value written from the panel, watched for one refresh — see the commit path above. */
+  private pendingWrite: { vid: string; key: string; text: string } | undefined;
+
+  /**
+   * Notices that the app replaced what was just written from the panel.
+   *
+   * This is the answer to "I edited it and nothing changed": some fields are owned by the machinery
+   * around them — a query's `version` is an invalidation counter, its `snapshot` is the hydration
+   * transport — and writing one is honoured and then immediately overwritten. Saying so is the
+   * difference between a panel that looks broken and a panel that explains the framework.
+   */
+  private checkPendingWrite(values: Map<string, string>): void {
+    const pending = this.pendingWrite;
+    if (!pending) return;
+    this.pendingWrite = undefined;
+
+    const current = values.get(pending.vid);
+    if (current === undefined || current === pending.text) return;
+    this.toast(`${pending.key} was written, and the app has since set it to ${current.slice(0, 60)}`);
+  }
 
   /**
    * Recursively walks the inspected tree, building HTML + refresh metadata.
@@ -1977,6 +2008,7 @@ class RamondaDevTools extends HTMLElement {
     }
 
     container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
+    this.checkPendingWrite(acc.values);
     this.lastValues = acc.values;
     this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
@@ -2345,6 +2377,7 @@ class RamondaDevTools extends HTMLElement {
       }
     }
 
+    this.checkPendingWrite(acc.values);
     this.lastValues = acc.values;
     this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
