@@ -42,7 +42,7 @@ jobs:
     name: Build and deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       # Through TURBO, not the package script directly. `content` (which writes
@@ -54,7 +54,7 @@ jobs:
         run: pnpm exec turbo run build --filter=@ramonda/docs
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         # wrangler-action installs wrangler with `pnpm add wrangler`, which in a
         # workspace root pnpm refuses (ERR_PNPM_ADDING_TO_ROOT) unless told the root
         # is intended. Scope that allowance to this step only — it does not affect
