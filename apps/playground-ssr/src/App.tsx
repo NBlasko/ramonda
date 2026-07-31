@@ -79,7 +79,7 @@ class NotFoundPage extends Component {
   }
 }
 
-const routes = createRoutes({
+export const routes = createRoutes({
   "/": <HomePage />,
   "/about": <AboutPage />,
   "/users/:id": <UserPage />,
