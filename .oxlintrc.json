@@ -7,14 +7,21 @@
     "**/.build/**",
     "**/coverage/**",
     "apps/docs/src/generated/**",
-    "packages/create-ramonda/templates/**"
+    "packages/create-ramonda/templates/**",
+    "**/tsup.config.bundled_*.mjs"
   ],
   "categories": {
     "correctness": "error"
   },
   "rules": {
     "no-unused-vars": "warn",
-    "no-unused-expressions": ["error", { "allowShortCircuit": true, "allowTernary": true }],
+    "no-unused-expressions": [
+      "error",
+      {
+        "allowShortCircuit": true,
+        "allowTernary": true
+      }
+    ],
     "typescript/no-this-alias": "off",
     "no-underscore-dangle": "off",
     "unicorn/no-useless-spread": "off",
