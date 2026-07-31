@@ -64,3 +64,12 @@ updates:
     # tag exists (`ossf/scorecard-action@v2.4.4`,
     # `actions/dependency-review-action@v5.0.0`): a pin that cannot drift under
     # you, plus a bot whose job is to move it deliberately.
+    ignore:
+      # `github/codeql-action` DOES publish a moving `v4`, and the workflows use it.
+      # Left alone, Dependabot rewrites `@v4` to an exact `@v4.37.3` and then opens a
+      # pull request for every CodeQL patch after it — and CodeQL patches often. The
+      # pin buys nothing here: `@v4` already excludes the only change that could
+      # break a workflow, which is a new major. So take majors only, and keep the
+      # tag readable.
+      - dependency-name: github/codeql-action
+        update-types: ["version-update:semver-patch", "version-update:semver-minor"]

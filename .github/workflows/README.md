@@ -8,7 +8,7 @@ foundation of best practices to grow from, not an all-in-one.
 | `ci.yml` | PR to `main`, push to `main` | Lint + format, type-check, test, build — via `checks.yml` |
 | `checks.yml` | *reusable* (`workflow_call`) | The one gate: parallel lint+format / type-check / test / build |
 | `release.yml` | push to `main` | Changesets: opens a "Version Packages" PR, or publishes to npm |
-| `deploy-docs.yml` | push to `main` (prod), PR to `main` (preview) | Builds `apps/docs` and deploys to Cloudflare Pages |
+| `deploy-docs.yml` | push to `main`, or manual | Builds `apps/docs` and deploys to Cloudflare Pages |
 | `codeql.yml` | PR to `main`, push to `main`, weekly | CodeQL static analysis of the TypeScript (SAST) |
 | `dependency-review.yml` | PR to `main` | Blocks a PR that adds a high/critical advisory or a copyleft licence |
 | `scorecard.yml` | push to `main`, weekly, branch-protection change | OpenSSF Scorecard: supply-chain hygiene, graded |
@@ -98,6 +98,26 @@ token or a monthly quota anywhere.
 requests. The half that says "a version you have installed has a known
 vulnerability" is a checkbox — see *One-time setup* below. This trips people
 because the file is the visible part and the checkbox is the part that shouts.
+
+**What the first Dependabot run changed.** Grouping worked — three pull requests
+where nine would have been, one per group. Two things needed fixing, and both are
+worth knowing before adding another bot:
+
+- **The docs deploy failed on all three.** A Dependabot pull request never receives
+  repository secrets, by design: its branch content is not the repository owner's.
+  So `CLOUDFLARE_API_TOKEN` arrived empty, wrangler had nothing to authenticate
+  with, and every bot pull request carried a red check that no reviewer could act
+  on — while the build step above it passed. `deploy-docs.yml` now runs on `main`
+  and on `workflow_dispatch` only. Preview deployments are gone, and nothing about
+  the docs goes unverified: `checks.yml` builds `@ramonda/docs` on every pull
+  request through its whole chain. A preview supplied a URL, not confidence.
+- **Dependabot rewrote a moving tag as a pin.** `github/codeql-action@v4` came back
+  as `@v4.37.3`, which would mean a pull request for every CodeQL patch release
+  from then on. `@v4` already excludes the only change that can break a workflow —
+  a new major — so `dependabot.yml` now ignores patch and minor for that action.
+  The exact pins elsewhere (`ossf/scorecard-action@v2.4.4`,
+  `actions/dependency-review-action@v5.0.0`) stay, because those two publish no
+  moving major tag to use instead.
 
 **Both Dependabot rules are off, on purpose.** GitHub ships two auto-dismiss
 presets (Settings → Advanced Security → Dependabot rules), and both are disabled
