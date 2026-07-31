@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Immutable updates for deep objects by describing a path, not by mutating a proxy.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -42,12 +42,13 @@
   "scripts": {
     "build": "tsup && ramonda-check-bundle dist",
     "dev": "tsup --watch",
-    "test": "vitest run",
+    "test": "vitest run && pnpm test:prod",
     "test:watch": "vitest",
     "bench": "pnpm build && node bench/against-immer.mjs",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
-    "format": "biome format --write src"
+    "format": "biome format --write src",
+    "test:prod": "vitest run --config vitest.prod.config.ts"
   },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",
