@@ -1,14 +1,23 @@
 # Ramonda app (SSR)
 
 A [Ramonda](https://ramonda.pages.dev) app that renders on the server and
-hydrates in the browser. Built with esbuild and served by a small Node server.
+hydrates in the browser. Dev is a Vite server with hot reload; production is an
+esbuild bundle served by a small Node server.
 
 ## Develop
 
 ```bash
-npm run build   # build the client and server bundles into dist/
-npm start       # run the server on http://localhost:5173
-npm run dev     # build, then start
+npm run dev     # Vite dev server on http://localhost:5173 — hot reload, no build step
+```
+
+Edit a component and the change is live: the browser hot-updates the client, and
+the server picks up the new code on the next request — no restart.
+
+## Production
+
+```bash
+npm run build   # bundle client + server into dist/ with esbuild
+npm start       # serve the built output on http://localhost:5173
 ```
 
 ## How it works
@@ -22,9 +31,9 @@ npm run dev     # build, then start
 - `src/App.tsx` — your component. It must render the same thing on the server and
   the client, so keep `Date.now()` / `Math.random()` out of `render()`.
 
-The bundles are built against Ramonda's **production** build for a clean server
-render. For the dev inspector and diagnostics, the SPA template (`create-ramonda`
-→ SPA) runs Ramonda in development mode.
+`npm run dev` runs Ramonda in **development** mode — you get the diagnostics and
+the dev inspector. `npm run build` uses Ramonda's **production** build for a clean,
+stripped-down server render.
 
 ## Learn Ramonda
 

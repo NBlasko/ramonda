@@ -34,6 +34,8 @@
   </head>
   <body>
     <div id="app"><!--ssr--></div>
-    <script type="module" src="/assets/client.js"></script>
+    <!-- Dev (Vite) serves this source directly with HMR; the production build
+         rewrites it to the bundled /assets/client.js (see server.mjs). -->
+    <script type="module" src="/src/entry-client.tsx"></script>
   </body>
 </html>

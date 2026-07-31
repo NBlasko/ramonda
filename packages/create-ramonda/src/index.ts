@@ -270,7 +270,9 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   if (mode === "spa") {
     deps.devDependencies["vite"] = tool("vite");
   } else {
-    // SSR builds with esbuild and serves through a Node process that needs a DOM.
+    // SSR: prod is an esbuild bundle served by a Node process that needs a DOM;
+    // dev is a Vite middleware server (hot reload) — see server.mjs.
+    deps.devDependencies["vite"] = tool("vite");
     deps.devDependencies["esbuild"] = tool("esbuild");
     deps.devDependencies["jsdom"] = tool("jsdom");
   }
