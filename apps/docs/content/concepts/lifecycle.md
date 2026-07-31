@@ -86,6 +86,25 @@ deliberate:
 So the division is: **reacting to a value → `@watchProp`. Touching the DOM afterwards
 → `@updated`.**
 
+**And there is deliberately no post-commit `@watchProp`.** It is the obvious sugar —
+"run this method after the commit, but only when `props.selectedId` changed" — and it
+was considered and rejected, for three reasons worth knowing:
+
+- **It would be strictly narrower than `@updated`.** It sees props, and props only. Not
+  the state of a hook you use (the list came from a query), not a context value, not any
+  other cause of a commit. The cases that need the DOM *are* usually those.
+- **Its write could not fold.** `@watchProp` runs inside the build, so state it writes
+  lands in the same render — measured, no extra pass. A post-commit version writes after
+  the DOM exists, which schedules another render, which rebuilds the props bag, which runs
+  the selector again. The framework would have to compare values to stop that, and
+  comparing a prop for you is exactly what Ramonda does not do.
+- **The `if` it would replace is not the framework's to write.** `@watchProp` answers
+  *what changed*; the guard that belongs in an `@updated` body answers *is the DOM already
+  how I want it* — and only you know that.
+
+So the pair above is the whole story, and one field comparison is the price of the
+post-commit case.
+
 **Children before parents**, so a parent measuring its own subtree finds it updated.
 It runs after this commit's `@mount`s and effects, and **never on the server** —
 there is no layout and no paint there to correct.
