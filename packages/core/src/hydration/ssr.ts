@@ -87,7 +87,24 @@ function stampBlobs(node: Node): void {
  * back yields a single node. Rather than spend bytes on separator comments the
  * way React does, hydration splits the run apart again; see hydrateText.
  */
-export async function renderToString(vnode: ComponentChild): Promise<string> {
+/** Per-request data for a server render, so `requestContext()` returns real values. */
+export interface ServerRequestInit {
+  /** The request URL — also what the router reads as the current page. */
+  url: URL;
+  /** Request cookies. */
+  cookies?: Map<string, string>;
+  /** Request headers. */
+  headers?: Headers;
+  /** Pre-resolved per-request values keyed by a `requestKey`'s label — e.g. the signed-in user. */
+  values?: Map<string, unknown>;
+}
+
+export interface RenderToStringOptions {
+  /** When present, this render is per-request: `requestContext()` reads return these values. */
+  request?: ServerRequestInit;
+}
+
+export async function renderToString(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<string> {
   const container = document.createElement("div");
 
   // The module-level env is only live across this synchronous mount — no await
@@ -100,6 +117,26 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
   // must not wait on — or serialize — each other's work. See core/serverWork.ts.
   const work = createServerWork();
 
+  // A per-request render (`opts.request`) makes `requestContext()` return real values. Set
+  // ONLY for the synchronous section — the same window, and the same concurrency reasoning, as
+  // `renderEnv`: two concurrent requests must not share it across an `await`. So the rule is
+  // read `requestContext()` SYNCHRONOUSLY (in render / @create / before the first `await` in an
+  // @mount) — after a yield the scope is already cleared. `renderStatic` passes no `opts` and
+  // manages its own build-mode scope (kept live across the sequential build), so this leaves it
+  // untouched.
+  const request = opts?.request;
+  if (request) {
+    setRequestScope(
+      createRequestScope({
+        mode: "server",
+        url: request.url,
+        cookies: request.cookies,
+        headers: request.headers,
+        values: request.values,
+      }),
+    );
+  }
+
   setRenderEnv("server");
   setServerWorkCollector(work);
   try {
@@ -111,6 +148,7 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
   } finally {
     setRenderEnv("client");
     setServerWorkCollector(undefined);
+    if (request) setRequestScope(undefined);
   }
 
   try {

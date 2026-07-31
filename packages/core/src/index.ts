@@ -24,7 +24,7 @@ export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";
 // Server rendering and hydration. Exported now that there is a server that uses
 // them (apps/playground-ssr); until then the tests reached them by path.
 export { renderToString, renderPage, renderStatic } from "./hydration/ssr";
-export type { RenderedPage, StaticRender } from "./hydration/ssr";
+export type { RenderedPage, StaticRender, RenderToStringOptions, ServerRequestInit } from "./hydration/ssr";
 // A route guard (or any tree code) can ask a server render to redirect instead of
 // producing a page. `renderToString` throws `ServerRedirect`; catch it at the
 // server boundary and answer with a 302. `captureServerRedirect` is the low-level
