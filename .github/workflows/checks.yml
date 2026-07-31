@@ -15,7 +15,7 @@ jobs:
     name: Lint and format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
@@ -37,7 +37,7 @@ jobs:
     name: Type-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # Covers every package with a `check-types` script: core, router, lens,
       # testing-library, docs.
@@ -47,7 +47,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # No filters: every package that HAS a `test` script runs it, and turbo skips the ones
       # that do not. The two scratch playgrounds used to carry the `npm init` placeholder
@@ -60,7 +60,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # Builds every package AND the docs/playground apps, so the whole
       # prerender + pagefind pipeline is exercised on every PR, not just at deploy.

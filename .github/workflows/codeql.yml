@@ -39,7 +39,7 @@ jobs:
       contents: read
       security-events: write # upload the SARIF results to code scanning
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
