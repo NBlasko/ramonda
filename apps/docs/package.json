@@ -14,7 +14,8 @@
     "manifest": "node scripts/build-manifest.mjs",
     "check-api": "node scripts/check-api-coverage.mjs",
     "index": "pagefind --site dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "shots": "node scripts/shots.mjs"
   },
   "dependencies": {
     "@ramonda/core": "workspace:^",

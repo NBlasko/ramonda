@@ -384,6 +384,30 @@ div[data-ramonda="Counter"] {
   max-height: 420px;
 }
 
+/* ── screenshots in prose ───────────────────────────────────────────────── */
+
+/**
+ * The devtools page is the first page with images on it, and without this a 1600px capture simply
+ * overflows the column. The border matters as much as the width: these are pictures of a dark panel on
+ * a light page, and without an edge they bleed into the prose.
+ */
+article img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.6rem 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  /* A screenshot of a panel is a thing on the page, not a diagram in it. */
+  box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
+}
+
+/* The badge GIF is one small element, not a screen — full width would blow it up to a blur. */
+article img[src$=".gif"] {
+  max-width: 300px;
+  border-radius: 10px;
+}
+
 /* ── prose tables, lists, blockquotes ──────────────────────────────────── */
 article table {
   border-collapse: collapse;

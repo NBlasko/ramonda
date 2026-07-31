@@ -34,6 +34,18 @@ export class Markdown extends Component<MarkdownProps> {
 export function toVNode(node: ContentNode): ComponentChild {
   if (typeof node === "string") return node;
 
+  /**
+   * An image is lazy and carries its own aspect ratio.
+   *
+   * Markdown cannot express either, and both matter on a page that illustrates a devtools panel: the
+   * screenshots are below the fold, and without a ratio the text jumps as each one arrives. The size is
+   * the one the capture script writes (see `scripts/shots.mjs`), so a reflow-free page costs one rule
+   * rather than a per-image note in the markdown.
+   */
+  if (node.t === "img") {
+    return h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
+  }
+
   // A Shiki code block becomes a component so it can carry a copy button. The
   // check is the `shiki` class the highlighter stamps on the `<pre>`; CodeBlock
   // renders the `<pre>` itself, so it does not route back through here.
