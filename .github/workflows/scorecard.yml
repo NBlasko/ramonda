@@ -33,7 +33,7 @@ jobs:
       security-events: write # upload the SARIF to code scanning
       id-token: write # sign the published result, so the badge can trust it
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The analysis reads this checkout; a token left in `.git/config` is
           # exactly the kind of thing it would (rightly) mark down.
@@ -52,6 +52,6 @@ jobs:
 
       # Puts the findings in Security → Code scanning next to CodeQL's, so there is
       # one place to look rather than two.
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v4.37.3
         with:
           sarif_file: results.sarif

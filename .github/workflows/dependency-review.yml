@@ -20,7 +20,7 @@ jobs:
       contents: read
       pull-requests: write # post the summary as a comment when it fails
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Pinned exactly: this action publishes no moving major tag (v1–v3 exist,
       # nothing for v4 or v5), so `@v5` would not resolve. Dependabot's
