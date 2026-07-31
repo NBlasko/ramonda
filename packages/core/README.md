@@ -1,7 +1,8 @@
 # @ramonda/core
 
-A TypeScript frontend framework built on class components, signals and TC39
-decorators — with one rule the whole design hangs off:
+A UI framework. **Explicit. Predictable. Readable.**
+
+One rule carries most of the design:
 
 > **Every JSX tag is exactly one element.**
 

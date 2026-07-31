@@ -24,7 +24,7 @@ export class App extends Component {
           <circle r="6.6" fill="#e9b44c" />
         </svg>
         <h1>Ramonda</h1>
-        <p className="tagline">A TypeScript UI framework — class components, signals, and TC39 decorators.</p>
+        <p className="tagline">Explicit. Predictable. Readable.</p>
 
         <button type="button" onClick={this.increment}>
           count is {this.count}

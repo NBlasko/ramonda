@@ -1,7 +1,6 @@
 # Ramonda 🌸
 
-A TypeScript UI framework built on **class components, decorators, and signals**,
-with a region-aware virtual DOM and first-class server rendering.
+A UI framework. **Explicit. Predictable. Readable.**
 
 > **Status: early.** The API is taking shape and versions are `0.0.x`. It is real
 > and tested, but not yet stable — expect changes.

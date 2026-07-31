@@ -25,7 +25,7 @@ export class App extends Component {
           <circle r="6.6" fill="#e9b44c" />
         </svg>
         <h1>Ramonda</h1>
-        <p className="tagline">Server-rendered, then hydrated. Class components, signals, decorators.</p>
+        <p className="tagline">Server-rendered, then hydrated.</p>
 
         <button type="button" onClick={this.increment}>
           count is {this.count}

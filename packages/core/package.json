@@ -1,7 +1,7 @@
 {
   "name": "@ramonda/core",
   "version": "0.2.0",
-  "description": "A TypeScript UI framework: class components, decorators, signals, and a region-aware VDOM with first-class SSR and hydration.",
+  "description": "A UI framework. Explicit. Predictable. Readable.",
   "license": "MIT",
   "author": "Nikola Blagojević",
   "homepage": "https://ramonda.pages.dev",
