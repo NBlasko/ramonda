@@ -99,6 +99,30 @@ requests. The half that says "a version you have installed has a known
 vulnerability" is a checkbox — see *One-time setup* below. This trips people
 because the file is the visible part and the checkbox is the part that shouts.
 
+**Both Dependabot rules are off, on purpose.** GitHub ships two auto-dismiss
+presets (Settings → Advanced Security → Dependabot rules), and both are disabled
+here.
+
+*Dismiss low-impact alerts for development-scoped dependencies* reads as sensible
+and is wrong for this repository: three runtime dependencies exist across every
+published package (`@testing-library/dom`, `@clack/prompts`, `picocolors`) and the
+other ~560 installed packages are toolchain. A rule that discounts dev-scoped
+findings therefore filters almost the entire dependency surface rather than its
+edge. The preset's reasoning — a vulnerability in a build tool goes nowhere,
+because a developer's machine is not production — also inverts for a library
+author: tsup and esbuild write the `dist/` that gets published, so a compromised
+build tool is the one case that reaches everyone who installs Ramonda.
+
+The cost of switching it off is noise of the "ReDoS in a test runner" kind, which
+is acceptable and reversible: dismissed alerts are never deleted, they sit under
+*Closed* marked auto-dismissed. And `pnpm audit` reads the advisory database
+directly with no knowledge of these rules, so the unfiltered view is always one
+command away.
+
+*Dismiss package malware alerts* stays off for the plainer reason that a
+false-positive filter on malware suppresses the one category worth interrupting
+for.
+
 **Why not Snyk.** It was the first candidate, and the badge is why it was dropped:
 `snyk.io/test/github/<owner>/<repo>/badge.svg` returns the same 849-byte image
 reading **"Snyk security | monitored"** for this repository, for another of the
@@ -150,6 +174,16 @@ third-party scanner.
   3. **Private vulnerability reporting.** Makes the *Report a vulnerability* button
      appear on the Security tab, which is where `SECURITY.md` sends people. Without
      it, that link 404s and the next reporter opens a public issue instead.
+
+  A fourth row on the same page, **Dependabot version updates**, is the switch that
+  consumes `.github/dependabot.yml`. It turns itself on when that file reaches the
+  default branch — so leave it alone until then. Clicking *Enable* while the file
+  is still on a branch offers to write GitHub's own template `dependabot.yml`
+  straight to `main`, which collides with the one in review. (The *Advanced* button
+  under CodeQL analysis does exactly the same thing with `codeql.yml`.)
+
+  The buttons on that page name the **action**, not the state: a row reading
+  *Disable* is a feature that is currently on.
 
   While you are on that page, check **Code scanning → CodeQL analysis**: it must
   read *Advanced* (this repository's `codeql.yml`), not *Default setup*. GitHub
