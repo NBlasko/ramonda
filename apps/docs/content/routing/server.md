@@ -90,8 +90,8 @@ The earliest guard to fire wins, so one redirect decides where the request goes.
 
 ## What doesn't run on the server
 
-- The `popstate` listener (it's an effect, and effects are client-only — there is no
-  history to react to on the server).
+- The `popstate` listener (a subscription, and subscriptions are client-only — there is
+  no history to react to on the server).
 - Client-only setup like the single-`Router` check, keyed to
   `@create({ env: "client" })`.
 

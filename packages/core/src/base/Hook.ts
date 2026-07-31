@@ -5,6 +5,7 @@ import type { HookClassKind } from "../types/commonTypes";
 import { createHookRuntime, HOOK_RUNTIME, type HookRuntime, type Runtime, GLOBAL_RUNTIME } from "../core/runtime";
 import { State } from "../reactivity/State";
 import { reportHookPropWrite } from "../debug/renderPhase";
+import { recordDefinition } from "../debug/sourceLocation";
 import { bindInstanceMethods } from "../helpers/bindMethods";
 
 function createPropsProxy(hook: Hook<HookProps>) {
@@ -63,6 +64,8 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
   declare readonly [PROPS_TYPE]?: R;
 
   constructor(runtime: Runtime, initialProps: R) {
+    if (__DEV__) recordDefinition(this);
+
     this[GLOBAL_RUNTIME] = runtime;
     this[HOOK_RUNTIME] = createHookRuntime(initialProps);
     this.props = createPropsProxy(this) as R;

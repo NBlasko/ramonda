@@ -1,4 +1,5 @@
-import { escapeHtml, safeStringify } from "./format";
+import { escapeHtml, safeStringify, toServerPath } from "./format";
+import { resolveOriginal } from "./sourceMap";
 import { FULL, INLINE, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
 
 interface DevLogPayload {
@@ -9,7 +10,16 @@ interface DevLogPayload {
   type: string;
 }
 
+/** Where a class is defined, as core read it off the stack of its first construction. */
+interface SourceLocation {
+  file: string;
+  line: number;
+  column: number;
+}
+
 interface InspectedNode {
+  /** The handle core handed out for this scan — what a write is addressed to. */
+  id: number;
   name: string;
   kind: "component" | "hook";
   state: Record<string, unknown>;
@@ -17,6 +27,8 @@ interface InspectedNode {
   options?: Record<string, unknown>;
   /** A context consumer's reads — the keys it subscribed to, and the ones it never touched. */
   reads?: Record<string, unknown>;
+  /** Where the class is defined, when core could tell. */
+  source?: SourceLocation;
   hooks: InspectedNode[];
   children: InspectedNode[];
   node?: Node;
@@ -44,6 +56,8 @@ interface QueryRow {
   restored: boolean;
   /** One line, kept as the change signal for the list. */
   dataPreview: string;
+  /** True when the copy below hit a bound, which is what makes it unsafe to write back. */
+  truncated?: boolean;
   /**
    * The cached value, bounded by the bridge. Optional because a panel can be newer than the query
    * package installed next to it — the preview is the fallback, not a second code path to keep.
@@ -52,10 +66,37 @@ interface QueryRow {
   error?: string;
 }
 
+type WriteFn = (id: number, key: string, value: unknown) => "ok" | "gone" | "not-state" | "unchanged";
+
+/** One component's share of a commit. */
+interface ComponentCost {
+  name: string;
+  builds: number;
+  ms: number;
+}
+
+/** One drain — what the app waited for. See core's `profiler.ts`. */
+interface CommitRecord {
+  index: number;
+  at: number;
+  duration: number;
+  builds: number;
+  components: ComponentCost[];
+}
+
+interface ProfileBridge {
+  start(): void;
+  stop(): void;
+  isRecording(): boolean;
+  commits(): CommitRecord[];
+}
+
 interface QueryBridge {
   snapshot(): { clients: { index: number; queries: QueryRow[] }[] };
   invalidate(clientIndex: number, hash: string): void;
   remove(clientIndex: number, hash: string): void;
+  /** Absent on a query package older than this panel. */
+  setData?: (clientIndex: number, hash: string, data: unknown) => boolean;
 }
 
 /** One step of the pinned component's ancestry, rendered as a breadcrumb. */
@@ -87,6 +128,66 @@ interface WalkAcc {
 // Cap the number of log rows kept in the DOM so a long session can't grow the
 // panel unboundedly. Newest are prepended, so the oldest is the last child.
 const MAX_LOG_NODES = 200;
+
+/**
+ * Whether a value can be edited as JSON and come back the same kind of thing.
+ *
+ * A function, a `Map`, a DOM node, `undefined` — none of them survive `JSON.stringify` followed by
+ * `JSON.parse`, so offering a box that appears to edit one is a lie the reader finds out about after
+ * pressing Enter.
+ */
+const isJsonLike = (value: unknown): boolean => {
+  if (value === null) return true;
+  const kind = typeof value;
+  if (kind === "string" || kind === "number" || kind === "boolean") return true;
+  if (kind !== "object") return false;
+
+  try {
+    const text = JSON.stringify(value);
+    if (text === undefined) return false;
+    // Round-tripped, so a `Date` (which stringifies to a string and parses back as one) is out.
+    return JSON.stringify(JSON.parse(text)) === text && (Array.isArray(value) || isPlainRecord(value as object));
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Whether a value belongs on one line with its key.
+ *
+ * The test is not "is it a primitive" but **"does the tree render it as a leaf"**, which is the same
+ * question the row is asking: only an array or a plain object gets a disclosure and children, so only
+ * those need a block. A function is `ƒ()`, a `Date` is one line, and a class instance is its name — the
+ * first version of this called those "objects" and gave `client: QueryClient` two lines for a one-word
+ * value, which is the shape the whole change was fixing.
+ */
+const rendersAsLeaf = (value: unknown): boolean => {
+  if (Array.isArray(value)) return false;
+  if (typeof value !== "object" || value === null) return true;
+  return !isPlainRecord(value);
+};
+
+const isPlainRecord = (value: object): boolean => {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
+/** A written value, short enough for a toast. */
+const toOneLine = (value: unknown): string => {
+  const text = safeStringify(value);
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+};
+
+/**
+ * `App.tsx:18` — what fits in a tooltip, and deliberately the SERVED position rather than the source
+ * one. Resolving needs the module's sourcemap, which means a fetch; doing that for every row on
+ * every render to fill in a tooltip would be absurd. So the tooltip says where the code was found
+ * and the click says where it came from.
+ */
+const shortFile = (source: SourceLocation): string => {
+  const path = toServerPath(source.file);
+  return `${path.slice(path.lastIndexOf("/") + 1)}:${source.line}`;
+};
 
 /** Narrow enough to peek past, wide enough that the drag handle is still there to grab. */
 const MIN_PANEL_WIDTH = 280;
@@ -160,6 +261,10 @@ class RamondaDevTools extends HTMLElement {
   // Component-tab state (pull model).
   private componentsTabActive = false;
   private queryTabActive = false;
+  private profileTabActive = false;
+  private profileTimer: ReturnType<typeof setInterval> | undefined;
+  /** The last rendered shape of the commit list, so an idle poll touches no DOM. */
+  private profileShape = "";
   private queryTimer: ReturnType<typeof setInterval> | undefined;
   /** The last rendered shape of the query list — see `renderQueries`. */
   private queryShape = "";
@@ -259,6 +364,7 @@ class RamondaDevTools extends HTMLElement {
       this.applyLayout();
       this.updateWatchState();
       this.updateQueryWatch();
+      this.updateProfileWatch();
     }
   }
 
@@ -290,6 +396,23 @@ class RamondaDevTools extends HTMLElement {
 
   private get inspect(): InspectFn | undefined {
     return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn }).__RAMONDA_INSPECT__;
+  }
+
+  /**
+   * Core's write side. Narrow on purpose: one field, addressed by a handle from the last scan, and
+   * only when that field is `@state` or `@persist`. There is no way through it to an instance, a
+   * method, or a prop.
+   */
+  private get writer(): WriteFn | undefined {
+    return (window as unknown as { __RAMONDA_WRITE__?: WriteFn }).__RAMONDA_WRITE__;
+  }
+
+  /**
+   * The profiler's controls, off until this panel presses record — a commit is the hottest path in the
+   * framework, and sampling it unconditionally would tax every development build.
+   */
+  private get profile(): ProfileBridge | undefined {
+    return (window as unknown as { __RAMONDA_PROFILE__?: ProfileBridge }).__RAMONDA_PROFILE__;
   }
 
   /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
@@ -599,6 +722,11 @@ class RamondaDevTools extends HTMLElement {
         .state-title { color: #00ffaa; margin-bottom: 4px; font-weight: bold; font-size: 13px;
                        text-transform: uppercase; letter-spacing: .4px; }
         .state-row { margin: 2px 0; }
+        /* One line for a scalar: the value sits with its key, and its buttons follow the value rather
+           than the key, so a row reads key, value, then controls. */
+        .state-row.one-line { display: flex; align-items: baseline; gap: 4px; }
+        .state-row.one-line .sv { max-height: none; overflow: visible; padding: 0; min-width: 0; }
+        .state-row.one-line .jv-row { display: inline; }
         .state-head { display: flex; gap: 4px; align-items: center; }
         .state-row .sk { color: #9a9aa2; flex-shrink: 0; font-family: ui-monospace, Menlo, monospace;
                          font-size: 14px; }
@@ -668,10 +796,24 @@ class RamondaDevTools extends HTMLElement {
         }
         .pick-label.on { display: block; }
 
-        .pin-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 13px;
-                   padding: 0 4px; cursor: pointer; }
-        .comp-summary:hover .pin-btn { color: #9a8fb5; }
-        .pin-btn:hover { color: #B18AE6; }
+        .edit-btn { background: none; border: none; color: #4a4a4a; font: inherit; font-size: 13px;
+                    padding: 0 4px; cursor: pointer; }
+        .state-row:hover .edit-btn { color: #9a8fb5; }
+        .edit-btn:hover { color: #00ffaa; }
+        .edit-input {
+          width: 100%; box-sizing: border-box; background: #0d0d0d; border: 1px solid #7A4FBF;
+          border-radius: 4px; color: #eee; font-family: ui-monospace, Menlo, monospace;
+          font-size: 13px; padding: 4px 6px; resize: vertical;
+        }
+        .edit-input:focus { outline: none; border-color: #B18AE6; }
+        .edit-note { color: #8b8b93; font-size: 11.5px; margin-top: 3px; }
+        .edit-note.bad { color: #ff8080; }
+
+        .pin-btn, .src-btn { background: none; border: none; color: #4a4a4a; font: inherit;
+                             font-size: 13px; padding: 0 4px; cursor: pointer; }
+        .comp-summary:hover .pin-btn, .comp-summary:hover .src-btn { color: #9a8fb5; }
+        .pin-btn:hover, .src-btn:hover { color: #B18AE6; }
+        .src-btn { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 
         /**
          * Filtering hides a branch with no match in it. The :has() rule keeps the ancestors of a
@@ -730,6 +872,17 @@ class RamondaDevTools extends HTMLElement {
 
         /* One value on the whole panel: inside the panel, not over the page, so the app stays
            visible beside it and the tree behind keeps its place. */
+        /* Above the sticky head and below the full value view — see the layer scale there. */
+        .toast {
+          position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 6;
+          background: #241f30; border: 1px solid #7A4FBF; border-radius: 6px;
+          color: #e8e2f2; font-size: 12.5px; line-height: 1.45; padding: 9px 12px;
+          box-shadow: 0 6px 20px rgba(0,0,0,.5); opacity: 0; transform: translateY(6px);
+          transition: opacity .18s ease, transform .18s ease; pointer-events: none;
+          word-break: break-word;
+        }
+        .toast.on { opacity: 1; transform: translateY(0); }
+
         .jv-modal { position: absolute; inset: 0; background: #0d0d0d; z-index: 10;
                     display: none; flex-direction: column; }
         .jv-modal.on { display: flex; }
@@ -773,6 +926,23 @@ class RamondaDevTools extends HTMLElement {
         .jv-modal-body { flex: 1; overflow: auto; padding: 12px 14px; }
         .jv-raw { margin: 0; color: #d8d8d8; font-family: ui-monospace, Menlo, monospace;
                   font-size: 14px; line-height: 1.5; white-space: pre; }
+
+        .profile-hint { color: #8b8b93; font-size: 12.5px; align-self: center; }
+        #profile-record.on { background: #c0392b; border-color: #c0392b; color: #fff; }
+        .p-row { border: 1px solid #333; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+                 background: #1c1c1c; }
+        .p-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+        .p-index { color: #8b8b93; font-variant-numeric: tabular-nums; }
+        /* The number this framework's whole argument is about, so it is the one thing set in bold. */
+        .p-ms { color: #E9B44C; font-weight: bold; font-variant-numeric: tabular-nums; }
+        .p-builds { color: #9a9aa2; }
+        .p-costs { margin-top: 5px; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px;
+                   font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; align-items: center; }
+        .p-name { color: #B18AE6; white-space: nowrap; }
+        .p-bar { background: #2a2233; border-radius: 3px; height: 9px; overflow: hidden; }
+        .p-bar span { display: block; height: 100%; background: #7A4FBF; }
+        .p-cost { color: #9a9aa2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .p-empty { color: #8b8b93; font-size: 12.5px; line-height: 1.6; }
 
         .q-client { color: #888; font-size: 12.5px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
         .q-row { border: 1px solid #333; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #1c1c1c; }
@@ -834,6 +1004,7 @@ class RamondaDevTools extends HTMLElement {
         <div class="tab active" data-tab="logs">LOGS</div>
         <div class="tab" data-tab="components">COMPONENTS</div>
         <div class="tab" data-tab="query">QUERY</div>
+        <div class="tab" data-tab="profile">PROFILE</div>
       </div>
       <div id="logs-tab" class="tab-content active">
         <div id="logs-container"></div>
@@ -854,6 +1025,7 @@ class RamondaDevTools extends HTMLElement {
           <small style="color:#666">No active components…</small>
         </div>
       </div>
+      <div class="toast" id="toast"></div>
       <div class="jv-modal" id="jv-modal">
         <div class="jv-modal-head">
           <span class="jv-modal-title" id="jv-modal-title"></span>
@@ -865,6 +1037,13 @@ class RamondaDevTools extends HTMLElement {
           </div>
         </div>
         <div class="jv-modal-body" id="jv-modal-body"></div>
+      </div>
+      <div id="profile-tab" class="tab-content">
+        <div class="tools">
+          <button type="button" id="profile-record">● record</button>
+          <span class="profile-hint" id="profile-hint"></span>
+        </div>
+        <div id="profile-container"></div>
       </div>
       <div id="query-tab" class="tab-content">
         <div id="query-container">
@@ -941,6 +1120,7 @@ class RamondaDevTools extends HTMLElement {
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
+    this.updateProfileWatch();
   }
 
   /**
@@ -998,6 +1178,7 @@ class RamondaDevTools extends HTMLElement {
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
+    this.updateProfileWatch();
   }
 
   /**
@@ -1128,6 +1309,17 @@ class RamondaDevTools extends HTMLElement {
       this.pin(crumb.dataset.crumb || undefined);
     });
 
+    root.querySelector("#profile-record")?.addEventListener("click", () => {
+      const bridge = this.profile;
+      if (!bridge) return;
+      // Recording starts from empty, which is what a profiler is for: you press it because you are
+      // about to do the thing you want to measure.
+      if (bridge.isRecording()) bridge.stop();
+      else bridge.start();
+      this.profileShape = "";
+      this.renderProfile();
+    });
+
     root.querySelector("#jv-close")?.addEventListener("click", () => this.closeFullView());
     root.querySelector("#jv-refresh")?.addEventListener("click", () => {
       if (this.fullId === undefined) return;
@@ -1204,7 +1396,9 @@ class RamondaDevTools extends HTMLElement {
         if (target) writeSession(TAB_KEY, target);
         this.componentsTabActive = target === "components";
         this.queryTabActive = target === "query";
+        this.profileTabActive = target === "profile";
         this.updateQueryWatch();
+        this.updateProfileWatch();
         this.updateWatchState();
       });
     });
@@ -1267,6 +1461,10 @@ class RamondaDevTools extends HTMLElement {
   private renderQueries() {
     const container = this.shadowRoot!.querySelector("#query-container");
     if (!container) return;
+
+    // Nothing is rebuilt under an open editor. The poll is twice a second and a cache event anywhere
+    // rebuilds this list, so without this the box would vanish mid-sentence.
+    if (container.querySelector(".edit-input")) return;
 
     const bridge = this.queries;
     if (!bridge) {
@@ -1345,6 +1543,104 @@ class RamondaDevTools extends HTMLElement {
     this.markFullView();
   }
 
+  /**
+   * The profiler tab: one row per commit, with the components that made it up.
+   *
+   * A list with numbers rather than a flamegraph, and that is a decision rather than a stopgap — what a
+   * Ramonda commit is made of is WHICH components rebuilt and how many times, and a flame chart of a
+   * flat drain is a picture of one bar. The bar per component here is its share of that commit, which
+   * is the question worth asking: not "is this slow" but "why did forty rows rebuild when one changed".
+   */
+  private renderProfile(): void {
+    const container = this.shadowRoot!.querySelector("#profile-container");
+    const button = this.shadowRoot!.querySelector("#profile-record") as HTMLElement | null;
+    const hint = this.shadowRoot!.querySelector("#profile-hint");
+    const bridge = this.profile;
+    if (!container || !button || !hint) return;
+
+    if (!bridge) {
+      container.innerHTML =
+        '<p class="p-empty">This build has no profiler. It arrives with a development build of @ramonda/core.</p>';
+      return;
+    }
+
+    const recording = bridge.isRecording();
+    button.classList.toggle("on", recording);
+    button.textContent = recording ? "■ stop" : "● record";
+
+    const commits = bridge.commits();
+    hint.textContent = recording
+      ? `recording · ${commits.length} commit${commits.length === 1 ? "" : "s"}`
+      : commits.length > 0
+        ? `${commits.length} commit${commits.length === 1 ? "" : "s"} · stopped`
+        : "";
+
+    if (commits.length === 0) {
+      container.innerHTML = recording
+        ? '<p class="p-empty">Recording. Interact with the app — every commit lands here.</p>'
+        : '<p class="p-empty">Press record, then use the app. A commit is one drain: everything a single state change rebuilt, including the effects and <code>@updated</code> bodies it scheduled — which is what the app actually waited for.</p>';
+      this.profileShape = "";
+      return;
+    }
+
+    // The list is keyed on the commits themselves, so a poll that finds nothing new writes no DOM.
+    const shape = commits.map((commit) => `${commit.index}:${commit.duration}`).join("|");
+    if (shape === this.profileShape) return;
+    this.profileShape = shape;
+
+    // Newest first: the commit you just caused is the one you are looking for.
+    container.innerHTML = [...commits]
+      .reverse()
+      .map((commit) => this.renderCommit(commit))
+      .join("");
+  }
+
+  private renderCommit(commit: CommitRecord): string {
+    const heaviest = commit.components[0]?.ms ?? 0;
+    const costs = commit.components
+      .map((cost) => {
+        const share = heaviest > 0 ? Math.max(2, Math.round((cost.ms / heaviest) * 100)) : 2;
+        const times = cost.builds > 1 ? ` ×${cost.builds}` : "";
+        return `<span class="p-name">${escapeHtml(cost.name)}${times}</span><span class="p-bar"><span style="width:${share}%"></span></span><span class="p-cost">${cost.ms.toFixed(
+          2,
+        )} ms</span>`;
+      })
+      .join("");
+
+    return `<div class="p-row" data-p-commit="${commit.index}">
+      <div class="p-head">
+        <span class="p-index">#${commit.index}</span>
+        <span class="p-ms">${commit.duration.toFixed(2)} ms</span>
+        <span class="p-builds">${commit.builds} build${commit.builds === 1 ? "" : "s"} · ${
+          commit.components.length
+        } component${commit.components.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="p-costs">${costs}</div>
+    </div>`;
+  }
+
+  /**
+   * Polls while the profile tab is open, for the same reason the query tab does: the panel PULLS. A
+   * commit does not notify anybody, and pushing would mean the profiler telling a panel nobody is
+   * looking at.
+   */
+  private updateProfileWatch(): void {
+    const shouldWatch = this.hasAttribute("open") && this.profileTabActive;
+
+    if (!shouldWatch) {
+      if (this.profileTimer !== undefined) {
+        clearInterval(this.profileTimer);
+        this.profileTimer = undefined;
+      }
+      return;
+    }
+
+    if (this.profileTimer !== undefined) return;
+    this.profileShape = "";
+    this.renderProfile();
+    this.profileTimer = setInterval(() => this.renderProfile(), 400);
+  }
+
   /** Writes only if the content differs, so an idle panel does not touch the DOM at all. */
   private write(container: Element, html: string): void {
     if (this.queryShape === html) return;
@@ -1404,6 +1700,7 @@ class RamondaDevTools extends HTMLElement {
         <div class="q-head">
           <span class="q-status" style="background:${colour}"></span>
           <code class="q-key">${escapeHtml(JSON.stringify(row.key))}</code>
+          ${this.queryEditButton(clientIndex, row)}
           ${this.fullViewButton(`q::${clientIndex}::${row.hash}`, row.data)}
           ${fetching ? '<span class="q-fetching">fetching…</span>' : ""}
           ${row.restored ? '<span class="q-badge">from server</span>' : ""}
@@ -1415,7 +1712,7 @@ class RamondaDevTools extends HTMLElement {
           updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
         </div>
         ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
-        <div class="q-data">${
+        <div class="q-data" data-q-data="${clientIndex}:${escapeHtml(row.hash)}">${
           row.data === undefined ? escapeHtml(row.dataPreview) : renderJsonHtml(row.data, INLINE)
         }</div>
         <div class="q-actions">
@@ -1455,6 +1752,14 @@ class RamondaDevTools extends HTMLElement {
       });
     }
 
+    for (const button of Array.from(container.querySelectorAll("[data-q-edit]"))) {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.beginQueryEdit(button as HTMLElement);
+      });
+    }
+
     for (const button of Array.from(container.querySelectorAll("[data-q-action]"))) {
       button.addEventListener("click", () => {
         const bridge = this.queries;
@@ -1473,6 +1778,296 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /**
+   * Turns one value into an editable box, in place.
+   *
+   * ## What you are editing
+   *
+   * The WHOLE field, as JSON — not a path inside it. That is the framework's own rule, not a
+   * shortcut: a signal holds a value rather than a proxy, so mutating inside an object notifies
+   * nobody. "Change `user.name`" has to become "assign a new `user`", and the panel is held to the
+   * same rule as application code.
+   *
+   * ## Why JSON and not a friendlier parse
+   *
+   * Because it is unambiguous. `42` is a number, `"42"` is a string, `null` is null — and a reader
+   * who types something that is none of those gets told, rather than silently storing the text
+   * `[object Object]`. Invalid input never reaches the app: the parse happens first, the box stays
+   * open, and the row says what was wrong.
+   *
+   * Escape cancels, Enter commits a single-line value, and ⌘/Ctrl+Enter commits a multi-line one —
+   * where plain Enter has to stay a newline.
+   */
+  private beginEdit(button: HTMLElement): void {
+    const rawId = button.dataset.editNode ?? "";
+    const key = button.dataset.editKey ?? "";
+    const vid = button.dataset.editVid ?? "";
+    const box = this.valueElements.get(vid);
+    const writer = this.writer;
+    if (!box || !writer) return;
+
+    this.openValueEditor(box, this.rawValues.get(vid), (parsed) => {
+      const result = writer(Number(rawId), key, parsed);
+      if (result === "not-state") {
+        return `${key} is not @state — props are owned by the parent and cannot be written here`;
+      }
+      if (result === "gone") return "that component is no longer in the tree";
+
+      this.toast(result === "unchanged" ? `${key} is already that value` : `wrote ${key} = ${toOneLine(parsed)}`);
+      // Watched for one refresh: some fields are owned by the machinery around them and are set again
+      // immediately, which is the difference between "it worked" and "it did not".
+      this.pendingWrite = result === "ok" ? { vid, key, text: safeStringify(parsed) } : undefined;
+      return undefined;
+    });
+  }
+
+  /**
+   * The pencil on a query row, when writing that entry back would be honest.
+   *
+   * Absent when the copy the panel holds was BOUNDED: sending back a value containing `"[… budget]"`
+   * where the rest of a list used to be would put those markers into the cache. Absent too when the
+   * query package next door is older than this panel and has no write side.
+   */
+  private queryEditButton(clientIndex: number, row: QueryRow): string {
+    if (row.data === undefined || row.truncated || !this.queries?.setData) return "";
+    const reason = "edit the cached data — this is what the page renders from";
+    return `<button type="button" class="edit-btn" data-q-edit="1" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
+      row.hash,
+    )}" title="${reason}">✎</button>`;
+  }
+
+  /**
+   * Edits a query's cached data — the one value in the panel whose change is immediately visible on
+   * the page, because the cache is what a query renders from.
+   */
+  private beginQueryEdit(button: HTMLElement): void {
+    const clientIndex = Number(button.dataset.qClient);
+    const hash = button.dataset.qHash ?? "";
+    const bridge = this.queries;
+    const row = bridge?.snapshot().clients[clientIndex]?.queries.find((candidate) => candidate.hash === hash);
+    if (!bridge?.setData || !row) return;
+
+    // Found by matching `dataset` in JS, never by a selector built from a hash: a hash is JSON and
+    // carries quotes, which is the bug that once threw on every poll.
+    const target = Array.from(this.shadowRoot!.querySelectorAll("#query-container [data-q-data]")).find(
+      (element) => (element as HTMLElement).dataset.qData === `${clientIndex}:${hash}`,
+    ) as HTMLElement | undefined;
+    if (!target) return;
+
+    this.openValueEditor(target, row.data, (parsed) => {
+      if (!bridge.setData?.(clientIndex, hash, parsed)) return "that entry is no longer in the cache";
+      // Said out loud, because it is the honest behaviour of a cache rather than a limit of the panel:
+      // the next fetch for this key wins.
+      this.toast(`wrote data for ${JSON.stringify(row.key)} — a refetch will replace it`);
+      return undefined;
+    });
+  }
+
+  /**
+   * The inline JSON editor, shared by a component's state and a query's data.
+   *
+   * `commit` returns a message to show in the row when it refuses, or `undefined` when it worked — so
+   * the two callers keep their own vocabulary ("not @state", "no longer in the cache") without the
+   * editor knowing anything about either.
+   */
+  private openValueEditor(box: HTMLElement, value: unknown, commit: (parsed: unknown) => string | undefined): void {
+    if (box.querySelector(".edit-input")) return;
+
+    const current = toPrettyText(value);
+    const multiline = current.includes("\n") || current.length > 60;
+    const field = document.createElement(multiline ? "textarea" : "input");
+    field.className = "edit-input";
+    field.value = current;
+    if (field instanceof HTMLTextAreaElement) field.rows = Math.min(12, current.split("\n").length + 1);
+
+    const note = document.createElement("div");
+    note.className = "edit-note";
+    note.textContent = multiline ? "⌘/Ctrl+Enter to apply · Esc to cancel" : "Enter to apply · Esc to cancel";
+
+    const previous = box.innerHTML;
+    box.innerHTML = "";
+    box.append(field, note);
+    field.focus();
+    field.select();
+
+    const cancel = () => {
+      box.innerHTML = previous;
+    };
+
+    const apply = () => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(field.value);
+      } catch {
+        note.textContent = "not valid JSON — a string needs quotes";
+        note.classList.add("bad");
+        return;
+      }
+
+      const refusal = commit(parsed);
+      if (refusal === undefined) {
+        // Not repainted here: the write wakes whoever was watching, and the ordinary refresh redraws
+        // this row with the value the app actually holds — the only value worth showing.
+        cancel();
+        return;
+      }
+
+      note.textContent = refusal;
+      note.classList.add("bad");
+    };
+
+    field.addEventListener("keydown", (raw: Event) => {
+      const event = raw as KeyboardEvent;
+      // Contained, so the panel's own Escape handling does not release the focused component while
+      // the reader only meant to abandon an edit.
+      event.stopPropagation();
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancel();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      if (multiline && !event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      apply();
+    });
+
+    field.addEventListener("blur", () => {
+      // Abandoned rather than applied: a value half-typed and clicked away from is not an intention.
+      if (box.contains(field)) cancel();
+    });
+  }
+
+  /**
+   * Opens a component's definition in the reader's editor.
+   *
+   * Through the DEV SERVER, not through a `vscode://` link: Vite serves `/__open-in-editor`, which
+   * hands the file to `launch-editor` on the machine running the server — so it works for whatever
+   * editor is actually open, needs no protocol handler registered, and needs no configuration here.
+   * A `vscode://` URL would also need the absolute path, which a browser does not have.
+   *
+   * When there is no such endpoint — a custom server, this repo's own SSR playground — the location
+   * goes to the clipboard instead, with a log row saying so. A button that silently does nothing is
+   * worse than one that hands you something to paste.
+   */
+  private async openInEditor(file: string, rawLine = "1", rawColumn = "1"): Promise<void> {
+    const line = rawLine;
+    const column = rawColumn;
+
+    /**
+     * Resolved through the module's own sourcemap first, and this is not a nicety.
+     *
+     * A stack reports the file the engine ran. Measured against Vite serving a real playground page,
+     * a class declared on source line 20 appears on served line 51 — esbuild lowers decorators and
+     * prepends a preamble. Opening thirty lines from the class is a button that looks broken.
+     */
+    const position = await resolveOriginal(file, Number(line), Number(column));
+
+    /**
+     * `file` is what an editor should open; `from` says what a relative `file` is relative to.
+     *
+     * A map's source for a bundled build is a `../../..` chain out of the bundle's directory on disk,
+     * and nothing in the browser can turn that into a path — resolving it here clamped it at the web
+     * root and produced `packages/router/src/Link.tsx`, which the server looked for under the app and
+     * did not find. So both travel, and the server resolves them together. Vite's own endpoint ignores
+     * the extra parameter and gets what it always got.
+     */
+    const target = `${toServerPath(position.source ?? file)}:${position.line}:${position.column}`;
+    const query = position.from
+      ? `file=${encodeURIComponent(target)}&from=${encodeURIComponent(toServerPath(position.from))}`
+      : `file=${encodeURIComponent(target)}`;
+
+    try {
+      const response = await fetch(`/__open-in-editor?${query}`);
+      if (response.ok) {
+        /**
+         * A toast on SUCCESS too, and it is not decoration.
+         *
+         * An editor that is asked to open a file does not necessarily come to the front — that is the
+         * window manager's decision, not ours. Without this, "the editor did not raise" and "the
+         * button is broken" look identical, which is exactly the report I got. Now the panel always
+         * says what it asked for, and where.
+         */
+        this.toast(`Asked your editor to open ${target}`);
+        return;
+      }
+      /**
+       * 404 means there is no such ENDPOINT — a static server, a hand-written one — and that is the
+       * clipboard's case, handled below. Any other status comes from an endpoint that exists and
+       * refused, so its own words are the useful thing to show: it knows whether the file was there
+       * and whether an editor could be launched.
+       */
+      if (response.status !== 404) {
+        const reason = (await response.text()).trim();
+        this.toast(reason ? `Editor endpoint said: ${reason}` : `Editor endpoint answered ${response.status}`);
+        return;
+      }
+      throw new Error("no endpoint");
+    } catch {
+      /**
+       * Reported where the click happened, not only in the log.
+       *
+       * The first version wrote a log row and nothing else — so on a server with no editor endpoint
+       * (this repo's own SSR playground) the button looked dead while it was in fact copying the
+       * path to the clipboard in a tab the reader was not looking at. A control must always say what
+       * it did.
+       */
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(target);
+        copied = true;
+      } catch {
+        /* no clipboard either; the toast below is the whole answer */
+      }
+      this.toast(
+        copied
+          ? `No editor endpoint on this server — copied ${target}`
+          : `No editor endpoint on this server. It is at ${target}`,
+      );
+    }
+  }
+
+  /**
+   * A short message over the panel, for something that happened because of a click.
+   *
+   * The log is for what the FRAMEWORK reports; this is for what the panel itself did, and it belongs
+   * next to the button that did it. One at a time, replaced rather than queued: the newest outcome is
+   * the one being waited for.
+   */
+  private toast(message: string): void {
+    const host = this.shadowRoot!.querySelector("#toast") as HTMLElement | null;
+    if (!host) return;
+
+    host.textContent = message;
+    host.classList.add("on");
+    if (this.toastTimer !== undefined) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => host.classList.remove("on"), 6000);
+  }
+
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** The last value written from the panel, watched for one refresh — see the commit path above. */
+  private pendingWrite: { vid: string; key: string; text: string } | undefined;
+
+  /**
+   * Notices that the app replaced what was just written from the panel.
+   *
+   * This is the answer to "I edited it and nothing changed": some fields are owned by the machinery
+   * around them — a query's `version` is an invalidation counter, its `snapshot` is the hydration
+   * transport — and writing one is honoured and then immediately overwritten. Saying so is the
+   * difference between a panel that looks broken and a panel that explains the framework.
+   */
+  private checkPendingWrite(values: Map<string, string>): void {
+    const pending = this.pendingWrite;
+    if (!pending) return;
+    this.pendingWrite = undefined;
+
+    const current = values.get(pending.vid);
+    if (current === undefined || current === pending.text) return;
+    this.toast(`${pending.key} was written, and the app has since set it to ${current.slice(0, 60)}`);
+  }
+
+  /**
    * Recursively walks the inspected tree, building HTML + refresh metadata.
    *
    * `indexOffset` exists for the pinned view: rendering one node means passing a single-element
@@ -1488,7 +2083,9 @@ class RamondaDevTools extends HTMLElement {
       const path = `${prefix}/${indexOffset + i}:${n.kind}:${n.name}`;
       if (n.node) acc.nodes.set(path, n.node);
 
-      const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc);
+      // State is the only block that can be written: props are owned by whoever rendered this
+      // component and assigning to one throws in every build.
+      const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc, n.id);
       const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
       // A hook's inputs are its PROPS. They were called options once, the framework renamed
       // them, and this label kept saying the old word to everyone inspecting a hook.
@@ -1505,6 +2102,20 @@ class RamondaDevTools extends HTMLElement {
       // row you are already reading — `preventDefault` in the handler stops it toggling the
       // disclosure it lives in.
       const pin = `<button type="button" class="pin-btn" data-pin="${escapeHtml(path)}" title="focus this ${n.kind}">◎</button>`;
+      /**
+       * The last manual step in the whole flow: you found it, focused it, and then alt-tabbed and
+       * searched for the class by name. This closes it.
+       *
+       * Only when core could say where the class is — a location it could not read is not a button
+       * that does nothing.
+       */
+      const open = n.source
+        ? `<button type="button" class="src-btn" data-src-file="${escapeHtml(n.source.file)}" data-src-line="${
+            n.source.line
+          }" data-src-column="${n.source.column}" title="open the definition in your editor (served at ${escapeHtml(
+            shortFile(n.source),
+          )})">&lt;/&gt;</button>`
+        : "";
       const label =
         n.kind === "hook"
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
@@ -1522,13 +2133,13 @@ class RamondaDevTools extends HTMLElement {
         ? `
         <div class="component-node">
           <details${openAttr}>
-            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</summary>
+            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}${open}</summary>
             <div class="node-body">${body}</div>
           </details>
         </div>`
         : `
         <div class="component-node leaf">
-          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}</div>
+          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}${open}</div>
         </div>`;
     }
     return html;
@@ -1545,6 +2156,8 @@ class RamondaDevTools extends HTMLElement {
     path: string,
     slot: string,
     acc: WalkAcc,
+    /** Present only for a writable block — see `beginEdit`. */
+    nodeId?: number,
   ): string {
     const keys = obj ? Object.keys(obj) : [];
     acc.sig.push(`${path}#${slot}[${keys.join(",")}]`);
@@ -1558,10 +2171,54 @@ class RamondaDevTools extends HTMLElement {
         // cheaper than diffing two trees, and the reader never sees it.
         acc.values.set(vid, safeStringify(value));
         acc.raw.set(vid, value);
-        return `<div class="state-row">
-          <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${this.fullViewButton(vid, value)}</div>
-          <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
-        </div>`;
+        /**
+         * A pencil only where a write would actually land, and only for a value that survives a
+         * round trip through JSON. A function or a DOM node in state cannot be typed back in, and a
+         * control that pretends otherwise is worse than none.
+         */
+        const editable = nodeId !== undefined && this.writer !== undefined && isJsonLike(value);
+        /**
+         * Three attributes, not one packed string.
+         *
+         * It was `${nodeId}|${key}|${vid}` — and a value id contains the node's PATH, which marks a
+         * hooks branch with `|h`. So `split("|")` on `1|routeState|/0:component:App|h/0:hook:Router…`
+         * handed back a truncated id, the lookup missed, and the pencil did nothing on precisely the
+         * rows that have hooks. The unit tests could not see it: their trees put state on components
+         * whose paths have no `|` in them. Found by driving the real bundle.
+         *
+         * The lesson is the one this panel keeps relearning — a query hash in a selector, a prop name
+         * in a selector, now a path in a delimiter: never build a delimited string out of data that
+         * can contain the delimiter.
+         */
+        const edit = editable
+          ? `<button type="button" class="edit-btn" data-edit-node="${nodeId}" data-edit-key="${escapeHtml(
+              k,
+            )}" data-edit-vid="${escapeHtml(vid)}" title="edit ${escapeHtml(k)}">✎</button>`
+          : "";
+
+        /**
+         * A scalar sits on the SAME line as its key; only a container gets a block of its own.
+         *
+         * Every value used to be a heading with a body underneath, which was reasonable while every
+         * value was a tree and looked wrong the moment most of them were `3` and `"ada"` — two lines
+         * each, and a state block of six fields reading as twelve rows of mostly nothing.
+         *
+         * The `.sv` element stays in both shapes, because it is what the patch path looks up by id and
+         * what an editor replaces — only where it sits changes.
+         */
+        const inline = rendersAsLeaf(value);
+        const buttons = `${edit}${this.fullViewButton(vid, value)}`;
+
+        return inline
+          ? `<div class="state-row one-line">
+              <span class="sk">${escapeHtml(k)}:</span>
+              <span class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</span>
+              ${buttons}
+            </div>`
+          : `<div class="state-row">
+              <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${buttons}</div>
+              <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
+            </div>`;
       })
       .join("");
     const titleHtml = title ? `<div class="state-title">${title}</div>` : "";
@@ -1637,6 +2294,7 @@ class RamondaDevTools extends HTMLElement {
     }
 
     container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
+    this.checkPendingWrite(acc.values);
     this.lastValues = acc.values;
     this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
@@ -2005,6 +2663,7 @@ class RamondaDevTools extends HTMLElement {
       }
     }
 
+    this.checkPendingWrite(acc.values);
     this.lastValues = acc.values;
     this.rawValues = acc.raw;
     this.nodeMap = acc.nodes;
@@ -2030,6 +2689,25 @@ class RamondaDevTools extends HTMLElement {
       const path = summary.getAttribute("data-path")!;
       summary.addEventListener("mouseenter", () => this.highlight(path));
       summary.addEventListener("mouseleave", () => this.clearHighlight());
+    });
+
+    container.querySelectorAll("[data-edit-node]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.beginEdit(button as HTMLElement);
+      });
+    });
+
+    container.querySelectorAll("[data-src-file]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        // Inside a `<summary>`, so the disclosure's default action has to be stopped — the same
+        // reason the focus button does it.
+        event.preventDefault();
+        event.stopPropagation();
+        const element = button as HTMLElement;
+        void this.openInEditor(element.dataset.srcFile ?? "", element.dataset.srcLine, element.dataset.srcColumn);
+      });
     });
 
     container.querySelectorAll("[data-pin]").forEach((button) => {

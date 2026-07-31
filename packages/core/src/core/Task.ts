@@ -15,6 +15,7 @@ import {
   queueUpdated,
 } from "./commit";
 import { reportWriteAfterUnmount, reportOrphanedUpdate, isRunawayUpdate, startDrain } from "../debug/updateRules";
+import { beginCommit, endCommit, isRecording, recordBuild } from "../debug/profiler";
 
 const taskQueue: BaseComponent<any>[] = [];
 
@@ -202,6 +203,9 @@ function abandonQueue(): void {
 
 function processTask() {
   if (__DEV__) startDrain();
+  // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
+  // the diff, the DOM and the post-commit flush, which is the part that hurts.
+  if (__DEV__) beginCommit();
 
   let builds = 0;
   // One drain covers builds AND the post-commit work they queue, alternating
@@ -225,6 +229,7 @@ function processTask() {
   } while (taskQueue.length > 0 || hasPendingUpdated());
 
   if (__DEV__) {
+    endCommit();
     // Cheap, gated ping — no-op unless the devtools is actively watching.
     notifyComponentUpdate();
   }
@@ -260,7 +265,19 @@ function processTask() {
         }
 
         try {
-          updateBuild(component);
+          /**
+           * Timed only while the profiler is recording, and the bracket is the one the catch already
+           * needs — so when it is off this costs a boolean test, and when it is on it costs the two
+           * timestamps it reports.
+           */
+          if (__DEV__ && isRecording()) {
+            const name = component.constructor.name;
+            const started = performance.now();
+            updateBuild(component);
+            recordBuild(name, performance.now() - started);
+          } else {
+            updateBuild(component);
+          }
         } catch (e) {
           errorHandler(e, component);
         }

@@ -72,6 +72,86 @@ const template = await readFile(resolve(CLIENT, "index.html"), "utf-8");
 const server = createServer(async (req, res) => {
   const url = req.url ?? "/";
 
+  /**
+   * The endpoint devtools' `</>` button calls, which Vite provides and a hand-written server does
+   * not — so this app had a button that could only ever copy a path to the clipboard.
+   *
+   * `launch-editor` is what Vite uses underneath: it finds the editor already running and opens the
+   * file at the line. The path arrives project-relative (`src/ProductsPage.tsx:42:8`), which is what
+   * the panel sends and what this server resolves against its own root.
+   */
+  if (url.startsWith("/__open-in-editor")) {
+    const target = new URL(url, `http://localhost:${PORT}`).searchParams.get("file");
+    if (!target) {
+      res.statusCode = 400;
+      res.end("no file");
+      return;
+    }
+
+    // Written out rather than destructured with a `?? [, target]` fallback: that fallback was a sparse
+    // array, which oxlint refuses — and rightly, since a hole in an array literal is almost always a typo.
+    const at = /^(.*?):(\d+)?:?(\d+)?$/.exec(target);
+    const relative = at?.[1] ?? target;
+    const line = at?.[2] ?? "1";
+    const column = at?.[3] ?? "1";
+
+    /**
+     * `from` is the module the position came out of, and it is what a RELATIVE source is relative to.
+     *
+     * A bundle's sourcemap names its inputs as a `../../..` chain out of the bundle's own directory on
+     * disk (`dist/client/assets/`), so `packages/router/src/Link.tsx` resolved against the app root is
+     * a file that does not exist — which is exactly the 422 that showed up in the log. Resolving it
+     * against the served module's real location is the arithmetic the map intended, and only this side
+     * can do it: it is the one that knows a URL of `/assets/client.js` is a file under `dist/client`.
+     */
+    const from = new URL(url, `http://localhost:${PORT}`).searchParams.get("from");
+    const base = from ? dirname(resolve(CLIENT, `.${from.startsWith("/") ? from : `/${from}`}`)) : here;
+    const file = resolve(base, relative ?? target);
+
+    /**
+     * Checked here, because `launch-editor` returns SILENTLY when the file does not exist — no
+     * callback, no log, nothing. That silence plus a 200 is how this endpoint managed to report
+     * success while doing absolutely nothing, which is the one failure mode a devtools button must
+     * not have.
+     */
+    if (!existsSync(file)) {
+      // 422, not 404: to the panel a 404 means "this server has no such endpoint" and sends it to the
+      // clipboard fallback. This endpoint exists and is refusing a specific path, which is a different
+      // thing to be told.
+      console.warn(`[open-in-editor] no such file: ${file}`);
+      res.statusCode = 422;
+      res.end(`no such file: ${relative}`);
+      return;
+    }
+
+    try {
+      const { default: launch } = await import("launch-editor");
+      // The error callback is the only way to hear about a spawn that failed; without it the failure
+      // is a line on the server's console and a 200 to the browser.
+      let failure;
+      launch(`${file}:${line}:${column}`, undefined, (_file, message) => {
+        failure = message ?? "no editor found — set $EDITOR, or open the project in one";
+      });
+
+      // `launch` spawns synchronously enough that the callback has run for the cases it can detect.
+      if (failure) {
+        console.warn(`[open-in-editor] ${failure}`);
+        res.statusCode = 500;
+        res.end(failure);
+        return;
+      }
+
+      console.log(`[open-in-editor] ${relative}:${line}:${column}`);
+      res.statusCode = 200;
+      res.end("ok");
+    } catch (error) {
+      console.error("[open-in-editor]", error);
+      res.statusCode = 500;
+      res.end(String(error instanceof Error ? error.message : error));
+    }
+    return;
+  }
+
   const asset = resolve(CLIENT, "." + url);
   if (url !== "/" && asset.startsWith(CLIENT) && existsSync(asset)) {
     res.setHeader("Content-Type", MIME[extname(asset)] ?? "application/octet-stream");

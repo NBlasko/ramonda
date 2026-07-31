@@ -422,4 +422,72 @@ describe("the devtools bridge", () => {
       unmount();
     }
   });
+
+  /**
+   * The panel's write side, and the one place where editing a value in devtools shows up on the page:
+   * the cache IS what a query renders from.
+   */
+  test("setData from the panel reaches whoever is watching", async () => {
+    const { container, unmount } = mount(async () => ({ name: "Ada" }));
+
+    try {
+      await settle();
+      expect(container.querySelector("#out")!.textContent).toBe("Ada");
+
+      const row = bridge().snapshot().clients[0]!.queries[0]!;
+      await act(async () => {
+        expect(bridge().setData(0, row.hash, { name: "Grace" })).toBe(true);
+      });
+
+      expect(container.querySelector("#out")!.textContent).toBe("Grace");
+      // Through `setData`, so the entry is a normal successful entry afterwards.
+      const after = bridge().snapshot().clients[0]!.queries[0]!;
+      expect(after.status).toBe("success");
+      expect(after.updatedAt).toBeGreaterThanOrEqual(row.updatedAt);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("setData says so when the entry is gone", async () => {
+    const { unmount } = mount(async () => ({ name: "Ada" }));
+
+    try {
+      await settle();
+      expect(bridge().setData(0, "nope", { name: "x" })).toBe(false);
+      expect(bridge().setData(99, "nope", { name: "x" })).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  /**
+   * The flag the panel uses to decide whether the data may be edited at all. A bounded copy carries
+   * marker strings where values were dropped, and writing one back would put them into the cache.
+   */
+  test("reports whether the copy it sent is the whole value", async () => {
+    const huge = { rows: Array.from({ length: 30_000 }, (_, i) => ({ i })) };
+
+    class Big extends Component {
+      private provider = this.use(QueryClientProvider);
+      user = this.use(Query, () => ({ key: ["big"], fetch: async () => huge }));
+      render() {
+        void this.provider;
+        return <span>{this.user.status}</span>;
+      }
+    }
+
+    const small = mount(async () => ({ name: "Ada" }));
+    const big = render(<Big />);
+
+    try {
+      await settle();
+      const rows = bridge().snapshot().clients;
+      expect(rows[0]!.queries[0]!.truncated).toBe(false);
+      expect(rows[1]!.queries[0]!.truncated).toBe(true);
+    } finally {
+      small.unmount();
+      big.unmount();
+    }
+  });
 });

@@ -3,6 +3,7 @@ import type { BaseComponent, ComponentProps, RamondaNode } from "../types/vdom";
 import type { BaseHook, HookProps, PropsFactory } from "../types/HookTypes";
 
 import { useCommon } from "../helpers/common";
+import { recordDefinition } from "../debug/sourceLocation";
 import {
   COMPONENT_RUNTIME,
   type ComponentRuntime,
@@ -81,6 +82,10 @@ export abstract class Component<P extends ComponentProps = DefaultProps> impleme
   public [GLOBAL_RUNTIME]: Runtime;
   public [COMPONENT_RUNTIME]: ComponentRuntime;
   constructor(props: P, context: Context) {
+    // First, and before anything else on the stack: the frame for `new <Subclass>` is what says
+    // where this component is defined, and it is only there while the constructor chain is running.
+    if (__DEV__) recordDefinition(this);
+
     this.props = createPropsProxy(this);
     bindInstanceMethods(this, Component.prototype, lifecycles);
     this[GLOBAL_RUNTIME] = createRuntime(this, context);

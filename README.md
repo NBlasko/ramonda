@@ -1,10 +1,15 @@
 # Ramonda 🌸
 
-A TypeScript UI framework built on **class components, decorators, and signals**,
-with a region-aware virtual DOM and first-class server rendering.
+A UI framework. **Explicit. Predictable. Readable.**
 
-> **Status: early.** The API is taking shape and versions are `0.0.x`. It is real
-> and tested, but not yet stable — expect changes.
+> **Status: `0.x` — still being explored.** The API changes freely between
+> releases while the design is being worked out. It is real and tested, and it is
+> on npm so it can be installed and tried, but it is not asking to be adopted yet.
+>
+> **`1.0` is the line.** From there the interfaces hold: backward compatibility
+> becomes a rule rather than a courtesy, and the work turns to performance and
+> bugs. The point of these `0.x` months is to arrive at an API worth keeping,
+> because the way it works then is the way it goes on working.
 
 📖 **Documentation: [ramonda.pages.dev](https://ramonda.pages.dev)**
 
@@ -35,7 +40,7 @@ A few ideas set Ramonda apart:
   fragment ambiguity, and the parent–child rules the browser enforces are the
   rules you write against.
 - **Decorators, not conventions.** `@state`, `@compute`, `@mount`, `@destroy`,
-  `@effect`, `@interval`, `@onElement`… behavior is declared on ordinary methods
+  `@updated`, `@interval`, `@onElement`… behavior is declared on ordinary methods
   and fields.
 - **Signals under the hood.** Reactivity tracks reads, so a `@compute`
   recomputes only when something it actually read changed — no dependency arrays.

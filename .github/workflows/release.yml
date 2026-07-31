@@ -43,10 +43,12 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup
 
-      # Writes the auth .npmrc that `changeset publish` reads.
+      # Writes the auth .npmrc that `changeset publish` reads. The version comes
+      # from `.nvmrc`, same as the setup action above — two pins would drift, and
+      # this is the step that publishes.
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
 
       - name: Create Version PR or publish

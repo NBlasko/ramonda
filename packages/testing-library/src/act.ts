@@ -43,9 +43,16 @@ const MICROTASK_TURNS = 10;
  *
  * Its value is passed through, so `const user = await act(() => loadUser())`
  * works.
+ *
+ * **The overload order is load-bearing.** The promise signature has to come first, because a
+ * `() => void` parameter accepts a function returning ANYTHING — that is what `void` means in a return
+ * position — so with the sync overload first, `act(async () => {})` matched it and typed as `void`.
+ * Everything still worked at runtime (the implementation looks at what came back, not at what was
+ * declared), and the only visible symptom was an editor telling the truth on every line of every async
+ * test: *"'await' has no effect on the type of this expression."* Which is how Nikola found it.
  */
-export function act(callback?: () => void): void;
 export function act<T>(callback: () => PromiseLike<T>): Promise<T>;
+export function act(callback?: () => void): void;
 export function act<T>(callback?: () => T | PromiseLike<T>): void | Promise<T> {
   const result = callback?.();
 

@@ -25,6 +25,13 @@ jobs:
       # checks without writing — it fails if anything is not biome-formatted.
       - name: Format check (biome)
         run: pnpm format:check
+      # Lints the WORKFLOWS: a job that runs a package script turbo is meant to
+      # orchestrate skips that task's `dependsOn`. That is not theoretical — the
+      # docs deploy did exactly this and shipped nothing but three unresolved
+      # imports, while every other check stayed green. Its own self-test runs
+      # first, since a check nobody has seen fail proves nothing.
+      - name: Check workflows
+        run: SELFTEST=1 node scripts/check-workflows.mjs && node scripts/check-workflows.mjs
 
   typecheck:
     name: Type-check

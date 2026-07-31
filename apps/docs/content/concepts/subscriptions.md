@@ -1,7 +1,7 @@
 ---
 title: Subscriptions
 description: Reach outside the component — a store, a socket, an observer — and clean up when it goes.
-section: Lifecycle and effects
+section: Lifecycle and subscriptions
 order: 31
 ---
 
@@ -76,15 +76,22 @@ it; nothing needs to run and nothing needs to be cleaned up.
 
 ## There is no `@effect`
 
-There was, and it was removed. It could be any of the four above depending on what its
-body happened to read, and that was the problem: two of them writing what the other read
-re-triggered each other, which is the one way to hang a page that no diagnostic can
-explain in a sentence. Naming what a piece of code is for makes the framework able to say
-something useful when it goes wrong — and makes the ordering knowable instead of emergent.
+Nothing here corresponds to `useEffect`, and that is the design. An effect is defined by its
+dependencies rather than by its purpose, so one decorator would have to be all four of the
+things above — and which one it was would depend on what its body happened to read that
+render. Two of them writing what the other reads then re-trigger each other, which is the one
+way to hang a page that no diagnostic can explain in a sentence.
 
-If you are moving code across: a subscription becomes a decorator like the one above,
-a post-render read becomes `@updated`, a prop reaction becomes `@watchProp`, and a derived
-value becomes `@compute`.
+Naming the purpose instead means the framework knows when to run each thing, in what order,
+and what to say when it goes wrong. Reaching for an effect? The name is on the left:
+
+| what you want | here |
+| --- | --- |
+| subscribe to something outside, clean up on unmount | [your own decorator](/hooks/own-decorators) |
+| read or correct the DOM after it changed | [`@updated`](/concepts/lifecycle) |
+| react to a prop changing | [`@watchProp`](/concepts/props) |
+| derive a value from other values | [`@compute`](/concepts/compute) |
+| fetch data for a key | [`@ramonda/query`](/query) |
 
 ## Next
 

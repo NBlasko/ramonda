@@ -9,6 +9,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check-types": "turbo run check-types",
+    "check": "node scripts/preflight-node.mjs && node scripts/check-workflows.mjs && pnpm lint && pnpm format:check && turbo run check-types test build",
+    "check:workflows": "node scripts/check-workflows.mjs",
     "changeset": "changeset",
     "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish"
   },
@@ -23,7 +25,7 @@
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "dependencies": {
     "@ramonda/shared": "workspace:^"

@@ -12,11 +12,20 @@ import type { ScaffoldOptions } from "../index";
  * happened.
  */
 let scaffold: (options: ScaffoldOptions) => void;
+let nodeIsOldEnough: (version: string) => boolean;
+let MIN_NODE: number;
 
 beforeAll(async () => {
   const dist = join(here, "..", "..", "dist", "index.js");
   if (!existsSync(dist)) throw new Error("run `npm run build` first — these tests check the built CLI");
-  scaffold = ((await import(dist)) as { scaffold: typeof scaffold }).scaffold;
+  const built = (await import(dist)) as {
+    scaffold: typeof scaffold;
+    nodeIsOldEnough: typeof nodeIsOldEnough;
+    MIN_NODE: number;
+  };
+  scaffold = built.scaffold;
+  nodeIsOldEnough = built.nodeIsOldEnough;
+  MIN_NODE = built.MIN_NODE;
 });
 
 /**
@@ -205,3 +214,35 @@ describe("the generated project declares what its own code needs", () => {
  * own directory). That check belongs to the end-to-end pass described in
  * `.claude/skills/update-dependencies` — scaffold, install, dev, test, against the registry.
  */
+
+/**
+ * The Node floor, which is a REFUSAL rather than a warning.
+ *
+ * `engines` in package.json is advisory — npm prints a line and `npm create` proceeds — so the number
+ * there cannot be the mechanism. The mechanism is a check at the top of `main`, before anything is
+ * written, because a project scaffolded on a Node whose toolchain cannot build it is worse than no
+ * project: the failure arrives later, somewhere else, and looks like Ramonda's fault.
+ *
+ * Tested through the exported predicate rather than by spawning the CLI per version. That the CLI
+ * actually refuses was verified by running the built entry with `process.versions.node` patched to
+ * 22.9.0: it printed the message, exited 1, and wrote no files.
+ */
+describe("the Node floor", () => {
+  test("accepts the pinned version and rejects anything older", () => {
+    expect(MIN_NODE).toBe(24);
+    expect(nodeIsOldEnough("24.0.0")).toBe(true);
+    expect(nodeIsOldEnough("24.15.0")).toBe(true);
+    expect(nodeIsOldEnough("28.1.0")).toBe(true);
+
+    expect(nodeIsOldEnough("23.11.0")).toBe(false);
+    expect(nodeIsOldEnough("22.9.0")).toBe(false);
+    expect(nodeIsOldEnough("18.20.4")).toBe(false);
+  });
+
+  test("agrees with the engines field, so the advisory and the refusal cannot disagree", () => {
+    const pkg = JSON.parse(readFileSync(join(here, "..", "..", "package.json"), "utf8")) as {
+      engines?: { node?: string };
+    };
+    expect(pkg.engines?.node).toBe(`>=${MIN_NODE}`);
+  });
+});

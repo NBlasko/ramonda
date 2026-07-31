@@ -11,7 +11,10 @@ import "../index";
  */
 
 interface Node {
+  /** Core's handle for the node, which a write is addressed to. */
+  id: number;
   name: string;
+  source?: { file: string; line: number; column: number };
   kind: "component" | "hook";
   state: Record<string, unknown>;
   props?: Record<string, unknown>;
@@ -22,6 +25,7 @@ interface Node {
 }
 
 const node = (name: string, kind: "component" | "hook", extra: Partial<Node> = {}): Node => ({
+  id: 0,
   name,
   kind,
   state: {},
@@ -29,6 +33,22 @@ const node = (name: string, kind: "component" | "hook", extra: Partial<Node> = {
   children: [],
   ...extra,
 });
+
+/**
+ * Numbers a tree the way core does — a node, then its hooks, then its children — because a handle is
+ * an index into the instances ONE scan saw.
+ *
+ * Done on every read rather than once when the tree is built: core renumbers from zero on each scan,
+ * and a test whose ids drifted upward with every re-render would be testing something no app does.
+ */
+function assignIds(nodes: Node[], counter = { next: 0 }): Node[] {
+  for (const item of nodes) {
+    item.id = counter.next++;
+    assignIds(item.hooks, counter);
+    assignIds(item.children, counter);
+  }
+  return nodes;
+}
 
 /** App › ProductsPage (+ a Query hook) › ProductDetail — the playground's shape, trimmed. */
 function tree(withDetail = true): Node[] {
@@ -52,7 +72,7 @@ type Panel = HTMLElement & { shadowRoot: ShadowRoot };
  */
 function reload(inspect: () => Node[] = () => tree()): Panel {
   document.body.innerHTML = "";
-  (window as unknown as { __RAMONDA_INSPECT__: unknown }).__RAMONDA_INSPECT__ = inspect;
+  (window as unknown as { __RAMONDA_INSPECT__: unknown }).__RAMONDA_INSPECT__ = () => assignIds(inspect());
 
   const panel = document.createElement("ramonda-devtools") as Panel;
   document.body.append(panel);
@@ -1330,5 +1350,670 @@ describe("the stacking order inside the panel", () => {
 
     expect(head).toBeGreaterThan(handle);
     expect(modal).toBeGreaterThan(head);
+  });
+});
+
+describe("opening a component in the editor", () => {
+  const withSource = () =>
+    mount(() => [
+      node("App", "component", {
+        source: { file: "http://localhost:3000/src/App.tsx?t=1712345", line: 18, column: 1 },
+        children: [node("Bare", "component", { state: { a: 1 } })],
+      }),
+    ]);
+
+  const buttons = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-src-file]"));
+
+  it("asks the dev server to open the file, root-relative and without the cache query", async () => {
+    const fetchSpy = vi.fn(async (_url: string) => new Response("", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      const panel = withSource();
+      // Only the node core could locate gets a button — one that does nothing is worse than none.
+      expect(buttons(panel)).toHaveLength(1);
+
+      buttons(panel)[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      // A task, not a microtask: the click resolves the position through the module's sourcemap
+      // before it asks the editor to open anything, and that is two awaited fetches deep.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Two fetches, in this order, and both are the point: the MODULE first, to resolve the stack
+      // position through its inline sourcemap (a served module's lines are not the source's), then
+      // the editor endpoint. This module answers without a map, so the position stands as captured.
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(fetchSpy.mock.calls[0]![0]).toBe("http://localhost:3000/src/App.tsx?t=1712345");
+
+      // `src/App.tsx:18:1` — no origin, no `?t=`, and no leading slash, because Vite resolves what
+      // it is given against the project root and a leading slash would make it absolute.
+      expect(decodeURIComponent(fetchSpy.mock.calls[1]![0])).toBe("/__open-in-editor?file=src/App.tsx:18:1");
+
+      // And it says so, because an editor that is asked to open a file does not necessarily come to
+      // the front — without this, "the window did not raise" and "the button is broken" look the same.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(panel.shadowRoot.querySelector("#toast")!.textContent).toContain("Asked your editor to open");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  /** A custom server has no such endpoint. The location must still reach the reader. */
+  it("falls back to the clipboard, and says so, when there is no endpoint", async () => {
+    vi.stubGlobal("fetch", async () => new Response("", { status: 404 }));
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    try {
+      const panel = withSource();
+      buttons(panel)[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(writeText).toHaveBeenCalledWith("src/App.tsx:18:1");
+      // A toast, not a log row: the first version reported this in the LOGS tab, so on a server with
+      // no endpoint the button looked dead while it was quietly copying the path.
+      const toast = panel.shadowRoot.querySelector("#toast")!;
+      expect(toast.classList.contains("on")).toBe(true);
+      expect(toast.textContent).toContain("copied src/App.tsx:18:1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  /**
+   * The failure that started this: the endpoint answered 200 while doing nothing, because
+   * `launch-editor` returns silently for a file that is not there. The panel now repeats whatever the
+   * server said, so a path that cannot be resolved is a sentence on screen rather than silence.
+   */
+  it("repeats the server's own reason when it refuses", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url.startsWith("/__open-in-editor")
+        ? // 422, because 404 is how the panel recognises a server with no endpoint at all.
+          new Response("no such file: assets/client.js", { status: 422 })
+        : new Response("", { status: 200 }),
+    );
+
+    try {
+      const panel = withSource();
+      buttons(panel)[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const toast = panel.shadowRoot.querySelector("#toast")!;
+      expect(toast.classList.contains("on")).toBe(true);
+      expect(toast.textContent).toContain("no such file: assets/client.js");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves an absolute filesystem path alone", () => {
+    const panel = mount(() => [
+      node("Server", "component", { source: { file: "/home/me/app/src/App.tsx", line: 4, column: 2 } }),
+    ]);
+
+    const button = buttons(panel)[0] as HTMLElement;
+    // Three attributes rather than one packed string: a path can contain whatever a filesystem
+    // allows, and a delimiter built out of data is the bug this panel keeps rediscovering.
+    expect(button.dataset.srcFile).toBe("/home/me/app/src/App.tsx");
+    expect(button.dataset.srcLine).toBe("4");
+    expect(button.dataset.srcColumn).toBe("2");
+    expect((buttons(panel)[0] as HTMLElement).title).toContain("App.tsx:4");
+  });
+
+  it("does not toggle the row it lives in", () => {
+    const panel = withSource();
+    const details = panel.shadowRoot.querySelector("details") as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+
+    vi.stubGlobal("fetch", async () => new Response("", { status: 200 }));
+    try {
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      buttons(panel)[0].dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("editing a state value", () => {
+  const writeSpy = () => {
+    const write = vi.fn(() => "ok" as const);
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = write;
+    return write;
+  };
+
+  const withState = () =>
+    mount(() => [
+      node("App", "component", {
+        state: { count: 3, user: { name: "Ada" }, onPick: () => 1 },
+        props: { label: "x" },
+      }),
+    ]);
+
+  const pencils = (panel: Panel) => Array.from(panel.shadowRoot.querySelectorAll("[data-edit-node]")) as HTMLElement[];
+  const editorIn = (panel: Panel) => panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement | null;
+  const note = (panel: Panel) => panel.shadowRoot.querySelector(".edit-note")!;
+
+  const openEditor = (panel: Panel, key: string) => {
+    const pencil = pencils(panel).find((p) => p.dataset.editKey === key);
+    if (!pencil) throw new Error(`no pencil for ${key}`);
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  };
+
+  const press = (field: HTMLElement, key: string, modifiers: Partial<KeyboardEventInit> = {}) =>
+    field.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers }));
+
+  /**
+   * Props are owned by whoever rendered the component and assigning to one throws in every build, so
+   * the panel must not offer a box for them. A function in state has no JSON to type back either.
+   */
+  it("offers a pencil for state that round-trips, and for nothing else", () => {
+    writeSpy();
+    const panel = withState();
+
+    expect(pencils(panel).map((p) => p.dataset.editKey)).toEqual(["count", "user"]);
+  });
+
+  it("offers none at all when core exposes no write side", () => {
+    (window as unknown as { __RAMONDA_WRITE__?: unknown }).__RAMONDA_WRITE__ = undefined;
+
+    expect(pencils(withState())).toEqual([]);
+  });
+
+  it("commits the parsed value, not the text", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    expect(field.value).toBe("3");
+
+    field.value = "42";
+    press(field, "Enter");
+
+    // `42`, the number — a panel that stored the string would be a panel that changed the type.
+    expect(write).toHaveBeenCalledWith(0, "count", 42);
+    expect(editorIn(panel)).toBe(null);
+  });
+
+  it("replaces a whole object, because a signal holds a value and not a proxy", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "user");
+    const field = editorIn(panel)!;
+    expect(field.value).toBe('{\n  "name": "Ada"\n}');
+
+    field.value = '{ "name": "Grace" }';
+    // Multi-line, so plain Enter has to stay a newline.
+    press(field, "Enter");
+    expect(write).not.toHaveBeenCalled();
+
+    press(field, "Enter", { metaKey: true });
+    expect(write).toHaveBeenCalledWith(0, "user", { name: "Grace" });
+  });
+
+  it("refuses invalid JSON without touching the app", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    field.value = "not json";
+    press(field, "Enter");
+
+    expect(write).not.toHaveBeenCalled();
+    expect(note(panel).textContent).toContain("not valid JSON");
+    // Still open, with what was typed: an error must not throw away the reader's input.
+    expect(editorIn(panel)!.value).toBe("not json");
+  });
+
+  it("reports a refusal from core in the row", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "not-state");
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    field.value = "5";
+    press(field, "Enter");
+
+    expect(note(panel).textContent).toContain("props are owned by the parent");
+  });
+
+  it("cancels on Escape without releasing the focused component", () => {
+    writeSpy();
+    const panel = withState();
+    focus(panel, "App");
+    openEditor(panel, "count");
+
+    const field = editorIn(panel)!;
+    field.value = "99";
+    press(field, "Escape");
+
+    expect(editorIn(panel)).toBe(null);
+    // The panel's own Escape releases focus; an abandoned edit must not.
+    expect(panel.shadowRoot.querySelector("#crumbs")!.classList.contains("on")).toBe(true);
+  });
+
+  it("abandons an edit that is clicked away from", () => {
+    const write = writeSpy();
+    const panel = withState();
+
+    openEditor(panel, "count");
+    const field = editorIn(panel)!;
+    field.value = "7";
+    field.dispatchEvent(new FocusEvent("blur"));
+
+    expect(write).not.toHaveBeenCalled();
+    expect(editorIn(panel)).toBe(null);
+  });
+});
+
+describe("editing state on a hook", () => {
+  /**
+   * The bug this exists for, found by driving the real built bundle rather than a fixture: the pencil
+   * packed `nodeId|key|valueId` into one attribute, and a value id contains the node's PATH — which
+   * marks a hooks branch with `|h`. Every row that lives under a hook therefore had a pencil that did
+   * nothing, while every test tree happened to put state on components whose paths have no `|`.
+   */
+  it("works for a value whose path contains the old delimiter", () => {
+    const write = vi.fn(() => "ok" as const);
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = write;
+
+    const panel = mount(() => [
+      node("App", "component", {
+        hooks: [node("Router", "hook", { state: { routeState: { path: "/" } } })],
+      }),
+    ]);
+
+    const pencil = panel.shadowRoot.querySelector("[data-edit-node]") as HTMLElement;
+    expect(pencil.dataset.editVid).toContain("|h");
+
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement;
+    expect(field).not.toBe(null);
+    expect(field.value).toBe('{\n  "path": "/"\n}');
+
+    field.value = '{ "path": "/products" }';
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+    // The hook's own handle, not the component's.
+    expect(write).toHaveBeenCalledWith(1, "routeState", { path: "/products" });
+  });
+});
+
+describe("what the panel says about a write", () => {
+  const toast = (panel: Panel) => panel.shadowRoot.querySelector("#toast")!;
+
+  const edit = (panel: Panel, key: string, text: string) => {
+    const pencil = Array.from(panel.shadowRoot.querySelectorAll("[data-edit-node]")).find(
+      (p) => (p as HTMLElement).dataset.editKey === key,
+    ) as HTMLElement;
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLInputElement;
+    field.value = text;
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+  };
+
+  it("says what it wrote", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    const panel = mount(() => [node("App", "component", { state: { count: 1 } })]);
+
+    edit(panel, "count", "42");
+
+    expect(toast(panel).textContent).toBe("wrote count = 42");
+  });
+
+  it("says when the value was already that", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "unchanged");
+    const panel = mount(() => [node("App", "component", { state: { count: 1 } })]);
+
+    edit(panel, "count", "1");
+
+    expect(toast(panel).textContent).toContain("already that value");
+  });
+
+  /**
+   * The report that prompted this: editing a query hook's `version` DID land, and looked like nothing,
+   * because `version` is an invalidation counter and the rendered data comes from the cache — so the
+   * hook set it again immediately. "It worked and the app owns that field" and "it did not work" have
+   * to look different.
+   */
+  it("says when the app replaced what was written", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    let version = 2;
+    const panel = mount(() => [node("App", "component", { hooks: [node("Query", "hook", { state: { version } })] })]);
+
+    edit(panel, "version", "99");
+    expect(toast(panel).textContent).toBe("wrote version = 99");
+
+    // The hook's own machinery moves it on, the way a cache event does.
+    version = 3;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(toast(panel).textContent).toContain("has since set it to 3");
+  });
+
+  it("stays quiet when the write stuck", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    let count = 1;
+    const panel = mount(() => [node("App", "component", { state: { count } })]);
+
+    edit(panel, "count", "42");
+    count = 42;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(toast(panel).textContent).toBe("wrote count = 42");
+  });
+});
+
+describe("editing a query's cached data", () => {
+  const row = (extra: Record<string, unknown> = {}) => ({
+    key: ["products"],
+    hash: '["products"]',
+    status: "success",
+    fetchStatus: "idle",
+    observers: 1,
+    updatedAt: 1,
+    failureCount: 0,
+    restored: false,
+    dataPreview: "…",
+    data: { total: 2 },
+    truncated: false,
+    ...extra,
+  });
+
+  /**
+   * `null` means "this query package has no write side", not `undefined` — passing `undefined` hands
+   * the parameter its DEFAULT, which is how the first version of the no-write-side test asserted
+   * against a bridge that had one.
+   */
+  function withBridge(rows = [row()], setData: unknown = vi.fn(() => true)) {
+    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+      snapshot: () => ({ clients: [{ index: 0, queries: rows }] }),
+      invalidate: vi.fn(),
+      remove: vi.fn(),
+      setData: setData ?? undefined,
+    };
+    const panel = mount(() => tree());
+    openTab(panel, "query");
+    return panel;
+  }
+
+  const pencil = (panel: Panel) => panel.shadowRoot.querySelector("#query-container [data-q-edit]") as HTMLElement;
+
+  /**
+   * This is the one value in the panel whose change shows up on the page, because the cache is what a
+   * query renders from — unlike a query hook's own `version`, which is an invalidation counter.
+   */
+  it("writes through the bridge, and says a refetch will replace it", () => {
+    const setData = vi.fn(() => true);
+    const panel = withBridge([row()], setData);
+
+    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+    expect(field.value).toBe('{\n  "total": 2\n}');
+
+    field.value = '{ "total": 99 }';
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+    expect(setData).toHaveBeenCalledWith(0, '["products"]', { total: 99 });
+    expect(panel.shadowRoot.querySelector("#toast")!.textContent).toContain("a refetch will replace it");
+    openTab(panel, "logs");
+  });
+
+  /**
+   * The copy the panel holds is bounded, and a bounded copy contains marker strings where values were
+   * dropped. Writing one back would put `"[… budget]"` into the cache.
+   */
+  it("offers no pencil for a value that arrived truncated", () => {
+    const panel = withBridge([row({ truncated: true })]);
+
+    expect(pencil(panel)).toBe(null);
+    openTab(panel, "logs");
+  });
+
+  it("offers no pencil when the query package has no write side", () => {
+    const panel = withBridge([row()], null);
+
+    expect(pencil(panel)).toBe(null);
+    openTab(panel, "logs");
+  });
+
+  /** A cache event anywhere rebuilds this list twice a second; it must not do it mid-sentence. */
+  it("holds the list still while it is being typed into", () => {
+    let updatedAt = 1;
+    const panel = withBridge();
+    (window as unknown as { __RAMONDA_QUERY__: { snapshot: unknown } }).__RAMONDA_QUERY__.snapshot = () => ({
+      clients: [{ index: 0, queries: [row({ updatedAt })] }],
+    });
+
+    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+    field.value = "typing…";
+
+    // A real cache event: `updatedAt` moves, which is exactly what the list keys its rebuild on — so
+    // without the guard this poll would replace the box mid-sentence.
+    updatedAt = 2;
+    (panel as unknown as { renderQueries(): void }).renderQueries();
+
+    expect(panel.shadowRoot.querySelector(".edit-input")).toBe(field);
+    expect((panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement).value).toBe("typing…");
+    openTab(panel, "logs");
+  });
+
+  it("says so when the entry was collected while the box was open", () => {
+    const panel = withBridge(
+      [row()],
+      vi.fn(() => false),
+    );
+
+    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+    field.value = "{}";
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+    expect(panel.shadowRoot.querySelector(".edit-note")!.textContent).toContain("no longer in the cache");
+    openTab(panel, "logs");
+  });
+});
+
+describe("the profiler tab", () => {
+  const commit = (index: number, duration: number, components = [{ name: "Board", builds: 1, ms: duration }]) => ({
+    index,
+    at: index * 10,
+    duration,
+    builds: components.reduce((sum, c) => sum + c.builds, 0),
+    components,
+  });
+
+  function withProfiler(state: { recording: boolean; commits: ReturnType<typeof commit>[] }) {
+    const bridge = {
+      start: vi.fn(() => {
+        state.recording = true;
+        state.commits = [];
+      }),
+      stop: vi.fn(() => {
+        state.recording = false;
+      }),
+      isRecording: () => state.recording,
+      commits: () => state.commits,
+    };
+    (window as unknown as { __RAMONDA_PROFILE__: unknown }).__RAMONDA_PROFILE__ = bridge;
+
+    const panel = mount(() => tree());
+    openTab(panel, "profile");
+    return { panel, bridge };
+  }
+
+  const rows = (panel: Panel) =>
+    Array.from(panel.shadowRoot.querySelectorAll(".p-row")).map((row) => row.getAttribute("data-p-commit"));
+
+  it("explains what a commit is before anything is recorded", () => {
+    const { panel } = withProfiler({ recording: false, commits: [] });
+
+    expect(panel.shadowRoot.querySelector("#profile-container")!.textContent).toContain("one drain");
+    expect(panel.shadowRoot.querySelector("#profile-record")!.textContent).toContain("record");
+    openTab(panel, "logs");
+  });
+
+  it("starts and stops recording through the bridge", () => {
+    const state = { recording: false, commits: [] as ReturnType<typeof commit>[] };
+    const { panel, bridge } = withProfiler(state);
+
+    panel.shadowRoot.querySelector("#profile-record")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(bridge.start).toHaveBeenCalled();
+    expect(panel.shadowRoot.querySelector("#profile-record")!.textContent).toContain("stop");
+
+    panel.shadowRoot.querySelector("#profile-record")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(bridge.stop).toHaveBeenCalled();
+    openTab(panel, "logs");
+  });
+
+  /** The commit you just caused is the one you are looking for, so it is at the top. */
+  it("lists commits newest first, with what each cost", () => {
+    const { panel } = withProfiler({
+      recording: true,
+      commits: [
+        commit(1, 4.5),
+        commit(2, 12.25, [
+          { name: "Board", builds: 1, ms: 9 },
+          { name: "Row", builds: 40, ms: 3.25 },
+        ]),
+      ],
+    });
+
+    expect(rows(panel)).toEqual(["2", "1"]);
+
+    const newest = panel.shadowRoot.querySelector(".p-row")!;
+    expect(newest.querySelector(".p-ms")!.textContent).toBe("12.25 ms");
+    expect(newest.querySelector(".p-builds")!.textContent).toContain("41 builds");
+    // The count is the point: forty rows rebuilding for one change is the thing worth seeing.
+    expect(newest.textContent).toContain("Row ×40");
+    openTab(panel, "logs");
+  });
+
+  it("draws each component's share of its own commit", () => {
+    const { panel } = withProfiler({
+      recording: true,
+      commits: [
+        commit(1, 10, [
+          { name: "Heavy", builds: 1, ms: 8 },
+          { name: "Light", builds: 1, ms: 2 },
+        ]),
+      ],
+    });
+
+    const bars = Array.from(panel.shadowRoot.querySelectorAll(".p-bar span")) as HTMLElement[];
+    expect(bars[0].style.width).toBe("100%");
+    expect(bars[1].style.width).toBe("25%");
+    openTab(panel, "logs");
+  });
+
+  /** An idle poll must not rewrite the list — the same rule the query tab had to learn. */
+  it("writes no DOM when a poll finds nothing new", () => {
+    const { panel } = withProfiler({ recording: true, commits: [commit(1, 4)] });
+
+    const before = panel.shadowRoot.querySelector(".p-row");
+    (panel as unknown as { renderProfile(): void }).renderProfile();
+
+    expect(panel.shadowRoot.querySelector(".p-row")).toBe(before);
+    openTab(panel, "logs");
+  });
+
+  it("says so when the build has no profiler at all", () => {
+    (window as unknown as { __RAMONDA_PROFILE__?: unknown }).__RAMONDA_PROFILE__ = undefined;
+    const panel = mount(() => tree());
+    openTab(panel, "profile");
+
+    expect(panel.shadowRoot.querySelector("#profile-container")!.textContent).toContain("no profiler");
+    openTab(panel, "logs");
+  });
+
+  it("polls only while its tab is open", () => {
+    vi.useFakeTimers();
+    try {
+      const state = { recording: true, commits: [commit(1, 4)] };
+      const { panel, bridge } = withProfiler(state);
+      const reads = vi.spyOn(bridge, "commits");
+
+      vi.advanceTimersByTime(1000);
+      expect(reads.mock.calls.length).toBeGreaterThan(0);
+
+      openTab(panel, "logs");
+      const after = reads.mock.calls.length;
+      vi.advanceTimersByTime(3000);
+
+      expect(reads.mock.calls.length).toBe(after);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("how a row is laid out", () => {
+  const rowFor = (panel: Panel, key: string) =>
+    Array.from(panel.shadowRoot.querySelectorAll(".state-row")).find((row) =>
+      row.querySelector(".sk")?.textContent?.startsWith(`${key}:`),
+    ) as HTMLElement;
+
+  /**
+   * Every value used to be a key heading with a body underneath, which read as twelve rows for six
+   * fields once most values were `3` and `"ada"`.
+   */
+  it("puts a scalar on one line with its key, and a container in a block", () => {
+    const panel = mount(() => [
+      node("App", "component", {
+        state: { count: 3, name: "ada", ready: true, missing: null, items: [1, 2], user: { id: 1 } },
+      }),
+    ]);
+
+    for (const key of ["count", "name", "ready", "missing"]) {
+      const row = rowFor(panel, key);
+      expect(row.classList.contains("one-line"), `${key} should be on one line`).toBe(true);
+      // The value element is a SIBLING of the key, not in a block below it.
+      expect(row.querySelector(".state-head")).toBe(null);
+      expect(row.querySelector(".sv")).not.toBe(null);
+    }
+
+    for (const key of ["items", "user"]) {
+      const row = rowFor(panel, key);
+      expect(row.classList.contains("one-line"), `${key} should keep its block`).toBe(false);
+      expect(row.querySelector(".state-head")).not.toBe(null);
+    }
+  });
+
+  /**
+   * The test is "does the tree render it as a LEAF", not "is it a primitive" — the same question the tree
+   * asks. A class instance shows as its name and a `Date` as one line, so both belong beside their key;
+   * the first version called them objects and gave `client: QueryClient` two lines for a one-word value.
+   */
+  it("puts a value the tree cannot open beside its key too", () => {
+    class QueryClient {}
+    const panel = mount(() => [
+      node("App", "component", {
+        state: { client: new QueryClient(), when: new Date("2020-01-01"), fn: () => 1, map: new Map() },
+      }),
+    ]);
+
+    for (const key of ["client", "when", "fn", "map"]) {
+      expect(rowFor(panel, key).classList.contains("one-line"), `${key} renders as a leaf`).toBe(true);
+    }
+  });
+
+  /** Both shapes keep `.sv`, because that is what the patch path and the editor look up by id. */
+  it("keeps a one-line value patchable and editable", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    let count = 1;
+    const panel = mount(() => [node("App", "component", { state: { count } })]);
+
+    count = 2;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+    expect(rowFor(panel, "count").querySelector(".sv")!.textContent).toContain("2");
+
+    const pencil = panel.shadowRoot.querySelector("[data-edit-node]") as HTMLElement;
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(panel.shadowRoot.querySelector(".edit-input")).not.toBe(null);
   });
 });

@@ -6,7 +6,7 @@ import { routes } from "./routes";
 /** Where the site is served from — used to build absolute og:image / canonical URLs. */
 const BASE = "https://ramonda.pages.dev";
 
-const DESCRIPTION = "Ramonda — a TypeScript UI framework built on class components, signals and TC39 decorators.";
+const DESCRIPTION = "Ramonda — a UI framework. Explicit. Predictable. Readable.";
 
 /** Escapes a value going into a double-quoted attribute. */
 function attr(value: string): string {

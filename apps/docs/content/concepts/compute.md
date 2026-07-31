@@ -1,7 +1,7 @@
 ---
 title: Derived values
 description: A value computed from your state that recalculates itself only when it needs to.
-section: Lifecycle and effects
+section: Lifecycle and subscriptions
 order: 32
 ---
 

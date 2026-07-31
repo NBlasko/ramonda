@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
 import { Component, mount, state, type RamondaNode, updated } from "@ramonda/core";
 import { render, act, waitFor } from "../index";
 
@@ -115,5 +115,27 @@ describe("act", () => {
     );
 
     await waitFor(() => expect(getByText("count: 42")).toBeTruthy());
+  });
+
+  /**
+   * The TYPE, not the behaviour — and it needs asserting because it was wrong while every runtime test
+   * here passed.
+   *
+   * With the sync overload declared first, `act(async () => {})` matched `() => void` (a void return
+   * position accepts any value) and typed as `void`. The implementation looks at what came back rather
+   * than at what was declared, so nothing misbehaved; the only symptom was every `await act(…)` in the
+   * repo being told *"'await' has no effect on the type of this expression"*, which is how Nikola found
+   * it. A runtime test cannot see that, so the assertion has to be about types.
+   *
+   * Enforced by `check-types`, not by this run: `expectTypeOf` compiles to nothing, so `vitest run`
+   * reports 34 passing tests either way. Reordering the overloads fails `tsc --noEmit`, which is what
+   * turbo runs — verified by putting the old order back.
+   */
+  test("an async callback types as a promise, a sync one as void", () => {
+    expectTypeOf(act(async () => {})).toEqualTypeOf<Promise<void>>();
+    expectTypeOf(act(() => {})).toEqualTypeOf<void>();
+    // And the value passes through, which is the whole point of the promise overload.
+    expectTypeOf(act(async () => 5)).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(act(() => Promise.resolve("x"))).toEqualTypeOf<Promise<string>>();
   });
 });

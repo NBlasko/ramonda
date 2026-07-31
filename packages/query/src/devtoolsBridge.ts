@@ -55,6 +55,14 @@ interface QueryRow {
    * how much of it to draw.
    */
   data: unknown;
+  /**
+   * True when the copy above hit one of its bounds, so what the panel holds is not the whole value.
+   *
+   * The panel needs this to decide whether the data may be EDITED: writing back a copy that contains
+   * `"[… budget]"` where the rest of a list used to be would put those markers into the cache. A
+   * bounded copy is fine to read and unsafe to send back.
+   */
+  truncated: boolean;
   error: string | undefined;
 }
 
@@ -66,6 +74,7 @@ interface QueryBridge {
   snapshot(): QuerySnapshot;
   invalidate(clientIndex: number, hash: string): void;
   remove(clientIndex: number, hash: string): void;
+  setData(clientIndex: number, hash: string, data: unknown): boolean;
 }
 
 const clients: QueryClient[] = [];
@@ -108,12 +117,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-function snapshotValue(value: unknown, budget: { left: number }, depth: number, seen: Set<unknown>): unknown {
-  if (budget.left-- <= 0) return "[… budget]";
+function snapshotValue(
+  value: unknown,
+  budget: { left: number; cut: boolean },
+  depth: number,
+  seen: Set<unknown>,
+): unknown {
+  if (budget.left-- <= 0) {
+    budget.cut = true;
+    return "[… budget]";
+  }
 
   if (Array.isArray(value) || isPlainObject(value)) {
-    if (seen.has(value)) return "[circular]";
-    if (depth >= SNAPSHOT_DEPTH) return Array.isArray(value) ? `[Array(${value.length}) — too deep]` : "[… too deep]";
+    if (seen.has(value)) {
+      budget.cut = true;
+      return "[circular]";
+    }
+    if (depth >= SNAPSHOT_DEPTH) {
+      budget.cut = true;
+      return Array.isArray(value) ? `[Array(${value.length}) — too deep]` : "[… too deep]";
+    }
 
     seen.add(value);
     try {
@@ -128,10 +151,12 @@ function snapshotValue(value: unknown, budget: { left: number }, depth: number, 
 
   // A Date, a Map, a class instance, a function: named rather than copied. Reproducing one
   // faithfully is guesswork, and guessing wrong in a panel is worse than saying what it is.
-  if (typeof value === "function") return "ƒ()";
-  if (typeof value === "bigint") return `${value}n`;
-  if (typeof value === "symbol") return value.toString();
+  if (typeof value === "function" || typeof value === "bigint" || typeof value === "symbol") {
+    budget.cut = true;
+    return typeof value === "function" ? "ƒ()" : String(value);
+  }
   if (typeof value === "object" && value !== null) {
+    budget.cut = true;
     try {
       return `${value.constructor?.name ?? "Object"}(${String(value)})`;
     } catch {
@@ -145,6 +170,13 @@ function describeError(error: unknown): string | undefined {
   if (error === undefined || error === null) return undefined;
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+/** The bounded copy and whether it IS the whole value, in one pass. */
+function describeData(data: unknown): { data: unknown; truncated: boolean } {
+  const budget = { left: SNAPSHOT_BUDGET, cut: false };
+  const copy = snapshotValue(data, budget, 0, new Set());
+  return { data: copy, truncated: budget.cut };
 }
 
 function bridge(): QueryBridge {
@@ -163,7 +195,7 @@ function bridge(): QueryBridge {
             failureCount: entry.failureCount,
             restored: entry.restored === true,
             dataPreview: preview(entry.data),
-            data: snapshotValue(entry.data, { left: SNAPSHOT_BUDGET }, 0, new Set()),
+            ...describeData(entry.data),
             error: describeError(entry.error),
           })),
         })),
@@ -182,6 +214,27 @@ function bridge(): QueryBridge {
     remove(clientIndex, hash) {
       const entry = find(clientIndex, hash);
       if (entry) clients[clientIndex]!.remove(entry.key);
+    },
+
+    /**
+     * Writes data into the cache from the panel, through `setData` — the same call an optimistic
+     * update makes.
+     *
+     * This is the one place in the panel where editing a value shows up on the page immediately, and
+     * that is not a coincidence: the cache IS what a query renders from. Editing a query hook's own
+     * `@state` does land, and looks like nothing, because `version` is an invalidation counter and
+     * `snapshot` is the hydration transport. Here there is nothing in between.
+     *
+     * It goes through `setData` rather than touching the entry, so everything that makes a write
+     * coherent still happens: a fetch in flight is abandoned (it is older information than this),
+     * structural sharing keeps the identity of what did not change, `updatedAt` moves, and every
+     * observer is notified. A refetch will replace it, which is the honest behaviour of a cache.
+     */
+    setData(clientIndex, hash, data) {
+      const entry = find(clientIndex, hash);
+      if (!entry) return false;
+      clients[clientIndex]!.setData(entry.key, data);
+      return true;
     },
   };
 }

@@ -10,5 +10,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    // The `*.prod.test.*` files belong to `test:prod`, which runs them in a separate process with
+    // NODE_ENV=production — `__DEV__` is pinned true above, so they would test the development path
+    // here. See vitest.prod.config.ts.
+    exclude: ["**/node_modules/**", "**/dist/**", "src/**/*.prod.test.ts"],
   },
 });

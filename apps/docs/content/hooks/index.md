@@ -1,6 +1,6 @@
 ---
 title: Hooks
-description: Reuse stateful logic across components — state, lifecycle and effects with no element of their own.
+description: Reuse stateful logic across components — state, lifecycle and subscriptions with no element of their own.
 section: Hooks
 order: 60
 ---
@@ -13,7 +13,7 @@ Sometimes the interesting part of a component isn't its markup — it's its *beh
 fetching data and tracking whether it has arrived, following the window size, running
 a countdown. When several components need the same behaviour, you don't want to copy
 it into each one. A **hook** is that behaviour pulled out into one reusable place:
-state, lifecycle and effects together, with **no element of its own**.
+state, lifecycle and subscriptions together, with **no element of its own**.
 
 ```tsx
 import { Hook, state } from "@ramonda/core";

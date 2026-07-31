@@ -1,7 +1,8 @@
 # @ramonda/core
 
-A TypeScript frontend framework built on class components, signals and TC39
-decorators — with one rule the whole design hangs off:
+A UI framework. **Explicit. Predictable. Readable.**
+
+One rule carries most of the design:
 
 > **Every JSX tag is exactly one element.**
 
@@ -195,7 +196,7 @@ Use `as` for a component per item, `render: (item, index) => …` for plain mark
 | decorator | when |
 | --- | --- |
 | `@create` / `@mount` / `@destroy` | lifecycle; `{ env: "client" \| "server" \| "shared" }` |
-| `@effect` | reacts to the signals it reads; always client-only |
+| `@updated` | after every commit but the first; the DOM is the one you are looking at |
 | `@watchProp(selector)` | syncs derived state *before* the render when a prop changes |
 | `@onWindow` / `@onDocument` / `@onElement` | listeners, removed on unmount; typed from the event name |
 | `@interval` / `@timeout` | timers that clear themselves on unmount |

@@ -106,10 +106,16 @@ reload(next: string, previous: string) {
 
 ### `@watchProp` or `@updated`? (optional)
 
-Both react to a change; they differ in *when*. `@watchProp` runs **before** the
-render, so derived state is ready with no extra pass. [a subscription](/concepts/subscriptions)
-runs **after** the page updates — the place for side effects like a fetch, a
-subscription, or a measurement, not for working out what to show.
+Both react to a change; they differ in *when*. `@watchProp` runs **before** the render,
+so what it derives is on screen in the same pass. [`@updated`](/concepts/lifecycle) runs
+**after** the page updates — the place for reading or correcting the DOM, not for working
+out what to show.
+
+There is no post-commit `@watchProp`, and that is a decision rather than a gap:
+[the lifecycle page explains it](/concepts/lifecycle). Short version — a post-commit
+reaction cannot fold its state write into the render, so the framework would have to start
+comparing your props for you, and `@updated` plus one field comparison already does the
+job without that.
 
 ## `children` is a prop
 
