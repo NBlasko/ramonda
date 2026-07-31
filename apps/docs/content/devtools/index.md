@@ -19,9 +19,19 @@ if (import.meta.env.DEV) await import("@ramonda/devtools");
 The import registers a `<ramonda-devtools>` element and nothing else. A purple **R** appears in the
 bottom-right corner; click it, or press `Alt+D`, to open the panel.
 
-The explicit import is the reliable route. Core also *attempts* to import the panel itself in a
-development build, but a bare specifier is not resolvable in a browser unless your bundler rewrites
-it — so if you have never seen the badge, this line is why.
+**That line is yours to write, and it cannot move into the framework.** Core does attempt the import
+itself in a development build, with the specifier as a variable — and it has to be a variable, because
+a literal one breaks apps that do not use devtools at all:
+
+| | a literal `import("@ramonda/devtools")` inside core |
+| --- | --- |
+| `vite build` | **fails** — *Rollup failed to resolve import "@ramonda/devtools"* |
+| esbuild | bundles, and ships a bare specifier no browser can resolve |
+
+A variable specifier is left alone by the bundler, which means the browser has to resolve
+`@ramonda/devtools` on its own — and it cannot. So only your app can load the panel: it is the one that
+knows the package is installed, and its bundler is the one that can resolve it. If you have never seen
+the badge, that missing line is why.
 
 ![The panel docked beside the app, with ProductCard focused: its props, its Query hook's state, and what
 that hook reads from context](/devtools/tree.webp)

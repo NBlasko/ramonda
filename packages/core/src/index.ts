@@ -119,10 +119,26 @@ if (__DEV__) {
     /**
      * Still attempted, for the app that installed devtools and did not import it: in an
      * environment where a bare specifier resolves at runtime (Node, an import map) this is all
-     * that is needed. The specifier is a variable so the type-checker does not make
-     * `@ramonda/devtools` a requirement for every package that reads core's source, and
-     * `.catch()` is not optional — devtools is genuinely optional, and an unhandled rejection
-     * would be worse than a missing panel.
+     * that is needed. `.catch()` is not optional — devtools is genuinely optional, and an
+     * unhandled rejection would be worse than a missing panel.
+     *
+     * ## Why the specifier is a VARIABLE, which is the question this keeps prompting
+     *
+     * Because a literal one cannot be here. Measured on an app that has not installed the panel,
+     * which is most apps:
+     *
+     * ```
+     *   vite build   →  "[vite]: Rollup failed to resolve import "@ramonda/devtools""  — the build FAILS
+     *   esbuild      →  bundles, leaving `import("@ramonda/devtools")` in the output   — fails at runtime
+     * ```
+     *
+     * So a literal import would break `vite build` for every app that does not use devtools, and
+     * ship a specifier no browser can resolve for the ones that use esbuild. A variable plus
+     * `@vite-ignore` is the only shape that neither breaks a build nor pretends to resolve.
+     *
+     * Which is also why the app writes one line of its own — `if (import.meta.env.DEV) void
+     * import("@ramonda/devtools")` — and why that line cannot move into `bootstrap`: only the app
+     * knows the package is there, and only the app's bundler can resolve it.
      */
     const devtoolsSpecifier = "@ramonda/devtools";
     import(/* @vite-ignore */ devtoolsSpecifier).catch(() => {
