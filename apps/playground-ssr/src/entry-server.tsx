@@ -14,10 +14,10 @@ export interface RenderResult {
  * the products feed and the per-user page render per request.
  */
 const server = defineServer(routes, {
-  "/": { prerender: true },
-  "/about": { prerender: true },
-  "/products": {},
-  "/users/:id": {},
+  "/": { prerender: true }, // SSG — baked at build
+  "/about": { revalidate: 3 }, // ISR — cached, rebaked every 3s
+  "/products": {}, // dynamic — the feed renders per request
+  "/users/:id": {}, // dynamic — per-user page
 });
 
 /** The paths a static build should bake (`routePlan.static`), for the prerender script. */
