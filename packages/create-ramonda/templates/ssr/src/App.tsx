@@ -1,16 +1,13 @@
 import { Component, Host, state } from "@ramonda/core";
+import { createRoutes, createRouter } from "@ramonda/router";
 
-// A component is a class. `@Host("main")` says the element this component *is* —
-// here a <main>. `@state` marks a signal: changing it re-renders the component.
-// The server renders this to HTML; the browser hydrates the same markup.
+/** The home page — static: the same for everyone, so the build bakes it to a file. */
 @Host("main")
-export class App extends Component {
+class HomePage extends Component {
   @state count = 0;
-
   increment(): void {
     this.count = this.count + 1;
   }
-
   render() {
     return (
       <div className="card">
@@ -26,13 +23,82 @@ export class App extends Component {
         </svg>
         <h1>Ramonda</h1>
         <p className="tagline">Server-rendered, then hydrated.</p>
-
         <button type="button" onClick={this.increment}>
           count is {this.count}
         </button>
+        <p className="hint">This page is prerendered at build time — pure static HTML.</p>
+      </div>
+    );
+  }
+}
 
-        <p className="hint">The page arrives as HTML from the server, then this button wakes up.</p>
+/** A second page, configured as ISR: baked, then rebaked on a timer — never per request. */
+@Host("main")
+class AboutPage extends Component {
+  render() {
+    return (
+      <div className="card">
+        <h1>About</h1>
+        <p className="tagline">Rendered on the server, cached, and revalidated on a schedule (ISR).</p>
+        <p className="hint">Static content that can go stale — regenerated in the background.</p>
+      </div>
+    );
+  }
+}
 
+/** A per-request page: the `:name` param differs every time, so it renders on each request. */
+@Host("main")
+class GreetingPage extends Component {
+  private nav = this.use(Navigator);
+  render() {
+    const { name } = this.nav.params<{ name: string }>();
+    return (
+      <div className="card">
+        <h1>Hello, {name}!</h1>
+        <p className="tagline">Rendered per request — its content depends on the URL.</p>
+      </div>
+    );
+  }
+}
+
+@Host("main")
+class NotFound extends Component {
+  render() {
+    return (
+      <div className="card">
+        <h1>Not found</h1>
+        <p className="tagline">No route matched this URL.</p>
+      </div>
+    );
+  }
+}
+
+// The route table — shared by the client and the server. `createRoutes` remembers the exact
+// paths in its type, and `createRouter` binds `<Link href>` / `route()` to them, so a typo in a
+// link is a compile error. `server-routes.ts` says which route renders how (static / ISR / per
+// request).
+export const routes = createRoutes({
+  "/": <HomePage />,
+  "/about": <AboutPage />,
+  "/hello/:name": <GreetingPage />,
+  "*": <NotFound />,
+});
+
+export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
+
+/** The app shell: navigation that stays put, and the outlet that swaps as you move. */
+@Host("div")
+export class App extends Component {
+  router = this.use(Router);
+  render() {
+    return (
+      <div className="app">
+        <nav className="nav">
+          <Link href="/">Home</Link>
+          <Link href="/about">About</Link>
+          <Link href={route("/hello/:name", { name: "world" })}>Greet</Link>
+        </nav>
+        <RouteOutlet routes={routes} />
         <a className="docs" href="https://ramonda.pages.dev" target="_blank" rel="noreferrer">
           Read the docs →
         </a>

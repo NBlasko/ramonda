@@ -259,7 +259,9 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   const deps: Deps = { dependencies: {}, devDependencies: {} };
   deps.dependencies["@ramonda/core"] = ramonda("@ramonda/core");
 
-  if (addons.includes("router")) deps.dependencies["@ramonda/router"] = ramonda("@ramonda/router");
+  // The SSR template is a routed app — its SSG/SSR/ISR pipeline (per-route rendering modes)
+  // is built on the router — so SSR always includes it, add-on chosen or not.
+  if (addons.includes("router") || mode === "ssr") deps.dependencies["@ramonda/router"] = ramonda("@ramonda/router");
   if (addons.includes("query")) deps.dependencies["@ramonda/query"] = ramonda("@ramonda/query");
   if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = ramonda("@ramonda/lens");
   if (addons.includes("devtools")) {

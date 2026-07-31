@@ -58,9 +58,17 @@ function sendRedirect(res, redirect) {
 // restart, and the browser gets HMR for the client half. See vite.config.ts for the
 // one setting (es2022) that makes this work with decorators.
 let vite;
-// ── PROD: the esbuild bundle, served as static + one Node render ────────────────
+// ── PROD: the esbuild bundle. Serves each route by its mode — a baked static file, an
+//    ISR page (cached + revalidated), or a fresh per-request render. See src/entry-server.tsx.
 let prodRender;
+let prodPlan;
+let prodPrerender;
 let prodTemplate;
+let staticSet;
+let isrMap;
+const isrCache = new Map(); // path → { html, at }. In-memory, per instance.
+const STATIC = resolve(here, "dist/static");
+const origin = `http://localhost:${PORT}`;
 
 if (isProd) {
   const bundle = resolve(here, "dist/server/entry-server.js");
@@ -71,7 +79,12 @@ if (isProd) {
   // The DOM must exist before the app module is imported: class fields and
   // decorators run at import time and some touch `window`.
   installDom(`http://localhost:${PORT}/`);
-  prodRender = (await import(bundle)).render;
+  const mod = await import(bundle);
+  prodRender = mod.render;
+  prodPrerender = mod.prerender;
+  prodPlan = mod.plan();
+  staticSet = new Set(prodPlan.static);
+  isrMap = new Map(prodPlan.isr.map((r) => [r.path, r.revalidate]));
   prodTemplate = readFileSync(resolve(here, "index.html"), "utf8").replace(
     "/src/entry-client.tsx",
     "/assets/client.js",
@@ -108,6 +121,37 @@ async function renderDev(req, res) {
   }
 }
 
+/** Parse a Cookie header into the Map `requestContext` reads. */
+function parseCookies(header) {
+  const out = new Map();
+  if (!header) return out;
+  for (const pair of header.split(";")) {
+    const i = pair.indexOf("=");
+    if (i === -1) continue;
+    out.set(pair.slice(0, i).trim(), decodeURIComponent(pair.slice(i + 1).trim()));
+  }
+  return out;
+}
+
+function sendHtml(res, html, mode) {
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/html");
+  res.setHeader("X-Ramonda-Mode", mode);
+  res.end(prodTemplate.replace("<!--ssr-->", html));
+}
+
+/** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
+async function bakeShared(path) {
+  const dom = installDom(`${origin}${path}`);
+  try {
+    const { html, blockedBy } = await prodPrerender(path);
+    if (blockedBy !== undefined) throw new Error(`Route ${path} is cached but read the request (${blockedBy}).`);
+    return html;
+  } finally {
+    dom.window.close();
+  }
+}
+
 async function renderProd(req, res) {
   const url = req.url ?? "/";
 
@@ -123,14 +167,44 @@ async function renderProd(req, res) {
     return;
   }
 
-  try {
-    installDom(`http://localhost:${PORT}${url}`);
-    const { html, redirect } = await prodRender();
-    if (redirect) return sendRedirect(res, redirect);
+  const path = url.split("?")[0];
 
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/html");
-    res.end(prodTemplate.replace("<!--ssr-->", html));
+  try {
+    // 1. STATIC — serve the file the build baked (fall through to a live render if it is missing).
+    if (staticSet.has(path)) {
+      const file = path === "/" ? resolve(STATIC, "index.html") : resolve(STATIC, `.${path}`, "index.html");
+      if (existsSync(file)) {
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html");
+        res.setHeader("X-Ramonda-Mode", "static");
+        res.end(readFileSync(file, "utf8"));
+        return;
+      }
+    }
+
+    // 2. ISR — serve cached; when stale, serve it anyway and refresh in the background.
+    if (isrMap.has(path)) {
+      const revalidateMs = isrMap.get(path) * 1000;
+      const cached = isrCache.get(path);
+      const now = Date.now();
+      if (cached && now - cached.at < revalidateMs) return sendHtml(res, cached.html, "isr-hit");
+      if (cached) {
+        sendHtml(res, cached.html, "isr-stale");
+        void bakeShared(path)
+          .then((html) => isrCache.set(path, { html, at: Date.now() }))
+          .catch((e) => console.error(`[isr] ${path}:`, e));
+        return;
+      }
+      const html = await bakeShared(path);
+      isrCache.set(path, { html, at: now });
+      return sendHtml(res, html, "isr-cold");
+    }
+
+    // 3. DYNAMIC — render per request (url + cookies for requestContext).
+    installDom(`${origin}${url}`);
+    const { html, redirect } = await prodRender({ url: new URL(url, origin), cookies: parseCookies(req.headers.cookie) });
+    if (redirect) return sendRedirect(res, redirect);
+    sendHtml(res, html, "dynamic");
   } catch (error) {
     res.statusCode = 500;
     res.end(`<pre>${String(error?.stack ?? error)}</pre>`);
