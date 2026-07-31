@@ -91,9 +91,39 @@ function guard<T>(value: T | symbol): T {
   return value as T;
 }
 
+/**
+ * The lowest Node this scaffolder will produce a working app on.
+ *
+ * `engines` in package.json is advisory — npm prints a warning, and `npm create` runs the CLI anyway. So
+ * the check is here, where someone is watching, and it REFUSES rather than warns: everything after this
+ * point writes files, and a project scaffolded on a Node that cannot run it is worse than no project.
+ *
+ * The number is not a guess about this CLI, which is plain `fs` and would run on much older. It is the
+ * floor the generated app needs — Vite 7 requires `^20.19 || >=22.12` — rounded up to the version the
+ * repo itself builds and tests on. Ramonda is `0.x` and has no users on old runtimes to keep faith with;
+ * when that changes, this number is the one place to argue about it.
+ */
+export const MIN_NODE = 24;
+
+/** Exported so the boundary can be tested without spawning a process per version. */
+export function nodeIsOldEnough(version: string): boolean {
+  return Number(version.split(".")[0]) >= MIN_NODE;
+}
+
+function requireNode(): void {
+  if (nodeIsOldEnough(process.versions.node)) return;
+
+  p.cancel(
+    `create-ramonda needs Node ${MIN_NODE} or newer — this is Node ${process.versions.node}.\n` +
+      `  The app it generates would not build: its toolchain requires it, whatever this CLI can run on.`,
+  );
+  process.exit(1);
+}
+
 async function main(): Promise<void> {
   console.log();
   p.intro(pc.magenta(pc.bold("🌸 create-ramonda")));
+  requireNode();
 
   // Target directory — from argv or a prompt.
   const argTarget = process.argv[2];

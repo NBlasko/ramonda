@@ -37,7 +37,7 @@
     "url": "https://github.com/NBlasko/ramonda/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
