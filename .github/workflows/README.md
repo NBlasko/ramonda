@@ -21,13 +21,21 @@ in one place — it publishes, and a second pin there could drift.
 pnpm check      # pnpm lint && pnpm format:check && turbo run check-types test build
 ```
 
-It exists because **`turbo run` alone is not the gate.** Two of the four checks are
-root scripts that turbo never sees:
+It exists because **`turbo run` alone is not the gate.** Several checks are root
+scripts that turbo never sees:
 
 - `pnpm lint` is one oxlint pass over the **whole** repo. No app under `apps/` has a
   `lint` script, so `turbo run lint` covers `packages/` only — a lint error in a
   playground or in the docs app is invisible to turbo and fatal in CI.
 - `pnpm format:check` is not a turbo task at all.
+- `scripts/check-workflows.mjs` lints the **workflows themselves**: a job that runs
+  a package script directly skips that task's `dependsOn`, which is how the docs
+  deploy came to build nothing while every other check was green. It reads
+  `turbo.json` for the tasks that have dependencies and refuses to see them
+  invoked any other way. `SELFTEST=1` runs it against the offending line and
+  against the corrected one, so it is known to catch the first and not the second
+   — the first version anchored its patterns with `^`, matched nothing, and
+  cheerfully reported the broken workflow as clean.
 
 A branch was once "green" on `turbo run check-types test build` while carrying a
 sparse array in `apps/playground-ssr/server.mjs` and a misformatted file in
