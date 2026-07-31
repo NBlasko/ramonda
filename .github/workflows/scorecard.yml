@@ -1,0 +1,57 @@
+name: Scorecard
+
+# OpenSSF Scorecard grades the repository's supply-chain hygiene rather than its
+# code: are workflow permissions minimal, do releases carry provenance, can a
+# fork's pull request reach a secret, is the default branch protected, are actions
+# pinned. It is the one security badge with a number behind it — the Snyk badge
+# this project considered first returns the same "monitored" image for a
+# repository name that does not exist, which was checked before it was dropped.
+#
+# Expect a middling first grade, and read it as a to-do list rather than a verdict.
+# Two checks are known to mark this repository down today: the default branch has
+# no protection rules, and the actions here are pinned to tags rather than commit
+# SHAs — a deliberate trade, since a tag plus Dependabot is legible and a SHA is
+# not. Provenance, minimal token permissions and a security policy already pass.
+on:
+  # Re-grades when a branch protection rule changes, which is one of the things it
+  # measures.
+  branch_protection_rule:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # read the workflow files it grades
+      security-events: write # upload the SARIF to code scanning
+      id-token: write # sign the published result, so the badge can trust it
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The analysis reads this checkout; a token left in `.git/config` is
+          # exactly the kind of thing it would (rightly) mark down.
+          persist-credentials: false
+
+      # Pinned exactly: this action publishes no moving `v2` tag. Dependabot's
+      # github-actions updates move this line.
+      - uses: ossf/scorecard-action@v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publishes the result to the public OpenSSF API. That is what makes the
+          # badge readable by anyone, and it is only meaningful because this
+          # repository is public — the same facts, from the same public source.
+          publish_results: true
+
+      # Puts the findings in Security → Code scanning next to CodeQL's, so there is
+      # one place to look rather than two.
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
