@@ -26,6 +26,7 @@ export {
   type RouteConfig,
   type RouteParams,
   type RoutePaths,
+  type PathOf,
 } from "./match";
 export {
   Router,
@@ -33,4 +34,11 @@ export {
   Navigator,
   type RouteOutletProps,
 } from "./Router";
+export {
+  createRouter,
+  type Href,
+  type TypedLinkProps,
+  type TypedNavigator,
+  type TypedRouterKit,
+} from "./createRouter";
 export { Link, type LinkProps } from "./Link";
