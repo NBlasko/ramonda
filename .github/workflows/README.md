@@ -32,6 +32,24 @@ sparse array in `apps/playground-ssr/server.mjs` and a misformatted file in
 `apps/playground-core` — both committed, both would have failed `ci.yml`. Verify with
 `pnpm check`, which runs what CI runs, in the same order.
 
+**One thing it still cannot promise: the runtime.** CI pins **Node 20**; a newer
+Node accepts APIs CI does not have, so a green local run can still die on the first
+line there. That is exactly how `fs.globSync` (Node 22) reached `main`'s CI in the
+docs' `check-api` step from a machine on Node 24. `pnpm check` starts with
+`scripts/preflight-node.mjs`, which reads the pinned version out of the setup action
+and warns on a mismatch — a warning, not a failure, so a newer Node does not stop
+anyone's work.
+
+To actually *run* the gate on CI's runtime, put that Node first on `PATH`:
+
+```
+N20=$(dirname "$(npx -y node@20 -p 'process.execPath')")
+PATH="$N20:$PATH" pnpm exec turbo run check-types test build --force
+```
+
+`--force` matters — turbo will otherwise replay results cached from your usual Node
+and tell you everything passed without running anything.
+
 ## Code style: oxlint + biome
 
 Two tools, one job each:

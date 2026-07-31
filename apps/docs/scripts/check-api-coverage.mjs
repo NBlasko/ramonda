@@ -1,4 +1,4 @@
-import { globSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -91,9 +91,28 @@ console.log(`[docs] API reference covers all ${expected.length} public exports`)
  * the scan broke and a green build would be proving nothing.
  */
 const codeInSource = /\[?(RM[DQ]\d{3})\]?/g;
-const sources = ["core", "query"].flatMap((pkg) => [
-  ...globSync("**/*.ts", { cwd: join(packages, pkg, "src") }).map((file) => join(packages, pkg, "src", file)),
-]);
+
+/**
+ * Every `.ts` under a directory, walked by hand.
+ *
+ * `fs.globSync` is the obvious way to write this and the reason it is not written that way: it landed in
+ * Node 22, CI runs Node 20, and the failure is a SyntaxError at import time — the whole docs build, dead
+ * before its first line. It passed locally on Node 24 and broke on the first push, which is the shape of
+ * bug a local gate cannot catch, because the difference is the runtime rather than the code.
+ *
+ * So: `readdirSync` with `withFileTypes`, which has worked since Node 10.
+ */
+function tsFilesIn(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...tsFilesIn(full));
+    else if (entry.name.endsWith(".ts")) out.push(full);
+  }
+  return out;
+}
+
+const sources = ["core", "query"].flatMap((pkg) => tsFilesIn(join(packages, pkg, "src")));
 
 const raised = new Set();
 for (const file of sources) {

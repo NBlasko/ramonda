@@ -9,7 +9,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check-types": "turbo run check-types",
-    "check": "pnpm lint && pnpm format:check && turbo run check-types test build",
+    "check": "node scripts/preflight-node.mjs && pnpm lint && pnpm format:check && turbo run check-types test build",
     "changeset": "changeset",
     "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish"
   },
