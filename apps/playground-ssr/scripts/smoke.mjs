@@ -199,17 +199,46 @@ async function checkEditorEndpoint() {
 
   const query = `file=${encodeURIComponent(`${source}:1:1`)}&from=${encodeURIComponent("assets/client.js")}`;
   const answer = await fetch(`http://localhost:${PORT}/__open-in-editor?${query}`);
-  if (!answer.ok) fail(`the editor endpoint answered ${answer.status} for ${source} (${await answer.text()})`);
+  const body = await answer.text();
 
-  return source;
+  /**
+   * A 500 saying "no editor found" is a PASS, and that is not a lowered bar.
+   *
+   * The endpoint refuses an unresolvable path with 422 BEFORE it tries to launch anything, so reaching
+   * the launch at all is proof the path resolved — which is the whole subject of this check. Whether a
+   * machine has an editor to open it with is a property of the machine: `launch-editor` reads $EDITOR
+   * and, failing that, guesses from the process table. A developer has one running, a CI runner does
+   * not, and this test asserted the developer's desktop for a while. It went red on the first push.
+   */
+  const noEditorHere = answer.status === 500 && body.startsWith("no editor found");
+  if (!answer.ok && !noEditorHere) {
+    fail(`the editor endpoint answered ${answer.status} for ${source} (${body})`);
+  }
+
+  /**
+   * And the negative case, because accepting a 500 must not accept everything.
+   *
+   * A path that cannot resolve has to still be refused — with 422 specifically, since the panel reads a
+   * 404 as "this server has no such endpoint" and quietly falls back to the clipboard. Without this,
+   * deleting the `existsSync` guard would leave the check above passing.
+   */
+  const bogus = `file=${encodeURIComponent("src/NoSuchFile.tsx:1:1")}`;
+  const refusal = await fetch(`http://localhost:${PORT}/__open-in-editor?${bogus}`);
+  if (refusal.status !== 422) {
+    fail(`a path that does not exist answered ${refusal.status}, but the panel needs 422 to say so`);
+  }
+
+  return { source, opened: answer.ok };
 }
 
 const panel = await checkPanel();
-const resolved = await checkEditorEndpoint();
+const editor = await checkEditorEndpoint();
 
 stop();
 console.log(
   `[smoke] the server rendered / with ${html.length} bytes, and all ${checks.length} checks passed\n` +
-    `[smoke] the panel listed ${panel.rows} components, opened an editor for ${panel.editing}, ` +
-    `and the endpoint resolved ${resolved}`,
+    `[smoke] the panel listed ${panel.rows} components and edited ${panel.editing}\n` +
+    `[smoke] the endpoint resolved ${editor.source} ` +
+    `(${editor.opened ? "and opened it" : "no editor on this machine, which is not this test's business"}), ` +
+    `and refused a path that does not exist`,
 );

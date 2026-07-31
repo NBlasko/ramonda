@@ -52,6 +52,36 @@ silent run proves nothing on its own. Verify a fix by A/B: show the same
 instrument firing before it, or a check that quietly stopped working looks
 identical to a bug that is gone.
 
+## The smoke test, and why it must not need an editor
+
+`npm test` builds the bundle and runs `scripts/smoke.mjs`: the server renders `/`,
+the real client bundle is loaded into jsdom, the devtools panel is driven the way a
+reader drives it, and the `__open-in-editor` endpoint is called with a path taken
+out of the bundle's own sourcemap.
+
+**That last one is the part with a trap.** Opening a file needs an editor, and
+`launch-editor` finds one from `$EDITOR` or by guessing from the process table — so
+a developer with an IDE running gets a `200`, and a CI runner with neither gets a
+`500`. This test asserted the developer's desktop for a while and went red on the
+first push.
+
+What it asserts now is what the endpoint is actually for: **the path resolved.** An
+unresolvable path is refused with `422` *before* any launch is attempted, so
+reaching the launch at all is the proof. A `500` saying "no editor found" therefore
+passes, and a `422` still fails — and the test makes a second request for a file
+that does not exist to prove that the refusal path is alive, because accepting a
+`500` must not turn into accepting anything.
+
+To run it in a runner's conditions — no `$EDITOR`, and nothing to guess from:
+
+```bash
+mkdir -p /tmp/fakebin && printf '#!/bin/sh\nexit 1\n' > /tmp/fakebin/ps && chmod +x /tmp/fakebin/ps
+PATH="/tmp/fakebin:$PATH" EDITOR="" VISUAL="" npm test
+```
+
+Shadowing `ps` is the part that matters; clearing `$EDITOR` alone is not enough,
+since the guess from the process table finds your editor anyway.
+
 ## How the router is seeded
 
 It is not. The router reads `window.location`, and the server points its DOM
