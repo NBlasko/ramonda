@@ -39,6 +39,10 @@ const EXPECTED = [
   "hydrateRoot",
   "ServerRedirect",
   "captureServerRedirect",
+  "requestContext",
+  "requestKey",
+  "seedRequest",
+  "RequestReadDuringBuild",
   // decorators
   "state",
   "persist",

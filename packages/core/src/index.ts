@@ -30,6 +30,20 @@ export type { RenderedPage } from "./hydration/ssr";
 // server boundary and answer with a 302. `captureServerRedirect` is the low-level
 // hook the router uses to record one. See hydration/serverRedirect.ts.
 export { ServerRedirect, captureServerRedirect } from "./hydration/serverRedirect";
+// Per-request data + the guard that makes prerendering safe. `requestContext()` reads
+// cookies/headers/seeded values; those reads THROW during a static build (poisoned), which
+// is what proves a baked route holds no per-request data. `requestKey`/`seedRequest` declare
+// and fill per-request slots on the server. See hydration/requestContext.ts.
+export {
+  requestContext,
+  requestKey,
+  seedRequest,
+  RequestReadDuringBuild,
+  type RequestContext,
+  type RequestKey,
+  type RequestCookies,
+  type RequestMode,
+} from "./hydration/requestContext";
 export { renderDocument } from "./hydration/document";
 export type { DocumentOptions } from "./hydration/document";
 export { hydrateRoot } from "./hydration/hydrate";
