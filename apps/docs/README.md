@@ -33,7 +33,6 @@ npm run shots
 
 `scripts/shots.mjs` starts the playground, drives a real Chrome over the DevTools Protocol, and writes
 `public/devtools/*.webp` plus the badge GIF. Nothing is installed for it — Chrome and `ffmpeg` are the
-only requirements, and Node's own `WebSocket` speaks CDP. **That global needs Node 22+**, which is fine
-here and only here: this script is run by hand, never by CI, and every script CI touches stays within
-Node 20. Regenerate it after changing the panel: a
+only requirements, and Node's own `WebSocket` speaks CDP — a global that needs Node 22+, which `.nvmrc`
+comfortably covers. Regenerate it after changing the panel: a
 screenshot cannot fail a build, so a stale one stays wrong until somebody notices.

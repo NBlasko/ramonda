@@ -9,22 +9,27 @@ import { fileURLToPath } from "node:url";
  *
  *     SyntaxError: The requested module 'node:fs' does not provide an export named 'globSync'
  *
- * `fs.globSync` arrived in Node 22. CI pins 20, this machine had 24, and no amount of running the checks
- * locally could have caught it — the difference was the runtime, not the code. `pnpm check` was built to
- * be "what CI runs"; this is the part of that promise it could not keep on its own.
+ * `fs.globSync` arrived in Node 22. CI pinned 20, this machine had 24, and no amount of running the
+ * checks locally could have caught it — the difference was the runtime, not the code. `pnpm check` was
+ * built to be "what CI runs"; this is the part of that promise it could not keep on its own.
+ *
+ * CI is on 24 now, so the gap that caused it is closed. This stays because the gap can reopen quietly:
+ * `.nvmrc` moves, or a machine lags a major behind, and the symptom is a build that fails only where you
+ * cannot attach a debugger.
  *
  * It WARNS rather than fails. Failing would stop the work of anyone whose Node is merely newer, which is
  * most people most of the time, and the mismatch is usually harmless — the point is that when a build
  * does break on CI, this line was already on screen and the first guess is a good one.
  *
- * The CI version is read from the setup action rather than repeated here, so the two cannot drift.
+ * `.nvmrc` is the single source: both the setup action and release.yml read it with `node-version-file`,
+ * so there is no second copy for this to disagree with.
  */
 const here = dirname(fileURLToPath(import.meta.url));
-const action = join(here, "..", ".github", "actions", "setup", "action.yml");
+const nvmrc = join(here, "..", ".nvmrc");
 
-const pinned = /node-version:\s*['"]?(\d+)/.exec(readFileSync(action, "utf8"))?.[1];
+const pinned = /(\d+)/.exec(readFileSync(nvmrc, "utf8"))?.[1];
 if (!pinned) {
-  console.warn(`[preflight] could not read node-version from ${action} — skipping the check.`);
+  console.warn(`[preflight] could not read a version from ${nvmrc} — skipping the check.`);
   process.exit(0);
 }
 

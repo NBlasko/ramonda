@@ -15,7 +15,10 @@ runs:
     - name: Install Node.js
       uses: actions/setup-node@v5
       with:
-        node-version: 20
+        # The one place the version is decided; release.yml's setup-node reads it
+        # from `.nvmrc` rather than repeating it. Node 20 left support in April
+        # 2026, and nothing here has users old enough to keep it for.
+        node-version-file: .nvmrc
         cache: pnpm
 
     - name: Install dependencies

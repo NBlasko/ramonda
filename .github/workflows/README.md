@@ -11,7 +11,9 @@ foundation of best practices to grow from, not an all-in-one.
 | `deploy-docs.yml` | push to `main` (prod), PR to `main` (preview) | Builds `apps/docs` and deploys to Cloudflare Pages |
 
 The shared `.github/actions/setup` composite installs pnpm (from the root
-`packageManager` field), Node 20, and dependencies with `--frozen-lockfile`.
+`packageManager` field), Node from **`.nvmrc`**, and dependencies with
+`--frozen-lockfile`. `release.yml` reads the same file, so the version is decided
+in one place — it publishes, and a second pin there could drift.
 
 ## Running the gate locally: `pnpm check`
 
@@ -32,23 +34,23 @@ sparse array in `apps/playground-ssr/server.mjs` and a misformatted file in
 `apps/playground-core` — both committed, both would have failed `ci.yml`. Verify with
 `pnpm check`, which runs what CI runs, in the same order.
 
-**One thing it still cannot promise: the runtime.** CI pins **Node 20**; a newer
-Node accepts APIs CI does not have, so a green local run can still die on the first
-line there. That is exactly how `fs.globSync` (Node 22) reached `main`'s CI in the
-docs' `check-api` step from a machine on Node 24. `pnpm check` starts with
-`scripts/preflight-node.mjs`, which reads the pinned version out of the setup action
-and warns on a mismatch — a warning, not a failure, so a newer Node does not stop
-anyone's work.
+**The runtime is part of the gate too.** A newer local Node accepts APIs CI does
+not have, so a green run here can still die on the first line there — which is how
+`fs.globSync` (Node 22) reached CI from a machine on Node 24 while CI was pinned to
+20. Two things came out of that: CI moved to **Node 24** (20 left support in April
+2026, and nothing here has users to keep it for), and `pnpm check` starts with
+`scripts/preflight-node.mjs`, which reads `.nvmrc` and warns when the local major
+differs. A warning, not a failure — a newer Node is not a mistake.
 
-To actually *run* the gate on CI's runtime, put that Node first on `PATH`:
+To run the gate on a specific Node, put it first on `PATH`:
 
 ```
-N20=$(dirname "$(npx -y node@20 -p 'process.execPath')")
-PATH="$N20:$PATH" pnpm exec turbo run check-types test build --force
+N=$(dirname "$(npx -y node@24 -p 'process.execPath')")
+PATH="$N:$PATH" pnpm exec turbo run check-types test build --force
 ```
 
-`--force` matters — turbo will otherwise replay results cached from your usual Node
-and tell you everything passed without running anything.
+`--force` is not optional here — turbo will otherwise replay results cached under
+your usual Node and report a pass having run nothing.
 
 ## Code style: oxlint + biome
 
@@ -189,5 +191,7 @@ only with the fix in hand:
 - **Turbo remote caching.** Add `TURBO_TOKEN` / `TURBO_TEAM` to share the build
   cache across runs and machines, so `test` and `build` stop rebuilding from
   scratch each job.
-- **Node version matrix.** `engines` is `>=18`; CI runs Node 20. Add a matrix
-  (e.g. 20 + 22) once the toolchain is proven on more than one.
+- **Node version matrix.** CI runs one version, from `.nvmrc`. A matrix is worth
+  adding when the packages have users on other majors — which is a `1.x` concern,
+  not a `0.x` one. Until then a second version costs CI minutes to prove something
+  nobody depends on.
