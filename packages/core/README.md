@@ -195,7 +195,7 @@ Use `as` for a component per item, `render: (item, index) => …` for plain mark
 | decorator | when |
 | --- | --- |
 | `@create` / `@mount` / `@destroy` | lifecycle; `{ env: "client" \| "server" \| "shared" }` |
-| `@effect` | reacts to the signals it reads; always client-only |
+| `@updated` | after every commit but the first; the DOM is the one you are looking at |
 | `@watchProp(selector)` | syncs derived state *before* the render when a prop changes |
 | `@onWindow` / `@onDocument` / `@onElement` | listeners, removed on unmount; typed from the event name |
 | `@interval` / `@timeout` | timers that clear themselves on unmount |

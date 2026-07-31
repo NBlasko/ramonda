@@ -1,7 +1,7 @@
 ---
 title: Lifecycle
 description: Run code when a component is created, shown on the page, and removed.
-section: Lifecycle and effects
+section: Lifecycle and subscriptions
 order: 30
 ---
 
@@ -106,7 +106,7 @@ So the pair above is the whole story, and one field comparison is the price of t
 post-commit case.
 
 **Children before parents**, so a parent measuring its own subtree finds it updated.
-It runs after this commit's `@mount`s and effects, and **never on the server** —
+It runs after this commit's `@mount`s and subscriptions, and **never on the server** —
 there is no layout and no paint there to correct.
 
 Writing state here schedules another render, and that is the point for the

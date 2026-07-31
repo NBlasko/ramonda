@@ -35,7 +35,7 @@ A few ideas set Ramonda apart:
   fragment ambiguity, and the parent–child rules the browser enforces are the
   rules you write against.
 - **Decorators, not conventions.** `@state`, `@compute`, `@mount`, `@destroy`,
-  `@effect`, `@interval`, `@onElement`… behavior is declared on ordinary methods
+  `@updated`, `@interval`, `@onElement`… behavior is declared on ordinary methods
   and fields.
 - **Signals under the hood.** Reactivity tracks reads, so a `@compute`
   recomputes only when something it actually read changed — no dependency arrays.

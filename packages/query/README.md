@@ -53,8 +53,10 @@ class UserCard extends Component<{ id: string }> {
 - **Triggers you can turn off.** Window focus and reconnect refresh only STALE
   data; `refetchInterval` polls; all three are options, on the query or on the
   provider.
-- **Mutations with rollback.** `onMutate` returns the undo, the same "return the
-  cleanup" contract `@effect` uses, and it runs if the write fails.
+- **Mutations with rollback.** `onMutate` returns the undo, and it runs if the
+  write fails — the only place in Ramonda where returning a function means
+  "call this later", because here the later is a specific event rather than
+  an unspecified teardown.
 
 ## The cache belongs to the tree
 
