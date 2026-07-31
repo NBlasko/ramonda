@@ -68,6 +68,29 @@ interface QueryRow {
 
 type WriteFn = (id: number, key: string, value: unknown) => "ok" | "gone" | "not-state" | "unchanged";
 
+/** One component's share of a commit. */
+interface ComponentCost {
+  name: string;
+  builds: number;
+  ms: number;
+}
+
+/** One drain — what the app waited for. See core's `profiler.ts`. */
+interface CommitRecord {
+  index: number;
+  at: number;
+  duration: number;
+  builds: number;
+  components: ComponentCost[];
+}
+
+interface ProfileBridge {
+  start(): void;
+  stop(): void;
+  isRecording(): boolean;
+  commits(): CommitRecord[];
+}
+
 interface QueryBridge {
   snapshot(): { clients: { index: number; queries: QueryRow[] }[] };
   invalidate(clientIndex: number, hash: string): void;
@@ -223,6 +246,10 @@ class RamondaDevTools extends HTMLElement {
   // Component-tab state (pull model).
   private componentsTabActive = false;
   private queryTabActive = false;
+  private profileTabActive = false;
+  private profileTimer: ReturnType<typeof setInterval> | undefined;
+  /** The last rendered shape of the commit list, so an idle poll touches no DOM. */
+  private profileShape = "";
   private queryTimer: ReturnType<typeof setInterval> | undefined;
   /** The last rendered shape of the query list — see `renderQueries`. */
   private queryShape = "";
@@ -322,6 +349,7 @@ class RamondaDevTools extends HTMLElement {
       this.applyLayout();
       this.updateWatchState();
       this.updateQueryWatch();
+      this.updateProfileWatch();
     }
   }
 
@@ -362,6 +390,14 @@ class RamondaDevTools extends HTMLElement {
    */
   private get writer(): WriteFn | undefined {
     return (window as unknown as { __RAMONDA_WRITE__?: WriteFn }).__RAMONDA_WRITE__;
+  }
+
+  /**
+   * The profiler's controls, off until this panel presses record — a commit is the hottest path in the
+   * framework, and sampling it unconditionally would tax every development build.
+   */
+  private get profile(): ProfileBridge | undefined {
+    return (window as unknown as { __RAMONDA_PROFILE__?: ProfileBridge }).__RAMONDA_PROFILE__;
   }
 
   /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
@@ -871,6 +907,23 @@ class RamondaDevTools extends HTMLElement {
         .jv-raw { margin: 0; color: #d8d8d8; font-family: ui-monospace, Menlo, monospace;
                   font-size: 14px; line-height: 1.5; white-space: pre; }
 
+        .profile-hint { color: #8b8b93; font-size: 12.5px; align-self: center; }
+        #profile-record.on { background: #c0392b; border-color: #c0392b; color: #fff; }
+        .p-row { border: 1px solid #333; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+                 background: #1c1c1c; }
+        .p-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+        .p-index { color: #8b8b93; font-variant-numeric: tabular-nums; }
+        /* The number this framework's whole argument is about, so it is the one thing set in bold. */
+        .p-ms { color: #E9B44C; font-weight: bold; font-variant-numeric: tabular-nums; }
+        .p-builds { color: #9a9aa2; }
+        .p-costs { margin-top: 5px; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px;
+                   font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; align-items: center; }
+        .p-name { color: #B18AE6; white-space: nowrap; }
+        .p-bar { background: #2a2233; border-radius: 3px; height: 9px; overflow: hidden; }
+        .p-bar span { display: block; height: 100%; background: #7A4FBF; }
+        .p-cost { color: #9a9aa2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .p-empty { color: #8b8b93; font-size: 12.5px; line-height: 1.6; }
+
         .q-client { color: #888; font-size: 12.5px; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 6px; }
         .q-row { border: 1px solid #333; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: #1c1c1c; }
         .q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -931,6 +984,7 @@ class RamondaDevTools extends HTMLElement {
         <div class="tab active" data-tab="logs">LOGS</div>
         <div class="tab" data-tab="components">COMPONENTS</div>
         <div class="tab" data-tab="query">QUERY</div>
+        <div class="tab" data-tab="profile">PROFILE</div>
       </div>
       <div id="logs-tab" class="tab-content active">
         <div id="logs-container"></div>
@@ -963,6 +1017,13 @@ class RamondaDevTools extends HTMLElement {
           </div>
         </div>
         <div class="jv-modal-body" id="jv-modal-body"></div>
+      </div>
+      <div id="profile-tab" class="tab-content">
+        <div class="tools">
+          <button type="button" id="profile-record">● record</button>
+          <span class="profile-hint" id="profile-hint"></span>
+        </div>
+        <div id="profile-container"></div>
       </div>
       <div id="query-tab" class="tab-content">
         <div id="query-container">
@@ -1039,6 +1100,7 @@ class RamondaDevTools extends HTMLElement {
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
+    this.updateProfileWatch();
   }
 
   /**
@@ -1096,6 +1158,7 @@ class RamondaDevTools extends HTMLElement {
     this.applyLayout();
     this.updateWatchState();
     this.updateQueryWatch();
+    this.updateProfileWatch();
   }
 
   /**
@@ -1226,6 +1289,17 @@ class RamondaDevTools extends HTMLElement {
       this.pin(crumb.dataset.crumb || undefined);
     });
 
+    root.querySelector("#profile-record")?.addEventListener("click", () => {
+      const bridge = this.profile;
+      if (!bridge) return;
+      // Recording starts from empty, which is what a profiler is for: you press it because you are
+      // about to do the thing you want to measure.
+      if (bridge.isRecording()) bridge.stop();
+      else bridge.start();
+      this.profileShape = "";
+      this.renderProfile();
+    });
+
     root.querySelector("#jv-close")?.addEventListener("click", () => this.closeFullView());
     root.querySelector("#jv-refresh")?.addEventListener("click", () => {
       if (this.fullId === undefined) return;
@@ -1302,7 +1376,9 @@ class RamondaDevTools extends HTMLElement {
         if (target) writeSession(TAB_KEY, target);
         this.componentsTabActive = target === "components";
         this.queryTabActive = target === "query";
+        this.profileTabActive = target === "profile";
         this.updateQueryWatch();
+        this.updateProfileWatch();
         this.updateWatchState();
       });
     });
@@ -1445,6 +1521,104 @@ class RamondaDevTools extends HTMLElement {
     container.innerHTML = html;
     this.bindQueryActions();
     this.markFullView();
+  }
+
+  /**
+   * The profiler tab: one row per commit, with the components that made it up.
+   *
+   * A list with numbers rather than a flamegraph, and that is a decision rather than a stopgap — what a
+   * Ramonda commit is made of is WHICH components rebuilt and how many times, and a flame chart of a
+   * flat drain is a picture of one bar. The bar per component here is its share of that commit, which
+   * is the question worth asking: not "is this slow" but "why did forty rows rebuild when one changed".
+   */
+  private renderProfile(): void {
+    const container = this.shadowRoot!.querySelector("#profile-container");
+    const button = this.shadowRoot!.querySelector("#profile-record") as HTMLElement | null;
+    const hint = this.shadowRoot!.querySelector("#profile-hint");
+    const bridge = this.profile;
+    if (!container || !button || !hint) return;
+
+    if (!bridge) {
+      container.innerHTML =
+        '<p class="p-empty">This build has no profiler. It arrives with a development build of @ramonda/core.</p>';
+      return;
+    }
+
+    const recording = bridge.isRecording();
+    button.classList.toggle("on", recording);
+    button.textContent = recording ? "■ stop" : "● record";
+
+    const commits = bridge.commits();
+    hint.textContent = recording
+      ? `recording · ${commits.length} commit${commits.length === 1 ? "" : "s"}`
+      : commits.length > 0
+        ? `${commits.length} commit${commits.length === 1 ? "" : "s"} · stopped`
+        : "";
+
+    if (commits.length === 0) {
+      container.innerHTML = recording
+        ? '<p class="p-empty">Recording. Interact with the app — every commit lands here.</p>'
+        : '<p class="p-empty">Press record, then use the app. A commit is one drain: everything a single state change rebuilt, including the effects and <code>@updated</code> bodies it scheduled — which is what the app actually waited for.</p>';
+      this.profileShape = "";
+      return;
+    }
+
+    // The list is keyed on the commits themselves, so a poll that finds nothing new writes no DOM.
+    const shape = commits.map((commit) => `${commit.index}:${commit.duration}`).join("|");
+    if (shape === this.profileShape) return;
+    this.profileShape = shape;
+
+    // Newest first: the commit you just caused is the one you are looking for.
+    container.innerHTML = [...commits]
+      .reverse()
+      .map((commit) => this.renderCommit(commit))
+      .join("");
+  }
+
+  private renderCommit(commit: CommitRecord): string {
+    const heaviest = commit.components[0]?.ms ?? 0;
+    const costs = commit.components
+      .map((cost) => {
+        const share = heaviest > 0 ? Math.max(2, Math.round((cost.ms / heaviest) * 100)) : 2;
+        const times = cost.builds > 1 ? ` ×${cost.builds}` : "";
+        return `<span class="p-name">${escapeHtml(cost.name)}${times}</span><span class="p-bar"><span style="width:${share}%"></span></span><span class="p-cost">${cost.ms.toFixed(
+          2,
+        )} ms</span>`;
+      })
+      .join("");
+
+    return `<div class="p-row" data-p-commit="${commit.index}">
+      <div class="p-head">
+        <span class="p-index">#${commit.index}</span>
+        <span class="p-ms">${commit.duration.toFixed(2)} ms</span>
+        <span class="p-builds">${commit.builds} build${commit.builds === 1 ? "" : "s"} · ${
+          commit.components.length
+        } component${commit.components.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="p-costs">${costs}</div>
+    </div>`;
+  }
+
+  /**
+   * Polls while the profile tab is open, for the same reason the query tab does: the panel PULLS. A
+   * commit does not notify anybody, and pushing would mean the profiler telling a panel nobody is
+   * looking at.
+   */
+  private updateProfileWatch(): void {
+    const shouldWatch = this.hasAttribute("open") && this.profileTabActive;
+
+    if (!shouldWatch) {
+      if (this.profileTimer !== undefined) {
+        clearInterval(this.profileTimer);
+        this.profileTimer = undefined;
+      }
+      return;
+    }
+
+    if (this.profileTimer !== undefined) return;
+    this.profileShape = "";
+    this.renderProfile();
+    this.profileTimer = setInterval(() => this.renderProfile(), 400);
   }
 
   /** Writes only if the content differs, so an idle panel does not touch the DOM at all. */

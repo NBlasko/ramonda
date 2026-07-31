@@ -169,6 +169,30 @@ There is no *refetch* button, and that is the design rather than an omission: th
 the observer, not to the cache, so an entry nobody is watching has no function to call. `invalidate`
 is the honest equivalent.
 
+## What a commit cost
+
+The `PROFILE` tab is off until you press **record**, and that is the design rather than a limitation: a
+commit is the hottest path in the framework, and sampling it unconditionally would tax every
+development build. While recording it costs about **3.6%** of a commit (measured over 200 commits of a
+51-component tree, alternating recorded and unrecorded runs); while stopped it costs one boolean test.
+
+Each row is one **commit**, which here means one *drain* — everything a single state change rebuilt,
+including the effects and `@updated` bodies it scheduled, because that is what the app actually waited
+for. Timing individual builds and adding them up would leave out the diff, the DOM and the post-commit
+flush, which is the part that hurts.
+
+Under each commit, the components that made it up with their share of it:
+
+```
+#12   12.25 ms   41 builds · 2 components
+      Board                 ████████████████  9.00 ms
+      Row ×40               ██████             3.25 ms
+```
+
+The count is usually the more interesting number. `Row ×40` after changing one row is not a slow
+component — it is forty renders that did not need to happen, which is a `key`, a `@compute`, or a
+`stable()` away from being one.
+
 ## Docked or floating
 
 Opening the panel **docks** it: the app reflows into the space beside it, so nothing is hidden behind

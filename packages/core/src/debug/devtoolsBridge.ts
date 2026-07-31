@@ -1,4 +1,5 @@
 import { scanComponentTree, writeInspectedState, type InspectedNode } from "./inspector";
+import { isRecording, startRecording, stopRecording, takeCommits } from "./profiler";
 
 // Whether the devtools panel is currently open + watching components. While
 // false, the core does NO inspector work — the whole cost is opt-in.
@@ -36,6 +37,12 @@ export function initDevtoolsBridge(): void {
   const w = window as unknown as {
     __RAMONDA_INSPECT__?: typeof inspectTree;
     __RAMONDA_WRITE__?: typeof writeInspectedState;
+    __RAMONDA_PROFILE__?: {
+      start(): void;
+      stop(): void;
+      isRecording(): boolean;
+      commits(): ReturnType<typeof takeCommits>;
+    };
   };
   if (w.__RAMONDA_INSPECT__) return;
   w.__RAMONDA_INSPECT__ = inspectTree;
@@ -45,6 +52,17 @@ export function initDevtoolsBridge(): void {
    * an instance, call a method, or touch props through it.
    */
   w.__RAMONDA_WRITE__ = writeInspectedState;
+
+  /**
+   * The profiler's controls. Off until the panel presses record, because a commit is the hottest path
+   * in the framework and a profiler that samples it always is a tax on every development build.
+   */
+  w.__RAMONDA_PROFILE__ = {
+    start: startRecording,
+    stop: stopRecording,
+    isRecording,
+    commits: takeCommits,
+  };
 
   window.addEventListener("ramonda:devtools-watch", () => {
     devtoolsWatching = true;

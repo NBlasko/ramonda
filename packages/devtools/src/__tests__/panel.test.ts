@@ -1818,3 +1818,136 @@ describe("editing a query's cached data", () => {
     openTab(panel, "logs");
   });
 });
+
+describe("the profiler tab", () => {
+  const commit = (index: number, duration: number, components = [{ name: "Board", builds: 1, ms: duration }]) => ({
+    index,
+    at: index * 10,
+    duration,
+    builds: components.reduce((sum, c) => sum + c.builds, 0),
+    components,
+  });
+
+  function withProfiler(state: { recording: boolean; commits: ReturnType<typeof commit>[] }) {
+    const bridge = {
+      start: vi.fn(() => {
+        state.recording = true;
+        state.commits = [];
+      }),
+      stop: vi.fn(() => {
+        state.recording = false;
+      }),
+      isRecording: () => state.recording,
+      commits: () => state.commits,
+    };
+    (window as unknown as { __RAMONDA_PROFILE__: unknown }).__RAMONDA_PROFILE__ = bridge;
+
+    const panel = mount(() => tree());
+    openTab(panel, "profile");
+    return { panel, bridge };
+  }
+
+  const rows = (panel: Panel) =>
+    Array.from(panel.shadowRoot.querySelectorAll(".p-row")).map((row) => row.getAttribute("data-p-commit"));
+
+  it("explains what a commit is before anything is recorded", () => {
+    const { panel } = withProfiler({ recording: false, commits: [] });
+
+    expect(panel.shadowRoot.querySelector("#profile-container")!.textContent).toContain("one drain");
+    expect(panel.shadowRoot.querySelector("#profile-record")!.textContent).toContain("record");
+    openTab(panel, "logs");
+  });
+
+  it("starts and stops recording through the bridge", () => {
+    const state = { recording: false, commits: [] as ReturnType<typeof commit>[] };
+    const { panel, bridge } = withProfiler(state);
+
+    panel.shadowRoot.querySelector("#profile-record")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(bridge.start).toHaveBeenCalled();
+    expect(panel.shadowRoot.querySelector("#profile-record")!.textContent).toContain("stop");
+
+    panel.shadowRoot.querySelector("#profile-record")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(bridge.stop).toHaveBeenCalled();
+    openTab(panel, "logs");
+  });
+
+  /** The commit you just caused is the one you are looking for, so it is at the top. */
+  it("lists commits newest first, with what each cost", () => {
+    const { panel } = withProfiler({
+      recording: true,
+      commits: [
+        commit(1, 4.5),
+        commit(2, 12.25, [
+          { name: "Board", builds: 1, ms: 9 },
+          { name: "Row", builds: 40, ms: 3.25 },
+        ]),
+      ],
+    });
+
+    expect(rows(panel)).toEqual(["2", "1"]);
+
+    const newest = panel.shadowRoot.querySelector(".p-row")!;
+    expect(newest.querySelector(".p-ms")!.textContent).toBe("12.25 ms");
+    expect(newest.querySelector(".p-builds")!.textContent).toContain("41 builds");
+    // The count is the point: forty rows rebuilding for one change is the thing worth seeing.
+    expect(newest.textContent).toContain("Row ×40");
+    openTab(panel, "logs");
+  });
+
+  it("draws each component's share of its own commit", () => {
+    const { panel } = withProfiler({
+      recording: true,
+      commits: [
+        commit(1, 10, [
+          { name: "Heavy", builds: 1, ms: 8 },
+          { name: "Light", builds: 1, ms: 2 },
+        ]),
+      ],
+    });
+
+    const bars = Array.from(panel.shadowRoot.querySelectorAll(".p-bar span")) as HTMLElement[];
+    expect(bars[0].style.width).toBe("100%");
+    expect(bars[1].style.width).toBe("25%");
+    openTab(panel, "logs");
+  });
+
+  /** An idle poll must not rewrite the list — the same rule the query tab had to learn. */
+  it("writes no DOM when a poll finds nothing new", () => {
+    const { panel } = withProfiler({ recording: true, commits: [commit(1, 4)] });
+
+    const before = panel.shadowRoot.querySelector(".p-row");
+    (panel as unknown as { renderProfile(): void }).renderProfile();
+
+    expect(panel.shadowRoot.querySelector(".p-row")).toBe(before);
+    openTab(panel, "logs");
+  });
+
+  it("says so when the build has no profiler at all", () => {
+    (window as unknown as { __RAMONDA_PROFILE__?: unknown }).__RAMONDA_PROFILE__ = undefined;
+    const panel = mount(() => tree());
+    openTab(panel, "profile");
+
+    expect(panel.shadowRoot.querySelector("#profile-container")!.textContent).toContain("no profiler");
+    openTab(panel, "logs");
+  });
+
+  it("polls only while its tab is open", () => {
+    vi.useFakeTimers();
+    try {
+      const state = { recording: true, commits: [commit(1, 4)] };
+      const { panel, bridge } = withProfiler(state);
+      const reads = vi.spyOn(bridge, "commits");
+
+      vi.advanceTimersByTime(1000);
+      expect(reads.mock.calls.length).toBeGreaterThan(0);
+
+      openTab(panel, "logs");
+      const after = reads.mock.calls.length;
+      vi.advanceTimersByTime(3000);
+
+      expect(reads.mock.calls.length).toBe(after);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

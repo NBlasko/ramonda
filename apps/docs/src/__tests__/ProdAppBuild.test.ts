@@ -261,6 +261,7 @@ describe("a production application build", () => {
       "installTimerGuard",
       "initDevtoolsBridge",
       "recordDefinition",
+      "startRecording",
       "diagnose",
       "ramondaLog",
     ]) {
