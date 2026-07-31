@@ -81,13 +81,11 @@ function createTodo(title: string): Promise<string> {
 /* ── 1. Cache, dedup, and a key that moves ──────────────────────────────── */
 
 class ProfileCard extends Component<{ id: string; label: string }> {
-  private profile = this.use(Query, (self: ProfileCard) =>
-    ({
-      key: ["profile", self.props.id],
-      fetch: (ctx:  FetchContext<string[]>) => getProfile(self.props.id, ctx),
-      staleTime: 10_000,
-    }),
-  );
+  private profile = this.use(Query, (self: ProfileCard) => ({
+    key: ["profile", self.props.id],
+    fetch: (ctx: FetchContext<string[]>) => getProfile(self.props.id, ctx),
+    staleTime: 10_000,
+  }));
 
   refresh() {
     void this.profile.refetch();

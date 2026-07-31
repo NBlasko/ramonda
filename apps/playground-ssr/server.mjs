@@ -88,7 +88,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const [, relative, line = "1", column = "1"] = /^(.*?):(\d+)?:?(\d+)?$/.exec(target) ?? [, target];
+    // Written out rather than destructured with a `?? [, target]` fallback: that fallback was a sparse
+    // array, which oxlint refuses — and rightly, since a hole in an array literal is almost always a typo.
+    const at = /^(.*?):(\d+)?:?(\d+)?$/.exec(target);
+    const relative = at?.[1] ?? target;
+    const line = at?.[2] ?? "1";
+    const column = at?.[3] ?? "1";
 
     /**
      * `from` is the module the position came out of, and it is what a RELATIVE source is relative to.

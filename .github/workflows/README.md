@@ -13,6 +13,25 @@ foundation of best practices to grow from, not an all-in-one.
 The shared `.github/actions/setup` composite installs pnpm (from the root
 `packageManager` field), Node 20, and dependencies with `--frozen-lockfile`.
 
+## Running the gate locally: `pnpm check`
+
+```
+pnpm check      # pnpm lint && pnpm format:check && turbo run check-types test build
+```
+
+It exists because **`turbo run` alone is not the gate.** Two of the four checks are
+root scripts that turbo never sees:
+
+- `pnpm lint` is one oxlint pass over the **whole** repo. No app under `apps/` has a
+  `lint` script, so `turbo run lint` covers `packages/` only — a lint error in a
+  playground or in the docs app is invisible to turbo and fatal in CI.
+- `pnpm format:check` is not a turbo task at all.
+
+A branch was once "green" on `turbo run check-types test build` while carrying a
+sparse array in `apps/playground-ssr/server.mjs` and a misformatted file in
+`apps/playground-core` — both committed, both would have failed `ci.yml`. Verify with
+`pnpm check`, which runs what CI runs, in the same order.
+
 ## Code style: oxlint + biome
 
 Two tools, one job each:
