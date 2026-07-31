@@ -107,9 +107,9 @@ Versions and changelogs are driven by [Changesets](https://github.com/changesets
    real versions, and tags each release. Private packages (`apps/*`,
    `@ramonda/shared`) are ignored.
 
-**The very first publish** needs no changeset: the packages are not on npm yet, so
-merging to `main` publishes them at their current `0.0.x`. After that, every bump
-comes from a changeset.
+**The very first publish** needed no changeset: the packages were not on npm yet,
+so merging to `main` published them at the versions they already carried. Every
+bump since comes from a changeset.
 
 `CHANGELOG`s link back to PRs and authors via `@changesets/changelog-github`,
 which reads `GITHUB_TOKEN` — already provided in CI. (Running `pnpm changeset

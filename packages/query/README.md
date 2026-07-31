@@ -3,7 +3,9 @@
 Async state for [Ramonda](https://ramonda.pages.dev): cached, deduplicated,
 race-free queries and mutations that survive a server render.
 
-> **Status: early.** Versions are `0.0.x` and the API is still moving.
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
 
 ```tsx
 import { Component } from "@ramonda/core";
