@@ -1,5 +1,97 @@
 # @ramonda/query
 
+## 0.3.0
+
+### Minor Changes
+
+- 9a36ad4: Edit a query's cached data from the panel — the one edit you see on the page immediately.
+
+  Asked for after editing a query hook's `version` and seeing nothing: that field is an invalidation
+  counter, so the write landed and the page still rendered from the cache. The **cache** is the thing to
+  edit, and now `✎` on a Query row does it.
+
+  It goes through the same `setData` an optimistic update calls, so nothing about the write is special: a
+  fetch in flight is abandoned (it is older information than the write), structural sharing keeps the
+  identity of what did not change, `updatedAt` moves, status becomes `success`, and every observer is
+  notified. A refetch replaces it, which the panel says as it writes.
+
+  Two refusals, both deliberate:
+
+  - **No pencil for a value that arrived truncated.** The bridge sends a bounded copy, and a bounded copy
+    carries markers where values were dropped — writing one back would put `"[… budget]"` into the cache.
+    The bridge reports whether the copy is the whole value, and the panel only offers an edit when it is.
+  - **No pencil when the query package is older than the panel**, since it has no write side to call.
+
+  The list also holds still while you are typing into it: a cache event anywhere rebuilds it twice a
+  second, and without that the box would vanish mid-sentence.
+
+### Patch Changes
+
+- ae5101a: `RMQ001` is documented, and the diagnostics reference is grouped by package.
+
+  Reported: `RMQ002` sat between `RMD023` and `RMD024`, so the list read as if it had been sorted and then
+  broken. It was worse than that — **`RMQ001` was not in the reference at all**, while being raised in two
+  places in `hashKey.ts`. A message that tells a reader to look up a code, pointing at a page that does not
+  have it.
+
+  The page now has a heading per package (`# Core — RMD`, `# Query — RMQ`) with the general "Reading them"
+  section lifted above both, and the non-determinism inventory kept beside the RMD codes it explains.
+  `RMQ001` has its own section: what a function or symbol in a key does (dropped by `JSON.stringify`, so
+  two different keys hash identically and each query renders the other's data) and what a `Date`, `Map` or
+  class instance does (serializes unstably, so the entry is never found again and every render refetches).
+
+  And the docs build now fails when a diagnostic is raised in the source and missing from the reference —
+  read from the source rather than from a list somebody maintains, with its own self-test to prove it can
+  fail. That is the check that was missing when `RMQ001` slipped through.
+
+- efed944: The documentation no longer teaches a decorator that does not exist.
+
+  `@effect` was removed in 0.1.0, and the word stayed behind: the root README listed it among the
+  decorators, core's README had a table row for it, `@ramonda/query`'s README explained mutation rollback
+  by comparing it to "the cleanup contract `@effect` uses", and the sidebar group was called _Lifecycle and
+  effects_. A reader following any of those looks for something that is not there.
+
+  The `/concepts/subscriptions` page also stopped explaining itself as a migration. Its "There is no
+  `@effect`" section was written for someone who had used the old decorator; it now answers the question a
+  reader actually arrives with — _where did `useEffect` go_ — with a table from what you want to the name it
+  has here, and keeps the reason: an effect is defined by its dependencies rather than its purpose, so one
+  decorator would have to be all four of those things, and which one it was would depend on what its body
+  happened to read that render.
+
+  Elsewhere "effects" was the runtime's own vocabulary leaking into prose a reader cannot look up ("after
+  this commit's `@mount`s and effects"); those say _subscriptions_ now.
+
+- 681b7e5: RMQ002's reporter no longer reaches the production build.
+
+  Reported by Nikola, and true — `dist/index.prod.js` contained `reportIgnoredError(){}`. The body, the
+  message and the string `RMQ002` were all stripped by `__DEV__`; the declaration was left standing,
+  because **a class method cannot be tree-shaken** — nothing can prove it unused. It is a module function
+  now, referenced only inside `if (__DEV__)`, which a bundler drops whole. That is how every other
+  diagnostic in this repo is written, and now there is a reason written down for why.
+
+  The worse half was its DEV-only `@mount`. A lifecycle decorator registers from an initializer, so in
+  production **every `Query` instance** allocated an id, bound the empty method, pushed an entry onto the
+  runtime's mounts, and the flush then called it — per instance, for a method that did nothing. The
+  restored-error case reports from the top of `load` instead, an `@mount` that exists in every build, and
+  it is unaffected by being earlier: a refetch moves `fetchStatus`, not `status`, so a restored failure is
+  still there to see.
+
+  Both names are in the production-build test's forbidden list now, and putting the method back fails it.
+
+- 5940f4f: The status banner states the plan instead of apologising — and stops claiming `0.0.x`.
+
+  Both READMEs said "Status: early … versions are `0.0.x`", which was false (core and query are past 0.2.0)
+  and, worse, said nothing about what happens next. Someone reading it learns the API is unstable but not
+  whether that is a phase or a temperament.
+
+  It is a phase, and it now says so: `0.x` is exploration, where the API changes freely between releases and
+  the packages are on npm to be installed and tried rather than adopted. **At `1.0` that flips** —
+  interfaces hold, backward compatibility becomes a rule rather than a courtesy, and the work turns to
+  performance and bugs. The whole point of the `0.x` months is to arrive at an API worth keeping still.
+
+  Also corrected in `.github/workflows/README.md`, which still described the first publish in the future
+  tense ("the packages are not on npm yet").
+
 ## 0.2.0
 
 ### Minor Changes

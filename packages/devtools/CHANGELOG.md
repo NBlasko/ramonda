@@ -1,5 +1,195 @@
 # @ramonda/devtools
 
+## 0.3.0
+
+### Minor Changes
+
+- 9a36ad4: Edit a query's cached data from the panel — the one edit you see on the page immediately.
+
+  Asked for after editing a query hook's `version` and seeing nothing: that field is an invalidation
+  counter, so the write landed and the page still rendered from the cache. The **cache** is the thing to
+  edit, and now `✎` on a Query row does it.
+
+  It goes through the same `setData` an optimistic update calls, so nothing about the write is special: a
+  fetch in flight is abandoned (it is older information than the write), structural sharing keeps the
+  identity of what did not change, `updatedAt` moves, status becomes `success`, and every observer is
+  notified. A refetch replaces it, which the panel says as it writes.
+
+  Two refusals, both deliberate:
+
+  - **No pencil for a value that arrived truncated.** The bridge sends a bounded copy, and a bounded copy
+    carries markers where values were dropped — writing one back would put `"[… budget]"` into the cache.
+    The bridge reports whether the copy is the whole value, and the panel only offers an edit when it is.
+  - **No pencil when the query package is older than the panel**, since it has no write side to call.
+
+  The list also holds still while you are typing into it: a cache event anywhere rebuilds it twice a
+  second, and without that the box would vanish mid-sentence.
+
+- cb289b6: Edit a `@state` value from the panel.
+
+  **✎** on a state row opens the value as JSON in place: Enter applies, Escape abandons, and a
+  multi-line value takes ⌘/Ctrl+Enter so plain Enter stays a newline. Invalid JSON never reaches the
+  app — the parse happens first and the row says what was wrong.
+
+  The write side of the bridge is deliberately narrow: **one field, addressed by a handle the last scan
+  handed out, and only when that field is `@state` or `@persist`.** There is no way through it to an
+  instance, a method, or a prop. A handle from an older scan is refused rather than landing on whatever
+  now occupies that slot.
+
+  Two limits are the framework's rules, not the panel's, and both are stated in the UI:
+
+  - **You edit the whole field.** A signal holds a value, not a proxy, so mutating inside an object
+    notifies nobody: "change `user.name`" has to become "assign a new `user`". The panel is held to the
+    same rule as application code.
+  - **Props have no pencil.** They are owned by whoever rendered the component and assigning to one
+    throws in every build (RMD004 / RMD015). A box that pretended otherwise would either throw or look
+    like it had worked until the next render put the old value back. Same for a hook's props, which come
+    from its owner's callback. Core refuses the write; the panel does not offer it and says why if it is
+    attempted.
+
+  A value that cannot survive a round trip through JSON — a function, a `Map`, a DOM node — gets no
+  pencil either, rather than a box that fails on Enter. The write itself goes through the ordinary
+  setter, so the signal notifies, the component rebuilds, `@updated` runs, and a diagnostic fires for a
+  non-serializable value, exactly as if the app had assigned it.
+
+- 066dcf9: `</>` on any row in devtools opens that component's definition in your editor.
+
+  This closes the flow the navigation work was for. You could already point at something on the page,
+  find its component and focus it — and then you alt-tabbed and searched for the class by name. That
+  was the last manual step, and the most frequent one.
+
+  **Where the location comes from, and why it needs nothing from you.** The framework reads it off the
+  stack the first time a component or hook is constructed. That was measured before it was built on: a
+  subclass appears in a stack by name even when it declares no constructor of its own, and the frame's
+  position is the class declaration. So there is no build plugin to install, no JSX transform to switch
+  to, and no decorator a component has to carry — a bare `class Foo extends Component` is located like
+  any other. One `Error` per class, cached, in a development build only.
+
+  The alternatives were each worse: a JSX transform gives the call site (`<Foo />`) rather than the
+  definition, and esbuild only injects source for the automatic runtime, which this framework does not
+  use; a build plugin would be accurate and would also be a thing every app has to configure.
+
+  **Opening goes through the dev server**, not through a `vscode://` link: Vite's `/__open-in-editor`
+  hands the file to whatever editor is running on the machine that serves the app, so nothing has to be
+  registered or configured, and the browser never needs the absolute path. Without that endpoint — a
+  custom server — the location is copied to the clipboard and the log says so, because a button that
+  silently does nothing is worse than one that hands you something to paste.
+
+  **The position is resolved through the module's own sourcemap**, and that turned out not to be
+  optional. A stack reports the file the engine loaded, and `Error.stack` is never sourcemapped
+  (browsers apply sourcemaps when _displaying_ a stack, never in the string). Measured against Vite 7
+  serving a real page: a class declared on **source line 20** appears on **served line 51**, because
+  esbuild lowers standard decorators and prepends a preamble. Thirty-one lines is not a rounding error
+  — it is a button that looks broken.
+
+  Vite serves each module with an inline map, so the map is already in the file the browser has
+  cached: fetch the module, decode the mappings, look up the segment. Verified end to end against a
+  live dev server — served 51 → source 20, exactly the declaration. The file name comes from the map
+  too, which is what keeps a bundled development build from opening the bundle instead of the source.
+  Everything fails towards the unresolved position, which still opens the right file.
+
+- ddd4a63: A profiler: what one commit cost, and which components it rebuilt.
+
+  The framework's central claim is about the cost of a commit — a render being a few percent of it,
+  access tracking turning nine renders into three, structural sharing turning 272 ms into 1.3 ms. Every
+  one of those numbers was measured in a test, and none of them was ever visible in the panel. An app
+  author could not check the claim against their own app, which is the only place it matters.
+
+  **A commit here is one drain**, not one build: everything a single state change rebuilt, including the
+  effects and `@updated` bodies it scheduled. Timing builds and summing them would leave out the diff,
+  the DOM and the post-commit flush — the part that hurts.
+
+  **Off until you press record.** A commit is the hottest path in the framework, so sampling it always
+  would be a tax on every development build. Measured — and measured properly, because the first attempt
+  ran off-then-on once each and reported recording as _faster_, warm-up drift being larger than the
+  effect. Alternating runs, medians of seven rounds of 200 commits over a 51-component tree:
+
+  ```
+    off        253.9 ms
+    recording  263.0 ms   → 3.6%
+  ```
+
+  The `PROFILE` tab lists commits newest first with their duration, and under each one the components
+  that made it up with their share. The **count** is usually the more useful number: `Row ×40` after
+  changing one row is not a slow component, it is forty renders that did not need to happen. A list
+  rather than a flamegraph, deliberately — a flame chart of a flat drain is a picture of one bar.
+
+### Patch Changes
+
+- 569d509: The devtools documentation has pictures now, and they are generated rather than taken.
+
+  Six of them — the docked panel with a component focused, the picker naming a row on the page, one value
+  open on the whole panel, the Query tab, the profiler recording, and a GIF of the badge detonating, which
+  is the one thing in the panel a still cannot show.
+
+  They come from `apps/docs/scripts/shots.mjs`, which starts the playground, drives a real Chrome over the
+  DevTools Protocol and writes the files. Nothing was installed for it: Chrome is on the machine, `ffmpeg`
+  is on the machine, and Node has had a global `WebSocket` since 22 — which is the whole dependency list.
+  A hand-taken screenshot of a devtools panel is out of date the first time the panel changes and nothing
+  tells you, because a picture cannot fail a build; regenerating these is `npm run shots`, so a panel that
+  no longer matches its documentation shows up as a diff.
+
+  Captured at 2× so the panel's 13px monospace survives, then written as WebP at 1600 wide — 76 kB rather
+  than the 360 kB PNG it started as, for pixels a documentation column can actually use.
+
+- aaf7eb4: Two bugs that only the real bundle could show, and a check that now drives it.
+
+  **The edit pencil did nothing on any row under a hook.** It packed `nodeId|key|valueId` into one
+  attribute — and a value id contains the node's path, which marks a hooks branch with `|h`. So
+  `split("|")` on `1|routeState|/0:component:App|h/0:hook:Router::s::routeState` handed back a truncated
+  id, the lookup missed, and the click was swallowed. Three attributes now, no delimiter over data. The
+  editor button was built the same way and is fixed the same way.
+
+  This is the third time the same mistake has appeared in this panel — a query hash inside a selector, a
+  prop name inside a selector, a path inside a delimiter. Never build a delimited string out of data that
+  can contain the delimiter.
+
+  **A component from another package could not be opened.** For a bundled development build the map names
+  its inputs as a `../../..` chain out of the bundle's directory _on disk_, and the panel resolved that in
+  the browser — where `new URL()` clamps at the web root and turns
+  `../../../../../packages/router/src/Link.tsx` into `packages/router/src/Link.tsx`. The server then looked
+  for it under the app and answered 422. The source now travels exactly as the map wrote it, alongside the
+  module it came from, and the server does the arithmetic — it is the only party that knows a URL of
+  `/assets/client.js` is a file under `dist/client`.
+
+  **And the SSR playground's smoke test drives the panel now**: it loads the real bundle into jsdom,
+  opens the tree, clicks a pencil and asserts an editor appears, then asks the editor endpoint to resolve
+  a path read out of the bundle's own sourcemap. Both bugs above fail it. 102 unit tests could not see
+  either, because a test tree writes its own paths and a mocked fetch answers its own questions.
+
+- 77f1655: `</>` says what happened, instead of looking dead.
+
+  Reported from the SSR playground: clicking it did nothing visible. It was in fact working — no editor
+  endpoint on that hand-written server, so it fell back to copying the path — but the report went to
+  the `LOGS` tab, which is not the tab you are on when you click a row in `COMPONENTS`. A control has to
+  say what it did, where it did it: there is a toast over the panel now.
+
+  The tooltip also stopped promising something it cannot deliver. It said `open client.js:8692 in your
+editor`, which is the position in the file the engine loaded; it now says `open the definition in your
+editor (served at client.js:8692)`. Resolving through the sourcemap needs a fetch, so it happens on
+  the click, not once per row per render to fill in a tooltip.
+
+  And the endpoint in this repo's SSR playground no longer answers `200` for work it did not do.
+  `launch-editor` returns **silently** when the file does not exist — no callback, no log — which is how
+  a request for `assets/client.js:8692` (a position in the bundle, before the sourcemap landed) produced
+  a cheerful `ok` and nothing else. It checks the file itself now, answers `422` with the path, and
+  passes the error callback so a spawn that fails is a 500 rather than a line on a console nobody is
+  reading. `404` is left to mean the one thing the panel needs it to mean: this server has no such
+  endpoint, use the clipboard.
+
+- 19e9be3: The panel says what a write did, and when the app undid it.
+
+  Reported: editing a query hook's `version` and `snapshot` appeared to do nothing. It did not — both
+  writes landed, verified by driving the real bundle. But `version` is an invalidation counter and
+  `snapshot` is the hydration transport, so what the page renders comes from the cache either way, and the
+  hook sets both again on its next cache event. "It worked and the app owns that field" and "it did not
+  work" looked identical, because the panel closed the box and said nothing.
+
+  Now it says `wrote version = 99`, or `count is already that value` — and it watches the field for one
+  refresh: if the app has put something else there, it says
+  `version was written, and the app has since set it to 3`. Which is the answer to the question that
+  prompted this, delivered where the question is asked.
+
 ## 0.2.0
 
 ### Minor Changes
