@@ -1,5 +1,45 @@
 # create-ramonda
 
+## 0.2.0
+
+### Minor Changes
+
+- 4762997: The scaffolder requires Node 24, and refuses rather than warns.
+
+  `engines` said `>=18`, which was never true: the SPA template pulls Vite 7, whose own floor is
+  `^20.19 || >=22.12`. So a user on Node 18 got a project that installed and then failed to build, in a way
+  that reads as Ramonda's fault rather than as a version mismatch.
+
+  `engines` is advisory — npm prints a line and `npm create` proceeds — so the number alone cannot be the
+  mechanism. The check now runs at the top of the CLI, **before anything is written**: it prints what is
+  needed and what is running, and exits 1. Verified by running the built entry with `process.versions.node`
+  patched to 22.9.0 — message shown, exit 1, no files created.
+
+  Node 24 rather than the toolchain's actual floor, because it is the version this repo builds and tests on
+  and `0.x` has nobody on old runtimes to keep faith with.
+
+  The tests cover the boundary and assert that `engines` and the refusal agree, so the advisory and the
+  mechanism cannot drift apart.
+
+### Patch Changes
+
+- ba9845c: A tagline that says what Ramonda is: **Explicit. Predictable. Readable.**
+
+  The old one listed implementation choices — class components, signals, TC39 decorators — which is what a
+  reader compares against their existing habits rather than a reason to look further. Nothing in it said
+  what you get.
+
+  Three words, in the order they cause each other: _explicit_ is how you write it, _predictable_ is how it
+  runs, _readable_ is what you get back when you return to it a year later. No second sentence: the
+  `Counter` example directly below is a better argument than an adjective defending an adjective.
+
+  `keywords` in `package.json` still carries `signals`, `decorators`, `ssr` and the rest, so nothing was
+  lost for npm search — those words moved to the field that search actually reads.
+
+  Six places now agree: both READMEs, core's npm description, the docs social card, and both scaffolded
+  apps. The SSR template keeps "Server-rendered, then hydrated", which is a fact about that app rather than
+  the tagline.
+
 ## 0.1.0
 
 ### Minor Changes

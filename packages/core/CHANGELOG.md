@@ -1,5 +1,249 @@
 # @ramonda/core
 
+## 0.3.0
+
+### Minor Changes
+
+- cb289b6: Edit a `@state` value from the panel.
+
+  **✎** on a state row opens the value as JSON in place: Enter applies, Escape abandons, and a
+  multi-line value takes ⌘/Ctrl+Enter so plain Enter stays a newline. Invalid JSON never reaches the
+  app — the parse happens first and the row says what was wrong.
+
+  The write side of the bridge is deliberately narrow: **one field, addressed by a handle the last scan
+  handed out, and only when that field is `@state` or `@persist`.** There is no way through it to an
+  instance, a method, or a prop. A handle from an older scan is refused rather than landing on whatever
+  now occupies that slot.
+
+  Two limits are the framework's rules, not the panel's, and both are stated in the UI:
+
+  - **You edit the whole field.** A signal holds a value, not a proxy, so mutating inside an object
+    notifies nobody: "change `user.name`" has to become "assign a new `user`". The panel is held to the
+    same rule as application code.
+  - **Props have no pencil.** They are owned by whoever rendered the component and assigning to one
+    throws in every build (RMD004 / RMD015). A box that pretended otherwise would either throw or look
+    like it had worked until the next render put the old value back. Same for a hook's props, which come
+    from its owner's callback. Core refuses the write; the panel does not offer it and says why if it is
+    attempted.
+
+  A value that cannot survive a round trip through JSON — a function, a `Map`, a DOM node — gets no
+  pencil either, rather than a box that fails on Enter. The write itself goes through the ordinary
+  setter, so the signal notifies, the component rebuilds, `@updated` runs, and a diagnostic fires for a
+  non-serializable value, exactly as if the app had assigned it.
+
+- 066dcf9: `</>` on any row in devtools opens that component's definition in your editor.
+
+  This closes the flow the navigation work was for. You could already point at something on the page,
+  find its component and focus it — and then you alt-tabbed and searched for the class by name. That
+  was the last manual step, and the most frequent one.
+
+  **Where the location comes from, and why it needs nothing from you.** The framework reads it off the
+  stack the first time a component or hook is constructed. That was measured before it was built on: a
+  subclass appears in a stack by name even when it declares no constructor of its own, and the frame's
+  position is the class declaration. So there is no build plugin to install, no JSX transform to switch
+  to, and no decorator a component has to carry — a bare `class Foo extends Component` is located like
+  any other. One `Error` per class, cached, in a development build only.
+
+  The alternatives were each worse: a JSX transform gives the call site (`<Foo />`) rather than the
+  definition, and esbuild only injects source for the automatic runtime, which this framework does not
+  use; a build plugin would be accurate and would also be a thing every app has to configure.
+
+  **Opening goes through the dev server**, not through a `vscode://` link: Vite's `/__open-in-editor`
+  hands the file to whatever editor is running on the machine that serves the app, so nothing has to be
+  registered or configured, and the browser never needs the absolute path. Without that endpoint — a
+  custom server — the location is copied to the clipboard and the log says so, because a button that
+  silently does nothing is worse than one that hands you something to paste.
+
+  **The position is resolved through the module's own sourcemap**, and that turned out not to be
+  optional. A stack reports the file the engine loaded, and `Error.stack` is never sourcemapped
+  (browsers apply sourcemaps when _displaying_ a stack, never in the string). Measured against Vite 7
+  serving a real page: a class declared on **source line 20** appears on **served line 51**, because
+  esbuild lowers standard decorators and prepends a preamble. Thirty-one lines is not a rounding error
+  — it is a button that looks broken.
+
+  Vite serves each module with an inline map, so the map is already in the file the browser has
+  cached: fetch the module, decode the mappings, look up the segment. Verified end to end against a
+  live dev server — served 51 → source 20, exactly the declaration. The file name comes from the map
+  too, which is what keeps a bundled development build from opening the bundle instead of the source.
+  Everything fails towards the unresolved position, which still opens the right file.
+
+- ddd4a63: A profiler: what one commit cost, and which components it rebuilt.
+
+  The framework's central claim is about the cost of a commit — a render being a few percent of it,
+  access tracking turning nine renders into three, structural sharing turning 272 ms into 1.3 ms. Every
+  one of those numbers was measured in a test, and none of them was ever visible in the panel. An app
+  author could not check the claim against their own app, which is the only place it matters.
+
+  **A commit here is one drain**, not one build: everything a single state change rebuilt, including the
+  effects and `@updated` bodies it scheduled. Timing builds and summing them would leave out the diff,
+  the DOM and the post-commit flush — the part that hurts.
+
+  **Off until you press record.** A commit is the hottest path in the framework, so sampling it always
+  would be a tax on every development build. Measured — and measured properly, because the first attempt
+  ran off-then-on once each and reported recording as _faster_, warm-up drift being larger than the
+  effect. Alternating runs, medians of seven rounds of 200 commits over a 51-component tree:
+
+  ```
+    off        253.9 ms
+    recording  263.0 ms   → 3.6%
+  ```
+
+  The `PROFILE` tab lists commits newest first with their duration, and under each one the components
+  that made it up with their share. The **count** is usually the more useful number: `Row ×40` after
+  changing one row is not a slow component, it is forty renders that did not need to happen. A list
+  rather than a flamegraph, deliberately — a flame chart of a flat drain is a picture of one bar.
+
+### Patch Changes
+
+- 8d76b4e: A check that a workflow does not bypass turbo — the gap the docs deploy fell through.
+
+  `pnpm check` and CI both go through turbo, so both were green while `deploy-docs.yml` ran
+  `pnpm --filter @ramonda/docs build` directly and skipped the `content` task that `build` declares in
+  `dependsOn`. The gap was never in _what_ is built; it was in _how a workflow asks for it_, and nothing
+  looked at that.
+
+  `scripts/check-workflows.mjs` reads `turbo.json` for the tasks that have dependencies, scans the
+  workflows, and refuses to see one of those invoked as a package script. Narrow on purpose: only a task
+  with a `dependsOn` can silently lose a step this way.
+
+  It runs in `pnpm check` and in CI, its self-test first — and the self-test earned its place immediately.
+  The first version anchored its patterns to the start of the line, which in YAML sits after `run:`, so it
+  matched nothing and pronounced the still-broken `deploy-docs.yml` clean. The self-test now checks both
+  directions: the offending line is caught, the corrected one is not.
+
+- 772557f: Why the devtools import lives in your app and not in `bootstrap`, with the measurement.
+
+  Asked: the one line every app writes — `if (import.meta.env.DEV) void import("@ramonda/devtools")` —
+  would be cleaner inside `bootstrap`. It cannot go there, and the reason is now recorded in core and on the
+  devtools page rather than left as folklore. Measured on an app that has **not** installed the panel, which
+  is most apps:
+
+  ```
+  vite build   →  "[vite]: Rollup failed to resolve import "@ramonda/devtools""   the build FAILS
+  esbuild      →  bundles, leaving import("@ramonda/devtools") in the output      fails at runtime
+  ```
+
+  So a literal specifier inside core would break `vite build` for everyone who does not use devtools, and
+  ship an unresolvable bare specifier for everyone who uses esbuild. Core's speculative import therefore
+  keeps its **variable** specifier plus `@vite-ignore`, which no bundler rewrites — meaning the browser
+  would have to resolve a bare specifier itself, and it cannot.
+
+  Only the app can load the panel: it is the one that knows the package is installed, and its bundler is the
+  one that can resolve it. Nothing changed in the code; what changed is that the next person to ask gets an
+  answer with numbers instead of an assurance.
+
+- ae22ab7: The docs deploy built nothing, because it bypassed the task that generates the content.
+
+  ```
+  ✘ [ERROR] Could not resolve "./generated/content"
+  ✘ [ERROR] Could not resolve "./generated/page-loaders"
+  ✘ [ERROR] Could not resolve "./generated/preloads"
+  ```
+
+  `content` was moved out of the docs build script and made a turbo task, to stop two processes rewriting
+  `src/generated/` while `tsc` read it. `build` picks it up through `dependsOn` — but only when turbo is the
+  one calling. The Cloudflare workflow ran `pnpm --filter @ramonda/docs build` directly, so nothing ever
+  generated the directory.
+
+  It goes through `turbo run build --filter=@ramonda/docs` now. And because the symptom named the wrong
+  thing — three missing imports read as a broken repository rather than a skipped step — the docs build
+  begins with one `existsSync` that says which step to run. Reproduced by deleting `src/generated/` and
+  watching both the old failure and the new sentence.
+
+- efed944: The documentation no longer teaches a decorator that does not exist.
+
+  `@effect` was removed in 0.1.0, and the word stayed behind: the root README listed it among the
+  decorators, core's README had a table row for it, `@ramonda/query`'s README explained mutation rollback
+  by comparing it to "the cleanup contract `@effect` uses", and the sidebar group was called _Lifecycle and
+  effects_. A reader following any of those looks for something that is not there.
+
+  The `/concepts/subscriptions` page also stopped explaining itself as a migration. Its "There is no
+  `@effect`" section was written for someone who had used the old decorator; it now answers the question a
+  reader actually arrives with — _where did `useEffect` go_ — with a table from what you want to the name it
+  has here, and keeps the reason: an effect is defined by its dependencies rather than its purpose, so one
+  decorator would have to be all four of those things, and which one it was would depend on what its body
+  happened to read that render.
+
+  Elsewhere "effects" was the runtime's own vocabulary leaking into prose a reader cannot look up ("after
+  this commit's `@mount`s and effects"); those say _subscriptions_ now.
+
+- 43c02cb: Two committed failures that `turbo run` cannot see, and a `pnpm check` that would have caught them.
+
+  The branch was green on `turbo run check-types test build` while carrying a sparse array in
+  `apps/playground-ssr/server.mjs` (`?? [, target]`, which oxlint's `no-sparse-arrays` refuses) and a
+  misformatted `apps/playground-core/src/pages/QueryPage.tsx`. Both would have failed `ci.yml`.
+
+  The reason turbo missed them: **no app under `apps/` has a `lint` script**, so `turbo run lint` covers
+  `packages/` only — and `format:check` is not a turbo task at all. Both are root scripts, and CI runs the
+  root scripts. `pnpm check` now runs the same four in the same order, and the gap is written down in
+  `.github/workflows/README.md` rather than left to be rediscovered.
+
+  The parse rewrite was checked against the original on seven inputs, including the no-colon and
+  `src/x.tsx::9` cases, before replacing it.
+
+- ad517f7: The documentation now says why there is no post-commit `@watchProp`.
+
+  It is the obvious sugar — "run this after the commit, but only when this prop changed" — so its absence
+  was reading as a gap. It is a decision, and `/concepts/lifecycle` now gives the three reasons: it would
+  be strictly narrower than `@updated` (props only, not a hook's state, not context, not any other cause
+  of a commit — which the DOM cases usually are); its state write could not fold into the render the way
+  the in-build one does, so the framework would have to start comparing your props for you; and the `if`
+  it would replace answers "is the DOM already how I want it", which only the author knows.
+
+  `@watchProp` before the render, `@updated` after it, one field comparison for the guard. No new API.
+
+- 2bdb5f7: The docs build died on CI's first line, and the cause was the Node version rather than the code.
+
+  ```
+  SyntaxError: The requested module 'node:fs' does not provide an export named 'globSync'
+  ```
+
+  `fs.globSync` landed in Node 22. CI pins Node 20, the machine that wrote it runs 24, so every local run
+  was green and the first push was not. The diagnostics-coverage check now walks with `readdirSync`
+  (`withFileTypes`, Node 10), verified to find **the identical file set** — 81 files in core, 19 in query —
+  and then run under Node 20.20.2 itself, which is the exact version CI installs.
+
+  The whole gate was re-run on that Node with `--force`, because turbo will otherwise replay results cached
+  from a different runtime and report a pass without running anything: **29/29, 0 cached**.
+
+  `pnpm check` now begins with a preflight that reads the pinned version out of the setup action and warns
+  when the local major differs. It warns rather than fails — a newer Node is not a mistake, and stopping
+  work over it would be. What it buys is that the next time CI breaks where local passed, the first guess is
+  already on screen.
+
+- 9e29131: The SSR smoke test asserted that the machine has an editor, which a CI runner does not.
+
+  It called `__open-in-editor` and required a `200`. Opening a file needs an editor, and `launch-editor`
+  finds one from `$EDITOR` or by guessing from the process table — so a developer with an IDE running got a
+  `200` and the runner got `500 no editor found`.
+
+  What the endpoint is for is resolving the path, and an unresolvable path is refused with `422` **before**
+  any launch is attempted. So reaching the launch is the proof, and a `500` saying "no editor found" now
+  passes. To keep that from becoming "accept anything", the test makes a second request for a file that does
+  not exist and requires the `422` — deleting the server's `existsSync` guard turns that assertion red,
+  which is how it was checked rather than assumed.
+
+  Reproducing a runner locally needs `ps` shadowed as well as `$EDITOR` cleared, since the process-table
+  guess finds your editor either way. That recipe is in `apps/playground-ssr/README.md`, and the whole gate
+  was re-run under it: 29/29, 0 cached.
+
+- ba9845c: A tagline that says what Ramonda is: **Explicit. Predictable. Readable.**
+
+  The old one listed implementation choices — class components, signals, TC39 decorators — which is what a
+  reader compares against their existing habits rather than a reason to look further. Nothing in it said
+  what you get.
+
+  Three words, in the order they cause each other: _explicit_ is how you write it, _predictable_ is how it
+  runs, _readable_ is what you get back when you return to it a year later. No second sentence: the
+  `Counter` example directly below is a better argument than an adjective defending an adjective.
+
+  `keywords` in `package.json` still carries `signals`, `decorators`, `ssr` and the rest, so nothing was
+  lost for npm search — those words moved to the field that search actually reads.
+
+  Six places now agree: both READMEs, core's npm description, the docs social card, and both scaffolded
+  apps. The SSR template keeps "Server-rendered, then hydrated", which is a fact about that app rather than
+  the tagline.
+
 ## 0.2.0
 
 ### Minor Changes
