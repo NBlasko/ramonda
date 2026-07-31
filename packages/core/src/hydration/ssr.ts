@@ -13,6 +13,7 @@ import {
   type ServerWork,
 } from "../core/serverWork";
 import type { ComponentChild } from "../types/vdom";
+import { createRequestScope, getBuildRead, RequestReadDuringBuild, setRequestScope } from "./requestContext";
 
 /**
  * How many times a server render will wait for async work before giving up.
@@ -129,6 +130,46 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
 
   stampBlobs(container);
   return container.innerHTML;
+}
+
+/** The outcome of a static (build-time) render: markup to bake, or the reason it can't be. */
+export interface StaticRender {
+  /** The baked HTML — present only when the route read nothing per-request. */
+  html?: string;
+  /**
+   * Set when the render touched per-request data (a cookie, a header, a seeded value), naming
+   * the field. The route CANNOT be prerendered — bake it and one visitor's data would be served
+   * to everyone — so the build must fail or fall the route back to per-request rendering.
+   */
+  blockedBy?: string;
+}
+
+/**
+ * Renders a route at BUILD time with the request context POISONED: any per-request read is
+ * recorded (and throws), so the result reports `blockedBy` instead of markup. This is what
+ * PROVES a baked page holds no per-request data.
+ *
+ * It keeps the poisoned scope live across the whole render — including the async drain — which
+ * is safe ONLY because a build is SEQUENTIAL (one page at a time). Do NOT use it to serve
+ * concurrent requests: a live request would race the module-level scope. Point `url` at the
+ * path being baked (it stays readable — the URL is the page identity, not per-request data).
+ */
+export async function renderStatic(vnode: ComponentChild, url: URL): Promise<StaticRender> {
+  const scope = createRequestScope({ mode: "build", url });
+  setRequestScope(scope);
+  try {
+    const html = await renderToString(vnode);
+    // A read inside an async @mount throws into the drain's allSettled and is swallowed, so the
+    // recorded field — not the throw — is the authority here.
+    const blockedBy = getBuildRead(scope);
+    return blockedBy !== undefined ? { blockedBy } : { html };
+  } catch (e) {
+    // A synchronous read (render / @create / sync @mount) throws straight out.
+    if (e instanceof RequestReadDuringBuild) return { blockedBy: e.field };
+    throw e; // a ServerRedirect or a genuine error is the caller's to handle.
+  } finally {
+    setRequestScope(undefined);
+  }
 }
 
 /** What one page's render produced: its body, and the head that goes with it. */

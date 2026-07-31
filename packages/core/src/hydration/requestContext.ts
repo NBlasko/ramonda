@@ -58,6 +58,18 @@ interface RequestScope {
   cookies: Map<string, string>;
   headers: Headers;
   values: Map<string, unknown>;
+  /**
+   * In "build" mode: the first per-request field that was read, or `undefined` if none.
+   * Recorded IN ADDITION to throwing, because a read inside an async `@mount` throws into the
+   * drain's `allSettled` (or `errorHandler`) and is swallowed — the record survives that, so
+   * the build can still tell the route read the request. Read by `renderStatic`.
+   */
+  read?: string;
+}
+
+/** The field a build-mode render read from the request, if any — see `RequestScope.read`. */
+export function getBuildRead(scope: RequestScope | undefined): string | undefined {
+  return scope?.read;
 }
 
 let current: RequestScope | undefined;
@@ -118,9 +130,16 @@ function requireScope(): RequestScope {
   return current;
 }
 
-/** Throws if reading a per-request field during a static build — the poison that proves safety. */
+/**
+ * The poison that proves safety: during a static build, reading a per-request field is RECORDED
+ * on the scope (survives an async throw being swallowed) and then throws (fails a sync caller
+ * fast). `renderStatic` consults the record afterwards, so either path blocks the prerender.
+ */
 function guardBuild(field: string): void {
-  if (current?.mode === "build") throw new RequestReadDuringBuild(field);
+  if (current?.mode === "build") {
+    if (current.read === undefined) current.read = field;
+    throw new RequestReadDuringBuild(field);
+  }
 }
 
 /**

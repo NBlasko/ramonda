@@ -35,6 +35,7 @@ const EXPECTED = [
   // server rendering
   "renderToString",
   "renderPage",
+  "renderStatic",
   "renderDocument",
   "hydrateRoot",
   "ServerRedirect",
