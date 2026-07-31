@@ -22,8 +22,13 @@ turbo run build --filter=@ramonda/docs
 **`content` is a turbo task rather than a step inside the other scripts.** It used to be called by both
 `check-types` and `build`, which turbo runs in parallel — so two processes rewrote `src/generated/` while
 `tsc` was reading it, and three intermittent failures turned out to be that. Both declare
-`dependsOn: ["content"]` now, so it runs once. Running `npm run build` in this directory without turbo
-therefore needs `npm run content` first.
+`dependsOn: ["content"]` now, so it runs once.
+
+The cost of that fix is that **`npm run build` here builds nothing on its own** — it needs `npm run
+content` first, or turbo. The Cloudflare deploy called the package script directly and died on three
+unresolved imports, which reads like a missing file rather than a skipped step, so `build` now starts with
+`scripts/require-content.mjs`: one `existsSync`, and a sentence saying which step to run. The deploy goes
+through `turbo run build --filter=@ramonda/docs`.
 
 ## Screenshots
 

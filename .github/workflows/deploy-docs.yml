@@ -4,10 +4,11 @@ name: Deploy docs
 #   - push to main  → production deployment
 #   - PR to main    → a preview deployment with its own URL, posted back to the PR
 #
-# The docs build is self-contained: it consumes the workspace packages from
-# SOURCE via esbuild aliases, so there is nothing to pre-build — just install and
-# `pnpm --filter @ramonda/docs build`, which runs content → esbuild → prerender →
-# pagefind and writes apps/docs/dist.
+# The docs build consumes the workspace packages from SOURCE via esbuild aliases,
+# so no package needs building first — but it must run through TURBO, because
+# `content` (which writes src/generated/) is a turbo task the build declares in
+# `dependsOn`. The chain is content → esbuild → prerender → pagefind, and it
+# writes apps/docs/dist.
 on:
   push:
     branches: [main]
@@ -35,8 +36,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
 
+      # Through TURBO, not the package script directly. `content` (which writes
+      # src/generated/) is a turbo task that `build` declares in `dependsOn`, so
+      # calling the script on its own skips it and esbuild fails on three imports
+      # that no longer resolve. That is not hypothetical — it is how this deploy
+      # broke once already.
       - name: Build the docs site
-        run: pnpm --filter @ramonda/docs build
+        run: pnpm exec turbo run build --filter=@ramonda/docs
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
