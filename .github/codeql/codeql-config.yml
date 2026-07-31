@@ -1,0 +1,31 @@
+name: Ramonda CodeQL config
+
+# Everything not listed below is in scope, deliberately including
+# `packages/create-ramonda/templates/**`: those files ship to users as source and
+# become the first code in their app, so they deserve the same reading as the
+# framework. (oxlint skips them for a different reason — they are templates with
+# placeholder imports, which is a formatting concern, not a security one.)
+paths-ignore:
+  - "**/dist/**"
+  - "**/coverage/**"
+  # Written by `turbo run content`, so a finding here is a finding in the
+  # generator; fix it in `apps/docs/scripts/`.
+  - "apps/docs/src/generated/**"
+  # Test code builds unsafe input on purpose — that is what a test of escaping
+  # looks like. Alerts here would all be the test doing its job. To audit the
+  # tests themselves, comment these three lines out and run the workflow once.
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+
+# Query suite. Left at the default — GitHub's high-precision security queries —
+# because this repository has never been scanned and the first run has real work
+# in it: `packages/devtools/src/index.ts` writes `innerHTML` from template
+# strings that interpolate application data in about ten places, and those are
+# genuine sinks even though the panel only runs in development.
+#
+# `security-extended` adds lower-precision queries: more findings, more triage.
+# It is the right next step once the default suite is clean — uncomment:
+#
+# queries:
+#   - uses: security-extended

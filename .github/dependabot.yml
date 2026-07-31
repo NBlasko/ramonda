@@ -1,0 +1,66 @@
+version: 2
+
+# The UPDATE half of Dependabot: pull requests that move dependencies forward.
+#
+# The ALERT half — "a version you have installed has a known vulnerability" — is a
+# repository setting rather than a file, and has to be switched on once under
+# Settings → Code security. It reads the same GitHub Advisory Database this file's
+# security updates do, and it is the half that behaves like the scanner people
+# remember shouting at them.
+#
+# Grouping is what makes this tolerable in a monorepo. 561 packages are installed
+# here; ungrouped, a quiet week still produces a pull request per outdated one,
+# and that volume teaches you to ignore the notifications that matter.
+updates:
+  - package-ecosystem: npm
+    # The workspace root, and only the root: one `pnpm-lock.yaml` governs every
+    # package, and Dependabot resolves the workspace from here — it edits member
+    # manifests as needed. (If some member's `package.json` ever stops being
+    # updated, list its path under `directories` instead.)
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Two groups, split the way the risk splits: a devDependency bump can break
+      # the build and reaches no user, a runtime bump ships.
+      dev-dependencies:
+        dependency-type: development
+        patterns: ["*"]
+      production-dependencies:
+        dependency-type: production
+        patterns: ["*"]
+    # Held back on purpose, each with its reason in `.github/workflows/README.md`
+    # under "Pinned dev dependencies". Without this, Dependabot re-proposes them
+    # every week, which is a weekly re-litigation of a decision already made.
+    #
+    # Note the cost: an ignore rule applies to security updates too, so a fix that
+    # only exists in one of these majors will not arrive as a pull request. The
+    # alert still fires — that is the part that must not be silenced.
+    ignore:
+      # Vite 8 switched to the oxc transformer, which ignores the `esbuild:
+      # { jsxFactory: "h" }` block every vitest config here relies on.
+      - dependency-name: vite
+        update-types: ["version-update:semver-major"]
+      # Pinned exactly: 28.1+ changed CSSOM `cssText` serialization, which breaks
+      # the RMD007 style-normalization test.
+      - dependency-name: jsdom
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # TS 7 (the native rewrite) removed `baseUrl`, which every tsconfig here
+      # uses with `paths`.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    # This is the reason the workflows pin exact versions where no moving major
+    # tag exists (`ossf/scorecard-action@v2.4.4`,
+    # `actions/dependency-review-action@v5.0.0`): a pin that cannot drift under
+    # you, plus a bot whose job is to move it deliberately.

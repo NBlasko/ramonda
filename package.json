@@ -27,6 +27,11 @@
   "engines": {
     "node": ">=24"
   },
+  "pnpm": {
+    "overrides": {
+      "esbuild": ">=0.28.1"
+    }
+  },
   "dependencies": {
     "@ramonda/shared": "workspace:^"
   }
