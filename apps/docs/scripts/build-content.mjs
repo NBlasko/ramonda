@@ -116,6 +116,36 @@ function addHeadingIds(document) {
   }
 }
 
+/**
+ * Raw HTML in prose, which this pipeline renders as TEXT.
+ *
+ * `md.render` runs with `html: false` on purpose — a documentation page has no business injecting
+ * markup — but the consequence is that a tag written in prose is escaped and shown to the reader
+ * verbatim. That shipped: `/devtools` told people to press `<kbd>Alt</kbd>+<kbd>D</kbd>`, in those exact
+ * characters, because the author (me) assumed the tag would work and nothing said otherwise. A picture
+ * cannot fail a build and neither could this.
+ *
+ * Code is exempt, because inside a fence or backticks a tag is the subject rather than a mistake. Every
+ * page passes today — the scan found nothing once `/devtools` was fixed — so failing is safe.
+ */
+const RAW_TAG = /<\/?[a-zA-Z][a-zA-Z0-9-]*(\s[^<>]*)?\/?>/;
+
+function findRawHtml(nodes, inCode = false) {
+  for (const node of nodes) {
+    if (typeof node === "string") {
+      if (inCode) continue;
+      const found = RAW_TAG.exec(node);
+      if (found) return found[0];
+      continue;
+    }
+    if (!node || typeof node !== "object") continue;
+    const code = inCode || node.t === "code" || node.t === "pre";
+    const hit = findRawHtml(node.c ?? [], code);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 function toTree(node) {
   if (node.nodeType === 3) {
     const text = node.nodeValue;
@@ -199,6 +229,17 @@ const pages = walkFiles(contentDir)
       throw new Error(
         `[docs] ${relative(root, file)} has no \`title\` in its frontmatter. ` +
           `Every page needs one: it is the <title>, the search result, and the sidebar label.`,
+      );
+    }
+
+    // Prove the check can fail before trusting that it passes.
+    const rawHtml = findRawHtml(process.env.DOCS_SELFTEST === "rawhtml" ? [...tree, "<kbd>Alt</kbd>"] : tree);
+    if (rawHtml) {
+      throw new Error(
+        `[docs] ${relative(root, file)} contains raw HTML in prose: ${rawHtml}\n\n` +
+          `        Markdown here is rendered with html: false, so that tag reaches the reader as those\n` +
+          `        exact characters. Put it in backticks if you meant to show it, or use markdown\n` +
+          `        (**bold**, *italic*) if you meant to format.`,
       );
     }
 
