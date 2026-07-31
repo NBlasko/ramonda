@@ -152,6 +152,21 @@ const isJsonLike = (value: unknown): boolean => {
   }
 };
 
+/**
+ * Whether a value belongs on one line with its key.
+ *
+ * The test is not "is it a primitive" but **"does the tree render it as a leaf"**, which is the same
+ * question the row is asking: only an array or a plain object gets a disclosure and children, so only
+ * those need a block. A function is `ƒ()`, a `Date` is one line, and a class instance is its name — the
+ * first version of this called those "objects" and gave `client: QueryClient` two lines for a one-word
+ * value, which is the shape the whole change was fixing.
+ */
+const rendersAsLeaf = (value: unknown): boolean => {
+  if (Array.isArray(value)) return false;
+  if (typeof value !== "object" || value === null) return true;
+  return !isPlainRecord(value);
+};
+
 const isPlainRecord = (value: object): boolean => {
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
@@ -707,6 +722,11 @@ class RamondaDevTools extends HTMLElement {
         .state-title { color: #00ffaa; margin-bottom: 4px; font-weight: bold; font-size: 13px;
                        text-transform: uppercase; letter-spacing: .4px; }
         .state-row { margin: 2px 0; }
+        /* One line for a scalar: the value sits with its key, and its buttons follow the value rather
+           than the key, so a row reads key, value, then controls. */
+        .state-row.one-line { display: flex; align-items: baseline; gap: 4px; }
+        .state-row.one-line .sv { max-height: none; overflow: visible; padding: 0; min-width: 0; }
+        .state-row.one-line .jv-row { display: inline; }
         .state-head { display: flex; gap: 4px; align-items: center; }
         .state-row .sk { color: #9a9aa2; flex-shrink: 0; font-family: ui-monospace, Menlo, monospace;
                          font-size: 14px; }
@@ -2176,13 +2196,29 @@ class RamondaDevTools extends HTMLElement {
             )}" data-edit-vid="${escapeHtml(vid)}" title="edit ${escapeHtml(k)}">✎</button>`
           : "";
 
-        return `<div class="state-row">
-          <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${edit}${this.fullViewButton(
-            vid,
-            value,
-          )}</div>
-          <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
-        </div>`;
+        /**
+         * A scalar sits on the SAME line as its key; only a container gets a block of its own.
+         *
+         * Every value used to be a heading with a body underneath, which was reasonable while every
+         * value was a tree and looked wrong the moment most of them were `3` and `"ada"` — two lines
+         * each, and a state block of six fields reading as twelve rows of mostly nothing.
+         *
+         * The `.sv` element stays in both shapes, because it is what the patch path looks up by id and
+         * what an editor replaces — only where it sits changes.
+         */
+        const inline = rendersAsLeaf(value);
+        const buttons = `${edit}${this.fullViewButton(vid, value)}`;
+
+        return inline
+          ? `<div class="state-row one-line">
+              <span class="sk">${escapeHtml(k)}:</span>
+              <span class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</span>
+              ${buttons}
+            </div>`
+          : `<div class="state-row">
+              <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${buttons}</div>
+              <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
+            </div>`;
       })
       .join("");
     const titleHtml = title ? `<div class="state-title">${title}</div>` : "";

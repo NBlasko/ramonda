@@ -1951,3 +1951,69 @@ describe("the profiler tab", () => {
     }
   });
 });
+
+describe("how a row is laid out", () => {
+  const rowFor = (panel: Panel, key: string) =>
+    Array.from(panel.shadowRoot.querySelectorAll(".state-row")).find((row) =>
+      row.querySelector(".sk")?.textContent?.startsWith(`${key}:`),
+    ) as HTMLElement;
+
+  /**
+   * Every value used to be a key heading with a body underneath, which read as twelve rows for six
+   * fields once most values were `3` and `"ada"`.
+   */
+  it("puts a scalar on one line with its key, and a container in a block", () => {
+    const panel = mount(() => [
+      node("App", "component", {
+        state: { count: 3, name: "ada", ready: true, missing: null, items: [1, 2], user: { id: 1 } },
+      }),
+    ]);
+
+    for (const key of ["count", "name", "ready", "missing"]) {
+      const row = rowFor(panel, key);
+      expect(row.classList.contains("one-line"), `${key} should be on one line`).toBe(true);
+      // The value element is a SIBLING of the key, not in a block below it.
+      expect(row.querySelector(".state-head")).toBe(null);
+      expect(row.querySelector(".sv")).not.toBe(null);
+    }
+
+    for (const key of ["items", "user"]) {
+      const row = rowFor(panel, key);
+      expect(row.classList.contains("one-line"), `${key} should keep its block`).toBe(false);
+      expect(row.querySelector(".state-head")).not.toBe(null);
+    }
+  });
+
+  /**
+   * The test is "does the tree render it as a LEAF", not "is it a primitive" — the same question the tree
+   * asks. A class instance shows as its name and a `Date` as one line, so both belong beside their key;
+   * the first version called them objects and gave `client: QueryClient` two lines for a one-word value.
+   */
+  it("puts a value the tree cannot open beside its key too", () => {
+    class QueryClient {}
+    const panel = mount(() => [
+      node("App", "component", {
+        state: { client: new QueryClient(), when: new Date("2020-01-01"), fn: () => 1, map: new Map() },
+      }),
+    ]);
+
+    for (const key of ["client", "when", "fn", "map"]) {
+      expect(rowFor(panel, key).classList.contains("one-line"), `${key} renders as a leaf`).toBe(true);
+    }
+  });
+
+  /** Both shapes keep `.sv`, because that is what the patch path and the editor look up by id. */
+  it("keeps a one-line value patchable and editable", () => {
+    (window as unknown as { __RAMONDA_WRITE__: unknown }).__RAMONDA_WRITE__ = vi.fn(() => "ok");
+    let count = 1;
+    const panel = mount(() => [node("App", "component", { state: { count } })]);
+
+    count = 2;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+    expect(rowFor(panel, "count").querySelector(".sv")!.textContent).toContain("2");
+
+    const pencil = panel.shadowRoot.querySelector("[data-edit-node]") as HTMLElement;
+    pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(panel.shadowRoot.querySelector(".edit-input")).not.toBe(null);
+  });
+});
