@@ -1,6 +1,6 @@
 ---
 title: Diagnostics
-description: Every RMD code — what it means, what causes it, and what to do instead.
+description: Every diagnostic — RMD from the core, RMQ from the query cache — what it means, what causes it, and what to do instead.
 section: Reference
 order: 110
 ---
@@ -17,7 +17,24 @@ saying the thing a stack trace never would.
 
 Each is deduplicated by cause, so a mistake in a list of a thousand rows is reported once.
 
+**The prefix says which package reported it**: `RMD` is `@ramonda/core`, `RMQ` is `@ramonda/query`.
+They are listed apart below, because a reader who hits `RMQ001` wants the query codes together and
+not one of them wedged between two core ones — which is exactly how this page read until now.
+
 ---
+
+## Reading them
+
+Every message names the component and says what to do instead. They go through the same reporter,
+so a devtools panel or a test can capture them:
+
+```ts
+window.addEventListener("ramonda:diagnostic", (event) => { … });
+```
+
+---
+
+# Core — `RMD`
 
 ## RMD001 — State written during `render()`
 
@@ -191,16 +208,6 @@ caught by the server renderer when it serializes, rather than at the write.
 
 ---
 
-## Reading them
-
-Every message names the component and says what to do instead. They go through the same reporter,
-so a devtools panel or a test can capture them:
-
-```ts
-window.addEventListener("ramonda:diagnostic", (event) => { … });
-```
-
-
 ## RMD020 — `render()` produced a different value the second time
 
 A development build renders **every component twice** and compares the two outputs. Two calls in the
@@ -364,25 +371,6 @@ is a run of freshly built vnodes — which is what all JSX looks like. The shape
 only evidence, and it is conclusive: JSX passes children as separate arguments, so a
 nested array among them was built by an expression.
 
-## RMQ002 — a query failed and nothing rendered it
-
-The query is in `error`, and the render that just happened read none of `isError`, `error`,
-`status` or `result`. The report names the key and the failure.
-
-It matters because **a failed refetch keeps the data it had**: the page can look perfectly
-healthy while showing values that no longer refresh. Nothing throws, nothing is blank, and the
-only sign is that a number stopped moving.
-
-This is the answer to [`throwOnError`](/query/queries#when-the-failure-means-the-page-cannot-be-shown),
-which `@ramonda/query` does not have. What that option is really for is *noticing*, and
-noticing is a development-time report — where rethrowing into an error boundary would unmount
-the subtree, run every cleanup, and throw away local state, focus and scroll for something as
-ordinary as a timeout.
-
-Reading any one of those four silences it, per render: a component that showed the error and
-then stopped (a collapsed panel, a switched tab) is reported again, because each render is
-judged on its own reads.
-
 ## RMD024 — a `@compute` recomputes without its answer changing
 
 Four recomputes in a row, each producing a value equal to the last. The cache is doing
@@ -443,3 +431,43 @@ or ambient state during a render — `getBoundingClientRect()`, `window.innerWid
 `scrollY`, `localStorage`, `document.activeElement`. Those are not non-deterministic so
 much as a forced layout and a dependency on something outside the tree; `@updated` is
 where that work belongs.
+
+# Query — `RMQ`
+
+## RMQ001 — a query key that cannot be hashed
+
+A key is turned into a string to find its cache entry, so what it holds has to survive that
+trip. Two kinds of value do not, and each fails in its own direction:
+
+**Dropped entirely** — a function or a symbol. `JSON.stringify` omits them, so
+`["user", fn]` and `["user", otherFn]` hash **identically**: two queries share one entry and
+each renders the other's data. Put the value you were about to close over in the key —
+`["user", id]` — and keep the function in the fetcher.
+
+**Serialized unstably** — a `Date`, a `Map`, a class instance. A `Date` becomes a timestamp that
+differs on the next render, so the entry is never found again and every render starts a new
+fetch; a `Map` or a class instance becomes whichever of its fields happen to be enumerable,
+which is often nothing at all. Put a primitive in the key —
+`date.toISOString().slice(0, 10)`, or the id — and keep the object in the fetcher.
+
+Both are checked when the key is hashed, and the message names the kind it found. Arrays and
+plain objects are walked, to a depth of ten.
+
+## RMQ002 — a query failed and nothing rendered it
+
+The query is in `error`, and the render that just happened read none of `isError`, `error`,
+`status` or `result`. The report names the key and the failure.
+
+It matters because **a failed refetch keeps the data it had**: the page can look perfectly
+healthy while showing values that no longer refresh. Nothing throws, nothing is blank, and the
+only sign is that a number stopped moving.
+
+This is the answer to [`throwOnError`](/query/queries#when-the-failure-means-the-page-cannot-be-shown),
+which `@ramonda/query` does not have. What that option is really for is *noticing*, and
+noticing is a development-time report — where rethrowing into an error boundary would unmount
+the subtree, run every cleanup, and throw away local state, focus and scroll for something as
+ordinary as a timeout.
+
+Reading any one of those four silences it, per render: a component that showed the error and
+then stopped (a collapsed panel, a switched tab) is reported again, because each render is
+judged on its own reads.
