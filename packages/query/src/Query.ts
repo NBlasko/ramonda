@@ -535,7 +535,10 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     const previous = this.lastSeen;
     this.lastSeen = next;
 
-    if (__DEV__) this.reportIgnoredError();
+    // The ATTACHED entry, not `peek(this.props.key)`: peeking hashes the key, and this runs on every
+    // notification — which would undo the identity fast path (measured at 723 ns → 31 ns, and there is
+    // a test that holds it).
+    if (__DEV__) reportIgnoredError(this.read, this.attachedEntry);
 
     if (previous !== undefined && this.read !== 0 && !this.changed(previous, next)) return;
 
@@ -608,6 +611,17 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   @mount
   load(): Promise<void> {
+    /**
+     * The one case a notification never covers: an error restored from a server render is on screen at
+     * the first paint, and nothing notifies afterwards.
+     *
+     * Reported from here rather than from a `@mount` of its own, because a DEV-only lifecycle method is
+     * not free in production — the decorator registers from an initializer, so every instance bound an
+     * empty method and the flush called it. Placed before `fetchOnMount` and unaffected by it: a refetch
+     * moves `fetchStatus`, not `status`, so the restored failure is still there to see.
+     */
+    if (__DEV__) reportIgnoredError(this.read, this.attachedEntry);
+
     const work = this.fetchOnMount();
     if (!this.onServer) return work;
 
@@ -1046,32 +1060,37 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * would fail, change nothing visible, and never render again — so a render-based check could
    * not see it either.
    */
-  /**
-   * The one case a notification never covers: an error restored from a server render is on
-   * screen at the first paint, and nothing notifies afterwards.
-   */
-  @mount
-  reportRestoredError(): void {
-    if (__DEV__) this.reportIgnoredError();
-  }
+}
 
-  private reportIgnoredError(): void {
-    if (!__DEV__) return;
-    if (this.read & (Facet.Status | Facet.Error)) return;
+/**
+ * RMQ002, and it lives out here rather than on the class for a reason that cost a measurement.
+ *
+ * As a private method it survived into `dist/index.prod.js` as `reportIgnoredError(){}` — the body,
+ * the message and the code all stripped by `__DEV__`, but the declaration left standing, because
+ * **a class method cannot be tree-shaken**: nothing can prove it is unused. A module function
+ * referenced only inside `if (__DEV__)` is dropped whole, which is why every other diagnostic in this
+ * repo is written this way.
+ *
+ * Its DEV-only `@mount reportRestoredError` was the worse half. A lifecycle decorator registers from
+ * an initializer, so in production every `Query` instance allocated an id, BOUND the empty method,
+ * pushed an entry onto the runtime's mounts, and the flush then called it — per instance, not per
+ * class, for a method that did nothing. The restored-error case now reports from the top of `load`,
+ * which is an `@mount` that exists in every build.
+ *
+ * Takes what it needs rather than the instance: the read mask and the attached entry are the only
+ * two things it looked at, and passing them keeps the private fields private.
+ */
+function reportIgnoredError(read: number, entry: QueryEntry<unknown> | undefined): void {
+  if (!__DEV__) return;
+  if (read & (Facet.Status | Facet.Error)) return;
+  if (entry?.status !== "error") return;
 
-    // The ATTACHED entry, not `peek(this.props.key)`: peeking hashes the key, and this runs on
-    // every notification — which would undo the identity fast path (measured at 723 ns → 31 ns,
-    // and there is a test that holds it).
-    const entry = this.attachedEntry;
-    if (entry?.status !== "error") return;
-
-    const reason = entry.error instanceof Error ? entry.error.message : String(entry.error);
-    warnOnce(
-      `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing reads its failure: ${reason}\n` +
-        `Read \`isError\`, \`error\`, \`status\` or \`result\` so the reader learns something went wrong — a ` +
-        `failed refetch keeps the data it had, so the page may look fine while showing values nobody can refresh. ` +
-        `If the failure means the page cannot be shown at all, return your own markup for it ` +
-        `(\`if (q.isError) return <NotFound />\`) rather than letting an error boundary unmount the subtree.`,
-    );
-  }
+  const reason = entry.error instanceof Error ? entry.error.message : String(entry.error);
+  warnOnce(
+    `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing reads its failure: ${reason}\n` +
+      `Read \`isError\`, \`error\`, \`status\` or \`result\` so the reader learns something went wrong — a ` +
+      `failed refetch keeps the data it had, so the page may look fine while showing values nobody can refresh. ` +
+      `If the failure means the page cannot be shown at all, return your own markup for it ` +
+      `(\`if (q.isError) return <NotFound />\`) rather than letting an error boundary unmount the subtree.`,
+  );
 }

@@ -262,6 +262,10 @@ describe("a production application build", () => {
       "initDevtoolsBridge",
       "recordDefinition",
       "startRecording",
+      // A private METHOD survived here once — `reportIgnoredError(){}`, body stripped, declaration
+      // left, because nothing can prove a class method unused. It is a module function now, and this
+      // line is what stops it going back.
+      "reportIgnoredError",
       "diagnose",
       "ramondaLog",
     ]) {
