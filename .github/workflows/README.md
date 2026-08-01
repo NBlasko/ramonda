@@ -21,8 +21,12 @@ in one place — it publishes, and a second pin there could drift.
 ## Running the gate locally: `pnpm check`
 
 ```
-pnpm check      # pnpm lint && pnpm format:check && turbo run check-types test build
+pnpm check      # preflight-node + check-workflows, then lint, format:check,
+                # and turbo run check-types test build
 ```
+
+`test` carries `--coverage`, so this also leaves an lcov report under each package —
+`node scripts/merge-lcov.mjs` combines them and prints the repository total.
 
 It exists because **`turbo run` alone is not the gate.** Several checks are root
 scripts that turbo never sees:
@@ -334,25 +338,27 @@ Version PR do it.)
 
 ## What passes today (measured)
 
-The gate was run locally before these workflows were committed:
+Run locally, uncached (`--force`), in the runner's conditions — `ps` shadowed and
+`$EDITOR`/`$VISUAL` empty, so nothing can pass by finding a tool a runner does not
+have:
 
-- **Build** — green across every package and app (including the docs
-  prerender + pagefind pipeline).
-- **Type-check** — green (core, router, lens, testing-library, docs). core runs
-  `strict` plus `noUnusedLocals` / `noUnusedParameters` / `noImplicitOverride` /
-  `noFallthroughCasesInSwitch`.
-- **Test** — green: 10/10 task runs, once the two scratch apps are excluded (see
-  below). core, router, lens, testing-library and devtools all pass.
-- **Lint** — **green and blocking** (oxlint). 0 errors across the monorepo; one
-  accepted warning remains (an unused type parameter in `HookTypes.ts`, left for
-  the types pass because fixing it touches core's declared type surface).
-- **Format** — **green and blocking** (biome). All 303 tracked files are
-  formatted; adopting the formatter reflowed 195 of them (2-space, width 120),
-  a behavior-preserving change confirmed by the tests above.
+- **`pnpm check`** — 29 of 29 turbo tasks, plus the root scripts turbo never sees.
+- **Test** — 21 of 21 task runs, no filters and nothing excluded. That includes
+  `@ramonda/playground-ssr`, whose test builds the app, boots a real Node server and
+  smoke-tests it, and `@ramonda/docs`. Coverage comes out of this same run:
+  **95.72% of lines**, 4294 of 4486, across 109 files.
+- **Build** — green across every package and app, including the docs
+  content → esbuild → prerender → pagefind chain and `ramonda-check-bundle` parsing
+  every emitted file.
+- **Type-check** — green. core runs `strict` plus `noUnusedLocals` /
+  `noUnusedParameters` / `noImplicitOverride` / `noFallthroughCasesInSwitch`.
+- **Lint** — **green and blocking** (oxlint), 0 errors across the monorepo.
+- **Format** — **green and blocking** (biome), 407 tracked files, no fixes to apply.
 
-The `test` job excludes `playground` and `playground-core`: their `test` script
-is still the `npm init` placeholder that exits 1. Give them a real (or empty)
-test script and drop the `--filter` flags in `checks.yml`.
+Both build-time checks run their own self-test first, since a check nobody has seen
+fail proves nothing: `scripts/check-workflows.mjs` (catches a workflow bypassing
+turbo, passes the correct form) and `scripts/merge-lcov.mjs` (unions two hand-worked
+reports rather than letting the last one win).
 
 ## Pinned dev dependencies (do not blindly bump)
 
@@ -374,15 +380,15 @@ only with the fix in hand:
 
 ## Deliberate gaps (the "we'll add more later" list)
 
-- **A coverage threshold.** Coverage is measured, merged and published (see below),
-  but nothing fails on a percentage. A gate picked today would be a number nobody
-  chose, defending a suite still being written. Add one when the suite settles, at
-  a level the suite already clears.
+- **A coverage threshold.** Coverage is measured, merged and published (see
+  *Coverage* above), but nothing fails on a percentage. A gate picked today would be
+  a number nobody chose, defending a suite still being written. Add one when the
+  suite settles, at a level the suite already clears.
 - **CodeQL's `security-extended` suite.** The default (high-precision) suite runs
   now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
   and the time to do it is after the default suite's findings are triaged — the
   `innerHTML` writes in `packages/devtools/src/index.ts` first.
-- **SHA-pinned actions.** Workflows pin tags (`@v5`, `@v2.4.4`), not commit SHAs.
+- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.4.4`), not commit SHAs.
   Scorecard marks this down, and it is right that a tag can be moved under you;
   a SHA is also unreadable and drifts silently out of date. Revisit if Dependabot's
   `github-actions` updates prove reliable enough to keep SHAs current.

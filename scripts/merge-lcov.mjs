@@ -176,7 +176,8 @@ for (const pkg of readdirSync(packages)) {
 if (found.length === 0) {
   console.error(
     "\n[coverage] No lcov reports found under packages/*/coverage/.\n" +
-      "[coverage] Run `pnpm exec turbo run coverage` first — this script only combines what that produces.\n",
+      "[coverage] Run `pnpm exec turbo run test` first — the test scripts carry `--coverage`, and this\n" +
+      "[coverage] script only combines what they write.\n",
   );
   process.exit(1);
 }
