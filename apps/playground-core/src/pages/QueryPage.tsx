@@ -83,9 +83,16 @@ function createTodo(title: string): Promise<string> {
 class ProfileCard extends Component<{ id: string; label: string }> {
   private profile = this.use(Query<Profile>, (self: ProfileCard) => ({
     key: ["profile", self.props.id],
-    fetch: (ctx) => getProfile(self.props.id, ctx),
+    // A bound method, not a closure: the callback runs on every render, and a fresh
+    // function is a changed prop (RMD022). `load` reads `this.props` when it is CALLED,
+    // so there is nothing to capture and the identity never moves.
+    fetch: self.load,
     staleTime: 10_000,
   }));
+
+  load(ctx: FetchContext) {
+    return getProfile(this.props.id, ctx);
+  }
 
   refresh() {
     void this.profile.refetch();
@@ -423,13 +430,15 @@ export class QueryPage extends Component {
 class PolledCard extends Component<{ every: number }> {
   private clock = this.use(Query<string>, (self: PolledCard) => ({
     key: ["clock"],
-    fetch: async () => {
-      note("GET /clock");
-      return new Date().toISOString().slice(17, 23);
-    },
+    fetch: self.tick,
     refetchInterval: self.props.every,
     staleTime: Number.POSITIVE_INFINITY,
   }));
+
+  async tick(): Promise<string> {
+    note("GET /clock");
+    return new Date().toISOString().slice(17, 23);
+  }
 
   render() {
     return (
