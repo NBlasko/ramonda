@@ -22,16 +22,18 @@ arrives as the whole page, as text.
 arrives. The "download the bundle, run it, then see something" wait happens *behind*
 content the reader can already read.
 
-## SSG or SSR?
+## SSG or SSR? — per route
 
-Two flavours, the same tools:
+You don't pick one for the whole app. Each route renders the way it needs:
 
-- **Static (SSG)** — render at *build time*, write HTML files, serve them from a CDN.
-  No server, no per-request cost. This is what these docs do, and where to start.
-- **Server (SSR)** — render *per request*, for pages that depend on who is asking.
+- **Static (SSG)** — render at *build time*, write an HTML file, serve it from anywhere.
+- **Dynamic (SSR)** — render *per request*, for pages that depend on who is asking.
+- **ISR** — baked, then re-rendered on a timer, for slow-changing pages.
 
-Start static; move a page to per-request rendering only when it genuinely can't be
-built ahead of time.
+You declare this per route, and the build **refuses to bake a page that reads the request** — so
+one visitor's data can never end up in another's cached page. See
+[rendering modes](/ssr/modes) for how, and start static: mark a route dynamic only when it
+genuinely depends on the request.
 
 ## What Ramonda gives you
 
@@ -44,8 +46,11 @@ The [`env`](/ssr/env) option decides what runs where.
 | [`renderPage`](/ssr/head) | the HTML plus the `<head>` its components set |
 | [`renderDocument`](/ssr/static) | wraps that in a full HTML document |
 | [`hydrateRoot`](/ssr/render) | in the browser, adopts the server's HTML |
-| [`routePaths`](/ssr/static) | the paths a static build should render |
+| [`renderStatic`](/ssr/modes) | a build render that refuses to bake a per-request page |
+| [`requestContext`](/ssr/request) | read cookies / headers / the user during a render |
+| [`defineServer` · `routePlan`](/ssr/modes) | per-route rendering modes (server-only) |
 
 ## Next
 
 - [renderToString and hydrateRoot](/ssr/render) — the pair.
+- [Rendering modes](/ssr/modes) — static, dynamic, and ISR per route.

@@ -125,14 +125,28 @@ Everything the three packages export. Each entry links to the page that explains
 | `RouteOutlet` | Renders the matched route. |
 | `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashTags` · `push` · `replace` · `updateSearchParams` · `updateHashTags` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
-| `createRoutes(map)` | Compiles a route table once. Call it at module scope. |
+| `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
+| `createRouter(routes)` | Returns `{ Router, RouteOutlet, Navigator, Link, route }` bound to the table, so `<Link href>` is type-checked. [Setup](/routing) |
+| `route(pattern, params)` | Builds a `:param` href — the only way to make one; params are typed. [Links](/routing/links) |
 | `routePaths(config, extra?)` | `{ paths, needsData }` for a static build. [Static builds](/ssr/static) |
 | `matchRoute` · `matchParams` · `matchCompiled` | Matching, for tooling. |
 | `parseUrl` · `parseUrlString` · `buildUrl` · `sanitizeHref` | URL helpers. |
 
-Types: `RouteConfig` · `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` ·
-`NavigateOptions` · `PartialNavigateOptions` · `SearchParamsUpdater` · `HashTagsUpdater` ·
-`HashTag` · `StateUpdater` · `RouteOutletProps` · `LinkProps`
+Types: `RouteConfig` · `PathOf` · `Href` · `TypedRouterKit` · `TypedLinkProps` · `TypedNavigator` ·
+`RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
+`PartialNavigateOptions` · `SearchParamsUpdater` · `HashTagsUpdater` · `HashTag` · `StateUpdater` ·
+`RouteOutletProps` · `LinkProps`
+
+### `@ramonda/router/server`
+
+Server-only — never imported from client code. See [rendering modes](/ssr/modes).
+
+| | |
+|---|---|
+| `defineServer(routes, config, opts?)` | Per-route render modes, keyed exhaustively by path. `config` — `{ prerender?, revalidate? }` per route; `opts.defaultMode`. |
+| `routePlan(server)` | Partitions the routes into `{ static, isr, server, needsData }` for the build. |
+
+Types: `ServerRoute` · `ServerConfig` · `ServerOptions` · `ServerRoutes` · `RoutePlan`
 
 ---
 

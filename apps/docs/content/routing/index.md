@@ -15,18 +15,21 @@ without a full page reload. Ramonda's router is a separate package:
 pnpm add @ramonda/router
 ```
 
-There are two pieces: **`Router`** keeps track of the current URL, and
-**`RouteOutlet`** shows whichever page matches it.
+You write a **route table** with `createRoutes`, then `createRouter` hands you the pieces bound
+to it: **`Router`** (tracks the URL), **`RouteOutlet`** (shows the matching page), **`Link`** and
+**`Navigator`** (below), and **`route`** (for `:param` links).
 
 ```tsx
 import { Component, Host } from "@ramonda/core";
-import { Router, RouteOutlet, createRoutes } from "@ramonda/router";
+import { createRoutes, createRouter } from "@ramonda/router";
 
-const routes = createRoutes({
+export const routes = createRoutes({
   "/": <Home />,
   "/players/:id": <Player />,
   "*": <NotFound />,
 });
+
+export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
 
 @Host("div")
 export class App extends Component {
@@ -42,6 +45,9 @@ export class App extends Component {
   }
 }
 ```
+
+Put this in one module and import `Link` / `Navigator` / `route` / `routes` from it across your
+app. Binding them to your table is what makes links **type-safe** — next.
 
 ```demo:RouteInfo
 ```
@@ -77,6 +83,22 @@ state:
   <RouteOutlet routes={routes} />   {/* this is what changes */}
 </div>
 ```
+
+## Links are type-checked against your routes
+
+Because `createRouter` knows your table, `<Link href>` only accepts a real path — change or
+rename a route and every stale link becomes a **compile error**, not a broken link you find by
+clicking:
+
+```tsx
+<Link href="/">Home</Link>                          // ✓
+<Link href="/nope">Home</Link>                       // ✗ not a route
+<Link href={route("/players/:id", { id: "9" })}>…</Link>  // ✓ params typed; a missing/misspelled param errors
+```
+
+A static path goes in directly; a `:param` path must be built with `route(...)`, which fills the
+params and rejects a wrong one. The same paths type `Navigator.push` / `replace`. More in
+[links](/routing/links).
 
 ## One Router per app
 
