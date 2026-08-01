@@ -278,6 +278,9 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     deps.devDependencies["esbuild"] = tool("esbuild");
     deps.devDependencies["jsdom"] = tool("jsdom");
   }
+  // The static context check runs as the first step of `build`, so a consumer that lost its
+  // provider fails the build instead of quietly falling back to the default in someone's browser.
+  deps.devDependencies["@ramonda/check"] = ramonda("@ramonda/check");
   deps.devDependencies["typescript"] = tool("typescript");
   deps.devDependencies["@types/node"] = tool("@types/node");
 
