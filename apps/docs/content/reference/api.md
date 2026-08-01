@@ -45,12 +45,17 @@ Everything the three packages export. Each entry links to the page that explains
 
 | | |
 |---|---|
-| `renderToString(vnode)` | An app → HTML, awaiting async lifecycle. [Details](/ssr/render) |
+| `renderToString(vnode, opts?)` | An app → HTML, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
 | `renderPage(vnode)` | The same, plus `{ title, head }`. [Head](/ssr/head) |
+| `renderStatic(vnode, url)` | A build-time render with the request context poisoned — returns `{ html }` to bake or `{ blockedBy }` if the route read per-request data. |
 | `renderDocument(page, options?)` | Wraps a rendered page in a complete document. [Static builds](/ssr/static) |
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
 | `ServerRedirect` | Thrown by `renderToString` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
 | `captureServerRedirect()` | Low-level hook to record a server redirect for the current render. [Guards](/routing/server) |
+| `requestContext()` | Per-request data — `url`, `cookies`, `headers`, `get(key)`. Per-request reads throw during a static build (that guards prerendering). |
+| `requestKey<T>(label)` | Declares a typed per-request slot for `requestContext().get`. |
+| `seedRequest(key, value)` | Server-only: fills a per-request slot before the render. |
+| `RequestReadDuringBuild` | Thrown when per-request data is read during a static build — the route cannot be prerendered. |
 
 ### Decorators — state
 
