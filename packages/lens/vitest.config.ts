@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { coverage } from "../../vitest.coverage.mjs";
 
 export default defineConfig({
   define: {
@@ -8,6 +9,7 @@ export default defineConfig({
     __TEST__: "true",
   },
   test: {
+    coverage,
     globals: true,
     environment: "node",
     // The `*.prod.test.*` files belong to `test:prod`, which runs them in a separate process with

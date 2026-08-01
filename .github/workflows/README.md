@@ -81,6 +81,55 @@ Two tools, one job each:
 
 Both are hard gates in CI. There is no ESLint (there never was a config).
 
+## Coverage
+
+`checks.yml` runs the suite a second time instrumented, merges the reports, and
+publishes to [Coveralls](https://coveralls.io/github/NBlasko/ramonda) — free for
+public repositories, on the built-in `GITHUB_TOKEN`. It is **not a gate**: see
+*Deliberate gaps*.
+
+Three pieces, each solving something a plain `vitest --coverage` gets wrong here:
+
+- **`vitest.coverage.mjs`** (repository root) is the single definition of what
+  counts, spread into every package's vitest config. Its load-bearing line is
+  `include: ["src/**"]`. Without it v8 reports only the files a test imported, so a
+  module nobody touches is not 0% covered — it is *absent*, and the percentage
+  rises. Measured on `@ramonda/lens`: adding one never-imported file with three
+  branches moved statements from 80.41% to 78.77% **once `include` was set**, and
+  left the number untouched without it. Excluded: the tests, test support under
+  `src/test/`, `.d.ts` and type-only modules. Not excluded: `src/testing.ts`, which
+  is core's published `@ramonda/core/testing` entry.
+- **`scripts/merge-lcov.mjs`** combines the per-package reports. vitest writes paths
+  relative to the package that ran, so six packages produce six `SF:src/index.ts`
+  records for six different files; these are rewritten to `packages/<name>/…`, which
+  is also what makes a Coveralls line link to the right file. It **unions** rather
+  than concatenates, because core, query and lens each have a second run under
+  `NODE_ENV=production` — `__DEV__` is baked in per process, so the loop stops and
+  stripped diagnostics are reachable only there, and each run reports the other's
+  code as dead. Measured on lens: the development run hits 169 of 197 lines and the
+  production run 89, but 4 of production's are lines development never reaches —
+  **85.79% alone against 87.82% merged**. `SELFTEST=1` checks the union on two
+  hand-worked reports, since a merge that takes the last report seen would look
+  right on real input and be wrong here.
+- **A `coverage` turbo task**, with `coverage/**` and `coverage-prod/**` as outputs.
+
+Whole-repository result today: **95.72% of lines, 4294 of 4486, across 109 files**
+(core 73, query 13, testing-library 7, router 6, lens 6, devtools 4).
+
+`create-ramonda` is deliberately absent. Its tests import the **built** `dist/index.js`
+on purpose — they check that what gets published scaffolds a working project — so
+measuring `src/` there would report 0% for code that is thoroughly tested, just not
+in the form the report can see. Counting the bundle instead would mix a different
+kind of number into the total.
+
+The Coveralls upload is `continue-on-error`. A fork's pull request gets a read-only
+token, so the upload would 403 and fail a check the contributor cannot fix; the
+numbers are still computed and printed by the steps above it.
+
+The badge is repository-wide, so it lives in the root README only. Package READMEs
+carry version, minzipped size and licence — a repository-wide percentage next to one
+package's name would read as that package's number.
+
 ## Security scanning
 
 Four tools, split by what they can actually see. All four are free on a **public**
@@ -311,17 +360,10 @@ only with the fix in hand:
 
 ## Deliberate gaps (the "we'll add more later" list)
 
-- **Coverage reporting.** `@vitest/coverage-v8` is installed and works, but no
-  `coverage` task exists and nothing is published. Measured today, per package
-  (v8 provider, each package counting only its own files): core 95.4% of
-  statements, query 92.6%, devtools 91.0%, router 89.6%, testing-library 89.5%,
-  lens 80.4% — **93.0% across the six**, 95.5% by line. Publishing it (Coveralls
-  is free for public repositories, via `coverallsapp/github-action` and
-  `GITHUB_TOKEN`) means a `coverage` turbo task and one merged upload; core needs
-  **two** uploads, since `test` is `vitest run && pnpm test:prod` and the
-  production-only paths read as dead code from the first run alone. No coverage
-  threshold gate until the suite is fuller — a gate at 93% today would block work
-  on a number nobody chose.
+- **A coverage threshold.** Coverage is measured, merged and published (see below),
+  but nothing fails on a percentage. A gate picked today would be a number nobody
+  chose, defending a suite still being written. Add one when the suite settles, at
+  a level the suite already clears.
 - **CodeQL's `security-extended` suite.** The default (high-precision) suite runs
   now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
   and the time to do it is after the default suite's findings are triaged — the

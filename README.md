@@ -2,6 +2,12 @@
 
 A UI framework. **Explicit. Predictable. Readable.**
 
+[![CI](https://img.shields.io/github/actions/workflow/status/NBlasko/ramonda/ci.yml?branch=main&label=CI)](https://github.com/NBlasko/ramonda/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/coverallsCoverage/github/NBlasko/ramonda?branch=main)](https://coveralls.io/github/NBlasko/ramonda?branch=main)
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Fcore?label=%40ramonda%2Fcore)](https://www.npmjs.com/package/@ramonda/core)
+[![types](https://img.shields.io/npm/types/%40ramonda%2Fcore)](https://www.npmjs.com/package/@ramonda/core)
+[![license](https://img.shields.io/github/license/NBlasko/ramonda)](./LICENSE)
+
 > **Status: `0.x` — still being explored.** The API changes freely between
 > releases while the design is being worked out. It is real and tested, and it is
 > on npm so it can be installed and tried, but it is not asking to be adopted yet.

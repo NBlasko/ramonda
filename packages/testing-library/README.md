@@ -3,6 +3,9 @@
 Testing utilities for Ramonda components and hooks, built on
 [`@testing-library/dom`](https://testing-library.com/docs/dom-testing-library/intro).
 
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Ftesting-library)](https://www.npmjs.com/package/@ramonda/testing-library)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Ftesting-library)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
 ```bash
 pnpm add -D @ramonda/testing-library @testing-library/dom
 ```

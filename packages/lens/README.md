@@ -2,6 +2,9 @@
 
 Immutable updates for deep objects, by describing a path instead of mutating a draft.
 
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Flens)](https://www.npmjs.com/package/@ramonda/lens)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Flens)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
 ```ts
 import { focusOn } from "@ramonda/lens";
 

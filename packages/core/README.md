@@ -2,6 +2,9 @@
 
 A UI framework. **Explicit. Predictable. Readable.**
 
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Fcore)](https://www.npmjs.com/package/@ramonda/core)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Fcore)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
 One rule carries most of the design:
 
 > **Every JSX tag is exactly one element.**

@@ -36,6 +36,7 @@
     "dev": "tsup src/index.ts --format esm --watch",
     "lint": "oxlint src",
     "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "devDependencies": {

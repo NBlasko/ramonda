@@ -55,6 +55,8 @@
     "dev": "tsup --watch",
     "build": "tsup && ramonda-check-bundle dist",
     "test": "vitest run && pnpm test:prod",
+    "coverage": "vitest run --coverage && pnpm coverage:prod",
+    "coverage:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod",
     "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",

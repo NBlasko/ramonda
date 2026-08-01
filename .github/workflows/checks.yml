@@ -65,3 +65,39 @@ jobs:
       # Builds every package AND the docs/playground apps, so the whole
       # prerender + pagefind pipeline is exercised on every PR, not just at deploy.
       - run: pnpm exec turbo run build
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # A second run of the same tests, instrumented. It is not a gate: nothing here
+      # fails on a percentage, because a threshold picked today would be a number
+      # nobody chose defending a suite that is still being written. The `test` job
+      # above stays the gate; this one reports.
+      - name: Run tests with coverage
+        run: pnpm exec turbo run coverage
+
+      # Six packages each write paths relative to themselves, so six `src/index.ts`
+      # records would collide into one file in the report. This rewrites them to be
+      # repository-relative and unions the development and production runs, whose
+      # coverage genuinely differs — `__DEV__` is baked in per process. Its self-test
+      # runs first, on two hand-checked reports.
+      - name: Merge into one report
+        run: SELFTEST=1 node scripts/merge-lcov.mjs && node scripts/merge-lcov.mjs
+
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage/lcov.info
+          # No dedicated token: on a public repository the built-in GITHUB_TOKEN is
+          # enough, and the repository appears on coveralls.io by itself at the first
+          # successful upload.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # A fork's pull request gets a read-only token, so the upload would 403 and
+          # fail a check the contributor cannot fix. The numbers are still produced
+          # and printed by the steps above.
+          allow-empty: true
+        continue-on-error: true
