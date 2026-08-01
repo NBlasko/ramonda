@@ -28,12 +28,19 @@
       button:hover { filter: brightness(1.08); }
       button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
       .hint { margin: 1.75rem 0 1rem; color: var(--muted); font-size: 0.9rem; }
-      .docs { color: var(--accent); font-weight: 600; text-decoration: none; }
+      .docs { display: inline-block; margin-top: 1.5rem; color: var(--accent); font-weight: 600; text-decoration: none; }
       .docs:hover { text-decoration: underline; }
+      body:has(.app) { display: block; }
+      .app { max-width: 42rem; margin: 2rem auto; padding: 0 1.5rem; }
+      .nav { display: flex; gap: 1rem; justify-content: center; margin-bottom: 1.5rem; }
+      .nav a { color: var(--accent); font-weight: 600; text-decoration: none; }
+      .nav a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
     <div id="app"><!--ssr--></div>
-    <script type="module" src="/assets/client.js"></script>
+    <!-- Dev (Vite) serves this source directly with HMR; the production build
+         rewrites it to the bundled /assets/client.js (see server.mjs). -->
+    <script type="module" src="/src/entry-client.tsx"></script>
   </body>
 </html>

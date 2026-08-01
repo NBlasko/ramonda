@@ -35,10 +35,15 @@ const EXPECTED = [
   // server rendering
   "renderToString",
   "renderPage",
+  "renderStatic",
   "renderDocument",
   "hydrateRoot",
   "ServerRedirect",
   "captureServerRedirect",
+  "requestContext",
+  "requestKey",
+  "seedRequest",
+  "RequestReadDuringBuild",
   // decorators
   "state",
   "persist",

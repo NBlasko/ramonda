@@ -122,9 +122,13 @@ describe("third-party versions", () => {
     }
   });
 
-  test("no vite when there is nothing to test and nothing to serve", () => {
+  test("SSR always has vite — it is the dev server, not just a test transform", () => {
+    /**
+     * SSR dev is a Vite middleware server (hot reload) rather than an esbuild build + Node
+     * boot, so vite is a dependency of every SSR project, add-ons or none.
+     */
     const { pkg } = make("ssr", []);
-    expect(pkg.devDependencies.vite).toBeUndefined();
+    expect(pkg.devDependencies.vite).toBeDefined();
   });
 });
 
@@ -175,19 +179,23 @@ describe("the devtools panel", () => {
 });
 
 describe("development is development", () => {
-  test("the SSR template builds dev with development conditions and prod with production", () => {
-    const { pkg } = make("ssr", []);
+  test("SSR dev is the Vite server (development), and the build stays production", () => {
+    const { pkg, read } = make("ssr", []);
     const scripts = (pkg as unknown as { scripts: Record<string, string> }).scripts;
 
     /**
-     * `dev` used to build with `--conditions=production`, so a scaffolded SSR app ran the
-     * production core: no diagnostics, no strict render, no devtools.
+     * `dev` is now a Vite middleware server with hot reload — `node server.mjs`, not an
+     * esbuild build. Vite runs the app in development (diagnostics, strict render, devtools);
+     * `vite.config.ts` sets `__DEV__` true. The production `build`/`start` path is unchanged
+     * and still uses production conditions, so a scaffolded app never accidentally serves the
+     * production core during development (the bug the old assertions guarded).
      */
-    expect(scripts["dev:client"]).toContain("--conditions=development");
-    expect(scripts["dev:client"]).toContain("--define:__DEV__=true");
+    expect(scripts.dev).toBe("node server.mjs");
+    expect(read("vite.config.ts")).toContain("__DEV__");
+    expect(read("vite.config.ts")).toMatch(/__DEV__.*true/);
     expect(scripts["build:client"]).toContain("--conditions=production");
     expect(scripts["build:client"]).toContain("--define:__DEV__=false");
-    expect(scripts.dev).toContain("dev:client");
+    expect(scripts.start).toContain("--prod");
   });
 });
 

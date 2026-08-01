@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const jsxShim = fileURLToPath(new URL("./jsx-shim.ts", import.meta.url));
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/server.ts", "src/server.browser.ts"],
   format: ["esm"],
   dts: true,
   clean: true,

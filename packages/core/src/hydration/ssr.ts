@@ -13,6 +13,7 @@ import {
   type ServerWork,
 } from "../core/serverWork";
 import type { ComponentChild } from "../types/vdom";
+import { createRequestScope, getBuildRead, RequestReadDuringBuild, setRequestScope } from "./requestContext";
 
 /**
  * How many times a server render will wait for async work before giving up.
@@ -86,7 +87,24 @@ function stampBlobs(node: Node): void {
  * back yields a single node. Rather than spend bytes on separator comments the
  * way React does, hydration splits the run apart again; see hydrateText.
  */
-export async function renderToString(vnode: ComponentChild): Promise<string> {
+/** Per-request data for a server render, so `requestContext()` returns real values. */
+export interface ServerRequestInit {
+  /** The request URL — also what the router reads as the current page. */
+  url: URL;
+  /** Request cookies. */
+  cookies?: Map<string, string>;
+  /** Request headers. */
+  headers?: Headers;
+  /** Pre-resolved per-request values keyed by a `requestKey`'s label — e.g. the signed-in user. */
+  values?: Map<string, unknown>;
+}
+
+export interface RenderToStringOptions {
+  /** When present, this render is per-request: `requestContext()` reads return these values. */
+  request?: ServerRequestInit;
+}
+
+export async function renderToString(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<string> {
   const container = document.createElement("div");
 
   // The module-level env is only live across this synchronous mount — no await
@@ -99,6 +117,26 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
   // must not wait on — or serialize — each other's work. See core/serverWork.ts.
   const work = createServerWork();
 
+  // A per-request render (`opts.request`) makes `requestContext()` return real values. Set
+  // ONLY for the synchronous section — the same window, and the same concurrency reasoning, as
+  // `renderEnv`: two concurrent requests must not share it across an `await`. So the rule is
+  // read `requestContext()` SYNCHRONOUSLY (in render / @create / before the first `await` in an
+  // @mount) — after a yield the scope is already cleared. `renderStatic` passes no `opts` and
+  // manages its own build-mode scope (kept live across the sequential build), so this leaves it
+  // untouched.
+  const request = opts?.request;
+  if (request) {
+    setRequestScope(
+      createRequestScope({
+        mode: "server",
+        url: request.url,
+        cookies: request.cookies,
+        headers: request.headers,
+        values: request.values,
+      }),
+    );
+  }
+
   setRenderEnv("server");
   setServerWorkCollector(work);
   try {
@@ -110,6 +148,7 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
   } finally {
     setRenderEnv("client");
     setServerWorkCollector(undefined);
+    if (request) setRequestScope(undefined);
   }
 
   try {
@@ -129,6 +168,46 @@ export async function renderToString(vnode: ComponentChild): Promise<string> {
 
   stampBlobs(container);
   return container.innerHTML;
+}
+
+/** The outcome of a static (build-time) render: markup to bake, or the reason it can't be. */
+export interface StaticRender {
+  /** The baked HTML — present only when the route read nothing per-request. */
+  html?: string;
+  /**
+   * Set when the render touched per-request data (a cookie, a header, a seeded value), naming
+   * the field. The route CANNOT be prerendered — bake it and one visitor's data would be served
+   * to everyone — so the build must fail or fall the route back to per-request rendering.
+   */
+  blockedBy?: string;
+}
+
+/**
+ * Renders a route at BUILD time with the request context POISONED: any per-request read is
+ * recorded (and throws), so the result reports `blockedBy` instead of markup. This is what
+ * PROVES a baked page holds no per-request data.
+ *
+ * It keeps the poisoned scope live across the whole render — including the async drain — which
+ * is safe ONLY because a build is SEQUENTIAL (one page at a time). Do NOT use it to serve
+ * concurrent requests: a live request would race the module-level scope. Point `url` at the
+ * path being baked (it stays readable — the URL is the page identity, not per-request data).
+ */
+export async function renderStatic(vnode: ComponentChild, url: URL): Promise<StaticRender> {
+  const scope = createRequestScope({ mode: "build", url });
+  setRequestScope(scope);
+  try {
+    const html = await renderToString(vnode);
+    // A read inside an async @mount throws into the drain's allSettled and is swallowed, so the
+    // recorded field — not the throw — is the authority here.
+    const blockedBy = getBuildRead(scope);
+    return blockedBy !== undefined ? { blockedBy } : { html };
+  } catch (e) {
+    // A synchronous read (render / @create / sync @mount) throws straight out.
+    if (e instanceof RequestReadDuringBuild) return { blockedBy: e.field };
+    throw e; // a ServerRedirect or a genuine error is the caller's to handle.
+  } finally {
+    setRequestScope(undefined);
+  }
 }
 
 /** What one page's render produced: its body, and the head that goes with it. */

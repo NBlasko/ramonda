@@ -56,6 +56,15 @@ function installDom(url) {
   return dom;
 }
 
+/**
+ * Escape the three characters that let text break out of an HTML text/`<pre>` context. An error
+ * message can carry parts of the request (a bad URL, a header), so writing it into the page raw
+ * is a reflected-XSS hole — contextual encoding closes it.
+ */
+function escapeHtml(text) {
+  return String(text).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+}
+
 const MIME = {
   ".js": "text/javascript",
   ".css": "text/css",
@@ -66,8 +75,52 @@ const MIME = {
 // The DOM has to exist before the app module is evaluated: class fields and
 // decorators run at import time and some of them touch `window`.
 installDom(`http://localhost:${PORT}/`);
-const { render } = await import("./dist/server/entry-server.js");
+const { render, plan, prerender } = await import("./dist/server/entry-server.js");
 const template = await readFile(resolve(CLIENT, "index.html"), "utf-8");
+
+// The render plan, computed once: which paths are baked (static), cached-and-revalidated (isr),
+// or rendered per request (everything else). See @ramonda/router/server `routePlan`.
+const routePlan = plan();
+const STATIC = resolve(here, "dist/static");
+const staticSet = new Set(routePlan.static);
+const isrMap = new Map(routePlan.isr.map((r) => [r.path, r.revalidate]));
+/** ISR cache: path → { html, at }. In-memory, per instance (documented limitation). */
+const isrCache = new Map();
+
+const origin = `http://localhost:${PORT}`;
+
+/** Parse a Cookie header into the Map `requestContext` reads. */
+function parseCookies(header) {
+  const out = new Map();
+  if (!header) return out;
+  for (const pair of header.split(";")) {
+    const i = pair.indexOf("=");
+    if (i === -1) continue;
+    out.set(pair.slice(0, i).trim(), decodeURIComponent(pair.slice(i + 1).trim()));
+  }
+  return out;
+}
+
+function sendHtml(res, html, mode) {
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/html");
+  res.setHeader("X-Ramonda-Mode", mode);
+  res.end(template.replace("<!--ssr-->", html));
+}
+
+/** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
+async function bakeShared(path) {
+  const dom = installDom(`${origin}${path}`);
+  try {
+    const { html, blockedBy } = await prerender(path);
+    if (blockedBy !== undefined) {
+      throw new Error(`Route ${path} is cached (static/isr) but read the request (${blockedBy}).`);
+    }
+    return html;
+  } finally {
+    dom.window.close();
+  }
+}
 
 const server = createServer(async (req, res) => {
   const url = req.url ?? "/";
@@ -159,14 +212,55 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  try {
-    // Seeding the router IS pointing the shim at the request URL. No server-only
-    // entry point into the router, and there should not be one: a second way to
-    // say "you are at /users/42" is a second thing to keep honest.
-    const dom = installDom(`http://localhost:${PORT}${url}`);
+  const path = url.split("?")[0];
 
+  try {
+    // 1. STATIC — a route the build baked. Serve the file; fall through to a live render only if
+    //    it was never prerendered (a dev convenience — in production these always exist).
+    if (staticSet.has(path)) {
+      const file = path === "/" ? resolve(STATIC, "index.html") : resolve(STATIC, `.${path}`, "index.html");
+      if (existsSync(file)) {
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html");
+        res.setHeader("X-Ramonda-Mode", "static");
+        createReadStream(file).pipe(res);
+        console.log(`${req.method} ${url} → static`);
+        return;
+      }
+    }
+
+    // 2. ISR — serve the cached copy; when it is older than `revalidate`, serve it anyway and
+    //    refresh in the background (stale-while-revalidate). Cold first hit renders inline. ISR is
+    //    a SHARED cache, so it is rendered with the request poisoned — no per-request data in it.
+    if (isrMap.has(path)) {
+      const revalidateMs = isrMap.get(path) * 1000;
+      const cached = isrCache.get(path);
+      const now = Date.now();
+      if (cached && now - cached.at < revalidateMs) {
+        sendHtml(res, cached.html, "isr-hit");
+        console.log(`${req.method} ${url} → isr (fresh)`);
+        return;
+      }
+      if (cached) {
+        sendHtml(res, cached.html, "isr-stale");
+        console.log(`${req.method} ${url} → isr (stale, revalidating)`);
+        void bakeShared(path)
+          .then((html) => isrCache.set(path, { html, at: Date.now() }))
+          .catch((e) => console.error(`[isr] ${path}:`, e));
+        return;
+      }
+      const html = await bakeShared(path);
+      isrCache.set(path, { html, at: now });
+      sendHtml(res, html, "isr-cold");
+      console.log(`${req.method} ${url} → isr (cold)`);
+      return;
+    }
+
+    // 3. DYNAMIC — rendered per request. The request context (url + cookies) is what a route
+    //    reads for auth / per-user output; the router reads the URL off the shimmed `window`.
+    const dom = installDom(`${origin}${url}`);
     const started = process.hrtime.bigint();
-    const { html, redirect } = await render();
+    const { html, redirect } = await render({ url: new URL(url, origin), cookies: parseCookies(req.headers.cookie) });
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     dom.window.close();
 
@@ -180,14 +274,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/html");
     res.setHeader("Server-Timing", `render;dur=${ms.toFixed(1)}`);
-    res.end(template.replace("<!--ssr-->", html));
+    sendHtml(res, html, "dynamic");
     console.log(`${req.method} ${url} → ${ms.toFixed(1)}ms, ${html.length}b`);
   } catch (error) {
     res.statusCode = 500;
-    res.end(`<pre>${String(error?.stack ?? error)}</pre>`);
+    res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);
     console.error(error);
   }
 });

@@ -41,11 +41,25 @@ interface CompiledRoute {
   vnode: VNode;
 }
 
-/** A routes map compiled ONCE: regexes prebuilt, order preserved. */
-export interface RouteConfig {
+/**
+ * A routes map compiled ONCE: regexes prebuilt, order preserved.
+ *
+ * `Paths` is a PHANTOM type parameter — nothing at runtime carries it. It exists so
+ * `createRoutes` can remember the literal path keys it was given (`"/" | "/u/:id"`),
+ * and `createRouter` can type `<Link href>` and `route()` against them. It defaults to
+ * `string`, so every existing consumer that takes a plain `RouteConfig` keeps working
+ * and a `RouteConfig<"/a" | "/b">` is assignable to `RouteConfig` (a narrower phantom is
+ * assignable to the wider default).
+ */
+export interface RouteConfig<Paths extends string = string> {
   compiled: CompiledRoute[];
   fallback: VNode | undefined; // the "*" route
+  /** Phantom: the literal path union, read by `createRouter`. Never set at runtime. */
+  readonly __paths?: Paths;
 }
+
+/** The navigable path union of a config — every declared key except the `"*"` fallback. */
+export type PathOf<C> = C extends RouteConfig<infer P> ? Exclude<P, "*"> : never;
 
 function compilePattern(pattern: string): {
   regex: RegExp;
@@ -62,7 +76,7 @@ function compilePattern(pattern: string): {
  * time (not per render/match), and the stable object identity lets <Router>'s
  * shallow props comparison skip re-rendering when the parent re-renders.
  */
-export function createRoutes(routes: Record<string, VNode>): RouteConfig {
+export function createRoutes<const T extends Record<string, VNode>>(routes: T): RouteConfig<Extract<keyof T, string>> {
   const compiled: CompiledRoute[] = [];
   let fallback: VNode | undefined;
 
