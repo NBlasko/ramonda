@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { coverage } from "../../vitest.coverage.mjs";
 
 /**
  * The panel is a custom element, so jsdom is enough to test it — it renders into a shadow root
@@ -11,6 +12,7 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
+    coverage,
     globals: true,
     environment: "jsdom",
   },

@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { coverage } from "../../vitest.coverage.mjs";
 
 /**
  * The production test run. Some safety code only exists in a production build —
@@ -28,6 +29,7 @@ export default defineConfig({
     __TEST__: 'process.env.NODE_ENV === "test"',
   },
   test: {
+    coverage,
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

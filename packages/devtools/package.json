@@ -35,7 +35,7 @@
     "check-types": "tsc --noEmit",
     "dev": "tsup src/index.ts --format esm --watch",
     "lint": "oxlint src",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "devDependencies": {

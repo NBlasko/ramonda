@@ -42,13 +42,13 @@
   "scripts": {
     "build": "tsup && ramonda-check-bundle dist",
     "dev": "tsup --watch",
-    "test": "vitest run && pnpm test:prod",
+    "test": "vitest run --coverage && pnpm test:prod",
     "test:watch": "vitest",
     "bench": "pnpm build && node bench/against-immer.mjs",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
     "format": "biome format --write src",
-    "test:prod": "vitest run --config vitest.prod.config.ts"
+    "test:prod": "vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod"
   },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",

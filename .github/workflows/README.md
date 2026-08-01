@@ -11,7 +11,7 @@ foundation of best practices to grow from, not an all-in-one.
 | `deploy-docs.yml` | push to `main`, or manual | Builds `apps/docs` and deploys to Cloudflare Pages |
 | `codeql.yml` | PR to `main`, push to `main`, weekly | CodeQL static analysis of the TypeScript (SAST) |
 | `dependency-review.yml` | PR to `main` | Blocks a PR that adds a high/critical advisory or a copyleft licence |
-| `scorecard.yml` | push to `main`, weekly, branch-protection change | OpenSSF Scorecard: supply-chain hygiene, graded |
+| `scorecard.yml` | weekly, branch-protection change, or manual | OpenSSF Scorecard: supply-chain hygiene, graded |
 
 The shared `.github/actions/setup` composite installs pnpm (from the root
 `packageManager` field), Node from **`.nvmrc`**, and dependencies with
@@ -21,8 +21,12 @@ in one place — it publishes, and a second pin there could drift.
 ## Running the gate locally: `pnpm check`
 
 ```
-pnpm check      # pnpm lint && pnpm format:check && turbo run check-types test build
+pnpm check      # preflight-node + check-workflows, then lint, format:check,
+                # and turbo run check-types test build
 ```
+
+`test` carries `--coverage`, so this also leaves an lcov report under each package —
+`node scripts/merge-lcov.mjs` combines them and prints the repository total.
 
 It exists because **`turbo run` alone is not the gate.** Several checks are root
 scripts that turbo never sees:
@@ -80,6 +84,69 @@ Two tools, one job each:
   longer scans `dist/` or generated output).
 
 Both are hard gates in CI. There is no ESLint (there never was a config).
+
+## Coverage
+
+The `test` job **is** the coverage run: every package's test script carries
+`--coverage`, so one execution is both the gate and the report, which is then merged
+and published to [Coveralls](https://coveralls.io/github/NBlasko/ramonda) — free for
+public repositories, on the built-in `GITHUB_TOKEN`. Coverage is still not a
+*threshold* gate; nothing fails on a percentage (see *Deliberate gaps*).
+
+It was briefly a separate `coverage` task in its own job, and that was wrong twice
+over. It ran the whole suite a second time for one report — measured here, `turbo run
+test --force` takes 116.6s and the instrumented run 126.9s, so the duplicate cost a
+full extra ~2 minutes to save 10 seconds of instrumentation. And more seriously, the
+second task name silently **dropped tests**: 21 test tasks against 18 coverage ones,
+because `create-ramonda` (which tests the built bundle), `@ramonda/docs` and
+`@ramonda/playground-ssr` (whose test boots a server and smoke-tests it) have no
+coverage to produce and so had no `coverage` script. Under a `turbo run coverage`
+gate the SSR smoke test — the one that caught the open-in-editor regression — would
+not have run at all. A second name is a name that can be forgotten; there is one now,
+and `turbo.json` declares `coverage/**` and `coverage-prod/**` as the `test` task's
+outputs so a cache hit still restores the reports for the merge step.
+
+Three pieces, each solving something a plain `vitest --coverage` gets wrong here:
+
+- **`vitest.coverage.mjs`** (repository root) is the single definition of what
+  counts, spread into every package's vitest config. Its load-bearing line is
+  `include: ["src/**"]`. Without it v8 reports only the files a test imported, so a
+  module nobody touches is not 0% covered — it is *absent*, and the percentage
+  rises. Measured on `@ramonda/lens`: adding one never-imported file with three
+  branches moved statements from 80.41% to 78.77% **once `include` was set**, and
+  left the number untouched without it. Excluded: the tests, test support under
+  `src/test/`, `.d.ts` and type-only modules. Not excluded: `src/testing.ts`, which
+  is core's published `@ramonda/core/testing` entry.
+- **`scripts/merge-lcov.mjs`** combines the per-package reports. vitest writes paths
+  relative to the package that ran, so six packages produce six `SF:src/index.ts`
+  records for six different files; these are rewritten to `packages/<name>/…`, which
+  is also what makes a Coveralls line link to the right file. It **unions** rather
+  than concatenates, because core, query and lens each have a second run under
+  `NODE_ENV=production` — `__DEV__` is baked in per process, so the loop stops and
+  stripped diagnostics are reachable only there, and each run reports the other's
+  code as dead. Measured on lens: the development run hits 169 of 197 lines and the
+  production run 89, but 4 of production's are lines development never reaches —
+  **85.79% alone against 87.82% merged**. `SELFTEST=1` checks the union on two
+  hand-worked reports, since a merge that takes the last report seen would look
+  right on real input and be wrong here.
+- **`turbo.json`** declares `coverage/**` and `coverage-prod/**` as outputs of `test`.
+
+Whole-repository result today: **95.72% of lines, 4294 of 4486, across 109 files**
+(core 73, query 13, testing-library 7, router 6, lens 6, devtools 4).
+
+`create-ramonda` is deliberately absent. Its tests import the **built** `dist/index.js`
+on purpose — they check that what gets published scaffolds a working project — so
+measuring `src/` there would report 0% for code that is thoroughly tested, just not
+in the form the report can see. Counting the bundle instead would mix a different
+kind of number into the total.
+
+The Coveralls upload is `continue-on-error`. A fork's pull request gets a read-only
+token, so the upload would 403 and fail a check the contributor cannot fix; the
+numbers are still computed and printed by the steps above it.
+
+The badge is repository-wide, so it lives in the root README only. Package READMEs
+carry version, minzipped size and licence — a repository-wide percentage next to one
+package's name would read as that package's number.
 
 ## Security scanning
 
@@ -271,25 +338,27 @@ Version PR do it.)
 
 ## What passes today (measured)
 
-The gate was run locally before these workflows were committed:
+Run locally, uncached (`--force`), in the runner's conditions — `ps` shadowed and
+`$EDITOR`/`$VISUAL` empty, so nothing can pass by finding a tool a runner does not
+have:
 
-- **Build** — green across every package and app (including the docs
-  prerender + pagefind pipeline).
-- **Type-check** — green (core, router, lens, testing-library, docs). core runs
-  `strict` plus `noUnusedLocals` / `noUnusedParameters` / `noImplicitOverride` /
-  `noFallthroughCasesInSwitch`.
-- **Test** — green: 10/10 task runs, once the two scratch apps are excluded (see
-  below). core, router, lens, testing-library and devtools all pass.
-- **Lint** — **green and blocking** (oxlint). 0 errors across the monorepo; one
-  accepted warning remains (an unused type parameter in `HookTypes.ts`, left for
-  the types pass because fixing it touches core's declared type surface).
-- **Format** — **green and blocking** (biome). All 303 tracked files are
-  formatted; adopting the formatter reflowed 195 of them (2-space, width 120),
-  a behavior-preserving change confirmed by the tests above.
+- **`pnpm check`** — 29 of 29 turbo tasks, plus the root scripts turbo never sees.
+- **Test** — 21 of 21 task runs, no filters and nothing excluded. That includes
+  `@ramonda/playground-ssr`, whose test builds the app, boots a real Node server and
+  smoke-tests it, and `@ramonda/docs`. Coverage comes out of this same run:
+  **95.72% of lines**, 4294 of 4486, across 109 files.
+- **Build** — green across every package and app, including the docs
+  content → esbuild → prerender → pagefind chain and `ramonda-check-bundle` parsing
+  every emitted file.
+- **Type-check** — green. core runs `strict` plus `noUnusedLocals` /
+  `noUnusedParameters` / `noImplicitOverride` / `noFallthroughCasesInSwitch`.
+- **Lint** — **green and blocking** (oxlint), 0 errors across the monorepo.
+- **Format** — **green and blocking** (biome), 407 tracked files, no fixes to apply.
 
-The `test` job excludes `playground` and `playground-core`: their `test` script
-is still the `npm init` placeholder that exits 1. Give them a real (or empty)
-test script and drop the `--filter` flags in `checks.yml`.
+Both build-time checks run their own self-test first, since a check nobody has seen
+fail proves nothing: `scripts/check-workflows.mjs` (catches a workflow bypassing
+turbo, passes the correct form) and `scripts/merge-lcov.mjs` (unions two hand-worked
+reports rather than letting the last one win).
 
 ## Pinned dev dependencies (do not blindly bump)
 
@@ -311,22 +380,15 @@ only with the fix in hand:
 
 ## Deliberate gaps (the "we'll add more later" list)
 
-- **Coverage reporting.** `@vitest/coverage-v8` is installed and works, but no
-  `coverage` task exists and nothing is published. Measured today, per package
-  (v8 provider, each package counting only its own files): core 95.4% of
-  statements, query 92.6%, devtools 91.0%, router 89.6%, testing-library 89.5%,
-  lens 80.4% — **93.0% across the six**, 95.5% by line. Publishing it (Coveralls
-  is free for public repositories, via `coverallsapp/github-action` and
-  `GITHUB_TOKEN`) means a `coverage` turbo task and one merged upload; core needs
-  **two** uploads, since `test` is `vitest run && pnpm test:prod` and the
-  production-only paths read as dead code from the first run alone. No coverage
-  threshold gate until the suite is fuller — a gate at 93% today would block work
-  on a number nobody chose.
+- **A coverage threshold.** Coverage is measured, merged and published (see
+  *Coverage* above), but nothing fails on a percentage. A gate picked today would be
+  a number nobody chose, defending a suite still being written. Add one when the
+  suite settles, at a level the suite already clears.
 - **CodeQL's `security-extended` suite.** The default (high-precision) suite runs
   now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
   and the time to do it is after the default suite's findings are triaged — the
   `innerHTML` writes in `packages/devtools/src/index.ts` first.
-- **SHA-pinned actions.** Workflows pin tags (`@v5`, `@v2.4.4`), not commit SHAs.
+- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.4.4`), not commit SHAs.
   Scorecard marks this down, and it is right that a tag can be moved under you;
   a SHA is also unreadable and drifts silently out of date. Revisit if Dependabot's
   `github-actions` updates prove reliable enough to keep SHAs current.

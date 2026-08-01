@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { coverage } from "../../vitest.coverage.mjs";
 
 /**
  * The production test run, and the reason it exists is a gap this package had until its first release.
@@ -18,6 +19,7 @@ export default defineConfig({
     __DEV__: "false",
   },
   test: {
+    coverage,
     globals: true,
     include: ["src/**/*.prod.test.ts"],
   },

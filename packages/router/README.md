@@ -3,6 +3,9 @@
 Client-side routing for [Ramonda](https://ramonda.pages.dev): state-first, race-free navigation
 with nested route outlets.
 
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Frouter)](https://www.npmjs.com/package/@ramonda/router)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Frouter)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
 ```tsx
 import { Component, Host } from "@ramonda/core";
 import { Router, RouteOutlet, Link, createRoutes } from "@ramonda/router";

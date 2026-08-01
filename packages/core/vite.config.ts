@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { coverage } from "../../vitest.coverage.mjs";
 import { configDefaults } from "vitest/config";
 import { resolve } from "node:path";
 import dts from "vite-plugin-dts";
@@ -36,6 +37,7 @@ export default defineConfig({
   },
   // Vitest ostaje isti
   test: {
+    coverage,
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
