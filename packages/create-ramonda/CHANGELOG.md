@@ -1,5 +1,55 @@
 # create-ramonda
 
+## 0.3.0
+
+### Minor Changes
+
+- 59e9a6a: SSR scaffolds now have a hot-reload dev server.
+
+  `npm run dev` on an SSR project starts a Vite server in middleware mode instead of
+  building the bundles and booting Node: edit a component and the change is live — the
+  browser hot-updates the client, and the server picks up the new code on the next
+  request via `ssrLoadModule`, with no restart and no build step. Production is
+  unchanged: `npm run build` + `npm start` still serve the esbuild bundle.
+
+  The one thing that made this work with Ramonda's TC39 decorators is `esbuild.target:
+"es2022"` in `vite.config.ts` — Vite's default SSR target (`esnext`) leaves decorators
+  in the output, which Node can't parse (`ssrLoadModule` died on `@Host(...)`). es2022
+  down-levels them. `vite` is added as a dev dependency of the SSR template; `server.mjs`
+  branches dev (Vite) vs `--prod` (built output).
+
+- c814a8c: The SSR template is now a routed app with per-route rendering modes — SSG, ISR, and dynamic.
+
+  Scaffolding an SSR project gives you a small routed app (`createRoutes` + `createRouter`, so
+  `<Link href>` is type-checked against your routes) whose `entry-server.tsx` declares how each
+  route renders:
+
+  ```ts
+  defineServer(routes, {
+    "/": { prerender: true }, // static — baked at build
+    "/about": { revalidate: 60 }, // ISR — cached, rebaked every 60s
+    "/hello/:name": {}, // dynamic — rendered per request
+  });
+  ```
+
+  `npm run build` bakes the static routes to `dist/static/` (failing loudly if a route marked
+  `prerender` reads the request — a baked page must never contain per-request data), and
+  `server.mjs` in production serves each request by its mode: static file, ISR (cached +
+  stale-while-revalidate), or a per-request `renderToString({ request })`. Dev is unchanged
+  (Vite, hot reload, everything rendered fresh).
+
+  `@ramonda/router` is now always included for SSR (the pipeline is built on it), add-on chosen
+  or not. Because the template uses new `@ramonda/core` (`renderStatic`, `requestContext`,
+  `renderToString({ request })`) and `@ramonda/router` (`createRouter`, `@ramonda/router/server`),
+  this release must ship core + router + create-ramonda together.
+
+### Patch Changes
+
+- ffa229b: Fix a reflected-XSS hole in the SSR template's error page. `server.mjs` wrote an error's
+  message straight into an HTML `<pre>` on a 500, and an error can carry parts of the request
+  (a malformed URL or header), so a crafted request could inject markup. The error text is now
+  HTML-escaped before it reaches the page.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,64 @@
 # @ramonda/router
 
+## 0.2.0
+
+### Minor Changes
+
+- a048edc: Add `@ramonda/router/server` — server-only per-route render config (`defineServer` + `routePlan`).
+
+  `defineServer(routes, config, options?)` attaches a rendering mode to each route in the shared
+  table, keyed by path. The config is **exhaustive**: every navigable path must have an entry, so
+  adding a route to `createRoutes` fails type-checking until it is handled here, and an entry for a
+  non-route is a type error too — the table and its server config cannot drift.
+
+  ```ts
+  // app/server/routes.ts  (SERVER ONLY)
+  import { routes } from "../src/routes";
+  import { defineServer } from "@ramonda/router/server";
+
+  export const server = defineServer(routes, {
+    "/": {}, // server (default)
+    "/docs": { prerender: true }, // SSG
+    "/pricing": { revalidate: 60 }, // ISR
+    "/u/:id": { prerender: true }, // static per page (needs concrete paths to bake)
+  });
+  ```
+
+  `routePlan(server)` partitions the table into `{ static, isr, server, needsData }` for the build.
+  `options.defaultMode` (`"server"` default, or `"static"`) sets what an unmarked route does.
+
+  Server-only by construction: it is a separate subpath (`@ramonda/router/server`) whose `browser`
+  export condition resolves to a stub that throws, and `defineServer` throws at runtime in a browser
+  too — so loaders, secrets, and DB access can never reach the client bundle. Keep it under a
+  `server/` folder in your app.
+
+  (The build-time guard that renders each opted-in route with the request context poisoned — proving
+  a baked route reads no per-request data — builds on this and lands next.)
+
+- edfe219: Type-safe routing: `createRouter(routes)` binds `<Link href>`, `route()`, and `Navigator`
+  to the paths a route table actually declares — change a route and a stale link becomes a
+  compile error.
+
+  ```ts
+  export const routes = createRoutes({ "/": <Home/>, "/u/:id": <Profile/> });
+  export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
+
+  <Link href="/" />                              // ✓
+  <Link href="/nope" />                           // ✗ not a route
+  <Link href={route("/u/:id", { id })} />         // ✓ params typed; missing/misspelled → error
+  ```
+
+  - `createRoutes` now captures its path literals in the type (via `<const>`), carried on a
+    phantom `RouteConfig<Paths>` that defaults to `string` — **fully backward-compatible**, every
+    existing `createRoutes`/`RouteConfig`/`RouteOutlet` usage is unchanged.
+  - `href` accepts a **static path or an `Href` from `route()`**; a raw `:param` pattern
+    (`"/u/:id"`) is rejected — it would type-check but render a literal `:id`, so it must go
+    through `route()`, which fills and URL-encodes the params. `Navigator.push`/`replace` are
+    typed the same way.
+  - The existing untyped `Link`/`Navigator`/`Router`/`RouteOutlet` exports still work; the factory
+    is the typed path. New exports: `createRouter`, `PathOf`, `Href`, `TypedLinkProps`,
+    `TypedNavigator`, `TypedRouterKit`.
+
 ## 0.1.0
 
 ### Minor Changes

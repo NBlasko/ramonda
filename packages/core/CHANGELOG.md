@@ -1,5 +1,57 @@
 # @ramonda/core
 
+## 0.4.0
+
+### Minor Changes
+
+- f200db8: Add `renderStatic(vnode, url)` — the build-time render that PROVES a route holds no
+  per-request data before it is baked.
+
+  It renders with the request context poisoned (`requestContext()` reads throw and are
+  recorded), and returns either `{ html }` — safe to bake — or `{ blockedBy }` naming the
+  per-request field that was read, meaning the route cannot be prerendered and must fall back
+  to per-request rendering. This is the guard that makes opt-in SSG safe: a page that reads a
+  cookie, header, or seeded value literally cannot be turned into static HTML, so one visitor's
+  data can never end up in another's cached page.
+
+  It catches reads wherever they happen — `render()`, `@create`, and even an async `@mount`
+  (whose throw is swallowed by the render drain, so the read is _recorded_ on the scope and
+  checked afterwards). `url` stays readable throughout (it is the page identity). Sequential by
+  design (a build renders one page at a time) — not for serving concurrent requests.
+
+- f8e7671: Add `requestContext()` — per-request data with a build-time safety guard.
+
+  Per-request data (cookies, headers, the signed-in user) is now reachable only through
+  `requestContext()`, so a static build can PROVE a route touched none of it before baking:
+
+  - `requestContext().url` is always safe (it is the page identity).
+  - `requestContext().cookies` / `.headers` / `.get(key)` return real values on the server and
+    the exposed subset on the client, but **throw during a static build** (`RequestReadDuringBuild`).
+    A page that reads the request literally cannot be prerendered, so one user's data can never
+    end up in another's cached HTML.
+  - `requestKey<T>(label)` declares a typed per-request slot; `seedRequest(key, value)` fills it
+    on the server before the render; the tree reads it with `requestContext().get(key)`.
+
+  This is the safety core for the upcoming per-route SSG/SSR/ISR work (default SSR, opt-in
+  prerender guarded by this poison). New exports: `requestContext`, `requestKey`, `seedRequest`,
+  `RequestReadDuringBuild`, and the `RequestContext` / `RequestKey` / `RequestCookies` /
+  `RequestMode` types.
+
+- 32c9f41: `renderToString(vnode, { request })` — per-request server renders, so `requestContext()`
+  returns real values.
+
+  Pass `{ request: { url, cookies?, headers?, values? } }` and the render runs in "server" mode:
+  `requestContext().cookies` / `.headers` / `.get(key)` return the request's real data instead of
+  throwing. This is the dynamic (SSR) counterpart to `renderStatic`'s poisoned build render.
+
+  The scope is live only across the render's **synchronous** section (the same window and the same
+  concurrency guarantee as `renderEnv` — two concurrent requests must not share it across an
+  `await`). So read `requestContext()` **synchronously**: in `render()`, in `@create`, or before an
+  `@mount`'s first `await`. The idiomatic pattern needs nothing more — read the request in `@create`
+  and store it in `@state`; `@create` is skipped on hydration and the `@state` is restored from the
+  page's state blob, so the client never re-reads the request and there is no separate request blob
+  to ship. New types: `RenderToStringOptions`, `ServerRequestInit`.
+
 ## 0.3.0
 
 ### Minor Changes
