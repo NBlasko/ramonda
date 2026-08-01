@@ -84,6 +84,7 @@ Everything the three packages export. Each entry links to the page that explains
 | | |
 |---|---|
 | `@watchProp(selector)` | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
+| `@requiresContext(...halves)` | Declares the contexts a class needs above it, so a missing provider is reported at MOUNT rather than at the first read. Dev-only. [Context](/composition/context) |
 | `@shouldUpdateOnPropsChange` | Gates whether new props from the parent are taken up (their signals update + a render). Components only; runs only on prop changes. |
 | `@deferHydration` | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 

@@ -65,6 +65,32 @@ If a consumer has no provider anywhere above it, it falls back to the default an
 development, reports `RMD003` — naming the context and the key, so you can see what is
 missing.
 
+## Declare what a component needs
+
+A consumer is reported only when something **reads** it, and that is deliberate: holding a consumer
+you read down one branch is not a mistake. But it leaves a component that mounts and reads nothing
+— yet — silent.
+
+If a component genuinely cannot work without a context, say so:
+
+```tsx
+import { requiresContext } from "@ramonda/core";
+
+@requiresContext(ThemeConsumer)
+@Host("section")
+class Panel extends Component { … }
+```
+
+Now the check happens when the component **mounts**, before anything reads a value. A panel that
+finally appears — a lazily-loaded chunk, a condition that turned true — reports the first time it
+shows up instead of waiting for the read. A subclass adds to what its parent declared.
+
+It is development-only: in a production build the declaration is inert.
+
+Even this only speaks for components that actually mount. To be told about a branch nobody has
+opened, run [`ramonda-check-context`](/reference/check) — it proves the same thing from the source,
+before the app starts.
+
 ## When not to use it
 
 Context is for values a whole subtree needs and nothing in between should have to

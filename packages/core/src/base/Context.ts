@@ -1,5 +1,5 @@
 import { createId } from "../helpers/createId";
-import { CONTEXT_READS } from "../helpers/constants";
+import { CONTEXT_READS, CONTEXT_ID } from "../helpers/constants";
 import { type Runtime, HOOK_RUNTIME } from "../core/runtime";
 import { attach, detach } from "../helpers/constants";
 import { Hook } from "./Hook";
@@ -227,6 +227,13 @@ export function createContext<T extends object>(
         return reads;
       },
     });
+  }
+
+  // Both halves carry the context's identity, so `@requiresContext(ThemeConsumer)` can ask for
+  // "this context" without the app ever seeing the id.
+  const identity = { id: contextId, label: options?.label };
+  for (const half of [Provider, Consumer]) {
+    Object.defineProperty(half, CONTEXT_ID, { value: identity, enumerable: false });
   }
 
   return [Provider, Consumer] as unknown as readonly [

@@ -6,6 +6,7 @@ import { createHookRuntime, HOOK_RUNTIME, type HookRuntime, type Runtime, GLOBAL
 import { State } from "../reactivity/State";
 import { reportHookPropWrite } from "../debug/renderPhase";
 import { recordDefinition } from "../debug/sourceLocation";
+import { checkRequiredContexts } from "../debug/requiredContexts";
 import { bindInstanceMethods } from "../helpers/bindMethods";
 
 function createPropsProxy(hook: Hook<HookProps>) {
@@ -68,6 +69,9 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
 
     this[GLOBAL_RUNTIME] = runtime;
     this[HOOK_RUNTIME] = createHookRuntime(initialProps);
+
+    // A hook can declare what it needs too — see the note in Component.
+    if (__DEV__) checkRequiredContexts(this, runtime.context);
     this.props = createPropsProxy(this) as R;
 
     bindInstanceMethods(this, Hook.prototype);

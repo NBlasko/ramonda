@@ -136,6 +136,12 @@ export const STATE_KEYS = Symbol("stateKeys");
  * already subscribed to and naming the rest as unread.
  */
 export const CONTEXT_READS = Symbol("contextReads");
+
+/** Stamped on a context's Provider/Consumer pair so `@requiresContext` can name what it needs. */
+export const CONTEXT_ID = Symbol("contextId");
+
+/** The contexts a class declared with `@requiresContext`, merged down the class chain. */
+export const REQUIRED_CONTEXTS = Symbol("requiredContexts");
 export const PERSIST_KEYS = Symbol("persistKeys");
 
 // Attribute on a component's carrier element holding its serialized state blob.

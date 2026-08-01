@@ -4,6 +4,7 @@ import type { BaseHook, HookProps, PropsFactory } from "../types/HookTypes";
 
 import { useCommon } from "../helpers/common";
 import { recordDefinition } from "../debug/sourceLocation";
+import { checkRequiredContexts } from "../debug/requiredContexts";
 import {
   COMPONENT_RUNTIME,
   type ComponentRuntime,
@@ -90,6 +91,11 @@ export abstract class Component<P extends ComponentProps = DefaultProps> impleme
     bindInstanceMethods(this, Component.prototype, lifecycles);
     this[GLOBAL_RUNTIME] = createRuntime(this, context);
     this[COMPONENT_RUNTIME] = createComponentRuntime(props);
+
+    // Anything declared with `@requiresContext` is checked here, at mount — the inherited context
+    // is already in hand, and reporting now means a lazily-loaded or newly-shown component says so
+    // the first time it appears, instead of waiting for some branch to read the value.
+    if (__DEV__) checkRequiredContexts(this, context);
   }
 
   protected use<T extends BaseHook<undefined>>(hook: HookClassKind<T, undefined>): T;
