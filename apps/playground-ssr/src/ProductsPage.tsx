@@ -1,13 +1,5 @@
 import { Component, Host, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
-import {
-  InfiniteQuery,
-  Query,
-  QueryClientAccess,
-  infiniteQueryOptions,
-  queryOptions,
-  type FetchContext,
-  type PageContext,
-} from "@ramonda/query";
+import { InfiniteQuery, Query, QueryClientAccess, type FetchContext, type PageContext } from "@ramonda/query";
 
 /**
  * The query package against a real API, server-rendered, with infinite scroll.
@@ -168,14 +160,12 @@ class ProductDetail extends Component<{ id: number }> {
    * identity never moves. Worth keeping the story rather than quietly writing the fixed version:
    * the diagnostic caught the framework author writing the framework's own example wrong.
    */
-  private product = this.use(Query, (self: ProductDetail) =>
-    queryOptions({
-      key: ["product", self.props.id],
-      fetch: self.loadOne,
-      staleTime: 60_000,
-      placeholderData: self.skeleton,
-    }),
-  );
+  private product = this.use(Query<Product>, (self: ProductDetail) => ({
+    key: ["product", self.props.id],
+    fetch: self.loadOne,
+    staleTime: 60_000,
+    placeholderData: self.skeleton,
+  }));
 
   /** The fetcher. `key` comes from the context, so nothing about the component is captured. */
   loadOne({ signal, key }: FetchContext) {
@@ -237,15 +227,15 @@ export class ProductsPage extends Component {
    */
   sentinel = createRef<HTMLElement>();
 
-  private feed = this.use(InfiniteQuery, () =>
-    infiniteQueryOptions({
-      key: ["products"],
-      initialPageParam: 0,
-      loadPage,
-      // `undefined` ends the list. `skip + limit` past `total` is exactly that.
-      getNextPageParam: nextSkip,
-    }),
-  );
+  // Passed directly rather than through a callback: every value in it is a constant or a
+  // module-level function, so there is nothing for a per-render rebuild to keep in step.
+  private feed = this.use(InfiniteQuery<ProductPage>, {
+    key: ["products"],
+    initialPageParam: 0,
+    loadPage,
+    // `undefined` ends the list. `skip + limit` past `total` is exactly that.
+    getNextPageParam: nextSkip,
+  });
 
   /**
    * Scrolled into view — ask for one more page. `fetchNextPage` is a no-op when there is no

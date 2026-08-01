@@ -1,5 +1,5 @@
 import { Component, Host, list, onElement, state } from "@ramonda/core";
-import { Mutation, Query, QueryClient, QueryClientProvider, mutationOptions, queryOptions } from "@ramonda/query";
+import { Mutation, Query, QueryClient, QueryClientProvider } from "@ramonda/query";
 
 // The "server": a list, and a rule that rejects anything already there. The
 // rejection is what makes the rollback visible.
@@ -47,25 +47,22 @@ export class MutationDemo extends Component {
 
   @state draft = "";
 
-  private list = this.use(Query, () =>
-    queryOptions({
-      // A bound method, because the callback runs on every render and a fresh closure is
-      // a changed prop (RMD022). The key needs nothing: `Query` declares it as a value.
-      key: ["todos"],
-      fetch: loadTodos,
-      staleTime: 10_000,
-    }),
-  );
+  // The bag itself, with no callback around it: nothing in either one depends on props or
+  // state, so there is nothing a per-render rebuild would keep in step — and nothing to
+  // rebuild, which is what RMD022 is about.
+  private list = this.use(Query<string[]>, {
+    key: ["todos"],
+    fetch: loadTodos,
+    staleTime: 10_000,
+  });
 
-  private add = this.use(Mutation, () =>
-    mutationOptions({
-      mutate: createTodo,
-      onMutate: optimisticAdd,
-      // On success the list is refetched, so the optimistic guess is replaced by
-      // whatever the server actually has.
-      invalidates: [["todos"]],
-    }),
-  );
+  private add = this.use(Mutation<string, string>, {
+    mutate: createTodo,
+    onMutate: optimisticAdd,
+    // On success the list is refetched, so the optimistic guess is replaced by
+    // whatever the server actually has.
+    invalidates: [["todos"]],
+  });
 
   @onElement("submit")
   submit(event: Event) {

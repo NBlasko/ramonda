@@ -7,12 +7,17 @@ import type { FetchContext, InfiniteData, InfiniteQueryProps, QueryKey, QuerySta
  * A query whose answer arrives a page at a time, held as one cache entry.
  *
  * ```tsx
- * private feed = this.use(InfiniteQuery, (self: Feed) => ({
+ * private feed = this.use(InfiniteQuery<Page>, (self: Feed) => ({
  *   key: ["posts", self.props.tag],
  *   initialPageParam: 0,
- *   loadPage: self.loadPage,
+ *   loadPage: ({ pageParam, signal }) => api.posts(pageParam as number, { signal }),
  *   getNextPageParam: (last) => last.nextCursor,
  * }));
+ *
+ * // `InfiniteQuery<Page>` names what one page is, which is the type nothing else can
+ * // supply: `getNextPageParam` reads a page, but nothing flows between two properties
+ * // of the same object literal, so written without the pin its `last` is an implicit
+ * // `any` until it is annotated. Naming `Page` once types both callbacks.
  *
  * // render
  * {list({ each: this.feed.pages, as: PostList })}

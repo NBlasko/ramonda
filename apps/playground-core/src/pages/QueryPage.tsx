@@ -1,6 +1,6 @@
 import { Component, memoizedHandler, state } from "@ramonda/core";
 import { Link } from "@ramonda/router";
-import { Mutation, Query, QueryClientAccess, mutationOptions, queryOptions, type FetchContext } from "@ramonda/query";
+import { Mutation, Query, QueryClientAccess, type FetchContext } from "@ramonda/query";
 
 /* ── A stand-in for a server ────────────────────────────────────────────── */
 
@@ -81,11 +81,18 @@ function createTodo(title: string): Promise<string> {
 /* ── 1. Cache, dedup, and a key that moves ──────────────────────────────── */
 
 class ProfileCard extends Component<{ id: string; label: string }> {
-  private profile = this.use(Query, (self: ProfileCard) => ({
+  private profile = this.use(Query<Profile>, (self: ProfileCard) => ({
     key: ["profile", self.props.id],
-    fetch: (ctx: FetchContext<string[]>) => getProfile(self.props.id, ctx),
+    // A bound method, not a closure: the callback runs on every render, and a fresh
+    // function is a changed prop (RMD022). `load` reads `this.props` when it is CALLED,
+    // so there is nothing to capture and the identity never moves.
+    fetch: self.load,
     staleTime: 10_000,
   }));
+
+  load(ctx: FetchContext) {
+    return getProfile(this.props.id, ctx);
+  }
 
   refresh() {
     void this.profile.refetch();
@@ -120,16 +127,17 @@ class ProfileCard extends Component<{ id: string; label: string }> {
 /* ── 2. Failure, retry, and data that survives it ───────────────────────── */
 
 class FlakyCard extends Component {
-  private flaky = this.use(Query, () =>
-    queryOptions({
-      key: ["flaky"],
-      fetch: () => getFlaky(),
-      staleTime: 30_000,
-      retry: 2,
-      // Short, so the backoff is watchable rather than a wait.
-      retryDelay: (failureCount) => failureCount * 400,
-    }),
-  );
+  // The bag directly, not through a callback: nothing in it depends on props or state,
+  // so there is nothing to keep in step. A callback here would rebuild `fetch` and
+  // `retryDelay` on every render, which is a changed prop each time — RMD022.
+  private flaky = this.use(Query<string>, {
+    key: ["flaky"],
+    fetch: () => getFlaky(),
+    staleTime: 30_000,
+    retry: 2,
+    // Short, so the backoff is watchable rather than a wait.
+    retryDelay: (failureCount) => failureCount * 400,
+  });
 
   @memoizedHandler
   arm(count: number) {
@@ -171,27 +179,23 @@ class FlakyCard extends Component {
 class TodoPanel extends Component {
   @state draft = "";
 
-  private list = this.use(Query, () =>
-    queryOptions({
-      key: ["todos"],
-      fetch: () => loadTodos(),
-      staleTime: 30_000,
-    }),
-  );
+  private list = this.use(Query<string[]>, {
+    key: ["todos"],
+    fetch: () => loadTodos(),
+    staleTime: 30_000,
+  });
 
-  private add = this.use(Mutation, () =>
-    mutationOptions({
-      mutate: (title: string) => createTodo(title),
-      // What this returns IS the rollback — the same contract @effect and
-      // createSubscriptionDecorator use — and it runs only if the write fails.
-      onMutate: (title, { client }) => {
-        const previous = client.peek<string[]>(["todos"])?.data;
-        client.setData<string[]>(["todos"], (list) => [...(list ?? []), `${title} (saving…)`]);
-        return () => client.setData<string[]>(["todos"], previous ?? []);
-      },
-      invalidates: [["todos"]],
-    }),
-  );
+  private add = this.use(Mutation<string, string>, {
+    mutate: (title) => createTodo(title),
+    // What this returns IS the rollback — the same contract @effect and
+    // createSubscriptionDecorator use — and it runs only if the write fails.
+    onMutate: (title, { client }) => {
+      const previous = client.peek<string[]>(["todos"])?.data;
+      client.setData<string[]>(["todos"], (list) => [...(list ?? []), `${title} (saving…)`]);
+      return () => client.setData<string[]>(["todos"], previous ?? []);
+    },
+    invalidates: [["todos"]],
+  });
 
   typed(event: Event) {
     this.draft = (event.target as HTMLInputElement).value;
@@ -424,17 +428,17 @@ export class QueryPage extends Component {
 
 /** Mounted only while polling, so the interval's lifetime is visible. */
 class PolledCard extends Component<{ every: number }> {
-  private clock = this.use(Query, (self: PolledCard) =>
-    queryOptions({
-      key: ["clock"],
-      fetch: async () => {
-        note("GET /clock");
-        return new Date().toISOString().slice(17, 23);
-      },
-      refetchInterval: self.props.every,
-      staleTime: Number.POSITIVE_INFINITY,
-    }),
-  );
+  private clock = this.use(Query<string>, (self: PolledCard) => ({
+    key: ["clock"],
+    fetch: self.tick,
+    refetchInterval: self.props.every,
+    staleTime: Number.POSITIVE_INFINITY,
+  }));
+
+  async tick(): Promise<string> {
+    note("GET /clock");
+    return new Date().toISOString().slice(17, 23);
+  }
 
   render() {
     return (

@@ -31,4 +31,3 @@ export {
   type MutationStatus,
   type Rollback,
 } from "./Mutation";
-export { queryOptions, mutationOptions, infiniteQueryOptions } from "./options";

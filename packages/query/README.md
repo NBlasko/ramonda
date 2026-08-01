@@ -76,38 +76,34 @@ exactly as [the router](../router) owns route state.
 
 `this.use(Query, () => ({ … }))` infers `TData` from `fetch`, but the props object
 is what the type is inferred FROM — so a callback parameter left unannotated has no
-contextual type. Either annotate it, as above, or pass the options through the
-helper and get every parameter typed:
+contextual type. Either annotate it, as above, or name the data type on the hook and
+get every parameter typed:
 
 ```tsx
-import { queryOptions } from "@ramonda/query";
-
-private todo = this.use(Query, (self: TodoCard) =>
-  queryOptions({
-    key: ["todo", self.props.id] as const,
-    fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
-  }),
-);
+private todo = this.use(Query<Todo, readonly ["todo", number]>, (self: TodoCard) => ({
+  key: ["todo", self.props.id] as const,
+  fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
+}));
 ```
 
-`mutationOptions` does the same for a mutation, where it earns its keep sooner —
-`onSuccess`, `onError` and `onSettled` would each need an annotation otherwise.
+`Query<Todo>` is an instantiation expression — ordinary TypeScript, and it compiles
+away. Naming the types does the most for a mutation, where `onSuccess`, `onError` and
+`onSettled` would each need an annotation otherwise, and where it types `mutate`'s own
+parameter as well.
 
 ## Mutations
 
 ```tsx
 class AddTodo extends Component {
-  private add = this.use(Mutation, () =>
-    mutationOptions({
-      mutate: (title: string) => api.createTodo(title),
-      onMutate: (title, { client }) => {
-        const previous = client.peek<Todo[]>(["todos"])?.data;
-        client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), draft(title)]);
-        return () => client.setData(["todos"], previous);   // the rollback
-      },
-      invalidates: [["todos"]],
-    }),
-  );
+  private add = this.use(Mutation<Todo, string>, () => ({
+    mutate: (title) => api.createTodo(title),
+    onMutate: (title, { client }) => {
+      const previous = client.peek<Todo[]>(["todos"])?.data;
+      client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), draft(title)]);
+      return () => client.setData(["todos"], previous);   // the rollback
+    },
+    invalidates: [["todos"]],
+  }));
 
   render() {
     return <button disabled={this.add.isPending}>Add</button>;
