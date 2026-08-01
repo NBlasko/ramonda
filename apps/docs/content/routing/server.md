@@ -97,6 +97,13 @@ The earliest guard to fire wins, so one redirect decides where the request goes.
 
 See [client / server / shared](/ssr/env) for how lifecycle picks a side.
 
+## Rendering modes per route
+
+A route can be baked at build (static), rendered per request (dynamic), or cached and
+refreshed (ISR) — declared server-side with `defineServer`, checked exhaustively against your
+route table. A page that reads the request can't be baked (the build enforces it). See
+[rendering modes](/ssr/modes).
+
 ## Static builds
 
 `routePaths(routes)` gives you the concrete paths to render, and flags any pattern it
