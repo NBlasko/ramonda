@@ -157,14 +157,11 @@ Cached, deduplicated, race-free async state. [Async data](/query)
 | | |
 |---|---|
 | `QueryClientProvider` | A **hook** on the app root; owns the cache and publishes it, adds no element. Takes `{ client?, defaults? }`. [Setup](/query) |
-| `Query` | Reads one query. `status` · `data` · `error` · `isPending` · `isFetching` · `isSuccess` · `isError` · `failureCount` · `updatedAt` · `isRestored` · `result` · `refetch()`. [Queries](/query/queries) |
+| `Query` | Reads one query. Write `Query<TData>` to type its callbacks — see [typing](/query#typing-the-callbacks). `status` · `data` · `error` · `isPending` · `isFetching` · `isSuccess` · `isError` · `failureCount` · `updatedAt` · `isRestored` · `result` · `refetch()`. [Queries](/query/queries) |
 | `InfiniteQuery` | Reads one paginated query, pages under one key. `pages` · `pageParams` · `fetchNextPage()` · `fetchPreviousPage()` · `hasNextPage` · `hasPreviousPage` · `isFetchingNextPage` · `isFetchingPreviousPage` · `maxPages`, plus everything `Query` has. [Infinite queries](/query/infinite) |
 | `Mutation` | Writes. `mutate(vars)` · `mutateAsync(vars)` · `reset()` · `cancel()` · `isIdle` · `isPending` · `isSuccess` · `isError` · `data` · `error`. [Mutations](/query/mutations) |
 | `QueryClientAccess` | A hook that hands you the client, for imperative work. [Reaching the cache](/query/queries) |
 | `QueryClient` | The cache itself: `fetch` · `prefetch` · `setData` · `peek` · `getEntry` · `all` · `isStale` · `invalidate` · `cancel` · `remove` · `sweep` · `subscribe` · `dehydrate` · `hydrate` |
-| `queryOptions(options)` | Types a query's options so its callbacks' parameters are inferred. [Typing](/query) |
-| `infiniteQueryOptions(options)` | The same for an infinite query, where `getNextPageParam` needs it. [Infinite queries](/query/infinite) |
-| `mutationOptions(options)` | The same, for a mutation. |
 | `ServerQueryError` | What a failure from a server render arrives as. A real `Error`. [On the server](/query/server) |
 | `hashKey(key)` · `keyStartsWith(key, prefix)` | Key hashing and prefix matching, for tooling. |
 

@@ -3,7 +3,6 @@ import type { RamondaNode, VNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { Mutation, type MutationContext } from "../Mutation";
-import { mutationOptions } from "../options";
 import { Query } from "../Query";
 import { QueryClient } from "../QueryClient";
 import { QueryClientProvider } from "../context";
@@ -118,23 +117,21 @@ describe("Mutation", () => {
 
     class Form extends Component {
       private provider = this.use(QueryClientProvider);
-      // Through `mutationOptions`, so `data`, `vars` and `ctx` are typed with no
-      // annotations — the options are CHECKED against MutationProps here instead of
-      // being what the type is inferred from. See options.ts.
-      add = this.use(Mutation, () =>
-        mutationOptions({
-          mutate: async (title: string): Promise<Todo> => ({ title }),
-          onMutate: () => {
-            order.push("mutate");
-          },
-          onSuccess: (data, vars, ctx) => {
-            order.push(`success:${data.title}:${vars}:${typeof ctx.client.invalidate}`);
-          },
-          onSettled: () => {
-            order.push("settled");
-          },
-        }),
-      );
+      // `Mutation<Todo, string>` names both types, so `title`, `data`, `vars` and `ctx`
+      // are typed with no annotations — the options are CHECKED against MutationProps
+      // instead of being what the types are inferred from.
+      add = this.use(Mutation<Todo, string>, () => ({
+        mutate: async (title) => ({ title }),
+        onMutate: () => {
+          order.push("mutate");
+        },
+        onSuccess: (data, vars, ctx) => {
+          order.push(`success:${data.title}:${vars}:${typeof ctx.client.invalidate}`);
+        },
+        onSettled: () => {
+          order.push("settled");
+        },
+      }));
       render(): RamondaNode {
         return <p />;
       }

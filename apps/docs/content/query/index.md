@@ -117,20 +117,35 @@ Two ways out. Annotate it, which is one word:
 fetch: ({ signal }: FetchContext) => api.getUser(id, { signal })
 ```
 
-Or pass the options through `queryOptions`, which reverses the direction — the object
-is checked against a target type, so every parameter is typed, `key` included:
+Or name the data type on the hook itself, which reverses the direction — the object is
+then checked against a target type, so every parameter is typed, `key` included:
 
 ```tsx
-private todo = this.use(Query, (self: TodoCard) =>
-  queryOptions({
-    key: ["todo", self.props.id] as const,
-    fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
-  }),
-);
+private todo = this.use(Query<Todo, readonly ["todo", number]>, (self: TodoCard) => ({
+  key: ["todo", self.props.id] as const,
+  fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
+}));
 ```
 
-`mutationOptions` does the same for a mutation, where it earns its keep sooner:
-`onSuccess`, `onError` and `onSettled` would each need an annotation otherwise.
+`Query<Todo>` is ordinary TypeScript — an [instantiation
+expression](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-7.html#instantiation-expressions),
+which names a generic class's type arguments without calling it. It compiles away entirely.
+
+Naming the type does the most work on a **mutation**, where `onSuccess`, `onError` and
+`onSettled` would each need an annotation otherwise — and where it types `mutate`'s own
+parameter, which nothing else can do:
+
+```tsx
+private add = this.use(Mutation<Todo, string>, () => ({
+  mutate: (title) => api.createTodo(title),                 // title is a string
+  onSuccess: (todo, title, { client }) => client.invalidate(["todos"]),
+}));
+```
+
+One thing the annotated form still has over it: an unknown property in the options object
+(`staleTimee: 10`) is caught in neither form, because the object is returned from the
+callback rather than passed as an argument. Watch the spelling of an option that seems to
+do nothing.
 
 ## Seeing the cache
 

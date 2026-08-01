@@ -65,8 +65,9 @@ export interface MutationProps<TData, TVars> {
  *
  * ```tsx
  * class AddTodo extends Component {
- *   private add = this.use(Mutation, (self: AddTodo) => ({
- *     mutate: (title: string, { signal }) => api.createTodo(title, { signal }),
+ *   private add = this.use(Mutation<Todo, string>, (self: AddTodo) => ({
+ *     mutate: (title, { signal }) => api.createTodo(title, { signal }),
+ *     onSuccess: (todo, title, { client }) => client.setData(["todo", todo.id], todo),
  *     invalidates: [["todos"]],
  *   }));
  *
@@ -81,6 +82,18 @@ export interface MutationProps<TData, TVars> {
  *   }
  * }
  * ```
+ *
+ * ## Naming the two types
+ *
+ * `Mutation<Todo, string>` names what the write returns and what it takes, and every
+ * callback follows from it: `mutate`'s `title` is a string, `onSuccess`'s `todo` is a
+ * `Todo`, and `onMutate`/`onError`/`onSettled` are typed the same way with nothing
+ * written on them. It matters more here than on a query, because a mutation usually
+ * carries three or four callbacks that would otherwise each need an annotation.
+ *
+ * Left off, `TData` is inferred from `mutate`'s return and `TVars` from its first
+ * parameter — so that parameter has to be annotated (`mutate: (title: string) => …`),
+ * and so does every context a sibling callback reads (`{ client }: MutationContext`).
  *
  * ## Why its state is not in the cache
  *

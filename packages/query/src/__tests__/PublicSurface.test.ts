@@ -22,9 +22,6 @@ const EXPECTED = [
   "ServerQueryError",
   "hashKey",
   "keyStartsWith",
-  "queryOptions",
-  "infiniteQueryOptions",
-  "mutationOptions",
 ];
 
 /**

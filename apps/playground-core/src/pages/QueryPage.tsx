@@ -1,6 +1,6 @@
 import { Component, memoizedHandler, state } from "@ramonda/core";
 import { Link } from "@ramonda/router";
-import { Mutation, Query, QueryClientAccess, mutationOptions, queryOptions, type FetchContext } from "@ramonda/query";
+import { Mutation, Query, QueryClientAccess, type FetchContext } from "@ramonda/query";
 
 /* ── A stand-in for a server ────────────────────────────────────────────── */
 
@@ -81,9 +81,9 @@ function createTodo(title: string): Promise<string> {
 /* ── 1. Cache, dedup, and a key that moves ──────────────────────────────── */
 
 class ProfileCard extends Component<{ id: string; label: string }> {
-  private profile = this.use(Query, (self: ProfileCard) => ({
+  private profile = this.use(Query<Profile>, (self: ProfileCard) => ({
     key: ["profile", self.props.id],
-    fetch: (ctx: FetchContext<string[]>) => getProfile(self.props.id, ctx),
+    fetch: (ctx) => getProfile(self.props.id, ctx),
     staleTime: 10_000,
   }));
 
@@ -120,16 +120,14 @@ class ProfileCard extends Component<{ id: string; label: string }> {
 /* ── 2. Failure, retry, and data that survives it ───────────────────────── */
 
 class FlakyCard extends Component {
-  private flaky = this.use(Query, () =>
-    queryOptions({
-      key: ["flaky"],
-      fetch: () => getFlaky(),
-      staleTime: 30_000,
-      retry: 2,
-      // Short, so the backoff is watchable rather than a wait.
-      retryDelay: (failureCount) => failureCount * 400,
-    }),
-  );
+  private flaky = this.use(Query<string>, () => ({
+    key: ["flaky"],
+    fetch: () => getFlaky(),
+    staleTime: 30_000,
+    retry: 2,
+    // Short, so the backoff is watchable rather than a wait.
+    retryDelay: (failureCount) => failureCount * 400,
+  }));
 
   @memoizedHandler
   arm(count: number) {
@@ -171,27 +169,23 @@ class FlakyCard extends Component {
 class TodoPanel extends Component {
   @state draft = "";
 
-  private list = this.use(Query, () =>
-    queryOptions({
-      key: ["todos"],
-      fetch: () => loadTodos(),
-      staleTime: 30_000,
-    }),
-  );
+  private list = this.use(Query<string[]>, () => ({
+    key: ["todos"],
+    fetch: () => loadTodos(),
+    staleTime: 30_000,
+  }));
 
-  private add = this.use(Mutation, () =>
-    mutationOptions({
-      mutate: (title: string) => createTodo(title),
-      // What this returns IS the rollback — the same contract @effect and
-      // createSubscriptionDecorator use — and it runs only if the write fails.
-      onMutate: (title, { client }) => {
-        const previous = client.peek<string[]>(["todos"])?.data;
-        client.setData<string[]>(["todos"], (list) => [...(list ?? []), `${title} (saving…)`]);
-        return () => client.setData<string[]>(["todos"], previous ?? []);
-      },
-      invalidates: [["todos"]],
-    }),
-  );
+  private add = this.use(Mutation<string, string>, () => ({
+    mutate: (title) => createTodo(title),
+    // What this returns IS the rollback — the same contract @effect and
+    // createSubscriptionDecorator use — and it runs only if the write fails.
+    onMutate: (title, { client }) => {
+      const previous = client.peek<string[]>(["todos"])?.data;
+      client.setData<string[]>(["todos"], (list) => [...(list ?? []), `${title} (saving…)`]);
+      return () => client.setData<string[]>(["todos"], previous ?? []);
+    },
+    invalidates: [["todos"]],
+  }));
 
   typed(event: Event) {
     this.draft = (event.target as HTMLInputElement).value;
@@ -424,17 +418,15 @@ export class QueryPage extends Component {
 
 /** Mounted only while polling, so the interval's lifetime is visible. */
 class PolledCard extends Component<{ every: number }> {
-  private clock = this.use(Query, (self: PolledCard) =>
-    queryOptions({
-      key: ["clock"],
-      fetch: async () => {
-        note("GET /clock");
-        return new Date().toISOString().slice(17, 23);
-      },
-      refetchInterval: self.props.every,
-      staleTime: Number.POSITIVE_INFINITY,
-    }),
-  );
+  private clock = this.use(Query<string>, (self: PolledCard) => ({
+    key: ["clock"],
+    fetch: async () => {
+      note("GET /clock");
+      return new Date().toISOString().slice(17, 23);
+    },
+    refetchInterval: self.props.every,
+    staleTime: Number.POSITIVE_INFINITY,
+  }));
 
   render() {
     return (

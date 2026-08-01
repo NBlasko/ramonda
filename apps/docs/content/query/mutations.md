@@ -13,7 +13,7 @@ is the point — but two components each with an "add todo" button are performin
 different acts, and neither should show the other's spinner or the other's error.
 
 ```tsx
-import { Mutation, mutationOptions } from "@ramonda/query";
+import { Mutation } from "@ramonda/query";
 
 // The host IS the form. `@onElement` listens on the component's host element, so a
 // `submit` handler needs the host to be the thing that emits `submit` — see
@@ -22,12 +22,10 @@ import { Mutation, mutationOptions } from "@ramonda/query";
 class AddTodo extends Component {
   @state draft = "";
 
-  private add = this.use(Mutation, () =>
-    mutationOptions({
-      mutate: (title: string) => api.createTodo(title),
-      invalidates: [["todos"]],
-    }),
-  );
+  private add = this.use(Mutation<Todo, string>, () => ({
+    mutate: (title) => api.createTodo(title),
+    invalidates: [["todos"]],
+  }));
 
   @onElement("submit")
   submit(event: Event) {
@@ -80,17 +78,15 @@ contract [a subscription](/concepts/subscriptions) and
 learn rather than three:
 
 ```tsx
-private add = this.use(Mutation, () =>
-  mutationOptions({
-    mutate: (title: string) => api.createTodo(title),
-    onMutate: (title, { client }) => {
-      const previous = client.peek<Todo[]>(["todos"])?.data;
-      client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), draft(title)]);
-      return () => client.setData(["todos"], previous);   // ← the rollback
-    },
-    invalidates: [["todos"]],
-  }),
-);
+private add = this.use(Mutation<Todo, string>, () => ({
+  mutate: (title) => api.createTodo(title),
+  onMutate: (title, { client }) => {
+    const previous = client.peek<Todo[]>(["todos"])?.data;
+    client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), draft(title)]);
+    return () => client.setData(["todos"], previous);   // ← the rollback
+  },
+  invalidates: [["todos"]],
+}));
 ```
 
 ```demo:MutationDemo

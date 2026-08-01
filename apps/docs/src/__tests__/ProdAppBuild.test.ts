@@ -74,7 +74,7 @@ const ALIASES = [
  */
 const FIXTURE = `
 import { Component, Hook, bootstrap, list, stable, state, compute, mount, updated, watchProp, memoizedHandler, configureDev, hydrateRoot } from "@ramonda/core";
-import { Query, Mutation, QueryClient, QueryClientProvider, queryOptions } from "@ramonda/query";
+import { Query, Mutation, QueryClient, QueryClientProvider } from "@ramonda/query";
 import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
 
 class Row extends Hook {
@@ -87,7 +87,7 @@ class Row extends Hook {
 class App extends Component {
   @state items = [1, 2, 3];
   row = this.use(Row, (self) => ({ id: stable([self.items.length]) }));
-  query = this.use(Query, (self) => queryOptions({ key: stable(["rows"]), fetch: self.load }));
+  query = this.use(Query, (self) => ({ key: stable(["rows"]), fetch: self.load }));
 
   load() { return Promise.resolve([]); }
 

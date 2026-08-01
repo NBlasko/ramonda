@@ -3,7 +3,6 @@ import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { QueryClientProvider } from "../context";
 import { InfiniteQuery } from "../InfiniteQuery";
-import { infiniteQueryOptions } from "../options";
 import type { PageContext } from "../types";
 
 /**
@@ -53,20 +52,18 @@ function mountFeed(server: ReturnType<typeof makeServer>, options?: { maxPages?:
     @state renders = 0;
 
     /**
-     * Through `infiniteQueryOptions`, so `getNextPageParam`'s parameter is typed. Written
-     * as a plain object literal it is an implicit `any`: `TPage` comes from `loadPage`, and
-     * nothing flows between two properties of the same literal. Measured — that is what
-     * this helper exists for.
+     * `InfiniteQuery<Page>` names the page type, so `getNextPageParam`'s parameter is
+     * typed. Without it `last` is an implicit `any`: `TPage` would come from `loadPage`,
+     * and nothing flows between two properties of the same object literal. Measured —
+     * that is what naming it is for.
      */
-    feed = this.use(InfiniteQuery, () =>
-      infiniteQueryOptions({
-        key: ["posts"],
-        initialPageParam: 0,
-        loadPage: server.load,
-        getNextPageParam: (last) => last.next,
-        maxPages: options?.maxPages,
-      }),
-    );
+    feed = this.use(InfiniteQuery<Page>, () => ({
+      key: ["posts"],
+      initialPageParam: 0,
+      loadPage: server.load,
+      getNextPageParam: (last) => last.next,
+      maxPages: options?.maxPages,
+    }));
 
     renderPage(page: Page) {
       return <li>{page.items.join(",")}</li>;
