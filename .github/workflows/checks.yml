@@ -49,36 +49,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      # No filters: every package that HAS a `test` script runs it, and turbo skips the ones
-      # that do not. The two scratch playgrounds used to carry the `npm init` placeholder
-      # (`echo "no test specified" && exit 1`), which failed forever and forced a filter here —
-      # a script that can only fail hides whether the app works, so it is gone. Both are still
-      # covered by the build job.
-      - run: pnpm exec turbo run test
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      # Builds every package AND the docs/playground apps, so the whole
-      # prerender + pagefind pipeline is exercised on every PR, not just at deploy.
-      - run: pnpm exec turbo run build
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-
-      # A second run of the same tests, instrumented. It is not a gate: nothing here
-      # fails on a percentage, because a threshold picked today would be a number
-      # nobody chose defending a suite that is still being written. The `test` job
-      # above stays the gate; this one reports.
-      - name: Run tests with coverage
-        run: pnpm exec turbo run coverage
+      # One task, instrumented. `test` IS the coverage run: each package's test script
+      # carries `--coverage`, so vitest still exits non-zero on a failing test and this
+      # stays the gate — it just also writes the numbers.
+      #
+      # It was briefly two jobs, `test` and `coverage`, which ran the whole suite twice
+      # on every pull request to produce one report. Folding the flag into `test` instead
+      # of adding a second task name is deliberate: three packages have tests that cannot
+      # be instrumented (create-ramonda tests the built bundle, playground-ssr's is a
+      # smoke test that boots a server), and under a separate `coverage` task they were
+      # silently NOT RUN — 21 test tasks against 18. A second name is a name that can be
+      # forgotten; there is now only one.
+      #
+      # Coverage is still not a THRESHOLD gate: nothing fails on a percentage. A failing
+      # test fails; a lower number is reported and left to a human.
+      #
+      # No filters — every package that has a `test` script runs it, and turbo skips the
+      # ones that do not.
+      - name: Test with coverage
+        run: pnpm exec turbo run test
 
       # Six packages each write paths relative to themselves, so six `src/index.ts`
       # records would collide into one file in the report. This rewrites them to be
@@ -100,4 +90,16 @@ jobs:
           # fail a check the contributor cannot fix. The numbers are still produced
           # and printed by the steps above.
           allow-empty: true
+        # Reporting must never fail the gate: the tests above already passed by the
+        # time this runs, and a Coveralls outage is not a fact about this code.
         continue-on-error: true
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # Builds every package AND the docs/playground apps, so the whole
+      # prerender + pagefind pipeline is exercised on every PR, not just at deploy.
+      - run: pnpm exec turbo run build

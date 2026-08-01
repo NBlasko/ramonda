@@ -16,10 +16,16 @@ on:
   # Re-grades when a branch protection rule changes, which is one of the things it
   # measures.
   branch_protection_rule:
-  push:
-    branches: [main]
+  # Weekly, and NOT on every push to main. What this grades is repository
+  # configuration — workflow permissions, action pinning, release provenance, branch
+  # protection — which changes a few times a year, not per commit. Grading it after
+  # every merge spent a job on re-deriving an unchanged answer, and the two triggers
+  # that remain catch the changes that matter: the schedule picks up anything within
+  # a week, and `branch_protection_rule` fires the moment protection is edited.
   schedule:
     - cron: "23 5 * * 1"
+  # For when a workflow change should be re-graded immediately rather than on Monday.
+  workflow_dispatch:
 
 permissions: read-all
 

@@ -11,7 +11,7 @@ foundation of best practices to grow from, not an all-in-one.
 | `deploy-docs.yml` | push to `main`, or manual | Builds `apps/docs` and deploys to Cloudflare Pages |
 | `codeql.yml` | PR to `main`, push to `main`, weekly | CodeQL static analysis of the TypeScript (SAST) |
 | `dependency-review.yml` | PR to `main` | Blocks a PR that adds a high/critical advisory or a copyleft licence |
-| `scorecard.yml` | push to `main`, weekly, branch-protection change | OpenSSF Scorecard: supply-chain hygiene, graded |
+| `scorecard.yml` | weekly, branch-protection change, or manual | OpenSSF Scorecard: supply-chain hygiene, graded |
 
 The shared `.github/actions/setup` composite installs pnpm (from the root
 `packageManager` field), Node from **`.nvmrc`**, and dependencies with
@@ -83,10 +83,24 @@ Both are hard gates in CI. There is no ESLint (there never was a config).
 
 ## Coverage
 
-`checks.yml` runs the suite a second time instrumented, merges the reports, and
-publishes to [Coveralls](https://coveralls.io/github/NBlasko/ramonda) — free for
-public repositories, on the built-in `GITHUB_TOKEN`. It is **not a gate**: see
-*Deliberate gaps*.
+The `test` job **is** the coverage run: every package's test script carries
+`--coverage`, so one execution is both the gate and the report, which is then merged
+and published to [Coveralls](https://coveralls.io/github/NBlasko/ramonda) — free for
+public repositories, on the built-in `GITHUB_TOKEN`. Coverage is still not a
+*threshold* gate; nothing fails on a percentage (see *Deliberate gaps*).
+
+It was briefly a separate `coverage` task in its own job, and that was wrong twice
+over. It ran the whole suite a second time for one report — measured here, `turbo run
+test --force` takes 116.6s and the instrumented run 126.9s, so the duplicate cost a
+full extra ~2 minutes to save 10 seconds of instrumentation. And more seriously, the
+second task name silently **dropped tests**: 21 test tasks against 18 coverage ones,
+because `create-ramonda` (which tests the built bundle), `@ramonda/docs` and
+`@ramonda/playground-ssr` (whose test boots a server and smoke-tests it) have no
+coverage to produce and so had no `coverage` script. Under a `turbo run coverage`
+gate the SSR smoke test — the one that caught the open-in-editor regression — would
+not have run at all. A second name is a name that can be forgotten; there is one now,
+and `turbo.json` declares `coverage/**` and `coverage-prod/**` as the `test` task's
+outputs so a cache hit still restores the reports for the merge step.
 
 Three pieces, each solving something a plain `vitest --coverage` gets wrong here:
 
@@ -111,7 +125,7 @@ Three pieces, each solving something a plain `vitest --coverage` gets wrong here
   **85.79% alone against 87.82% merged**. `SELFTEST=1` checks the union on two
   hand-worked reports, since a merge that takes the last report seen would look
   right on real input and be wrong here.
-- **A `coverage` turbo task**, with `coverage/**` and `coverage-prod/**` as outputs.
+- **`turbo.json`** declares `coverage/**` and `coverage-prod/**` as outputs of `test`.
 
 Whole-repository result today: **95.72% of lines, 4294 of 4486, across 109 files**
 (core 73, query 13, testing-library 7, router 6, lens 6, devtools 4).

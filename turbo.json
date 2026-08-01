@@ -10,10 +10,6 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "inputs": ["$TURBO_DEFAULT$", "src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"]
-    },
-    "coverage": {
-      "dependsOn": ["build"],
       "inputs": ["$TURBO_DEFAULT$", "src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
       "outputs": ["coverage/**", "coverage-prod/**"]
     },

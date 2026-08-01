@@ -37,8 +37,7 @@
   "scripts": {
     "build": "tsup && ramonda-check-bundle dist",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "coverage": "vitest run --coverage",
+    "test": "vitest run --coverage",
     "test:watch": "vitest",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
