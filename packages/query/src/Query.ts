@@ -114,7 +114,7 @@ export type QueryResult<TData> =
  *
  * ```tsx
  * class UserCard extends Component<{ id: string }> {
- *   private user = this.use(Query, (self: UserCard) => ({
+ *   private user = this.use(Query<User>, (self: UserCard) => ({
  *     key: ["user", self.props.id],
  *     fetch: ({ signal }) => api.getUser(self.props.id, { signal }),
  *   }));
@@ -127,9 +127,31 @@ export type QueryResult<TData> =
  * }
  * ```
  *
- * `TData` is inferred from `fetch`, so nothing has to be declared at the call site
- * — see `PropsFactory` in core for why the props callback has its own overload,
- * and annotate the callback's parameter (`self: UserCard`) as above.
+ * ## Two ways to write the type, and why
+ *
+ * `Query<User>` above is an instantiation expression: it names `TData` on the class
+ * before the props are read, which makes the props object something CHECKED against
+ * `QueryProps<User, K>` rather than something a type is inferred FROM. That is what
+ * gives every callback beside it a contextual type — `fetch: ({ signal, key }) => …`
+ * needs no annotations, and `key[1]` is typed by the key.
+ *
+ * Left off, `TData` is inferred from `fetch` instead, which also works and is shorter:
+ *
+ * ```tsx
+ * private user = this.use(Query, (self: UserCard) => ({
+ *   key: ["user", self.props.id],
+ *   fetch: ({ signal }: FetchContext) => api.getUser(self.props.id, { signal }),
+ * }));
+ * ```
+ *
+ * The trade is only where the type is written. Inferring means the props object is the
+ * source of the inference, so a callback parameter left unannotated has no contextual
+ * type (`'signal' implicitly has an 'any' type`) — one annotation buys it back. Pinning
+ * means writing the data type once and annotating nothing. Reach for the pin when there
+ * is more than one callback to annotate, or when naming the type documents the query.
+ *
+ * Either way the props callback's own parameter is annotated (`self: UserCard`) — see
+ * `PropsFactory` in core for why that one cannot be inferred.
  *
  * ## Where the work happens
  *

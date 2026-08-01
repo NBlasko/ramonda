@@ -13,17 +13,15 @@ other query: one request per key however many components watch it, one `invalida
 the list stale, one snapshot across the SSR boundary.
 
 ```tsx
-import { InfiniteQuery, infiniteQueryOptions } from "@ramonda/query";
+import { InfiniteQuery } from "@ramonda/query";
 
 class Feed extends Component<{ tag: string }> {
-  private feed = this.use(InfiniteQuery, (self: Feed) =>
-    infiniteQueryOptions({
-      key: ["posts", self.props.tag],
-      initialPageParam: 0,
-      loadPage: ({ pageParam, signal }) => api.posts(pageParam as number, { signal }),
-      getNextPageParam: (last) => last.nextCursor,
-    }),
-  );
+  private feed = this.use(InfiniteQuery<PostPage>, (self: Feed) => ({
+    key: ["posts", self.props.tag],
+    initialPageParam: 0,
+    loadPage: ({ pageParam, signal }) => api.posts(pageParam as number, { signal }),
+    getNextPageParam: (last) => last.nextCursor,
+  }));
 
   renderPage(page: PostPage) {
     return list({ each: page.items, as: PostRow });
@@ -61,10 +59,11 @@ or `undefined` when there is no more. Returning `undefined` **is** the end-of-li
 and it is what `hasNextPage` reads. Add `getPreviousPageParam` for a list that grows both
 ways (a chat scrolled upwards); without it `hasPreviousPage` is always false.
 
-`infiniteQueryOptions` is worth it here more than anywhere: `TPage` comes from `loadPage`,
-and nothing flows between two properties of the same object literal, so an inline
-`getNextPageParam: (last) => …` would have `last` as an implicit `any`. Passing the object
-through the helper reverses the direction and types every callback beside it.
+Naming the page type — `InfiniteQuery<PostPage>` — is worth it here more than anywhere.
+Left off, `TPage` would come from `loadPage`, and nothing flows between two properties of
+the same object literal, so `getNextPageParam: (last) => …` would have `last` as an
+implicit `any`. Naming it once reverses the direction and types every callback beside it.
+See [typing the callbacks](/query#typing-the-callbacks).
 
 ## What it gives you
 

@@ -3,7 +3,6 @@ import type { RamondaNode, VNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
 import { Mutation, type MutationContext } from "../Mutation";
-import { mutationOptions, queryOptions } from "../options";
 import { Query } from "../Query";
 import { QueryClientProvider } from "../context";
 import type { FetchContext } from "../types";
@@ -12,8 +11,9 @@ import type { FetchContext } from "../types";
  * The type-level tripwires. Most of this file is checked by `pnpm check-types`
  * rather than by running — it fails by not compiling.
  *
- * Two things are pinned here, and the second is a LIMITATION deliberately written
- * down as a `@ts-expect-error`, so it also fails if it ever stops being true.
+ * The subject is the two ways a call site can supply its types, and the LIMITATION
+ * that separates them is written down as a `@ts-expect-error` so it fails if it ever
+ * stops being true.
  */
 
 interface Todo {
@@ -29,7 +29,7 @@ class Inferred extends Component<{ id: number }> {
   private todo = this.use(Query, (self: Inferred) => ({
     key: ["todo", self.props.id],
     // Annotated, because the props object is what the type is INFERRED FROM — see
-    // the `Limitation` case below, and `queryOptions` for the alternative.
+    // the `Limitation` case below, and `WithPin` for the alternative.
     fetch: ({ signal }: FetchContext) => getTodo(self.props.id, { signal }),
   }));
 
@@ -46,16 +46,16 @@ class Inferred extends Component<{ id: number }> {
 /**
  * 2. The limitation, pinned so it cannot change unnoticed.
  *
- * `Q` is inferred FROM the props object, so the object is the source of the
- * inference rather than something checked against a target type — and a callback
- * parameter left unannotated therefore has no contextual type. The fix is either an
- * annotation (above) or `queryOptions` (below); this exists to document that the
- * plain form really does need one.
+ * With nothing named on the class, `Q` is inferred FROM the props object, so the
+ * object is the source of the inference rather than something checked against a
+ * target type — and a callback parameter left unannotated therefore has no
+ * contextual type. The fix is either an annotation (above) or the pin (below); this
+ * exists to document that the bare form really does need one.
  */
 class Limitation extends Component {
   private todo = this.use(Query, () => ({
     key: ["todo", 1],
-    // @ts-expect-error 'signal' implicitly has an 'any' type — see queryOptions.
+    // @ts-expect-error 'signal' implicitly has an 'any' type — name TData instead.
     fetch: ({ signal }) => getTodo(1, { signal }),
   }));
 
@@ -64,16 +64,20 @@ class Limitation extends Component {
   }
 }
 
-/** 3. `queryOptions` reverses the direction, and every parameter is typed. */
-class WithHelper extends Component<{ id: number }> {
-  private todo = this.use(Query, (self: WithHelper) =>
-    queryOptions({
-      key: ["todo", self.props.id] as const,
-      // Both typed with no annotation: `signal` from `FetchContext`, and `key`
-      // from the key type itself — so `key[1]` is a number, not `unknown`.
-      fetch: ({ signal, key }) => getTodo(key[1], { signal }),
-    }),
-  );
+/**
+ * 3. Naming `TData` on the class reverses the direction, and every parameter is typed.
+ *
+ * `Query<Todo, K>` is an instantiation expression: it fixes the props type before the
+ * object is read, so the object is CHECKED against `QueryProps<Todo, K>` instead of
+ * being what the type is inferred from.
+ */
+class WithPin extends Component<{ id: number }> {
+  private todo = this.use(Query<Todo, readonly ["todo", number]>, (self: WithPin) => ({
+    key: ["todo", self.props.id] as const,
+    // Both typed with no annotation: `signal` from `FetchContext`, and `key`
+    // from the key type itself — so `key[1]` is a number, not `unknown`.
+    fetch: ({ signal, key }) => getTodo(key[1], { signal }),
+  }));
 
   get title(): string | undefined {
     return this.todo.data?.title;
@@ -84,24 +88,26 @@ class WithHelper extends Component<{ id: number }> {
   }
 }
 
-/** 4. `mutationOptions` does the same for a mutation's callbacks. */
+/**
+ * 4. The same for a mutation's callbacks, where it does the most work: `mutate`'s own
+ * parameter is typed too, which is the one thing an inferred call site can never do
+ * for itself.
+ */
 class MutationTypes extends Component {
-  private add = this.use(Mutation, () =>
-    mutationOptions({
-      mutate: (title: string) => createTodo(title),
-      onSuccess: (todo, title, { client }) => {
-        // `todo` is Todo, `title` is string, `client` is a QueryClient.
-        client.setData(["todo", todo.id], todo);
-        void title.length;
-      },
-      onMutate: (title, { client }) => {
-        void client;
-        void title.length;
-        return () => {};
-      },
-      invalidates: [["todos"]],
-    }),
-  );
+  private add = this.use(Mutation<Todo, string>, () => ({
+    mutate: (title) => createTodo(title),
+    onSuccess: (todo, title, { client }) => {
+      // `todo` is Todo, `title` is string, `client` is a QueryClient.
+      client.setData(["todo", todo.id], todo);
+      void title.length;
+    },
+    onMutate: (title, { client }) => {
+      void client;
+      void title.length;
+      return () => {};
+    },
+    invalidates: [["todos"]],
+  }));
 
   /** Annotated, so a `TData` of `unknown` fails to compile. */
   get created(): Todo | undefined {
@@ -115,12 +121,10 @@ class MutationTypes extends Component {
 
 /** 5. `result` narrows; the boolean getters cannot, which is why both exist. */
 class Narrowing extends Component {
-  private todo = this.use(Query, () =>
-    queryOptions({
-      key: ["todo", 1],
-      fetch: ({ signal }) => getTodo(1, { signal }),
-    }),
-  );
+  private todo = this.use(Query<Todo>, () => ({
+    key: ["todo", 1],
+    fetch: ({ signal }) => getTodo(1, { signal }),
+  }));
 
   render(): RamondaNode {
     const result = this.todo.result;
@@ -136,7 +140,7 @@ class Narrowing extends Component {
   }
 }
 
-/** A mutation context annotation is enough when the helper is not wanted. */
+/** Annotating the contexts by hand is still allowed, and still works. */
 class AnnotatedContext extends Component {
   private add = this.use(Mutation, () => ({
     mutate: (title: string) => createTodo(title),
@@ -151,7 +155,7 @@ class AnnotatedContext extends Component {
 }
 
 describe("typing", () => {
-  test("the inferred and the helper form render the same way", () => {
+  test("the inferred and the pinned form render the same way", () => {
     // The runtime half is thin on purpose: what this file is really asserting is
     // that it compiles. Mounting each shape once keeps it honest — a class that
     // type-checks but throws on construction would still be a broken API.
@@ -162,7 +166,7 @@ describe("typing", () => {
           <div>
             <Inferred id={1} />
             <Limitation />
-            <WithHelper id={1} />
+            <WithPin id={1} />
             <MutationTypes />
             <Narrowing />
             <AnnotatedContext />
