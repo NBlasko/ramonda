@@ -120,14 +120,17 @@ class ProfileCard extends Component<{ id: string; label: string }> {
 /* ── 2. Failure, retry, and data that survives it ───────────────────────── */
 
 class FlakyCard extends Component {
-  private flaky = this.use(Query<string>, () => ({
+  // The bag directly, not through a callback: nothing in it depends on props or state,
+  // so there is nothing to keep in step. A callback here would rebuild `fetch` and
+  // `retryDelay` on every render, which is a changed prop each time — RMD022.
+  private flaky = this.use(Query<string>, {
     key: ["flaky"],
     fetch: () => getFlaky(),
     staleTime: 30_000,
     retry: 2,
     // Short, so the backoff is watchable rather than a wait.
     retryDelay: (failureCount) => failureCount * 400,
-  }));
+  });
 
   @memoizedHandler
   arm(count: number) {
@@ -169,13 +172,13 @@ class FlakyCard extends Component {
 class TodoPanel extends Component {
   @state draft = "";
 
-  private list = this.use(Query<string[]>, () => ({
+  private list = this.use(Query<string[]>, {
     key: ["todos"],
     fetch: () => loadTodos(),
     staleTime: 30_000,
-  }));
+  });
 
-  private add = this.use(Mutation<string, string>, () => ({
+  private add = this.use(Mutation<string, string>, {
     mutate: (title) => createTodo(title),
     // What this returns IS the rollback — the same contract @effect and
     // createSubscriptionDecorator use — and it runs only if the write fails.
@@ -185,7 +188,7 @@ class TodoPanel extends Component {
       return () => client.setData<string[]>(["todos"], previous ?? []);
     },
     invalidates: [["todos"]],
-  }));
+  });
 
   typed(event: Event) {
     this.draft = (event.target as HTMLInputElement).value;
