@@ -150,5 +150,15 @@ export const STATE_ATTR = "data-ramonda-state";
  */
 export const HEAD_ATTR = "data-ramonda-head";
 
+/**
+ * Attribute on the ROOT element holding the per-request values the server chose to expose to
+ * the client — one blob per page, not per component, because a request is one thing.
+ *
+ * Default is to expose NOTHING: a value only travels if its `requestKey` opted in with
+ * `exposeToClient`. Cookies, headers and un-opted values never leave the server. See
+ * hydration/requestContext.ts.
+ */
+export const REQUEST_ATTR = "data-ramonda-request";
+
 export const attach = Symbol();
 export const detach = Symbol();

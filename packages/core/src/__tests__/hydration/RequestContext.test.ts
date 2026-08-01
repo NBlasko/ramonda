@@ -80,12 +80,16 @@ describe("build mode — poisoned: per-request reads throw", () => {
 });
 
 describe("client mode — exposed subset, no poison", () => {
-  test("reads the values the server exposed; url is safe", () => {
+  test("reads the values the server exposed; url comes from the browser, live", () => {
     enter("client", { url: "https://example.com/account" });
     seedRequest(currentUser, { name: "Ada" }); // stands in for the restored exposed blob
     const ctx = requestContext();
-    expect(ctx.url.pathname).toBe("/account");
     expect(ctx.get(currentUser)).toEqual({ name: "Ada" });
+
+    // In the browser the URL is read from `location` on every access rather than frozen at
+    // hydration — otherwise a client-side navigation would leave `url` pointing at the page the
+    // server happened to render. So the scope's seeded URL is deliberately NOT what comes back.
+    expect(ctx.url.href).toBe(window.location.href);
   });
 
   test("a key the server did not expose reads as undefined", () => {

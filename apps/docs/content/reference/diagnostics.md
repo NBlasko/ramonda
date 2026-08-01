@@ -21,6 +21,35 @@ Each is deduplicated by cause, so a mistake in a list of a thousand rows is repo
 They are listed apart below, because a reader who hits `RMQ001` wants the query codes together and
 not one of them wedged between two core ones — which is exactly how this page read until now.
 
+## RMD025 — per-request data read in the browser
+
+`requestContext()` reads the real request on the **server**. In the browser only what the server
+explicitly exposed is there, so a read of anything else returns nothing — and this says so, rather
+than throwing and taking the page down.
+
+```tsx
+requestContext().cookies.get("session")   // ✗ in the browser — cookies are never exposed
+requestContext().get(sessionKey)          // ✗ unless that key opted in
+```
+
+Two things are never exposed: **cookies and headers**. They belong to the server, and an httpOnly
+cookie is invisible to JavaScript anyway. An app-defined value travels only if its key opted in:
+
+```tsx
+export const currentUser = requestKey<User | null>("currentUser", { exposeToClient: true });
+```
+
+Expose only what is safe to publish — a display name, an id, a role. Whatever you expose sits in
+the page's HTML for anyone to read, so a session token or a database record never belongs there.
+
+**Usually you need none of this.** Read the request in `@create` and keep the result in `@state`:
+`@create` is skipped on hydration and the state is restored from the page, so the browser never
+re-reads the request at all. Reach for `exposeToClient` when several components read the same
+value straight from `requestContext()`.
+
+If the server rendered something where this read is, the two sides now disagree and hydration
+replaces the node — [`RMD007`](#rmd007-hydration-mismatch) reports that separately.
+
 ---
 
 ## Reading them

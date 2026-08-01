@@ -31,7 +31,8 @@ export type DiagnosticCode =
   | "RMD021"
   | "RMD022"
   | "RMD023"
-  | "RMD024";
+  | "RMD024"
+  | "RMD025";
 interface DiagnosticSpec {
   severity: "warning" | "error";
   title: string;
@@ -143,6 +144,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "An array was rendered straight into children",
     fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
+  },
+  RMD025: {
+    severity: "warning",
+    title: "Per-request data read in the browser",
+    fix: '`requestContext()` reads the real request on the SERVER. In the browser only what the server explicitly exposed is available, so this read returned nothing — and if the server rendered a value here, the two sides now disagree and hydration will replace the node. Cookies and headers are never exposed (they are the server\'s, and an httpOnly cookie is invisible to JS anyway). To carry a value to the client, opt its key in — `requestKey("currentUser", { exposeToClient: true })` — and expose only what is safe to publish: a display name, an id, a role, never a session token. Better still, read the request in `@create` and keep the result in `@state`: `@create` is skipped on hydration and the state is restored from the page, so the browser never re-reads the request at all.',
   },
   RMD024: {
     severity: "warning",

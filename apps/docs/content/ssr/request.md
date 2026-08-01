@@ -39,7 +39,8 @@ ctx.get(currentUser);          // an app-defined per-request value (below)
 
 `url` is the one part that is **safe at build** — the URL is which page this is, not who is
 asking, so a static build knows it. Everything else is per-request: reading it during a build
-throws, which is what stops the route from being baked.
+throws, which is what stops the route from being baked. (In the browser, `url` follows the address
+bar, so it stays right after a client-side navigation.)
 
 ## Per-request values: `requestKey` and `seedRequest`
 
@@ -87,13 +88,39 @@ So you cannot accidentally bake a per-user page. A route that reads the request 
 The rule this enforces is the one that must never break: **a baked page cannot contain
 per-request data.**
 
-## It is not a place for secrets on the client
+## In the browser: nothing travels unless you say so
 
-`requestContext()` reads real values on the **server**. In the browser it returns only what the
-server chose to expose — never a session token or a database record. Keep the sensitive part on
-the server: validate and resolve on the server, seed only the safe, display-ready value (a name,
-an id, a role), and let real authorization live behind an API the browser calls. `env` and this
-context choose *where code runs*, not what is safe to ship — see
+`requestContext()` reads the real request on the **server**. In the browser it holds only what the
+server explicitly exposed — and by default that is **nothing**.
+
+Opt a key in when its value has to be readable from `requestContext()` on the client too:
+
+```tsx
+export const currentUser = requestKey<User | null>("currentUser", { exposeToClient: true });
+```
+
+Now the server sends that value with the page and the browser reads it back from the same
+`requestContext().get(currentUser)`.
+
+**Cookies and headers can never be exposed.** They are the server's — and an httpOnly cookie is
+invisible to JavaScript anyway. Reading them in the browser (or reading a key that did not opt in)
+returns nothing and reports [`RMD025`](/reference/diagnostics#rmd025-per-request-data-read-in-the-browser)
+in development. It does not throw: breaking the page would be the worse outcome, and if the server
+rendered a value where that read is, hydration reports the divergence too.
+
+**Most pages need none of this**, because of the `@create` → `@state` shape above: the value is
+already in the page as state. Reach for `exposeToClient` when several components read the same
+value directly from the context.
+
+## It is not a place for secrets
+
+Whatever you expose is **published** — it sits in the page's HTML for anyone to read. Expose only
+what is safe to publish: a display name, an id, a role. Never a session token, a raw cookie, or a
+database record.
+
+Keep the sensitive part on the server: validate and resolve there, expose only the display-ready
+value, and let real authorization live behind an API the browser calls. `env` and this context
+choose *where code runs*, not what is safe to ship — see
 [client / server / shared](/ssr/env).
 
 ## Next
