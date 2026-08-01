@@ -34,6 +34,15 @@ export type DiagnosticCode =
   | "RMD024"
   | "RMD025";
 interface DiagnosticSpec {
+  /**
+   * The rule, and it is about the OUTCOME rather than how bad the code looks:
+   *
+   * - **error** — the end result is wrong. Something renders the wrong thing, loses state, never
+   *   becomes interactive, or hands the reader a value that is not what they asked for. Someone
+   *   will act on wrong data. The devtools panel raises its alert only for these.
+   * - **warning** — the result is the same, the app just does more work to get there: a wasted
+   *   render, a refetch, a listener re-attached, a cache missed.
+   */
   severity: "warning" | "error";
   title: string;
   /** What to do instead. Always concrete — never "check your code". */
@@ -51,7 +60,10 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Keys must be unique among siblings. Two children with the same key means only one can be matched — the other is treated as new, so state and DOM silently go to the wrong node. Use a stable id from your data, not the array index.",
   },
   RMD003: {
-    severity: "warning",
+    // An error, not a warning, for one concrete reason: the devtools panel only raises its alert
+    // on `error` (see its `alertError`), and a missing provider is precisely the kind of fault
+    // that otherwise ships — the page renders, the default fills in, and nothing looks wrong.
+    severity: "error",
     title: "Context consumed without a provider above it",
     fix: "The consumer is falling back to the context's default value. Mount the matching Provider hook on an ancestor component — a context is only visible to the providing component and its descendants.",
   },
@@ -86,7 +98,8 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Rendering wrote state that scheduled another render of the same component, forever; without this guard the tab freezes. The usual causes are two @updated methods writing what the other reads (they re-trigger each other), and a write in render() itself (see RMD001). A post-render write must converge — assigning the same value is not a change, so it schedules nothing. Derive values with @compute instead of syncing them with an effect, and if two pieces of state must agree, make one of them @compute from the other rather than writing both.",
   },
   RMD010: {
-    severity: "warning",
+    // error, not warning: the parent rearranges or deletes the markup, so the page is not what was written.
+    severity: "error",
     title: "The default host is not allowed in this parent",
     fix: "Give the component an explicit host tag that the parent accepts — the `suggestion` below is the one that fits. A component is always exactly one element; the default <ramonda-host> is only styled to be layout-neutral, and a handful of parents (the table family, <select>, list elements, SVG) accept only specific children. This is why the check can be exact rather than a guess: it reads the actual parent node at mount.",
   },
@@ -106,12 +119,14 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Options belong to whoever called `this.use(...)`, and the hook re-reads them from the owner on every render — so an assignment here has nothing to write to, and it throws rather than being dropped. Copy the value into @state if the hook owns it from here on, or take a callback option and ask the owner to change it. This is the same rule as a component's props (RMD004).",
   },
   RMD016: {
-    severity: "warning",
+    // error, not warning: cleanup never runs and every render goes into nodes nobody can see.
+    severity: "error",
     title: "A component updated while its element is not in the document",
     fix: "Something removed this component's DOM without telling the framework, so it is still mounted: its timers still fire, its listeners are still attached, its signals still hold it, and every render it does goes into nodes nobody can see. @destroy never ran. Ramonda's own removals are safe — a conditional render, a key change, a dropped list item all unmount properly — so this comes from outside: a `ref` handed to a library that clears or replaces the node, an app embedded in a page whose host removed the mount point, or a hand-written innerHTML. Call `unmount(container)` before the DOM goes away; removing the element is not a substitute. If the tree is detached ON PURPOSE and will be inserted later, this is expected and the update still runs.",
   },
   RMD017: {
-    severity: "warning",
+    // error, not warning: the page looks finished but that subtree never becomes interactive.
+    severity: "error",
     title: "A deferred hydration never resumed",
     fix: "This component returned a promise from deferHydration(), so the client adopted the server's markup and left the subtree untouched — waiting to hydrate it once the promise settled. It never did. The page therefore LOOKS finished: the server's content is on screen, correct and complete, but nothing in this subtree has listeners or state and nothing in it responds to a click. The usual cause is a dynamic import that neither resolves nor rejects — a chunk removed by a deploy, a request that hangs. Make the promise settle: give the fetch a timeout, or reject it, so the component can render its own failure. A rejected promise still releases the subtree; only one that never settles leaves it frozen.",
   },
@@ -131,7 +146,8 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Two renders in the same tick, with no state change between them, must produce the same values — anything that differs was built in place by the render itself, or does not come from state at all. Development builds render twice to check; production renders once and this check is stripped.",
   },
   RMD021: {
-    severity: "warning",
+    // error, not warning: in a @compute the value freezes, so the reader is shown a number that stopped moving.
+    severity: "error",
     title: "A clock or a random number was read during render() or a @compute",
     fix: "Both have to be a function of their inputs. In render() a value read from outside makes the output depend on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute it is quieter and worse: the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. Read it once in @create and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it.",
   },
@@ -141,12 +157,14 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: 'The callback runs on every render of the owner, and every prop is a signal — so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects, on every render. For an array or an object, wrap it in stable(): stable(["user", self.props.id]) keeps one identity while the contents are equal, the counterpart of list() for a props bag. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @create and keep it in @state.',
   },
   RMD023: {
-    severity: "warning",
+    // error, not warning: items are matched by position, so state lands on the wrong row.
+    severity: "error",
     title: "An array was rendered straight into children",
     fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
   },
   RMD025: {
-    severity: "warning",
+    // error, not warning: the reader gets nothing where the server had a value.
+    severity: "error",
     title: "Per-request data read in the browser",
     fix: '`requestContext()` reads the real request on the SERVER. In the browser only what the server explicitly exposed is available, so this read returned nothing — and if the server rendered a value here, the two sides now disagree and hydration will replace the node. Cookies and headers are never exposed (they are the server\'s, and an httpOnly cookie is invisible to JS anyway). To carry a value to the client, opt its key in — `requestKey("currentUser", { exposeToClient: true })` — and expose only what is safe to publish: a display name, an id, a role, never a session token. Better still, read the request in `@create` and keep the result in `@state`: `@create` is skipped on hydration and the state is restored from the page, so the browser never re-reads the request at all.',
   },
