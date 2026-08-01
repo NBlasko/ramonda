@@ -1,0 +1,57 @@
+name: CodeQL
+
+# Static analysis of this repository's own source — the thing a security scanner
+# is usually bought for. It is free and unlimited on public repositories, which
+# this one is, so there is no account, no token and no monthly test cap.
+#
+# Findings land in **Security → Code scanning**, and on a pull request they appear
+# as review comments on the lines they concern. CodeQL follows data from a source
+# (a prop, a URL, a fetched body) to a sink (`innerHTML`, a dynamic property
+# write, a template that becomes markup), so it reports paths rather than
+# patterns — that is the difference between it and the linter.
+#
+# A workflow file, not GitHub's "default setup" toggle: the query suite, the
+# languages and the ignored paths are then versioned, reviewable, and changed
+# through a pull request like everything else here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, because the QUERIES improve even when the code does not — a pattern
+    # CodeQL learns next month applies to code written today. An odd minute on
+    # purpose: the top of the hour is when every cron on GitHub fires at once.
+    - cron: "17 5 * * 1"
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze TypeScript
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload the SARIF results to code scanning
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          # One language covers the repo: `javascript-typescript` reads .ts, .tsx,
+          # .mjs and .js in the same analysis.
+          languages: javascript-typescript
+          # Nothing to build. The JS/TS analysis reads source directly, and a build
+          # would only hand it the bundled output — the same code a second time,
+          # minified past the point where a finding names anything useful.
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4

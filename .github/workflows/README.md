@@ -1,6 +1,6 @@
 # CI/CD workflows
 
-Four workflows, plus a shared setup action. They are deliberately small — a
+Seven workflows, plus a shared setup action. They are deliberately small — a
 foundation of best practices to grow from, not an all-in-one.
 
 | Workflow | Trigger | What it does |
@@ -8,7 +8,10 @@ foundation of best practices to grow from, not an all-in-one.
 | `ci.yml` | PR to `main`, push to `main` | Lint + format, type-check, test, build — via `checks.yml` |
 | `checks.yml` | *reusable* (`workflow_call`) | The one gate: parallel lint+format / type-check / test / build |
 | `release.yml` | push to `main` | Changesets: opens a "Version Packages" PR, or publishes to npm |
-| `deploy-docs.yml` | push to `main` (prod), PR to `main` (preview) | Builds `apps/docs` and deploys to Cloudflare Pages |
+| `deploy-docs.yml` | push to `main`, or manual | Builds `apps/docs` and deploys to Cloudflare Pages |
+| `codeql.yml` | PR to `main`, push to `main`, weekly | CodeQL static analysis of the TypeScript (SAST) |
+| `dependency-review.yml` | PR to `main` | Blocks a PR that adds a high/critical advisory or a copyleft licence |
+| `scorecard.yml` | push to `main`, weekly, branch-protection change | OpenSSF Scorecard: supply-chain hygiene, graded |
 
 The shared `.github/actions/setup` composite installs pnpm (from the root
 `packageManager` field), Node from **`.nvmrc`**, and dependencies with
@@ -78,6 +81,92 @@ Two tools, one job each:
 
 Both are hard gates in CI. There is no ESLint (there never was a config).
 
+## Security scanning
+
+Four tools, split by what they can actually see. All four are free on a **public**
+repository, which is what makes this configuration possible without an account, a
+token or a monthly quota anywhere.
+
+| Layer | Tool | Where it lives | Where findings appear |
+|---|---|---|---|
+| The code here (SAST) | CodeQL | `codeql.yml`, `.github/codeql/codeql-config.yml` | Security → Code scanning, and inline on the PR |
+| Dependencies a PR adds | Dependency review | `dependency-review.yml` | The PR: a failing check, plus a comment |
+| Dependencies already installed | Dependabot | `.github/dependabot.yml` (updates) + a repository **setting** (alerts) | Security → Dependabot, and update PRs |
+| The repository itself | OpenSSF Scorecard | `scorecard.yml` | Security → Code scanning, plus a public grade |
+
+**Alerts are a setting, not a file.** `dependabot.yml` only opens update pull
+requests. The half that says "a version you have installed has a known
+vulnerability" is a checkbox — see *One-time setup* below. This trips people
+because the file is the visible part and the checkbox is the part that shouts.
+
+**What the first Dependabot run changed.** Grouping worked — three pull requests
+where nine would have been, one per group. Two things needed fixing, and both are
+worth knowing before adding another bot:
+
+- **The docs deploy failed on all three.** A Dependabot pull request never receives
+  repository secrets, by design: its branch content is not the repository owner's.
+  So `CLOUDFLARE_API_TOKEN` arrived empty, wrangler had nothing to authenticate
+  with, and every bot pull request carried a red check that no reviewer could act
+  on — while the build step above it passed. `deploy-docs.yml` now runs on `main`
+  and on `workflow_dispatch` only. Preview deployments are gone, and nothing about
+  the docs goes unverified: `checks.yml` builds `@ramonda/docs` on every pull
+  request through its whole chain. A preview supplied a URL, not confidence.
+- **Dependabot rewrote a moving tag as a pin.** `github/codeql-action@v4` came back
+  as `@v4.37.3`, which would mean a pull request for every CodeQL patch release
+  from then on. `@v4` already excludes the only change that can break a workflow —
+  a new major — so `dependabot.yml` now ignores patch and minor for that action.
+  The exact pins elsewhere (`ossf/scorecard-action@v2.4.4`,
+  `actions/dependency-review-action@v5.0.0`) stay, because those two publish no
+  moving major tag to use instead.
+
+**Both Dependabot rules are off, on purpose.** GitHub ships two auto-dismiss
+presets (Settings → Advanced Security → Dependabot rules), and both are disabled
+here.
+
+*Dismiss low-impact alerts for development-scoped dependencies* reads as sensible
+and is wrong for this repository: three runtime dependencies exist across every
+published package (`@testing-library/dom`, `@clack/prompts`, `picocolors`) and the
+other ~560 installed packages are toolchain. A rule that discounts dev-scoped
+findings therefore filters almost the entire dependency surface rather than its
+edge. The preset's reasoning — a vulnerability in a build tool goes nowhere,
+because a developer's machine is not production — also inverts for a library
+author: tsup and esbuild write the `dist/` that gets published, so a compromised
+build tool is the one case that reaches everyone who installs Ramonda.
+
+The cost of switching it off is noise of the "ReDoS in a test runner" kind, which
+is acceptable and reversible: dismissed alerts are never deleted, they sit under
+*Closed* marked auto-dismissed. And `pnpm audit` reads the advisory database
+directly with no knowledge of these rules, so the unfiltered view is always one
+command away.
+
+*Dismiss package malware alerts* stays off for the plainer reason that a
+false-positive filter on malware suppresses the one category worth interrupting
+for.
+
+**Why not Snyk.** It was the first candidate, and the badge is why it was dropped:
+`snyk.io/test/github/<owner>/<repo>/badge.svg` returns the same 849-byte image
+reading **"Snyk security | monitored"** for this repository, for another of the
+author's, and for a repository name invented on the spot. It once printed a
+vulnerability count; it is now a static picture. The scanning behind it is real
+but needs an account, a `SNYK_TOKEN` and a monthly test cap, for a job CodeQL and
+Dependabot already do here at no cost. What Snyk is remembered for — shouting
+about transitive advisories in a Next.js app — is the Dependabot half of this
+table, reading the same GitHub Advisory Database.
+
+**One override, and its receipt.** `pnpm.overrides` in the root `package.json`
+forces `esbuild` to `>=0.28.1`. Before it, `pnpm audit` reported one low advisory
+([GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr) —
+arbitrary file read via esbuild's dev server, on Windows) reachable through 15
+paths, all of them under `tsup` and `vite-plugin-dts`. Nothing here runs that dev
+server, so the real risk was nil; the override costs one line and `pnpm audit` now
+reports **no known vulnerabilities**.
+
+It is an override rather than a bump because `tsup@8.5.1` is the latest release and
+declares `esbuild: ^0.27.0` — there is no version of tsup to move to. The forced
+version was already in the tree (Vite 7.3.6 accepts `^0.27.0 || ^0.28.0` and had
+resolved 0.28.1), and the full gate was re-run uncached against it. Remove the
+override once tsup declares `^0.28`.
+
 ## Required secrets
 
 Set these under **Settings → Secrets and variables → Actions**.
@@ -88,10 +177,43 @@ Set these under **Settings → Secrets and variables → Actions**.
 | `CLOUDFLARE_API_TOKEN` | `deploy-docs.yml` | Custom token with **Account → Cloudflare Pages → Edit**. |
 | `CLOUDFLARE_ACCOUNT_ID` | `deploy-docs.yml` | Your Cloudflare account id (in the dashboard URL). |
 
-`GITHUB_TOKEN` is provided automatically; no setup needed.
+`GITHUB_TOKEN` is provided automatically; no setup needed. The three security
+workflows add nothing to this table — CodeQL, dependency review and Scorecard run
+on that token alone, which is the practical difference between them and a
+third-party scanner.
 
 ## One-time setup
 
+- **Three security switches**, under **Settings → Code security**. No workflow can
+  turn these on — GitHub does not expose them to `GITHUB_TOKEN` — so they are
+  clicked once, by the repository owner:
+  1. **Dependabot alerts.** The half of Dependabot that watches the installed tree
+     against the GitHub Advisory Database. `dependabot.yml` does not imply it.
+  2. **Dependabot security updates.** Turns an alert into a pull request that
+     raises the affected version, ignoring the weekly schedule.
+  3. **Private vulnerability reporting.** Makes the *Report a vulnerability* button
+     appear on the Security tab, which is where `SECURITY.md` sends people. Without
+     it, that link 404s and the next reporter opens a public issue instead.
+
+  A fourth row on the same page, **Dependabot version updates**, is the switch that
+  consumes `.github/dependabot.yml`. It turns itself on when that file reaches the
+  default branch — so leave it alone until then. Clicking *Enable* while the file
+  is still on a branch offers to write GitHub's own template `dependabot.yml`
+  straight to `main`, which collides with the one in review. (The *Advanced* button
+  under CodeQL analysis does exactly the same thing with `codeql.yml`.)
+
+  The buttons on that page name the **action**, not the state: a row reading
+  *Disable* is a feature that is currently on.
+
+  While you are on that page, check **Code scanning → CodeQL analysis**: it must
+  read *Advanced* (this repository's `codeql.yml`), not *Default setup*. GitHub
+  enables default setup by itself on some repositories, and when it is on it
+  **rejects** the results our workflow uploads — the run fails with "default setup
+  is enabled" rather than quietly duplicating work. If you see it, switch it off;
+  `codeql.yml` replaces it and says why in its own header.
+
+  Nothing else needs clicking: the dependency graph that dependency review reads is
+  on by default for public repositories.
 - **Cloudflare Pages project.** The workflow uploads a *prebuilt* site (Direct
   Upload) — Cloudflare runs no build, so there is no pnpm/monorepo build config to
   fight, and the pagefind step stays in GitHub Actions where it already works.
@@ -110,10 +232,13 @@ Set these under **Settings → Secrets and variables → Actions**.
 
   PR deploys post their preview URL back on the PR. Attach a custom domain later
   under the project's **Custom domains** tab — no workflow change needed.
-- **npm provenance.** `release.yml` publishes with provenance (via the
-  `NPM_CONFIG_PROVENANCE` env var, honored by the underlying publish), which needs
-  `id-token: write` (already set) **and a public repository**. If this repo is
-  private, drop the `NPM_CONFIG_PROVENANCE` line from `release.yml`.
+- **npm provenance.** Nothing to do — it works, and that is checked rather than
+  assumed. `release.yml` publishes with the `NPM_CONFIG_PROVENANCE` env var, which
+  needs `id-token: write` (already set) **and a public repository**, and the
+  registry confirms the result: `@ramonda/core@0.3.0` carries an attestation with
+  `predicateType: https://slsa.dev/provenance/v1`. Consumers verify it with
+  `npm audit signatures`. If this repository ever goes private, drop the
+  `NPM_CONFIG_PROVENANCE` line — the publish fails without a public source.
 - **`npm` environment (optional).** Create an environment named `npm` and add
   required reviewers to make every publish a manual approval; scope `NPM_TOKEN`
   to it for tighter blast radius.
@@ -186,6 +311,25 @@ only with the fix in hand:
 
 ## Deliberate gaps (the "we'll add more later" list)
 
+- **Coverage reporting.** `@vitest/coverage-v8` is installed and works, but no
+  `coverage` task exists and nothing is published. Measured today, per package
+  (v8 provider, each package counting only its own files): core 95.4% of
+  statements, query 92.6%, devtools 91.0%, router 89.6%, testing-library 89.5%,
+  lens 80.4% — **93.0% across the six**, 95.5% by line. Publishing it (Coveralls
+  is free for public repositories, via `coverallsapp/github-action` and
+  `GITHUB_TOKEN`) means a `coverage` turbo task and one merged upload; core needs
+  **two** uploads, since `test` is `vitest run && pnpm test:prod` and the
+  production-only paths read as dead code from the first run alone. No coverage
+  threshold gate until the suite is fuller — a gate at 93% today would block work
+  on a number nobody chose.
+- **CodeQL's `security-extended` suite.** The default (high-precision) suite runs
+  now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
+  and the time to do it is after the default suite's findings are triaged — the
+  `innerHTML` writes in `packages/devtools/src/index.ts` first.
+- **SHA-pinned actions.** Workflows pin tags (`@v5`, `@v2.4.4`), not commit SHAs.
+  Scorecard marks this down, and it is right that a tag can be moved under you;
+  a SHA is also unreadable and drifts silently out of date. Revisit if Dependabot's
+  `github-actions` updates prove reliable enough to keep SHAs current.
 - **Stricter core types.** core now type-checks in CI under `strict` + the four
   cheap flags. Two heavier ones are deliberately deferred (measured counts): turn
   on `exactOptionalPropertyTypes` and clear its ~21 errors (mostly optional props

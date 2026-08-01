@@ -40,11 +40,11 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@clack/prompts": "^0.7.0",
+    "@clack/prompts": "^1.7.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.1.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",

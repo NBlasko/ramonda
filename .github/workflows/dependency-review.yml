@@ -1,0 +1,44 @@
+name: Dependency review
+
+# Pull requests only, because a pull request is the only place this has something
+# to compare: it diffs the dependency graph of `main` against the branch and
+# reports what the change ADDS. An advisory against something already installed
+# belongs to Dependabot alerts, which watch the tree continuously — this keeps new
+# ones from getting in, which is the cheaper end of the same problem.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review added dependencies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # post the summary as a comment when it fails
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned exactly: this action publishes no moving major tag (v1–v3 exist,
+      # nothing for v4 or v5), so `@v5` would not resolve. Dependabot's
+      # github-actions updates move this line.
+      - uses: actions/dependency-review-action@v5.0.0
+        with:
+          # High and critical block; low and moderate are reported. Not `low`, and
+          # the reason is on the tree right now: `pnpm audit` finds one low —
+          # esbuild's dev server reading arbitrary files, on Windows, reachable
+          # through tsup — which nothing here runs. A gate that is red on arrival
+          # trains you to merge past it, and then it guards nothing.
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # Strong copyleft and source-available licences, denied because this is
+          # an MIT framework: a dependency under one of these changes what its
+          # users are obliged to do. Permissive licences and dual-licence
+          # expressions pass. A package whose licence the graph cannot determine is
+          # reported, not blocked.
+          deny-licenses: >-
+            GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later,
+            AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0, BUSL-1.1

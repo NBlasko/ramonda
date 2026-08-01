@@ -1,19 +1,33 @@
 name: Deploy docs
 
-# Deploys apps/docs (the prerendered static site) to Cloudflare Pages.
-#   - push to main  → production deployment
-#   - PR to main    → a preview deployment with its own URL, posted back to the PR
+# Deploys apps/docs (the prerendered static site) to Cloudflare Pages, from `main`
+# only, plus a manual run when a deployment needs repeating.
 #
-# The docs build consumes the workspace packages from SOURCE via esbuild aliases,
-# so no package needs building first — but it must run through TURBO, because
-# `content` (which writes src/generated/) is a turbo task the build declares in
-# `dependsOn`. The chain is content → esbuild → prerender → pagefind, and it
-# writes apps/docs/dist.
+# It used to deploy pull requests too, as previews. That went away with the
+# dependency bots: a Dependabot pull request never receives repository secrets —
+# by design, since its branch content is not the author's — so `CLOUDFLARE_API_TOKEN`
+# arrived empty and every one of them ended in a red check at the deploy step while
+# the build above it passed. A preview of a `@types/node` patch bump is worth
+# nothing, and a check that fails for reasons no reviewer can act on is worth less
+# than nothing.
+#
+# Nothing about the docs goes unverified as a result. `checks.yml` runs
+# `turbo run build` with no filter, so `@ramonda/docs` builds on every pull request
+# through its whole chain — content → esbuild → prerender → pagefind — and the
+# repository's own `ramonda-check-bundle` parses every emitted file. What a preview
+# added was a URL, not confidence.
+#
+# The build must run through TURBO, not the package script: `content` (which writes
+# src/generated/) is a turbo task that `build` declares in `dependsOn`, and calling
+# the script directly skips it. The docs consume the workspace packages from SOURCE
+# via esbuild aliases, so no package needs building first.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  # Re-deploy the current `main` without pushing a commit — for a deploy that failed
+  # on something outside the repository, or a Cloudflare project that needs filling
+  # again.
+  workflow_dispatch:
 
 concurrency:
   group: deploy-docs-${{ github.ref }}
@@ -22,18 +36,13 @@ concurrency:
 permissions:
   contents: read
   deployments: write
-  pull-requests: write # let wrangler-action post the preview URL on the PR
 
 jobs:
   deploy:
     name: Build and deploy
     runs-on: ubuntu-latest
-    # Skip PRs from forks: repository secrets (the Cloudflare token) are not
-    # available to them, so the deploy could only fail. Same-repo PRs and pushes
-    # to main run normally.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       # Through TURBO, not the package script directly. `content` (which writes
@@ -45,7 +54,7 @@ jobs:
         run: pnpm exec turbo run build --filter=@ramonda/docs
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         # wrangler-action installs wrangler with `pnpm add wrangler`, which in a
         # workspace root pnpm refuses (ERR_PNPM_ADDING_TO_ROOT) unless told the root
         # is intended. Scope that allowance to this step only — it does not affect
@@ -55,7 +64,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Lets the action create a GitHub deployment and comment the preview URL.
+          # Lets the action record a GitHub deployment, so the Environments tab shows
+          # what is live and when it went out.
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           # `pages deploy` will not create a missing project non-interactively, so
           # ensure it exists first. On the first run this creates it (with main as
@@ -65,10 +75,13 @@ jobs:
           preCommands: |
             wrangler pages project create ramonda --production-branch=main || true
           # `--branch` decides production vs preview: Cloudflare treats a deploy on
-          # the project's production branch (main) as production, and any other
-          # branch as a preview with its own *.pages.dev URL.
+          # the project's production branch as production. This workflow only ever
+          # runs on `main`, so `github.ref_name` is that branch and every deploy from
+          # here is a production one. (Keep it explicit rather than hard-coding
+          # "main": renaming the default branch then needs one change, in the
+          # Cloudflare project, not two.)
           command: >-
             pages deploy apps/docs/dist
             --project-name=ramonda
-            --branch=${{ github.head_ref || github.ref_name }}
+            --branch=${{ github.ref_name }}
             --commit-dirty=true
