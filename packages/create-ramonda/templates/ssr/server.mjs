@@ -52,6 +52,15 @@ function sendRedirect(res, redirect) {
   res.end();
 }
 
+/**
+ * Escape the characters that let text break out of an HTML `<pre>` context. An error message can
+ * carry parts of the request (a bad URL, a header), so writing it into the page raw would be a
+ * reflected-XSS hole.
+ */
+function escapeHtml(text) {
+  return String(text).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+}
+
 // ── DEV: Vite middleware, hot reload, no build step ─────────────────────────────
 // The server module is loaded through `ssrLoadModule`, which re-evaluates it when a
 // file changes — so editing a component is picked up on the next request with no
@@ -116,7 +125,7 @@ async function renderDev(req, res) {
     // Rewrites the stack to your source, not the transformed module.
     vite.ssrFixStacktrace(error);
     res.statusCode = 500;
-    res.end(`<pre>${String(error?.stack ?? error)}</pre>`);
+    res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);
     console.error(error);
   }
 }
@@ -207,7 +216,7 @@ async function renderProd(req, res) {
     sendHtml(res, html, "dynamic");
   } catch (error) {
     res.statusCode = 500;
-    res.end(`<pre>${String(error?.stack ?? error)}</pre>`);
+    res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);
     console.error(error);
   }
 }

@@ -56,6 +56,15 @@ function installDom(url) {
   return dom;
 }
 
+/**
+ * Escape the three characters that let text break out of an HTML text/`<pre>` context. An error
+ * message can carry parts of the request (a bad URL, a header), so writing it into the page raw
+ * is a reflected-XSS hole — contextual encoding closes it.
+ */
+function escapeHtml(text) {
+  return String(text).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+}
+
 const MIME = {
   ".js": "text/javascript",
   ".css": "text/css",
@@ -270,7 +279,7 @@ const server = createServer(async (req, res) => {
     console.log(`${req.method} ${url} → ${ms.toFixed(1)}ms, ${html.length}b`);
   } catch (error) {
     res.statusCode = 500;
-    res.end(`<pre>${String(error?.stack ?? error)}</pre>`);
+    res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);
     console.error(error);
   }
 });
