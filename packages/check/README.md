@@ -78,6 +78,11 @@ const { issues, counts } = analyzeProject("tsconfig.json");
 `typescript` is a peer dependency: the analyzer runs on **your** compiler, so it reads your syntax
 and your config rather than guessing at them.
 
+It reads your config with two options overridden — `noLib` and `types` — because it asks the
+checker only where a symbol was declared, never what type anything is. Skipping the lib and the
+`@types/*` packages is most of its running time, which matters when it goes first in a build. It
+does not typecheck and never did; that is `tsc`'s job.
+
 ## Docs
 
 **https://ramonda.pages.dev/reference/check**

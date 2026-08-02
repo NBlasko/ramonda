@@ -108,6 +108,15 @@ const { issues, counts } = analyzeProject("tsconfig.json");
 `typescript` is a peer dependency: the analyzer uses **your** compiler, so it reads your syntax and
 your config rather than guessing at them.
 
+### It does not typecheck
+
+It asks the compiler only where a symbol was declared — never what type anything is. So it reads
+your config with `noLib` and `types` overridden, and skips the whole TypeScript lib and every
+`@types/*` package you have installed. That is most of what a run would otherwise cost, which
+matters for something that goes first in a build.
+
+A project that does not compile is still `tsc`'s news to break. Run both.
+
 ## Next
 
 - [Context](/composition/context) — providers, consumers, and declaring what a component needs.

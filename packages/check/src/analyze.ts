@@ -497,7 +497,24 @@ function createProgram(tsconfigPath: string): {
   }
   const program = ts.createProgram({
     rootNames: parsed.fileNames,
-    options: parsed.options,
+    /**
+     * The project's own options, minus the two that load declaration files this analyzer will
+     * never look at.
+     *
+     * It asks the checker exactly two things — `getSymbolAtLocation` and `getAliasedSymbol` —
+     * both of which are binder work over the files it walks. It never asks for a TYPE, so
+     * `Array`, `Promise` and the DOM are megabytes of parsing for nothing, and so is every
+     * `@types/*` package a project happens to have installed.
+     *
+     * Measured on this repo's docs app (68 components): 2.4s → 0.35s, and on a small fixture
+     * 214 source files → 2. That matters beyond a fast test suite — `ramonda-check-context`
+     * runs FIRST in an app's `build`, so this was a second or more added to every build.
+     *
+     * `noLib` makes the program report errors about missing globals. Nothing here reads
+     * diagnostics: the analyzer's job is to say which context has no provider, and a project
+     * that does not compile is `tsc`'s news to break, not this tool's.
+     */
+    options: { ...parsed.options, noLib: true, types: [] },
   });
   return { program, notes };
 }
