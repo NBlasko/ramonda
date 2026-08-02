@@ -1,5 +1,123 @@
 # @ramonda/core
 
+## 0.5.0
+
+### Minor Changes
+
+- 3c344f9: `requestContext()` now works in the browser — and opting a value into the client is explicit.
+
+  **Fixes a real gap:** nothing installed a request scope on the client, so a component that read
+  `requestContext()` directly in `render()` worked on the server and **threw during hydration**
+  (`"requestContext() was called outside a render"`). `hydrateRoot` and `bootstrap` now install a
+  browser scope, so such a read returns a value (if it was exposed) or nothing — never a crash.
+
+  **Nothing travels unless you say so.** A key opts in:
+
+  ```ts
+  export const currentUser = requestKey<User | null>("currentUser", {
+    exposeToClient: true,
+  });
+  ```
+
+  Exposed values ride one blob on the root element (`data-ramonda-request`), and the browser reads
+  them back through the same `requestContext().get(key)`. Everything else stays on the server:
+  **cookies and headers can never be exposed** (they are the server's, and an httpOnly cookie is
+  invisible to JS anyway), and a key that did not opt in does not travel. Reading any of those in
+  the browser returns nothing and reports the new **RMD025** in development, rather than throwing —
+  breaking the page would be worse, and a real divergence is already reported by hydration.
+
+  Also: in the browser `requestContext().url` follows the address bar, so it stays correct after a
+  client-side navigation instead of freezing at whatever the server rendered.
+
+  Most apps need none of this — reading the request in `@create` and keeping the result in `@state`
+  already travels, because `@create` is skipped on hydration and the state is restored from the page.
+  `exposeToClient` is for when several components read the same value straight from the context.
+
+- 621eaeb: `@Host`, `@onElement` and `@shouldUpdateOnPropsChange` are now refused on a hook by **TypeScript**,
+  not only at runtime — and the two that failed badly now fail clearly.
+
+  Before: `@Host` on a hook was **silently ignored** (the metadata went to a class no render path
+  consults), and `@onElement` died with `Cannot read properties of undefined (reading 'enhancedNode')`
+  — an error naming nothing the author wrote. Only `@shouldUpdateOnPropsChange` explained itself, and
+  none of the three was a type error.
+
+  Now each is refused twice: the type rejects it at the decorator, and a build with no types throws at
+  construction with a message that says where the decorator belongs instead.
+
+  ```
+  [Ramonda] @onElement is for components, not hooks. It binds a listener to the component's
+  host element, and a hook has no element of its own. Move the listener to the component that
+  uses <Listening />, or use @onWindow / @onDocument, which work on both.
+  ```
+
+  Everything else in the decorator set works on a hook — measured, not assumed: `@state`, `@persist`,
+  `@compute`, `@memoizedHandler`, `@create`, `@mount`, `@destroy`, `@updated`, `@watchProp`,
+  `@deferHydration`, `@onWindow`, `@onDocument`, `@interval`, `@timeout`, and your own subscription
+  decorators. A new [decorator table](https://ramonda.pages.dev/reference/decorators) answers all
+  three questions at once: where each runs, what it goes on, and whether it may repeat.
+
+- 4850a4e: A missing context provider (`RMD003`) is now reported when the consumer **mounts**, not when a
+  value is first read — and nothing has to be declared to get it.
+
+  The information was always in the hook: `this.use(ThemeConsumer)` names the context, and the
+  consumer resolves its provider once, at construction. So the answer exists at mount. Waiting for a
+  read gave the same answer later, and for a value read only down a branch nobody clicks, never at
+  all — which is the fault worth catching: the page renders, the default fills in, nothing looks
+  wrong.
+
+  The report names the component the provider has to go above:
+
+  ```
+  [RMD003] Context consumed without a provider above it
+  <Panel /> mounts ThemeConsumer with no Provider on any ancestor, so every key it reads
+  gets the default below.
+  ```
+
+  `createContext` takes one new option, for the case where the default IS the answer:
+
+  ```tsx
+  const [ParamsProvider, ParamsConsumer] = createContext(
+    { params: {} },
+    { label: "RouteParams", optional: true }
+  );
+  ```
+
+  The flag belongs to the context, not to each consumer — whoever wrote `createContext` is the one
+  who knows whether the default is a real answer or a stand-in for something missing, and they say it
+  once. The router's `params` context is marked `optional`, because a nav bar beside the outlet
+  legitimately has no matched route above it. `@ramonda/check` honours the same flag, so the static
+  and runtime checks agree.
+
+  Development-only, as before: a production build reports nothing and reads exactly the same values.
+
+### Patch Changes
+
+- e932acf: Diagnostic severities now follow one rule: **error means the end result is wrong; warning means the
+  result is the same and the app just did more work to get there.**
+
+  That matters because the devtools panel raises its alert only for errors, so a fault that produces
+  wrong output has to be one. Re-graded to **error**:
+
+  - **RMD003** — context consumed with no provider above it. The consumer silently gets the default,
+    so someone reads and acts on data that is not what the app meant to show.
+  - **RMD010** — a default host the parent does not allow: the browser rearranges or deletes the
+    markup, so the page is not what was written.
+  - **RMD016** — a component updating while detached: `@destroy` never ran, its timers and listeners
+    are still live, and every render goes into nodes nobody can see.
+  - **RMD017** — a deferred hydration that never resumed. The page looks finished but that subtree
+    never becomes interactive.
+  - **RMD021** — a clock or random read in a `@compute`: the value freezes, and the reader is shown a
+    number that stopped moving.
+  - **RMD023** — components built from an array with no keys: items are matched by position, so state
+    lands on the wrong row.
+  - **RMD025** — per-request data read in the browser: the reader gets nothing where the server had a
+    value.
+
+  Still warnings, because the outcome is unchanged and only the cost is not: RMD008 (a write after
+  unmount is dropped, and there is no page left to update), RMD020, RMD022, RMD024.
+
+  The rule is now stated in the diagnostics reference, and on the type that carries it.
+
 ## 0.4.0
 
 ### Minor Changes

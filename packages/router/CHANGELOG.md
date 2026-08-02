@@ -1,5 +1,110 @@
 # @ramonda/router
 
+## 0.3.0
+
+### Minor Changes
+
+- 62d536e: ISR pages now live in a store you choose, instead of a `Map` in your server file.
+
+  `@ramonda/router/server` gains `createIsrCache`, `memoryStore` and `fileStore`. The cache owns the
+  timing — fresh, stale-while-revalidate, cold — and the store owns where pages are kept:
+
+  ```ts
+  import { createIsrCache, fileStore, routePlan } from "@ramonda/router/server";
+
+  const isr = createIsrCache({
+    plan: routePlan(server),
+    store: fileStore({ dir: "dist/isr" }),
+    render: bakePath,
+  });
+
+  // `undefined` means "not an ISR route" — fall through to static or dynamic.
+  const page = await isr.serve(path);
+  if (page) sendHtml(res, page.html, page.mode);
+  ```
+
+  **Why it needed to change.** A per-process `Map` is correct for one instance and wrong for two:
+  each caches independently, so a visitor bounces between a copy baked ten seconds ago and one baked
+  ten minutes ago with no way to tell which they got, and a restart empties it so every ISR route
+  renders cold again — repeatedly, during a rolling deploy. `fileStore` fixes both for instances that
+  share a volume; anything else is two methods (`get` / `set`) over Redis, a database, or whatever
+  your instances do share.
+
+  Two things the old inline version did not do:
+
+  - **Single-flight.** Ten requests arriving while a stale page rebakes now start one render, not
+    ten — the stampede a slow page under load used to produce.
+  - **A failed background rebake keeps serving the stale page** rather than surfacing as an error. A
+    failed _cold_ render still throws, because there is nothing else to send.
+
+  The scaffolded SSR app uses `fileStore` and clears the cache in its prerender step, since pages
+  baked by the previous bundle must not be served against a new client bundle.
+
+### Patch Changes
+
+- 4850a4e: A missing context provider (`RMD003`) is now reported when the consumer **mounts**, not when a
+  value is first read — and nothing has to be declared to get it.
+
+  The information was always in the hook: `this.use(ThemeConsumer)` names the context, and the
+  consumer resolves its provider once, at construction. So the answer exists at mount. Waiting for a
+  read gave the same answer later, and for a value read only down a branch nobody clicks, never at
+  all — which is the fault worth catching: the page renders, the default fills in, nothing looks
+  wrong.
+
+  The report names the component the provider has to go above:
+
+  ```
+  [RMD003] Context consumed without a provider above it
+  <Panel /> mounts ThemeConsumer with no Provider on any ancestor, so every key it reads
+  gets the default below.
+  ```
+
+  `createContext` takes one new option, for the case where the default IS the answer:
+
+  ```tsx
+  const [ParamsProvider, ParamsConsumer] = createContext(
+    { params: {} },
+    { label: "RouteParams", optional: true }
+  );
+  ```
+
+  The flag belongs to the context, not to each consumer — whoever wrote `createContext` is the one
+  who knows whether the default is a real answer or a stand-in for something missing, and they say it
+  once. The router's `params` context is marked `optional`, because a nav bar beside the outlet
+  legitimately has no matched route above it. `@ramonda/check` honours the same flag, so the static
+  and runtime checks agree.
+
+  Development-only, as before: a production build reports nothing and reads exactly the same values.
+
+- d1e56fc: Two regular expressions replaced with linear scans. Both were the same shape — `+` anchored at
+  `$`, which cannot match when the string does not end in the run it is looking for, so the engine
+  retries from every position and backtracks the whole run each time.
+
+  **`normalizePathname` (router)** is the one that mattered: it reads
+  `window.location.pathname`, so the string comes from whatever URL someone was handed. Measured on
+  `"/".repeat(n) + "a"` — 30k slashes took 942ms, 60k took 3.7s. A link with enough slashes hung the
+  tab that opened it. The scan handles 200k in about a millisecond.
+
+  **`create-ramonda`** trimmed dashes off a derived package name the same way (`/^-+|-+$/g`); only a
+  folder name reaches it, but it is published source, and two loops are the right way to trim
+  anyway. Output is unchanged on all 17 shapes checked.
+
+  **`ramonda-check-context`** derived the tsconfig's directory with a regex; it now uses
+  `path.dirname`, which is what the operation is called. Reported by CodeQL. The analyzer's result is
+  unchanged — same components, same contexts, same issues, verified against an absolute path, a
+  relative one, and one already ending in a separator.
+
+  Separately, two `console` calls built their message by interpolation and passed a value after it.
+  A console treats its first argument as a **format string**, so a `%s` inside the interpolated part
+  consumed the argument that followed — and in both cases that argument was the payload:
+
+  ```
+  of /about%s failed:  →  "of /aboutupstream down failed:"   (the error never printed)
+  ```
+
+  `createIsrCache`'s default `onError` lost the reason a rebake failed; the devtools log row lost the
+  data you clicked it to see. Both now use a `%s` placeholder. Reported by CodeQL for the first one.
+
 ## 0.2.0
 
 ### Minor Changes
