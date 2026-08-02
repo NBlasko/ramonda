@@ -76,8 +76,12 @@ Everything the three packages export. Each entry links to the page that explains
 | `@destroy` | Runs on teardown, while state is still readable. |
 | `createSubscriptionDecorator(name, connect)` | Your own subscription decorator: connect after the commit, and what it returns is the cleanup. [Subscriptions](/concepts/subscriptions) |
 
-`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`. [Which to use](/ssr/env)
-`@updated` does not: a server render has no layout and no paint, so it is client-only.
+`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and `shared` is
+the default. [Which to use](/ssr/env) — `@updated` has no `env`, because a server render commits
+once and so never produces the update it reacts to.
+
+**Which decorator runs where, works on what, and may repeat:
+[the decorator table](/reference/decorators).**
 
 ### Decorators — reacting
 
@@ -91,10 +95,10 @@ Everything the three packages export. Each entry links to the page that explains
 
 | | |
 |---|---|
-| `@Host(tag, props?)` | The element a component **is**. `tag` may be a callback of props. [The host element](/concepts/host) |
-| `@onElement(type, options?)` | Listener on the component's host. [Events](/concepts/events) |
+| `@Host(tag, props?)` | The element a component **is**. `tag` may be a callback of props. Components only, once per class. [The host element](/concepts/host) |
+| `@onElement(type, options?)` | Listener on the component's host. Components only — a hook has no element. [Events](/concepts/events) |
 | `@onWindow(type, options?)` / `@onDocument(...)` | Listeners on `window` / `document`. Work on a Hook too. |
-| `@interval(ms)` / `@timeout(ms)` | Timers cleared on unmount. [Timers](/concepts/timers) |
+| `@interval(ms)` / `@timeout(ms)` | Timers cleared on unmount. Client only; work on a Hook. [Timers](/concepts/timers) |
 
 ### Building your own
 

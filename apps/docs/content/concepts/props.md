@@ -132,3 +132,4 @@ export class Panel extends Component<{ children?: RamondaNode }> {
 ## Next
 
 - [Lifecycle](/concepts/lifecycle) — `@create`, `@mount`, `@destroy`, and their order.
+- [The decorator table](/reference/decorators) — `@watchProp` works on a hook; `@shouldUpdateOnPropsChange` does not.

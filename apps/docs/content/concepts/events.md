@@ -133,3 +133,4 @@ what keeps the listener from being re-attached — and what stops
 ## Next
 
 - [Timers](/concepts/timers) — the same idea, for time.
+- [The decorator table](/reference/decorators) — `@onElement` is components-only; the other two are not.

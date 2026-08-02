@@ -329,6 +329,9 @@ describe("@shouldUpdateOnPropsChange", () => {
 
   test("throws when placed on a hook — a hook has no parent-driven prop update to gate", () => {
     class BadHook extends Hook {
+      // @ts-expect-error TypeScript refuses it first: the decorator's `This` requires a
+      // COMPONENT_RUNTIME, which a Hook does not have. The throw below is what an untyped
+      // build gets, and is what this test is about.
       @shouldUpdateOnPropsChange
       nope() {
         return true;

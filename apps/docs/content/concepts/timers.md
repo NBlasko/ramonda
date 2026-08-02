@@ -69,3 +69,4 @@ hydration would flag the mismatch. Show something steady first, then fill it in.
 ## Next
 
 - [Refs](/concepts/refs) — reaching the element itself.
+- [The decorator table](/reference/decorators) — both timers are client-only, and work on a hook.

@@ -1,0 +1,102 @@
+---
+title: Every decorator, at a glance
+description: Which decorators run on the client, the server or both; which work on a component, a hook or both; and which may appear more than once.
+section: Reference
+order: 109
+---
+
+# Every decorator, at a glance
+
+Three questions come up about every decorator, and none of them is guessable from the name:
+
+- **Where does it run** — client, server, or both?
+- **What can it go on** — a component, a hook, or both?
+- **How many times** may it appear on one class?
+
+## The table
+
+| | Runs on | Goes on | More than once |
+|---|---|---|---|
+| [`@state`](/concepts/state) | both | component · hook | yes — one per field |
+| [`@persist`](/ssr/env) | both | component · hook | yes — one per field |
+| [`@compute`](/concepts/compute) | both | component · hook | yes |
+| [`@memoizedHandler`](/reference/api) | both | component · hook | yes |
+| [`@create`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
+| [`@mount`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
+| [`@destroy`](/concepts/lifecycle) | client in practice¹ | component · hook | yes, reverse order |
+| [`@updated`](/concepts/lifecycle) | client in practice¹ | component · hook | yes |
+| [`@watchProp`](/concepts/props) | client in practice¹ | component · hook | yes — one per selector |
+| [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
+| [`@shouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — the last wins |
+| [`@Host`](/concepts/host) | both | **component only** | **no** |
+| [`@onElement`](/concepts/events) | **client only**² | **component only** | yes |
+| [`@onWindow` / `@onDocument`](/concepts/events) | **client only**² | component · hook | yes |
+| [`@interval` / `@timeout`](/concepts/timers) | **client only**² | component · hook | yes |
+| [your own subscription](/hooks/own-decorators) | **client only**² | component · hook | yes |
+
+¹ **"client in practice"** means the decorator is not gated to a side — it would run on the
+server — but a server render gives it no occasion to. A server render commits once and never
+unmounts, so there is no update for `@updated` or `@watchProp` to react to and no teardown for
+`@destroy`.
+
+² **"client only"** is different, and stronger: these are built on effects, and effects never
+attach during a server render. No `env` option changes that, and none of them has one.
+
+## Where it runs, in more detail
+
+`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and **`shared`
+is the default** — so an undecorated `@mount` runs on both sides. See
+[client / server / shared](/ssr/env) for choosing.
+
+One consequence catches people out: on **hydration** a `shared` `@create` is *skipped* — the
+server already ran it and the state it wrote was restored from the page — while a `shared`
+`@mount` *runs again*, because the DOM it touches was rebuilt as the client adopted the markup.
+That is why a [route guard](/routing/server#route-guards-and-redirects) belongs in `@mount`.
+
+A server render, measured end to end, runs exactly: `@create`, `@mount`, and any `@compute`
+something reads. Nothing else fires — not because it is forbidden, but for the reasons in the
+footnotes above.
+
+## What it goes on
+
+**Almost everything works on a hook.** That is deliberate: a hook is where behaviour lives when
+it needs no element of its own, and behaviour needs state, lifecycle, derived values and
+listeners just as much as a component does.
+
+Three do not, and each is **refused twice**: TypeScript rejects it at the decorator itself, and a
+build with no types throws at construction, with a message saying what to do instead. Neither is
+a lint you can talk past — the second exists because the first is not there in plain JavaScript.
+
+| | why not |
+|---|---|
+| `@Host` | It names the element a component **is**. A hook adds no element — that is the point of a hook. |
+| `@onElement` | It binds a listener to the component's host element. A hook has none. Use `@onWindow` / `@onDocument`, which work on both. |
+| `@shouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
+
+## How many times
+
+Most decorators stack, and the order is defined:
+
+- **`@create` and `@mount`** run in declaration order; **`@destroy`** runs in reverse, so cleanup
+  undoes setup in the order it was done.
+- **`@watchProp`** takes one selector each, so several watch different props.
+- **`@deferHydration`** may appear several times; hydration waits for all of them.
+- **Listeners and timers** stack freely — that is the normal way to bind several events.
+
+Two are single:
+
+- **`@Host`** — a component is exactly one element, so there is one answer to which.
+- **`@shouldUpdateOnPropsChange`** — there is one answer to "take these props?". A second one is
+  reported in development, and the last declared wins.
+
+## Two decorators that are not lifecycle
+
+`@state` and `@persist` mark **fields**, not methods, so "runs on" means "is honoured on". Both
+are honoured on both sides: `@state` is serialized into the page by a server render and restored
+on hydration, and `@persist` is how a field that is not `@state` joins that payload.
+
+## Next
+
+- [The full API](/reference/api) — every export, grouped.
+- [Lifecycle](/concepts/lifecycle) — what each phase is for.
+- [client / server / shared](/ssr/env) — picking `env`.
