@@ -17,11 +17,23 @@ import { createRoutes } from "../match";
  * apps/docs/content/routing/server.md.
  */
 
+/** The live app's Navigator, so a test can click through the way a visitor does. */
+let liveNav: Navigator | undefined;
+
 @Host("div")
 class RouterApp extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
+  private route = this.use(Navigator);
   render() {
+    liveNav = this.route;
     return this.props.children;
+  }
+}
+
+@Host("div")
+class Home extends Component {
+  render() {
+    return <p>home</p>;
   }
 }
 
@@ -79,8 +91,9 @@ class AwaitsTheNetwork extends Component {
   }
 }
 
-function mountAt(view: VNode) {
-  const routes = createRoutes({ "/account": view, "/login": <Login /> });
+function mountAt(view: VNode, start = "/account") {
+  window.history.pushState(null, "", start);
+  const routes = createRoutes({ "/": <Home />, "/account": view, "/login": <Login /> });
   const container = document.createElement("div");
   document.body.appendChild(container);
   bootstrap(
@@ -104,6 +117,7 @@ beforeEach(() => {
   signedIn = false;
   renders = 0;
   sideEffects = 0;
+  liveNav = undefined;
   window.history.pushState(null, "", "/account");
 });
 
@@ -142,6 +156,37 @@ describe("when the redirect lands", () => {
       await Promise.resolve();
       expect(app.container.textContent).toBe("login");
       expect(window.location.pathname).toBe("/login");
+    } finally {
+      app.stop();
+    }
+  });
+
+  test("a LIVE navigation never shows the protected page at all", async () => {
+    /**
+     * The case that looks worst on paper: the app is already running, someone clicks through to a
+     * guarded route, and `@mount` cannot possibly run before `render()`. So surely the data is on
+     * screen first?
+     *
+     * No — and the reason is `processTask`, which is one drain, not one build:
+     * `do { drainBuilds(); flushPostCommit(); flushUpdated(); } while (taskQueue.length > 0)`.
+     * The guarded component is built, `flushPostCommit` runs its `@mount`, the redirect it asks
+     * for lands back in the queue, and the `while` picks it up in the SAME call. Both renders and
+     * both commits happen inside one microtask, so the protected markup is not merely unpainted —
+     * it is never observable from outside at all.
+     */
+    const app = mountAt((<Trusting />) as VNode, "/");
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(app.container.textContent).toBe("home");
+
+      liveNav!.push("/account");
+      // Queued, not synchronous: nothing has rebuilt yet.
+      expect(app.container.textContent).toBe("home");
+
+      await Promise.resolve();
+      // "SECRET" was built and committed between those two lines and is already gone.
+      expect(app.container.textContent).toBe("login");
+      expect(renders).toBe(1);
     } finally {
       app.stop();
     }

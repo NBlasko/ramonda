@@ -74,7 +74,15 @@ On the server it does — nothing is sent at all. **In the browser it does not.*
 component is built, `render()` runs, and the navigation the guard asked for is applied
 afterwards. That is why the example above returns `null` rather than trusting the guard.
 
-Two things follow, and both are worth getting right:
+The obvious worry is that this means the visitor *sees* the page first. It does not, and
+the reason is worth knowing: **one update is one drain, not one render.** Someone clicks
+through to `/account`, the router rebuilds, the account page is built and committed, its
+`@mount` asks for `/login` — and that redirect is picked up by the same drain, before it
+returns. Both renders happen inside one microtask, and the browser paints after
+microtasks, so `/login` is the first thing anyone can see.
+
+So "it renders" is about what your code *runs*, not about what a visitor *looks at*. Two
+things follow from the running, and both are worth getting right:
 
 **`render()` has to be safe for a visitor who is not allowed here.** It runs before the
 redirect lands, so `this.session.user.name` on a signed-out visitor throws instead of
@@ -87,14 +95,12 @@ answer the guard uses, or accept the wasted request and the 401.
 
 ### Do not make the check asynchronous
 
-A guard that returns a decision straight away costs no visible flicker: updates are
-batched through a microtask, and microtasks run **before** the browser paints, so the
-swap to `/login` lands in the same frame. The protected markup exists in the DOM for part
-of a tick and is never painted.
+Everything above holds only while the check answers **straight away**. That is what keeps
+the whole thing inside one drain, and one drain inside one microtask.
 
-A guard that **awaits** — a token check against the server — is a different thing
-entirely. The await releases the frame, the browser paints, and the visitor sees the
-protected page before it is taken away:
+A guard that **awaits** — a token check against the server — breaks it, and there is no
+batching that helps. The await releases the frame, the browser paints, and the visitor
+sits looking at the protected page until the answer comes back:
 
 ```tsx
 // ✗ The account page is on screen while this waits.
