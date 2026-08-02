@@ -83,8 +83,21 @@ is legitimate, and reconciliation handles it.
 ### RMD003 — Context consumed without a provider
 
 The consumer silently falls back to the context's default value, which usually
-looks like "my data never arrives". Deduped per context id, not per label, so
-unlabeled contexts don't collapse into one report.
+looks like "my data never arrives".
+
+Reported where the consumer is CONSTRUCTED — which is when its owning component
+mounts — not on the first read. Nothing is declared to make that work: the
+consumer resolves its channel once, at construction, so the answer already
+exists there. Waiting for a read gave the same answer later, and for a value
+read only down a branch nobody clicks, never at all.
+
+A context can opt out with `createContext(default, { optional: true })`, which
+says the default is a real answer rather than a stand-in. The router's `params`
+is the one that does: a nav bar beside the outlet has no matched route above it.
+
+Deduped per context id + owning component, so each call site says it once
+however many instances mount, and two components missing the same context are
+two reports.
 
 ### RMD004 — Props mutated
 

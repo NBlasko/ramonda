@@ -9,7 +9,7 @@ order: 112
 
 A context that has no provider above it does not crash. The consumer falls back to the default, the
 page renders, and someone reads a number that was never real. The framework reports it
-([`RMD003`](/reference/diagnostics)) — but only once that component actually renders.
+([`RMD003`](/reference/diagnostics)) — but only once that component actually mounts.
 
 That is the gap. A panel behind a condition nobody clicked, a page in a chunk nobody opened: the
 fault ships, and nothing has said a word. The commonest way to get there is a **reorder** — the
@@ -79,17 +79,21 @@ That is what makes it safe to put in a build. A checker that cries wolf gets rem
 reports are real broken paths, never maybes. The cost is honest: a fully dynamic composition is not
 checked, and neither is context that reaches a component only through a third-party hook's internals.
 
-## The three checks, and where each one bites
+It also honours [`optional`](/composition/context#when-the-default-is-a-real-answer): a context whose
+author declared its default a real answer is never reported here either. The two checks agree on
+purpose — a build that fails on what the app is documented to do is worse than no check at all.
 
-They are not alternatives — each catches what the others cannot.
+## The two checks, and where each one bites
+
+They are not alternatives — each catches what the other cannot.
 
 | | when it speaks | catches |
 |---|---|---|
 | `ramonda-check-context` | before the app runs | every path it can prove, exercised or not |
-| [`@requiresContext`](/composition/context#declare-what-a-component-needs) | when the component **mounts** | dynamic composition the checker cannot resolve |
-| [`RMD003`](/reference/diagnostics) | when the value is **read** | everything else, while you click around |
+| [`RMD003`](/reference/diagnostics) | when the component **mounts** | dynamic composition the checker cannot resolve |
 
-The static one is the only one that can speak about a branch nobody has opened yet.
+The static one is the only one that can speak about a branch nobody has opened yet. The runtime one
+is the only one that sees a tree assembled at runtime.
 
 ## Using it directly
 

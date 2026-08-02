@@ -37,6 +37,13 @@ export interface AnalyzeResult {
 interface ContextFact {
   id: string;
   label: string;
+  /**
+   * `createContext(…, { optional: true })` — the author declared the default a real answer, so
+   * no provider above is a legitimate arrangement. The runtime says nothing about it either
+   * (RMD003), and the two must agree: a build that fails on what the app is documented to do
+   * is worse than no check at all.
+   */
+  optional: boolean;
 }
 
 interface ComponentNode {
@@ -109,7 +116,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   return {
     issues,
-    counts: { components: components.size, contexts: contexts.size, roots: roots.size },
+    counts: {
+      components: components.size,
+      contexts: contexts.size,
+      roots: roots.size,
+    },
     notes,
   };
 
@@ -125,7 +136,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const pos = positionOf(node);
     const id = `${pos.file}:${pos.line}`;
     const label = labelOf(node.initializer) ?? bindingName(node.name, 1) ?? bindingName(node.name, 0) ?? "context";
-    const fact: ContextFact = { id, label };
+    const fact: ContextFact = {
+      id,
+      label,
+      optional: flagOf(node.initializer, "optional"),
+    };
     contexts.set(id, fact);
 
     const [providerEl, consumerEl] = node.name.elements;
@@ -194,7 +209,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           const provided = providerSymbols.get(symbol);
           if (provided) self.provides.add(provided.id);
           const consumed = consumerSymbols.get(symbol);
-          if (consumed && !self.consumes.has(consumed.id)) {
+          if (consumed && !consumed.optional && !self.consumes.has(consumed.id)) {
             self.consumes.set(consumed.id, positionOf(node));
           }
           // A hook can carry a context for its owner — `this.use(Router)` is how the router
@@ -371,7 +386,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return [];
   }
 
-  function positionOf(node: ts.Node): { file: string; line: number; column: number } {
+  function positionOf(node: ts.Node): {
+    file: string;
+    line: number;
+    column: number;
+  } {
     const file = node.getSourceFile();
     const { line, character } = file.getLineAndCharacterOfPosition(node.getStart());
     return { file: file.fileName, line: line + 1, column: character + 1 };
@@ -403,6 +422,22 @@ function labelOf(call: ts.CallExpression): string | undefined {
     if (ts.isStringLiteral(prop.initializer)) return prop.initializer.text;
   }
   return undefined;
+}
+
+/**
+ * A boolean option in `createContext(default, { … })`, read only when it is the literal `true`.
+ * Anything computed reads as absent — and absent means "checked", so an unreadable value can
+ * only ever produce a report the runtime would produce too, never silence one.
+ */
+function flagOf(call: ts.CallExpression, name: string): boolean {
+  const options = call.arguments[1];
+  if (!options || !ts.isObjectLiteralExpression(options)) return false;
+  for (const prop of options.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    if (prop.name.getText() !== name) continue;
+    return prop.initializer.kind === ts.SyntaxKind.TrueKeyword;
+  }
+  return false;
 }
 
 function bindingName(pattern: ts.ArrayBindingPattern, index: number): string | undefined {
@@ -441,7 +476,10 @@ function extendsComponentOrHook(cls: ts.ClassDeclaration): boolean {
   return false;
 }
 
-function createProgram(tsconfigPath: string): { program: ts.Program; notes: string[] } {
+function createProgram(tsconfigPath: string): {
+  program: ts.Program;
+  notes: string[];
+} {
   const notes: string[] = [];
   const configFile = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
   if (configFile.error) {
@@ -457,6 +495,9 @@ function createProgram(tsconfigPath: string): { program: ts.Program; notes: stri
   if (parsed.errors.length > 0) {
     for (const error of parsed.errors) notes.push(String(ts.flattenDiagnosticMessageText(error.messageText, " ")));
   }
-  const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
+  const program = ts.createProgram({
+    rootNames: parsed.fileNames,
+    options: parsed.options,
+  });
   return { program, notes };
 }

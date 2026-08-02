@@ -6,7 +6,6 @@ import { createHookRuntime, HOOK_RUNTIME, type HookRuntime, type Runtime, GLOBAL
 import { State } from "../reactivity/State";
 import { reportHookPropWrite } from "../debug/renderPhase";
 import { recordDefinition } from "../debug/sourceLocation";
-import { checkRequiredContexts } from "../debug/requiredContexts";
 import { bindInstanceMethods } from "../helpers/bindMethods";
 
 function createPropsProxy(hook: Hook<HookProps>) {
@@ -45,7 +44,9 @@ function createPropsProxy(hook: Hook<HookProps>) {
           reportHookPropWrite(hook, String(key));
         }
         throw new TypeError(
-          `[RMD015] Cannot assign to \`props.${String(key)}\` in <${hook.constructor.name} /> — a hook's props are read-only and owned by the caller of this.use(). Copy it into @state, or take a callback prop and ask the owner to change it.`,
+          `[RMD015] Cannot assign to \`props.${String(key)}\` in <${
+            hook.constructor.name
+          } /> — a hook's props are read-only and owned by the caller of this.use(). Copy it into @state, or take a callback prop and ask the owner to change it.`,
         );
       },
     },
@@ -70,8 +71,6 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
     this[GLOBAL_RUNTIME] = runtime;
     this[HOOK_RUNTIME] = createHookRuntime(initialProps);
 
-    // A hook can declare what it needs too — see the note in Component.
-    if (__DEV__) checkRequiredContexts(this, runtime.context);
     this.props = createPropsProxy(this) as R;
 
     bindInstanceMethods(this, Hook.prototype);

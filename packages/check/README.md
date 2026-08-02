@@ -23,7 +23,7 @@ A project scaffolded with `npm create ramonda` already has both lines.
 A context with no provider above it does not crash. The consumer falls back to the default, the
 page renders, and someone reads a number that was never real.
 
-The framework reports that at runtime (`RMD003`) — but only once the component actually renders.
+The framework reports that at runtime (`RMD003`) — but only once the component actually mounts.
 So a panel behind a condition nobody clicked, or a page in a chunk nobody opened, ships with the
 fault and nothing has said a word. The commonest way to get there is a **reorder**: the provider
 moves a level, the consumer stays, and everything still looks fine.
@@ -62,8 +62,10 @@ reports are real broken paths, never maybes. The honest cost: a fully dynamic co
 checked, and neither is a context that reaches a component only through a third-party hook's
 internals.
 
-For the dynamic remainder, the framework has two runtime nets — `@requiresContext` reports when a
-component **mounts**, and `RMD003` when a value is **read**.
+A context created with `{ optional: true }` — its default is a real answer, not a stand-in for a
+missing provider — is not reported here, exactly as it is not reported at runtime.
+
+For the dynamic remainder, the framework reports `RMD003` when the component **mounts**.
 
 ## As a library
 

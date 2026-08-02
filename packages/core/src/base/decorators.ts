@@ -1,15 +1,5 @@
-import {
-  attach,
-  detach,
-  HOST_META,
-  HOST_TAG,
-  STATE_KEYS,
-  PERSIST_KEYS,
-  CONTEXT_ID,
-  REQUIRED_CONTEXTS,
-} from "../helpers/constants";
+import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
-import type { ContextIdentity } from "../debug/requiredContexts";
 import { createId } from "../helpers/createId";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
@@ -45,7 +35,10 @@ type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
 type EnhancedClassMethodDecoratorContext = ClassMethodDecoratorContext<
   // COMPONENT_RUNTIME is optional: components carry it, hooks do not — which is how
   // a decorator can tell the two apart (see @shouldUpdateOnPropsChange).
-  { [GLOBAL_RUNTIME]: Runtime; [COMPONENT_RUNTIME]?: ComponentRuntime } & Record<string, any>
+  {
+    [GLOBAL_RUNTIME]: Runtime;
+    [COMPONENT_RUNTIME]?: ComponentRuntime;
+  } & Record<string, any>
 >;
 
 function ensureStringContextName(contextName: string | symbol, decoratorName: string): string {
@@ -423,58 +416,6 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
   context.addInitializer(function (this) {
     this[GLOBAL_RUNTIME].deferHydrations.push(() => value.call(this));
   });
-}
-
-/**
- * A context half (the Provider or the Consumer) — what `@requiresContext` accepts. Typed as "a
- * class" rather than by the stamped symbol: the stamp is non-enumerable and optional, and a type
- * whose properties are all optional matches everything, which would have accepted any object at
- * all. The runtime check below is what actually verifies it came from `createContext`.
- */
-export type ContextHalf = abstract new (...args: never[]) => unknown;
-
-/**
- * Declares the contexts this class needs above it, so a MISSING PROVIDER is reported the moment
- * the component mounts — not later, if and when some branch happens to read the value.
- *
- * ```tsx
- * @requiresContext(ThemeConsumer)
- * class Panel extends Component { … }
- * ```
- *
- * Without it, a consumer that is held but never read is silent by design (holding one is not a
- * mistake), and a value read only down some branch is only reported once that branch renders. That
- * is the gap this closes: mounting is enough. A lazily-loaded chunk or a condition that finally
- * turns true reports the first time it appears, before anyone reads anything.
- *
- * DEV-only: in a production build the declaration is inert. It is also opt-in — the framework does
- * not guess what a component needs, because a consumer held for one branch is legitimate.
- *
- * For the faults no runtime check can reach at all — a branch nobody exercises — the static
- * checker (`@ramonda/check`) proves the same thing from the source before the app runs.
- */
-export function requiresContext(...contexts: ContextHalf[]) {
-  return <C extends abstract new (...args: any[]) => object>(ctor: C): void => {
-    if (!__DEV__) return;
-
-    const declared = contexts
-      .map((half) => (half as { [CONTEXT_ID]?: ContextIdentity })[CONTEXT_ID])
-      .filter((identity): identity is { id: string | number; label?: string } => identity !== undefined);
-
-    if (declared.length !== contexts.length) {
-      throw new Error(
-        `[Ramonda] @requiresContext takes the halves of a createContext() pair — ` +
-          `@requiresContext(ThemeConsumer). Something else was passed, so nothing could be checked.`,
-      );
-    }
-
-    // Read before defining: the symbol is inherited through the class chain, so a subclass ADDS
-    // to what its parent declared rather than shadowing it.
-    const inherited = (ctor as unknown as { [REQUIRED_CONTEXTS]?: readonly ContextIdentity[] })[REQUIRED_CONTEXTS];
-    const merged = inherited ? [...inherited, ...declared] : declared;
-
-    Object.defineProperty(ctor, REQUIRED_CONTEXTS, { value: merged, enumerable: false, configurable: true });
-  };
 }
 
 /**
@@ -988,7 +929,9 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
       // the correct ones.
       ([K[number]] extends [keyof HookPropsOf<C>]
         ? unknown
-        : { "@StableProps was given a name that is not a prop of this hook": K[number] }),
+        : {
+            "@StableProps was given a name that is not a prop of this hook": K[number];
+          }),
   ) => {
     if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
       throw new Error(
@@ -1232,7 +1175,9 @@ export function compute<T, R>(
           // the tracker, so a nested read unwinds back to the outer compute.
           const prevComputePhase = __DEV__ ? computePhase.label : undefined;
           if (__DEV__) {
-            computePhase.label = `${(this as { constructor: { name: string } }).constructor.name}.${String(context.name)}`;
+            computePhase.label = `${
+              (this as { constructor: { name: string } }).constructor.name
+            }.${String(context.name)}`;
           }
 
           try {

@@ -61,11 +61,12 @@ themselves and cannot collide.
 
 ## RMD003 — Context consumed without a provider above it
 
-The consumer fell back to the default declared in `createContext`. Reported on the **read**, not
-on construction — a hook may legitimately hold a consumer it never reads.
+The consumer fell back to the default declared in `createContext`. Reported when the component
+**mounts**, before anything has read a value — so a panel behind a condition nobody has clicked
+still says so, and the report names the component the provider has to go above.
 
-Either add the provider, or make the default a real fallback you are happy with. See
-[Context](/composition/context).
+Either add that provider, or — if the default really is the answer when nobody provides one —
+declare the context `optional`. See [Context](/composition/context).
 
 ## RMD004 — Props mutated by the receiving component
 

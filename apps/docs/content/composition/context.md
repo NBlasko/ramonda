@@ -62,34 +62,65 @@ createContext({ theme: "light", accent: "pink" });
 ## No provider above it
 
 If a consumer has no provider anywhere above it, it falls back to the default and, in
-development, reports `RMD003` — naming the context and the key, so you can see what is
-missing.
+development, reports `RMD003` — naming the component and the context, so you can see what is
+missing and where the provider has to go:
 
-## Declare what a component needs
-
-A consumer is reported only when something **reads** it, and that is deliberate: holding a consumer
-you read down one branch is not a mistake. But it leaves a component that mounts and reads nothing
-— yet — silent.
-
-If a component genuinely cannot work without a context, say so:
-
-```tsx
-import { requiresContext } from "@ramonda/core";
-
-@requiresContext(ThemeConsumer)
-@Host("section")
-class Panel extends Component { … }
+```
+[RMD003] Context consumed without a provider above it
+<Panel /> mounts ThemeConsumer with no Provider on any ancestor, so every key it reads
+gets the default below.
 ```
 
-Now the check happens when the component **mounts**, before anything reads a value. A panel that
-finally appears — a lazily-loaded chunk, a condition that turned true — reports the first time it
-shows up instead of waiting for the read. A subclass adds to what its parent declared.
+The report happens when the component **mounts** — not when a value is first read. You write
+nothing to get it: `this.use(ThemeConsumer)` already says which context this component needs, and
+the consumer looks its provider up once, at that moment. So the answer exists at mount.
 
-It is development-only: in a production build the declaration is inert.
+That matters for the case that used to ship silently: a panel behind a condition nobody has clicked
+yet reads nothing, so a read-time check would never speak — and the page renders with the default
+filled in, looking fine.
 
-Even this only speaks for components that actually mount. To be told about a branch nobody has
-opened, run [`ramonda-check-context`](/reference/check) — it proves the same thing from the source,
-before the app starts.
+It is development-only: a production build reports nothing and reads exactly the same values.
+
+## When the default is a real answer
+
+Sometimes "nobody provided this" is a legitimate arrangement, and the default describes it rather
+than standing in for something missing. Say so once, where the context is created:
+
+```tsx
+const [ParamsProvider, ParamsConsumer] = createContext(
+  { params: {} },
+  { label: "RouteParams", optional: true },
+);
+```
+
+Now a consumer with no provider above it is silent. This is the router's own case: `params` belongs
+to the route a `<RouteOutlet>` matched, so a nav bar **beside** the outlet correctly has none.
+
+The flag belongs to the context, not to each consumer, because whoever wrote `createContext` is the
+one who knows what the default means. Every consumer then behaves consistently, and nobody has to
+remember to repeat it.
+
+## The order of your use() calls matters
+
+A consumer resolves its provider once, when it is constructed — so inside **one** class, the
+provider has to come first:
+
+```tsx
+class Panel extends Component {
+  theme = this.use(ThemeProvider, () => ({ theme: "dark" })); // ✓ first
+  ctx = this.use(ThemeConsumer);
+}
+```
+
+Reversed, the consumer is constructed before the provider has published, reads the default forever,
+and says so with `RMD003`. Between components there is nothing to think about: an ancestor is always
+constructed before its descendants.
+
+## Being told before you run the app
+
+Mounting is enough to be checked, but a component that never mounts is never checked. To be told
+about a branch nobody has opened, run [`ramonda-check-context`](/reference/check) — it proves the
+same thing from the source, before the app starts, and it honours `optional` the same way.
 
 ## When not to use it
 

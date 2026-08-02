@@ -31,7 +31,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
-| `createContext(default, options?)` | Returns `[Provider, Consumer]`. [Context](/composition/context) |
+| `createContext(default, options?)` | Returns `[Provider, Consumer]`. Options: `label` names the pair in devtools; `optional: true` says the default is a real answer, so a consumer with no provider above it is not reported. [Context](/composition/context) |
 
 ### Entry points
 
@@ -84,7 +84,6 @@ Everything the three packages export. Each entry links to the page that explains
 | | |
 |---|---|
 | `@watchProp(selector)` | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| `@requiresContext(...halves)` | Declares the contexts a class needs above it, so a missing provider is reported at MOUNT rather than at the first read. Dev-only. [Context](/composition/context) |
 | `@shouldUpdateOnPropsChange` | Gates whether new props from the parent are taken up (their signals update + a render). Components only; runs only on prop changes. |
 | `@deferHydration` | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 
