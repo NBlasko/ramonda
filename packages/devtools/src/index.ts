@@ -1100,7 +1100,10 @@ class RamondaDevTools extends HTMLElement {
       logEl.remove();
     });
     logEl.querySelector(".data-preview")?.addEventListener("click", () => {
-      console.log(`🌸 Ramonda Log [${id}]:`, data);
+      // `%s`, not an interpolated id: a console treats its first argument as a format string, so an
+      // id carrying `%s` — and an id carries names from the app — would swallow `data` into the
+      // message. `data` is the entire reason this row is clickable.
+      console.log("🌸 Ramonda Log [%s]:", id, data);
     });
 
     container.prepend(logEl);

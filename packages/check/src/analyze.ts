@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import ts from "typescript";
 
 /**
@@ -488,7 +489,14 @@ function createProgram(tsconfigPath: string): {
   const parsed = ts.parseJsonConfigFileContent(
     configFile.config,
     ts.sys,
-    tsconfigPath.replace(/[^/\\]+$/, ""),
+    // The tsconfig's own directory, which every relative path in it resolves against.
+    //
+    // This was `tsconfigPath.replace(/[^/\\]+$/, "")`, and CodeQL was right about it: on a path
+    // whose last character IS a separator, `[^/\\]+$` can never match, so the engine retries from
+    // every position and backtracks the whole run each time. Measured: 60k characters took 3.5s
+    // and 120k took 15s — quadratic, plainly. Nobody types a path like that, but a one-line
+    // regex is not worth defending when the standard library names the operation exactly.
+    dirname(tsconfigPath),
     undefined,
     tsconfigPath,
   );

@@ -68,12 +68,21 @@ function detectPackageManager(): "npm" | "pnpm" | "yarn" | "bun" {
 
 /** npm rejects a name with uppercase or leading dots; make a sane package name. */
 function toPackageName(dir: string): string {
-  return (
-    basename(resolve(dir))
-      .toLowerCase()
-      .replace(/[^a-z0-9-~]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "ramonda-app"
-  );
+  const collapsed = basename(resolve(dir))
+    .toLowerCase()
+    .replace(/[^a-z0-9-~]+/g, "-");
+
+  // Trimmed by scanning, not by `replace(/^-+|-+$/g, "")`. That pattern's second half cannot match
+  // a name which does not END in a dash, so the engine retries from every position inside a run and
+  // backtracks all of it each time — quadratic. Measured on `a` + 40k dashes + `b`: 1.9s, against
+  // 385ms at 20k. Only a folder name reaches here, so nothing hostile does; two loops are simply
+  // the right way to trim, and unlike the regex they cannot be flagged.
+  let start = 0;
+  let end = collapsed.length;
+  while (start < end && collapsed[start] === "-") start++;
+  while (end > start && collapsed[end - 1] === "-") end--;
+
+  return collapsed.slice(start, end) || "ramonda-app";
 }
 
 function isEmpty(dir: string): boolean {

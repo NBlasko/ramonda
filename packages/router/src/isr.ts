@@ -93,7 +93,17 @@ export interface IsrCache {
 }
 
 function defaultOnError(path: string, error: unknown): void {
-  console.error(`[ramonda:isr] background rebake of ${path} failed:`, error);
+  /**
+   * `%s`, not an interpolated path, because `console.error` treats its FIRST argument as a format
+   * string. A path containing `%s` would consume the `error` argument into the message, and the
+   * reason the rebake failed — the only thing this callback exists to deliver — would vanish:
+   *
+   *   of /about%s failed:  →  "of /aboutupstream down failed:"   (no error printed)
+   *
+   * A route key comes from the app's own table, so nothing hostile reaches here. It costs nothing
+   * to be right anyway, and the placeholder form is what Node's own logging expects.
+   */
+  console.error("[ramonda:isr] background rebake of %s failed:", path, error);
 }
 
 export function createIsrCache(options: IsrCacheOptions): IsrCache {

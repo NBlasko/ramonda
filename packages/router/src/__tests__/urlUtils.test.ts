@@ -65,6 +65,27 @@ describe("urlUtils", () => {
     expect(normalizePathname("/guide/state/")).toBe("/guide/state");
     expect(normalizePathname("/guide/state//")).toBe("/guide/state");
     expect(normalizePathname("//")).toBe("/");
+    // Only TRAILING slashes, and only from the end — the rest of the path is untouched.
+    expect(normalizePathname("//a//b//")).toBe("//a//b");
+    expect(normalizePathname("a/")).toBe("a");
+    expect(normalizePathname("")).toBe("/");
+  });
+
+  test("normalizePathname is linear, so a crafted URL cannot freeze the tab", () => {
+    /**
+     * This used to be `pathname.replace(/\/+$/, "")`. That pattern cannot match a string which
+     * does not END in a slash, so the engine retried from every position and backtracked the whole
+     * run each time — quadratic. The input is `window.location.pathname`, so the string comes from
+     * whatever URL someone was handed: a link was enough to hang the tab that opened it.
+     *
+     * Measured with the regex: 30k slashes 942ms, 60k 3.7s — and 200k below would be tens of
+     * seconds. The scan does it in about a millisecond, so this bound is generous by two orders of
+     * magnitude: loose enough never to flake, far too tight for the old shape to pass.
+     */
+    const crafted = `${"/".repeat(200_000)}a`;
+    const started = performance.now();
+    expect(normalizePathname(crafted)).toBe(crafted);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   test("parseUrlString normalizes a host-added trailing slash so the route still matches", () => {
