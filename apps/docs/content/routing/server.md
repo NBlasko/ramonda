@@ -36,30 +36,96 @@ is what makes it show the right page instead of the server's.
 
 ## Route guards and redirects
 
-A guard is just navigation from a lifecycle method — check something, and if the
-visitor should be somewhere else, send them:
+A guard is navigation from a lifecycle method — check something, and if the visitor
+should be somewhere else, send them. But **the guard is only half of it**, and the other
+half is what `render()` does meanwhile:
 
 ```tsx
 class Account extends Component {
   private route = this.use(Navigator);
+  private session = this.use(SessionConsumer);
 
   @mount guard() {
-    if (!isSignedIn()) this.route.replace("/login");
+    if (!this.session.user) this.route.replace("/login");
   }
 
   render() {
-    return <h1>Your account</h1>;
+    // This still runs, even when the guard has just asked for a redirect.
+    if (!this.session.user) return null;
+    return <h1>{this.session.user.name}</h1>;
   }
 }
 ```
+
+`SessionConsumer` is your own [context](/composition/context) — one place decides who is
+signed in and publishes the answer, and every page reads it. What matters is that reading
+it is instant: no `await`, no request. The next two sections are why.
 
 `@mount` runs on both sides (it's `shared`), which is what makes this work on the very
 first load. On the client the `replace` is an ordinary navigation. On the server there
 is no history to change and no client to re-render for, so the render instead **signals
 a redirect**: `renderToString` throws a `ServerRedirect`, and the server answers with a
 302 to `/login`. The browser then requests `/login` and gets the right page — rather
-than being handed the account page for a URL it isn't allowed to see, which would only
-flash and snap back on hydration.
+than being handed the account page for a URL it isn't allowed to see.
+
+### A guard does not stop this render
+
+On the server it does — nothing is sent at all. **In the browser it does not.** The
+component is built, `render()` runs, and the navigation the guard asked for is applied
+afterwards. That is why the example above returns `null` rather than trusting the guard.
+
+Two things follow, and both are worth getting right:
+
+**`render()` has to be safe for a visitor who is not allowed here.** It runs before the
+redirect lands, so `this.session.user.name` on a signed-out visitor throws instead of
+redirecting — and a thrown render is not a redirect, it is a broken page. Read a value
+that exists either way, and bail.
+
+**Any other `@mount` on the component runs too.** A `fetch("/api/account")` in a second
+`@mount` fires for the visitor you are turning away. Put per-page loading behind the same
+answer the guard uses, or accept the wasted request and the 401.
+
+### Do not make the check asynchronous
+
+A guard that returns a decision straight away costs no visible flicker: updates are
+batched through a microtask, and microtasks run **before** the browser paints, so the
+swap to `/login` lands in the same frame. The protected markup exists in the DOM for part
+of a tick and is never painted.
+
+A guard that **awaits** — a token check against the server — is a different thing
+entirely. The await releases the frame, the browser paints, and the visitor sees the
+protected page before it is taken away:
+
+```tsx
+// ✗ The account page is on screen while this waits.
+@mount async guard() {
+  const ok = await fetch("/api/session").then((r) => r.ok);
+  if (!ok) this.route.replace("/login");
+}
+```
+
+So **decide before you render**. Validate the session once, high up — on the server for
+the first load, in one place on the client afterwards — and publish the answer as
+[context](/composition/context) or state. The guard then reads it synchronously, and so
+does `render()`.
+
+If the answer genuinely is not known yet, say so in the markup rather than showing the
+page: render your loading state until it arrives. "Unknown" is a third state, not a
+temporary "yes".
+
+### Hydration is the case that picks the lifecycle
+
+`@mount` is `shared`, and on hydration it **re-runs** on the client. `@create` is
+`shared` too, but on hydration it is **skipped** — the server already ran it and the
+state it wrote was restored from the page.
+
+That matters here for the exact reason described above: a cached page, or a CDN serving
+one file for many paths, can put markup in front of someone the server never checked. A
+guard in `@mount` fires on that hydration. A guard in a plain `@create` does not.
+
+So: **guard in `@mount`**. `@create` runs earlier on a client navigation — before
+`render()` rather than after the commit — but it is silent on the one path where the
+browser's answer can differ from the server's.
 
 Your server boundary translates the throw into a response. The SSR starter does this
 for you; by hand it is:
@@ -83,9 +149,10 @@ try {
 
 The earliest guard to fire wins, so one redirect decides where the request goes.
 
-> **This gates where code runs, not what it protects.** A guard keeps a page from
-> *rendering* for the wrong visitor, but the component's code still ships to the
-> browser. Real authorization belongs at the API — see
+> **A guard routes people; it does not protect data.** It decides which page someone
+> lands on. It does not stop the component's code from shipping to the browser, and it
+> cannot stop anyone from calling your API directly — the network tab is right there.
+> Every endpoint has to check for itself. See
 > [client / server / shared](/ssr/env).
 
 ## What doesn't run on the server
