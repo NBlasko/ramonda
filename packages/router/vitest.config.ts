@@ -13,7 +13,7 @@ export default defineConfig({
   // day that became 8 every test stopped parsing: the JSX factory was silently
   // dropped. Both are set so it works either way.
   esbuild: {
-    jsxFactory: "h",
+    jsxFactory: "__ramondaH",
     jsxFragment: "Fragment",
     target: "es2022",
   },

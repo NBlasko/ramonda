@@ -4,7 +4,7 @@ import { flushSync } from "@ramonda/core/testing";
 import { describe, expect, test, vi } from "vitest";
 import { demos } from "../demos/index";
 
-(globalThis as unknown as { h: typeof h }).h = h;
+(globalThis as unknown as { __ramondaH: typeof h }).__ramondaH = h;
 
 /**
  * Every demo on the site, mounted with the strict render ON — so both stability checks

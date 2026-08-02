@@ -64,8 +64,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   esbuild: {
-    jsxFactory: "h",
-    jsxInject: `import { h } from '@ramonda/core'`,
+    jsxFactory: "__ramondaH",
+    jsxInject: `import { h as __ramondaH } from '@ramonda/core'`,
     target: "es2022",
   },
 });
@@ -79,27 +79,49 @@ export default defineConfig({
     "target": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react",
-    "jsxFactory": "h",
+    "jsxFactory": "__ramondaH",
     "strict": true
   }
 }
 ```
 
-(`"jsx": "react"` is just TypeScript's built-in name for this classic `h()`-style
-transform — it turns `<p/>` into `h("p")` and pulls in no library. `jsxFactory` is
-what tells it to call `h`.)
+(`"jsx": "react"` is just TypeScript's built-in name for this classic function-call
+transform — it turns `<p/>` into a call and pulls in no library. `jsxFactory` names the
+function to call.)
 
-And tell the type-checker that `h` is a global (the bundler injects it, so you never
-import it by hand):
+And tell the type-checker that the factory is a global (the bundler injects it, so you
+never import it by hand):
 
 ```ts
 // global.d.ts
 import { h as _h } from "@ramonda/core";
 
 declare global {
-  const h: typeof _h;
+  const __ramondaH: typeof _h;
 }
 ```
+
+### Why the factory has such an ugly name
+
+Because a short one is a name you would reuse. The factory is only in scope because the
+bundler injects it — and a bundler injects an identifier **only if it is not already
+bound**. So a variable named `h` anywhere in a file silently wins:
+
+```tsx
+function h(x: number) { return x; }   // your own helper
+
+export function Card() {
+  return <div>ok</div>;               // compiles to YOUR h("div", …)
+}
+```
+
+No error, no warning: `<div>` becomes whatever your function returns, and the page is
+wrong. `__ramondaH` is a name nobody writes, so the collision cannot happen. It costs
+nothing — the bundle is byte-identical, since a named import tree-shakes as before and
+the minifier shortens the binding again.
+
+A project already set up with `jsxFactory: "h"` keeps working; `h` is still exported and
+still declared. There is nothing to migrate.
 
 ## Check it works
 

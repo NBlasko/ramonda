@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react",
-    "jsxFactory": "h",
+    "jsxFactory": "__ramondaH",
     "strict": true,
     "skipLibCheck": true,
     // `src/__tests__/ProdAppBuild.test.ts` runs a real esbuild build and reads what it

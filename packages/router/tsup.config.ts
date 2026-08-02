@@ -20,7 +20,7 @@ export default defineConfig({
   external: ["@ramonda/core", "@ramonda/core/testing"],
   esbuildOptions(options) {
     options.jsx = "transform";
-    options.jsxFactory = "h";
+    options.jsxFactory = "__ramondaH";
     options.jsxFragment = "Fragment";
     options.inject = [jsxShim];
   },

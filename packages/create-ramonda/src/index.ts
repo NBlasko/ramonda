@@ -416,8 +416,8 @@ function writeTestingFiles(targetDir: string, mode: Mode): void {
 
 export default defineConfig({
   esbuild: {
-    jsxFactory: "h",
-    jsxInject: \`import { h } from '@ramonda/core'\`,
+    jsxFactory: "__ramondaH",
+    jsxInject: \`import { h as __ramondaH } from '@ramonda/core'\`,
     target: "es2022",
   },
   test: {

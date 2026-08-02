@@ -44,7 +44,7 @@ A few things are Ramonda's, because only Ramonda can know them:
 // vitest.config.ts
 export default defineConfig({
   define: { __DEV__: JSON.stringify(process.env.NODE_ENV !== "production") },
-  esbuild: { jsxFactory: "h", target: "es2022" },
+  esbuild: { jsxFactory: "__ramondaH", target: "es2022" },
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```

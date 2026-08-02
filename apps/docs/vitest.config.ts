@@ -22,7 +22,7 @@ import { resolve } from "node:path";
  */
 export default defineConfig({
   define: { __DEV__: "true", __TEST__: "true" },
-  esbuild: { jsxFactory: "h", jsxFragment: "Fragment", target: "es2022" },
+  esbuild: { jsxFactory: "__ramondaH", jsxFragment: "Fragment", target: "es2022" },
   resolve: {
     alias: {
       "@ramonda/core/testing": resolve(__dirname, "../../packages/core/src/testing.ts"),
