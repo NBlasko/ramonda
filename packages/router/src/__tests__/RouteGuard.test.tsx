@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { Component, Host, bootstrap, mount, unmount } from "@ramonda/core";
+import { Component, Host, bootstrap, createContext, mount, state, unmount, updated } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes } from "../match";
@@ -203,6 +203,139 @@ describe("when the redirect lands", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(app.container.textContent).toBe("login");
+    } finally {
+      app.stop();
+    }
+  });
+});
+
+/**
+ * The third state. A real app spends its first moments not knowing whether anyone is signed in,
+ * and "not yet" is not "no" — redirecting on it would throw out every visitor during startup.
+ *
+ * So the page renders a pending state and waits. Which raises the question these two tests answer:
+ * when the answer finally arrives, what makes the guard decide again?
+ */
+describe("when the answer arrives after the page is already up", () => {
+  type Status = "pending" | "in" | "out";
+
+  const [SessionProvider, SessionConsumer] = createContext<{ status: Status }>(
+    { status: "pending" },
+    { label: "Session" },
+  );
+
+  let shell: SessionShell | undefined;
+  let decisions = 0;
+
+  @Host("div")
+  class SessionShell extends Component<{ children?: RamondaNode }> {
+    router = this.use(Router);
+    @state status: Status = "pending";
+    session = this.use(SessionProvider, () => ({ status: this.status }));
+    render() {
+      shell = this;
+      return this.props.children;
+    }
+  }
+
+  /** Guard in @mount only. */
+  @Host("div")
+  class OnlyOnMount extends Component {
+    private route = this.use(Navigator);
+    private session = this.use(SessionConsumer);
+    @mount guard() {
+      decisions++;
+      if (this.session.status === "out") this.route.replace("/login");
+    }
+    render() {
+      if (this.session.status === "pending") return <p>checking</p>;
+      if (this.session.status === "out") return null;
+      return <h1>SECRET</h1>;
+    }
+  }
+
+  /** The same method, on both lifecycles. */
+  @Host("div")
+  class OnEveryCommit extends Component {
+    private route = this.use(Navigator);
+    private session = this.use(SessionConsumer);
+    @mount
+    @updated
+    guard() {
+      decisions++;
+      if (this.session.status === "out") this.route.replace("/login");
+    }
+    render() {
+      if (this.session.status === "pending") return <p>checking</p>;
+      if (this.session.status === "out") return null;
+      return <h1>SECRET</h1>;
+    }
+  }
+
+  async function settleWith(view: VNode) {
+    const routes = createRoutes({ "/account": view, "/login": <Login /> });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    bootstrap(
+      (
+        <SessionShell>
+          <RouteOutlet routes={routes} />
+        </SessionShell>
+      ) as never,
+      container,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return {
+      container,
+      arrive: async (status: Status) => {
+        shell!.status = status;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      },
+      stop: () => {
+        unmount(container);
+        container.remove();
+      },
+    };
+  }
+
+  beforeEach(() => {
+    shell = undefined;
+    decisions = 0;
+  });
+
+  test("@mount alone strands the visitor: no page, no redirect", async () => {
+    const app = await settleWith((<OnlyOnMount />) as VNode);
+    try {
+      expect(app.container.textContent).toBe("checking");
+      expect(decisions).toBe(1);
+
+      await app.arrive("out");
+
+      // `render()` did its job — nothing protected was built. But @mount does not run again, so
+      // nothing ever navigated: a blank page, still sitting on the protected URL. This is the
+      // failure mode that looks like it works, because the secret is not on screen.
+      expect(app.container.textContent).toBe("");
+      expect(window.location.pathname).toBe("/account");
+      expect(decisions).toBe(1);
+    } finally {
+      app.stop();
+    }
+  });
+
+  test("@mount + @updated decides again, and sends them away", async () => {
+    const app = await settleWith((<OnEveryCommit />) as VNode);
+    try {
+      expect(app.container.textContent).toBe("checking");
+      expect(decisions).toBe(1); // the @mount run
+
+      await app.arrive("out");
+
+      // Reading a context key subscribes this component to it, so the change re-renders — and
+      // @updated runs after every commit that is not the first, which is exactly the one the
+      // late answer produced.
+      expect(app.container.textContent).toBe("login");
+      expect(window.location.pathname).toBe("/login");
+      expect(decisions).toBe(2);
     } finally {
       app.stop();
     }

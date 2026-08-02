@@ -45,13 +45,15 @@ class Account extends Component {
   private route = this.use(Navigator);
   private session = this.use(SessionConsumer);
 
-  @mount guard() {
-    if (!this.session.user) this.route.replace("/login");
+  @mount
+  @updated
+  guard() {
+    if (this.session.status === "out") this.route.replace("/login");
   }
 
   render() {
     // This still runs, even when the guard has just asked for a redirect.
-    if (!this.session.user) return null;
+    if (this.session.status !== "in") return null;
     return <h1>{this.session.user.name}</h1>;
   }
 }
@@ -59,7 +61,8 @@ class Account extends Component {
 
 `SessionConsumer` is your own [context](/composition/context) — one place decides who is
 signed in and publishes the answer, and every page reads it. What matters is that reading
-it is instant: no `await`, no request. The next two sections are why.
+it is instant: no `await`, no request. The next section is why, and it is also why the
+guard carries both decorators.
 
 `@mount` runs on both sides (it's `shared`), which is what makes this work on the very
 first load. On the client the `replace` is an ordinary navigation. On the server there
@@ -68,56 +71,92 @@ a redirect**: `renderToString` throws a `ServerRedirect`, and the server answers
 302 to `/login`. The browser then requests `/login` and gets the right page — rather
 than being handed the account page for a URL it isn't allowed to see.
 
-### A guard does not stop this render
+### Signed in, signed out, and "not yet"
 
-On the server it does — nothing is sent at all. **In the browser it does not.** The
-component is built, `render()` runs, and the navigation the guard asked for is applied
-afterwards. That is why the example above returns `null` rather than trusting the guard.
+Auth has **three** states, and the third is the one that decides whether a guard works.
+Most real apps have a moment on startup where the token has not been checked yet — so
+`user` is not a user and not `null` either, it is *unknown*.
 
-The obvious worry is that this means the visitor *sees* the page first. It does not, and
-the reason is worth knowing: **one update is one drain, not one render.** Someone clicks
-through to `/account`, the router rebuilds, the account page is built and committed, its
-`@mount` asks for `/login` — and that redirect is picked up by the same drain, before it
-returns. Both renders happen inside one microtask, and the browser paints after
-microtasks, so `/login` is the first thing anyone can see.
-
-So "it renders" is about what your code *runs*, not about what a visitor *looks at*. Two
-things follow from the running, and both are worth getting right:
-
-**`render()` has to be safe for a visitor who is not allowed here.** It runs before the
-redirect lands, so `this.session.user.name` on a signed-out visitor throws instead of
-redirecting — and a thrown render is not a redirect, it is a broken page. Read a value
-that exists either way, and bail.
-
-**Any other `@mount` on the component runs too.** A `fetch("/api/account")` in a second
-`@mount` fires for the visitor you are turning away. Put per-page loading behind the same
-answer the guard uses, or accept the wasted request and the 401.
-
-### Do not make the check asynchronous
-
-Everything above holds only while the check answers **straight away**. That is what keeps
-the whole thing inside one drain, and one drain inside one microtask.
-
-A guard that **awaits** — a token check against the server — breaks it, and there is no
-batching that helps. The await releases the frame, the browser paints, and the visitor
-sits looking at the protected page until the answer comes back:
+**Treat unknown as its own answer and the page is never seen.** Redirect on a definite
+"no", render your pending state on "not yet", and render the page only on "yes":
 
 ```tsx
-// ✗ The account page is on screen while this waits.
+class Account extends Component {
+  private route = this.use(Navigator);
+  private session = this.use(SessionConsumer); // { status: "pending" | "in" | "out" }
+
+  @mount
+  @updated
+  guard() {
+    // Only a definite "out" is a redirect. "pending" decides nothing yet.
+    if (this.session.status === "out") this.route.replace("/login");
+  }
+
+  render() {
+    if (this.session.status === "pending") return <p>Checking your session…</p>;
+    if (this.session.status === "out") return null;
+    return <h1>{this.session.user.name}</h1>;
+  }
+}
+```
+
+**Both decorators, on the one method, and this is the part that is easy to get wrong.**
+`@mount` runs on the first commit and never again. So a guard that only has `@mount` asks
+its question while the answer is still `pending`, gets "don't know", and is never asked
+again — and when the answer arrives, `render()` correctly refuses to build the page but
+*nothing navigates*. The visitor sits on a blank page, still on the protected URL. It even
+looks like it worked, because the secret is not on screen.
+
+`@updated` runs after every commit that is not the first. Reading `this.session.status`
+subscribes this component to that key, so the change from `pending` to `out` re-renders —
+and that is the commit `@updated` fires on. One method, both lifecycles: the first
+decision and every later one.
+
+That also covers the case that has nothing to do with startup: a session can end while
+someone is sitting on the page — a token expires, they sign out in another tab. `@mount`
+alone would never notice.
+
+**Trust the guard alone and the page IS seen.** This is the version to avoid, and no
+amount of batching saves it — the `await` releases the frame, the browser paints, and the
+account page sits there until the answer comes back:
+
+```tsx
+// ✗ The account page is on screen for the whole round trip.
 @mount async guard() {
   const ok = await fetch("/api/session").then((r) => r.ok);
   if (!ok) this.route.replace("/login");
 }
+
+render() {
+  return <h1>Your account</h1>; // nothing here knows the check is still running
+}
 ```
 
-So **decide before you render**. Validate the session once, high up — on the server for
-the first load, in one place on the client afterwards — and publish the answer as
-[context](/composition/context) or state. The guard then reads it synchronously, and so
-does `render()`.
+The fix is not a faster check. It is to **decide before rendering**: validate the session
+once, high up — on the server for the first load, in one place on the client afterwards —
+publish the answer as [context](/composition/context), and let both the guard and
+`render()` read it synchronously. `render()` then always has an answer, even when the
+answer is "not yet".
 
-If the answer genuinely is not known yet, say so in the markup rather than showing the
-page: render your loading state until it arrives. "Unknown" is a third state, not a
-temporary "yes".
+### What still runs, even when the answer is instant
+
+When the answer *is* instant, nothing is painted — the component is built, the redirect is
+applied, and the visitor only ever sees `/login`. The reason is worth knowing: **one
+update is one drain, not one render.** Someone clicks through to `/account`, the account
+page is built and committed, its `@mount` asks for `/login`, and that redirect is picked
+up by the same drain before it returns. Both renders happen inside one microtask, and the
+browser paints after microtasks.
+
+But "not painted" is not "not run", and two things follow from the running:
+
+**`render()` has to be safe for a visitor who is not allowed here.** It runs before the
+redirect lands, so `this.session.user.name` on a signed-out visitor throws instead of
+redirecting — and a thrown render is not a redirect, it is a broken page. That is why the
+examples above check `status` rather than trusting the guard.
+
+**Any other `@mount` on the component runs too.** A `fetch("/api/account")` in a second
+`@mount` fires for the visitor you are turning away. Put per-page loading behind the same
+answer the guard uses, or accept the wasted request and the 401.
 
 ### Hydration is the case that picks the lifecycle
 
