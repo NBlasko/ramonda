@@ -106,3 +106,4 @@ class HeaderCell extends Cell {}
 
 - [Components](/concepts/components) — the one-tag rule this rests on.
 - [Examples](/examples) — every feature as a running component.
+- [The decorator table](/reference/decorators) — why `@Host` is one per class, and components-only.

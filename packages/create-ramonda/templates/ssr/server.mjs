@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join, resolve } from "node:path";
 import { JSDOM } from "jsdom";
+import { createIsrCache, fileStore } from "@ramonda/router/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 5173);
@@ -74,8 +75,7 @@ let prodPlan;
 let prodPrerender;
 let prodTemplate;
 let staticSet;
-let isrMap;
-const isrCache = new Map(); // path → { html, at }. In-memory, per instance.
+let isr;
 const STATIC = resolve(here, "dist/static");
 const origin = `http://localhost:${PORT}`;
 
@@ -93,7 +93,16 @@ if (isProd) {
   prodPrerender = mod.prerender;
   prodPlan = mod.plan();
   staticSet = new Set(prodPlan.static);
-  isrMap = new Map(prodPlan.isr.map((r) => [r.path, r.revalidate]));
+  isr = createIsrCache({
+    plan: prodPlan,
+    // Where baked ISR pages live. A directory, so the cache survives a restart and is shared by
+    // every instance that mounts it — a plain Map would give each process its own copy and let a
+    // visitor bounce between a fresh and a stale one. Instances that share no disk want a store
+    // over something they DO share: an `IsrStore` is two methods, `get` and `set`.
+    // `npm run build` clears this directory, because pages in it were baked by the old bundle.
+    store: fileStore({ dir: resolve(here, "dist/isr") }),
+    render: bakeShared,
+  });
   prodTemplate = readFileSync(resolve(here, "index.html"), "utf8").replace(
     "/src/entry-client.tsx",
     "/assets/client.js",
@@ -191,23 +200,11 @@ async function renderProd(req, res) {
       }
     }
 
-    // 2. ISR — serve cached; when stale, serve it anyway and refresh in the background.
-    if (isrMap.has(path)) {
-      const revalidateMs = isrMap.get(path) * 1000;
-      const cached = isrCache.get(path);
-      const now = Date.now();
-      if (cached && now - cached.at < revalidateMs) return sendHtml(res, cached.html, "isr-hit");
-      if (cached) {
-        sendHtml(res, cached.html, "isr-stale");
-        void bakeShared(path)
-          .then((html) => isrCache.set(path, { html, at: Date.now() }))
-          .catch((e) => console.error(`[isr] ${path}:`, e));
-        return;
-      }
-      const html = await bakeShared(path);
-      isrCache.set(path, { html, at: now });
-      return sendHtml(res, html, "isr-cold");
-    }
+    // 2. ISR — serve the cached copy, refreshing it behind the visitor once it is older than
+    //    `revalidate`. `serve` answers undefined for anything that is not an ISR route, so a
+    //    dynamic route falls straight through to 3.
+    const page = await isr.serve(path);
+    if (page) return sendHtml(res, page.html, page.mode);
 
     // 3. DYNAMIC — render per request (url + cookies for requestContext).
     installDom(`${origin}${url}`);

@@ -185,3 +185,4 @@ See [timers](/concepts/timers).
 
 - [Subscriptions](/concepts/subscriptions) — reacting to state, with cleanup.
 - [The host element](/concepts/host) — the element `@mount` is talking about.
+- [The decorator table](/reference/decorators) — where each phase runs, and whether a hook gets it.

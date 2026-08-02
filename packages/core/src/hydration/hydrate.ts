@@ -1,4 +1,5 @@
-import { COMPONENT_TYPE, STATE_ATTR, CHILD_RECORD, ORIGIN_SYM } from "../helpers/constants";
+import { COMPONENT_TYPE, STATE_ATTR, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
+import { installClientRequestScope } from "./requestContext";
 import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
@@ -48,10 +49,30 @@ import type { Context } from "../types/commonTypes";
  * adjacent run arrives fused. See hydrateText.
  */
 export function hydrateRoot(vnode: ComponentChild, container: HTMLElement): void {
+  // Before anything renders: whatever the server EXPOSED travels on the root element, and the
+  // tree may read it through `requestContext()` while hydrating. Installed even when the page
+  // carries no blob, so a read returns nothing and reports (RMD025) instead of throwing.
+  installClientRequestScope(readExposedRequest(container));
+
   const vchild = filterVirtualChild(vnode);
   if (vchild === undefined) return;
   hydrateNode(vchild, undefined, container.firstChild as EnhancedChildNode | null, container);
   flushPostCommit();
+}
+
+/**
+ * Reads the exposed request blob the server stamped on the root element. A corrupt one is
+ * ignored rather than fatal — the same stance the state blob takes: a page that renders with a
+ * value missing beats a page that does not render.
+ */
+function readExposedRequest(container: HTMLElement): Record<string, unknown> | undefined {
+  const raw = container.firstElementChild?.getAttribute(REQUEST_ATTR);
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

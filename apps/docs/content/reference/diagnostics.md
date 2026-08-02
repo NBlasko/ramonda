@@ -17,6 +17,12 @@ saying the thing a stack trace never would.
 
 Each is deduplicated by cause, so a mistake in a list of a thousand rows is reported once.
 
+**Error or warning says what is at stake, not how bad the code looks.** An **error** means the end
+result is wrong — something renders the wrong thing, loses state, never becomes interactive, or
+hands you a value that is not what you asked for; the devtools panel raises its alert for these. A
+**warning** means the result is the same and the app just did more work to get there: a wasted
+render, a refetch, a listener re-attached.
+
 **The prefix says which package reported it**: `RMD` is `@ramonda/core`, `RMQ` is `@ramonda/query`.
 They are listed apart below, because a reader who hits `RMQ001` wants the query codes together and
 not one of them wedged between two core ones — which is exactly how this page read until now.
@@ -55,11 +61,12 @@ themselves and cannot collide.
 
 ## RMD003 — Context consumed without a provider above it
 
-The consumer fell back to the default declared in `createContext`. Reported on the **read**, not
-on construction — a hook may legitimately hold a consumer it never reads.
+The consumer fell back to the default declared in `createContext`. Reported when the component
+**mounts**, before anything has read a value — so a panel behind a condition nobody has clicked
+still says so, and the report names the component the provider has to go above.
 
-Either add the provider, or make the default a real fallback you are happy with. See
-[Context](/composition/context).
+Either add that provider, or — if the default really is the answer when nobody provides one —
+declare the context `optional`. See [Context](/composition/context).
 
 ## RMD004 — Props mutated by the receiving component
 
@@ -396,6 +403,35 @@ counter, `Date.now()`, a module variable. A `@compute` is the wrong place for th
 in `@create` and keep it in [`@state`](/concepts/state). (The honest limit: a compute reading
 *only* something non-reactive is never invalidated, so it is never observed either. Nothing can
 report a value nobody asked for again.)
+
+## RMD025 — per-request data read in the browser
+
+`requestContext()` reads the real request on the **server**. In the browser only what the server
+explicitly exposed is there, so a read of anything else returns nothing — and this says so, rather
+than throwing and taking the page down.
+
+```tsx
+requestContext().cookies.get("session")   // ✗ in the browser — cookies are never exposed
+requestContext().get(sessionKey)          // ✗ unless that key opted in
+```
+
+Two things are never exposed: **cookies and headers**. They belong to the server, and an httpOnly
+cookie is invisible to JavaScript anyway. An app-defined value travels only if its key opted in:
+
+```tsx
+export const currentUser = requestKey<User | null>("currentUser", { exposeToClient: true });
+```
+
+Expose only what is safe to publish — a display name, an id, a role. Whatever you expose sits in
+the page's HTML for anyone to read, so a session token or a database record never belongs there.
+
+**Usually you need none of this.** Read the request in `@create` and keep the result in `@state`:
+`@create` is skipped on hydration and the state is restored from the page, so the browser never
+re-reads the request at all. Reach for `exposeToClient` when several components read the same
+value straight from `requestContext()`.
+
+If the server rendered something where this read is, the two sides now disagree and hydration
+replaces the node — [`RMD007`](#rmd007-hydration-mismatch) reports that separately.
 
 ## What is non-deterministic in JavaScript, and what catches it
 

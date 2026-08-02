@@ -4,6 +4,7 @@ import { existsSync, createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, resolve } from "node:path";
 import { JSDOM } from "jsdom";
+import { createIsrCache, fileStore } from "@ramonda/router/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 5180);
@@ -83,9 +84,18 @@ const template = await readFile(resolve(CLIENT, "index.html"), "utf-8");
 const routePlan = plan();
 const STATIC = resolve(here, "dist/static");
 const staticSet = new Set(routePlan.static);
-const isrMap = new Map(routePlan.isr.map((r) => [r.path, r.revalidate]));
-/** ISR cache: path → { html, at }. In-memory, per instance (documented limitation). */
-const isrCache = new Map();
+
+/**
+ * The ISR cache. A directory rather than a Map, which is the whole point: it survives a restart,
+ * and two instances mounting it agree about how old a page is instead of each ageing its own copy.
+ * Instances that share no disk plug in a store over something they do share — `IsrStore` is two
+ * methods. `npm run build` clears it, because pages in it were baked by the previous bundle.
+ */
+const isr = createIsrCache({
+  plan: routePlan,
+  store: fileStore({ dir: resolve(here, "dist/isr") }),
+  render: (path) => bakeShared(path),
+});
 
 const origin = `http://localhost:${PORT}`;
 
@@ -232,27 +242,10 @@ const server = createServer(async (req, res) => {
     // 2. ISR — serve the cached copy; when it is older than `revalidate`, serve it anyway and
     //    refresh in the background (stale-while-revalidate). Cold first hit renders inline. ISR is
     //    a SHARED cache, so it is rendered with the request poisoned — no per-request data in it.
-    if (isrMap.has(path)) {
-      const revalidateMs = isrMap.get(path) * 1000;
-      const cached = isrCache.get(path);
-      const now = Date.now();
-      if (cached && now - cached.at < revalidateMs) {
-        sendHtml(res, cached.html, "isr-hit");
-        console.log(`${req.method} ${url} → isr (fresh)`);
-        return;
-      }
-      if (cached) {
-        sendHtml(res, cached.html, "isr-stale");
-        console.log(`${req.method} ${url} → isr (stale, revalidating)`);
-        void bakeShared(path)
-          .then((html) => isrCache.set(path, { html, at: Date.now() }))
-          .catch((e) => console.error(`[isr] ${path}:`, e));
-        return;
-      }
-      const html = await bakeShared(path);
-      isrCache.set(path, { html, at: now });
-      sendHtml(res, html, "isr-cold");
-      console.log(`${req.method} ${url} → isr (cold)`);
+    const page = await isr.serve(path);
+    if (page) {
+      sendHtml(res, page.html, page.mode);
+      console.log(`${req.method} ${url} → ${page.mode}`);
       return;
     }
 

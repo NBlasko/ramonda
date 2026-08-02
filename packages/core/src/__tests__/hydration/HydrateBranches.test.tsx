@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, create, deferHydration } from "../../base/decorators";
+import { Host, state, create, mount, deferHydration } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
@@ -105,6 +105,49 @@ describe("client-only @create", () => {
     SIDE = "client";
     hydrateRoot(<Guarded />, container);
     expect(ranOn).toBe("client");
+  });
+});
+
+describe("a SHARED @create and a SHARED @mount part company on hydration", () => {
+  /**
+   * The distinction a route guard rests on, so it is worth a test of its own rather than being
+   * inferred from the two halves above.
+   *
+   * `@create` is initialisation: the server ran it and what it wrote was serialized into the page,
+   * so running it again would recompute over a value that has already been restored. `@mount`
+   * touches the real DOM, and the DOM the server built was thrown away and rebuilt as the client
+   * adopted it — so it has to run again.
+   *
+   * The consequence for a guard: a cached page, or a CDN serving one file for many paths, can put
+   * markup in front of someone the server never checked. A check in `@mount` fires on that
+   * hydration. A check in a plain `@create` does not. See routing/server.md.
+   */
+  test("@create is skipped, @mount runs again", async () => {
+    const ran: string[] = [];
+
+    @Host("div")
+    class Both extends Component {
+      @create init() {
+        ran.push(`create:${SIDE}`);
+      }
+      @mount ready() {
+        ran.push(`mount:${SIDE}`);
+      }
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    SIDE = "server";
+    const container = await serverHtmlInto(<Both />);
+    expect(ran).toEqual(["create:server", "mount:server"]);
+
+    SIDE = "client";
+    hydrateRoot(<Both />, container);
+    await Promise.resolve();
+
+    // No second "create:client" — that is the whole point.
+    expect(ran).toEqual(["create:server", "mount:server", "mount:client"]);
   });
 });
 

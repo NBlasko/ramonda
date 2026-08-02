@@ -1,3 +1,5 @@
+import { diagnose } from "../debug/diagnostics";
+
 /**
  * Per-request data, and the guard that makes prerendering safe.
  *
@@ -27,12 +29,42 @@ export type RequestMode = "server" | "build" | "client";
 /** A typed, per-request slot. Declare once at module scope; the server seeds it, the tree reads it. */
 export interface RequestKey<T> {
   readonly label: string;
+  /** Whether the server sends this value to the browser. Default false — see `requestKey`. */
+  readonly exposeToClient: boolean;
   /** Phantom, for inference only — never set. */
   readonly __type?: T;
 }
 
-export function requestKey<T>(label: string): RequestKey<T> {
-  return { label };
+export interface RequestKeyOptions {
+  /**
+   * Send this value to the browser with the page, so `requestContext().get(key)` returns it on
+   * the client too.
+   *
+   * **Default false, and that default is the point.** Anything exposed is published: it sits in
+   * the HTML for anyone to read. Opt in only for what is safe to publish — a display name, an id,
+   * a role — never a session token, a raw cookie, or a database record. Cookies and headers can
+   * never be exposed at all.
+   *
+   * You often need none of this: reading the request in `@create` and keeping the result in
+   * `@state` already travels, because `@state` is serialized and `@create` is skipped on
+   * hydration. Expose a key when a value has to be readable from `requestContext()` itself on
+   * the client — typically because several components read it directly.
+   */
+  exposeToClient?: boolean;
+}
+
+/**
+ * Labels declared with `exposeToClient`. Module-level because key declarations are static (module
+ * scope, like a `@state` field's name), not per-request — so this registry says nothing about any
+ * one visitor and cannot leak across concurrent requests. The serializer consults it to decide
+ * what may travel.
+ */
+const exposedLabels = new Set<string>();
+
+export function requestKey<T>(label: string, options: RequestKeyOptions = {}): RequestKey<T> {
+  const exposeToClient = options.exposeToClient === true;
+  if (exposeToClient) exposedLabels.add(label);
+  return { label, exposeToClient };
 }
 
 /** Read-only cookies. `get`/`has` THROW during a static build (they are per-request). */
@@ -101,6 +133,41 @@ export function createRequestScope(init: RequestScopeInit): RequestScope {
 }
 
 /**
+ * The values a render may send to the browser: the seeded ones whose key opted in with
+ * `exposeToClient`. Everything else — cookies, headers, un-opted values — stays on the server.
+ * Returns `undefined` when there is nothing to send, so the page carries no blob at all.
+ */
+export function collectExposedRequest(scope: RequestScope | undefined): Record<string, unknown> | undefined {
+  if (!scope) return undefined;
+  let out: Record<string, unknown> | undefined;
+  for (const [label, value] of scope.values) {
+    if (!exposedLabels.has(label)) continue;
+    (out ??= {})[label] = value;
+  }
+  return out;
+}
+
+/**
+ * Installs the browser's request scope from what the server exposed — called once by
+ * `hydrateRoot`/`bootstrap` and then left in place, because a browser page IS one request.
+ *
+ * Unlike the server's scope this is not cleared after the render: a component that re-renders
+ * later (a state change, a client navigation) must still be able to read it rather than throw.
+ * There is no concurrency to worry about — one page, one request.
+ */
+export function installClientRequestScope(values: Record<string, unknown> | undefined): void {
+  current = {
+    mode: "client",
+    // Replaced on read in client mode (see `requestContext`), so a client navigation does not
+    // leave a stale URL behind. This is only the seed.
+    url: new URL(typeof location === "undefined" ? "http://localhost/" : location.href),
+    cookies: new Map(),
+    headers: new Headers(),
+    values: new Map(Object.entries(values ?? {})),
+  };
+}
+
+/**
  * Thrown when per-request data is read during a static build. The build catches it and turns
  * it into a "cannot prerender" error naming the route; uncaught, it means someone read the
  * request somewhere the build did not expect, which is a real bug to surface. `field` is what
@@ -123,11 +190,24 @@ export class RequestReadDuringBuild extends Error {
 function requireScope(): RequestScope {
   if (!current) {
     throw new Error(
-      "[Ramonda] requestContext() was called outside a render. It is only available while a page " +
-        "is being rendered (server, build, or client hydration).",
+      "[Ramonda] requestContext() was called outside a render. It is available while a page is " +
+        "being rendered on the server or at build, and in the browser after `hydrateRoot`/" +
+        "`bootstrap` has started the app — not at module top level.",
     );
   }
   return current;
+}
+
+/**
+ * In the browser, per-request data the server did not expose is simply not here. Report it (a
+ * development build only) and return nothing, rather than throwing: breaking the page is the
+ * worse outcome, and if the server rendered a value where this read is, hydration already
+ * reports the divergence too. See RMD025.
+ */
+function reportClientRead(field: string): void {
+  if (__DEV__) {
+    diagnose("RMD025", field, `\`requestContext().${field}\` was read in the browser.`);
+  }
 }
 
 /**
@@ -150,27 +230,52 @@ function guardBuild(field: string): void {
 export function requestContext(): RequestContext {
   return {
     get url(): URL {
-      return requireScope().url;
+      const scope = requireScope();
+      // Read live in the browser, so a client navigation does not leave a stale URL behind.
+      if (scope.mode === "client" && typeof location !== "undefined") return new URL(location.href);
+      return scope.url;
     },
     get cookies(): RequestCookies {
       return {
         get(name: string): string | undefined {
           guardBuild(`cookies.get("${name}")`);
-          return requireScope().cookies.get(name);
+          const scope = requireScope();
+          // Never exposed: a cookie is the server's, and an httpOnly one is invisible to JS anyway.
+          if (scope.mode === "client") {
+            reportClientRead(`cookies.get("${name}")`);
+            return undefined;
+          }
+          return scope.cookies.get(name);
         },
         has(name: string): boolean {
           guardBuild(`cookies.has("${name}")`);
-          return requireScope().cookies.has(name);
+          const scope = requireScope();
+          if (scope.mode === "client") {
+            reportClientRead(`cookies.has("${name}")`);
+            return false;
+          }
+          return scope.cookies.has(name);
         },
       };
     },
     get headers(): Headers {
       guardBuild("headers");
-      return requireScope().headers;
+      const scope = requireScope();
+      if (scope.mode === "client") {
+        reportClientRead("headers");
+        return new Headers();
+      }
+      return scope.headers;
     },
     get<T>(key: RequestKey<T>): T {
       guardBuild(`get("${key.label}")`);
-      return requireScope().values.get(key.label) as T;
+      const scope = requireScope();
+      if (scope.mode === "client" && !scope.values.has(key.label)) {
+        // Either the key never opted into `exposeToClient`, or the server never seeded it.
+        reportClientRead(`get("${key.label}")`);
+        return undefined as T;
+      }
+      return scope.values.get(key.label) as T;
     },
   };
 }

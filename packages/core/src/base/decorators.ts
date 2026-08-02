@@ -35,7 +35,10 @@ type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
 type EnhancedClassMethodDecoratorContext = ClassMethodDecoratorContext<
   // COMPONENT_RUNTIME is optional: components carry it, hooks do not — which is how
   // a decorator can tell the two apart (see @shouldUpdateOnPropsChange).
-  { [GLOBAL_RUNTIME]: Runtime; [COMPONENT_RUNTIME]?: ComponentRuntime } & Record<string, any>
+  {
+    [GLOBAL_RUNTIME]: Runtime;
+    [COMPONENT_RUNTIME]?: ComponentRuntime;
+  } & Record<string, any>
 >;
 
 function ensureStringContextName(contextName: string | symbol, decoratorName: string): string {
@@ -447,9 +450,14 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
  * Reach for this only when you have measured that the default comparison is the
  * problem — a deep object that is rebuilt every render, most often.
  */
-export function shouldUpdateOnPropsChange(
-  value: (previous: any, next: any) => boolean,
-  context: EnhancedClassMethodDecoratorContext,
+type PropsGateOwner = { [COMPONENT_RUNTIME]: ComponentRuntime; [GLOBAL_RUNTIME]: Runtime };
+
+export function shouldUpdateOnPropsChange<This extends PropsGateOwner>(
+  value: (this: This, previous: any, next: any) => boolean,
+  // Typed by its `This`, which is what refuses a hook at COMPILE time: a Hook has no
+  // COMPONENT_RUNTIME, so the method's implicit `this` does not satisfy the constraint. The
+  // throw in the initializer below stays for the build that has no types.
+  context: ClassMethodDecoratorContext<This, (this: This, previous: any, next: any) => boolean>,
 ) {
   if (__DEV__) {
     assertMethod(context.kind, "shouldUpdateOnPropsChange", context.name);
@@ -784,7 +792,7 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * resolve to a different tag does not mutate the host; it fails to match in the
  * diff, and a fresh component is built in its place.
  */
-export function Host<C extends new (...args: any[]) => object>(
+export function Host<C extends (new (...args: any[]) => object) & { readonly __isComponent: true }>(
   tag: string | ((props: PropsOf<C>) => string),
   props?: (self: InstanceOf<C>) => Record<string, unknown>,
 ) {
@@ -794,6 +802,18 @@ export function Host<C extends new (...args: any[]) => object>(
   }
 
   return (ctor: C) => {
+    // A hook has no element, so `@Host` on one describes nothing — and it used to say nothing
+    // either: the meta was written to a class no render path ever asks about, and the tag was
+    // silently ignored. Thrown in every build, like the other two component-only decorators;
+    // the TYPE already refuses it, so this is for the build that has no types.
+    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent !== true) {
+      throw new Error(
+        `[Ramonda] @Host is for components, not hooks. It names the element a component IS, and a ` +
+          `hook adds no element — that is the point of a hook. Put @Host on the component that uses ` +
+          `${ctor.name}, or drop it.`,
+      );
+    }
+
     // Exactly one of `tag` / `tagFromProps` is set, so the render and diff paths
     // never have to decide which of two sources wins.
     const meta: HostMeta =
@@ -926,7 +946,9 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
       // the correct ones.
       ([K[number]] extends [keyof HookPropsOf<C>]
         ? unknown
-        : { "@StableProps was given a name that is not a prop of this hook": K[number] }),
+        : {
+            "@StableProps was given a name that is not a prop of this hook": K[number];
+          }),
   ) => {
     if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
       throw new Error(
@@ -1000,6 +1022,13 @@ type EventFor<EventMap, Name> = Name extends keyof EventMap ? EventMap[Name] : E
 function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
   decoratorName: string,
   resolveTarget: (owner: Owner) => EventDecoratorTarget,
+  /**
+   * Checked at construction, for a decorator whose owner is narrower than "anything with a
+   * runtime" — today only `@onElement`. The TYPE already refuses a Hook; this is for the build
+   * that has no types, which otherwise reached the resolver and died on a property of
+   * `undefined`. See `onElement`.
+   */
+  validateOwner?: (owner: object) => void,
 ) {
   return <Name extends KnownEvent<EventMap>>(type: Name, options?: boolean | AddEventListenerOptions) => {
     if (__DEV__) {
@@ -1016,6 +1045,7 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
       ensureStringContextName(context.name, decoratorName);
 
       context.addInitializer(function (this: This) {
+        validateOwner?.(this);
         const component = this;
         // A dependency-free effect: runs once on mount (client only), cleans up
         // on unmount. No reactive reads → it never re-runs, so the listener is
@@ -1082,6 +1112,19 @@ export const onDocument = createEventListenerDecorator<EventOwner, DocumentEvent
 export const onElement = createEventListenerDecorator<ElementOwner, HTMLElementEventMap>(
   "onElement",
   (component) => component[COMPONENT_RUNTIME].enhancedNode as EventDecoratorTarget,
+  (owner) => {
+    // A hook has no element, so the resolver above would read `.enhancedNode` of `undefined` and
+    // die with "Cannot read properties of undefined" — an error naming nothing the author wrote.
+    // Thrown in every build, and at construction rather than at mount, matching
+    // `@shouldUpdateOnPropsChange`: one rule for "this decorator is for components".
+    if ((owner as { [COMPONENT_RUNTIME]?: ComponentRuntime })[COMPONENT_RUNTIME] === undefined) {
+      throw new Error(
+        `[Ramonda] @onElement is for components, not hooks. It binds a listener to the component's ` +
+          `host element, and a hook has no element of its own. Move the listener to the component ` +
+          `that uses <${owner.constructor.name} />, or use @onWindow / @onDocument, which work on both.`,
+      );
+    }
+  },
 );
 
 // --- Client-only timer decorators ------------------------------------------
@@ -1170,7 +1213,9 @@ export function compute<T, R>(
           // the tracker, so a nested read unwinds back to the outer compute.
           const prevComputePhase = __DEV__ ? computePhase.label : undefined;
           if (__DEV__) {
-            computePhase.label = `${(this as { constructor: { name: string } }).constructor.name}.${String(context.name)}`;
+            computePhase.label = `${
+              (this as { constructor: { name: string } }).constructor.name
+            }.${String(context.name)}`;
           }
 
           try {

@@ -53,7 +53,17 @@ const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
   { label: "Route" },
 );
 
-const [ParamsProvider, ParamsConsumer] = createContext<ParamsContextValue>({ params: {} }, { label: "RouteParams" });
+/**
+ * `optional`, and it is the one context here that is: `{}` is a real answer, not a stand-in.
+ * Params are published by a <RouteOutlet> for the route it matched, so a nav bar, a header or
+ * a footer BESIDE the outlet has no matched route above it and correctly has no params.
+ * `Navigator` holds this consumer for everyone, so reporting its absence would accuse the very
+ * arrangement the router documents.
+ */
+const [ParamsProvider, ParamsConsumer] = createContext<ParamsContextValue>(
+  { params: {} },
+  { label: "RouteParams", optional: true },
+);
 
 export { RouteConsumer };
 

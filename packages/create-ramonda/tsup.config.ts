@@ -15,7 +15,7 @@ import { defineConfig } from "tsup";
  * published.
  */
 const ranges: Record<string, string> = {};
-for (const folder of ["core", "router", "query", "lens", "devtools", "testing-library"]) {
+for (const folder of ["core", "router", "query", "lens", "devtools", "testing-library", "check"]) {
   const pkg = JSON.parse(readFileSync(new URL(`../${folder}/package.json`, import.meta.url), "utf8")) as {
     name: string;
     version: string;

@@ -70,7 +70,9 @@ function createPropsProxy<P extends ComponentProps>(component: Component<P>) {
         reportPropWrite(component, String(key));
       }
       throw new TypeError(
-        `[RMD004] Cannot assign to \`props.${String(key)}\` in <${component.constructor.name} /> — props are read-only and owned by the parent. Copy the value into @state, or call a callback prop to ask the parent to change it.`,
+        `[RMD004] Cannot assign to \`props.${String(key)}\` in <${
+          component.constructor.name
+        } /> — props are read-only and owned by the parent. Copy the value into @state, or call a callback prop to ask the parent to change it.`,
       );
     },
   });

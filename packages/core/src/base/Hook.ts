@@ -44,7 +44,9 @@ function createPropsProxy(hook: Hook<HookProps>) {
           reportHookPropWrite(hook, String(key));
         }
         throw new TypeError(
-          `[RMD015] Cannot assign to \`props.${String(key)}\` in <${hook.constructor.name} /> — a hook's props are read-only and owned by the caller of this.use(). Copy it into @state, or take a callback prop and ask the owner to change it.`,
+          `[RMD015] Cannot assign to \`props.${String(key)}\` in <${
+            hook.constructor.name
+          } /> — a hook's props are read-only and owned by the caller of this.use(). Copy it into @state, or take a callback prop and ask the owner to change it.`,
         );
       },
     },
@@ -68,6 +70,7 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
 
     this[GLOBAL_RUNTIME] = runtime;
     this[HOOK_RUNTIME] = createHookRuntime(initialProps);
+
     this.props = createPropsProxy(this) as R;
 
     bindInstanceMethods(this, Hook.prototype);

@@ -31,7 +31,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
-| `createContext(default, options?)` | Returns `[Provider, Consumer]`. [Context](/composition/context) |
+| `createContext(default, options?)` | Returns `[Provider, Consumer]`. Options: `label` names the pair in devtools; `optional: true` says the default is a real answer, so a consumer with no provider above it is not reported. [Context](/composition/context) |
 
 ### Entry points
 
@@ -76,8 +76,12 @@ Everything the three packages export. Each entry links to the page that explains
 | `@destroy` | Runs on teardown, while state is still readable. |
 | `createSubscriptionDecorator(name, connect)` | Your own subscription decorator: connect after the commit, and what it returns is the cleanup. [Subscriptions](/concepts/subscriptions) |
 
-`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`. [Which to use](/ssr/env)
-`@updated` does not: a server render has no layout and no paint, so it is client-only.
+`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and `shared` is
+the default. [Which to use](/ssr/env) — `@updated` has no `env`, because a server render commits
+once and so never produces the update it reacts to.
+
+**Which decorator runs where, works on what, and may repeat:
+[the decorator table](/reference/decorators).**
 
 ### Decorators — reacting
 
@@ -91,10 +95,10 @@ Everything the three packages export. Each entry links to the page that explains
 
 | | |
 |---|---|
-| `@Host(tag, props?)` | The element a component **is**. `tag` may be a callback of props. [The host element](/concepts/host) |
-| `@onElement(type, options?)` | Listener on the component's host. [Events](/concepts/events) |
+| `@Host(tag, props?)` | The element a component **is**. `tag` may be a callback of props. Components only, once per class. [The host element](/concepts/host) |
+| `@onElement(type, options?)` | Listener on the component's host. Components only — a hook has no element. [Events](/concepts/events) |
 | `@onWindow(type, options?)` / `@onDocument(...)` | Listeners on `window` / `document`. Work on a Hook too. |
-| `@interval(ms)` / `@timeout(ms)` | Timers cleared on unmount. [Timers](/concepts/timers) |
+| `@interval(ms)` / `@timeout(ms)` | Timers cleared on unmount. Client only; work on a Hook. [Timers](/concepts/timers) |
 
 ### Building your own
 
@@ -145,8 +149,12 @@ Server-only — never imported from client code. See [rendering modes](/ssr/mode
 |---|---|
 | `defineServer(routes, config, opts?)` | Per-route render modes, keyed exhaustively by path. `config` — `{ prerender?, revalidate? }` per route; `opts.defaultMode`. |
 | `routePlan(server)` | Partitions the routes into `{ static, isr, server, needsData }` for the build. |
+| `createIsrCache({ plan, store, render, onError?, now? })` | The ISR cache. `serve(path)` gives `{ html, mode }` — fresh, stale-while-revalidate, or a cold render — and `undefined` for a path that is not an ISR route. [Where ISR pages are kept](/ssr/modes#where-isr-pages-are-kept) |
+| `memoryStore()` | Keeps baked pages in this process. One instance, or development. |
+| `fileStore({ dir })` | Keeps baked pages in a directory: survives a restart, shared by instances that mount it. Writes atomically. |
 
-Types: `ServerRoute` · `ServerConfig` · `ServerOptions` · `ServerRoutes` · `RoutePlan`
+Types: `ServerRoute` · `ServerConfig` · `ServerOptions` · `ServerRoutes` · `RoutePlan` ·
+`IsrCache` · `IsrCacheOptions` · `IsrStore` · `IsrEntry` · `IsrPage` · `IsrMode` · `FileStoreOptions`
 
 ---
 

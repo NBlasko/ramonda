@@ -1,6 +1,24 @@
 import type { PathOf, RouteConfig } from "./match";
 
 /**
+ * The ISR cache lives next door and is re-exported here, so a server file has ONE import:
+ * `defineServer` and `routePlan` say how each route renders, `createIsrCache` and a store say
+ * where the cached ones are kept. See isr.ts.
+ */
+export {
+  createIsrCache,
+  fileStore,
+  memoryStore,
+  type FileStoreOptions,
+  type IsrCache,
+  type IsrCacheOptions,
+  type IsrEntry,
+  type IsrMode,
+  type IsrPage,
+  type IsrStore,
+} from "./isr";
+
+/**
  * SERVER-ONLY router config — `@ramonda/router/server`.
  *
  * This is Layer B: it attaches rendering modes (and, later, loaders) to the routes declared

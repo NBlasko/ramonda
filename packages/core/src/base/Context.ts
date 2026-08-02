@@ -24,6 +24,22 @@ export interface ContextOptions {
    * Purely cosmetic and DEV-only — stripped from production builds.
    */
   label?: string;
+  /**
+   * Says whether the default value is a REAL ANSWER or a stand-in for something missing.
+   * Default `false`: a stand-in — so a consumer mounted with no Provider above it is a
+   * fault, and it is reported (`RMD003`) the moment the consumer is constructed.
+   *
+   * Set it to `true` when "nobody provided this" is a legitimate arrangement and the
+   * default describes it. The router's `params` context is the example: a nav bar beside
+   * the outlet has no matched route above it, so `{}` params is the correct answer there,
+   * not a missing provider.
+   *
+   * The decision belongs here, with the context's author, and is made once — the author is
+   * the one who knows what the default means. Consumers say nothing extra either way.
+   *
+   * DEV-only, like every diagnostic: it changes what is reported, never what is read.
+   */
+  optional?: boolean;
 }
 
 /**
@@ -37,6 +53,10 @@ export interface ContextOptions {
  *     { color: "default" },
  *     { label: "Theme" },
  *   ); // → "ThemeProvider" / "ThemeConsumer" in devtools
+ *
+ * A consumer mounted with no Provider above it falls back to `defaultValue` and is reported
+ * as `RMD003` when it mounts. If the default is a real answer rather than a stand-in, say so
+ * once, here — `{ optional: true }` — and the report stops.
  *
  * The Provider is a hook used inside a component. It publishes a per-key signal
  * channel onto that component's runtime context, which every descendant
@@ -124,26 +144,43 @@ export function createContext<T extends object>(
       super(owner, undefined);
       const channel = (owner.context as Record<string | number, unknown>)[contextId] as ContextChannel | undefined;
 
+      if (__DEV__) {
+        /**
+         * Reported HERE, at construction — which is the moment the owning component mounts —
+         * and not on the first read.
+         *
+         * The answer is already in hand: `channel` is undefined exactly when no Provider
+         * published above, and this lookup happens ONCE, so a Provider that publishes later
+         * is not seen by this consumer either. Waiting for a read gave the same answer later,
+         * and for a value read only down a branch nobody clicked, never at all — which is the
+         * whole fault: a page that renders, fills in the default, and looks fine.
+         *
+         * Nothing is declared at the call site to make this work. The consumer already says
+         * which context it needs by being that context's consumer; asking the app to repeat
+         * it would be asking for something the framework can see.
+         *
+         * A context whose default is a real answer opts out with `optional` — see
+         * ContextOptions. Deduped per context + owning component, so each site says it once.
+         */
+        if (!channel && options?.optional !== true) {
+          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+          diagnose(
+            "RMD003",
+            `${contextId}:${holder ?? "?"}`,
+            `${holder ? `<${holder} /> mounts ` : ""}${Consumer.name} with no Provider on any ancestor, ` +
+              `so every key it reads gets the default below.`,
+            defaultValue,
+          );
+        }
+      }
+
       for (const key of contextKeys) {
         Object.defineProperty(this, key, {
           get: () => {
-            // No provider up the tree → fall back to the static default.
-            if (!channel) {
-              if (__DEV__) {
-                // Reported on READ, not on construction: a hook may hold a
-                // consumer it only reads down some branches, and constructing
-                // one without ever reading it is not a mistake. Deduped per
-                // context+key, not per label — unlabeled contexts are all named
-                // "Consumer" and would otherwise collapse into one report.
-                diagnose(
-                  "RMD003",
-                  `${contextId}:${key}`,
-                  `${Consumer.name} read \`${key}\` with no Provider on any ancestor, so it gets the default below.`,
-                  (defaultValue as Record<string, unknown>)[key],
-                );
-              }
-              return (defaultValue as Record<string, unknown>)[key];
-            }
+            // No provider up the tree → fall back to the static default. Silent: the missing
+            // provider was already reported above, at mount.
+            if (!channel) return (defaultValue as Record<string, unknown>)[key];
+
             // What is fine-grained here, precisely: the SUBSCRIPTION, not the
             // depth. Attaching a listener on read is the same mechanism signals
             // always used. What changed is that a context is no longer one State

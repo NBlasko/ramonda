@@ -8,6 +8,7 @@
     "**/coverage/**",
     "apps/docs/src/generated/**",
     "packages/create-ramonda/templates/**",
+    "packages/check/src/__tests__/fixtures/**",
     "**/tsup.config.bundled_*.mjs"
   ],
   "categories": {

@@ -199,6 +199,34 @@ describe("development is development", () => {
   });
 });
 
+describe("ISR is cached somewhere a second instance can see", () => {
+  test("the SSR server uses a store, not a Map of its own", () => {
+    const { read, pkg } = make("ssr", []);
+    const server = read("server.mjs");
+
+    // A per-process Map was the original shape, and it is wrong the moment there are two
+    // processes: each ages its own copy, so a visitor bounces between them, and a restart
+    // renders every ISR route cold again.
+    expect(server).toContain('from "@ramonda/router/server"');
+    expect(server).toContain("createIsrCache");
+    expect(server).toContain("fileStore");
+    expect(server).not.toContain("isrCache = new Map");
+
+    // server.mjs imports it at runtime, so the router has to be a real dependency — SSR always
+    // adds it, add-on chosen or not.
+    expect((pkg as unknown as { dependencies: Record<string, string> }).dependencies).toHaveProperty("@ramonda/router");
+  });
+
+  test("a build clears the cache, because those pages came from the old bundle", () => {
+    const { read } = make("ssr", []);
+
+    // Serving a page baked by the previous bundle against a new client bundle is a hydration
+    // mismatch. The prerender step runs on every build, which makes it the one place this
+    // cannot be forgotten.
+    expect(read("scripts/prerender.mjs")).toContain('rm(resolve(root, "dist/isr")');
+  });
+});
+
 describe("the generated project declares what its own code needs", () => {
   test("the SSR template declares __DEV__, which guards the devtools import", () => {
     const { read } = make("ssr", ["devtools"]);

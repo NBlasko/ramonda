@@ -136,6 +136,7 @@ export const STATE_KEYS = Symbol("stateKeys");
  * already subscribed to and naming the rest as unread.
  */
 export const CONTEXT_READS = Symbol("contextReads");
+
 export const PERSIST_KEYS = Symbol("persistKeys");
 
 // Attribute on a component's carrier element holding its serialized state blob.
@@ -149,6 +150,16 @@ export const STATE_ATTR = "data-ramonda-state";
  * without guessing which tags were the app's and which the shell's.
  */
 export const HEAD_ATTR = "data-ramonda-head";
+
+/**
+ * Attribute on the ROOT element holding the per-request values the server chose to expose to
+ * the client — one blob per page, not per component, because a request is one thing.
+ *
+ * Default is to expose NOTHING: a value only travels if its `requestKey` opted in with
+ * `exposeToClient`. Cookies, headers and un-opted values never leave the server. See
+ * hydration/requestContext.ts.
+ */
+export const REQUEST_ATTR = "data-ramonda-request";
 
 export const attach = Symbol();
 export const detach = Symbol();

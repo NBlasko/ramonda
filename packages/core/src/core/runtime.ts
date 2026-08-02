@@ -27,6 +27,14 @@ export interface Runtime {
    * shallow compare decides — i.e. take the props whenever they differ.
    */
   shouldUpdateOnPropsChange?: (prev: unknown, next: unknown) => boolean;
+  /**
+   * DEV only. The component this runtime belongs to, so a diagnostic can name it.
+   *
+   * A hook shares its owner's runtime, so this is always the COMPONENT — which is the
+   * useful answer: a missing provider is fixed by mounting one above that component, not
+   * above the hook that happened to read it.
+   */
+  holder?: object;
   effects: Effect[];
   /**
    * `@updated` methods, bound. Run after the DOM of an UPDATE is committed —
@@ -118,7 +126,7 @@ export const INTERNAL_HOOKS = Symbol("internalHooks");
 export const CHILD_HOOKS = Symbol("childHooks");
 
 export const createRuntime = (that: any, context: Context): Runtime => {
-  return {
+  const runtime: Runtime = {
     reBuild: () => addTaskToQueue(that),
     mounts: [],
     hooksOptions: [],
@@ -132,6 +140,11 @@ export const createRuntime = (that: any, context: Context): Runtime => {
     watchProps: [],
     deferHydrations: [],
   };
+
+  // No extra retention: `reBuild` already closes over the same object.
+  if (__DEV__) runtime.holder = that;
+
+  return runtime;
 };
 
 export const createComponentRuntime = (rawProps: unknown, env: RenderEnv = "client"): ComponentRuntime => {

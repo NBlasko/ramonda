@@ -5,6 +5,7 @@ import { ramondaLog } from "./debug/logger";
 import { initDevtoolsBridge, setInspectRoot, notifyComponentUpdate } from "./debug/devtoolsBridge";
 import { installTimerGuard } from "./debug/timerGuard";
 import { installPurityGuard } from "./debug/purityGuard";
+import { installClientRequestScope } from "./hydration/requestContext";
 export { Component } from "./base/Component";
 export { Hook } from "./base/Hook";
 export { createContext, type ContextOptions } from "./base/Context";
@@ -41,6 +42,7 @@ export {
   RequestReadDuringBuild,
   type RequestContext,
   type RequestKey,
+  type RequestKeyOptions,
   type RequestCookies,
   type RequestMode,
 } from "./hydration/requestContext";
@@ -166,6 +168,11 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
   if (__DEV__) {
     setInspectRoot(element);
   }
+
+  // A client-only app has no request behind it, but code shared with a server-rendered one may
+  // still call `requestContext()`. Install an empty browser scope so such a read reports (RMD025)
+  // and returns nothing, rather than throwing and taking the page down.
+  installClientRequestScope(undefined);
 
   try {
     mountNode(rootComponent, undefined, element);

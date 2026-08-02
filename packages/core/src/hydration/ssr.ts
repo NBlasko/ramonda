@@ -3,7 +3,7 @@ import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
-import { STATE_ATTR, HEAD_ATTR } from "../helpers/constants";
+import { STATE_ATTR, HEAD_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { flushPostCommit } from "../core/commit";
 import {
   createServerWork,
@@ -13,7 +13,16 @@ import {
   type ServerWork,
 } from "../core/serverWork";
 import type { ComponentChild } from "../types/vdom";
-import { createRequestScope, getBuildRead, RequestReadDuringBuild, setRequestScope } from "./requestContext";
+import {
+  collectExposedRequest,
+  createRequestScope,
+  getBuildRead,
+  RequestReadDuringBuild,
+  setRequestScope,
+} from "./requestContext";
+
+/** What `createRequestScope` hands back — opaque here; only requestContext.ts reads inside it. */
+type RequestScopeHandle = ReturnType<typeof createRequestScope> | undefined;
 
 /**
  * How many times a server render will wait for async work before giving up.
@@ -125,17 +134,16 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   // manages its own build-mode scope (kept live across the sequential build), so this leaves it
   // untouched.
   const request = opts?.request;
-  if (request) {
-    setRequestScope(
-      createRequestScope({
+  const requestScope = request
+    ? createRequestScope({
         mode: "server",
         url: request.url,
         cookies: request.cookies,
         headers: request.headers,
         values: request.values,
-      }),
-    );
-  }
+      })
+    : undefined;
+  if (requestScope) setRequestScope(requestScope);
 
   setRenderEnv("server");
   setServerWorkCollector(work);
@@ -167,7 +175,23 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   }
 
   stampBlobs(container);
+  stampExposedRequest(container, requestScope);
   return container.innerHTML;
+}
+
+/**
+ * Puts the values the server chose to EXPOSE on the root element, so the browser can read them
+ * back through `requestContext()`. One blob per page — a request is one thing, not a per-component
+ * one — and it carries only keys declared with `exposeToClient`. Nothing is written when nothing
+ * opted in, which is the default.
+ *
+ * It rides an attribute for the same reason the state blob does: attribute serialization escapes
+ * the value, so there is no way for the content to break out into markup.
+ */
+function stampExposedRequest(container: HTMLElement, scope: RequestScopeHandle): void {
+  const exposed = collectExposedRequest(scope);
+  if (!exposed) return;
+  container.firstElementChild?.setAttribute(REQUEST_ATTR, JSON.stringify(exposed));
 }
 
 /** The outcome of a static (build-time) render: markup to bake, or the reason it can't be. */

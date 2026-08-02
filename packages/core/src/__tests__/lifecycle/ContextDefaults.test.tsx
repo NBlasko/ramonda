@@ -120,8 +120,8 @@ describe("context", () => {
     expect(codes).toContain("RMD003");
   });
 
-  test("holding a consumer without reading it is not a mistake", async () => {
-    const [, C] = createContext({ v: "fallback" });
+  test("a consumer read only down a branch is still reported, before the branch is taken", async () => {
+    const [, C] = createContext({ v: "fallback" }, { label: "Branch" });
     @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
@@ -132,8 +132,24 @@ describe("context", () => {
     }
     const app = await getDOM<Leaf>(<Leaf />);
     await app.settle();
-    // Reported on READ, not on construction: a hook may hold a consumer it only
-    // reads down some branches.
+    // The branch has not been taken, so nothing has read the context — and that is exactly
+    // the fault that used to ship silently. Construction is enough to know the answer.
+    expect(app.container.textContent).toBe("quiet");
+    expect(codes).toEqual(["RMD003"]);
+  });
+
+  test("a context whose default is a real answer says so once, and stays quiet", async () => {
+    const [, C] = createContext({ v: "fallback" }, { label: "Loose", optional: true });
+    @Host("div")
+    class Leaf extends Component {
+      ctx = this.use(C);
+      render() {
+        return <span>{this.ctx.v}</span>;
+      }
+    }
+    const app = await getDOM<Leaf>(<Leaf />);
+    await app.settle();
+    expect(app.container.textContent).toBe("fallback");
     expect(codes).toEqual([]);
   });
 

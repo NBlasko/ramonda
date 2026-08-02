@@ -210,18 +210,16 @@ describe("DEV diagnostics", () => {
     await getDOM<Orphan>(<Orphan />);
 
     expect(captured.codes).toContain("RMD003");
-    expect(captured.messages[0]).toContain("ThemeConsumer read `theme` with no Provider");
+    expect(captured.messages[0]).toContain("<Orphan /> mounts ThemeConsumer with no Provider");
   });
 
-  test("RMD003: stays quiet for a consumer that is held but never read", async () => {
-    const [, ThemeConsumer] = createContext({ theme: "light" });
+  test("RMD003: stays quiet when the context says its default is a real answer", async () => {
+    const [, LooseConsumer] = createContext({ theme: "light" }, { label: "Loose", optional: true });
 
     class Quiet extends Component {
-      // Constructed, never read — holding a consumer down a branch you don't
-      // take is not a mistake, so it must not be reported.
-      ctx = this.use(ThemeConsumer);
+      ctx = this.use(LooseConsumer);
       render() {
-        return <span>no theme here</span>;
+        return <span>{this.ctx.theme}</span>;
       }
     }
 
