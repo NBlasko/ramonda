@@ -1,4 +1,4 @@
-import { Component, Host, memoizedHandler, state } from "@ramonda/core";
+import { Component, Host, list, memoizedHandler, state } from "@ramonda/core";
 import { Query, QueryClientProvider, type FetchContext } from "@ramonda/query";
 
 interface Profile {
@@ -8,6 +8,10 @@ interface Profile {
 
 // Static data, so this may live at module scope. The request COUNTER may not —
 // see `requests` below.
+/** Module scope, so `each` is the SAME array every render — a fresh literal would be a new value
+ *  each time and cost the list the identity it mints from its items. */
+const USERS = ["ada", "grace", "alan"];
+
 const PEOPLE: Record<string, Profile> = {
   ada: { name: "Ada Lovelace", followers: 1843 },
   grace: { name: "Grace Hopper", followers: 1906 },
@@ -89,6 +93,14 @@ export class QueryDemo extends Component {
   @state requests = 0;
 
   // Cached by its argument: the same button keeps the same handler across renders.
+  renderChoice(id: string) {
+    return (
+      <button type="button" disabled={this.id === id} onClick={this.select(id)}>
+        {id}
+      </button>
+    );
+  }
+
   @memoizedHandler
   select(id: string) {
     return () => {
@@ -108,11 +120,7 @@ export class QueryDemo extends Component {
     return (
       <div>
         <p className="demo-row">
-          {["ada", "grace", "alan"].map((id) => (
-            <button type="button" disabled={this.id === id} onClick={this.select(id)}>
-              {id}
-            </button>
-          ))}
+          {list({ each: USERS, render: this.renderChoice })}
           <button type="button" onClick={this.toggleSecond}>
             {this.twice ? "one card" : "two cards"}
           </button>

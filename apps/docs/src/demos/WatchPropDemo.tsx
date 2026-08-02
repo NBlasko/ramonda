@@ -1,4 +1,8 @@
-import { Component, Host, state, watchProp, memoizedHandler } from "@ramonda/core";
+import { Component, Host, list, state, watchProp, memoizedHandler } from "@ramonda/core";
+
+/** Module scope, so `each` is the SAME array every render — a fresh literal would be a new value
+ *  each time and cost the list the identity it mints from its items. */
+const USERS = ["ada", "grace", "alan"];
 
 // @watchProp reacts to one prop changing, BEFORE the render — so derived state is
 // already correct when render() runs, with no second pass. An @effect would work
@@ -39,6 +43,14 @@ export class WatchPropDemo extends Component {
   @state userId = "ada";
 
   // Cached by its argument, so the buttons keep their handlers across renders.
+  renderChoice(id: string) {
+    return (
+      <button type="button" disabled={this.userId === id} onClick={this.select(id)}>
+        {id}
+      </button>
+    );
+  }
+
   @memoizedHandler
   select(id: string) {
     return () => {
@@ -49,13 +61,7 @@ export class WatchPropDemo extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          {["ada", "grace", "alan"].map((id) => (
-            <button type="button" disabled={this.userId === id} onClick={this.select(id)}>
-              {id}
-            </button>
-          ))}
-        </p>
+        <p className="demo-row">{list({ each: USERS, render: this.renderChoice })}</p>
         <Profile userId={this.userId} />
       </div>
     );

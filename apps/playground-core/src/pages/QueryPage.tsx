@@ -1,6 +1,10 @@
-import { Component, memoizedHandler, state } from "@ramonda/core";
+import { Component, list, memoizedHandler, state } from "@ramonda/core";
 import { Link } from "@ramonda/router";
-import { Mutation, Query, QueryClientAccess, type FetchContext } from "@ramonda/query";
+import { Mutation, Query, QueryClientAccess, type FetchContext, type QueryEntry } from "@ramonda/query";
+
+/** Module scope, so `each` is the same array every render — a fresh literal would be a new value
+ *  each time and cost the list the identity it mints from its items. */
+const PEOPLE_IDS = ["ada", "grace", "alan"];
 
 /* ── A stand-in for a server ────────────────────────────────────────────── */
 
@@ -210,15 +214,16 @@ class TodoPanel extends Component {
     this.add.mutate(title);
   }
 
+  renderTodo(title: string) {
+    return <li>{title}</li>;
+  }
+
   render() {
     return (
       <div className="panel">
         <p className="label">optimistic write + rollback</p>
-        <ul>
-          {(this.list.data ?? []).map((title) => (
-            <li>{title}</li>
-          ))}
-        </ul>
+        {/* `each` takes null/undefined, so there is no `?? []` rebuilt every render. */}
+        <ul>{list({ each: this.list.data, render: this.renderTodo })}</ul>
         <div className="row">
           <input value={this.draft} placeholder="new todo" onInput={this.typed} />
           <button disabled={this.add.isPending} onClick={this.submit}>
@@ -253,6 +258,14 @@ export class QueryPage extends Component {
    */
   @state logCleared = 0;
 
+  renderPerson(id: string) {
+    return (
+      <button disabled={this.id === id} onClick={this.select(id)}>
+        {id}
+      </button>
+    );
+  }
+
   @memoizedHandler
   select(id: string) {
     return () => {
@@ -285,6 +298,20 @@ export class QueryPage extends Component {
     note("client.remove() — cache dropped");
   }
 
+  renderCacheRow(entry: QueryEntry) {
+    return (
+      <tr>
+        <td>
+          <code>{JSON.stringify(entry.key)}</code>
+        </td>
+        <td>{entry.status}</td>
+        <td>{entry.fetchStatus}</td>
+        <td>{String(entry.observers.size)}</td>
+        <td className="muted small">{entry.updatedAt ? new Date(entry.updatedAt).toISOString().slice(14, 22) : "—"}</td>
+      </tr>
+    );
+  }
+
   render() {
     const entries = this.queries.client.all();
 
@@ -299,11 +326,7 @@ export class QueryPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>1 · cache, dedup, and a key that moves</h3>
-            {["ada", "grace", "alan"].map((id) => (
-              <button disabled={this.id === id} onClick={this.select(id)}>
-                {id}
-              </button>
-            ))}
+            {list({ each: PEOPLE_IDS, render: this.renderPerson })}
             <button onClick={this.toggleSecond}>{this.second ? "one observer" : "two observers"}</button>
           </div>
           <p className="muted small">
@@ -366,21 +389,7 @@ export class QueryPage extends Component {
                 <th>updated</th>
               </tr>
             </thead>
-            <tbody>
-              {entries.map((entry) => (
-                <tr>
-                  <td>
-                    <code>{JSON.stringify(entry.key)}</code>
-                  </td>
-                  <td>{entry.status}</td>
-                  <td>{entry.fetchStatus}</td>
-                  <td>{String(entry.observers.size)}</td>
-                  <td className="muted small">
-                    {entry.updatedAt ? new Date(entry.updatedAt).toISOString().slice(14, 22) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{list({ each: entries, render: this.renderCacheRow })}</tbody>
           </table>
           <p className="muted small">
             Rendered from <code>client.all()</code>, so it is one render behind whatever just happened — it is a

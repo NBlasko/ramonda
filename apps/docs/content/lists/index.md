@@ -78,12 +78,44 @@ list({ each: this.users, key: (user) => user.id, as: UserRow });
 Only then. Here collisions *are* checked (`RMD013`), because it is the one place a
 mistake is possible again.
 
-## `.map()` still works — for static lists
+## What about `.map()`?
 
-For a list that never reorders — a nav bar, a fixed set of tabs — `.map()` is fine.
-Where it costs you is any list that reorders or drops items from the middle: without
-identity the diff matches by position, and component state slides onto the wrong row.
-The page *looks* right; the state moved. `list()` is what prevents that.
+**Use `list()` for anything built from an array.** One rule, and it is the one worth
+learning: `.map()` has no identity, so the diff matches rows by position. Reorder, or
+remove from the middle, and every row after the change takes the previous row's place —
+component state and DOM go with it. Focus, scroll position, an open menu, a half-typed
+input, all one row off. The page *looks* right.
+
+You will still meet `.map()` in code, so it is worth knowing exactly when it bites:
+
+- **Plain markup** — `{items.map((i) => <li>{i}</li>)}` — survives, because the diff
+  patches the text and the result is correct. The framework does not report it.
+- **Components** — `{items.map((i) => <Row item={i} />)}` — does not, and that one *is*
+  reported ([`RMD023`](/reference/diagnostics)).
+
+So `.map()` is not always wrong. It is just never *better*: `list()` is correct in both
+cases, and on top of that it is lazy — the descriptor is built in `render()` and the rows
+by the diff, so a 500-row table's render is 0.04% of its commit. And `each` accepts
+`null` and `undefined`, so there is no `?? []` rebuilt every render.
+
+Knowing one rule beats knowing when the exception applies.
+
+```tsx
+// A fixed set of tabs is a list too.
+const TABS = ["overview", "activity", "settings"];
+
+class Panel extends Component {
+  renderTab(name: string) {
+    return <button type="button" onClick={this.select(name)}>{name}</button>;
+  }
+  render() {
+    return <nav>{list({ each: TABS, render: this.renderTab })}</nav>;
+  }
+}
+```
+
+`TABS` lives outside the class on purpose: a fresh array literal every render is a new
+value every render, and identity is minted from the items.
 
 ## Next
 

@@ -1,4 +1,4 @@
-import { Component, Host, state, create, mount, destroy } from "@ramonda/core";
+import { Component, Host, list, state, create, mount, destroy } from "@ramonda/core";
 
 // The order, shown rather than described. Mount the child and watch:
 //
@@ -48,6 +48,10 @@ export class LifecycleLog extends Component {
     this.lines = [];
   }
 
+  renderLine(line: string) {
+    return <li>{line}</li>;
+  }
+
   render() {
     return (
       <div>
@@ -60,11 +64,7 @@ export class LifecycleLog extends Component {
           </button>
         </p>
         {this.shown ? <Tracked log={this.log} /> : null}
-        <ul className="demo-log">
-          {this.lines.map((line) => (
-            <li>{line}</li>
-          ))}
-        </ul>
+        <ul className="demo-log">{list({ each: this.lines, render: this.renderLine })}</ul>
       </div>
     );
   }
