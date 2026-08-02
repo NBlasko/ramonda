@@ -16,6 +16,9 @@ function forbidden(): never {
 
 export const defineServer = forbidden;
 export const routePlan = forbidden;
+export const createIsrCache = forbidden;
+export const memoryStore = forbidden;
+export const fileStore = forbidden;
 
 // Throw even on a bare `import "@ramonda/router/server"` for side effect.
 throw new Error(message);

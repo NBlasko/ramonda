@@ -119,6 +119,69 @@ Mark it dynamic (the default) and it renders per request instead.
 The scaffolded SSR app (`npm create ramonda`, choose SSR) wires all of this for you — a routed
 app with the three modes and the build guard already set up.
 
+## Where ISR pages are kept
+
+An ISR page is baked once and served to everyone until it is rebaked, so **where you keep it
+decides whether two visitors see the same thing**. `createIsrCache` owns the timing; you hand it
+a store:
+
+```ts
+import { createIsrCache, fileStore, routePlan } from "@ramonda/router/server";
+
+const isr = createIsrCache({
+  plan: routePlan(server),
+  store: fileStore({ dir: "dist/isr" }),
+  render: bakePath, // your shared render — the same one the build uses
+});
+```
+
+The server then asks it for every request:
+
+```js
+// `undefined` means "not an ISR route" — fall through to static or dynamic.
+const page = await isr.serve(path);
+if (page) return sendHtml(res, page.html, page.mode);
+```
+
+`page.mode` is `isr-hit` (fresh), `isr-stale` (the old copy, with a rebake already running behind
+it), or `isr-cold` (nothing cached, so this request waited for the render).
+
+### Choosing a store
+
+| | keeps pages | use it when |
+|---|---|---|
+| `memoryStore()` | in this process | one instance, or local development |
+| `fileStore({ dir })` | in a directory | a restart must not empty the cache, or instances share a volume |
+| your own | wherever you like | instances share nothing but a Redis or a database |
+
+A store is two methods, which is the whole point:
+
+```ts
+const redisStore = {
+  async get(key) {
+    const raw = await redis.get(`isr:${key}`);
+    return raw ? JSON.parse(raw) : undefined;
+  },
+  async set(key, entry) {
+    await redis.set(`isr:${key}`, JSON.stringify(entry));
+  },
+};
+```
+
+A store may lose an entry at any time — eviction, expiry, a cleared directory. That is not an
+error: a missing entry is a cold render, which is always correct and only slower.
+
+### What the cache promises, and what it does not
+
+- **One rebake at a time, per instance.** Ten requests arriving while a stale page is rebaking
+  start one render, not ten. Across instances each rebakes at most once per window, so two can
+  still bake the same page at the same moment — wasted work, never a wrong answer.
+- **A failed background rebake keeps serving the stale page.** An old page is a smaller problem
+  than no page. A failed *cold* render throws, because there is nothing else to send.
+- **A deploy must clear the cache.** Pages in it were rendered by the bundle you just replaced,
+  so serving one afterwards hands the browser old markup for a new client bundle. The scaffolded
+  app clears `dist/isr` in its prerender step, which runs on every build.
+
 ## Hosting
 
 - **static** files can be served from anywhere — a CDN, a static host, no server at all.

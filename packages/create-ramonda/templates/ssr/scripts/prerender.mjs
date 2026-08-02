@@ -3,7 +3,7 @@
 // after the server bundle is built; `npm run build` wires this up.
 
 import { JSDOM } from "jsdom";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +45,12 @@ const template = (await readFile(resolve(root, "index.html"), "utf-8")).replace(
   "/src/entry-client.tsx",
   "/assets/client.js",
 );
+
+// Every page in the ISR cache was baked by the bundle this build just replaced, so serving one
+// afterwards hands the browser old markup for a new client bundle — a hydration mismatch, and old
+// content until that route's revalidate window happens to pass. A build is the deploy boundary, so
+// clearing it here is the one place it cannot be forgotten.
+await rm(resolve(root, "dist/isr"), { recursive: true, force: true });
 
 const paths = staticPaths();
 console.log(`Prerendering ${paths.length} static route(s): ${paths.join(", ") || "(none)"}\n`);

@@ -310,6 +310,9 @@ importers:
       '@ramonda/testing-library':
         specifier: workspace:^
         version: link:../testing-library
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
       jsdom:
         specifier: 28.0.0
         version: 28.0.0
