@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Component, Host, bootstrap, createContext, mount, state, unmount, updated } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -78,12 +78,23 @@ class Careful extends Component {
   }
 }
 
-/** A check that waits on the network, which is the one that really flickers. */
+/**
+ * A check that waits on the network, which is the one that really flickers.
+ *
+ * The wait is a gate the TEST opens, not a timer. It was `setTimeout(…, 5)`, and that made the
+ * test race two unrelated timers: the assertion "the page is still up" only held while the
+ * guard's 5ms had not elapsed, and on a loaded CI runner the test's own `setTimeout(0)` was
+ * delayed past it — so the redirect had already landed and the test failed for a reason that had
+ * nothing to do with the framework. A pending promise is pending however slow the machine is.
+ */
+let releaseCheck: () => void = () => {};
+let checkInFlight: Promise<void>;
+
 @Host("div")
 class AwaitsTheNetwork extends Component {
   private route = this.use(Navigator);
   @mount async guard() {
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await checkInFlight;
     if (!signedIn) this.route.replace("/login");
   }
   render() {
@@ -118,6 +129,9 @@ beforeEach(() => {
   renders = 0;
   sideEffects = 0;
   liveNav = undefined;
+  checkInFlight = new Promise<void>((resolve) => {
+    releaseCheck = resolve;
+  });
   window.history.pushState(null, "", "/account");
 });
 
@@ -198,11 +212,14 @@ describe("when the redirect lands", () => {
       // A macrotask boundary is a paint boundary: the await released the frame, so this is what
       // the visitor sees. THIS is the flicker, and no amount of batching removes it — the fix is
       // to know the answer before rendering.
+      //
+      // Deterministic because the check is a promise only this test resolves: however slow the
+      // machine, it has not answered yet, so the page must still be up.
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(app.container.textContent).toBe("SECRET");
 
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(app.container.textContent).toBe("login");
+      releaseCheck();
+      await vi.waitFor(() => expect(app.container.textContent).toBe("login"));
     } finally {
       app.stop();
     }
