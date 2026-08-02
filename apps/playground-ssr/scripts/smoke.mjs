@@ -62,6 +62,43 @@ const fail = (message) => {
   process.exit(1);
 };
 
+/**
+ * Waits for a CONDITION, never for the clock.
+ *
+ * The port wait below already works this way; the panel checks did not, and used three fixed sleeps
+ * instead — 500 ms for the app to boot, 200 ms for the components tab, 500 ms for the editor request
+ * to come back. Each one is a bet that a machine running eight other vitest processes is as fast as
+ * an idle one, and the last one lost: `clicking the editor button asked the server for nothing`,
+ * under a parallel `turbo run check`, passing every time it was run on its own.
+ *
+ * That failure is worse than a slow test, because it reads as a real regression in the editor
+ * endpoint. Polling a predicate is both faster when idle (no sleeping past the answer) and immune
+ * when loaded.
+ */
+async function waitFor(whatWentWrong, predicate, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = predicate();
+    if (value) return value;
+    if (Date.now() > deadline) fail(`${whatWentWrong} (waited ${timeoutMs}ms)`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+/**
+ * Every request this script makes to the server under test.
+ *
+ * `connection: close` is the whole reason it exists. Node's fetch keeps connections alive and reuses
+ * them; this server is short-lived and closes idle ones, so a reused socket can be closed by the
+ * server exactly as the client writes to it. Under a saturated machine that window opens often
+ * enough to see: `TypeError: fetch failed / cause=SocketError: other side closed`, roughly one run in
+ * three at 2x CPU oversubscription, and never when run alone.
+ *
+ * That is a property of talking to a throwaway server over keep-alive, not of anything being tested,
+ * so it is taken off the table rather than retried around.
+ */
+const httpGet = (url, init) => fetch(url, { ...init, headers: { ...init?.headers, connection: "close" } });
+
 server.on("exit", (code) => {
   // Exiting before the request is the failure this was written for.
   if (code !== null && code !== 0) fail(`the server exited with code ${code} before serving anything`);
@@ -78,7 +115,7 @@ server.on("exit", (code) => {
 async function waitForServer(attempts = 100) {
   for (let i = 0; i < attempts; i++) {
     try {
-      const response = await fetch(`http://localhost:${PORT}/`);
+      const response = await httpGet(`http://localhost:${PORT}/`);
       return response;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -131,34 +168,48 @@ async function checkPanel() {
   window.fetch = async (input, init) => {
     const url = String(input);
     if (url.includes("__open-in-editor") || url.includes("/assets/")) {
-      const answer = await fetch(url.startsWith("http") ? url : `http://localhost:${PORT}${url}`, init);
-      if (url.includes("__open-in-editor")) editorCalls.push({ url, status: answer.status });
+      /**
+       * Recorded BEFORE the await, because what is asserted below is that the panel ASKED — and a
+       * request that was made and then failed in transit is still an ask.
+       *
+       * Pushing after the response instead turned a transport hiccup into
+       * `clicking the editor button asked the server for nothing`, which reads as a real regression
+       * in the editor button and is not one. The panel had asked, correctly, and even showed its
+       * fallback toast for it.
+       */
+      const call = { url };
+      if (url.includes("__open-in-editor")) editorCalls.push(call);
+
+      const answer = await httpGet(url.startsWith("http") ? url : `http://localhost:${PORT}${url}`, init);
+      call.status = answer.status;
       return answer;
     }
     return new window.Response("{}", { status: 200, headers: { "content-type": "application/json" } });
   };
 
   window.eval(code);
-  await new Promise((resolve) => setTimeout(resolve, 500));
 
-  const panel = window.document.querySelector("ramonda-devtools");
-  if (!panel) fail("the client did not mount the devtools panel");
-  if (typeof window.__RAMONDA_WRITE__ !== "function") fail("core did not install the devtools write bridge");
+  const panel = await waitFor("the client did not mount the devtools panel", () =>
+    window.document.querySelector("ramonda-devtools"),
+  );
+  await waitFor("core did not install the devtools write bridge", () => typeof window.__RAMONDA_WRITE__ === "function");
 
   panel.toggle();
   panel.shadowRoot.querySelector('.tab[data-tab="components"]').dispatchEvent(new window.Event("click"));
-  await new Promise((resolve) => setTimeout(resolve, 200));
 
-  const rows = panel.shadowRoot.querySelectorAll(".comp-summary").length;
-  if (rows < 5) fail(`the panel listed ${rows} components, so the tree did not come through`);
+  // Five is the "the tree came through at all" bar, not an exact count — the app is free to grow.
+  const rows = await waitFor("the panel listed too few components, so the tree did not come through", () => {
+    const found = panel.shadowRoot.querySelectorAll(".comp-summary").length;
+    return found >= 5 ? found : 0;
+  });
 
   // 1. A pencil, on a row that really exists in this app, and it has to open an editor.
   const pencil = panel.shadowRoot.querySelector("[data-edit-node]");
   if (!pencil) fail("no state is editable anywhere in the tree, which cannot be right");
   pencil.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
-  if (!panel.shadowRoot.querySelector(".edit-input")) {
-    fail(`the edit pencil for ${pencil.dataset.editKey} opened nothing (vid: ${pencil.dataset.editVid})`);
-  }
+  await waitFor(`the edit pencil for ${pencil.dataset.editKey} opened nothing (vid: ${pencil.dataset.editVid})`, () =>
+    panel.shadowRoot.querySelector(".edit-input"),
+  );
   panel.shadowRoot.querySelector(".edit-input").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
 
   /**
@@ -172,9 +223,7 @@ async function checkPanel() {
   const open = panel.shadowRoot.querySelector("[data-src-file]");
   if (!open) fail("no component reported where it is defined");
   open.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
-  if (editorCalls.length === 0) fail("clicking the editor button asked the server for nothing");
+  await waitFor("clicking the editor button asked the server for nothing", () => editorCalls.length > 0);
 
   return { rows, editing: pencil.dataset.editKey };
 }
@@ -198,7 +247,7 @@ async function checkEditorEndpoint() {
   if (!source) fail("the sourcemap names no sources");
 
   const query = `file=${encodeURIComponent(`${source}:1:1`)}&from=${encodeURIComponent("assets/client.js")}`;
-  const answer = await fetch(`http://localhost:${PORT}/__open-in-editor?${query}`);
+  const answer = await httpGet(`http://localhost:${PORT}/__open-in-editor?${query}`);
   const body = await answer.text();
 
   /**
@@ -223,7 +272,7 @@ async function checkEditorEndpoint() {
    * deleting the `existsSync` guard would leave the check above passing.
    */
   const bogus = `file=${encodeURIComponent("src/NoSuchFile.tsx:1:1")}`;
-  const refusal = await fetch(`http://localhost:${PORT}/__open-in-editor?${bogus}`);
+  const refusal = await httpGet(`http://localhost:${PORT}/__open-in-editor?${bogus}`);
   if (refusal.status !== 422) {
     fail(`a path that does not exist answered ${refusal.status}, but the panel needs 422 to say so`);
   }
