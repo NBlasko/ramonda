@@ -1,5 +1,5 @@
-import { Component, Host, state } from "@ramonda/core";
-import type { RamondaNode } from "@ramonda/core";
+import { Component, Host, list, state } from "@ramonda/core";
+import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator, Link } from "@ramonda/router";
 import { routes, pages } from "./routes";
 import { Search } from "./Search";
@@ -38,26 +38,32 @@ class Sidebar extends Component<SidebarProps> {
     this.props.onNavigate?.();
   }
 
+  renderPage(page: (typeof pages)[number]): VNode {
+    return (
+      <li>
+        <Link href={page.path} className={this.route.pathname === page.path ? "link active" : "link"}>
+          {page.title}
+        </Link>
+      </li>
+    );
+  }
+
+  renderGroup([section, items]: (typeof grouped)[number]): VNode {
+    return (
+      <div className="sidebar-group">
+        {section ? <h4>{section}</h4> : null}
+        <ul>{list({ each: items, render: this.renderPage })}</ul>
+      </div>
+    );
+  }
+
   render(): RamondaNode {
     return [
       <button type="button" className="drawer-close" onClick={this.close} aria-label="Close navigation">
         ✕
       </button>,
       <div className="sidebar-inner" data-pagefind-ignore onClick={this.onClick}>
-        {grouped.map(([section, items]) => (
-          <div className="sidebar-group">
-            {section ? <h4>{section}</h4> : null}
-            <ul>
-              {items.map((page) => (
-                <li>
-                  <Link href={page.path} className={this.route.pathname === page.path ? "link active" : "link"}>
-                    {page.title}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {list({ each: grouped, render: this.renderGroup })}
       </div>,
     ] as RamondaNode;
   }

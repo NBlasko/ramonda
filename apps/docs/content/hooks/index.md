@@ -161,10 +161,12 @@ class Toolbar extends Hook<{ actions: Action[] }> {
     return () => this.run(id);
   }
 
+  renderAction(action: Action) {
+    return <button disabled={this.busy} onClick={this.runner(action.id)}>{action.label}</button>;
+  }
+
   buttons() {
-    return this.props.actions.map((action) => (
-      <button disabled={this.busy} onClick={this.runner(action.id)}>{action.label}</button>
-    ));
+    return list({ each: this.props.actions, render: this.renderAction });
   }
 }
 
@@ -175,8 +177,10 @@ render() {
 }
 ```
 
-For an actual list of data, use [`list()`](/lists) instead — it brings identity,
-which a plain `.map()` like this one doesn't.
+A hook can hand back a [`list()`](/lists) like any other markup — the descriptor is
+created here and the rows are built where it lands, in the owner's children. So the
+buttons keep their identity through a reorder, which a `.map()` in the same place would
+not.
 
 ## Next
 
