@@ -112,9 +112,8 @@ The callback runs on every render of the owner, so the bag it returns is a new o
 each time — and so is every array and closure inside it. **Every prop is a signal**, and a
 signal compares by reference, so a rebuilt array is a *changed* prop: a `@compute` reading
 it recomputes, a `@watchProp` on it fires, and a subscription whose `connect` reads it
-reconnects. Every render. Measured in core's tests, across three renders of the owner: a
-compute reading a rebuilt array runs three times where one reading a scalar prop runs
-once.
+reconnects. Every render. Measured across three renders of the owner: a compute reading a
+rebuilt array runs three times where one reading a scalar prop runs once.
 
 Development builds report it as [RMD022](/reference/diagnostics) — the callback is called
 twice in the same tick and the two bags compared, the same check `render()` gets.
