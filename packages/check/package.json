@@ -1,9 +1,9 @@
 {
   "name": "@ramonda/check",
-  "version": "0.0.0",
-  "description": "Static checks for a Ramonda app \u2014 proves a context consumer has a provider above it, before the page is ever opened.",
+  "version": "0.1.0",
+  "description": "Static checks for a Ramonda app — proves a context consumer has a provider above it, before the page is ever opened.",
   "license": "MIT",
-  "author": "Nikola Blagojevi\u0107",
+  "author": "Nikola Blagojević",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
