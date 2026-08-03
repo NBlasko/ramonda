@@ -28,6 +28,7 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@watchProp`](/concepts/props) | client in practice¹ | component · hook | yes — one per selector |
 | [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
 | [`@shouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — the last wins |
+| [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | **hook only** | **no** — it takes a list |
 | [`@Host`](/concepts/host) | both | **component only** | **no** |
 | [`@onElement`](/concepts/events) | **client only**² | **component only** | yes |
 | [`@onWindow` / `@onDocument`](/concepts/events) | **client only**² | component · hook | yes |
@@ -73,6 +74,11 @@ a lint you can talk past — the second exists because the first is not there in
 | `@onElement` | It binds a listener to the component's host element. A hook has none. Use `@onWindow` / `@onDocument`, which work on both. |
 | `@shouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
 
+One goes the other way. **`@StableProps` is hooks only**, and refused twice in the same way: a
+hook's props are rebuilt by its own callback on every owner render, which is the situation it
+answers. A component's props come from the parent's JSX and are compared by the diff, where
+`@shouldUpdateOnPropsChange` is the control.
+
 ## How many times
 
 Most decorators stack, and the order is defined:
@@ -83,11 +89,14 @@ Most decorators stack, and the order is defined:
 - **`@deferHydration`** may appear several times; hydration waits for all of them.
 - **Listeners and timers** stack freely — that is the normal way to bind several events.
 
-Two are single:
+Three are single:
 
 - **`@Host`** — a component is exactly one element, so there is one answer to which.
 - **`@shouldUpdateOnPropsChange`** — there is one answer to "take these props?". A second one is
   reported in development, and the last declared wins.
+- **`@StableProps`** — it already takes as many names as you like, so there is nothing a second
+  one would add. Two on one class throws. A **subclass** may declare its own, and that one
+  *merges* with what the parent declared rather than replacing it.
 
 ## Two decorators that are not lifecycle
 

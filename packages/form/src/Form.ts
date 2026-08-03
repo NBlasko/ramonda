@@ -1,4 +1,4 @@
-import { create, destroy, Hook, INSPECT, type RenderEnv, state } from "@ramonda/core";
+import { create, destroy, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
 import { type FieldHost, FieldTree } from "./fieldTree";
 import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
@@ -69,6 +69,15 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @state private version = 0;
 
   private held: InferIn<S> | undefined;
+  /**
+   * The defaults `held` was built from — what "the user has not touched this" is measured against.
+   *
+   * Not the same object as `props.defaultValues` once the defaults have MOVED, and that is the whole
+   * point of holding it: after new defaults land, the prop is the new record and this is the one the
+   * held values were compared against, so `onDefaultsChanged` can still tell an untouched field from
+   * an edited one.
+   */
+  private seenDefaults: InferIn<S> | undefined;
   private issues: Issues = NO_ISSUES;
   /** Blurred. The standard meaning, and NOT the same question as "has been edited". */
   private touchedKeys = new Set<string>();
@@ -144,6 +153,82 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @destroy
   dispose(): void {
     this.disposed = true;
+  }
+
+  /**
+   * New `defaultValues` — "fetch the record, then fill the form".
+   *
+   * The pattern did not work at all before this: `current` latched the defaults on its first read,
+   * which is `prime()`, and never consulted the prop for values again. A form handed
+   * `{ name: "Ada" }` a moment after mounting kept showing the empty strings it started with, and
+   * nothing said so.
+   *
+   * ## The rule
+   *
+   * - a field the user has **not** touched takes the new value
+   * - a field the user **has** touched keeps what was typed
+   *
+   * Which is what anyone asking for this wants, and what React Hook Form arrived at as `values` +
+   * `keepDirtyValues`. Losing what somebody is halfway through typing because a request came back is
+   * the failure worth designing against; showing them a stale empty box is the other one.
+   *
+   * "Touched" here means **edited** — `changedKeys`, or a value that has moved away from the
+   * defaults it was built from. Not `touchedKeys`: that means BLURRED, and a field somebody tabbed
+   * through without typing in has no content of theirs to protect.
+   *
+   * ## Why `@watchProp`
+   *
+   * It runs before the render, so the new values are on screen in the same pass rather than one
+   * frame later, and writing state in it is safe for that reason — the same argument `Query`'s
+   * `onKeyChanged` records. It also watches the HOOK's props rather than the owner component's,
+   * which is the only reading that could work here.
+   *
+   * ## The cost of a rebuilt literal
+   *
+   * `@watchProp` fires on identity, so a props factory that builds `defaultValues: { … }` inline —
+   * the normal way to write one — fires this on **every render of the owner**. So the first thing it
+   * does is answer "did anything actually move" by value, and a form whose defaults are genuinely
+   * unchanged goes no further: no write, no render, and `values` stays the same object.
+   *
+   * What that comparison costs, per render of the owner, over three runs of 20,000 iterations in
+   * this repo's test environment: **2.0 – 2.6 µs** at ten fields, **13.4 – 19.6 µs** at a hundred,
+   * **40.2 – 66.0 µs** at three hundred. The spread is the environment's, not the walk's — a third
+   * of the top figure moves run to run.
+   *
+   * ## Why `@StableProps("defaultValues")` is not declared, though it looks made for this
+   *
+   * It would hand back one identity while the contents are equal, and this would not fire at all —
+   * which is exactly right for `Query.key` and wrong here. The framework's comparison is bounded:
+   * five levels deep, and the first FIFTY items of an array. Past the depth it answers "different",
+   * which is the safe direction; past the width it answers "equal", which is not.
+   *
+   * Measured with the declaration in place: a record whose only change was row 55 of 60 came back as
+   * the previous object and the new value was lost, with nothing reported. A bounded comparison is
+   * right for a cache key, where guessing "different" costs a refetch. It is wrong for the values
+   * themselves, where guessing "equal" drops data. So the form compares its own defaults, in full,
+   * and pays the figures above. `stable()` at a call site is the same mechanism and the same limit.
+   */
+  @watchProp((props) => props.defaultValues)
+  onDefaultsChanged(next: InferIn<S>): void {
+    // Nothing has read the values yet, so `current` has not latched — it will take `next` itself
+    // when something does, and merging into values that do not exist would only get in the way.
+    if (this.held === undefined) return;
+
+    const previous = this.seenDefaults;
+    if (equal(next, previous)) return;
+    this.seenDefaults = next;
+
+    const replaced: Path[] = [];
+    this.held = adopt(this.held, next, previous, ROOT, (path) => this.changedKeys.has(pathKey(path)), replaced);
+    // Every field was the user's, so the new defaults changed nothing that is on screen. Bumping
+    // anyway would re-render a form that looks exactly the same.
+    if (replaced.length === 0) return;
+
+    // What was recorded about a value is about the value that WAS there. The messages come back from
+    // the validation below, addressed to what the form holds now.
+    for (const path of replaced) this.forgetUnder(path);
+    this.bump();
+    void this.revalidate();
   }
 
   /**
@@ -270,7 +355,13 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   }
 
   resetAt(path: Path): void {
-    this.held = writeAt(this.current, path, readAt(this.props.defaultValues, path));
+    const back = readAt(this.props.defaultValues, path);
+    this.held = writeAt(this.current, path, back);
+    // The baseline moves with the value, exactly as in `reset`. `forgetUnder` clears the edit mark
+    // below, and this clears the other half of the same question: without it a field reset AFTER the
+    // defaults had moved would sit at the new default while the baseline still held the old one, and
+    // read as the user's forever after.
+    this.seenDefaults = writeAt(this.seenDefaults as InferIn<S>, path, back);
     this.forgetUnder(path);
     this.bump();
     this.revalidate();
@@ -435,6 +526,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   /** Back to `defaultValues`, or to the values given. Clears errors, `touched` and row ids. */
   reset(values?: InferIn<S>): void {
     this.held = values ?? this.props.defaultValues;
+    // The baseline moves with them: nothing in a form that was just reset is the user's, so defaults
+    // arriving afterwards are free to take every field. Reading `props.defaultValues` here instead
+    // would mark a `reset(record)` form as edited everywhere and let no later default in.
+    this.seenDefaults = this.held;
     this.issues = NO_ISSUES;
     this.validated = false;
     this.touchedKeys = new Set();
@@ -471,7 +566,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   private get current(): InferIn<S> {
     // Lazily, rather than in a field initializer: reading a prop subscribes to it, and the
     // subscription belongs to the render that asked, not to construction.
-    if (this.held === undefined) this.held = this.props.defaultValues;
+    if (this.held === undefined) {
+      this.held = this.props.defaultValues;
+      this.seenDefaults = this.held;
+    }
     return this.held;
   }
 
@@ -566,9 +664,22 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   }
 
   private finish(runId: number, issues: Issues, value: unknown): void {
-    // A later validation, a reset, or an unmount: this answer is about a form that has
-    // moved on, and `submitting` belongs to whatever superseded it.
-    if (this.runId !== runId || this.disposed) return;
+    if (this.disposed) return;
+
+    /**
+     * A later validation, a reset, or new defaults: this answer is about values the form has moved
+     * past, so it is not recorded and `onSubmit` is not called with them.
+     *
+     * But the submit it belonged to is OVER, and `submitting` is what the button is disabled by —
+     * so returning without releasing it wedged the form permanently. Only reachable with an ASYNC
+     * schema, because a synchronous one has already been through here before anything else could
+     * run, which is why it went unnoticed: type one character while an async schema is out and the
+     * form can never be submitted again.
+     */
+    if (this.runId !== runId) {
+      this.settle();
+      return;
+    }
 
     this.issues = issues;
     this.validated = true;
@@ -671,6 +782,86 @@ function walk(value: unknown, path: Path, visit: (path: Path) => void): void {
   for (const [key, child] of Object.entries(value)) {
     walk(child, [...path, key], visit);
   }
+}
+
+/**
+ * The new defaults, with everything the user owns left exactly where it is.
+ *
+ * Answers `held` unchanged when it takes nothing, so an untouched-but-identical form allocates
+ * nothing and `replaced` stays empty — which is what tells the caller there is no render to do.
+ *
+ * `replaced` collects the paths that actually took a new value, because the messages and touch marks
+ * recorded under them are about values that are no longer there.
+ *
+ * ## Containers descend, leaves decide
+ *
+ * The ownership test cannot be applied to a whole object, because a form where one field was edited
+ * has a ROOT that differs from its defaults — and answering "the user owns the root" there would
+ * adopt nothing at all. So an object is always walked, and only its leaves are asked.
+ *
+ * ## Arrays descend only when nothing has changed length
+ *
+ * Index-wise merging is meaningful only while row *i* is still row *i*. Once a length differs
+ * anywhere in the three, the indexes no longer line up — merging them would pair a row with whatever
+ * happens to sit at its number now, which is the identity failure `this.ids` exists to prevent. So a
+ * length change makes the array a leaf: untouched, it takes the new one whole (`rowIds` tops up and
+ * trims itself, so the rows that survive keep their identities); edited, the user's array stays.
+ */
+function adopt(
+  held: unknown,
+  next: unknown,
+  previous: unknown,
+  path: Path,
+  edited: (path: Path) => boolean,
+  replaced: Path[],
+): unknown {
+  // Written at this exact path — `field.$.set(…)`, or a keystroke. Theirs, whatever is underneath.
+  if (edited(path)) return held;
+
+  if (isPlain(held) && isPlain(next)) {
+    const out: Record<string, unknown> = { ...held };
+    let moved = false;
+
+    // The union, so a key the new defaults ADD arrives rather than being invisible for being absent
+    // from what the form happens to hold.
+    for (const key of new Set([...Object.keys(held), ...Object.keys(next)])) {
+      // `readAt` rather than indexing, because the old defaults need not have had an object here at
+      // all — it answers undefined for anything the value does not reach, which is what a key with
+      // no history should compare against.
+      const taken = adopt(held[key], next[key], readAt(previous, [key]), [...path, key], edited, replaced);
+      if (!Object.is(taken, out[key])) {
+        out[key] = taken;
+        moved = true;
+      }
+    }
+
+    return moved ? out : held;
+  }
+
+  if (Array.isArray(held) && Array.isArray(next) && Array.isArray(previous)) {
+    if (held.length === next.length && held.length === previous.length) {
+      const out = [...held];
+      let moved = false;
+
+      for (let i = 0; i < held.length; i++) {
+        const taken = adopt(held[i], next[i], previous[i], [...path, i], edited, replaced);
+        if (!Object.is(taken, out[i])) {
+          out[i] = taken;
+          moved = true;
+        }
+      }
+
+      return moved ? out : held;
+    }
+  }
+
+  // A leaf. It is the user's the moment it has moved away from the defaults it was built from —
+  // which is what catches an edit `changedKeys` never recorded, a `splice` above all.
+  if (!equal(held, previous)) return held;
+  if (equal(held, next)) return held;
+
+  replaced.push(path);
+  return next;
 }
 
 /**

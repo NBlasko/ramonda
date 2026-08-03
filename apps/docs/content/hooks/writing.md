@@ -158,6 +158,16 @@ private chart = this.use(SomeChart, (self: Panel) => ({
 }));
 ```
 
+**Know the bound before you declare a payload.** The comparison behind both `@StableProps` and
+`stable()` stops at **five levels deep** and at the **first fifty items** of an array. Past the
+depth it answers "different" and you get a fresh identity — correct, just not optimal. Past the
+width it answers "equal", and that direction can be wrong: two sixty-item arrays differing only
+at index 55 compare as the same, so the previous value is handed back and the change is invisible.
+
+That is the right trade for a cache key, where guessing "different" costs one refetch and the
+values are small. It is the wrong trade for a prop that carries the payload itself — which is why
+`@ramonda/form` does not declare `defaultValues` and compares them in full instead.
+
 **A function: a bound method.** Two closures with the same body are not equal by any
 comparison that is safe to make, so neither `stable()` nor `@StableProps` can help — a hook
 that lists a function prop still gets the report, because unstable *and* silent would be

@@ -127,6 +127,58 @@ this.use(Form, { schema, defaultValues, onSubmit: this.save });
 | `reset(values?)` | Back to the defaults, or to the values you pass. |
 | `setError(path, message)` | A message from somewhere the schema cannot see — usually the server. |
 
+## Editing a record you had to fetch
+
+An "edit profile" page does not know its values at mount. It asks for them, and they arrive a moment
+later. Move `defaultValues` when they land and the form follows:
+
+```tsx
+class EditProfile extends Component {
+  private profile = this.use(Query, (self: EditProfile) => ({
+    key: ["profile", self.props.id],
+    fetch: self.load,
+  }));
+
+  private form = this.use(Form<typeof schema>, (self: EditProfile) => ({
+    schema,
+    defaultValues: self.profile.data ?? { name: "", email: "" },
+    onSubmit: self.save,
+  }));
+
+  load() {
+    return api.getProfile(this.props.id);
+  }
+
+  save(values: Profile) {
+    return api.updateProfile(this.props.id, values);
+  }
+}
+```
+
+**A field the user has already typed in keeps what they typed.** Everything else takes the new value.
+That is the whole rule, and it is the one that matters — a request coming back must never delete what
+somebody is in the middle of writing, and a field nobody has touched has no reason to stay empty.
+
+"Typed in" means edited, not visited: tabbing through a field and leaving it alone does not claim it.
+A `reset()` hands every field back, so a form you reset is open to the next set of defaults again.
+
+**Array fields.** Rows merge one by one while the length is unchanged. Once the count differs, the
+array goes whole: your rows if you have added, removed or reordered any, the new ones if you have
+not. Pairing rows by number across a length change would put one row's text onto another, which is
+the failure row identities exist to prevent — see [Array fields](/forms/arrays).
+
+**Use a props callback**, as above. A props object literal is evaluated once, so defaults written
+that way can never move — that is the shape in [The whole thing](#the-whole-thing), and it is right
+for a form whose defaults are constants.
+
+The form compares the defaults by value, so rebuilding the object every render — which is what a
+callback does — changes nothing on its own and costs no render: no write, and `values` stays the same
+object. That comparison is the only cost, around 2 µs on a ten-field form and 15 µs on a hundred-field
+one, per render of the owner.
+
+It is deliberately a full comparison rather than the framework's bounded one, which stops at fifty
+array items — the difference between missing the fifty-fifth row of a record and not missing it.
+
 ## Where to go next
 
 - [Fields](/forms/fields) — the tree, `$`, `bind`, and nested objects
