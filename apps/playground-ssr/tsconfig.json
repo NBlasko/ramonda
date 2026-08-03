@@ -6,9 +6,11 @@
     "jsx": "react",
     "jsxFactory": "__ramondaH",
     "strict": true,
+    "types": ["node"],
     "skipLibCheck": true,
     "paths": {
       "@ramonda/core": ["../../packages/core/src/index.ts"],
+      "@ramonda/router/server": ["../../packages/router/src/server.ts"],
       "@ramonda/devtools": ["../../packages/devtools/src/index.ts"],
       "@ramonda/router": ["../../packages/router/src/index.ts"],
       "@ramonda/query": ["../../packages/query/src/index.ts"],
