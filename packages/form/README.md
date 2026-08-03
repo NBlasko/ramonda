@@ -74,7 +74,9 @@ it keeps the API as an object you can name: `const email = form.fields.email.$`.
 
 **A row's identity is not its index.** Array fields hand out `rows` with a generated `id`
 that survives insert, remove and reorder, for `list({ each, key: (row) => row.id })`, so the
-reconciler keeps each row's DOM node and its focus. A splice drops what was recorded against
+reconciler keeps each row's DOM node and its focus. `move(from, to)` is a method for that
+reason: `remove` then `insert` mints a new id, and the row loses its element and whatever the
+browser was holding in it. A splice drops what was recorded against
 the indexes it moved and re-validates, so a message ends up on the row it is about rather
 than on whatever slid into its place.
 
@@ -93,12 +95,40 @@ never before it. A submit reveals everything, including on fields nobody visited
 `validateOn: "blur"` and `"submit"` move the first check later; a field that is already
 showing a message always re-answers on change.
 
-## What is next
+## A failed submit moves the caret
 
-A `@ramonda/form/bguard` submodule, for the two things Standard Schema cannot express:
-`pick` for O(field) validation instead of O(form), and `toJSONSchema` for HTML validation
-attributes derived from the schema. Every validator keeps working without it — the submodule
-adds speed and derived attributes, not capability.
+The first invalid field takes focus — first in the order on screen, not the order the
+validator reported. Without it, pressing the button does nothing visible when the messages
+are below the fold, and for someone using a screen reader there is no signal at all.
+
+It stays inside the form the submit came from, skips a disabled control, and a programmatic
+`form.submit()` moves nothing: your code called it, so your code decides where the reader
+looks.
+
+## `@ramonda/form/bguard`
+
+An optional submodule for the two things Standard Schema cannot express, because neither is
+about validating a value. bguard is an optional peer dependency and the main entry never
+reaches this module, so a form over zod pulls in nothing from it.
+
+- **`htmlConstraints(schema)`** derives `required`, `minlength`, `maxlength`, `pattern`,
+  `min`, `max` and `type` from the schema. It already says `minLength(3)`; writing
+  `minlength={3}` beside it is the same fact twice, and the two drift.
+- **`unknownRefPaths(schema, values)`** finds a cross-field rule pointing at nothing.
+  `ctx.ref('pasword')` returns `undefined` for ever and the comparison quietly succeeds or
+  quietly fails. It belongs in a test.
+
+**Per-field validation via `pick` is deliberately not here.** It was the original plan, and it
+was measured first: on a bguard schema with a `custom` per field plus one cross-field rule, a
+whole-form pass costs 3.3 µs at 11 fields, 14.9 µs at 31, 48.3 µs at 101 and 154.8 µs at 301.
+A three-hundred-field form revalidates in a hundredth of a 60fps frame, so there is no problem
+to solve — and the fast path carried three ways to show a wrong or stale message.
+
+## In the devtools
+
+The panel shows a form's values, messages, touched fields and flags under **Holds**, through
+core's `INSPECT` symbol. Without it the row reads `{ version: n }` and props that never change,
+because a form's values are plain fields rather than `@state` — see "What re-renders".
 
 ## License
 
