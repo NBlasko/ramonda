@@ -11,7 +11,7 @@ export default defineConfig({
   // Vite 7 uses esbuild and Vite 8 uses oxc, and with both present oxc wins and the
   // esbuild block is ignored entirely. This package has no vite of its own.
   esbuild: {
-    jsxFactory: "h",
+    jsxFactory: "__ramondaH",
     jsxFragment: "Fragment",
     target: "es2022",
   },

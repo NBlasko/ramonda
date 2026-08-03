@@ -27,7 +27,7 @@ export default defineConfig({
     },
   },
   esbuild: {
-    jsxFactory: "h",
+    jsxFactory: "__ramondaH",
     jsxFragment: "Fragment",
     target: "es2022",
   },

@@ -213,7 +213,7 @@ or set `RAMONDA_TL_SKIP_AUTO_CLEANUP`.
 ```ts
 // vitest.config.ts
 export default defineConfig({
-  esbuild: { jsxFactory: "h", jsxFragment: "Fragment" },
+  esbuild: { jsxFactory: "__ramondaH", jsxFragment: "Fragment" },
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```

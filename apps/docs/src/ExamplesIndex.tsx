@@ -1,5 +1,5 @@
-import { Component, Host } from "@ramonda/core";
-import type { RamondaNode } from "@ramonda/core";
+import { Component, Host, list } from "@ramonda/core";
+import type { RamondaNode, VNode } from "@ramonda/core";
 import { demos } from "./demos";
 import { Demo } from "./Demo";
 
@@ -12,15 +12,16 @@ import { Demo } from "./Demo";
  * in the framework — thirteen components exercising most of the API, all on one
  * screen.
  */
+/** Read once: a fresh `Object.keys()` every render would be a new array each time. */
+const demoNames = Object.keys(demos);
+
 @Host("div")
 export class ExamplesIndex extends Component {
+  renderDemo(name: string): VNode {
+    return <Demo name={name} titled={true} />;
+  }
+
   render(): RamondaNode {
-    return (
-      <div className="examples">
-        {Object.keys(demos).map((name) => (
-          <Demo name={name} titled={true} />
-        ))}
-      </div>
-    );
+    return <div className="examples">{list({ each: demoNames, render: this.renderDemo })}</div>;
   }
 }

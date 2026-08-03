@@ -11,7 +11,7 @@ export default defineConfig({
   // configured it takes oxc and IGNORES the esbuild block. Both are set so the
   // JSX factory survives either, the same way the router package does it.
   esbuild: {
-    jsxFactory: "h",
+    jsxFactory: "__ramondaH",
     jsxFragment: "Fragment",
     target: "es2022",
   },

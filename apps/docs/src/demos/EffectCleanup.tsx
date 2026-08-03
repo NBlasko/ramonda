@@ -1,4 +1,8 @@
-import { Component, Host, createSubscriptionDecorator, memoizedHandler, state } from "@ramonda/core";
+import { Component, Host, createSubscriptionDecorator, list, memoizedHandler, state } from "@ramonda/core";
+
+/** Module scope, so `each` is the SAME array every render — a fresh literal would be a new
+ *  value each time and cost the list its identity. */
+const CHANNELS = ["news", "sport", "weather"];
 
 /**
  * A subscription decorator, which is where the "return the cleanup" contract lives.
@@ -47,26 +51,23 @@ export class EffectCleanup extends Component {
     };
   }
 
+  renderChannel(name: string) {
+    return (
+      <button type="button" disabled={this.channel === name} onClick={this.switchTo(name)}>
+        {name}
+      </button>
+    );
+  }
+
+  renderLine(line: string) {
+    return <li>{line}</li>;
+  }
+
   render() {
     return (
       <div>
-        <p className="demo-row">
-          {["news", "sport", "weather"].map((name) => (
-            <button type="button" disabled={this.channel === name} onClick={this.switchTo(name)}>
-              {name}
-            </button>
-          ))}
-        </p>
-        {/*
-          `.map()` is fine here and the docs say so: this list is append-only
-          display text with no state and no reordering, so there is no identity
-          to preserve. See "What .map() costs you" on the Lists page.
-        */}
-        <ul className="demo-log">
-          {this.log.map((line) => (
-            <li>{line}</li>
-          ))}
-        </ul>
+        <p className="demo-row">{list({ each: CHANNELS, render: this.renderChannel })}</p>
+        <ul className="demo-log">{list({ each: this.log, render: this.renderLine })}</ul>
       </div>
     );
   }

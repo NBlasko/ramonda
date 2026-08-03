@@ -3,6 +3,30 @@ import type { RamondaNode, VNode } from "./types/vdom";
 import type { h as _h } from "./vdom/h";
 
 declare global {
+  /**
+   * The JSX factory, put in scope by your bundler (`jsxInject`, or esbuild's `--inject`), so a
+   * `.tsx` file never imports it by hand.
+   *
+   * **Why the ugly name.** It used to be `h`, and a one-letter factory is a name someone will
+   * reuse — and a binding named `h` anywhere in a file's scope wins over the injected one. A
+   * bundler injects only for an identifier that is not already bound, so it quietly does not
+   * inject, and JSX calls whatever `h` you wrote. Measured, with esbuild:
+   *
+   *   const h = 5           in a function  →  TypeError: h is not a function
+   *   function h(x) { … }   at module top  →  NO error at all: `<div/>` becomes `h("div", …)`,
+   *                                           your function's return value, and the page is
+   *                                           silently wrong
+   *
+   * Nobody writes `__ramondaH`, so the collision cannot happen. It costs nothing: the bundle is
+   * byte-identical, because a named import tree-shakes exactly as before and the minifier gives
+   * the binding a short name again. (A namespace factory — `R.h` — also fixes it, and was
+   * rejected: it defeats tree-shaking, +36% gzipped on a hello-world.)
+   */
+  const __ramondaH: typeof _h;
+  /**
+   * The old factory name, still declared so a project configured with `jsxFactory: "h"` keeps
+   * type-checking. Nothing here requires you to migrate; new projects get `__ramondaH`.
+   */
   const h: typeof _h;
   namespace JSX {
     /**
