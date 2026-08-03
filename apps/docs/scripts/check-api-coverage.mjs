@@ -26,8 +26,8 @@ const packages = join(root, "..", "..", "packages");
  * so a rename in the test file would leave the slice empty and every check below
  * would pass against nothing — a green build proving only that the parser broke.
  */
-function publicSurfaceOf(pkg, atLeast) {
-  const file = join(packages, pkg, "src", "__tests__", "PublicSurface.test.ts");
+function publicSurfaceOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
+  const file = join(packages, pkg, "src", "__tests__", fileName);
   const surface = readFileSync(file, "utf8");
   const start = surface.indexOf("const EXPECTED");
   const end = surface.indexOf("/**", start);
@@ -55,8 +55,8 @@ function publicSurfaceOf(pkg, atLeast) {
  * A published type is API all the same — someone writes it in an annotation — so the reference
  * has to name it or the build fails, exactly as for a value.
  */
-function publicTypesOf(pkg, atLeast) {
-  const file = join(packages, pkg, "src", "__tests__", "PublicSurface.test.ts");
+function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
+  const file = join(packages, pkg, "src", "__tests__", fileName);
   const surface = readFileSync(file, "utf8");
   const start = surface.indexOf("const EXPECTED_TYPES");
   if (start === -1) throw new Error(`[docs] ${pkg} declares no EXPECTED_TYPES list.`);
@@ -86,6 +86,10 @@ const expected = [
   // below from `EXPECTED_TYPES`, because a type never appears in `Object.keys`.
   ...publicSurfaceOf("form", 1),
   ...publicTypesOf("form", 20),
+  // A SECOND entry point is API too. `@ramonda/form/bguard` has its own surface test, and its
+  // exports were documented by hand and guarded by nothing until this line.
+  ...publicSurfaceOf("form", 2, "BguardSurface.test.ts"),
+  ...publicTypesOf("form", 2, "BguardSurface.test.ts"),
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");

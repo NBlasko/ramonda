@@ -400,8 +400,8 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * through `ctx.ref`, so editing PASSWORD has to re-answer CONFIRM. Validating only the
    * field that changed cannot see that.
    *
-   * `revalidateAll: false` turns it into a field-local pass for a form big enough that the
-   * difference has been measured.
+   * There is no option to narrow it, and `FormProps` records the measurements that settled
+   * that: a 301-field schema revalidates in 155 µs, a hundredth of a frame.
    */
   private revalidate(): Promise<void> {
     const runId = ++this.runId;

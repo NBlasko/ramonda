@@ -133,3 +133,4 @@ this.use(Form, { schema, defaultValues, onSubmit: this.save });
 - [Validation](/forms/validation) — schemas, when messages appear, cross-field rules
 - [Array fields](/forms/arrays) — rows that survive a splice
 - [On the server](/forms/server) — what a form does during SSR, and what it does on hydration
+- [The bguard submodule](/forms/bguard) — HTML attributes from the schema, and a check for typo'd cross-field rules

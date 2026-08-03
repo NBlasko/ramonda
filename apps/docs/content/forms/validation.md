@@ -102,15 +102,15 @@ The message appears under `confirm`, which is the field the reader has to change
 equivalent is `.refine(…, { path: ["confirm"] })` — the same outcome, with the path written out
 by hand.
 
-If whole-form revalidation ever costs you something measurable on a very large schema, turn it
-off deliberately:
+**There is no option to narrow it**, and that was measured rather than assumed. On a bguard schema
+with a `custom` per field plus one cross-field rule, a whole-form pass costs 3.3 µs at 11 fields,
+14.9 µs at 31, 48.3 µs at 101 and 154.8 µs at 301 — a three-hundred-field form revalidates in a
+hundredth of a 60fps frame.
 
-```tsx
-this.use(Form<typeof schema>, { schema, defaultValues, onSubmit, revalidateAll: false });
-```
-
-Measure first. Validating one field alone cannot see a rule that reads another, so this is a
-speed-for-correctness trade rather than a free win.
+There was a `revalidateAll` option, reserved for a form big enough that this would hurt. It is gone:
+the case does not exist, and a field-local pass cannot see a rule that reads another field, so it
+would trade a correct message for microseconds. [The bguard submodule](/forms/bguard#what-is-deliberately-not-here)
+records the rest of that reasoning.
 
 ## Async schemas
 

@@ -13,12 +13,14 @@ import { defineConfig } from "tsup";
  */
 export default defineConfig([
   {
-    entry: ["src/index.ts"],
+    // `bguard.ts` is a SEPARATE entry, not part of the main graph: it is the only file that imports
+    // bguard, and a form over zod must not pull a validator it does not use into the bundle.
+    entry: ["src/index.ts", "src/bguard.ts"],
     format: ["esm"],
     dts: true,
     clean: true,
     target: "es2022",
-    external: ["@ramonda/core"],
+    external: ["@ramonda/core", "bguard"],
     define: { __DEV__: "true", __TEST__: "false" },
     outDir: "dist",
   },
@@ -27,7 +29,7 @@ export default defineConfig([
     format: ["esm"],
     target: "es2022",
     minify: true,
-    external: ["@ramonda/core"],
+    external: ["@ramonda/core", "bguard"],
     define: { __DEV__: "false", __TEST__: "false" },
     outExtension() {
       return { js: ".prod.js" };

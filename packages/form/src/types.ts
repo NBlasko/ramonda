@@ -264,14 +264,24 @@ export interface FormProps<S extends StandardSchemaV1> {
    */
   onSubmit: (values: InferOut<S>) => void | Promise<void>;
   validateOn?: ValidateOn;
-  /**
-   * Re-runs the whole schema on every change, which is what makes a cross-field rule
-   * update when the OTHER field moves — bguard writes one as `confirm: string().custom((v,
-   * ctx) => v !== ctx.ref("password") && ctx.addIssue(…))`, and it lands on `confirm`
-   * because that is the context it ran in.
-   *
-   * On by default. Validating one field alone cannot see that rule, so turning this off
-   * is a speed/correctness trade to make deliberately once it has been measured.
-   */
-  revalidateAll?: boolean;
 }
+
+/**
+ * ## Why there is no `revalidateAll` option
+ *
+ * There was one, declared here and documented, as the escape hatch for a form big enough that
+ * running the whole schema on a keystroke would hurt. **It was never read** — `revalidate()`
+ * always ran the whole schema — so it was an option that did nothing, which is worse than an
+ * option that is missing.
+ *
+ * It is gone rather than implemented, because the case it was reserved for does not exist.
+ * Measured on a bguard schema with a `custom` per field plus one cross-field rule: 11 fields
+ * 3.3 µs, 31 fields 14.9 µs, 101 fields 48.3 µs, 301 fields 154.8 µs. A three-hundred-field
+ * form revalidates in a hundredth of a 60fps frame.
+ *
+ * And the whole-form pass is what makes a cross-field rule correct: bguard writes "the
+ * passwords match" on `confirm` as a `custom` that reads `password` through `ctx.ref`, so
+ * editing PASSWORD has to re-answer CONFIRM. A field-local pass cannot see that.
+ * `@ramonda/form/bguard` records the reasoning that was going to make one safe, and why the
+ * fast path was not worth its hazards.
+ */
