@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../base/Component";
-import { state } from "../base/decorators";
+import type { RamondaNode } from "../types/vdom";
+import { create, state } from "../base/decorators";
 import { getDOM } from "../test/setup";
 
 /**
@@ -505,6 +506,154 @@ describe("a child that renders nothing", () => {
         expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["A", "B"]);
       });
     }
+
+    /* -------------------------------------------------------------- *
+     * Components, where the stake is highest.
+     *
+     * An element that loses its node loses focus and scroll. A COMPONENT that loses its node
+     * loses its instance: `@create` runs again, `@state` goes back to its initial value, and
+     * everything the user did to it is gone. The tests above all use intrinsic elements, so
+     * these say it about the case that actually costs something.
+     * -------------------------------------------------------------- */
+
+    test("a conditional COMPONENT between same-component siblings keeps its neighbours' instances", async () => {
+      const built: Row[] = [];
+
+      class Row extends Component<{ label: string }> {
+        @state seen = 0;
+        @create init() {
+          built.push(this);
+        }
+        render(): RamondaNode {
+          return (
+            <p className="row">
+              {this.props.label}:{this.seen}
+            </p>
+          );
+        }
+      }
+
+      class Page extends Component {
+        @state show = true;
+        render(): RamondaNode {
+          return (
+            <div>
+              <Row label="a" />
+              {this.show && <Row label="x" />}
+              <Row label="b" />
+            </div>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      expect(built).toHaveLength(3);
+      const [a, , b] = built;
+      const before = Array.from(app.container.querySelectorAll("p.row"));
+
+      // Put something on the instances that only survives if the instances do.
+      a!.seen = 1;
+      b!.seen = 2;
+      await app.settle();
+      expect(before.map((el) => el.textContent)).toEqual(["a:1", "x:0", "b:2"]);
+
+      app.instance.show = false;
+      await app.settle();
+
+      // Nothing was rebuilt: `@create` did not run again for either survivor.
+      expect(built).toHaveLength(3);
+
+      const after = Array.from(app.container.querySelectorAll("p.row"));
+      expect(after).toHaveLength(2);
+      // The same two elements, and each still carrying the state its own instance holds.
+      expect(after).toEqual([before[0], before[2]]);
+      expect(after.map((el) => el.textContent)).toEqual(["a:1", "b:2"]);
+    });
+
+    test("and the same when the conditional component was ABSENT to begin with", async () => {
+      const created: string[] = [];
+
+      class Row extends Component<{ label: string }> {
+        @create init() {
+          created.push(this.props.label);
+        }
+        render(): RamondaNode {
+          return <p className="row">{this.props.label}</p>;
+        }
+      }
+
+      class Page extends Component {
+        @state show = false;
+        render(): RamondaNode {
+          return (
+            <div>
+              <Row label="a" />
+              {this.show && <Row label="x" />}
+              <Row label="b" />
+            </div>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      expect(created).toEqual(["a", "b"]);
+      const before = Array.from(app.container.querySelectorAll("p.row"));
+
+      app.instance.show = true;
+      await app.settle();
+
+      // Only the new one is built; `a` and `b` are never touched.
+      expect(created).toEqual(["a", "b", "x"]);
+      const after = Array.from(app.container.querySelectorAll("p.row"));
+      expect(after[0]).toBe(before[0]);
+      expect(after[2]).toBe(before[1]);
+      expect(after.map((el) => el.textContent)).toEqual(["a", "x", "b"]);
+    });
+
+    test("a conditional among `{this.props.children}` leaves the siblings alone", async () => {
+      // Children arrive as the parent's array, one level removed from the JSX that wrote them.
+      const created: string[] = [];
+
+      class Row extends Component<{ label: string }> {
+        @create init() {
+          created.push(this.props.label);
+        }
+        render(): RamondaNode {
+          return <p className="row">{this.props.label}</p>;
+        }
+      }
+
+      class Panel extends Component<{ children?: RamondaNode }> {
+        render(): RamondaNode {
+          return <section>{this.props.children}</section>;
+        }
+      }
+
+      class Page extends Component {
+        @state show = true;
+        render(): RamondaNode {
+          return (
+            <Panel>
+              <Row label="a" />
+              {this.show && <Row label="x" />}
+              <Row label="b" />
+            </Panel>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      expect(created).toEqual(["a", "x", "b"]);
+      const before = Array.from(app.container.querySelectorAll("p.row"));
+
+      app.instance.show = false;
+      await app.settle();
+
+      expect(created).toEqual(["a", "x", "b"]);
+      const after = Array.from(app.container.querySelectorAll("p.row"));
+      expect(after).toEqual([before[0], before[2]]);
+      expect(after.map((el) => el.textContent)).toEqual(["a", "b"]);
+    });
 
     test("keyed siblings are unaffected — a key still outranks the slot", async () => {
       // A key is an identity the developer asserted, so a keyed child is allowed to move
