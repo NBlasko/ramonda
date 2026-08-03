@@ -2,19 +2,26 @@
  * The DOM a server render runs against, from one place, so both implementations can be measured
  * against the same app.
  *
- * `RAMONDA_DOM=linkedom` swaps jsdom for linkedom. That is not a preference switch for an app to
- * ship — it exists so the smoke test can run the WHOLE suite on either, which is the only honest way
- * to find out whether a lighter DOM is enough. Measured on a 30-row page, production core build:
+ * **linkedom is the default.** `RAMONDA_DOM=jsdom` goes back, and it stays because a difference that
+ * only appears under one implementation is much easier to diagnose when both are one variable apart.
+ *
+ * Measured on a 30-row page, production core build:
  *
  * | | Node built-ins | build DOM | render | per request |
  * | --- | --- | --- | --- | --- |
  * | jsdom | 10 | 4.814 ms | 3.716 ms | 8.530 ms |
  * | linkedom | 0 | 0.018 ms | 0.644 ms | 0.662 ms |
  *
- * The build cost is what dominates, and it is paid PER REQUEST — 4.8 ms of every request today goes
- * on constructing a DOM before any rendering starts. linkedom needing no Node built-in is the other
- * half: it is what would let this run on Cloudflare Workers, Deno Deploy or Vercel Edge, where jsdom
- * cannot go at all.
+ * The build cost dominates, and it is paid PER REQUEST — 4.8 ms of every jsdom request went on
+ * constructing a DOM before any rendering started. On the live server, a real dynamic route, the
+ * end-to-end figure is 9.49 ms against 2.97 ms per request.
+ *
+ * linkedom needing no Node built-in is the other half, and the one that decides this: it is what lets
+ * a server render run on Cloudflare Workers, Deno Deploy or Vercel Edge, where jsdom cannot go.
+ *
+ * **The smoke test still loads the client bundle into jsdom**, and that is not an inconsistency —
+ * there it is standing in for a BROWSER, hydrating and clicking. This module is only about the DOM
+ * the SERVER renders into.
  */
 
 /**
@@ -28,6 +35,7 @@ const GLOBALS = [
   "document",
   "navigator",
   "location",
+  "history",
   "HTMLElement",
   "SVGElement",
   "Node",
@@ -59,7 +67,8 @@ async function linkedomDom(url) {
    *
    * `location` — linkedom's `parseHTML` takes no URL, so it has nowhere to get one. The router reads
    * it during a server render, so it is real and it is supplied here from the request's own URL,
-   * which is the same thing jsdom is handed.
+   * which is the same thing jsdom is handed. `history` is the same story with a different answer:
+   * a server has none, so the calls are accepted and dropped.
    *
    * `MouseEvent` and `getComputedStyle` are client-only: nothing dispatches a click or measures a
    * box on the server. They exist so a component that merely REFERENCES them at module scope does
@@ -80,13 +89,21 @@ async function linkedomDom(url) {
   });
   if (globalThis.MouseEvent === undefined) put("MouseEvent", source.Event ?? Event);
   if (globalThis.getComputedStyle === undefined) put("getComputedStyle", () => ({ getPropertyValue: () => "" }));
+  /**
+   * A server has no session history, and an empty one is the honest answer rather than a gap: a
+   * router that pushes during a server render is describing navigation nobody can perform. The
+   * calls are accepted and discarded so such a render does not throw.
+   */
+  if (globalThis.history === undefined) {
+    put("history", { length: 1, state: null, pushState() {}, replaceState() {}, back() {}, forward() {}, go() {} });
+  }
 
   return dom;
 }
 
 /** Swaps in a fresh DOM for one render, and answers with it. */
 export async function installDom(url) {
-  const dom = process.env.RAMONDA_DOM === "linkedom" ? await linkedomDom(url) : await jsdomDom(url);
+  const dom = process.env.RAMONDA_DOM === "jsdom" ? await jsdomDom(url) : await linkedomDom(url);
 
   put("requestAnimationFrame", (cb) => setTimeout(() => cb(Date.now()), 0));
   put("cancelAnimationFrame", (id) => clearTimeout(id));
@@ -94,4 +111,4 @@ export async function installDom(url) {
   return dom;
 }
 
-export const domName = () => (process.env.RAMONDA_DOM === "linkedom" ? "linkedom" : "jsdom");
+export const domName = () => (process.env.RAMONDA_DOM === "jsdom" ? "jsdom" : "linkedom");

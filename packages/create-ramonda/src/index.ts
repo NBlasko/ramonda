@@ -285,9 +285,14 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   } else {
     // SSR: prod is an esbuild bundle served by a Node process that needs a DOM;
     // dev is a Vite middleware server (hot reload) — see server.mjs.
+    //
+    // linkedom, not jsdom, for the SERVER's DOM. It needs no Node built-in, so the same server can
+    // run on an edge runtime, and it builds a document in 0.018 ms against jsdom's 4.8 — a cost paid
+    // on every request. The whole SSR smoke suite in this repo runs on it. jsdom is still what the
+    // `testing` add-on installs below, where it stands in for a BROWSER rather than a server.
     deps.devDependencies["vite"] = tool("vite");
     deps.devDependencies["esbuild"] = tool("esbuild");
-    deps.devDependencies["jsdom"] = tool("jsdom");
+    deps.devDependencies["linkedom"] = tool("linkedom");
   }
   // The static context check runs as the first step of `build`, so a consumer that lost its
   // provider fails the build instead of quietly falling back to the default in someone's browser.
@@ -298,7 +303,9 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   if (addons.includes("testing")) {
     deps.devDependencies["vitest"] = tool("vitest");
     deps.devDependencies["@ramonda/testing-library"] = ramonda("@ramonda/testing-library");
-    if (mode === "spa") deps.devDependencies["jsdom"] = tool("jsdom");
+    // Both modes now: the SSR server uses linkedom, so a scaffolded SSR project no longer has jsdom
+    // from anywhere else — and `environment: "jsdom"` below would fail on a missing package.
+    deps.devDependencies["jsdom"] = tool("jsdom");
     // `vite` is a PEER dependency of vitest (`^6 || ^7 || ^8`), and without it vitest has no
     // transform: measured on a scaffolded SSR project, where the .tsx reached the runtime
     // unchanged and the suite died with `SyntaxError: Invalid or unexpected token`. The SPA
