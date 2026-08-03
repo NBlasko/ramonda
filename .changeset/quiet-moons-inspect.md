@@ -44,4 +44,10 @@ accident:
 - **A throwing `[INSPECT]()` costs its own row and nothing else.** It is code the framework did not
   write, called during a walk whose job is to diagnose an app that may already be broken.
 
+**It must be a pure read**, and that is a contract rather than a suggestion. The panel calls it on
+every commit while it is open on the components tab, so writing state from inside it closes a circle:
+the write schedules a render, the render commits, the commit pings the panel, and the panel asks
+again. Nothing catches that today — measured — and it turns only while somebody is looking, which is
+the worst time for an app to start moving under them.
+
 `Symbol.for`, not `Symbol()`, so two copies of core in one app still agree.

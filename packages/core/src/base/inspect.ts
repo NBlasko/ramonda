@@ -24,6 +24,21 @@
  * pattern this framework steers away from. This has the opposite property: an instance outside the
  * tree cannot contribute, and one that unmounts stops contributing with nothing to deregister.
  *
+ * ## It must be a pure READ
+ *
+ * The panel calls this on every commit while it is open on the components tab — the same cadence as
+ * reading `@state`, not a timer. So writing state from inside it closes a circle: the write
+ * schedules a render, the render commits, the commit pings the panel, and the panel asks again.
+ *
+ * **Nothing catches that today.** Measured: five scans over a `[INSPECT]()` that increments a
+ * `@state` field moved it five times and reported no diagnostic — RMD009 watches for a component
+ * that will not stop rendering, and this only turns while somebody is looking. A diagnostic for it
+ * is recorded in `notes/core-followups.md`; until then this paragraph is the whole guard.
+ *
+ * Read fields, derive values, and return. No writes, no fetches, no logging — the panel is open
+ * precisely when someone is trying to work out what is wrong, and a method that changes the app
+ * while describing it is the worst possible thing to be debugging through.
+ *
  * `Symbol.for` rather than `Symbol()`, so two copies of core in one app still agree — the same
  * reason `@ramonda/form` keys its field-node marker that way.
  */
