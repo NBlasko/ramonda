@@ -67,7 +67,11 @@ function installDom(url) {
 
   put("requestAnimationFrame", (cb) => setTimeout(() => cb(Date.now()), 0));
   put("cancelAnimationFrame", (id) => clearTimeout(id));
-  return dom;
+
+  // A handle rather than the DOM: linkedom builds plain objects with no timers and no event loop, so
+  // dropping the reference is the whole cleanup. Swapping in a DOM that DOES own one (jsdom) is then
+  // a change to this function alone.
+  return { close: () => {} };
 }
 
 function sendRedirect(res, redirect) {
@@ -189,7 +193,7 @@ async function bakeShared(path) {
     if (blockedBy !== undefined) throw new Error(`Route ${path} is cached but read the request (${blockedBy}).`);
     return html;
   } finally {
-    dom.window.close();
+    dom.close();
   }
 }
 

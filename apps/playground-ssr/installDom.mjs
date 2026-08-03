@@ -50,7 +50,11 @@ async function jsdomDom(url) {
   const { JSDOM } = await import("jsdom");
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { url });
   for (const name of GLOBALS) put(name, dom.window[name]);
-  return dom;
+  /**
+   * jsdom's `close()` is real work: it stops the window's timers and detaches its event loop, which a
+   * long-lived server needs or every request leaves one behind.
+   */
+  return { close: () => dom.window.close() };
 }
 
 async function linkedomDom(url) {
@@ -98,10 +102,21 @@ async function linkedomDom(url) {
     put("history", { length: 1, state: null, pushState() {}, replaceState() {}, back() {}, forward() {}, go() {} });
   }
 
-  return dom;
+  /**
+   * linkedom has no window to close, and that is the point of it: `parseHTML` builds plain objects
+   * with no timers and no event loop of their own, so dropping the reference is the whole cleanup.
+   * The method exists so the two implementations are shut down the same way — reaching for jsdom's
+   * `dom.window.close()` at the call site is what broke every ISR and dynamic render under linkedom.
+   */
+  return { close: () => {} };
 }
 
-/** Swaps in a fresh DOM for one render, and answers with it. */
+/**
+ * Swaps in a fresh DOM for one render, and answers with a handle to shut it down.
+ *
+ * `close()` rather than the DOM itself: the two implementations do not agree on what a window is, and
+ * a caller that reaches past this into one of them only works against that one.
+ */
 export async function installDom(url) {
   const dom = process.env.RAMONDA_DOM === "jsdom" ? await jsdomDom(url) : await linkedomDom(url);
 

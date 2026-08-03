@@ -96,7 +96,7 @@ async function bakeShared(path) {
     }
     return html;
   } finally {
-    dom.window.close();
+    dom.close();
   }
 }
 
@@ -223,7 +223,7 @@ const server = createServer(async (req, res) => {
     const started = process.hrtime.bigint();
     const { html, redirect } = await render({ url: new URL(url, origin), cookies: parseCookies(req.headers.cookie) });
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
-    dom.window.close();
+    dom.close();
 
     if (redirect) {
       // A route guard sent this request elsewhere — answer with the redirect so the

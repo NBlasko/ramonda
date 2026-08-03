@@ -78,7 +78,9 @@ const fail = (message) => {
 async function waitFor(whatWentWrong, predicate, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const value = predicate();
+    // Awaited, so an ASYNC predicate works too — a bare `predicate()` hands back a promise, and a
+    // promise is truthy, so such a poll would pass on its first turn no matter what it asked.
+    const value = await predicate();
     if (value) return value;
     if (Date.now() > deadline) fail(`${whatWentWrong} (waited ${timeoutMs}ms)`);
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -378,9 +380,52 @@ async function checkForm() {
   return { inputs: posted.length, rowids: doc.querySelector("#s-rowids").textContent };
 }
 
+/**
+ * Every render MODE, because only one of the three was ever requested here.
+ *
+ * `/` is static — a file read, no render at all — and it is what every check above asks for. So the
+ * two paths that actually build a DOM per render went untested, and both broke at once: switching to
+ * linkedom left `dom.window.close()` at the end of them, which jsdom answers and linkedom does not.
+ * A scaffolded app carried the same line. Neither unit tests nor this script noticed, because neither
+ * asked for a page that renders.
+ *
+ * The ISR half is the reason this is not just two status codes. A background rebake that throws is
+ * CAUGHT — the visitor keeps getting the stale copy and the server logs a stack — so a dead
+ * revalidation looks exactly like a working one from the outside. What separates them is the mode
+ * going back to `isr-hit`: only a rebake that finished writes a fresh entry, and only a fresh entry
+ * ends the stale window.
+ */
+async function checkModes() {
+  const modeOf = async (path) => {
+    const answer = await httpGet(`http://localhost:${PORT}${path}`);
+    if (!answer.ok) fail(`GET ${path} answered ${answer.status}`);
+    return { mode: answer.headers.get("x-ramonda-mode"), body: await answer.text() };
+  };
+
+  // DYNAMIC — rendered per request, and the id has to have come out of the URL on the server.
+  const user = await modeOf("/users/42");
+  if (user.mode !== "dynamic") fail(`/users/42 served as ${user.mode}, expected a per-request render`);
+  if (!user.body.includes("<h2>User 42</h2>")) fail("the dynamic route did not render the id from the URL");
+
+  // ISR — served from the cache, and rebaked behind the visitor's back.
+  const first = await modeOf("/about");
+  if (!first.mode?.startsWith("isr")) fail(`/about served as ${first.mode}, expected an ISR mode`);
+  if (!first.body.includes("<h2>About</h2>")) fail("the ISR route served a page with no content in it");
+
+  // `revalidate: 3`, so the window is the server's clock and cannot be polled away — but polling
+  // means not sleeping past the answer either.
+  await waitFor("the ISR page never went stale", async () => (await modeOf("/about")).mode === "isr-stale", 20_000);
+  await waitFor(
+    "the background rebake never produced a fresh page, so revalidation is broken",
+    async () => (await modeOf("/about")).mode === "isr-hit",
+    20_000,
+  );
+}
+
 const panel = await checkPanel();
 const editor = await checkEditorEndpoint();
 const form = await checkForm();
+await checkModes();
 
 stop();
 console.log(
@@ -390,5 +435,6 @@ console.log(
     `(${editor.opened ? "and opened it" : "no editor on this machine, which is not this test's business"}), ` +
     `and refused a path that does not exist\n` +
     `[smoke] /signup rendered ${form.inputs} named inputs, hydration adopted them, ` +
-    `and the row ids survived a splice (${form.rowids})`,
+    `and the row ids survived a splice (${form.rowids})\n` +
+    `[smoke] all three render modes answered: static, dynamic, and ISR through a background rebake`,
 );
