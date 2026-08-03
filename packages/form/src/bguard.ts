@@ -197,12 +197,50 @@ function read(node: JSONSchema, required: boolean): HtmlConstraints {
  * Cross-field rules that point at nothing.
  * ------------------------------------------------------------------ */
 
-/** One `ctx.ref` call whose path names no field in the schema. */
+/** One cross-field rule whose path names no field in the schema. */
 export interface UnknownRef {
-  /** The path the rule asked for, as written in the `ref` call. */
+  /**
+   * The path the rule asked for, with any array index shown as `*`.
+   *
+   * A rule inside a list runs once per row, and the problem is the rule rather than the row it
+   * happened to be on — `contacts.*.kynd`, not fifty entries counting up from `contacts.0.kynd`.
+   */
   readonly to: string;
-  /** Where the rule lives, in the form's own path notation: `"confirm"`, `"contacts[0].value"`. */
+  /** Where the rule lives, in the form's own path notation: `"confirm"`, `"contacts[*].value"`. */
   readonly from: string;
+}
+
+/**
+ * A location with its array indices replaced by `*`.
+ *
+ * A rule inside a list is ONE rule. Reported per row, a single typo on a fifty-row list produced
+ * fifty entries — measured — which is an answer nobody reads.
+ *
+ * **Both ends are normalised**, because `ctx.sibling` resolves to an absolute path that carries the
+ * row index too: a rule at `contacts[i].value` reading its own row's `kind` records
+ * `contacts.0.kind`, `contacts.1.kind`, and so on. Normalising only `from` would still leave one
+ * entry per row.
+ *
+ * The cost is small and worth naming: a constant index written by hand, `ctx.ref("rows.0.id")`, is
+ * also shown as `rows.*.id`. The report still points at the right rule, which is what it is for.
+ */
+function withoutIndices(segments: Path, style: "ref" | "field"): string {
+  // The two ends keep the notation they each already use — `to` is a `ref` path, dotted, and `from`
+  // is a field path, bracketed. Collapsing them onto one spelling here would make the report say
+  // something neither call site says.
+  if (style === "ref") return segments.map((segment) => (isIndex(segment) ? "*" : String(segment))).join(".");
+
+  let out = "";
+  for (const segment of segments) {
+    if (isIndex(segment)) out += "[*]";
+    else out += out === "" ? String(segment) : `.${String(segment)}`;
+  }
+  return out;
+}
+
+/** A number, or a string that `ref` produced from one — its segments are always strings. */
+function isIndex(segment: string | number): boolean {
+  return typeof segment === "number" || /^\d+$/.test(segment);
 }
 
 /**
@@ -241,11 +279,16 @@ export function unknownRefPaths<S extends StandardSchemaV1>(schema: S, values: u
   for (const read of refReads) {
     if (resolves(root, read.toPath)) continue;
 
-    const key = `${read.to} ${read.fromPath}`;
+    // Both ends without their indices, so one rule inside a list is one report rather than one per
+    // row — including a `sibling` read, whose resolved path carries the row index as well.
+    const to = withoutIndices(read.toPath, "ref");
+    const from = withoutIndices(read.from as Path, "field");
+
+    const key = `${to} ${from}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
-    problems.push({ to: read.to, from: pathToString(read.from as Path) });
+    problems.push({ to, from });
   }
 
   return problems;

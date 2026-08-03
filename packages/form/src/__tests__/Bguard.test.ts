@@ -175,9 +175,68 @@ describe("unknownRefPaths", () => {
       rows: array(string().custom(matching("limitt") as never)),
     });
 
-    expect(unknownRefPaths(schema, { limit: 1, rows: ["a", "b"] })).toEqual([
-      { to: "limitt", from: "rows[0]" },
-      { to: "limitt", from: "rows[1]" },
+    // ONE entry for one rule, however many rows it ran on. The index is `*` because the problem is
+    // the rule rather than the row it happened to be on.
+    expect(unknownRefPaths(schema, { limit: 1, rows: ["a", "b"] })).toEqual([{ to: "limitt", from: "rows[*]" }]);
+  });
+
+  test("stays one entry however long the list is", () => {
+    // Measured before this: a single typo on a fifty-row list produced fifty entries, which is an
+    // answer nobody reads.
+    const schema = object({
+      limit: number(),
+      rows: array(string().custom(matching("limitt") as never)),
+    });
+
+    const rows = Array.from({ length: 50 }, (_, index) => `row${index}`);
+
+    expect(unknownRefPaths(schema, { limit: 1, rows })).toHaveLength(1);
+  });
+
+  test("catches a typo in `ctx.sibling`, whose string form the compiler cannot check", () => {
+    // `ctx.sibling((row) => row.kynd)` is a compile error. `ctx.sibling('kynd')` is not — and that is
+    // exactly what this is for.
+    const schema = object({
+      contacts: array(
+        object({
+          kind: string(),
+          value: string().custom((received: string, ctx: ExceptionContext) => {
+            if (received !== ctx.sibling("kynd")) ctx.addIssue("a match", received, "u:mismatch");
+          }),
+        }),
+      ),
+    });
+
+    expect(unknownRefPaths(schema, { contacts: [{ kind: "email", value: "a" }] })).toEqual([
+      { to: "contacts.*.kynd", from: "contacts[*].value" },
+    ]);
+  });
+
+  test("says nothing about a `ctx.sibling` that points at a real field", () => {
+    const schema = object({
+      contacts: array(
+        object({
+          kind: string(),
+          value: string().custom((received: string, ctx: ExceptionContext) => {
+            if (received !== ctx.sibling("kind")) ctx.addIssue("a match", received, "u:mismatch");
+          }),
+        }),
+      ),
+    });
+
+    expect(unknownRefPaths(schema, { contacts: [{ kind: "email", value: "a" }] })).toEqual([]);
+  });
+
+  test("normalises a hand-written constant index too, which is the cost of collapsing rows", () => {
+    // `ref('rows.0.id')` names row 0 on purpose, and is still shown as `rows.*.id`. The report points
+    // at the right rule, which is what it is for.
+    const schema = object({
+      rows: array(object({ id: string() })),
+      label: string().custom(matching("rows.0.nope")),
+    });
+
+    expect(unknownRefPaths(schema, { rows: [{ id: "a" }], label: "x" })).toEqual([
+      { to: "rows.*.nope", from: "label" },
     ]);
   });
 

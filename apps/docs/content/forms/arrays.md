@@ -111,6 +111,28 @@ removeTag(id: string) {
 `@memoizedHandler` caches by arguments, so the same row gets the same function every render and
 the listener is never re-attached.
 
+## A rule about one row
+
+A validation rule inside a row often needs another field of *that same row* — "if `kind` is an email,
+`value` has to look like one". In bguard that is `ctx.sibling`, which asks the parent rather than
+naming the way back down to it:
+
+```ts
+contacts: array(
+  object({
+    kind: string(),
+    value: string().custom((received, ctx) => {
+      if (ctx.sibling((row: Contact) => row.kind) === "email" && !received.includes("@")) {
+        ctx.addIssue("an email address", received, "u:not-email");
+      }
+    }),
+  }),
+),
+```
+
+The row's index never appears, so the rule is right whatever position the row is at and stays right
+when rows move. The message lands on `value`, which is the field the reader has to fix.
+
 ## `rows` is stable until the list changes
 
 `rows` hands back the same array until something structural happens — an append, an insert, a

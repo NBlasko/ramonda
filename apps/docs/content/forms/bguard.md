@@ -139,6 +139,25 @@ by string — so `ref("contacts.0.kind")` reaches the first row's `kind`, and `r
 the count, which is what "at least one row" is written as. Both are accepted. A name an array does not
 have — `ref("rows.title")` — is still reported, because that is the silent `undefined` this is for.
 
+**One rule is one entry.** A rule inside a list runs once per row, and the problem is the rule rather
+than the row it happened to be on, so an array index appears as `*`:
+
+```ts
+[{ to: "contacts.*.kynd", from: "contacts[*].value" }]
+```
+
+Reported per row, a single typo on a fifty-row list produced fifty entries — measured, and an answer
+nobody reads. The cost of collapsing them is small and worth knowing: a constant index written by
+hand, `ref("rows.0.id")`, is also shown as `rows.*.id`.
+
+**`ctx.sibling` is checked too.** It resolves to an absolute path, so it flows through the same
+recording — which matters because its *string* form is the one the compiler cannot check:
+
+```ts
+ctx.sibling((row: Contact) => row.kynd);  // a compile error
+ctx.sibling("kynd");                      // not — and this is what catches it
+```
+
 ## What is deliberately not here
 
 Per-field validation via `pick`, which was the original plan for this module. It was measured first,

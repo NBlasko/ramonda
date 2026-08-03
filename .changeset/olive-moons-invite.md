@@ -46,7 +46,10 @@ in a bare Node process with no DOM.
   `ctx.ref('pasword')` returns `undefined` for ever and the comparison quietly succeeds or quietly
   fails; it is the shape of bug that survives a review because the line reads correctly. It belongs in
   a test. It needs values because a `custom` is opaque — a rule that does not run reads nothing, so it
-  cannot be checked, which is stated rather than hidden.
+  cannot be checked, which is stated rather than hidden. `ctx.sibling` is covered too, which is where
+  it earns most: its string form is the one the compiler cannot check. One rule is one entry however
+  many rows it ran on, with the index shown as `*` — reported per row, a single typo on a fifty-row
+  list produced fifty entries.
 
 `revalidateAll` is **removed** from `FormProps`. It was declared and documented as the escape hatch
 for a form big enough that whole-form revalidation would hurt, and it was never read — an option that
