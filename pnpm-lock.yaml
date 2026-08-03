@@ -123,6 +123,9 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/form':
+        specifier: workspace:^
+        version: link:../../packages/form
       '@ramonda/query':
         specifier: workspace:^
         version: link:../../packages/query
@@ -242,6 +245,34 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.2)(lightningcss@1.33.0))
+
+  packages/form:
+    dependencies:
+      '@ramonda/core':
+        specifier: '>=0.1.0 <1.0.0'
+        version: 0.1.0
+    devDependencies:
+      '@ramonda/shared':
+        specifier: workspace:^
+        version: link:../shared
+      '@ramonda/testing-library':
+        specifier: workspace:^
+        version: link:../testing-library
+      jsdom:
+        specifier: 28.0.0
+        version: 28.0.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@microsoft/api-extractor@7.58.12(@types/node@26.1.2))(postcss@8.5.22)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 7.3.6
+        version: 7.3.6(@types/node@26.1.2)(lightningcss@1.33.0)
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.2)(lightningcss@1.33.0))
