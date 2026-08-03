@@ -1,5 +1,98 @@
 # @ramonda/core
 
+## 0.8.0
+
+### Minor Changes
+
+- 85e6024: `stable()` is gone, and the comparison behind `@StableProps` no longer guesses from a sample
+
+  **`stable()` is removed.** It was the call-site half of a pair — `@StableProps` for a hook you own,
+  `stable()` for one you do not — and it was the half that put a hook's own semantics into the app's
+  code. Two things settled it:
+
+  - It is a **wrapper that compares**, and any such comparison has to be bounded to be affordable. So
+    it quietly stopped helping on a value large or deep enough, with nothing to tell you.
+  - What it was for belongs to the hook. A reusable hook is written against what it might be handed,
+    not against a well-behaved caller — `Query.onKeyChanged` compares the key part by part before
+    doing anything, _even though the framework already did_. A hook written that way needs no wrapper;
+    one that is not has a problem a wrapper only hides.
+
+  **What to write instead.** If you own the hook, `@StableProps` — unchanged, and now the only way to
+  say it. If you do not, hold the value somewhere that HAS an identity and hand that over:
+
+  ```tsx
+  @compute get series(): readonly number[] {
+    return [this.props.a, this.props.b];
+  }
+
+  private chart = this.use(SomeChart, (self: Panel) => ({ series: self.series }));
+  ```
+
+  Know what that is and is not: a `@compute` is invalidated by the signals it **read**, so its
+  identity follows its dependencies rather than its contents. One whose answer is coarser than its
+  inputs — `this.noise > 5`, `items.length` — hands over a fresh value whenever those inputs move,
+  even though the answer did not, and splitting it in two does not help because invalidation
+  propagates rather than being deduplicated by value. That is what RMD024 reports, and absorbing it is
+  the hook's job. RMD022's and RMD024's fix text now say all of this.
+
+  **And a real bug, found from `@ramonda/form`.** The comparison behind `@StableProps` compared the
+  first fifty items of an array and then answered "equal" for the rest — a verdict from a sample,
+  where its own docstring promised "past the depth **or the width**, two different objects are simply
+  called different". So two sixty-item arrays differing only at index 55 compared as equal, a declared
+  prop was handed back its previous value, and the change was gone with nothing reported. It answers
+  "different" past the width now, which costs a wide array a fresh reference every render — correct,
+  just not optimal, which is what both bounds were always documented to cost.
+
+  One consequence worth naming: RMD020/RMD022 pick their WORDING from the same comparison, so a pair
+  that is wider than the bound is now described as non-deterministic rather than as rebuilt in place.
+  A less precise message, never a wrong verdict — something was rebuilt either way, and both messages
+  say so. The depth bound has always behaved like this.
+
+### Patch Changes
+
+- 391e16e: Server-rendered HTML no longer depends on the DOM to lowercase our tag names
+
+  `h` uppercases an HTML tag on purpose: a real node reports `nodeName` in uppercase, the diff compares
+  against it on every pass, and converting once at construction beats converting on every comparison.
+  So `createElement` has always been called with `"DIV"`.
+
+  A browser and jsdom lowercase a created element's local name in an HTML document, so that was
+  invisible — every test passed either way. It is a dependency on the DOM normalising for us, and a
+  partial DOM does not: linkedom keeps what it is handed and serves `<DIV id="page">`. Valid HTML, and
+  identical once parsed (measured), but not what anyone should find in view-source on a page we served.
+
+  `createElement` is now handed the lowercase name. It is the right side to pay on: an element is built
+  once and diffed many times, so the hot path is untouched.
+
+  **The SVG branch is deliberately excluded.** SVG names are case-sensitive — `linearGradient`,
+  `clipPath`, `foreignObject` — and `h` never uppercases them for that reason. Lowercasing there would
+  turn `linearGradient` into a different element that renders nothing, on any page that happens to have
+  a gradient.
+
+  Asserted at the CALL rather than at the result, because the result is exactly what hid this: the
+  tests spy on `createElement`/`createElementNS` and check the names we ask for. Both halves are
+  verified load-bearing — reverting the lowercase fails two, and extending it to SVG fails two others.
+
+- 4a44300: A server render no longer attaches event listeners
+
+  A listener is not an attribute, so `innerHTML` cannot serialize one — attaching them on the server was
+  harmless, and that is why it stood: skipping looked like it would cost the client a check to save work
+  nobody sees.
+
+  Measured, and it is worth it. 100 rows with four handlers each — 400 listeners — rendered in 2.104 ms
+  with them attached and 1.222 ms without: **42% of a listener-heavy server render**, and it also drops
+  the `_listeners` bookkeeping those elements were carrying for nothing.
+
+  The client pays one boolean, already in hand, tested inside a branch that was about to make two DOM
+  calls anyway.
+
+  **Which side it is comes from the owning component's runtime, not from `getRenderEnv()`.** That
+  module-level flag has a documented contract — only `createComponent` may read it, and only for a root
+  mount — because it is restored before the first `await`, so an element built during the drain that
+  follows would read "client" whatever side it is really on. There is a test for exactly that: a
+  `@mount` that fills a list after an await, whose rows appear in the markup and attach nothing. It
+  fails if the flag is used instead.
+
 ## 0.7.0
 
 ### Minor Changes
