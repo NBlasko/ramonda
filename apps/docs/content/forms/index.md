@@ -133,6 +133,9 @@ An "edit profile" page does not know its values at mount. It asks for them, and 
 later. Move `defaultValues` when they land and the form follows:
 
 ```tsx
+// A module constant, not a literal in the callback — see "one object, not a fresh one" below.
+const BLANK = { name: "", email: "" };
+
 class EditProfile extends Component {
   private profile = this.use(Query, (self: EditProfile) => ({
     key: ["profile", self.props.id],
@@ -141,7 +144,7 @@ class EditProfile extends Component {
 
   private form = this.use(Form<typeof schema>, (self: EditProfile) => ({
     schema,
-    defaultValues: self.profile.data ?? { name: "", email: "" },
+    defaultValues: self.profile.data ?? BLANK,
     onSubmit: self.save,
   }));
 
@@ -171,13 +174,27 @@ the failure row identities exist to prevent — see [Array fields](/forms/arrays
 that way can never move — that is the shape in [The whole thing](#the-whole-thing), and it is right
 for a form whose defaults are constants.
 
-The form compares the defaults by value, so rebuilding the object every render — which is what a
-callback does — changes nothing on its own and costs no render: no write, and `values` stays the same
-object. That comparison is the only cost, around 2 µs on a ten-field form and 15 µs on a hundred-field
-one, per render of the owner.
+### One object, not a fresh one
 
-It is deliberately a full comparison rather than the framework's bounded one, which stops at fifty
-array items — the difference between missing the fifty-fifth row of a record and not missing it.
+Hand `defaultValues` an object you already have — what the fetch returned, a module constant, a
+field. Do not build it in the callback:
+
+```tsx
+defaultValues: self.profile.data ?? { name: "", email: "" },   // ✗ a new object every render
+defaultValues: self.profile.data ?? BLANK,                     // ✓ one object
+```
+
+A props callback runs on every render of the owner, so the first line builds a fresh object each
+time. In development, [RMD022](/reference/diagnostics) reports it — and its advice is `stable()`,
+which is the right answer for most props and **the wrong one here**: `stable()` compares only the
+first fifty items of an array, so on a record with more rows than that a change past the fiftieth
+would compare as "no change" and be dropped. Hold the object instead; then nothing is rebuilt, there
+is nothing to report, and nothing to wrap.
+
+The form does its own comparison, in full, for the same reason — it is why `defaultValues` is not
+declared stable. That comparison is the whole cost of defaults that did not move: around 2 µs on a
+ten-field form and 15 µs on a hundred-field one, per render of the owner, and no write and no render
+follow it. `values` even stays the same object.
 
 ## Where to go next
 

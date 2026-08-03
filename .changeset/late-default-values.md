@@ -35,6 +35,12 @@ callback rebuilding the object every render — which is what a props callback d
 renders nothing, and leaves `values` as the same object. That costs one comparison per render of the
 owner: 2 µs at ten fields, 13–20 µs at a hundred, over three runs.
 
+One thing to know when you write the callback: hand `defaultValues` an object you already have — what
+the fetch returned, a module constant, a field — rather than building one inline. A rebuilt literal is
+reported as RMD022, and that diagnostic's advice is `stable()`, which is the right answer for most
+props and the wrong one for this one, for the reason below. Holding the object leaves nothing to
+report and nothing to wrap.
+
 It is the form's own comparison and it is unbounded, which is a choice worth naming: declaring
 `defaultValues` stable would have the framework hold the identity and skip all of this, and the
 framework's comparison stops at five levels and the first fifty items of an array. Past the depth it
