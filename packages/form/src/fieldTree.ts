@@ -15,6 +15,7 @@ export interface FieldHost {
   resetAt(path: Path): void;
   rowIds(path: Path): readonly string[];
   splice(path: Path, start: number, remove: number, insert: readonly unknown[]): void;
+  move(path: Path, from: number, to: number): void;
 }
 
 /** Marks a node, so a diagnostic or an inspector can tell one from an ordinary object. */
@@ -237,6 +238,18 @@ export class FieldHandle {
 
   remove(index: number): void {
     this.host.splice(this.at_, index, 1, []);
+  }
+
+  /**
+   * Reorders a row, carrying its identity with it.
+   *
+   * Not `remove` then `insert`: that mints a NEW id for the row, so the reconciler treats it as a
+   * different row, throws its element away and builds another — losing the caret, the selection and
+   * anything else the browser was holding. Moving the value and the id in one operation is the whole
+   * reason this is a method rather than something each app writes.
+   */
+  move(from: number, to: number): void {
+    this.host.move(this.at_, from, to);
   }
 
   private list(): readonly unknown[] {

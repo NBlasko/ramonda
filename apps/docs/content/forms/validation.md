@@ -151,3 +151,21 @@ redirect, so it does not guess.
 calls `onSubmit` only if the schema is satisfied. `isSubmitting` is true while an async handler
 is in flight, and `submitCount` counts attempts — including the ones that failed validation,
 which is what you want for "why is this button not doing anything".
+
+### A failed submit moves the caret
+
+When validation fails, the **first invalid field takes focus** — first in the order on screen, not
+the order the validator happened to report.
+
+Without it a submit does nothing visible when the messages are below the fold: the reader presses the
+button again, and again. For someone using a screen reader there is no signal at all, which makes
+this accessibility rather than polish.
+
+Three things follow from how it is scoped:
+
+- **It stays inside the form the submit came from**, so a page with two forms cannot pull focus into
+  the other one.
+- **A disabled control is skipped**, because `focus()` on one silently does nothing and would leave
+  the form looking as inert as before.
+- **A programmatic `form.submit()` moves nothing.** No event, no element — and the right boundary
+  anyway: your code called it, so your code decides where the reader should be looking.

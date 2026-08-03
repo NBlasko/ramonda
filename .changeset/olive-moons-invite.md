@@ -28,6 +28,16 @@ to put a form inside a `<fieldset>` or a `<tr>` where a wrapper would be invalid
   form submitted. `isValid` always reports the real answer underneath.
 - **Server rendering needs nothing wired up.** `name` and `value` reach the HTML, so the page is a
   real form before any JavaScript runs.
+- **A failed submit puts the caret in the first invalid field**, first in the order on screen rather
+  than the order the validator reported. Without it, pressing the button does nothing visible when
+  the messages are below the fold — and for someone using a screen reader, no signal at all. Scoped
+  to the form the submit came from, so a page with two forms cannot steal focus into the other; a
+  disabled control is skipped; a programmatic `submit()` moves nothing, since your code called it and
+  your code decides where the reader looks.
+- **`move(from, to)` on an array field** reorders a row and carries its identity with it. `remove`
+  then `insert` mints a new id, so the reconciler drops the row's element and builds another, losing
+  the caret and the selection — which is exactly what row ids exist to prevent, so the library does
+  it rather than every app.
 
 ### `@ramonda/form/bguard`
 

@@ -306,6 +306,43 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     this.revalidate();
   }
 
+  /**
+   * Reorders a row, carrying its identity with it.
+   *
+   * Deliberately NOT two `splice` calls. `splice` mints an id for anything inserted, so a remove
+   * followed by an insert gives the row a new identity — the reconciler sees a different row, drops
+   * its element and builds another, and the caret, the selection and any scroll inside it go with it.
+   * The value and the id move together here, in one operation, so they cannot disagree.
+   *
+   * Out of range is a no-op rather than an error, matching `splice`, which clamps. A move that
+   * changes nothing does not re-render either: `list()` would rebuild every row's key for an
+   * operation that did not happen.
+   */
+  move(path: Path, from: number, to: number): void {
+    const value = readAt(this.current, path);
+    const items = Array.isArray(value) ? [...value] : [];
+    if (from < 0 || from >= items.length) return;
+
+    const at = Math.max(0, Math.min(to, items.length - 1));
+    if (at === from) return;
+
+    // Read before the values move, for the reason `splice` records: `rowIds` trims to the current
+    // length, so reading afterwards hands back a list already cut to the new size.
+    const ids = [...this.rowIds(path)];
+
+    items.splice(at, 0, ...items.splice(from, 1));
+    ids.splice(at, 0, ...ids.splice(from, 1));
+
+    this.held = writeAt(this.current, path, items);
+    this.ids.set(pathKey(path), ids);
+
+    // Messages are keyed by index and the indexes have changed, so what is recorded is now about
+    // the wrong rows. The next validation re-addresses them.
+    this.forgetUnder(path, { keepSelf: true });
+    this.bump();
+    this.revalidate();
+  }
+
   /* ---------------------------------------------------------------- *
    * Writing from the outside
    * ---------------------------------------------------------------- */
@@ -319,7 +356,55 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    */
   submit(event?: Event): void {
     event?.preventDefault();
+    // Captured HERE, synchronously, because `currentTarget` is null once dispatch is over and an
+    // async schema answers long after that. Measured: holding the event and reading it late still
+    // works, because `scopeOf` falls back to `target` — so this is about getting the RIGHT element
+    // rather than a working one. `currentTarget` is where the handler was attached, `target` is
+    // where the event started, and they differ whenever the handler sits on an ancestor.
+    this.submittedFrom = scopeOf(event);
     void this.run();
+  }
+
+  /**
+   * The element a submit came from, for focusing the first field that failed.
+   *
+   * Only set by a submit carrying an EVENT. A programmatic `form.submit()` moves no focus, which is
+   * the right boundary rather than an omission: the app called it, so the app decides where the
+   * reader should be looking.
+   */
+  private submittedFrom: HTMLElement | undefined;
+
+  /**
+   * Puts the caret in the first field that failed, in the order the reader sees them.
+   *
+   * Without it, a submit on an invalid form does nothing visible when the messages are below the
+   * fold — the reader presses the button again, and again. For someone using a screen reader there
+   * is no signal at all, which makes this accessibility rather than polish. Every serious form
+   * library does it, and React Hook Form has it on by default.
+   *
+   * **DOM order, not schema order.** The issues arrive in whatever order the validator walked, and
+   * that is not what is on screen. Walking the form's own controls answers with the first one the
+   * reader would reach.
+   *
+   * **Scoped to the form the submit came from**, so a page with two forms cannot steal focus into
+   * the other one. `closest("form")` because the handler may be on a button rather than the form.
+   *
+   * A disabled control is skipped — `focus()` on one silently does nothing, and the reader would be
+   * left with a form that still looks inert. Anything else is left to `focus()`, including the
+   * scrolling it already does; adding `scrollIntoView` would fight the browser's own behaviour.
+   */
+  private focusFirstInvalid(): void {
+    const scope = this.submittedFrom;
+    if (scope === undefined) return;
+
+    for (const control of scope.querySelectorAll<HTMLElement>("[name]")) {
+      const name = control.getAttribute("name");
+      if (!name || (control as { disabled?: boolean }).disabled) continue;
+      if (!this.issues.has(pathKey(parsePath(name)))) continue;
+
+      control.focus();
+      return;
+    }
   }
 
   /** Back to `defaultValues`, or to the values given. Clears errors, `touched` and row ids. */
@@ -463,6 +548,9 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     this.issues = issues;
     this.validated = true;
     if (issues.size > 0) {
+      // Before `settle`, which re-renders: the controls already carry their `name`, and only the
+      // messages beside them are about to change, so there is nothing to wait for.
+      this.focusFirstInvalid();
       this.settle();
       return;
     }
@@ -587,4 +675,18 @@ function isPlain(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+}
+
+/**
+ * The element to look for invalid controls in, from a submit event.
+ *
+ * `closest("form")` because the handler is usually on the `<form>` but may be on a button inside
+ * one. When neither is true — a submit wired to something outside a form — the element itself is
+ * the scope, which is still narrower than the document.
+ */
+function scopeOf(event: Event | undefined): HTMLElement | undefined {
+  const target = (event?.currentTarget ?? event?.target) as HTMLElement | null | undefined;
+  if (!target || typeof target.closest !== "function") return undefined;
+
+  return target.closest("form") ?? target;
 }

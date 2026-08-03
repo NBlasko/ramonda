@@ -58,6 +58,12 @@ function host(initial: unknown) {
       items.splice(start, remove, ...insert);
       values = writeAt(values, path, items);
     },
+    move: (path: Path, from: number, to: number) => {
+      const value = readAt(values, path);
+      const items = Array.isArray(value) ? [...value] : [];
+      items.splice(to, 0, ...items.splice(from, 1));
+      values = writeAt(values, path, items);
+    },
   };
 }
 

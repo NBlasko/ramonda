@@ -85,6 +85,17 @@ export class FormDemo extends Component {
     this.form.fields.tags.$.append("");
   }
 
+  // `move` rather than remove-then-insert: the row keeps its id, so it keeps its element and
+  // whatever you had typed or selected in it.
+  @memoizedHandler
+  moveTagUp(id: string) {
+    return () => {
+      const rows = this.form.fields.tags.$.rows;
+      const index = rows.findIndex((row) => row.id === id);
+      if (index > 0) this.form.fields.tags.$.move(index, index - 1);
+    };
+  }
+
   render() {
     const f = this.form.fields;
     const email = f.email.$;
@@ -120,6 +131,9 @@ export class FormDemo extends Component {
               render: (row) => (
                 <li>
                   <input {...row.field.$.bind} />
+                  <button type="button" onClick={this.moveTagUp(row.id)} disabled={row.index === 0}>
+                    up
+                  </button>
                   <button type="button" onClick={this.removeTag(row.id)}>
                     remove
                   </button>

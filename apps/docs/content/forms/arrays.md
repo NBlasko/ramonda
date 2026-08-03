@@ -24,7 +24,16 @@ tags.rows              // [{ id, index, field }, …]
 tags.append("new")     // add at the end
 tags.insert(1, "new")  // add at an index
 tags.remove(0)         // drop one
+tags.move(2, 0)        // reorder, identity and all
 ```
+
+`move` is a method rather than something you write yourself, and the reason is the id. `remove` then
+`insert` mints a **new** one, so the reconciler sees a different row, throws its element away and
+builds another — losing the caret, the selection, and any scroll inside it. `move` carries the value
+and the id together, in one operation.
+
+Out of range is a no-op, and so is a move to the same index: a reorder that did not happen must not
+cost every row its `list()` key.
 
 ## Rendering rows
 

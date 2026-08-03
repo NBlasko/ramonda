@@ -199,6 +199,127 @@ describe("array fields", () => {
     }
   });
 
+  test("`move` carries the row's identity with it", () => {
+    // The whole reason this is a method rather than `remove` + `insert`: that mints a NEW id, so the
+    // reconciler sees a different row, throws its element away and builds another — losing the caret,
+    // the selection, and anything else the browser was holding.
+    const { form, unmount } = mount();
+    try {
+      const before = form.fields.tags.$.rows.map((row) => row.id);
+
+      form.fields.tags.$.move(0, 2);
+
+      expect(form.values.tags).toEqual(["b", "a", "a"]);
+      // The same three identities, reordered — not two survivors and a newcomer.
+      expect(form.fields.tags.$.rows.map((row) => row.id)).toEqual([before[1], before[2], before[0]]);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("`remove` then `insert` is NOT the same thing, which is why `move` exists", () => {
+    const { form, unmount } = mount();
+    try {
+      const before = form.fields.tags.$.rows.map((row) => row.id);
+
+      form.fields.tags.$.remove(0);
+      form.fields.tags.$.insert(2, "a");
+
+      const after = form.fields.tags.$.rows.map((row) => row.id);
+      expect(form.values.tags).toEqual(["b", "a", "a"]);
+      // Same values as the move above, but the row that travelled is a stranger now.
+      expect(after[2]).not.toBe(before[0]);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("`move` backwards works the same", () => {
+    const { form, unmount } = mount();
+    try {
+      const before = form.fields.tags.$.rows.map((row) => row.id);
+
+      form.fields.tags.$.move(2, 0);
+
+      expect(form.values.tags).toEqual(["a", "a", "b"]);
+      expect(form.fields.tags.$.rows.map((row) => row.id)).toEqual([before[2], before[0], before[1]]);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("`move` clamps a target past the end, and does nothing for a source out of range", () => {
+    const { form, unmount } = mount();
+    try {
+      const before = form.fields.tags.$.rows;
+
+      form.fields.tags.$.move(0, 99);
+      expect(form.values.tags).toEqual(["b", "a", "a"]);
+
+      // Out of range at the source: nothing happens, and `rows` is not even rebuilt — a no-op must
+      // not cost every row its `list()` key.
+      const settled = form.fields.tags.$.rows;
+      form.fields.tags.$.move(9, 0);
+      form.fields.tags.$.move(-1, 0);
+      expect(form.fields.tags.$.rows).toBe(settled);
+      expect(before).not.toBe(settled);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a move to the same index changes nothing and rebuilds nothing", () => {
+    const { form, unmount } = mount();
+    try {
+      const rows = form.fields.tags.$.rows;
+
+      form.fields.tags.$.move(1, 1);
+
+      expect(form.fields.tags.$.rows).toBe(rows);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a message follows the row across a move", () => {
+    const { form, unmount } = mount({ tags: ["ok", "", "fine"], contacts: [] });
+    try {
+      form.submit();
+      expect(form.fields.tags[1].$.error).toBe("a tag cannot be empty");
+
+      form.fields.tags.$.move(1, 2);
+
+      expect(form.values.tags).toEqual(["ok", "fine", ""]);
+      expect(form.fields.tags[2].$.error).toBe("a tag cannot be empty");
+      expect(form.fields.tags[1].$.error).toBeUndefined();
+    } finally {
+      unmount();
+    }
+  });
+
+  test("`move` on a nested array keeps that array's own numbering", () => {
+    const { form, unmount } = mount({
+      tags: [],
+      contacts: [
+        { kind: "email", value: "a" },
+        { kind: "phone", value: "b" },
+      ],
+    });
+    try {
+      const before = form.fields.contacts.$.rows.map((row) => row.id);
+
+      form.fields.contacts.$.move(0, 1);
+
+      expect(form.values.contacts).toEqual([
+        { kind: "phone", value: "b" },
+        { kind: "email", value: "a" },
+      ]);
+      expect(form.fields.contacts.$.rows.map((row) => row.id)).toEqual([before[1], before[0]]);
+    } finally {
+      unmount();
+    }
+  });
+
   test("`length` reports the list, and an absent list is empty rather than an error", () => {
     const { form, unmount } = mount({ tags: [], contacts: [] });
     try {

@@ -199,7 +199,7 @@ Every field is reached by property access and its API sits behind `$`:
 |---|---|
 | `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
 | `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
-| `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)`. [Array fields](/forms/arrays) |
+| `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
 | `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what `list({ key })` uses. |
 
 Types: `FieldNode` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·

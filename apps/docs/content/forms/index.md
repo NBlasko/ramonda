@@ -123,7 +123,7 @@ this.use(Form, { schema, defaultValues, onSubmit: this.save });
 | `isDirty` | Whether anything has been edited. |
 | `isSubmitting` | True while `onSubmit` is in flight. |
 | `submitCount` | How many times submit has been attempted. |
-| `submit(event?)` | Hand it straight to `onSubmit={…}`; it calls `preventDefault` for you. |
+| `submit(event?)` | Hand it straight to `onSubmit={…}`; it calls `preventDefault`, and focuses the first invalid field. |
 | `reset(values?)` | Back to the defaults, or to the values you pass. |
 | `setError(path, message)` | A message from somewhere the schema cannot see — usually the server. |
 

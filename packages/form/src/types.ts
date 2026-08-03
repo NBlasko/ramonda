@@ -205,6 +205,13 @@ export interface ArrayApi<E, T> extends FieldApi<T> {
   append(item: E): void;
   insert(index: number, item: E): void;
   remove(index: number): void;
+  /**
+   * Reorders a row, carrying its identity with it — for a drag handle, or move-up/move-down.
+   *
+   * `remove` then `insert` is not the same thing: that mints a new id, so the row loses its element
+   * and whatever the browser was holding in it. Out of range is a no-op.
+   */
+  move(from: number, to: number): void;
 }
 
 export interface LeafNode<T> {
