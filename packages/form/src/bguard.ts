@@ -239,9 +239,6 @@ export function unknownRefPaths<S extends StandardSchemaV1>(schema: S, values: u
   const seen = new Set<string>();
 
   for (const read of refReads) {
-    // `ref` splits on dots and nothing else, so its segments are always keys — an array index
-    // reached this way is the string "0", which `properties` will not have. Reported, correctly: a
-    // `ref` cannot address an array element.
     if (resolves(root, read.toPath)) continue;
 
     const key = `${read.to} ${read.fromPath}`;
@@ -254,12 +251,34 @@ export function unknownRefPaths<S extends StandardSchemaV1>(schema: S, values: u
   return problems;
 }
 
-/** Whether the schema has a property at every segment of the path. */
+/**
+ * Whether the schema has something at every segment of the path.
+ *
+ * This has to follow the walk `ref` ITSELF does, not a tidier one, or it reports paths that work.
+ * `ref` splits on dots and then indexes plainly, so on an array:
+ *
+ * - **`rows.0` resolves.** A JavaScript array indexes by string, so `received['rows']['0']` is the
+ *   first row. Measured, because the segment being a string made it look like it could not be.
+ * - **`rows.length` resolves**, and is a legitimate thing for a rule to read — "at least one row"
+ *   is a real cross-field rule. It is terminal: nothing hangs off a number.
+ *
+ * Anything else named on an array does not: `rows.title` is undefined at runtime, which is the
+ * silent failure this whole function exists to surface.
+ */
 function resolves(root: JSONSchema, path: readonly string[]): boolean {
   let node: JSONSchema | undefined = root;
 
   for (const segment of path) {
-    const properties = node?.properties as Record<string, unknown> | undefined;
+    if (node === undefined) return false;
+
+    if (node.items !== undefined) {
+      if (segment === "length") return true;
+      if (!/^\d+$/.test(segment)) return false;
+      node = asSchema(node.items);
+      continue;
+    }
+
+    const properties = node.properties as Record<string, unknown> | undefined;
     node = properties ? asSchema(properties[segment]) : undefined;
     if (node === undefined) return false;
   }

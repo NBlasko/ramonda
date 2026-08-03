@@ -223,14 +223,45 @@ describe("unknownRefPaths", () => {
     expect(unknownRefPaths(schema, { password: "p", confirm: "p" })).toEqual([{ to: "pasword", from: "confirm" }]);
   });
 
-  test("reports a `ref` that tries to address an array element", () => {
-    // `ref` splits on dots only, so `'rows.0'` looks for a PROPERTY named "0". Reporting it is
-    // correct: a ref cannot reach into an array, and the rule silently compares against undefined.
+  test("accepts a `ref` INTO an array, which does work", () => {
+    // `ref` splits on dots and then indexes plainly, and a JavaScript array indexes by string — so
+    // `received['rows']['0']` is the first row. Measured, because the segment being a string made it
+    // look as though it could not be, and reporting it would have been a false alarm on working code.
     const schema = object({
       rows: array(string()),
       first: string().custom(matching("rows.0")),
     });
 
-    expect(unknownRefPaths(schema, { rows: ["a"], first: "a" })).toEqual([{ to: "rows.0", from: "first" }]);
+    expect(unknownRefPaths(schema, { rows: ["a"], first: "a" })).toEqual([]);
+  });
+
+  test("accepts `length` on an array, which a real rule reads", () => {
+    // "at least one row" is an ordinary cross-field rule.
+    const schema = object({
+      rows: array(string()),
+      summary: string().custom((received: string, ctx: ExceptionContext) => {
+        if ((ctx.ref("rows.length") as number) === 0) ctx.addIssue("a row", received, "u:empty");
+      }),
+    });
+
+    expect(unknownRefPaths(schema, { rows: ["a"], summary: "s" })).toEqual([]);
+  });
+
+  test("still reports a name an array does not have", () => {
+    const schema = object({
+      rows: array(string()),
+      first: string().custom(matching("rows.title")),
+    });
+
+    expect(unknownRefPaths(schema, { rows: ["a"], first: "a" })).toEqual([{ to: "rows.title", from: "first" }]);
+  });
+
+  test("reaches a field inside an array row", () => {
+    const schema = object({
+      contacts: array(object({ kind: string(), value: string() })),
+      note: string().custom(matching("contacts.0.kind")),
+    });
+
+    expect(unknownRefPaths(schema, { contacts: [{ kind: "email", value: "a" }], note: "email" })).toEqual([]);
   });
 });

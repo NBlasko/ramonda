@@ -134,6 +134,11 @@ empty value: **a rule that does not run reads nothing, so it cannot be checked.*
 
 Whether the values are valid is not the question. Every issue the parse reports is ignored.
 
+**Array paths resolve.** `ref` splits on dots and then indexes plainly, and a JavaScript array indexes
+by string — so `ref("contacts.0.kind")` reaches the first row's `kind`, and `ref("rows.length")` reads
+the count, which is what "at least one row" is written as. Both are accepted. A name an array does not
+have — `ref("rows.title")` — is still reported, because that is the silent `undefined` this is for.
+
 ## What is deliberately not here
 
 Per-field validation via `pick`, which was the original plan for this module. It was measured first,
