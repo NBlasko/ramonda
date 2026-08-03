@@ -795,3 +795,21 @@ test asserts the report COUNT for that reason rather than its presence.
 **The honest limit**, stated in the docs too: a compute that reads only something non-reactive
 is never invalidated, so it never recomputes and is never observed. The counter case is caught
 only when the compute is invalidated by something else.
+
+### RMD026 — retired 2026-08-03
+
+It warned that an unkeyed child had been handed the DOM node a different same-tag sibling was
+using, which happens when a conditional child appears or disappears and the siblings are matched
+by position. It was written alongside a partial fix and reported only where it could be certain:
+two or more unkeyed children sharing a tag, one of them matched to a node from another slot.
+
+The hazard is gone. Every node now records the JSX child slot it was built for (`SLOT_SYM`,
+holes counted) and an unkeyed child claims the node carrying its own slot rather than whatever
+sits at its position, so a child appearing in the middle of same-shape siblings mounts a fresh
+node instead of taking a neighbour's. There is nothing left to report, and nothing for the
+reader to do about it — which is the better outcome, because the warning's only advice was to
+add keys the framework should not have needed.
+
+See the changeset for the measurements, and `__tests__/HoleAlignment.test.tsx` for the
+arrangements it covers — conditionals at the start, middle and end, in both directions, with
+elements and with components.
