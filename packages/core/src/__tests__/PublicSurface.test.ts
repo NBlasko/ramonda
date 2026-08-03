@@ -16,6 +16,8 @@ import * as api from "../index";
  */
 
 const EXPECTED = [
+  // the devtools seam: an instance describing what it holds
+  "INSPECT",
   // components and hooks
   "Component",
   "Hook",

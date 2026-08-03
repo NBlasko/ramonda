@@ -50,7 +50,7 @@ function tool(name: string): string {
 }
 
 type Mode = "spa" | "ssr";
-type AddOn = "router" | "query" | "lens" | "testing" | "devtools" | "biome";
+type AddOn = "router" | "query" | "form" | "lens" | "testing" | "devtools" | "biome";
 
 interface Deps {
   dependencies: Record<string, string>;
@@ -178,6 +178,7 @@ async function main(): Promise<void> {
       options: [
         { value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" },
         { value: "query" as AddOn, label: "Query", hint: "@ramonda/query — cached, race-free async data" },
+        { value: "form" as AddOn, label: "Form", hint: "@ramonda/form — typed fields and schema validation" },
         { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
         { value: "testing" as AddOn, label: "Testing", hint: "vitest + @ramonda/testing-library" },
         { value: "devtools" as AddOn, label: "Devtools", hint: "@ramonda/devtools — dev inspector" },
@@ -272,6 +273,7 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   // is built on the router — so SSR always includes it, add-on chosen or not.
   if (addons.includes("router") || mode === "ssr") deps.dependencies["@ramonda/router"] = ramonda("@ramonda/router");
   if (addons.includes("query")) deps.dependencies["@ramonda/query"] = ramonda("@ramonda/query");
+  if (addons.includes("form")) deps.dependencies["@ramonda/form"] = ramonda("@ramonda/form");
   if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = ramonda("@ramonda/lens");
   if (addons.includes("devtools")) {
     deps.devDependencies["@ramonda/devtools"] = ramonda("@ramonda/devtools");

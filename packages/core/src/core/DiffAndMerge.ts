@@ -25,6 +25,7 @@ import {
   svgNamespaceUri,
   IS_SVG,
   KEY_SYM,
+  SLOT_SYM,
   IS_LIST,
   HAS_LIST,
   CHILD_RECORD,
@@ -192,16 +193,26 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
   for (let i = 0; i < enhancedChildNodes.length; i++) {
     cloneChildren[i] = enhancedChildNodes[i];
   }
-  const keyIndex: KeyIndex = { map: null, source: cloneChildren };
+  const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
   // The nodes the vnode list wants, in its order. Feeds the reorder pass.
   const orderedNodes: ChildNode[] = [];
+
+  /**
+   * Where in the POOL to look first — the count of children that actually became nodes.
+   *
+   * `filterVirtualChild` drops `null`, `undefined` and booleans, and none of them leaves a
+   * node behind, so the pool is shorter than the vnode list by however many holes precede a
+   * child. This is only the guess, though; `i` is the identity. The two agree on every render
+   * where no conditional sibling changed, which is what keeps the common path free.
+   */
+  let position = 0;
 
   for (let i = 0; i < vnodeChildren.length; i++) {
     const vchild = filterVirtualChild(vnodeChildren[i]);
     if (vchild === undefined) continue;
 
-    const placed = claimOrMount(vchild, i, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
+    const placed = claimOrMount(vchild, position++, i, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
     if (placed) orderedNodes.push(placed);
   }
 
@@ -221,6 +232,16 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
 interface KeyIndex {
   map: Map<string, number> | null;
   source: (EnhancedChildNode | DONE)[];
+  /**
+   * Everything below this is claimed, so the backward slot search stops here.
+   *
+   * A claimed entry can never be matched again, and children are walked in ascending order, so
+   * the run of `DONE` at the front of the pool only grows. Without this, appending 100 rows to
+   * a list of 2900 walked all 2900 claimed entries for each of them — 290k steps to find
+   * nothing, and 20% on that benchmark. The cursor only ever moves forward, so advancing it
+   * costs one pass over the pool across the whole render, not one per child.
+   */
+  firstFree: number;
 }
 
 function keyIndexOf(index: KeyIndex): Map<string, number> {
@@ -250,25 +271,50 @@ function keyIndexOf(index: KeyIndex): Map<string, number> {
 function claimOrMount(
   vchild: ComponentChild,
   preferredIndex: number,
+  slot: number,
   placeholderComponent: MaybeComponent,
   parent: ChildNode,
   cloneChildren: (EnhancedChildNode | DONE)[],
   keyIndex: KeyIndex,
 ): ChildNode | undefined {
   let matchedIndex = -1;
+  /** The matched node already records this slot, so there is nothing to write back. */
+  let slotIsCurrent = false;
+
+  const key = typeof vchild === "string" ? undefined : vchild.attributes?.key;
+  const keyed = key != null;
 
   // 1. The position this child already occupied. `areSimilarNodes` enforces key
   //    equality, so this is safe for keyed children too — and it is the case
   //    that actually happens, so it must cost nothing.
+  //
+  //    For an UNKEYED child the position is only a guess at where its slot went, so the
+  //    node has to agree that the slot is its own. One property read, and it is true on
+  //    every render where no conditional sibling appeared or disappeared — which is
+  //    almost all of them. A keyed child skips the question: the key is a stronger
+  //    identity than the slot, and it is allowed to move.
+  //
+  //    The slot is read ONCE here and the answer carried to the write-back below. Reading
+  //    it again there would be a second property read per child on the hottest path in the
+  //    diff, to re-derive something already known.
   if (preferredIndex < cloneChildren.length) {
     const candidate = cloneChildren[preferredIndex];
     if (candidate !== DONE && areSimilarNodes(candidate, vchild)) {
-      matchedIndex = preferredIndex;
+      if (keyed) {
+        matchedIndex = preferredIndex;
+      } else {
+        const recorded = candidate[SLOT_SYM];
+        if (recorded === slot) {
+          matchedIndex = preferredIndex;
+          slotIsCurrent = true;
+        } else if (recorded === undefined) {
+          // Never diffed: a node the client adopted from server-rendered markup. Positional
+          // matching is all there is, exactly as before, and claiming it is what stamps it.
+          matchedIndex = preferredIndex;
+        }
+      }
     }
   }
-
-  const key = typeof vchild === "string" ? undefined : vchild.attributes?.key;
-  const keyed = key != null;
 
   // 2. It moved: now the index is worth building.
   if (matchedIndex === -1 && keyed) {
@@ -287,7 +333,7 @@ function claimOrMount(
   //    anyway, so for a keyed child the scan could only ever come back empty,
   //    after walking the whole list to find that out.
   if (matchedIndex === -1 && !keyed) {
-    matchedIndex = findIndexOfSimilarNodes(vchild, cloneChildren, preferredIndex);
+    matchedIndex = findIndexOfSlot(vchild, cloneChildren, slot, preferredIndex, keyIndex);
   }
 
   const matched = matchedIndex > -1 ? cloneChildren[matchedIndex] : DONE;
@@ -295,6 +341,7 @@ function claimOrMount(
   if (matched !== DONE) {
     if (typeof vchild === "string") {
       applyDiffOnTextNode(vchild, matched);
+      if (!slotIsCurrent) stampSlot(matched, slot, keyed);
       cloneChildren[matchedIndex] = DONE;
       return matched;
     }
@@ -303,6 +350,9 @@ function claimOrMount(
     // the key is the same, so the component definition may have changed. When
     // it does, the old node stays unclaimed and gets unmounted below.
     const next = diffAndMerge(vchild, placeholderComponent, matched);
+    // A replacement is a different node and knows nothing, so what was read off the old one
+    // does not carry over to it.
+    if (!slotIsCurrent || next !== matched) stampSlot(next as EnhancedChildNode, slot, keyed);
     if (next === matched) cloneChildren[matchedIndex] = DONE;
     return next;
   }
@@ -310,8 +360,95 @@ function claimOrMount(
   // Built, not inserted: `reorderChildren` places it, after the nodes this
   // render drops have been unmounted. See buildDetachedNode.
   const mounted = buildDetachedNode(vchild, placeholderComponent, parent);
+  // A node built this instant carries no slot, so there is nothing to read and nothing to
+  // clear — only an unkeyed child has anything to write.
+  if (mounted && !keyed) (mounted as EnhancedChildNode)[SLOT_SYM] = slot;
   cloneChildren.push(DONE);
   return mounted;
+}
+
+/**
+ * Records the slot — for an unkeyed child, and only when it is news.
+ *
+ * **Only when it is news**, because a slot changes when a conditional sibling above this child
+ * appears or disappears, and on every other render the node already knows its own. Storing it
+ * anyway is a write to an expando on a DOM object for every child of every element on every
+ * render, and writing one is far dearer than comparing one — the unconditional version was the
+ * single largest cost this change added, and eliding it took the static-tree case back to where
+ * it started. The read is the cheap half of the pair, so the read is what runs every time.
+ *
+ * **Unkeyed only**, because nothing ever asks a keyed node what slot it is in — a key is a
+ * stronger identity, and a keyed child is allowed to move between slots. Stamping them meant
+ * 3000 real writes on every rotation of a keyed list, for an answer no one reads. A keyed node
+ * therefore carries no slot, and `findIndexOfSlot` walks past it rather than stopping.
+ */
+function stampSlot(node: EnhancedChildNode, slot: number, keyed: boolean): void {
+  if (keyed) {
+    // It was unkeyed on an earlier render and a key has since been added: the old slot would
+    // be a lie to any sibling scanning past it.
+    if (node[SLOT_SYM] !== undefined) node[SLOT_SYM] = undefined;
+    return;
+  }
+  if (node[SLOT_SYM] !== slot) node[SLOT_SYM] = slot;
+}
+
+/**
+ * The node built for this slot last render, wherever it has ended up.
+ *
+ * Slots rise with position — a child later in the JSX is always later in the DOM — so the
+ * search walks outward from the guess and stops the moment it passes the slot it wants. When
+ * one conditional sibling appeared, that is one step. It does not scan the list.
+ *
+ * An unstamped node is stepped over rather than stopped at: keyed siblings carry no slot, and
+ * a keyed child standing between two unkeyed ones must not hide them from each other.
+ *
+ * Returning -1 means no node was built for this slot, and the caller mounts a fresh one. That
+ * is the whole point of the slot: a child appearing in the MIDDLE of same-shape siblings used
+ * to find a neighbour's node by shape and take it, and neither the diff nor any diagnostic
+ * could tell that apart from a legitimate move.
+ *
+ * The shape scan is still the answer when NOTHING in the pool is stamped — the first diff
+ * after the client adopts a server-rendered tree, where positional matching is all there is.
+ */
+function findIndexOfSlot(
+  vchild: ComponentChild,
+  cloneChildren: (EnhancedChildNode | DONE)[],
+  slot: number,
+  preferredIndex: number,
+  keyIndex: KeyIndex,
+): number {
+  const length = cloneChildren.length;
+  let sawStamp = false;
+
+  // Claimed entries at the front of the pool are behind us for good.
+  let low = keyIndex.firstFree;
+  while (low < length && cloneChildren[low] === DONE) low++;
+  keyIndex.firstFree = low;
+
+  for (let j = preferredIndex > low ? preferredIndex : low; j < length; j++) {
+    const candidate = cloneChildren[j];
+    if (candidate === DONE) continue;
+    const recorded = candidate[SLOT_SYM];
+    if (recorded === undefined) continue;
+    sawStamp = true;
+    if (recorded === slot) return areSimilarNodes(candidate, vchild) ? j : -1;
+    if (recorded > slot) break;
+  }
+
+  for (let j = Math.min(preferredIndex, length) - 1; j >= low; j--) {
+    const candidate = cloneChildren[j];
+    if (candidate === DONE) continue;
+    const recorded = candidate[SLOT_SYM];
+    if (recorded === undefined) continue;
+    sawStamp = true;
+    if (recorded === slot) return areSimilarNodes(candidate, vchild) ? j : -1;
+    if (recorded < slot) break;
+  }
+
+  // A stamped pool has answered: nothing here was built for this slot.
+  if (sawStamp) return -1;
+
+  return findIndexOfSimilarNodes(vchild, cloneChildren, preferredIndex, low);
 }
 
 export function isListNode(value: unknown): value is ListNode {
@@ -398,7 +535,13 @@ function reconcileEntries(
     else cloneChildren.push(entry);
   }
 
-  const keyIndex: KeyIndex = { map: null, source: cloneChildren };
+  const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
+  /**
+   * How many nodes were here BEFORE anything was claimed.
+   *
+   * Read now, not after the loop: `claimOrMount` appends the nodes it mounts to `cloneChildren`,
+   * so reading it afterwards counts the new ones too and the comparison always looks balanced.
+   */
   const entries: RecordEntry[] = [];
   let changed = false;
   let plainIndex = 0;
@@ -462,6 +605,8 @@ function reconcileEntries(
     if (clean !== undefined && clean[i] === true) {
       const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
       if (claimedNode !== undefined) {
+        // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
+        stampSlot(claimedNode, i, true);
         entries.push(claimedNode);
         if (previous[entries.length - 1] !== claimedNode) changed = true;
         plainIndex++;
@@ -473,7 +618,7 @@ function reconcileEntries(
     const vchild = filterVirtualChild(rawVchild);
     if (vchild === undefined) continue;
 
-    const placed = claimOrMount(vchild, plainIndex++, placeholderComponent, parent, cloneChildren, keyIndex);
+    const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
     if (placed) {
       entries.push(placed as EnhancedChildNode);
       if (previous[entries.length - 1] !== placed) changed = true;
@@ -751,12 +896,17 @@ function createOrUpdateComponent(
  * Searches for a similar node in the existing children list.
  * Optimization: It first checks the 'preferredIndex' (the current loop position).
  * In most UI updates, nodes stay in the same order, allowing O(1) lookup.
- * If that fails, it performs a linear search.
+ * If that fails, it performs a linear search from `low`.
+ *
+ * `low` is the first pool entry that is not already claimed. Everything below it is `DONE` and
+ * can never match, so starting at 0 re-walked the whole claimed prefix on every call: appending
+ * 100 rows to a list of 2900 spent 290k steps proving there was nothing to find.
  */
 function findIndexOfSimilarNodes(
   virtualNode: ComponentChild,
   cloneChildren: (EnhancedChildNode | DONE)[],
   preferredIndex: number,
+  low: number,
 ): number {
   const cloneChildrenLength = cloneChildren.length;
 
@@ -767,7 +917,7 @@ function findIndexOfSimilarNodes(
     }
   }
 
-  for (let j = 0; j < cloneChildrenLength; j++) {
+  for (let j = low; j < cloneChildrenLength; j++) {
     const candidate = cloneChildren[j];
 
     if (candidate === DONE) continue;

@@ -2,6 +2,7 @@ import { Component, Host, state } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ProductsPage } from "./ProductsPage";
+import { SignupPage } from "./SignupPage";
 
 /**
  * Deliberately small. This app exists to answer questions a jsdom test cannot:
@@ -84,6 +85,7 @@ export const routes = createRoutes({
   "/about": <AboutPage />,
   "/users/:id": <UserPage />,
   "/products": <ProductsPage />,
+  "/signup": <SignupPage />,
   "*": <NotFoundPage />,
 });
 
@@ -105,6 +107,7 @@ export class App extends Component {
           <Link href="/about">About</Link>
           <Link href="/users/42">User 42</Link>
           <Link href="/products">Products</Link>
+          <Link href="/signup">Sign up</Link>
           <Link href="/nope">Missing</Link>
         </nav>
         <code id="path">{this.route.pathname}</code>

@@ -43,7 +43,11 @@ try {
 function depsFor(mode) {
   const dir = mkdtempSync(join(tmpdir(), `ramonda-verify-${mode}-`));
   try {
-    scaffold({ targetDir: dir, name: "verify", mode, addons: ["router", "lens", "testing", "devtools", "biome"] });
+    // EVERY add-on, which is the point: a package the scaffolder can emit but this list omits
+    // is a package whose range nothing verifies. `query` was missing here — the one package
+    // whose stale range is the reason this gate exists.
+    const addons = ["router", "query", "form", "lens", "testing", "devtools", "biome"];
+    scaffold({ targetDir: dir, name: "verify", mode, addons });
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
     return { ...pkg.dependencies, ...pkg.devDependencies };
   } finally {

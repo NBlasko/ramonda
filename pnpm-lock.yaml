@@ -42,6 +42,9 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/form':
+        specifier: workspace:^
+        version: link:../../packages/form
       '@ramonda/lens':
         specifier: workspace:^
         version: link:../../packages/lens
@@ -123,6 +126,9 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/form':
+        specifier: workspace:^
+        version: link:../../packages/form
       '@ramonda/query':
         specifier: workspace:^
         version: link:../../packages/query
@@ -136,6 +142,9 @@ importers:
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../../packages/shared
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
       esbuild:
         specifier: '>=0.28.1'
         version: 0.28.1
@@ -242,6 +251,40 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.2)(lightningcss@1.33.0))
+
+  packages/form:
+    dependencies:
+      '@ramonda/core':
+        specifier: '>=0.1.0 <1.0.0'
+        version: 0.1.0
+    devDependencies:
+      '@ramonda/shared':
+        specifier: workspace:^
+        version: link:../shared
+      '@ramonda/testing-library':
+        specifier: workspace:^
+        version: link:../testing-library
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
+      bguard:
+        specifier: ^0.9.0
+        version: 0.9.0
+      jsdom:
+        specifier: 28.0.0
+        version: 28.0.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@microsoft/api-extractor@7.58.12(@types/node@26.1.2))(postcss@8.5.22)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 7.3.6
+        version: 7.3.6(@types/node@26.1.2)(lightningcss@1.33.0)
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.2)(lightningcss@1.33.0))
@@ -1498,6 +1541,9 @@ packages:
   better-path-resolve@1.0.0:
     resolution: {integrity: sha512-pbnl5XzGBdrFU/wT4jqmJVPn2B6UHPBOhzMQkY/SPUPB6QtUXtmBHBIwCbXJol93mOpGMnQyP/+BB19q04xj7g==}
     engines: {node: '>=4'}
+
+  bguard@0.9.0:
+    resolution: {integrity: sha512-SgFk4TpVdjWS78CO569l4IUkJmd0qJjm793xmdsP1Z0bALBoWZgkfeqkFJqQll22m3GCyxEEzoDs+pPpxtbnGQ==}
 
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
@@ -3766,6 +3812,8 @@ snapshots:
   better-path-resolve@1.0.0:
     dependencies:
       is-windows: 1.0.2
+
+  bguard@0.9.0: {}
 
   bidi-js@1.0.3:
     dependencies:

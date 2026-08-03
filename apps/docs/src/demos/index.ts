@@ -3,6 +3,7 @@ import { ComputeDemo } from "./ComputeDemo";
 import { Counter } from "./Counter";
 import { ListDemo } from "./ListDemo";
 import { FilteredList } from "./FilteredList";
+import { FormDemo } from "./FormDemo";
 import { InheritanceDemo } from "./InheritanceDemo";
 import { LazyPanel } from "./LazyPanel";
 import { LensSharing } from "./LensSharing";
@@ -60,6 +61,7 @@ export const demos: Record<string, ComponentClassKind> = {
   MutationDemo,
   InheritanceDemo,
   LazyPanel,
+  FormDemo,
 };
 
 /** What each demo is for, shown on the examples page. */
@@ -88,4 +90,5 @@ export const demoTitles: Record<string, string> = {
   RouteInfo: "Navigator — the live route of this site",
   InheritanceDemo: "Inheritance — the unit of reuse",
   LazyPanel: "AsyncLoad — a component in its own chunk",
+  FormDemo: "Form — fields, validation and array rows",
 };

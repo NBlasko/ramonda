@@ -1,4 +1,4 @@
-import { Hook, destroy, StableProps, state } from "@ramonda/core";
+import { Hook, INSPECT, destroy, StableProps, state } from "@ramonda/core";
 import { ClientConsumer, requireClient } from "./context";
 import type { QueryClient } from "./QueryClient";
 import type { QueryKey } from "./types";
@@ -146,6 +146,23 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
   private runId = 0;
   private controller?: AbortController;
   private disposed = false;
+
+  /**
+   * What the devtools panel shows for this mutation.
+   *
+   * `status` is `@state` and visible already; `lastData` and `lastError` are plain fields behind
+   * `version`, for the reason recorded above them — so the panel could see that something had
+   * happened without ever seeing WHAT. See `INSPECT`.
+   */
+  [INSPECT](): Record<string, unknown> {
+    return {
+      data: this.lastData,
+      // Serialised here rather than handed over raw: an Error survives the panel's value tree as
+      // `{}`, which reads as "no error" beside a status that says otherwise.
+      error: this.lastError instanceof Error ? `${this.lastError.name}: ${this.lastError.message}` : this.lastError,
+      isInFlight: this.controller !== undefined,
+    };
+  }
 
   private get client(): QueryClient {
     return requireClient(this.ctx.client, "Mutation");

@@ -1,6 +1,6 @@
 import type { Context, DefaultProps, RenderableProps } from "./commonTypes";
 import type { COMPONENT_TYPE, TEXT_TYPE } from "../helpers/constants";
-import { IS_SVG, KEY_SYM, IS_LIST, CHILD_RECORD, ORIGIN_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
+import { IS_SVG, KEY_SYM, SLOT_SYM, IS_LIST, CHILD_RECORD, ORIGIN_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
 
 import type { COMPONENT_RUNTIME, ComponentRuntime, INTERNAL_HOOKS, GLOBAL_RUNTIME, Runtime } from "../core/runtime";
 import type { RenderEnv } from "../core/renderEnv";
@@ -16,6 +16,8 @@ interface EnhancedElement {
   value?: any;
   [IS_SVG]?: boolean;
   [KEY_SYM]?: any;
+  /** The JSX child slot this node was built for. See SLOT_SYM. */
+  [SLOT_SYM]?: number;
   [CHILD_RECORD]?: RecordEntry[];
   [ORIGIN_SYM]?: number;
   [STYLE_SYM]?: string;

@@ -26,8 +26,8 @@ const packages = join(root, "..", "..", "packages");
  * so a rename in the test file would leave the slice empty and every check below
  * would pass against nothing — a green build proving only that the parser broke.
  */
-function publicSurfaceOf(pkg, atLeast) {
-  const file = join(packages, pkg, "src", "__tests__", "PublicSurface.test.ts");
+function publicSurfaceOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
+  const file = join(packages, pkg, "src", "__tests__", fileName);
   const surface = readFileSync(file, "utf8");
   const start = surface.indexOf("const EXPECTED");
   const end = surface.indexOf("/**", start);
@@ -48,7 +48,49 @@ function publicSurfaceOf(pkg, atLeast) {
   return names;
 }
 
-const expected = [...publicSurfaceOf("core", 20), ...publicSurfaceOf("lens", 1), ...publicSurfaceOf("query", 8)];
+/**
+ * The TYPES a package publishes, read from `EXPECTED_TYPES` in the same file.
+ *
+ * Types are erased, so the runtime surface test cannot see them and neither can `Object.keys`.
+ * A published type is API all the same — someone writes it in an annotation — so the reference
+ * has to name it or the build fails, exactly as for a value.
+ */
+function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
+  const file = join(packages, pkg, "src", "__tests__", fileName);
+  const surface = readFileSync(file, "utf8");
+  const start = surface.indexOf("const EXPECTED_TYPES");
+  if (start === -1) throw new Error(`[docs] ${pkg} declares no EXPECTED_TYPES list.`);
+  const end = surface.indexOf("];", start);
+
+  const names =
+    surface
+      .slice(start, end)
+      .match(/"([A-Za-z][A-Za-z0-9]*)"/g)
+      ?.map((quoted) => quoted.slice(1, -1)) ?? [];
+
+  if (names.length < atLeast) {
+    throw new Error(
+      `[docs] Could not read the type list from ${pkg}'s PublicSurface.test.ts — found ` +
+        `${names.length} names, expected at least ${atLeast}.`,
+    );
+  }
+  return names;
+}
+
+const expected = [
+  ...publicSurfaceOf("core", 20),
+  ...publicSurfaceOf("lens", 1),
+  ...publicSurfaceOf("query", 8),
+  // Form publishes one VALUE and twenty-odd types. `publicSurfaceOf` slices the first list in
+  // the file, which is `EXPECTED` — so the floor is 1, and the types are covered separately
+  // below from `EXPECTED_TYPES`, because a type never appears in `Object.keys`.
+  ...publicSurfaceOf("form", 1),
+  ...publicTypesOf("form", 20),
+  // A SECOND entry point is API too. `@ramonda/form/bguard` has its own surface test, and its
+  // exports were documented by hand and guarded by nothing until this line.
+  ...publicSurfaceOf("form", 2, "BguardSurface.test.ts"),
+  ...publicTypesOf("form", 2, "BguardSurface.test.ts"),
+];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
 
@@ -90,7 +132,7 @@ console.log(`[docs] API reference covers all ${expected.length} public exports`)
  * build fails. The floor is the same idea as `atLeast` above: if the scan finds implausibly few codes,
  * the scan broke and a green build would be proving nothing.
  */
-const codeInSource = /\[?(RM[DQ]\d{3})\]?/g;
+const codeInSource = /\[?(RM[DQF]\d{3})\]?/g;
 
 /**
  * Every `.ts` under a directory, walked by hand.
@@ -112,7 +154,7 @@ function tsFilesIn(dir) {
   return out;
 }
 
-const sources = ["core", "query"].flatMap((pkg) => tsFilesIn(join(packages, pkg, "src")));
+const sources = ["core", "query", "form"].flatMap((pkg) => tsFilesIn(join(packages, pkg, "src")));
 
 const raised = new Set();
 for (const file of sources) {

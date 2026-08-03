@@ -111,6 +111,7 @@ once and so never produces the update it reacts to.
 | | |
 |---|---|
 | `configureDev({ strictRender })` | Turns off the double render behind [RMD020](/reference/diagnostics). A no-op in production. |
+| `INSPECT` | A symbol. Define `[INSPECT]()` on a component or hook and the devtools panel shows what it returns, under **Holds**. [Devtools](/devtools#what-an-instance-holds) |
 
 ### Types
 
@@ -180,6 +181,49 @@ Types: `QueryKey` · `QueryStatus` · `FetchStatus` · `FetchContext` · `QueryF
 `QueryClientProviderProps` · `MutationProps` · `MutationContext` · `MutationStatus` ·
 `InfiniteQueryProps` · `InfiniteData` · `PageContext` ·
 `Rollback` · `DehydratedQuery` · `DehydratedState` · `SerializedError`
+
+---
+
+## `@ramonda/form`
+
+Typed field paths, Standard Schema validation, and array rows that keep their identity.
+[Forms](/forms)
+
+| | |
+|---|---|
+| `Form` | A **hook** — `this.use(Form<typeof schema>, { schema, defaultValues, onSubmit })`. Adds no element; the `<form>` stays your JSX. `fields` · `values` · `formErrors` · `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `submit(event?)` · `reset(values?)` · `setError(path, message)`. [Your first form](/forms) |
+
+Every field is reached by property access and its API sits behind `$`:
+`f.address.street.$.value`. [Fields](/forms/fields)
+
+| | |
+|---|---|
+| `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
+| `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
+| `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
+| `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what `list({ key })` uses. |
+
+Types: `FieldNode` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
+`Bind` · `CommonBind` · `TextBind` · `NumberBind` · `CheckboxBind` · `DateBind` · `Collision` ·
+`InferIn` · `InferOut` · `StandardSchemaV1` · `StandardResult` · `StandardIssue`
+
+`StandardSchemaV1` is the [Standard Schema](https://standardschema.dev) interface, vendored so
+the package depends on no validator. Anything implementing it works unchanged — bguard, zod,
+valibot, arktype. [Validation](/forms/validation)
+
+---
+
+## `@ramonda/form/bguard`
+
+What Standard Schema cannot express. bguard is an optional peer dependency, and the main entry never
+reaches this module. [The bguard submodule](/forms/bguard)
+
+| | |
+|---|---|
+| `htmlConstraints(schema)` | Returns a lookup by field path giving `required` · `minlength` · `maxlength` · `pattern` · `min` · `max` · `type`, derived from the schema. Answers are cached, so the same path is the same object every render. [HTML attributes](/forms/bguard#html-attributes-from-the-schema) |
+| `unknownRefPaths(schema, values)` | Every `ctx.ref` path that names no field — the typo that otherwise passes silently for ever. Belongs in a test. [Cross-field rules](/forms/bguard#cross-field-rules-that-point-at-nothing) |
+
+Types: `HtmlConstraints` · `UnknownRef`
 
 ---
 

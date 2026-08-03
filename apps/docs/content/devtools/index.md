@@ -164,6 +164,56 @@ The panel deliberately does not read a key the consumer has not read, because **
 subscribing**: doing so would widen what the owning component re-renders on. Inspecting never
 changes behaviour.
 
+### What an instance holds
+
+Some hooks keep their state in plain fields behind a `@state` counter, and the panel used to show
+exactly that: `{ version: 7 }`, and props that never change.
+
+That shape is what the framework recommends rather than an oversight. `@state` means "serialise me
+into the hydration blob", so a hook holding a `Date`, a `File` or a class instance — a form's values,
+a mutation's result — keeps them in ordinary fields and bumps a counter to schedule the render.
+
+Such a hook can answer for itself, and `@ramonda/form` and `Mutation` both do. The panel shows it
+under **Holds**:
+
+```
+Holds
+  values      { email: "a@b", password: "" }
+  errors      { password: ["at least 8 characters"] }
+  touched     ["email"]
+  isValid     false
+```
+
+To do the same in your own hook or component, define the method:
+
+```ts
+import { INSPECT } from "@ramonda/core";
+
+class Basket extends Hook {
+  @state private version = 0;
+  private lines: Line[] = [];
+
+  [INSPECT]() {
+    return { lines: this.lines, total: this.total };
+  }
+}
+```
+
+It is read-only in the panel — this is what the instance *derived*, and writing to a copy of it would
+change nothing while looking as though it had. It is called on the instances the tree walk already
+visits, so one that unmounts stops contributing with nothing to deregister. If it throws, that row
+shows the error and the rest of the scan carries on.
+
+#### Make it a pure read
+
+The panel calls it **on every commit while it is open on this tab** — the same cadence as reading
+`@state`, not a timer. So writing state from inside it closes a circle: the write schedules a render,
+the render commits, the commit pings the panel, and the panel asks again.
+
+Nothing catches that today, and it turns only while somebody is looking, which is the worst time for
+an app to start changing under them. Read fields, derive values, return. No writes, no fetches, no
+logging.
+
 ## The query cache
 
 The `QUERY` tab lists every live cache, with each entry's key, status, freshness, observer count and

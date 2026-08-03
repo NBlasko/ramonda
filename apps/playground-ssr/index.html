@@ -41,6 +41,51 @@
       .panel.dim { opacity: .55; }
       .panel.error { border-color: #f0b4b4; background: #fff7f7; }
 
+      /* The signup form. `bind` supplies `name`, never `id`, so the styling hangs off
+         structure and classes — which is also why almost nothing on that page needs an id. */
+      .signup { max-width: 620px; }
+      .signup form { display: grid; gap: 14px; }
+      .signup label { display: grid; gap: 4px; font-size: 14px; color: #45454a; }
+      .signup label.inline { grid-auto-flow: column; justify-content: start; align-items: center;
+                             gap: 8px; font-size: 15px; color: #1c1c1e; }
+      .signup input { font: inherit; padding: 9px 11px; border: 1px solid #d4d4d8; border-radius: 9px;
+                      background: #fff; color: inherit; transition: border-color .15s, box-shadow .15s; }
+      .signup input:focus-visible { outline: none; border-color: #b18ae6;
+                                    box-shadow: 0 0 0 3px rgb(177 138 230 / 25%); }
+      .signup input[type="checkbox"] { width: 16px; height: 16px; padding: 0; }
+      .signup input[aria-invalid="true"] { border-color: #e0918f; background: #fffafa; }
+
+      .signup fieldset { border: 1px solid #e3e3e6; border-radius: 12px; padding: 14px 16px 16px;
+                         display: grid; gap: 10px; background: #fff; }
+      .signup legend { padding: 0 6px; font-size: 13px; letter-spacing: .02em; text-transform: uppercase;
+                       color: #8a8a90; }
+      .signup fieldset ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+      .signup fieldset li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
+                            align-items: center; }
+      .signup fieldset li.pair { grid-template-columns: 140px minmax(0, 1fr); }
+      .signup fieldset li .err { grid-column: 1 / -1; }
+
+      .signup .err { color: #b3261e; font-size: 13px; font-style: normal; }
+      .signup .form-errors { margin: 0; padding: 10px 12px; border-radius: 9px;
+                             background: #fff2f1; border: 1px solid #f0b4b4; }
+
+      .signup .actions { display: flex; gap: 10px; margin: 4px 0 0; }
+      .signup button { padding: 9px 16px; border-radius: 9px; cursor: pointer;
+                       border: 1px solid #d4d4d8; background: #fafafa; }
+      .signup button[type="submit"] { border-color: #8b5cf6; background: #8b5cf6; color: #fff; }
+      .signup button:disabled { opacity: .5; cursor: default; }
+      .signup .ghost { padding: 6px 10px; font-size: 13px; }
+
+      .signup .accepted { padding: 10px 12px; border-radius: 9px; background: #f1faf3;
+                          border: 1px solid #b7e0c3; }
+
+      /* The readout. Not part of the form — it exists so the smoke test and a reader can both
+         see the state without clicking, which is why these few nodes DO carry ids. */
+      .signup .readout { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 20px;
+                         padding-top: 14px; border-top: 1px dashed #ddd; font-size: 13px; color: #6b6b70; }
+      .signup .readout dt { font-weight: 600; }
+      .signup .readout dd { margin: 0; font-family: ui-monospace, monospace; }
+
       button { font: inherit; }
       #load-more, #refresh-product { padding: 10px 16px; border-radius: 10px; cursor: pointer;
                                       border: 1px solid #d4d4d8; background: #fafafa; }

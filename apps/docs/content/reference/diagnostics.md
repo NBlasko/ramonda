@@ -1,6 +1,6 @@
 ---
 title: Diagnostics
-description: Every diagnostic — RMD from the core, RMQ from the query cache — what it means, what causes it, and what to do instead.
+description: Every diagnostic — RMD from the core, RMQ from the query cache, RMF from forms — what it means, what causes it, and what to do instead.
 section: Reference
 order: 110
 ---
@@ -469,6 +469,51 @@ much as a forced layout and a dependency on something outside the tree; `@update
 where that work belongs.
 
 # Query — `RMQ`
+
+## RMF001 — a field was assigned to
+
+```tsx
+f.email.$.value = "a@b.c";   // throws
+f.email.$.set("a@b.c");      // the way
+```
+
+A field node is a proxy over a path, not a place values live. An assignment would land on the
+proxy and stop there: the form's values would be unchanged, nothing would revalidate, nothing
+would re-render, and the next read would return the old value — a write that looks like it
+worked. `set` records the change where the form can see it.
+
+This one **throws** rather than warning, and in production too, because there is no correct
+program in which the assignment does something. Everything else on this page is development
+only.
+
+## RMF002 — the list members were used on a field that is not a list
+
+`length`, `rows`, `append`, `insert` and `remove` belong to an array field. Reaching
+for them on a field holding a string or a number is a path that does not say what it meant to —
+usually a typo, or a schema that changed shape underneath the component.
+
+An **absent** field is not this error: `undefined` and `null` read as an empty list, so a form
+whose defaults have not filled in an optional array renders zero rows instead of throwing. Only
+a value that is present and is not an array is reported.
+
+## RMF003 — `onSubmit` threw
+
+The form calls `onSubmit` from a DOM submit event, where nobody is waiting on the promise it
+returns. A failure there is the app's to handle — the form does not know whether a network
+error should become a message, a retry or a redirect — but it must not vanish either, so it is
+reported and the form leaves `isSubmitting` behind it.
+
+Handle it inside the handler, which is where the context is:
+
+```tsx
+async save(values: Signup) {
+  try {
+    await register(values);
+  } catch {
+    this.form.setError("email", "we could not reach the server");
+  }
+}
+```
 
 ## RMQ001 — a query key that cannot be hashed
 

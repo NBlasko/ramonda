@@ -701,3 +701,62 @@ article pre.shiki {
     padding-right: 56px;
   }
 }
+
+/* A form demo: inputs stacked with their labels, and rows that can be removed. */
+.demo-form label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+.demo-form label input {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  margin-top: 4px;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.demo-form input[aria-invalid="true"] {
+  border-color: #c0392b;
+}
+.demo-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+.demo-form legend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.demo-rows {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.demo-rows li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.demo-rows input {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.demo-ok {
+  color: #2d7d46;
+  margin: 0 0 8px;
+}
