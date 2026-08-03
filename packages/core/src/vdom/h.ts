@@ -60,6 +60,13 @@ function checkMappedComponents(children: unknown[]): void {
   if (names.length > 0) reportMappedComponents(names);
 }
 
+/**
+ * One entry out for every entry in, always — `result.length === arr.length`.
+ *
+ * That is what makes an index here mean "this piece of JSX", the identity both `regionOwner`
+ * and `SLOT_SYM` are built on. Anything that renders nothing becomes `false` rather than
+ * disappearing, because a disappearing entry renumbers every sibling after it.
+ */
 function normalizeChildren(arr: unknown[]): unknown[] {
   const result: unknown[] = [];
   let hasList = false;
@@ -76,7 +83,14 @@ function normalizeChildren(arr: unknown[]): unknown[] {
 
       const owner = regionOwner(index);
 
-      if (inner.length === 0) continue;
+      // An empty list still HOLDS ITS PLACE. Dropping it shortens the array, which moves
+      // the slot of every sibling after it — and the slot is the identity the diff matches
+      // on (SLOT_SYM), so an emptied list would cost its siblings their DOM nodes. `false`
+      // is the same thing a `{cond && …}` hole leaves behind, and the diff already skips it.
+      if (inner.length === 0) {
+        result.push(false);
+        continue;
+      }
 
       // Already exactly one group or list — `{this.props.children}` where the
       // caller passed a list. Wrapping it again would add a pointless level.
@@ -116,8 +130,13 @@ function normalizeChildren(arr: unknown[]): unknown[] {
 
       if (isVNode) {
         result.push(el);
-      } else if (__DEV__) {
-        ramondaLog("error", "Invalid object among JSX children. Dropped from the render.", el);
+      } else {
+        if (__DEV__) {
+          ramondaLog("error", "Invalid object among JSX children. Dropped from the render.", el);
+        }
+        // Replaced by a hole rather than removed, so the slot survives — see the empty
+        // list above. What it renders is nothing either way.
+        result.push(false);
       }
 
       // Dropped in DEV and in production alike: an object that is not a vnode

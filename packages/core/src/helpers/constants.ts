@@ -88,6 +88,24 @@ export type COMPONENT_TYPE = 7;
 export const HOST_META = Symbol("host:meta");
 export const IS_SVG = Symbol("isSvg");
 export const KEY_SYM = Symbol("key");
+/**
+ * The JSX child slot this node was built for — its index among its parent's children,
+ * counting the ones that render nothing.
+ *
+ * A conditional child is invisible in the DOM, so a node's POSITION among its siblings
+ * moves when one appears or disappears while the piece of JSX that produced it did not.
+ * Matching by position then hands a child the node its neighbour was using: attributes and
+ * text are patched either way, so the page reads correctly while focus, scroll, uncontrolled
+ * input state and element identity have moved. The slot is what stays still.
+ *
+ * The alternative was to give the hole a real placeholder node in the DOM, so that positions
+ * never move. That works, and costs a node per conditional forever. This keeps the DOM clean
+ * by putting the slot on the node instead, next to `KEY_SYM`, which the node already carries.
+ *
+ * `undefined` means "not stamped yet": a server-rendered node the client has just adopted.
+ * Those are matched positionally, exactly as before, and stamped as they are claimed.
+ */
+export const SLOT_SYM = Symbol("slot");
 /** The `Ref` currently pointing at an element, so unmount can clear it. */
 export const REF_SYM = Symbol("ref");
 /** The style string last written to an element, for the attribute diff to compare against. */

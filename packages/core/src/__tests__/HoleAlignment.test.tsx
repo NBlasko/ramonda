@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { resetDiagnostics } from "../debug/diagnostics";
+import { describe, expect, test } from "vitest";
 import { Component } from "../base/Component";
 import { state } from "../base/decorators";
 import { getDOM } from "../test/setup";
@@ -8,10 +7,9 @@ import { getDOM } from "../test/setup";
  * A conditional child that renders NOTHING must not move its siblings' DOM nodes.
  *
  * `filterVirtualChild` drops `null`, `undefined` and booleans, and none of them leaves a node
- * behind — so the pool of existing children is shorter than the vnode list by however many holes
- * precede a child. `applyDiffOnChildren` used to hand `claimOrMount` the raw vnode index, so
- * every sibling after a hole looked for itself one slot too far along, missed, and claimed a
- * neighbour by shape instead.
+ * behind, so a node's POSITION among its siblings moves whenever a conditional appears or
+ * disappears — while the piece of JSX that produced it did not move at all. Matching by position
+ * then hands a child the node its neighbour was using.
  *
  * It never looked broken: attributes and text are patched either way, so the page reads
  * correctly while focus, scroll position, uncontrolled input state and element identity have all
@@ -20,6 +18,11 @@ import { getDOM } from "../test/setup";
  *
  * `{cond && <x/>}` is the reason this matters as much as it does: it is how conditionals are
  * usually written, and it yields `false`, not `null`.
+ *
+ * The answer is `SLOT_SYM`: each node records the JSX child slot it was built for, holes
+ * counted, and an unkeyed child claims the node carrying its own slot rather than whatever sits
+ * at its position. Position is still the first guess, and still right on the renders where no
+ * conditional changed.
  */
 describe("a child that renders nothing", () => {
   const holes = [
@@ -96,7 +99,7 @@ describe("a child that renders nothing", () => {
    * What the fix above guarantees is the other case, which is not a trade-off at all: a hole
    * whose presence does not change between two renders must cost nothing.
    */
-  test("a hole that APPEARS shifts unkeyed siblings", async () => {
+  test("a hole that APPEARS leaves its unkeyed siblings alone", async () => {
     class Bare extends Component {
       @state warn = false;
       render() {
@@ -117,8 +120,9 @@ describe("a child that renders nothing", () => {
     await app.settle();
 
     expect(app.container.querySelector("#w")?.textContent).toBe("careful");
-    // Documented, not desired.
-    expect(Array.from(app.container.querySelectorAll("p"))).toEqual([before[1], before[0]]);
+    // Both keep the node they had. Before slots, these two swapped: each `<p>` matched the
+    // position its neighbour had moved into, and `areSimilarNodes` had no reason to object.
+    expect(Array.from(app.container.querySelectorAll("p"))).toEqual(before);
   });
 
   test("and `key` is what holds identity across it", async () => {
@@ -150,123 +154,84 @@ describe("a child that renders nothing", () => {
   });
 
   /* ---------------------------------------------------------------- *
-   * RMD026 — what the framework says about the case it cannot fix.
+   * The case position alone could never answer: a hole in the MIDDLE.
    * ---------------------------------------------------------------- */
 
-  describe("RMD026", () => {
-    let seen: { codes: string[]; stop: () => void };
+  describe("a hole among same-tag siblings", () => {
+    class Middle extends Component {
+      @state show = true;
+      render() {
+        return (
+          <div>
+            <p id="a">A</p>
+            {this.show && <p id="x">X</p>}
+            <p id="b">B</p>
+          </div>
+        );
+      }
+    }
 
-    const capture = () => {
-      const codes: string[] = [];
-      const handler = (event: Event) => {
-        const message = ((event as CustomEvent).detail as { message: string }).message;
-        const code = /^\[(RMD\d+)\]/.exec(message)?.[1];
-        if (code) codes.push(code);
-      };
-      window.addEventListener("ramonda:dev-log", handler);
-      return { codes, stop: () => window.removeEventListener("ramonda:dev-log", handler) };
-    };
+    test("the sibling BELOW it keeps its own node when the hole opens", async () => {
+      const app = await getDOM<Middle>(<Middle />);
+      const [a, , b] = Array.from(app.container.querySelectorAll("p"));
 
-    beforeEach(() => {
-      resetDiagnostics();
-      seen = capture();
+      app.instance.show = false;
+      await app.settle();
+
+      const after = Array.from(app.container.querySelectorAll("p"));
+      // Not `[a, x]` with B's text patched onto X's node — which is what shape matching did,
+      // and what nothing in the diff could tell apart from a legitimate move.
+      expect(after).toEqual([a, b]);
+      expect(after[1]?.textContent).toBe("B");
     });
 
-    afterEach(() => seen.stop());
+    test("and again when the hole closes", async () => {
+      const app = await getDOM<Middle>(<Middle />);
+      app.instance.show = false;
+      await app.settle();
 
-    test("reports when a hole appears above unkeyed same-tag siblings", async () => {
-      class Page extends Component {
-        @state warn = false;
+      const [a, b] = Array.from(app.container.querySelectorAll("p"));
+
+      app.instance.show = true;
+      await app.settle();
+
+      const after = Array.from(app.container.querySelectorAll("p"));
+      expect(after).toHaveLength(3);
+      expect(after[0]).toBe(a);
+      expect(after[2]).toBe(b);
+      // The one in the middle is the only new node.
+      expect(after[1]).not.toBe(a);
+      expect(after[1]).not.toBe(b);
+      expect(after.map((el) => el.textContent)).toEqual(["A", "X", "B"]);
+    });
+
+    test("state living on the node survives the toggle", async () => {
+      // The reason any of this matters. An uncontrolled input's value is not in the vnode, so
+      // patching attributes onto the wrong node loses it silently.
+      class Form extends Component {
+        @state show = true;
         render() {
           return (
             <div>
-              {this.warn ? <em>careful</em> : null}
-              <p>A</p>
-              <p>B</p>
+              <input id="one" />
+              {this.show && <input id="two" />}
+              <input id="three" />
             </div>
           );
         }
       }
 
-      const app = await getDOM<Page>(<Page />);
-      expect(seen.codes).not.toContain("RMD026");
+      const app = await getDOM<Form>(<Form />);
+      const third = app.container.querySelector<HTMLInputElement>("#three");
+      third!.value = "typed by the user";
 
-      app.instance.warn = true;
+      app.instance.show = false;
       await app.settle();
 
-      expect(seen.codes).toContain("RMD026");
+      expect(app.container.querySelector<HTMLInputElement>("#three")?.value).toBe("typed by the user");
     });
 
-    test("says nothing when the hole is stable", async () => {
-      // The case the fix above made correct. Reporting it would be noise about something that no
-      // longer happens.
-      class Page extends Component {
-        @state tick = 0;
-        render() {
-          return (
-            <div>
-              {null}
-              <p>A{this.tick}</p>
-              <p>B{this.tick}</p>
-            </div>
-          );
-        }
-      }
-
-      const app = await getDOM<Page>(<Page />);
-      app.instance.tick = 1;
-      await app.settle();
-
-      expect(seen.codes).not.toContain("RMD026");
-    });
-
-    test("says nothing when the siblings are keyed", async () => {
-      class Page extends Component {
-        @state warn = false;
-        render() {
-          return (
-            <div>
-              {this.warn ? <em>careful</em> : null}
-              <p key="a">A</p>
-              <p key="b">B</p>
-            </div>
-          );
-        }
-      }
-
-      const app = await getDOM<Page>(<Page />);
-      app.instance.warn = true;
-      await app.settle();
-
-      expect(seen.codes).not.toContain("RMD026");
-    });
-
-    test("says nothing when there is only one sibling of that tag", async () => {
-      // Nothing to be confused with, so the count moving costs nothing.
-      class Page extends Component {
-        @state warn = false;
-        render() {
-          return (
-            <div>
-              {this.warn ? <em>careful</em> : null}
-              <p>A</p>
-              <span>B</span>
-            </div>
-          );
-        }
-      }
-
-      const app = await getDOM<Page>(<Page />);
-      app.instance.warn = true;
-      await app.settle();
-
-      expect(seen.codes).not.toContain("RMD026");
-    });
-
-    test("says nothing when an optional sibling is APPENDED", async () => {
-      // The pattern this repo actually uses — a card plus an optional second one, at the end.
-      // Nothing can move: the first keeps slot 0 and the new one mounts after it. A check based
-      // on the child count changing reported here, which is why it is not the check.
+    test("an optional sibling APPENDED at the end still costs nothing", async () => {
       class Page extends Component {
         @state second = false;
         render() {
@@ -285,26 +250,292 @@ describe("a child that renders nothing", () => {
       app.instance.second = true;
       await app.settle();
 
-      expect(seen.codes).not.toContain("RMD026");
       expect(app.container.querySelector("p")).toBe(first);
       expect(app.container.querySelectorAll("p")).toHaveLength(2);
     });
 
-    test("says nothing on a first mount", async () => {
+    test("two holes toggling in different places still line up", async () => {
       class Page extends Component {
+        @state top = true;
+        @state middle = true;
         render() {
           return (
             <div>
-              <p>A</p>
-              <p>B</p>
+              {this.top && <p>T</p>}
+              <p id="a">A</p>
+              {this.middle && <p>M</p>}
+              <p id="b">B</p>
             </div>
           );
         }
       }
 
-      await getDOM<Page>(<Page />);
+      const app = await getDOM<Page>(<Page />);
+      const a = app.container.querySelector("#a");
+      const b = app.container.querySelector("#b");
 
-      expect(seen.codes).not.toContain("RMD026");
+      app.instance.top = false;
+      app.instance.middle = false;
+      await app.settle();
+
+      expect(app.container.querySelector("#a")).toBe(a);
+      expect(app.container.querySelector("#b")).toBe(b);
+      expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["A", "B"]);
+    });
+
+    test("a list that empties holds its place", async () => {
+      // `normalizeChildren` used to drop an empty array outright, which renumbered every
+      // sibling after it — the same failure by another route.
+      class Page extends Component {
+        @state items: string[] = ["x"];
+        render() {
+          return (
+            <div>
+              <p id="a">A</p>
+              {this.items.map((item) => (
+                <p key={item}>{item}</p>
+              ))}
+              <p id="b">B</p>
+            </div>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      const a = app.container.querySelector("#a");
+      const b = app.container.querySelector("#b");
+
+      app.instance.items = [];
+      await app.settle();
+
+      expect(app.container.querySelector("#a")).toBe(a);
+      expect(app.container.querySelector("#b")).toBe(b);
+      expect(app.container.querySelectorAll("p")).toHaveLength(2);
+    });
+
+    test("a hole INSIDE a mapped list does not disturb the rows", async () => {
+      // The region path shares `claimOrMount`, so it is the same rule one level down.
+      class Page extends Component {
+        @state badge = true;
+        render() {
+          return (
+            <ul>
+              {["one", "two"].map((item) => (
+                <li key={item}>
+                  <span className="label">{item}</span>
+                  {this.badge && <span className="badge">!</span>}
+                  <span className="tail">end</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      const tails = Array.from(app.container.querySelectorAll(".tail"));
+
+      app.instance.badge = false;
+      await app.settle();
+
+      expect(Array.from(app.container.querySelectorAll(".tail"))).toEqual(tails);
+      expect(app.container.querySelectorAll(".badge")).toHaveLength(0);
+    });
+
+    test("a keyed child standing between unkeyed ones does not hide them from each other", async () => {
+      // A keyed node carries no slot — nothing asks a keyed child where it sits, and stamping
+      // them cost a write per row on every reorder of a keyed list. The search therefore has
+      // to STEP OVER an unstamped node instead of stopping at it: `#b` sits past `#k`, and if
+      // the walk stopped there it would conclude no node was ever built for its slot and mount
+      // a fresh one, losing everything the old node carried.
+      class Page extends Component {
+        @state show = true;
+        render() {
+          return (
+            <div>
+              {this.show && <p id="x">X</p>}
+              <p id="a">A</p>
+              <p key="k" id="k">
+                K
+              </p>
+              <p id="b">B</p>
+            </div>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      const a = app.container.querySelector("#a");
+      const k = app.container.querySelector("#k");
+      const b = app.container.querySelector("#b");
+
+      app.instance.show = false;
+      await app.settle();
+
+      expect(app.container.querySelector("#a")).toBe(a);
+      expect(app.container.querySelector("#k")).toBe(k);
+      expect(app.container.querySelector("#b")).toBe(b);
+      expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["A", "K", "B"]);
+
+      // And back, so a slot written while the hole was open is read while it is shut.
+      app.instance.show = true;
+      await app.settle();
+
+      expect(app.container.querySelector("#a")).toBe(a);
+      expect(app.container.querySelector("#k")).toBe(k);
+      expect(app.container.querySelector("#b")).toBe(b);
+      expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["X", "A", "K", "B"]);
+    });
+
+    test("the same, starting with the conditional ABSENT", async () => {
+      class Page extends Component {
+        @state show = false;
+        render() {
+          return (
+            <div>
+              {this.show && <p id="x">X</p>}
+              <p id="a">A</p>
+              <p key="k" id="k">
+                K
+              </p>
+              <p id="b">B</p>
+            </div>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      const a = app.container.querySelector("#a");
+      const k = app.container.querySelector("#k");
+      const b = app.container.querySelector("#b");
+
+      app.instance.show = true;
+      await app.settle();
+
+      expect(app.container.querySelector("#a")).toBe(a);
+      expect(app.container.querySelector("#k")).toBe(k);
+      expect(app.container.querySelector("#b")).toBe(b);
+      expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["X", "A", "K", "B"]);
+    });
+
+    /* -------------------------------------------------------------- *
+     * The full matrix: where the conditional sits, and which way it goes.
+     *
+     * Starting from ABSENT is not the same code path as starting from present. The first
+     * render stamps whatever it mounts, so with the conditional off, the siblings are
+     * stamped with the slots they have WITH the hole — and the node for the hole's own slot
+     * has never existed. Turning it on then asks for a slot no node carries, which has to
+     * mount rather than borrow, while its siblings keep what they had.
+     * -------------------------------------------------------------- */
+
+    const places = ["start", "middle", "end"] as const;
+
+    for (const place of places) {
+      class Page extends Component {
+        @state show: boolean;
+        constructor(...args: ConstructorParameters<typeof Component>) {
+          super(...args);
+          this.show = (this.props as { initial?: boolean }).initial ?? true;
+        }
+        render() {
+          const flash = this.show ? <p id="x">X</p> : null;
+          return (
+            <div>
+              {place === "start" ? flash : null}
+              <p id="a">A</p>
+              {place === "middle" ? flash : null}
+              <p id="b">B</p>
+              {place === "end" ? flash : null}
+            </div>
+          );
+        }
+      }
+
+      test(`a conditional at the ${place} — present, then hidden`, async () => {
+        const app = await getDOM<Page>(<Page initial={true} />);
+        const a = app.container.querySelector("#a");
+        const b = app.container.querySelector("#b");
+        expect(app.container.querySelectorAll("p")).toHaveLength(3);
+
+        app.instance.show = false;
+        await app.settle();
+
+        expect(app.container.querySelector("#a")).toBe(a);
+        expect(app.container.querySelector("#b")).toBe(b);
+        expect(app.container.querySelector("#x")).toBeNull();
+        expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["A", "B"]);
+      });
+
+      test(`a conditional at the ${place} — absent, then shown`, async () => {
+        const app = await getDOM<Page>(<Page initial={false} />);
+        const a = app.container.querySelector("#a");
+        const b = app.container.querySelector("#b");
+        expect(app.container.querySelectorAll("p")).toHaveLength(2);
+
+        app.instance.show = true;
+        await app.settle();
+
+        // The two that were already there keep their nodes; only X is new.
+        expect(app.container.querySelector("#a")).toBe(a);
+        expect(app.container.querySelector("#b")).toBe(b);
+        const x = app.container.querySelector("#x");
+        expect(x).not.toBe(a);
+        expect(x).not.toBe(b);
+
+        const expected = place === "start" ? ["X", "A", "B"] : place === "middle" ? ["A", "X", "B"] : ["A", "B", "X"];
+        expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(expected);
+      });
+
+      test(`a conditional at the ${place} — off, on, off again`, async () => {
+        // Three renders, so a slot written by the second is read by the third.
+        const app = await getDOM<Page>(<Page initial={false} />);
+        const a = app.container.querySelector("#a");
+        const b = app.container.querySelector("#b");
+
+        app.instance.show = true;
+        await app.settle();
+        const x = app.container.querySelector("#x");
+
+        app.instance.show = false;
+        await app.settle();
+
+        expect(app.container.querySelector("#a")).toBe(a);
+        expect(app.container.querySelector("#b")).toBe(b);
+        expect(app.container.contains(x!)).toBe(false);
+        expect(Array.from(app.container.querySelectorAll("p")).map((el) => el.textContent)).toEqual(["A", "B"]);
+      });
+    }
+
+    test("keyed siblings are unaffected — a key still outranks the slot", async () => {
+      // A key is an identity the developer asserted, so a keyed child is allowed to move
+      // between slots. This reorders while a hole opens, which the slot must not veto.
+      class Page extends Component {
+        @state warn = false;
+        @state order = ["a", "b"];
+        render() {
+          return (
+            <div>
+              {this.warn ? <em>careful</em> : null}
+              {this.order.map((id) => (
+                <p key={id} id={id}>
+                  {id}
+                </p>
+              ))}
+            </div>
+          );
+        }
+      }
+
+      const app = await getDOM<Page>(<Page />);
+      const a = app.container.querySelector("#a");
+      const b = app.container.querySelector("#b");
+
+      app.instance.warn = true;
+      app.instance.order = ["b", "a"];
+      await app.settle();
+
+      const after = Array.from(app.container.querySelectorAll("p"));
+      expect(after).toEqual([b, a]);
     });
   });
 });
