@@ -87,6 +87,16 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
   }
 
   if ((isPlainObject(a) && isPlainObject(b)) || (Array.isArray(a) && Array.isArray(b))) {
+    /**
+     * `valueEqual` is bounded, and past a bound it answers "different" — which is the answer
+     * `resolveStable` needs (it must never reuse a value whose contents moved) and one this only
+     * uses to pick WORDING. So a pair that is deeper than the bound, or wider than it, is called
+     * non-deterministic here even when its contents match.
+     *
+     * That is a less precise message, never a wrong verdict: something WAS rebuilt either way, and
+     * both messages say so. It is the direction to be wrong in — the alternative is a comparison
+     * that guesses "equal" from a sample, which is what silently dropped a change past the width.
+     */
     return valueEqual(a, b) ? "object" : "nondeterministic";
   }
 

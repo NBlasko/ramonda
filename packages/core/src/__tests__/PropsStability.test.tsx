@@ -3,7 +3,6 @@ import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { compute, memoizedHandler, state, watchProp } from "../base/decorators";
-import { stable } from "../base/stable";
 import { StableProps } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -12,9 +11,10 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * RMD022 — a hook's props callback called twice, and the two bags compared.
  *
  * The same check RMD020 runs on `render()`, on the other place the framework asks the app
- * for a value on every render. `stable()` is the fix it names for arrays and objects, and
- * a bound method is the fix for functions — so these tests carry both halves: what is
- * reported, and that the recommended form is silent AND actually stable at runtime.
+ * for a value on every render. Holding the value somewhere that HAS an identity is the fix it
+ * names for arrays and objects — a `@compute`, a field, a module constant — and a bound method is
+ * the fix for functions. So these tests carry both halves: what is reported, and that the
+ * recommended form is silent AND actually stable at runtime.
  */
 
 let logs: string[] = [];
@@ -73,7 +73,7 @@ describe("RMD022", () => {
     expect(reported()).toContain("RMD022");
     expect(reported()).toContain("Panel → Probe");
     expect(reported()).toContain("`key`");
-    expect(reported()).toContain("stable(");
+    expect(reported()).toContain("@compute");
   });
 
   test("a closure in a bag is reported as a function, with the bound-method fix", async () => {
@@ -90,10 +90,18 @@ describe("RMD022", () => {
     expect(reported()).toContain("bound method");
   });
 
-  test("stable() silences it — and hands back ONE array across renders", async () => {
+  test("a @compute holding the value silences it — and hands back ONE array across renders", async () => {
+    // The call-site fix for a hook that declared nothing: hold the value somewhere that HAS an
+    // identity, and the bag receives the same one instead of a fresh one.
     class Panel extends Component {
+      @state id = 1;
       @state unrelated = 0;
-      probe = this.use(Probe, (self: Panel) => ({ key: stable(["user", self.unrelated > 5 ? 2 : 1]) }));
+
+      @compute get key(): readonly unknown[] {
+        return ["user", this.id];
+      }
+
+      probe = this.use(Probe, (self: Panel) => ({ key: self.key }));
       render() {
         return <div>{`${this.probe.seen}:${this.unrelated}`}</div>;
       }
@@ -110,18 +118,69 @@ describe("RMD022", () => {
     expect(instance.probe.keys.length).toBe(1);
     expect(instance.probe.keys[0]).toEqual(["user", 1]);
 
-    // And it still follows its contents.
-    instance.unrelated = 9;
+    // And it still follows what it was derived from.
+    instance.id = 2;
     await settle();
     expect(instance.probe.keys.length).toBe(2);
     expect(instance.probe.keys[1]).toEqual(["user", 2]);
   });
 
-  test("stable() compares nested contents, not just the top level", async () => {
+  test("a @compute follows its DEPENDENCIES, not its contents — which is the hook's job to absorb", async () => {
+    /**
+     * The one thing the call site cannot do for itself, written down rather than left to be
+     * rediscovered.
+     *
+     * A `@compute` is invalidated by the signals it READ, so one whose answer is coarser than its
+     * inputs — `this.noise > 5`, `items.length`, `id ?? 0` — rebuilds its value whenever those
+     * inputs move, even though the answer did not. Splitting it into two computes does not help:
+     * invalidation propagates, it is not deduplicated by value. RMD024 is the report for it.
+     *
+     * That is deliberate, and the reason there is no wrapper for it: absorbing it belongs to the
+     * HOOK. `Query.onKeyChanged` is the worked example — it compares the key part by part before
+     * doing anything, "even though the framework already did". A hook written that way is immune
+     * to this; a hook that is not has a problem a call-site wrapper would only hide, and hide
+     * inconsistently, since any such comparison has to be bounded to be affordable.
+     */
+    class Panel extends Component {
+      @state noise = 0;
+
+      @compute get key(): readonly unknown[] {
+        return ["user", this.noise > 5 ? 2 : 1];
+      }
+
+      probe = this.use(Probe, (self: Panel) => ({ key: self.key }));
+      render() {
+        return <div>{`${this.probe.seen}:${this.noise}`}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    instance.noise = 1;
+    await settle();
+    instance.noise = 2;
+    await settle();
+
+    // A fresh array each time, with the same contents — and no report, because the callback did
+    // not build it: it handed over what the compute produced.
+    expect(instance.probe.keys.length).toBe(3);
+    expect(instance.probe.keys).toEqual([
+      ["user", 1],
+      ["user", 1],
+      ["user", 1],
+    ]);
+    expect(reported()).not.toContain("RMD022");
+  });
+
+  test("a @compute follows a nested value, and nothing else", async () => {
     class Panel extends Component {
       @state page = 1;
       @state unrelated = 0;
-      probe = this.use(Probe, (self: Panel) => ({ key: stable(["posts", { page: self.page, tag: "a" }]) }));
+
+      @compute get key(): readonly unknown[] {
+        return ["posts", { page: this.page, tag: "a" }];
+      }
+
+      probe = this.use(Probe, (self: Panel) => ({ key: self.key }));
       render() {
         return <div>{`${this.probe.seen}:${this.unrelated}`}</div>;
       }
@@ -138,7 +197,7 @@ describe("RMD022", () => {
     expect(reported()).not.toContain("RMD022");
   });
 
-  test("a bound method is stable without stable()", async () => {
+  test("a bound method needs nothing at all", async () => {
     class Panel extends Component {
       load() {
         return "loaded";
@@ -207,10 +266,10 @@ describe("RMD022", () => {
     expect(reported()).toContain("`count`");
   });
 
-  test("stable() with different contents in one tick is still reported", async () => {
+  test("an array whose CONTENTS move between two calls in one tick is reported", async () => {
     let n = 0;
     class Panel extends Component {
-      probe = this.use(Probe, () => ({ key: stable(["row", n++]) }));
+      probe = this.use(Probe, () => ({ key: ["row", n++] }));
       render() {
         return <div>{this.probe.seen}</div>;
       }
@@ -218,7 +277,8 @@ describe("RMD022", () => {
 
     await getDOM<Panel>(<Panel />);
 
-    // The marker cannot hide it: what is compared is the contents, not the wrapper.
+    // Not "rebuilt in place" but "does not come from state" — nothing can launder that, because
+    // what is compared is the contents.
     expect(reported()).toContain("RMD022");
     expect(reported()).toContain("does not come from state");
   });
@@ -260,8 +320,9 @@ describe("RMD022", () => {
     expect(calls).toBe(1);
   });
 
-  test("stable() keeps @watchProp from firing on an unchanged key", async () => {
+  test("a declared prop keeps @watchProp from firing on an unchanged key", async () => {
     let fired = 0;
+    @StableProps("key")
     class Watcher extends Hook<{ key: readonly unknown[] }> {
       @watchProp((p: { key: readonly unknown[] }) => p.key)
       onKey() {
@@ -270,7 +331,7 @@ describe("RMD022", () => {
     }
     class Panel extends Component {
       @state unrelated = 0;
-      w = this.use(Watcher, (self: Panel) => ({ key: stable(["user", 1, self.unrelated > 5]) }));
+      w = this.use(Watcher, (self: Panel) => ({ key: ["user", 1, self.unrelated > 5] }));
       render() {
         return <div>{String(this.unrelated)}</div>;
       }
@@ -282,7 +343,7 @@ describe("RMD022", () => {
     instance.unrelated = 2;
     await settle();
 
-    // The measured motive for the whole feature: without stable() this fires on every
+    // The measured motive for the whole feature: without the declaration this fires on every
     // update render, and a post-commit watcher would then loop.
     expect(fired).toBe(0);
 
@@ -295,10 +356,10 @@ describe("RMD022", () => {
 describe("static StableProps — the hook declares it, the call site does not", () => {
   /**
    * The DX question this answers: a query key is a value, and the hook AUTHOR knows that.
-   * Making every call site wrap it in `stable()` puts the hook's own semantics in the
-   * app's code. So a hook declares which props are values, the app writes the natural
-   * literal, and the framework holds the identity — `stable()` stays for hooks that
-   * declared nothing.
+   * Making every call site say so would put the hook's own semantics in the app's code. So a
+   * hook declares which props are values, the app writes the natural literal, and the framework
+   * holds the identity. For a hook that declared nothing, the call site holds the value itself —
+   * a `@compute`, a field, a module constant.
    */
   @StableProps("key")
   class Declared extends Hook<Bag> {
@@ -326,7 +387,7 @@ describe("static StableProps — the hook declares it, the call site does not", 
     instance.unrelated = 2;
     await settle();
 
-    // Three renders, one array — with no `stable()` anywhere at the call site.
+    // Three renders, one array — with nothing at all written at the call site.
     expect(instance.probe.keys.length).toBe(1);
     expect(reported()).not.toContain("RMD022");
 

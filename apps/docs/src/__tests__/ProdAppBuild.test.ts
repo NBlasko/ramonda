@@ -73,10 +73,11 @@ const ALIASES = [
  * measured. Reachability is.
  */
 const FIXTURE = `
-import { Component, Hook, bootstrap, list, stable, state, compute, mount, updated, watchProp, memoizedHandler, configureDev, hydrateRoot } from "@ramonda/core";
+import { Component, Hook, bootstrap, list, StableProps, state, compute, mount, updated, watchProp, memoizedHandler, configureDev, hydrateRoot } from "@ramonda/core";
 import { Query, Mutation, QueryClient, QueryClientProvider } from "@ramonda/query";
 import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
 
+@StableProps("id")
 class Row extends Hook {
   @state count = 0;
   @compute get doubled() { return this.count * 2; }
@@ -86,8 +87,8 @@ class Row extends Hook {
 
 class App extends Component {
   @state items = [1, 2, 3];
-  row = this.use(Row, (self) => ({ id: stable([self.items.length]) }));
-  query = this.use(Query, (self) => ({ key: stable(["rows"]), fetch: self.load }));
+  row = this.use(Row, (self) => ({ id: [self.items.length] }));
+  query = this.use(Query, (self) => ({ key: ["rows"], fetch: self.load }));
 
   load() { return Promise.resolve([]); }
 
@@ -293,10 +294,11 @@ describe("a production application build", () => {
     expect(prodNames.code).toContain("configureDev");
   });
 
-  test("stable() is NOT development-only — it is behaviour, not a check", () => {
-    // `stable()` shapes what the app does (one identity while the contents are equal),
-    // so unlike every check above it must be in the production build. RMD022 recommends
-    // it; a build that stripped it would silently change how props update.
+  test("@StableProps is NOT development-only — it is behaviour, not a check", () => {
+    // The declaration shapes what the app DOES (one identity while the contents are equal),
+    // so unlike every check above it must survive into the production build. RMD022 names it
+    // as the fix; a build that stripped it would silently change how props update, and the
+    // report would be recommending something that does nothing.
     expect(prodNames.code).toContain("resolveStable");
   });
 });

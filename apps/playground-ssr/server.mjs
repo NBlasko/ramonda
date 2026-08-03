@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, resolve } from "node:path";
-import { JSDOM } from "jsdom";
+import { installDom } from "./installDom.mjs";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -24,38 +24,6 @@ const CLIENT = resolve(here, "dist/client");
  * "Invalid or unexpected token" on `@Host("div") class …`. The production build
  * does transform them, so the server runs built output.
  */
-function installDom(url) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>", { url });
-
-  // defineProperty, not assignment: Node ships `navigator` and `location` as
-  // getter-only globals, so `globalThis.navigator = ...` throws outright.
-  const put = (name, value) =>
-    Object.defineProperty(globalThis, name, {
-      value,
-      configurable: true,
-      writable: true,
-    });
-
-  for (const name of [
-    "window",
-    "document",
-    "navigator",
-    "location",
-    "HTMLElement",
-    "SVGElement",
-    "Node",
-    "Text",
-    "CustomEvent",
-    "Event",
-    "MouseEvent",
-    "getComputedStyle",
-  ]) {
-    put(name, dom.window[name]);
-  }
-  put("requestAnimationFrame", (cb) => setTimeout(() => cb(Date.now()), 0));
-  put("cancelAnimationFrame", (id) => clearTimeout(id));
-  return dom;
-}
 
 /**
  * Escape the three characters that let text break out of an HTML text/`<pre>` context. An error
@@ -75,7 +43,7 @@ const MIME = {
 
 // The DOM has to exist before the app module is evaluated: class fields and
 // decorators run at import time and some of them touch `window`.
-installDom(`http://localhost:${PORT}/`);
+await installDom(`http://localhost:${PORT}/`);
 const { render, plan, prerender } = await import("./dist/server/entry-server.js");
 const template = await readFile(resolve(CLIENT, "index.html"), "utf-8");
 
@@ -120,7 +88,7 @@ function sendHtml(res, html, mode) {
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
 async function bakeShared(path) {
-  const dom = installDom(`${origin}${path}`);
+  const dom = await installDom(`${origin}${path}`);
   try {
     const { html, blockedBy } = await prerender(path);
     if (blockedBy !== undefined) {
@@ -128,7 +96,7 @@ async function bakeShared(path) {
     }
     return html;
   } finally {
-    dom.window.close();
+    dom.close();
   }
 }
 
@@ -251,11 +219,11 @@ const server = createServer(async (req, res) => {
 
     // 3. DYNAMIC — rendered per request. The request context (url + cookies) is what a route
     //    reads for auth / per-user output; the router reads the URL off the shimmed `window`.
-    const dom = installDom(`${origin}${url}`);
+    const dom = await installDom(`${origin}${url}`);
     const started = process.hrtime.bigint();
     const { html, redirect } = await render({ url: new URL(url, origin), cookies: parseCookies(req.headers.cookie) });
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
-    dom.window.close();
+    dom.close();
 
     if (redirect) {
       // A route guard sent this request elsewhere — answer with the redirect so the

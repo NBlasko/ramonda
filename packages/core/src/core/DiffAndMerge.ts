@@ -115,7 +115,13 @@ function executeChangesOnStringNode(
 ) {
   const enhancedNode = maybeenhancedNode?.nodeName === vnode.name ? maybeenhancedNode : createElement(vnode);
 
-  applyChangesOnAttributes(enhancedNode, vnode.attributes);
+  // The side this element is being built for, taken from the component that owns it rather than
+  // from the module-level flag: `renderEnv` is restored before the first `await`, so a re-render
+  // drained later would read "client" whichever side it is really on. The runtime's `env` is
+  // inherited down the tree and survives the drain — see `createComponent`.
+  const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
+
+  applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
 
   const vnodeChildren = vnode.children;
 
@@ -154,7 +160,23 @@ function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
     return node;
   }
 
-  const node = document.createElement(vnodeString.name) as EnhancedHTMLNode;
+  /**
+   * Lowercased HERE, at creation, rather than left uppercase on the vnode.
+   *
+   * `h` uppercases an HTML tag on purpose: a real node reports `nodeName` in uppercase, the diff
+   * compares against it on every pass, and doing the conversion once at construction beats doing it
+   * on every comparison. So the vnode keeps its uppercase name and the hot path is untouched.
+   *
+   * But `createElement` is not the hot path — an element is built once and diffed many times — and
+   * what it is given is what a partial DOM will serialize. A browser and jsdom lowercase a created
+   * element's local name in an HTML document, so we have been leaning on them to normalise; linkedom
+   * keeps what it is handed, and served `<DIV id="page">`. Valid HTML, and identical once parsed
+   * (measured), but nobody should open view-source on a page we served and find it shouting.
+   *
+   * The SVG branch above must NOT get this: SVG names are case-sensitive — `linearGradient`,
+   * `clipPath`, `foreignObject` — and `h` never uppercases them for exactly that reason.
+   */
+  const node = document.createElement(vnodeString.name.toLowerCase()) as EnhancedHTMLNode;
   node[ORIGIN_SYM] = vnodeString[ORIGIN_SYM];
   return node;
 }

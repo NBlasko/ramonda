@@ -3,7 +3,7 @@
 // is the dogfood that exercises the whole SSG stack — defineServer, routePlan, renderStatic,
 // requestContext — against the real routed app.
 
-import { JSDOM } from "jsdom";
+import { installDom } from "../installDom.mjs";
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,33 +15,9 @@ const PORT = 5180;
 const origin = `http://localhost:${PORT}`;
 
 /** A fresh DOM seeded at a URL — the router reads `window.location`, so this is how it learns the page. */
-function installDom(url) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>", { url });
-  const put = (name, value) => Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
-  for (const name of [
-    "window",
-    "document",
-    "navigator",
-    "location",
-    "history",
-    "HTMLElement",
-    "SVGElement",
-    "Node",
-    "Text",
-    "CustomEvent",
-    "Event",
-    "MouseEvent",
-    "getComputedStyle",
-  ]) {
-    put(name, dom.window[name]);
-  }
-  put("requestAnimationFrame", (cb) => setTimeout(() => cb(Date.now()), 0));
-  put("cancelAnimationFrame", (id) => clearTimeout(id));
-  return dom;
-}
 
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
-installDom(`${origin}/`);
+await installDom(`${origin}/`);
 const { staticPaths, prerender } = await import("../dist/server/entry-server.js");
 /**
  * The SHIPPABLE template, not the source one.
@@ -84,7 +60,7 @@ console.log(`Prerendering ${paths.length} static route(s): ${paths.join(", ")}\n
 let blocked = 0;
 for (const path of paths) {
   // Point the DOM at this path first, so the router matches it.
-  installDom(`${origin}${path}`);
+  await installDom(`${origin}${path}`);
   const { html, blockedBy } = await prerender(path);
 
   if (blockedBy !== undefined) {

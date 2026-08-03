@@ -127,6 +127,76 @@ this.use(Form, { schema, defaultValues, onSubmit: this.save });
 | `reset(values?)` | Back to the defaults, or to the values you pass. |
 | `setError(path, message)` | A message from somewhere the schema cannot see — usually the server. |
 
+## Editing a record you had to fetch
+
+An "edit profile" page does not know its values at mount. It asks for them, and they arrive a moment
+later. Move `defaultValues` when they land and the form follows:
+
+```tsx
+// A module constant, not a literal in the callback — see "one object, not a fresh one" below.
+const BLANK = { name: "", email: "" };
+
+class EditProfile extends Component {
+  private profile = this.use(Query, (self: EditProfile) => ({
+    key: ["profile", self.props.id],
+    fetch: self.load,
+  }));
+
+  private form = this.use(Form<typeof schema>, (self: EditProfile) => ({
+    schema,
+    defaultValues: self.profile.data ?? BLANK,
+    onSubmit: self.save,
+  }));
+
+  load() {
+    return api.getProfile(this.props.id);
+  }
+
+  save(values: Profile) {
+    return api.updateProfile(this.props.id, values);
+  }
+}
+```
+
+**A field the user has already typed in keeps what they typed.** Everything else takes the new value.
+That is the whole rule, and it is the one that matters — a request coming back must never delete what
+somebody is in the middle of writing, and a field nobody has touched has no reason to stay empty.
+
+"Typed in" means edited, not visited: tabbing through a field and leaving it alone does not claim it.
+A `reset()` hands every field back, so a form you reset is open to the next set of defaults again.
+
+**Array fields.** Rows merge one by one while the length is unchanged. Once the count differs, the
+array goes whole: your rows if you have added, removed or reordered any, the new ones if you have
+not. Pairing rows by number across a length change would put one row's text onto another, which is
+the failure row identities exist to prevent — see [Array fields](/forms/arrays).
+
+**Use a props callback**, as above. A props object literal is evaluated once, so defaults written
+that way can never move — that is the shape in [The whole thing](#the-whole-thing), and it is right
+for a form whose defaults are constants.
+
+### One object, not a fresh one
+
+Hand `defaultValues` an object you already have — what the fetch returned, a module constant, a
+field. Do not build it in the callback:
+
+```tsx
+defaultValues: self.profile.data ?? { name: "", email: "" },   // ✗ a new object every render
+defaultValues: self.profile.data ?? BLANK,                     // ✓ one object
+```
+
+A props callback runs on every render of the owner, so the first line builds a fresh object each
+time, and [RMD022](/reference/diagnostics) reports it in development. Holding the object is the fix
+it names, and it is the right one here: nothing is rebuilt, so there is nothing to report.
+
+Declaring the prop stable — the other fix, for a hook you own — is deliberately **not** what
+`@ramonda/form` does. That comparison is bounded (five levels deep, and anything wider than fifty
+items is called different rather than compared), and a form's defaults are routinely past both, so
+it would quietly stop helping. The form compares them itself, in full.
+
+That comparison is the whole cost of defaults that did not move: around 2 µs on a ten-field form and
+15 µs on a hundred-field one, per render of the owner, and no write and no render follow it.
+`values` even stays the same object.
+
 ## Where to go next
 
 - [Fields](/forms/fields) — the tree, `$`, `bind`, and nested objects

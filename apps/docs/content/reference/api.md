@@ -27,7 +27,6 @@ Everything the three packages export. Each entry links to the page that explains
 | `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
 | `list<T>(options)` | Renders a list, minting identity from the items. [Lists](/lists) |
 | `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
-| `stable(value)` | Keeps an array or object in a hook's props at one identity while its contents are equal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
@@ -192,6 +191,9 @@ Typed field paths, Standard Schema validation, and array rows that keep their id
 | | |
 |---|---|
 | `Form` | A **hook** — `this.use(Form<typeof schema>, { schema, defaultValues, onSubmit })`. Adds no element; the `<form>` stays your JSX. `fields` · `values` · `formErrors` · `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `submit(event?)` · `reset(values?)` · `setError(path, message)`. [Your first form](/forms) |
+
+`defaultValues` may move after the form exists — an untouched field takes the new value, an edited one
+keeps what was typed. [Editing a record you had to fetch](/forms#editing-a-record-you-had-to-fetch)
 
 Every field is reached by property access and its API sits behind `$`:
 `f.address.street.$.value`. [Fields](/forms/fields)

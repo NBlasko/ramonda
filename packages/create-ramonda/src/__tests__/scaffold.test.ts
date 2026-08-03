@@ -228,6 +228,27 @@ describe("ISR is cached somewhere a second instance can see", () => {
   });
 });
 
+describe("the scaffolded server shuts its DOM down through its own handle", () => {
+  test("nothing reaches for jsdom's `window.close()`", () => {
+    const { read } = make("ssr", []);
+    const server = read("server.mjs");
+
+    /**
+     * The template renders into linkedom, which has a `window` but no `close` on it — so
+     * `dom.window.close()` throws `TypeError` at the end of every ISR bake and every dynamic
+     * render. It shipped that way: the line survived the move off jsdom because the only page a
+     * test ever asked for was a prerendered static file, which is a file read and no render at all.
+     *
+     * The fix is that `installDom` answers with a handle rather than the DOM, so which DOM is
+     * underneath stops being the caller's business. This asserts the shape, since a scaffolded
+     * project's first ISR page is the thing that breaks.
+     */
+    expect(server).not.toContain("window.close()");
+    expect(server).toContain("dom.close()");
+    expect(server).toContain("return { close:");
+  });
+});
+
 describe("the generated project declares what its own code needs", () => {
   test("the SSR template declares __DEV__, which guards the devtools import", () => {
     const { read } = make("ssr", ["devtools"]);

@@ -1,5 +1,5 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
-import { STABLE, STABLE_PROPS } from "./constants";
+import { STABLE_PROPS } from "./constants";
 import { valueEqual } from "./valueEqual";
 import { checkPropsStability } from "../debug/propsStability";
 import { isStrictRender } from "../debug/renderStability";
@@ -51,25 +51,22 @@ function buildProps(that: object, hookName: string, hookProps: unknown, declared
 }
 
 /**
- * Replaces every `stable()` marker with a value whose identity survives while its
- * contents do — the previous render's value for that key, when the two are equal.
+ * Gives every prop a hook DECLARED as a value an identity that survives while its contents do —
+ * the previous render's value for that key, when the two are equal.
  *
- * Runs in every build, not only development: this is the behaviour `stable()` promises,
- * and the diagnostic that recommends it is separate. Top-level values only, and the loop
- * is skipped entirely for a bag that holds no markers, which is the common case — one
- * `in` check per key and nothing else.
+ * Runs in every build, not only development: this is the behaviour `@StableProps` promises, and
+ * the diagnostic that recommends it is separate. A hook that declared nothing skips the whole
+ * loop, which is the common case.
  */
 function resolveStable(next: any, prev: Record<string, any> | undefined, declared: readonly string[] | undefined): any {
+  if (declared === undefined) return next;
+
   let resolved: Record<string, any> | undefined;
 
   for (const key in next) {
-    const value = next[key];
-    const wrapped = value !== null && typeof value === "object" && STABLE in value;
-    // A hook that declared this prop gets the same treatment without the call site asking
-    // for it — that is the whole point of the declaration.
-    if (!wrapped && !declared?.includes(key)) continue;
+    if (!declared.includes(key)) continue;
 
-    const inner = wrapped ? value[STABLE] : value;
+    const inner = next[key];
 
     // A declaration cannot make a function comparable — two closures with the same body
     // are not equal by any comparison that is safe to make — so a function prop is left
@@ -79,8 +76,8 @@ function resolveStable(next: any, prev: Record<string, any> | undefined, declare
 
     const target = resolved ?? (resolved = { ...next });
     const before = prev?.[key];
-    // The previous value is already unwrapped, so an equal one is handed straight back
-    // and every signal that reads this prop stays asleep.
+    // An equal previous value is handed straight back, so every signal that reads this prop
+    // stays asleep.
     target[key] = before !== undefined && valueEqual(inner, before, STABLE_DEPTH) ? before : inner;
   }
 
@@ -88,9 +85,9 @@ function resolveStable(next: any, prev: Record<string, any> | undefined, declare
 }
 
 /**
- * Deeper than the diagnostic's default, because `stable()` is opt-in: the app asked for
- * this value to be compared, and the payload is its own — a query key, a filter object.
- * Past the bound a fresh reference is handed back, which is correct but not optimal.
+ * Deeper than the diagnostic's default, because `@StableProps` is a declaration: the hook said
+ * this prop is a value, and the payload is its own — a query key, a filter object. Past the
+ * bound a fresh reference is handed back, which is correct but not optimal.
  */
 const STABLE_DEPTH = 5;
 

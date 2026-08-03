@@ -181,6 +181,34 @@ describe("validation", () => {
     }
   });
 
+  test("a submit superseded mid-flight releases the button instead of wedging it", async () => {
+    /**
+     * Typing one character while an ASYNC schema is out used to disable the submit button forever.
+     *
+     * `finish` drops a verdict that a later validation has superseded — right, because it is about
+     * values the form has moved past — but it returned without releasing `submitting`, and nothing
+     * else ever would. A synchronous schema has already been through `finish` before anything can
+     * intervene, which is why every existing test missed it.
+     *
+     * Found while wiring up late `defaultValues`, which reaches the same path: a record landing
+     * from a fetch during a submit supersedes it exactly as a keystroke does.
+     */
+    const schema = schemaOf(() => [], true);
+    const { form, unmount } = mount(schema);
+    try {
+      form.submit();
+      expect(form.isSubmitting).toBe(true);
+
+      // Inside the window: the schema's promise has not resolved yet.
+      form.fields.email.$.set("typed during the submit");
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(form.isSubmitting).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
   test("`validateOn: blur` waits for the blur", () => {
     const schema = schemaOf((values) => (values.email === "" ? [{ path: ["email"], message: "required" }] : []));
     const { form, unmount } = mount(schema, { validateOn: "blur" });
