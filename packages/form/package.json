@@ -1,7 +1,6 @@
 {
   "name": "@ramonda/form",
   "version": "0.0.0",
-  "private": true,
   "description": "Forms for Ramonda: typed field paths, Standard Schema validation, and rows that keep their identity.",
   "license": "MIT",
   "author": "Nikola Blagojevi\u0107",
@@ -40,13 +39,14 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && ramonda-check-bundle dist",
     "dev": "tsup --watch",
-    "test": "vitest run --coverage",
+    "test": "vitest run --coverage && pnpm test:prod",
     "test:watch": "vitest",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
-    "format": "biome format --write src"
+    "format": "biome format --write src",
+    "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod"
   },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",

@@ -1,17 +1,26 @@
-# @ramonda/form
+# @ramonda/form 🌸
 
-Forms for Ramonda: typed field paths, Standard Schema validation, and rows that keep their
-identity.
+Forms for [Ramonda](https://ramonda.pages.dev): typed field paths, Standard Schema validation,
+and rows that keep their identity.
 
-> **Working, and not published yet.** Values, validation, submit and array fields all run,
-> with 38 tests behind them. The package stays `private` until it has documentation pages,
-> a bundle budget and a `@ramonda/form/bguard` submodule.
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Fform)](https://www.npmjs.com/package/@ramonda/form)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Fform)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
+```sh
+npm install @ramonda/form
+```
+
+Documentation: **[ramonda.pages.dev/forms](https://ramonda.pages.dev/forms)**
 
 ## What it looks like
 
 ```tsx
 import { Component } from "@ramonda/core";
-import { Form } from "@ramonda/form";
+import { Form, type InferOut } from "@ramonda/form";
 import { object, string } from "bguard";
 import { email } from "bguard/string/email";
 import { minLength } from "bguard/string/minLength";
@@ -31,7 +40,7 @@ class Signup extends Component {
     onSubmit: this.save,
   });
 
-  save(values: InferType<typeof signupSchema>) {
+  save(values: InferOut<typeof signupSchema>) {
     return api.signup(values);
   }
 
@@ -84,8 +93,13 @@ never before it. A submit reveals everything, including on fields nobody visited
 `validateOn: "blur"` and `"submit"` move the first check later; a field that is already
 showing a message always re-answers on change.
 
-## What is left
+## What is next
 
-Documentation pages and a bundle budget, then publishing. And a `@ramonda/form/bguard`
-submodule for what Standard Schema cannot express: `pick` for O(field) validation instead
-of O(form), and `toJSONSchema` for HTML validation attributes derived from the schema.
+A `@ramonda/form/bguard` submodule, for the two things Standard Schema cannot express:
+`pick` for O(field) validation instead of O(form), and `toJSONSchema` for HTML validation
+attributes derived from the schema. Every validator keeps working without it — the submodule
+adds speed and derived attributes, not capability.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

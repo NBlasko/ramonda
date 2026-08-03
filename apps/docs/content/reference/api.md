@@ -183,6 +183,35 @@ Types: `QueryKey` · `QueryStatus` · `FetchStatus` · `FetchContext` · `QueryF
 
 ---
 
+## `@ramonda/form`
+
+Typed field paths, Standard Schema validation, and array rows that keep their identity.
+[Forms](/forms)
+
+| | |
+|---|---|
+| `Form` | A **hook** — `this.use(Form<typeof schema>, { schema, defaultValues, onSubmit })`. Adds no element; the `<form>` stays your JSX. `fields` · `values` · `formErrors` · `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `submit(event?)` · `reset(values?)` · `setError(path, message)`. [Your first form](/forms) |
+
+Every field is reached by property access and its API sits behind `$`:
+`f.address.street.$.value`. [Fields](/forms/fields)
+
+| | |
+|---|---|
+| `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
+| `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
+| `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)`. [Array fields](/forms/arrays) |
+| `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what `list({ key })` uses. |
+
+Types: `FieldNode` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
+`Bind` · `CommonBind` · `TextBind` · `NumberBind` · `CheckboxBind` · `DateBind` · `Collision` ·
+`InferIn` · `InferOut` · `StandardSchemaV1` · `StandardResult` · `StandardIssue`
+
+`StandardSchemaV1` is the [Standard Schema](https://standardschema.dev) interface, vendored so
+the package depends on no validator. Anything implementing it works unchanged — bguard, zod,
+valibot, arktype. [Validation](/forms/validation)
+
+---
+
 ## `@ramonda/lens`
 
 Immutable updates by path. Zero dependencies, usable on its own. [Immutable updates](/lens)

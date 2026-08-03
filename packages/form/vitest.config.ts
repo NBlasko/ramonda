@@ -30,5 +30,9 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // The `*.prod.test.*` files belong to `test:prod`, which runs them in a separate process
+    // with NODE_ENV=production — `__DEV__` is baked in per process, so they would test the
+    // development path here. See vitest.prod.config.ts.
+    exclude: ["**/node_modules/**", "**/dist/**", "src/**/*.prod.test.{ts,tsx}"],
   },
 });

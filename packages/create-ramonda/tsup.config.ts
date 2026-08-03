@@ -10,12 +10,13 @@ import { defineConfig } from "tsup";
  * `No matching version found for @ramonda/query@~0.0.1`. Nothing could have caught it — the
  * pre-publish gate skips first-party packages on purpose, to avoid racing their own publish.
  *
- * Reading them here is exact for the release flow: `pnpm release` runs
- * `changeset version` first, so by the time this builds, the version on disk is the one being
- * published.
+ * Reading them here is exact for the release flow. `changeset version` runs in its own step and
+ * opens the "Version Packages" PR; merging that PR is what runs `pnpm release`, which builds and
+ * then publishes. So by the time this file is evaluated the bump is already committed, and the
+ * version on disk is the one about to go to npm.
  */
 const ranges: Record<string, string> = {};
-for (const folder of ["core", "router", "query", "lens", "devtools", "testing-library", "check"]) {
+for (const folder of ["core", "router", "query", "form", "lens", "devtools", "testing-library", "check"]) {
   const pkg = JSON.parse(readFileSync(new URL(`../${folder}/package.json`, import.meta.url), "utf8")) as {
     name: string;
     version: string;

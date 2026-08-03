@@ -68,7 +68,7 @@ afterAll(() => {
 
 describe("first-party versions", () => {
   test("every @ramonda range matches that package's workspace version", () => {
-    const { pkg } = make("ssr", ["router", "query", "lens", "devtools", "testing", "biome"]);
+    const { pkg } = make("ssr", ["router", "query", "form", "lens", "devtools", "testing", "biome"]);
     const all = { ...pkg.dependencies, ...pkg.devDependencies };
 
     /**
@@ -81,6 +81,7 @@ describe("first-party versions", () => {
       ["@ramonda/core", "core"],
       ["@ramonda/router", "router"],
       ["@ramonda/query", "query"],
+      ["@ramonda/form", "form"],
       ["@ramonda/lens", "lens"],
       ["@ramonda/devtools", "devtools"],
       ["@ramonda/testing-library", "testing-library"],

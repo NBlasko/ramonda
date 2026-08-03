@@ -64,6 +64,7 @@ A few ideas set Ramonda apart:
 | [`@ramonda/core`](packages/core) | The framework: components, reactivity, VDOM, SSR/hydration |
 | [`@ramonda/router`](packages/router) | State-first client-side router with nested outlets |
 | [`@ramonda/query`](packages/query) | Async state: cached, deduped, race-free queries and mutations |
+| [`@ramonda/form`](packages/form) | Forms: typed field paths, Standard Schema validation, stable array rows |
 | [`@ramonda/lens`](packages/lens) | Immutable deep updates by path, via structural sharing |
 | [`@ramonda/testing-library`](packages/testing-library) | Testing utilities, built on `@testing-library/dom` |
 

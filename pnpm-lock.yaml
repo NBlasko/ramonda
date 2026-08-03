@@ -42,6 +42,9 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/form':
+        specifier: workspace:^
+        version: link:../../packages/form
       '@ramonda/lens':
         specifier: workspace:^
         version: link:../../packages/lens
