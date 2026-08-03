@@ -13,7 +13,7 @@ export default defineConfig({
   // set so it works either way. (Copied from the router, where a hoisted Vite 8
   // silently dropped the JSX factory and every test stopped parsing.)
   esbuild: {
-    jsxFactory: "h",
+    jsxFactory: "__ramondaH",
     jsxFragment: "Fragment",
     target: "es2022",
   },

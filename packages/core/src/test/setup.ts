@@ -8,7 +8,7 @@ import { unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
 import { h } from "../vdom/h";
 import { configureDev } from "../";
-(globalThis as any).h = h;
+(globalThis as any).__ramondaH = h;
 
 const originalWindow = { ...window };
 

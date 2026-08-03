@@ -9,7 +9,7 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "jsx": "react",
-    "jsxFactory": "h",
+    "jsxFactory": "__ramondaH",
     "jsxFragmentFactory": "Fragment",
     "allowJs": true,
     "paths": {

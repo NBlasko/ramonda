@@ -1,4 +1,8 @@
-import { Component, Host, state, memoizedHandler } from "@ramonda/core";
+import { Component, Host, list, state, memoizedHandler } from "@ramonda/core";
+
+/** Module scope, so `each` is the SAME array every render — a fresh literal would be a new value
+ *  each time and cost the list the identity it mints from its items. */
+const TAGS = ["section", "article", "aside"];
 
 // Every component is exactly one element, and @Host says which. Without it the
 // element is <ramonda-host style="display: contents"> — a real node that takes
@@ -32,6 +36,14 @@ export class HostTag extends Component {
   @state tagName = "";
 
   // Cached by its argument, so each button keeps one handler across renders.
+  renderChoice(tag: string) {
+    return (
+      <button type="button" disabled={this.as === tag} onClick={this.select(tag)}>
+        as="{tag}"
+      </button>
+    );
+  }
+
   @memoizedHandler
   select(next: string) {
     return () => {
@@ -42,13 +54,7 @@ export class HostTag extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          {["section", "article", "aside"].map((tag) => (
-            <button type="button" disabled={this.as === tag} onClick={this.select(tag)}>
-              as="{tag}"
-            </button>
-          ))}
-        </p>
+        <p className="demo-row">{list({ each: TAGS, render: this.renderChoice })}</p>
         <Card as={this.as} />
         <Plain />
         <p className="demo-note">

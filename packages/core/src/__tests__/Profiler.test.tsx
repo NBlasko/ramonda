@@ -8,9 +8,10 @@ import { getDOM } from "../test/setup";
 /**
  * The profiler: what one commit cost and which components it rebuilt.
  *
- * The measurement at the bottom is the reason the whole thing is opt-in, and it is the number the
- * design rests on — a profiler that samples the hottest path in the framework unconditionally is a tax
- * on every development build whether or not anybody looks.
+ * These cover behaviour only. The number the opt-in design rests on — a profiler that samples the
+ * hottest path unconditionally is a tax on every development build whether or not anybody looks —
+ * is measured and recorded in `debug/profiler.ts`, not here. A wall-clock comparison inside a test
+ * that shares a machine with the rest of the suite cannot produce it; see "stopping really stops".
  */
 
 class Row extends Component<{ label: string }> {
@@ -80,7 +81,7 @@ describe("recording a commit", () => {
     const { instance } = app;
 
     startRecording();
-    instance.rows = 40;
+    instance.rows = 50;
     flushSync();
 
     const [commit] = takeCommits();
@@ -175,62 +176,56 @@ describe("recording a commit", () => {
   });
 });
 
-describe("what recording costs", () => {
+describe("turning recording off", () => {
   /**
-   * Reported, NOT asserted — and that distinction is the point.
+   * **Asserted, never timed** — and this test took three tries to get there.
    *
-   * The first version of this test compared two timed runs and required the recorded one to be within
-   * a factor of the other. On an idle machine that held; under a full parallel `turbo run test` the
-   * numbers swung far enough that recording measured 33% FASTER than not recording (off 1424 ms, on
-   * 953 ms). A test that can fail — or pass — for reasons that have nothing to do with the code is not
-   * a gate, it is a coin toss with a stack trace.
+   * 1. It first compared two timed runs and required the recorded one to be within a factor of the
+   *    other. Under a full parallel `turbo run test` recording measured 33% FASTER than not
+   *    recording (off 1424 ms, on 953 ms). A test that can fail — or pass — for reasons that have
+   *    nothing to do with the code is not a gate, it is a coin toss with a stack trace.
+   * 2. The comparison went, but the timed loops stayed, printing an off-vs-recording ratio nobody
+   *    could trust: a single unalternated pair is exactly the shape that produced the 33% above.
+   *    The phase count was cut from 200 to 60 to stay clear of vitest's 5s default — except there
+   *    were FOUR phases (warm-up 20, off 60, recording 60, off again 60), so the total was still
+   *    200 and the timeout was still one busy machine away. It duly fired: **6734 ms** under a
+   *    parallel `turbo run check`, failing a test that asserts nothing about time.
+   * 3. Now the two loops that existed only to feed that log are gone, which is 40% of the work, and
+   *    the tree is 21 components rather than 51 — it was only ever that wide to make the timing
+   *    meaningful. Measured: 307 ms → 126 ms idle.
    *
-   * So the number is printed for whoever runs this file, the real measurement lives in `profiler.ts`
-   * (taken deliberately, alternating runs, medians of seven rounds: 3.6%), and what is ASSERTED here
-   * is the thing that cannot flake: recording produces commits, stopping produces none, and the same
-   * loop runs either way.
+   * The real overhead number is in `profiler.ts`, taken the way it has to be: alternating, medians
+   * of seven rounds, 3.6%.
    *
-   * The loop is also deliberately SHORT. At 200 commits per phase it took 3.6 seconds under a full
-   * parallel `turbo run test` — against vitest's 5-second default, which is a timeout waiting to
-   * happen and the most likely cause of a failure I saw once and could not reproduce. Sixty is enough
-   * to make the point and fast enough to never be the reason a run goes red.
+   * The explicit timeout is the belt to that braces. Nothing here asserts duration, so duration must
+   * never be what decides the verdict — and a CI machine can always be slower than the one this was
+   * measured on.
    */
-  test("is reported, and stopping really stops", async () => {
+  test("stopping really stops", async () => {
     using app = await getDOM<Board>(<Board />);
     const { instance } = app;
-    instance.rows = 50;
+    // Wide enough that the per-component recording is genuinely exercised, not so wide that the
+    // test's runtime becomes a factor. See the note above for why it used to be 50.
+    instance.rows = 20;
     flushSync();
 
     const run = (times: number) => {
-      const started = performance.now();
       for (let i = 0; i < times; i++) {
         instance.title = `t${i}`;
         flushSync();
       }
-      return performance.now() - started;
     };
 
-    run(20); // warm up, so neither number pays for the first JIT pass
-
-    const off = run(60);
     startRecording();
-    const on = run(60);
+    run(60);
     expect(takeCommits().length).toBe(60);
     expect(takeCommits().at(-1)!.index).toBe(60);
 
     stopRecording();
-    const offAgain = run(60);
-    /**
-     * The loop ran 200 more times and the buffer did not move: the flag is really off, not merely
-     * reported off. This is what replaced a comparison of two timings, which under a loaded machine
-     * measured recording as FASTER than not recording.
-     */
+    run(60);
+    // Sixty more commits over a 21-component tree and the buffer did not move: the flag is really
+    // off, not merely reported off.
     expect(takeCommits().length).toBe(60);
     expect(takeCommits().at(-1)!.index).toBe(60);
-
-    console.log(
-      `[profiler] 60 commits × 51 components — off: ${off.toFixed(0)}ms · recording: ${on.toFixed(0)}ms · ` +
-        `off again: ${offAgain.toFixed(0)}ms (a loaded machine makes this ratio meaningless; see profiler.ts)`,
-    );
-  });
+  }, 30_000);
 });

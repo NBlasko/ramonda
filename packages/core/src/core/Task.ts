@@ -201,6 +201,38 @@ function abandonQueue(): void {
   taskQueue.length = 0;
 }
 
+/**
+ * Restores the one invariant the scheduler is built on: **a non-empty queue means
+ * a drain is already pending.**
+ *
+ * `addTaskToQueue` relies on it twice, and both are silent when it does not hold.
+ * A component already in the queue keeps `inBuildQueue` set, so its next update
+ * returns early. A component that is not gets inserted — and then
+ * `if (oldLength) return;` skips the `queueMicrotask`, because a queue that is
+ * not empty is supposed to already have a drain coming.
+ *
+ * The drain leaving through a throw broke exactly that. `errorHandler` rethrows
+ * when no `ErrorBoundary` is above the component, and it rethrows through here,
+ * so anything still queued stayed queued with nothing left to drain it. Not just
+ * the failing subtree: **every component in the app stopped re-rendering**, with
+ * no error, no warning and nothing in the DOM to suggest why. Measured on three
+ * siblings where one throws — the other two never rendered again, including one
+ * that was not part of that drain at all and only went dirty afterwards.
+ *
+ * So: if anything is left, schedule another drain. Nothing is cleared and nothing
+ * is abandoned — the components still hold real pending state, and they get built
+ * on the next microtask. The error keeps propagating either way, which is what
+ * puts it in front of a developer.
+ *
+ * It terminates: each drain pops before it builds, so the component that threw is
+ * already out of the queue by the time this runs. A tree where every component
+ * throws costs one microtask each and then the queue is empty.
+ */
+function resumeIfWorkRemains(): void {
+  if (taskQueue.length === 0 && !hasPendingPostCommit() && !hasPendingUpdated()) return;
+  queueMicrotask(processTask);
+}
+
 function processTask() {
   if (__DEV__) startDrain();
   // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
@@ -219,19 +251,28 @@ function processTask() {
   // effects would then reset both counters on every bounce and never be caught,
   // which is exactly what happened when effects first moved to the queue — the
   // RMD009 test was the only thing that noticed.
-  do {
-    drainBuilds();
-    flushPostCommit();
-    // After the mounts and effects this commit queued, and in its own phase — see
-    // `flushUpdated` for why the order has to be the opposite of theirs. A body
-    // that writes state schedules another build, which the `while` picks up.
-    flushUpdated();
-  } while (taskQueue.length > 0 || hasPendingUpdated());
+  try {
+    do {
+      drainBuilds();
+      flushPostCommit();
+      // After the mounts and effects this commit queued, and in its own phase — see
+      // `flushUpdated` for why the order has to be the opposite of theirs. A body
+      // that writes state schedules another build, which the `while` picks up.
+      flushUpdated();
+    } while (taskQueue.length > 0 || hasPendingUpdated());
+  } finally {
+    // A `finally`, because the drain can leave through a throw: a render with no
+    // `ErrorBoundary` above it rethrows out of `errorHandler`, straight through
+    // this function. See `resumeIfWorkRemains` for what that used to cost, and
+    // `endCommit` because a profiler left mid-commit reports nonsense forever
+    // after.
+    if (__DEV__) {
+      endCommit();
+      // Cheap, gated ping — no-op unless the devtools is actively watching.
+      notifyComponentUpdate();
+    }
 
-  if (__DEV__) {
-    endCommit();
-    // Cheap, gated ping — no-op unless the devtools is actively watching.
-    notifyComponentUpdate();
+    resumeIfWorkRemains();
   }
 
   function drainBuilds() {

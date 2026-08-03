@@ -140,7 +140,7 @@ async function build(mode: Mode): Promise<Build> {
     "--bundle",
     "--format=esm",
     "--splitting",
-    "--jsx-factory=h",
+    "--jsx-factory=__ramondaH",
     `--inject:${join(app, "jsx-shim.ts")}`,
     `--define:__DEV__=${dev ? "true" : "false"}`,
     "--target=es2022",

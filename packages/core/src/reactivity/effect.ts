@@ -37,35 +37,54 @@ export function runComponentEffects(component: BaseComponent<any>) {
       dep[detach](eff.id);
     }
 
-    // Postavljamo globalni kontekst na trenutni efekat
+    // The tracking scope: signals read from here on are recorded as this
+    // effect's dependencies.
     reactivityScope.currentEffect = eff;
     eff.deps.clear();
     eff.mutated.clear();
 
-    const res = eff.effect();
+    try {
+      const res = eff.effect();
 
-    // Clear the context once the effect has run, so a signal read afterwards
-    // is not recorded as one of its dependencies.
-    reactivityScope.currentEffect = null;
+      if (typeof res === "function") {
+        eff.cleanup = res;
+      }
+    } finally {
+      /**
+       * A `finally`, and that is the whole point of the block.
+       *
+       * `currentEffect` is a module-global, so leaving it set does not fail
+       * here — it fails everywhere else. Every `State.get()` in the entire app
+       * would then record itself onto a dead effect's `deps`: an unbounded set
+       * holding a strong reference to every signal read from that moment on,
+       * and `State.set` marking `mutated` on it. Measured after one throwing
+       * `connect`: the scope stayed set, and two unrelated reads landed in it
+       * immediately. Nothing reset it until the next effect flush — and if the
+       * component that threw was the only one with effects, nothing ever did.
+       *
+       * The bookkeeping below is in here for the same reason. An effect that
+       * threw part-way still read real signals before it did, and those are
+       * real dependencies: attaching them is what lets it run again when they
+       * change. Resetting `shouldRebuild` is what stops it retrying on every
+       * single commit forever.
+       */
+      reactivityScope.currentEffect = null;
 
-    if (typeof res === "function") {
-      eff.cleanup = res;
+      for (const mutatedDep of eff.mutated) {
+        mutatedDep[detach](eff.id);
+        eff.deps.delete(mutatedDep);
+      }
+
+      for (const dep of eff.deps) {
+        dep[attach]({
+          id: eff.id,
+          onChange: () => {
+            eff.shouldRebuild = true;
+          },
+        });
+      }
+
+      eff.shouldRebuild = eff.alwaysRebuild;
     }
-
-    for (const mutatedDep of eff.mutated) {
-      mutatedDep[detach](eff.id);
-      eff.deps.delete(mutatedDep);
-    }
-
-    for (const dep of eff.deps) {
-      dep[attach]({
-        id: eff.id,
-        onChange: () => {
-          eff.shouldRebuild = true;
-        },
-      });
-    }
-
-    eff.shouldRebuild = eff.alwaysRebuild;
   }
 }

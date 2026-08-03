@@ -25,7 +25,7 @@ export default defineConfig({
     __TEST__: 'process.env.NODE_ENV === "test"',
   },
   esbuild: {
-    jsxFactory: "h",
+    jsxFactory: "__ramondaH",
     jsxFragment: "Fragment",
     target: "es2022",
   },

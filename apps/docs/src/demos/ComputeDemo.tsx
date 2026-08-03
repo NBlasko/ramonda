@@ -1,4 +1,4 @@
-import { Component, Host, state, compute } from "@ramonda/core";
+import { Component, Host, list, state, compute } from "@ramonda/core";
 
 // @compute caches a derived value and recomputes it only when something it read
 // actually changed. It works on a method or on a getter — both are cached the
@@ -43,6 +43,14 @@ export class ComputeDemo extends Component {
     this.filter = (event.target as HTMLInputElement).value;
   }
 
+  renderItem(item: { name: string; price: number }) {
+    return (
+      <li>
+        {item.name} — {item.price}
+      </li>
+    );
+  }
+
   render() {
     return (
       <div>
@@ -52,13 +60,7 @@ export class ComputeDemo extends Component {
             add an item
           </button>
         </p>
-        <ul className="demo-log">
-          {this.visible.map((item) => (
-            <li>
-              {item.name} — {item.price}
-            </li>
-          ))}
-        </ul>
+        <ul className="demo-log">{list({ each: this.visible, render: this.renderItem })}</ul>
         <p className="demo-row">
           <span>
             total: <strong>{this.total}</strong>
