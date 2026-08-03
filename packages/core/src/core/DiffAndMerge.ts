@@ -115,7 +115,13 @@ function executeChangesOnStringNode(
 ) {
   const enhancedNode = maybeenhancedNode?.nodeName === vnode.name ? maybeenhancedNode : createElement(vnode);
 
-  applyChangesOnAttributes(enhancedNode, vnode.attributes);
+  // The side this element is being built for, taken from the component that owns it rather than
+  // from the module-level flag: `renderEnv` is restored before the first `await`, so a re-render
+  // drained later would read "client" whichever side it is really on. The runtime's `env` is
+  // inherited down the tree and survives the drain — see `createComponent`.
+  const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
+
+  applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
 
   const vnodeChildren = vnode.children;
 
