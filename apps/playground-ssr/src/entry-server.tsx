@@ -18,6 +18,7 @@ const server = defineServer(routes, {
   "/about": { revalidate: 3 }, // ISR — cached, rebaked every 3s
   "/products": {}, // dynamic — the feed renders per request
   "/users/:id": {}, // dynamic — per-user page
+  "/signup": { prerender: true }, // SSG — a form has nothing per-request in it, so it bakes
 });
 
 /** The paths a static build should bake (`routePlan.static`), for the prerender script. */

@@ -43,7 +43,34 @@ function installDom(url) {
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
 installDom(`${origin}/`);
 const { staticPaths, prerender } = await import("../dist/server/entry-server.js");
-const template = await readFile(resolve(root, "index.html"), "utf-8");
+/**
+ * The SHIPPABLE template, not the source one.
+ *
+ * `index.html` points at `/src/entry-client.tsx`, which exists only under a dev server. The
+ * client build rewrites it to `/assets/client.js` on its way into `dist/client`, and this script
+ * used to bake the raw one — so every prerendered page shipped a script tag pointing at a file
+ * the server does not have. The browser fell through to `index.html`, got `text/html`, and
+ * refused the module:
+ *
+ *   Failed to load module script: Expected a JavaScript-or-Wasm module script but the server
+ *   responded with a MIME type of "text/html".
+ *
+ * Nothing crashed. The page rendered, looked right, and simply never hydrated — no interactivity
+ * and no devtools panel — on every static route, while the dynamic ones were fine. Which is why
+ * the rewrite is asserted rather than assumed: a `.replace()` that silently matches nothing is
+ * exactly how this survived.
+ */
+const SOURCE_ENTRY = "/src/entry-client.tsx";
+const BUILT_ENTRY = "/assets/client.js";
+
+const raw = await readFile(resolve(root, "index.html"), "utf-8");
+if (!raw.includes(SOURCE_ENTRY)) {
+  console.error(
+    `index.html no longer references ${SOURCE_ENTRY}; the prerendered pages would ship an unhydrated template.`,
+  );
+  process.exit(1);
+}
+const template = raw.replace(SOURCE_ENTRY, BUILT_ENTRY);
 
 // Every page in the ISR cache was baked by the bundle this build just replaced, so serving one
 // afterwards hands the browser old markup for a new client bundle — a hydration mismatch, and old

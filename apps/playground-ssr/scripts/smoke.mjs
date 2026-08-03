@@ -231,8 +231,107 @@ async function checkEditorEndpoint() {
   return { source, opened: answer.ok };
 }
 
+/**
+ * The form, server-rendered and then adopted.
+ *
+ * `@ramonda/form` builds its field tree out of a Proxy and mints row ids from a counter, and
+ * neither of those can be trusted across a server/client boundary on the strength of a unit
+ * test: the questions are whether the two sides agree, and whether hydration ADOPTS the markup
+ * or silently rebuilds it. Both were wrong once. Row ids came out of a single per-form counter,
+ * so an id depended on the order the arrays happened to be read in, and `isValid` was `true` on
+ * an empty required form because nothing had validated yet.
+ */
+async function checkForm() {
+  const { JSDOM } = await import("jsdom");
+  const code = await readFile(join(root, "dist/client/assets/client.js"), "utf8");
+
+  const served = await fetch(`http://localhost:${PORT}/signup`);
+  if (!served.ok) fail(`GET /signup answered ${served.status}`);
+  const page = await served.text();
+
+  const read = (id, source) => new RegExp(`<dd id="${id}">([^<]*)<`).exec(source)?.[1];
+  const names = (source) => [...source.matchAll(/<input[^>]*name="([^"]+)"/g)].map((m) => m[1]);
+
+  // Every control has a `name`, which is what a form that works without JavaScript would post
+  // under — including the bracketed paths of an array field.
+  const posted = names(page);
+  for (const expected of ["email", "address.street", "tags[0]", "contacts[0].kind"]) {
+    if (!posted.includes(expected)) fail(`the server-rendered form has no input named ${expected}`);
+  }
+  // A form nobody has touched shows no messages, and does not claim to be valid when it is not.
+  if (page.includes('class="err"')) fail("the untouched form rendered an error message");
+  if (read("s-valid", page) !== "false") fail("the empty signup form reported itself valid");
+
+  const dom = new JSDOM(page, {
+    url: `http://localhost:${PORT}/signup`,
+    runScripts: "outside-only",
+    pretendToBeVisual: true,
+  });
+  const { window } = dom;
+  window.fetch = async () => new window.Response("{}", { status: 200 });
+
+  const noise = [];
+  for (const level of ["warn", "error"]) {
+    const original = window.console[level];
+    window.console[level] = (...args) => {
+      noise.push(`${level}: ${args.map(String).join(" ")}`);
+      original?.(...args);
+    };
+  }
+
+  // Held as a NODE, not marked with an attribute: the diff removes attributes it does not know
+  // about, so a marker would read as a replacement even where the element was adopted.
+  const serverEmail = window.document.querySelector("#email");
+
+  window.eval(code);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const doc = window.document;
+  if (doc.querySelector("#email") !== serverEmail) fail("hydration replaced the form's markup instead of adopting it");
+  if (read("s-rowids", page) !== doc.querySelector("#s-rowids").textContent) {
+    fail(
+      `the row ids disagree: server ${read("s-rowids", page)}, client ${doc.querySelector("#s-rowids").textContent}`,
+    );
+  }
+  if (JSON.stringify(posted) !== JSON.stringify(names(doc.documentElement.outerHTML))) {
+    fail("hydration changed which inputs exist");
+  }
+
+  const type = (selector, value) => {
+    const el = doc.querySelector(selector);
+    el.value = value;
+    el.dispatchEvent(new window.Event("input", { bubbles: true }));
+  };
+  const click = (selector) => doc.querySelector(selector).dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  type("#email", "not-an-email");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (!doc.querySelector("#signup em.err")) fail("typing an invalid email produced no message after hydration");
+
+  type("#email", "a@b.c");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (doc.querySelector("#signup em.err")) fail("fixing the email left its message on screen");
+
+  // The row identity, which is the whole reason the ids exist: mark the SECOND row's element,
+  // remove the FIRST, and the survivor must be the same element rather than a rebuilt one.
+  click("#add-tag");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const secondRow = [...doc.querySelectorAll("#tags li input.tag")][1];
+  if (!secondRow) fail("adding a tag did not add a row");
+
+  click("#tags .remove-tag");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const survivor = doc.querySelector("#tags li input.tag");
+  if (survivor !== secondRow) fail("removing row 0 rebuilt the surviving row instead of moving it");
+
+  if (noise.length > 0) fail(`the form logged during hydration and use:\n${noise.join("\n")}`);
+
+  return { inputs: posted.length, rowids: doc.querySelector("#s-rowids").textContent };
+}
+
 const panel = await checkPanel();
 const editor = await checkEditorEndpoint();
+const form = await checkForm();
 
 stop();
 console.log(
@@ -240,5 +339,7 @@ console.log(
     `[smoke] the panel listed ${panel.rows} components and edited ${panel.editing}\n` +
     `[smoke] the endpoint resolved ${editor.source} ` +
     `(${editor.opened ? "and opened it" : "no editor on this machine, which is not this test's business"}), ` +
-    `and refused a path that does not exist`,
+    `and refused a path that does not exist\n` +
+    `[smoke] /signup rendered ${form.inputs} named inputs, hydration adopted them, ` +
+    `and the row ids survived a splice (${form.rowids})`,
 );
