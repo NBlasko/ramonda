@@ -1,4 +1,4 @@
-import { Component, type RamondaNode } from "@ramonda/core";
+import { Component, INSPECT, type RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { Form } from "../Form";
@@ -370,5 +370,50 @@ describe("validation", () => {
     expect(() => resolve({ issues: [{ path: ["email"], message: "late" }] })).not.toThrow();
     await new Promise((r) => setTimeout(r, 5));
     expect(form.fields.email.$.error).toBeUndefined();
+  });
+});
+
+describe("[INSPECT] - what the devtools panel sees", () => {
+  const inspect = (form: object) => (form as Record<symbol, () => Record<string, unknown>>)[INSPECT]();
+
+  test("reports the values, messages and flags that `@state` cannot show", () => {
+    // Without this the panel row reads `{ version: n }` and props that never change: a counter
+    // going up, and nothing anyone would open the panel to look at.
+    const { form, unmount } = mount(matching);
+    try {
+      form.fields.confirm.$.set("mismatch");
+      form.submit();
+
+      const detail = inspect(form);
+
+      expect(detail.values).toEqual(form.values);
+      expect(detail.errors).toMatchObject({ confirm: ["the same password"] });
+      expect(detail.changed).toContain("confirm");
+      expect(detail.isValid).toBe(false);
+      expect(detail.submitCount).toBe(1);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("names a path the way the reader wrote it, not the way the map keys it", () => {
+    // `pathKey` separates segments with a NUL and marks an index with `#`, so two different paths
+    // cannot collide. Neither is readable, and the panel is the one place these are shown to a
+    // person.
+    const { form, unmount } = mount(matching);
+    try {
+      form.fields.confirm.$.set("mismatch");
+      form.submit();
+
+      const named = Object.keys(inspect(form).errors as Record<string, unknown>);
+
+      expect(named.length).toBeGreaterThan(0);
+      for (const key of named) {
+        expect(key).not.toContain("\\u0000");
+        expect(key).not.toContain("#");
+      }
+    } finally {
+      unmount();
+    }
   });
 });

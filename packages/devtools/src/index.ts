@@ -25,6 +25,14 @@ interface InspectedNode {
   state: Record<string, unknown>;
   props?: Record<string, unknown>;
   options?: Record<string, unknown>;
+  /**
+   * What the instance said it holds, from its own `[INSPECT]()`.
+   *
+   * A hook that keeps its state in plain fields behind a `@state` counter shows that counter as its
+   * whole `state` — `{ version: 7 }` for a form, with inputs that never change. This is its own
+   * answer, and for a form it is the only thing anyone opens the panel to see.
+   */
+  detail?: Record<string, unknown>;
   /** A context consumer's reads — the keys it subscribed to, and the ones it never touched. */
   reads?: Record<string, unknown>;
   /** Where the class is defined, when core could tell. */
@@ -2089,6 +2097,9 @@ class RamondaDevTools extends HTMLElement {
       // State is the only block that can be written: props are owned by whoever rendered this
       // component and assigning to one throws in every build.
       const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc, n.id);
+      // No node id, so it is read-only: this is what the instance DERIVED, and assigning to a copy
+      // of it would change nothing while looking as though it had.
+      const detailHtml = this.renderValueBlock("Holds", n.detail, path, "d", acc);
       const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
       // A hook's inputs are its PROPS. They were called options once, the framework renamed
       // them, and this label kept saying the old word to everyone inspecting a hook.
@@ -2124,7 +2135,7 @@ class RamondaDevTools extends HTMLElement {
           ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
           : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
-      const body = `${propsHtml}${stateHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
+      const body = `${propsHtml}${stateHtml}${detailHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
 
       // Collapsed is the reader's decision, so it survives a rebuild — the default is open.
       const openAttr = this.collapsed.has(path) ? "" : " open";

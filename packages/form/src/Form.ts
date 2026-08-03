@@ -1,4 +1,4 @@
-import { create, destroy, Hook, type RenderEnv, state } from "@ramonda/core";
+import { create, destroy, Hook, INSPECT, type RenderEnv, state } from "@ramonda/core";
 import { type FieldHost, FieldTree } from "./fieldTree";
 import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
@@ -144,6 +144,31 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @destroy
   dispose(): void {
     this.disposed = true;
+  }
+
+  /**
+   * What the devtools panel shows for this form.
+   *
+   * Without it the row reads `state: { version: 7 }` and a set of props that never change — a
+   * counter going up, and nothing anyone would open the panel to look at. The values, the messages
+   * and what has been touched are plain fields, because `@state` means "serialise me into the
+   * hydration blob" and a form holds whatever the schema's input side is: a `Date`, a `File`, a
+   * class instance. See `INSPECT`.
+   *
+   * `errors` is what the form has COMPUTED, not what it is showing — a message held back because
+   * nothing has been touched is exactly what someone is in the panel to find.
+   */
+  [INSPECT](): Record<string, unknown> {
+    return {
+      values: this.current,
+      errors: Object.fromEntries([...this.issues].map(([key, messages]) => [readableKey(key), messages])),
+      touched: [...this.touchedKeys].map(readableKey),
+      changed: [...this.changedKeys].map(readableKey),
+      isValid: this.isValid,
+      isDirty: this.isDirty,
+      isSubmitting: this.submitting,
+      submitCount: this.submits,
+    };
   }
 
   /* ---------------------------------------------------------------- *
@@ -689,4 +714,20 @@ function scopeOf(event: Event | undefined): HTMLElement | undefined {
   if (!target || typeof target.closest !== "function") return undefined;
 
   return target.closest("form") ?? target;
+}
+
+/**
+ * A `pathKey` back into something a reader recognises.
+ *
+ * The internal key separates segments with a NUL and marks an index with `#`, both of which exist so
+ * two different paths cannot collide. Neither is readable, and the panel is the one place these keys
+ * are shown to a person.
+ */
+function readableKey(key: string): string {
+  if (key === "") return "(form)";
+  return key
+    .split("\u0000")
+    .map((segment) => (segment.startsWith("#") ? `[${segment.slice(1)}]` : segment))
+    .join(".")
+    .replace(/\.\[/g, "[");
 }

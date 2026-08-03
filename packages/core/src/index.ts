@@ -53,6 +53,11 @@ export { hydrateRoot } from "./hydration/hydrate";
 export * from "./base/decorators";
 // A development-time switch, and a no-op in a production build — see config.ts.
 export { configureDev, type DevFlags } from "./config";
+/**
+ * The one symbol this package publishes: a method an instance defines to tell the devtools panel
+ * what it actually holds. See its declaration for why a `@state` counter is not enough.
+ */
+export { INSPECT } from "./base/inspect";
 // The vocabulary for building vnodes by hand. `h` is callable directly — a route
 // table generated from a content directory, a registry of components — and these
 // are the types that call needs. Type-only: nothing is added to the runtime API.

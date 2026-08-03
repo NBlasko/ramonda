@@ -1,4 +1,5 @@
 import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS } from "../helpers/constants";
+import { INSPECT } from "../base/inspect";
 import { definitionOf, type SourceLocation } from "./sourceLocation";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 
@@ -25,6 +26,14 @@ export interface InspectedNode {
    * never read named as such. Only a consumer has this — see `CONTEXT_READS`.
    */
   reads?: Record<string, unknown>;
+  /**
+   * What the instance says it holds, from its own `[INSPECT]()`.
+   *
+   * For a hook whose state lives in plain fields behind a `@state` counter — which is what the
+   * framework recommends for anything that must not be serialised — `state` is that counter and
+   * nothing else. This is the instance's own answer. See `INSPECT`.
+   */
+  detail?: Record<string, unknown>;
   /** Child hooks (and their nested hooks), in use() order. */
   hooks: InspectedNode[];
   /** Nested child components (only for component nodes). */
@@ -36,6 +45,7 @@ export interface InspectedNode {
 }
 
 interface Inspectable {
+  [INSPECT]?: () => Record<string, unknown>;
   [STATE_KEYS]?: Set<string>;
   [PERSIST_KEYS]?: Set<string>;
   [CHILD_HOOKS]?: Inspectable[];
@@ -133,6 +143,27 @@ function readOptions(instance: Inspectable): Record<string, unknown> | undefined
  * read, so walking them would change what the owning component re-renders on. The consumer knows
  * which keys it has already subscribed to, and only those are safe to read.
  */
+/**
+ * Asks the instance what it holds, if it has an answer.
+ *
+ * Wrapped, because this calls code the framework did not write, during a walk whose whole job is to
+ * diagnose an app that may already be broken. A `[INSPECT]()` that throws — reading a field that is
+ * undefined mid-construction, say — must cost that one row its detail and nothing more; letting it
+ * escape would take down the scan and the panel with it, exactly when someone is trying to find out
+ * why.
+ */
+function readDetail(instance: Inspectable): Record<string, unknown> | undefined {
+  const describe = instance[INSPECT];
+  if (typeof describe !== "function") return undefined;
+
+  try {
+    const detail = describe.call(instance);
+    return detail !== null && typeof detail === "object" ? detail : undefined;
+  } catch (error) {
+    return { "[INSPECT] threw": String(error) };
+  }
+}
+
 function readContextReads(instance: Inspectable): Record<string, unknown> | undefined {
   const report = instance[CONTEXT_READS];
   if (typeof report !== "function") return undefined;
@@ -162,6 +193,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
     name: hook.constructor?.name ?? "Hook",
     kind: "hook" as const,
     state: readState(hook),
+    detail: readDetail(hook),
     options: readOptions(hook),
     reads: readContextReads(hook),
     source: definitionOf(hook.constructor),
@@ -196,6 +228,7 @@ export function scanComponentTree(node: Node = document.body, depth = 0): Inspec
         name,
         kind: "component",
         state: readState(instance),
+        detail: readDetail(instance),
         props: readProps(instance),
         source: definitionOf(instance.constructor),
         hooks: readHooks(instance),

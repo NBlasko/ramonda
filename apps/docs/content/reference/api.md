@@ -111,6 +111,7 @@ once and so never produces the update it reacts to.
 | | |
 |---|---|
 | `configureDev({ strictRender })` | Turns off the double render behind [RMD020](/reference/diagnostics). A no-op in production. |
+| `INSPECT` | A symbol. Define `[INSPECT]()` on a component or hook and the devtools panel shows what it returns, under **Holds**. [Devtools](/devtools#what-an-instance-holds) |
 
 ### Types
 
