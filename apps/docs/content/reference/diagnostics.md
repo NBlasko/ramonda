@@ -507,3 +507,40 @@ ordinary as a timeout.
 Reading any one of those four silences it, per render: a component that showed the error and
 then stopped (a collapsed panel, a switched tab) is reported again, because each render is
 judged on its own reads.
+
+## RMD026 — an unkeyed child took a different element's node
+
+```tsx
+<div>
+  {this.warn ? <em>careful</em> : null}   // appears, so the count changes
+  <p>A</p>                                 // reported: two unkeyed <p>
+  <p>B</p>
+</div>
+```
+
+Unkeyed children are matched by **position**. When the number of children changes — a
+conditional that appeared or went away, an item spliced out of the middle — a child can
+be handed the node a different sibling of the same shape was using. What is rendered
+stays correct, because attributes and text are patched either way. What moves silently is
+everything the DOM node itself carries: focus, text selection, scroll position, the value
+of an uncontrolled input, a CSS transition in flight, and any component state attached to
+that element.
+
+Give them an identity — `key` on each, or `list({ each, key })` for a mapped list, which
+keys them for you. The conditional child above them needs nothing; it is the siblings
+being matched by position that do.
+
+The report is narrow on purpose, and three cases it stays quiet for are worth knowing:
+
+- **A hole whose presence does not change.** `{null}` that is null on both renders costs
+  nothing. It used to swap nodes anyway — that was a bug in the diff, fixed rather than
+  diagnosed.
+- **A tag that appears once.** `{cond && <em/>}<p>A</p><span>B</span>` relocates both
+  children by one slot, and each still finds its own node. There is nothing to confuse.
+- **An optional sibling appended at the end.** `<Card />{cond && <Card />}` adds after the
+  first, which keeps its place. Nothing can move.
+
+And one it cannot see: a child inserted **between** same-tag siblings —
+`<p>A</p>{cond && <p>X</p>}<p>B</p>` — matches positionally with the wrong child, and no
+part of the diff can tell the occupant changed. That ambiguity is precisely what a key
+resolves, which is why the advice is the same either way.

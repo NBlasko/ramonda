@@ -32,7 +32,8 @@ export type DiagnosticCode =
   | "RMD022"
   | "RMD023"
   | "RMD024"
-  | "RMD025";
+  | "RMD025"
+  | "RMD026";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -167,6 +168,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "Per-request data read in the browser",
     fix: '`requestContext()` reads the real request on the SERVER. In the browser only what the server explicitly exposed is available, so this read returned nothing — and if the server rendered a value here, the two sides now disagree and hydration will replace the node. Cookies and headers are never exposed (they are the server\'s, and an httpOnly cookie is invisible to JS anyway). To carry a value to the client, opt its key in — `requestKey("currentUser", { exposeToClient: true })` — and expose only what is safe to publish: a display name, an id, a role, never a session token. Better still, read the request in `@create` and keep the result in `@state`: `@create` is skipped on hydration and the state is restored from the page, so the browser never re-reads the request at all.',
+  },
+  RMD026: {
+    // warning, not error: what is rendered is still correct — attributes and text are patched
+    // either way. What moved is the identity underneath, which nothing on screen shows.
+    severity: "warning",
+    title: "An unkeyed child took a different element's node",
+    fix: "Unkeyed children are matched by position, so when the number of children changes — a conditional that appeared or went away, an item added to or removed from the middle of a list — every sibling after the change adopts its neighbour's node. The output stays correct, because attributes and text are patched; what silently moves is everything the DOM node itself carries: focus, text selection, scroll position, the value of an uncontrolled input, a CSS transition in flight, and any component state attached to that element. Give the children an identity: `key` on each of them, or `list({ each, key })` for a mapped list, which keys them for you. A conditional child above them (`{cond && <p/>}`) needs nothing itself — it is the siblings that need keys, because they are the ones being matched by position.",
   },
   RMD024: {
     severity: "warning",

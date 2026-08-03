@@ -44,6 +44,7 @@ import { getRenderEnv } from "./renderEnv";
 import { getServerWorkCollector } from "./serverWork";
 import { ListEngine, isLazyList, buildLazyList, type LazyListNode, type ListHost } from "../helpers/listEngine";
 import { snapshotOwnProps, lintUnpersistedState } from "../hydration/lint";
+import { diagnose } from "../debug/diagnostics";
 import { lintChildKeys } from "../debug/lintChildren";
 import { timerOwner } from "../debug/timerGuard";
 import type { Runtime } from "./runtime";
@@ -197,15 +198,88 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
   // The nodes the vnode list wants, in its order. Feeds the reorder pass.
   const orderedNodes: ChildNode[] = [];
 
+  /**
+   * The position among the children that actually BECOME nodes — not the index in the vnode
+   * array, which counts the holes.
+   *
+   * `filterVirtualChild` drops `null`, `undefined` and booleans, and none of them leaves a node
+   * behind, so the pool this is matched against is shorter than the vnode list by however many
+   * holes precede it. Passing the raw index made every sibling after a hole miss its own node
+   * and claim a neighbour's by shape instead: with `{cond && <p/>}` above them, two `<p>`
+   * siblings swapped DOM nodes on every re-render. Nothing looked wrong — the attributes and
+   * text are patched either way — but focus, scroll, uncontrolled input state and element
+   * identity all moved with the swap.
+   *
+   * The region path below already counts this way (`plainIndex`); this is the same rule.
+   */
+  let position = 0;
+
   for (let i = 0; i < vnodeChildren.length; i++) {
     const vchild = filterVirtualChild(vnodeChildren[i]);
     if (vchild === undefined) continue;
 
-    const placed = claimOrMount(vchild, i, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
+    const placed = claimOrMount(vchild, position++, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
     if (placed) orderedNodes.push(placed);
   }
 
+  if (__DEV__ && keyIndex.shifted) reportShiftedChildren(vnodeChildren, keyIndex.shifted, placeholderComponent);
+
   return { cloneChildren, orderedNodes };
+}
+
+/**
+ * An unkeyed child has just taken the node a DIFFERENT child of the same shape was using.
+ *
+ * Reported from the fallback match, which is the only place the framework can KNOW identity
+ * moved: positional matching succeeded for neither this child nor, therefore, its neighbour, and
+ * the shape scan found a node somewhere else in the pool. A first mount has no pool, a keyed
+ * child never reaches the scan, and a hole whose presence did not change does not move anything.
+ *
+ * ## What it deliberately does not catch, and why not
+ *
+ * A child inserted in the MIDDLE of same-tag siblings — `<p>A</p>{cond && <p>X</p>}<p>B</p>` —
+ * matches positionally, with the wrong child: `X` lands in `B`'s slot, `areSimilarNodes` is happy
+ * because neither has a key, and nothing anywhere can tell that the occupant changed. That
+ * ambiguity is exactly what a key resolves, and it cannot be re-derived from the diff.
+ *
+ * The alternative was to report on any change in the child count next to unkeyed same-tag
+ * siblings. Measured against this repo, that fires on `<ProfileCard />{cond && <ProfileCard />}`
+ * — a static item plus an optional one, appended at the END, where nothing can move and nothing
+ * is wrong. A warning on correct idiomatic code is how a diagnostic teaches people to ignore it,
+ * so the check stays where it can be certain, and the gap is written down here instead.
+ *
+ * A MAPPED array is a region and never reaches this path; unkeyed components inside one are
+ * RMD023's business.
+ *
+ * One report per owner per tag, so a hundred-row list says it once.
+ */
+function tagOf(vchild: unknown): string {
+  const name = (vchild as { name?: unknown })?.name;
+  return typeof name === "string" ? name : ((name as { name?: string })?.name ?? "?");
+}
+
+function reportShiftedChildren(vnodeChildren: unknown[], shifted: Set<string>, owner: MaybeComponent): void {
+  // How many UNKEYED children carry each tag that moved. One is unambiguous — it relocated to its
+  // own node, which is the diff working. Two or more is the case nothing can tell apart.
+  const counts = new Map<string, number>();
+  for (const rawChild of vnodeChildren) {
+    if (rawChild === null || typeof rawChild !== "object") continue;
+    const child = rawChild as { name?: unknown; attributes?: { key?: unknown } };
+    if (child.name === undefined || child.attributes?.key != null) continue;
+
+    const tag = tagOf(child);
+    if (shifted.has(tag)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+
+  const where = owner ? `<${owner.constructor.name} />` : "the root";
+  for (const [tag, count] of counts) {
+    if (count < 2) continue;
+    diagnose(
+      "RMD026",
+      `${owner?.constructor.name ?? "root"}:${tag}`,
+      `In ${where}, ${count} <${tag}> children carry no key and the number of children changed, so one of them was handed the node another was using.`,
+    );
+  }
 }
 
 /**
@@ -221,6 +295,15 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
 interface KeyIndex {
   map: Map<string, number> | null;
   source: (EnhancedChildNode | DONE)[];
+  /**
+   * DEV only. Tags of unkeyed children that were handed a node from a different slot.
+   *
+   * Collected during the loop and judged after it, because relocating is not by itself a loss —
+   * when the count changes every later child moves down one and each still finds its OWN node.
+   * It is a loss only where two unkeyed siblings share a tag and could have been confused, and
+   * that is a question about the whole child list rather than about one claim.
+   */
+  shifted?: Set<string>;
 }
 
 function keyIndexOf(index: KeyIndex): Map<string, number> {
@@ -288,6 +371,10 @@ function claimOrMount(
   //    after walking the whole list to find that out.
   if (matchedIndex === -1 && !keyed) {
     matchedIndex = findIndexOfSimilarNodes(vchild, cloneChildren, preferredIndex);
+
+    if (__DEV__ && matchedIndex > -1 && matchedIndex !== preferredIndex && typeof vchild !== "string") {
+      (keyIndex.shifted ??= new Set()).add(tagOf(vchild));
+    }
   }
 
   const matched = matchedIndex > -1 ? cloneChildren[matchedIndex] : DONE;
@@ -399,6 +486,12 @@ function reconcileEntries(
   }
 
   const keyIndex: KeyIndex = { map: null, source: cloneChildren };
+  /**
+   * How many nodes were here BEFORE anything was claimed.
+   *
+   * Read now, not after the loop: `claimOrMount` appends the nodes it mounts to `cloneChildren`,
+   * so reading it afterwards counts the new ones too and the comparison always looks balanced.
+   */
   const entries: RecordEntry[] = [];
   let changed = false;
   let plainIndex = 0;
