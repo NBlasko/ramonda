@@ -12,13 +12,22 @@ valibot and arktype all work as they are, with no adapter and no dependency from
 on any of them.
 
 ```tsx
-// bguard
 import { object, string, email, minLength } from "bguard";
-const schema = object({ email: string().custom(email()), password: string().custom(minLength(8)) });
 
-// zod — the same form code, unchanged
+const schema = object({
+  email: string().custom(email()),
+  password: string().custom(minLength(8)),
+});
+```
+
+```tsx
+// zod, and the form code around it does not change
 import { z } from "zod";
-const schema = z.object({ email: z.string().email(), password: z.string().min(8) });
+
+const schema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
 ```
 
 Whatever you pass, `defaultValues` and the `values` handed to `onSubmit` are typed from it.
@@ -90,13 +99,25 @@ The form re-runs the **whole schema** on every change, which is what makes this 
 In bguard the rule reads the other field through the context, and lands where it ran:
 
 ```ts
+import type { InferType } from "bguard";
+import type { ExceptionContext } from "bguard/core";
+
+type Signup = InferType<typeof schema>;
+
 const schema = object({
   password: string().custom(minLength(8)),
-  confirm: string().custom((value, ctx) => {
-    if (value !== ctx.ref("password")) ctx.addIssue("the same password");
+  confirm: string().custom((received: string, ctx: ExceptionContext) => {
+    // A callback rather than a string: `root.pasword` would not compile, and the result comes
+    // back typed instead of `unknown`.
+    if (received !== ctx.ref((root: Signup) => root.password)) {
+      ctx.addIssue("the same password", received, "u:mismatch");
+    }
   }),
 });
 ```
+
+`addIssue` takes what was **expected**, what was **received**, and a message key — the key is what
+a translation maps, and it is what to branch on rather than the message.
 
 The message appears under `confirm`, which is the field the reader has to change. In zod the
 equivalent is `.refine(…, { path: ["confirm"] })` — the same outcome, with the path written out
