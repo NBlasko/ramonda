@@ -24,6 +24,7 @@
     "@types/node": "^26.1.2",
     "esbuild": "0.28.1",
     "jsdom": "28.0.0",
-    "launch-editor": "^2.12.0"
+    "launch-editor": "^2.12.0",
+    "linkedom": "^0.18.13"
   }
 }
