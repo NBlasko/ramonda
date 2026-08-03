@@ -147,26 +147,38 @@ private user = this.use(Query, (self: UserCard) => ({
 }));
 ```
 
-**If you are USING a hook that declared nothing: `stable()`.** The same thing from the
-outside, per value — the counterpart of [`list()`](/lists) for a props bag:
+**If you are USING a hook that declared nothing: hold the value yourself.** Give it an identity
+somewhere — a `@compute`, a field, a module constant — and hand that over, so the callback passes
+along a value instead of building one:
 
 ```tsx
-import { stable } from "@ramonda/core";
+@compute get series(): readonly number[] {
+  return [this.props.a, this.props.b];
+}
 
-private chart = this.use(SomeChart, (self: Panel) => ({
-  series: stable([self.props.a, self.props.b]),
-}));
+private chart = this.use(SomeChart, (self: Panel) => ({ series: self.series }));
 ```
 
-**Know the bound before you declare a payload.** The comparison behind both `@StableProps` and
-`stable()` stops at **five levels deep** and at the **first fifty items** of an array. Past the
-depth it answers "different" and you get a fresh identity — correct, just not optimal. Past the
-width it answers "equal", and that direction can be wrong: two sixty-item arrays differing only
-at index 55 compare as the same, so the previous value is handed back and the change is invisible.
+A `@compute` is invalidated by the signals it **read**, so this holds one array for as long as
+`a` and `b` do not move. Note what that is *not*: it follows the dependencies, not the contents.
+A compute whose answer is coarser than its inputs — `this.noise > 5`, `items.length` — produces a
+fresh value whenever those inputs move, even though the answer did not, and splitting it into two
+computes does not help because invalidation propagates rather than being deduplicated by value.
+[RMD024](/reference/diagnostics) is the report for that.
 
-That is the right trade for a cache key, where guessing "different" costs one refetch and the
-values are small. It is the wrong trade for a prop that carries the payload itself — which is why
-`@ramonda/form` does not declare `defaultValues` and compares them in full instead.
+**Absorbing that belongs to the hook, not to the call site.** `Query.onKeyChanged` is the worked
+example: it compares the key part by part before doing anything, *even though the framework
+already did*. A hook written that way is immune; a hook that is not has a problem the call site
+can only paper over. See [what you cannot assume](#what-you-cannot-assume-about-your-props).
+
+**Know the bound before you declare a payload.** `@StableProps` compares to a bounded depth —
+**five levels** — and calls anything **wider than fifty items** different rather than sampling it.
+Both bounds err the same way: past them you get a fresh identity, which is correct and merely not
+optimal. So declaring a large or deep prop stable quietly stops helping rather than quietly going
+wrong.
+
+For a prop that carries a payload rather than a key, do the comparison yourself and do it in full:
+`@ramonda/form` does not declare `defaultValues` for that reason.
 
 **A function: a bound method.** Two closures with the same body are not equal by any
 comparison that is safe to make, so neither `stable()` nor `@StableProps` can help — a hook
@@ -212,9 +224,9 @@ not against what a well-behaved caller would send. Four things you do not know:
 **When you will be called.** The props callback runs on every render of the owner, and the
 owner re-renders for reasons that have nothing to do with you. Being called is not news.
 
-**Whether a value is the same object as last time.** A declaration or `stable()` covers the
-props you thought of; everything else arrives fresh whenever the caller's callback rebuilds
-it. So a `@watchProp` handler has to be **cheap and idempotent** — it will run for a
+**Whether a value is the same object as last time.** A declaration covers the props you
+thought of, to a bounded depth and width; everything else arrives fresh whenever the caller's
+callback rebuilds it, or whenever whatever they derived it from was invalidated. So a `@watchProp` handler has to be **cheap and idempotent** — it will run for a
 reference that changed and a value that did not. `Query` does exactly this: the framework
 already compares the key, and `onKeyChanged` still compares the parts itself, then the hash,
 before it will start a request. A handler that fetches, resets a form or scrolls without

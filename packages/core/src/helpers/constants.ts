@@ -115,11 +115,6 @@ export const STYLE_SYM = Symbol("style");
 /** The component whose render() built this vnode / this DOM node. See core/origin.ts. */
 export const ORIGIN_SYM = Symbol("origin");
 export const IS_LIST = Symbol("isList");
-/**
- * Wraps a value returned by `stable()`, so the props pass can resolve it against the
- * previous render's value for that key. Unwrapped before it ever reaches `this.props`.
- */
-export const STABLE = Symbol("stable");
 /** The prop names a hook declared with `@StableProps`, held on the class. */
 export const STABLE_PROPS = Symbol("stableProps");
 /**

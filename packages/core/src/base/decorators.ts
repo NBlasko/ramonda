@@ -899,8 +899,8 @@ type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q 
  * recomputes, a `@watchProp` on it fires, a subscription reconnects. Measured across three
  * renders of the owner, a compute reading a rebuilt array runs three times where one
  * reading a scalar prop runs once. Stating it here fixes it once instead of asking every
- * caller to know it. [`stable()`](../base/stable.ts) is the same thing from the outside,
- * for a hook that declared nothing.
+ * caller to know it. A call site using a hook that declared nothing does the same thing by
+ * holding the value itself — a `@compute`, a field, a module constant.
  *
  * ## What it cannot cover
  *

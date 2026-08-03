@@ -11,12 +11,12 @@ import type { StandardResult, StandardSchemaV1 } from "../types";
  * compared — RMD022, the same check `render()` gets. That is on by default, which makes it part of
  * what shipping a form actually feels like, and this package's own setup does not turn it off.
  *
- * The reason it earns a file: RMD022's advice for a rebuilt object is `stable()`, and `stable()` is
- * the one fix that is **wrong for `defaultValues`**. It compares the first fifty items of an array,
- * so a record with more rows than that would have a change past the fiftieth compare as "no change"
- * and be dropped — which is why `Form` does not declare the prop stable either, and why the docs
- * say to hold the object rather than to wrap it. So both halves are asserted here: the shape the
- * docs recommend is silent, and the shape they warn about is what produces the report.
+ * The reason it earns a file: `defaultValues` is a payload, not a cache key, and the framework's
+ * answer to a rebuilt prop — hold it somewhere with an identity, or declare it — is not free advice
+ * here. A declaration is bounded (five levels deep, and anything wider than fifty items is called
+ * different), so on a real record it would stop helping; the docs therefore say to hold the object.
+ * Both halves are asserted here: the shape the docs recommend is silent, and the shape they warn
+ * about is what produces the report.
  */
 interface Values {
   name: string;
@@ -108,8 +108,8 @@ describe("a form under the strict render", () => {
     const { unmount } = render((<Rebuilds />) as never);
     try {
       expect(named()).toEqual(["defaultValues"]);
-      // And it is `stable()` that it recommends — the advice this package cannot take.
-      expect(logs.join("\n")).toContain("stable(");
+      // And what it recommends is holding the value, which is what the docs say to do.
+      expect(logs.join("\n")).toContain("@compute");
     } finally {
       unmount();
     }

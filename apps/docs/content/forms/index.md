@@ -185,16 +185,17 @@ defaultValues: self.profile.data ?? BLANK,                     // ✓ one object
 ```
 
 A props callback runs on every render of the owner, so the first line builds a fresh object each
-time. In development, [RMD022](/reference/diagnostics) reports it — and its advice is `stable()`,
-which is the right answer for most props and **the wrong one here**: `stable()` compares only the
-first fifty items of an array, so on a record with more rows than that a change past the fiftieth
-would compare as "no change" and be dropped. Hold the object instead; then nothing is rebuilt, there
-is nothing to report, and nothing to wrap.
+time, and [RMD022](/reference/diagnostics) reports it in development. Holding the object is the fix
+it names, and it is the right one here: nothing is rebuilt, so there is nothing to report.
 
-The form does its own comparison, in full, for the same reason — it is why `defaultValues` is not
-declared stable. That comparison is the whole cost of defaults that did not move: around 2 µs on a
-ten-field form and 15 µs on a hundred-field one, per render of the owner, and no write and no render
-follow it. `values` even stays the same object.
+Declaring the prop stable — the other fix, for a hook you own — is deliberately **not** what
+`@ramonda/form` does. That comparison is bounded (five levels deep, and anything wider than fifty
+items is called different rather than compared), and a form's defaults are routinely past both, so
+it would quietly stop helping. The form compares them itself, in full.
+
+That comparison is the whole cost of defaults that did not move: around 2 µs on a ten-field form and
+15 µs on a hundred-field one, per render of the owner, and no write and no render follow it.
+`values` even stays the same object.
 
 ## Where to go next
 

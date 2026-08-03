@@ -198,15 +198,16 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * ## Why `@StableProps("defaultValues")` is not declared, though it looks made for this
    *
    * It would hand back one identity while the contents are equal, and this would not fire at all —
-   * which is exactly right for `Query.key` and wrong here. The framework's comparison is bounded:
-   * five levels deep, and the first FIFTY items of an array. Past the depth it answers "different",
-   * which is the safe direction; past the width it answers "equal", which is not.
+   * which is exactly right for `Query.key` and wrong here. The comparison behind it is bounded:
+   * five levels deep, and anything wider than fifty items is called different rather than sampled.
+   * Both bounds err toward "different", so nothing is lost — but a form's defaults are routinely
+   * past both, and a declaration that quietly stops helping is worse than no declaration.
    *
-   * Measured with the declaration in place: a record whose only change was row 55 of 60 came back as
-   * the previous object and the new value was lost, with nothing reported. A bounded comparison is
-   * right for a cache key, where guessing "different" costs a refetch. It is wrong for the values
-   * themselves, where guessing "equal" drops data. So the form compares its own defaults, in full,
-   * and pays the figures above. `stable()` at a call site is the same mechanism and the same limit.
+   * The bounds err that way BECAUSE of this prop: with the declaration in place, a record whose
+   * only change was row 55 of 60 came back as the previous object and the value was lost with
+   * nothing reported. The framework's width bound answered "equal" from a sample of fifty. That is
+   * fixed in core now, and the reason the form still does its own comparison stands on its own:
+   * deciding per field who owns what needs the full walk anyway.
    */
   @watchProp((props) => props.defaultValues)
   onDefaultsChanged(next: InferIn<S>): void {

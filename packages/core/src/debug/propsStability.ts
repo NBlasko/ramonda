@@ -1,5 +1,3 @@
-import { STABLE } from "../helpers/constants";
-import { valueEqual } from "../helpers/valueEqual";
 import { diagnose } from "./diagnostics";
 import { classify, type Kind } from "./renderStability";
 
@@ -55,7 +53,7 @@ const FIX: Record<Kind, string> = {
   handler:
     "A bound method instead of a closure: `fetch: self.load`, where `load()` reads `this.props` when it is called, so there is nothing to capture and the identity never changes. `@memoizedHandler` when it has to be built per argument.",
   object:
-    'Wrap it in `stable()`: `key: stable(["user", self.props.id])` keeps one identity for as long as the contents are equal — the counterpart of `list()` for a props bag. A `@compute` holding the whole bag does the same for every value in it at once.',
+    'Hold it somewhere that HAS an identity and hand that over: a `@compute` (`@compute get key() { return ["user", this.props.id] }`), a field, a module constant — so the callback passes a value along instead of building one. A `@compute` holding the whole bag does it for every value in it at once. If you own the hook, `@StableProps("key")` declares the prop a value and settles it for every call site.',
   nondeterministic:
     "A props callback must be a function of state and props only. Read the value once in `@create` and keep it in `@state` (or `@persist`, so it survives hydration), or read it in the handler that needs it.",
 };
@@ -63,12 +61,9 @@ const FIX: Record<Kind, string> = {
 /**
  * Compares two bags built by the same callback.
  *
- * Two things are skipped, for the same reason: a prop the hook declared in
- * `static StableProps`, and a value the call site wrapped in `stable()`. Both are already
- * held at one identity by the framework, so reporting them would report the fix as the
- * fault. A `stable()` marker is compared by its CONTENTS rather than skipped outright,
- * because contents that differ between two calls in one tick is non-determinism no wrapper
- * can launder.
+ * One thing is skipped: a prop the hook declared with `@StableProps`. The framework already
+ * holds one identity for it while the contents are equal, so reporting it would report the
+ * fix as the fault.
  */
 export function checkPropsStability(
   owner: string,
@@ -88,18 +83,10 @@ export function checkPropsStability(
     // function prop gets the report anyway rather than silence.
     if (declared?.includes(key) && typeof (first as Record<string, unknown>)[key] !== "function") continue;
 
-    const a = unwrap(first[key]);
-    const b = unwrap(second[key]);
+    const a = first[key];
+    const b = second[key];
 
     if (Object.is(a, b)) continue;
-
-    // Both sides came from `stable()`. Equal contents means the framework will hand back
-    // one identity, so there is nothing to report; different contents in the same tick is
-    // the app being non-deterministic, which is worth saying.
-    if (isMarker(first[key]) && isMarker(second[key])) {
-      if (!valueEqual(a, b)) report("nondeterministic", owner, key, a, b);
-      continue;
-    }
 
     const kind = classify(a, b);
     if (kind) report(kind, owner, key, a, b);
@@ -108,14 +95,6 @@ export function checkPropsStability(
 
 function isBag(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isMarker(value: unknown): boolean {
-  return typeof value === "object" && value !== null && STABLE in value;
-}
-
-function unwrap(value: unknown): unknown {
-  return isMarker(value) ? (value as Record<symbol, unknown>)[STABLE] : value;
 }
 
 function report(kind: Kind, owner: string, key: string, a: unknown, b: unknown): void {

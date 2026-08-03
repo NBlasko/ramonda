@@ -318,17 +318,17 @@ describe("the comparison is the form's own, and unbounded", () => {
      *
      * The declaration is right for `Query.key` and it looks right here: it would hand back one
      * identity while the contents are equal, and `@watchProp` would not even fire. But the
-     * framework's comparison is bounded — five levels deep, and the first **fifty** items of an
-     * array. Past the depth it answers "different", which is the safe direction. Past the WIDTH it
-     * answers "equal", which is not.
+     * comparison behind it is bounded — five levels deep, and anything wider than fifty items is
+     * called different rather than compared. A form's defaults are routinely past both, so the
+     * declaration would quietly stop helping.
      *
-     * Measured with the declaration in place: a record whose only change was row 55 of 60 was
-     * handed back as the previous object, `@watchProp` never fired, and the new value was lost with
-     * nothing reported. That is fine for a cache key, where erring toward "different" costs a
-     * refetch — and wrong for the values themselves, where erring toward "equal" drops data.
+     * The width bound errs that way BECAUSE of this test. It used to compare the first fifty items
+     * and answer "equal" for the rest, so with the declaration in place a record whose only change
+     * was row 55 of 60 came back as the previous object, `@watchProp` never fired, and the value
+     * was lost with nothing reported. Core answers "different" past the width now.
      *
-     * So the form compares its own defaults, in full, and pays for it. `stable()` at a call site is
-     * the same mechanism and carries the same limit.
+     * The form still compares its own defaults in full, and that stands on its own: deciding per
+     * field who owns what needs the whole walk anyway.
      */
     const row = (n: number, at: number, what: string) =>
       Array.from({ length: n }, (_, i) => (i === at ? what : `r${i}`));

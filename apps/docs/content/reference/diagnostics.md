@@ -323,18 +323,18 @@ handed a rebuilt function re-renders 3/3.
 
 Three findings, three fixes:
 
-- **an array or object** — wrap it in [`stable()`](/reference/api), which keeps one
-  identity while the contents are equal (nested objects included). It is the counterpart
-  of [`list()`](/lists) for a props bag.
+- **an array or object** — hold it somewhere that has an identity (a `@compute`, a field,
+  a module constant) and hand that over, so the callback passes a value along instead of
+  building one. If you own the hook, [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity)
+  declares the prop a value and settles it for every call site at once.
 - **a function** — a bound method (`fetch: self.load`) reads `this` when it is called, so
   there is nothing to capture and the identity never changes;
-  [`@memoizedHandler`](/concepts/events) when it has to be built per argument. Functions
-  cannot go through `stable()`: two closures with the same body are not equal by any
-  comparison that is safe to make.
+  [`@memoizedHandler`](/concepts/events) when it has to be built per argument. A
+  declaration cannot help here: two closures with the same body are not equal by any
+  comparison that is safe to make, so a declared function prop is still reported.
 - **different contents from two calls in one tick** — the callback is not a function of
   state. Read the value once in `@create` and keep it in `@state`, or read it where it is
-  needed. `stable()` cannot hide this one; what is compared is the contents, not the
-  wrapper.
+  needed. Nothing can hide this one; what is compared is the contents.
 
 A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
 answer when several are unstable together.
@@ -386,13 +386,14 @@ nothing.
 A `@compute` is invalidated by the signals it **read**, so if it recomputes on every pass while
 answering the same thing, something it reads is being replaced every time — most often an array
 or object literal rebuilt in a [hook's props bag](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
-or a value derived from one. Declare that prop with `@StableProps` if you own the hook, wrap it
-in `stable()` at the call site if you do not, or hold the value somewhere stable.
+or a value derived from one. Declare that prop with `@StableProps` if you own the hook, and
+hold the value somewhere stable if you do not — a `@compute` of its own, a field, a module
+constant.
 
 **Neither neighbour can see this one.** [RMD020](#rmd020-render-produced-a-different-value-the-second-time)
 renders twice, and inside one strict render the compute is *cached* between the two calls, so
 both get the same value and there is nothing to compare. [RMD022](#rmd022-a-hooks-props-callback-built-a-new-value-for-the-same-contents)
-compares two props bags, but skips a prop that was declared or wrapped — and a compute reading a
+compares two props bags, but skips a prop the hook declared — and a compute reading a
 *component's* prop is outside its reach entirely.
 
 Three consecutive equal recomputes, not one: a dependency moving while the answer happens not to
