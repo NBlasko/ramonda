@@ -17,6 +17,8 @@ interface Node {
   source?: { file: string; line: number; column: number };
   kind: "component" | "hook";
   state: Record<string, unknown>;
+  /** What an instance answered from its own `[INSPECT]()`. */
+  detail?: Record<string, unknown>;
   props?: Record<string, unknown>;
   options?: Record<string, unknown>;
   hooks: Node[];
@@ -2015,5 +2017,85 @@ describe("how a row is laid out", () => {
     const pencil = panel.shadowRoot.querySelector("[data-edit-node]") as HTMLElement;
     pencil.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(panel.shadowRoot.querySelector(".edit-input")).not.toBe(null);
+  });
+});
+
+/**
+ * The "Holds" block — what an instance answered from its own `[INSPECT]()`.
+ *
+ * The panel reads `@state`, props and context reads, all of which are about how a value was
+ * DECLARED. A hook that keeps its state in plain fields behind a `@state` counter therefore showed
+ * the counter and nothing else: `{ version: 7 }` for a form, and props that never change.
+ */
+describe("what an instance holds", () => {
+  const holder = (detail?: Record<string, unknown>) => [
+    node("App", "component", {
+      children: [
+        node("Signup", "component", {
+          state: { version: 7 },
+          hooks: [node("Form", "hook", { state: { version: 7 }, detail })],
+        }),
+      ],
+    }),
+  ];
+
+  /** The keys of one titled block, read off the rendered panel. */
+  function blockKeys(panel: Panel, title: string): string[] {
+    const block = Array.from(panel.shadowRoot.querySelectorAll(".state-block")).find(
+      (el) => el.querySelector(".state-title")?.textContent?.trim() === title,
+    );
+    // `sk` carries the key with a trailing colon.
+    return Array.from(block?.querySelectorAll(".sk") ?? []).map((k) => k.textContent!.trim().replace(/:$/, ""));
+  }
+
+  it("shows what the instance answered, beside the counter that is all `state` has", () => {
+    const panel = mount(() => holder({ values: { email: "a@b" }, isValid: false }));
+
+    expect(panel.shadowRoot.innerHTML).toContain("Holds");
+    expect(blockKeys(panel, "Holds")).toEqual(["values", "isValid"]);
+    // And the counter is still there, under its own heading.
+    expect(blockKeys(panel, "State")).toEqual(["version"]);
+  });
+
+  it("shows no block at all when the instance answered nothing", () => {
+    // Most instances have no `[INSPECT]()`. An empty heading that reveals nothing is a lie the
+    // reader has to click to disprove.
+    const panel = mount(() => holder(undefined));
+
+    expect(panel.shadowRoot.innerHTML).not.toContain("Holds");
+  });
+
+  it("is READ-ONLY, unlike State", () => {
+    // This is what the instance DERIVED. A pencil beside it would offer a write that changes
+    // nothing while looking as though it had.
+    const panel = mount(() => holder({ values: { email: "a@b" } }));
+
+    const editable = Array.from(panel.shadowRoot.querySelectorAll("[data-edit-key]")).map(
+      (b) => (b as HTMLElement).dataset.editKey,
+    );
+
+    expect(editable).toContain("version");
+    expect(editable).not.toContain("values");
+  });
+
+  it("a change inside it refreshes the tree rather than being read as `nothing moved`", () => {
+    // The one that would fail silently. The panel compares a signature to decide whether to
+    // rebuild; if `detail` were left out of it, a form's values would sit stale on screen and
+    // `[INSPECT]` would look broken.
+    let held: Record<string, unknown> = { values: { email: "" } };
+    const panel = mount(() => holder(held));
+
+    expect(panel.shadowRoot.innerHTML).toContain("email");
+
+    held = { values: { email: "" }, submitCount: 1 };
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(blockKeys(panel, "Holds")).toEqual(["values", "submitCount"]);
+  });
+
+  it("a component can hold something too, not just a hook", () => {
+    const panel = mount(() => [node("App", "component", { detail: { rows: 3 }, children: [] })]);
+
+    expect(blockKeys(panel, "Holds")).toEqual(["rows"]);
   });
 });
