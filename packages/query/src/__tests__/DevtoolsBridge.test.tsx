@@ -3,29 +3,49 @@ import { act, render } from "@ramonda/testing-library";
 import { afterEach, describe, expect, test } from "vitest";
 import { QueryClientProvider } from "../context";
 import { Query } from "../Query";
-import type { QueryBridge } from "../devtoolsBridge";
+import { panelRegistry } from "../devtoolsPanel";
+import type { PanelPlugin, PanelRow } from "../devtoolsPanel";
 
 /**
- * What `@ramonda/devtools`' Query tab reads.
+ * What `@ramonda/devtools` renders for the Query tab.
  *
- * The panel is a custom element outside the tree, so it cannot see a provider — it calls a
- * global the same way it calls core's `__RAMONDA_INSPECT__`. These tests hold that contract
- * still: a live cache is listed, a torn-down one is not, and the two actions do what their
- * labels say.
+ * The panel is a custom element outside the tree, so it cannot see a provider. This package
+ * describes its cache as rows and registers that description; the panel draws it without knowing
+ * anything about queries. These tests hold that description still: a live cache is listed, a
+ * torn-down one is not, and the two actions do what their labels say.
  */
 
 const settle = () => act(async () => {});
 
-function bridge(): QueryBridge {
-  const found = (globalThis as { __RAMONDA_QUERY__?: QueryBridge }).__RAMONDA_QUERY__;
-  if (!found) throw new Error("the bridge was not installed");
+function panel(): PanelPlugin {
+  const found = panelRegistry()
+    .list()
+    .find((plugin) => plugin.id === "query");
+  if (!found) throw new Error("the Query panel was not registered");
   return found;
 }
 
+/** The observer count a row reports, back out of the line it renders as. */
+function observersOf(row: PanelRow): number {
+  const found = /(\d+) observers?/.exec(text(row));
+  return found ? Number(found[1]) : 0;
+}
+
+/** A row's metadata as one string, which is where status, age and observers now live. */
+function text(row: PanelRow): string {
+  return (row.fields ?? []).map((field) => ("text" in field ? field.text : "")).join(" · ");
+}
+
+/** Every row across every live client, which is what most of these assert about. */
+function rows(): PanelRow[] {
+  return panel()
+    .snapshot()
+    .groups.flatMap((group) => group.rows);
+}
+
 afterEach(() => {
-  // The registry is module state; a leaked client would show up in the next test's snapshot.
-  const rows = bridge().snapshot();
-  expect(rows.clients.length).toBe(0);
+  // The client list is module state; a leaked one would show up in the next test's snapshot.
+  expect(rows()).toEqual([]);
 });
 
 function mount(load: () => Promise<{ name: string }>) {
@@ -55,18 +75,19 @@ describe("the devtools bridge", () => {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("Ada");
 
-      const { clients } = bridge().snapshot();
-      expect(clients.length).toBe(1);
-      expect(clients[0]!.queries.length).toBe(1);
+      const groups = panel().snapshot().groups;
+      expect(groups.length).toBe(1);
+      expect(groups[0]!.rows.length).toBe(1);
 
-      const row = clients[0]!.queries[0]!;
-      expect(row.key).toEqual(["user", "ada"]);
-      expect(row.status).toBe("success");
-      expect(row.fetchStatus).toBe("idle");
-      expect(row.observers).toBe(1);
-      expect(row.dataPreview).toBe('{"name":"Ada"}');
+      const row = groups[0]!.rows[0]!;
+      // The key is the row's TITLE now — a panel shows it, it does not parse it.
+      expect(row.title).toBe('["user","ada"]');
+      expect(row.status).toBe("ok");
+      expect(text(row)).toContain("success");
+      expect(text(row)).toContain("1 observer");
+      expect(row.value!.preview).toBe('{"name":"Ada"}');
       expect(row.error).toBeUndefined();
-      expect(row.updatedAt).toBeGreaterThan(0);
+      expect(row.value!.revision).toBeGreaterThan(0);
     } finally {
       unmount();
     }
@@ -80,9 +101,9 @@ describe("the devtools bridge", () => {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("Ada 1");
 
-      const row = bridge().snapshot().clients[0]!.queries[0]!;
+      const row = rows()[0]!;
       await act(async () => {
-        bridge().invalidate(0, row.hash);
+        panel().run!(row.id, "invalidate");
       });
       await settle();
 
@@ -102,11 +123,11 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const row = bridge().snapshot().clients[0]!.queries[0]!;
-      expect(row.status).toBe("success");
+      const row = rows()[0]!;
+      expect(row.status).toBe("ok");
 
       await act(async () => {
-        bridge().remove(0, row.hash);
+        panel().run!(row.id, "remove");
       });
       await settle();
 
@@ -120,9 +141,9 @@ describe("the devtools bridge", () => {
       expect(calls).toBe(2);
       expect(container.querySelector("#out")!.textContent).toBe("Ada 2");
 
-      const after = bridge().snapshot().clients[0]!.queries[0]!;
-      expect(after.hash).toBe(row.hash);
-      expect(after.updatedAt).toBeGreaterThan(0);
+      const after = rows()[0]!;
+      expect(after.id).toBe(row.id);
+      expect(Number(after.value!.revision)).toBeGreaterThan(0);
     } finally {
       unmount();
     }
@@ -152,16 +173,16 @@ describe("the devtools bridge", () => {
         (instance as { show: boolean }).show = false;
       });
 
-      const row = bridge().snapshot().clients[0]!.queries[0]!;
-      expect(row.observers).toBe(0);
+      const row = rows()[0]!;
+      expect(text(row)).toContain("0 observers · waiting for gc");
 
       await act(async () => {
-        bridge().remove(0, row.hash);
+        panel().run!(row.id, "remove");
       });
 
       // Nobody left to re-subscribe, so the row is gone for good — which is what the button
       // is for: dropping what is sitting out its gcTime.
-      expect(bridge().snapshot().clients[0]!.queries.length).toBe(0);
+      expect(rows().length).toBe(0);
     } finally {
       unmount();
     }
@@ -172,16 +193,16 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const row = bridge().snapshot().clients[0]!.queries[0]!;
+      const row = rows()[0]!;
       await act(async () => {
-        bridge().remove(0, row.hash);
+        panel().run!(row.id, "remove");
       });
 
       // The panel draws a snapshot; by the time a button is clicked the entry may have been
       // collected. Looking it up fresh is what keeps this from throwing.
-      expect(() => bridge().invalidate(0, row.hash)).not.toThrow();
-      expect(() => bridge().remove(0, row.hash)).not.toThrow();
-      expect(() => bridge().invalidate(99, "nope")).not.toThrow();
+      expect(() => panel().run!(row.id, "invalidate")).not.toThrow();
+      expect(() => panel().run!(row.id, "remove")).not.toThrow();
+      expect(() => panel().run!("99::nope", "invalidate")).not.toThrow();
     } finally {
       unmount();
     }
@@ -190,13 +211,13 @@ describe("the devtools bridge", () => {
   test("a provider that unmounts takes its cache out of the list", async () => {
     const { unmount } = mount(async () => ({ name: "Ada" }));
     await settle();
-    expect(bridge().snapshot().clients.length).toBe(1);
+    expect(panel().snapshot().groups.length).toBe(1);
 
     unmount();
 
     // Otherwise the panel would hold every cache the session ever built alive, and would
     // list ones belonging to a torn-down tree.
-    expect(bridge().snapshot().clients.length).toBe(0);
+    expect(panel().snapshot().groups.length).toBe(0);
   });
 
   test("two providers are listed separately", async () => {
@@ -205,11 +226,12 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const { clients } = bridge().snapshot();
-      expect(clients.length).toBe(2);
-      expect(clients.map((c) => c.index)).toEqual([0, 1]);
-      expect(clients[0]!.queries[0]!.dataPreview).toBe('{"name":"Ada"}');
-      expect(clients[1]!.queries[0]!.dataPreview).toBe('{"name":"Grace"}');
+      const groups = panel().snapshot().groups;
+      expect(groups.length).toBe(2);
+      // Labelled only when there is more than one, which is exactly this case.
+      expect(groups.map((group) => group.label)).toEqual(["client 1 · 1 query", "client 2 · 1 query"]);
+      expect(groups[0]!.rows[0]!.value!.preview).toBe('{"name":"Ada"}');
+      expect(groups[1]!.rows[0]!.value!.preview).toBe('{"name":"Grace"}');
     } finally {
       first.unmount();
       second.unmount();
@@ -244,18 +266,18 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      let row = bridge().snapshot().clients[0]!.queries[0]!;
+      let row = rows()[0]!;
       expect(row.status).toBe("error");
       expect(row.error).toBe("nope");
-      expect(row.observers).toBe(1);
+      expect(observersOf(row)).toBe(1);
 
       await act(async () => {
         (instance as { show: boolean }).show = false;
       });
 
       // Still cached, nobody watching — the state people ask the panel about.
-      row = bridge().snapshot().clients[0]!.queries[0]!;
-      expect(row.observers).toBe(0);
+      row = rows()[0]!;
+      expect(observersOf(row)).toBe(0);
     } finally {
       unmount();
     }
@@ -278,7 +300,7 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      expect(bridge().snapshot().clients[0]!.queries[0]!.dataPreview).toBe("[unserializable]");
+      expect(rows()[0]!.value!.preview).toBe("[unserializable]");
     } finally {
       unmount();
     }
@@ -308,7 +330,7 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const preview = bridge().snapshot().clients[0]!.queries[0]!.dataPreview;
+      const preview = rows()[0]!.value!.preview!;
       expect(preview.endsWith("…")).toBe(false);
       expect(preview).toBe(JSON.stringify({ text: "x".repeat(500) }));
     } finally {
@@ -333,7 +355,7 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const preview = bridge().snapshot().clients[0]!.queries[0]!.dataPreview;
+      const preview = rows()[0]!.value!.preview!;
       expect(preview.length).toBeLessThan(2100);
       expect(preview.endsWith("…")).toBe(true);
     } finally {
@@ -363,7 +385,7 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const sent = bridge().snapshot().clients[0]!.queries[0]!.data as typeof payload;
+      const sent = rows()[0]!.value!.data as typeof payload;
       expect(sent).toEqual(payload);
       // A copy: the panel holding it cannot keep the cached object alive, and cannot mutate it.
       expect(sent).not.toBe(payload);
@@ -390,7 +412,7 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const sent = bridge().snapshot().clients[0]!.queries[0]!.data as Record<string, unknown>;
+      const sent = rows()[0]!.value!.data as Record<string, unknown>;
       expect(sent.name).toBe("a");
       expect(sent.self).toBe("[circular]");
     } finally {
@@ -414,7 +436,7 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const sent = bridge().snapshot().clients[0]!.queries[0]!.data as { rows: unknown[] };
+      const sent = rows()[0]!.value!.data as { rows: unknown[] };
       expect(sent.rows).toHaveLength(30_000);
       // Past the budget the copy stops carrying values and starts saying that it stopped.
       expect(sent.rows.at(-1)).toBe("[… budget]");
@@ -434,31 +456,38 @@ describe("the devtools bridge", () => {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("Ada");
 
-      const row = bridge().snapshot().clients[0]!.queries[0]!;
+      const row = rows()[0]!;
       await act(async () => {
-        expect(bridge().setData(0, row.hash, { name: "Grace" })).toBe(true);
+        // `undefined` means the write was taken; a string would be the reason it was not.
+        expect(row.value!.write!({ name: "Grace" })).toBeUndefined();
       });
 
       expect(container.querySelector("#out")!.textContent).toBe("Grace");
       // Through `setData`, so the entry is a normal successful entry afterwards.
-      const after = bridge().snapshot().clients[0]!.queries[0]!;
-      expect(after.status).toBe("success");
-      expect(after.updatedAt).toBeGreaterThanOrEqual(row.updatedAt);
+      const after = rows()[0]!;
+      expect(after.status).toBe("ok");
+      expect(Number(after.value!.revision)).toBeGreaterThanOrEqual(Number(row.value!.revision));
     } finally {
       unmount();
     }
   });
 
-  test("setData says so when the entry is gone", async () => {
+  test("a write refuses when the entry it was built for has gone", async () => {
     const { unmount } = mount(async () => ({ name: "Ada" }));
+    await settle();
 
-    try {
-      await settle();
-      expect(bridge().setData(0, "nope", { name: "x" })).toBe(false);
-      expect(bridge().setData(99, "nope", { name: "x" })).toBe(false);
-    } finally {
-      unmount();
-    }
+    /**
+     * A row is a SNAPSHOT, so the panel can always be holding one whose entry has since gone —
+     * here because the provider unmounted, which takes the whole cache with it.
+     *
+     * Removing the entry would not do: a query that is still watching refetches immediately, so
+     * an entry with the same key is back before the write lands. That is the cache working, and
+     * it is why this reaches for the case where there is nothing left at all.
+     */
+    const stale = rows()[0]!;
+    unmount();
+
+    expect(stale.value!.write!({ name: "x" })).toBe("that entry is no longer in the cache");
   });
 
   /**
@@ -482,9 +511,11 @@ describe("the devtools bridge", () => {
 
     try {
       await settle();
-      const rows = bridge().snapshot().clients;
-      expect(rows[0]!.queries[0]!.truncated).toBe(false);
-      expect(rows[1]!.queries[0]!.truncated).toBe(true);
+      const groups = panel().snapshot().groups;
+      // A copy that fitted may be written back; one that hit a bound may not — writing it would
+      // put the copy's own "[… budget]" markers into the cache.
+      expect(groups[0]!.rows[0]!.value!.editable).toBe(true);
+      expect(groups[1]!.rows[0]!.value!.editable).toBe(false);
     } finally {
       small.unmount();
       big.unmount();

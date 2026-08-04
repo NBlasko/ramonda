@@ -22,7 +22,7 @@
       "outputs": ["src/generated/**"]
     },
     "check-types": {
-      "dependsOn": ["^check-types", "content"]
+      "dependsOn": ["^check-types", "^build", "content"]
     },
     "dev": {
       "cache": false,

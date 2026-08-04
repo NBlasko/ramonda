@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../index";
+import { panelRegistry } from "../panelPlugin";
 
 /**
  * The panel, driven the way an app drives it: a tree published on `window`, a tab clicked, and
@@ -91,6 +92,32 @@ function mount(inspect: () => Node[]): Panel {
 
 function openTab(panel: Panel, name: string): void {
   panel.shadowRoot.querySelector(`.tab[data-tab="${name}"]`)!.dispatchEvent(new Event("click"));
+}
+
+/**
+ * Lets one poll through, for a test whose subject is what polling does.
+ *
+ * The tabs that poll — query and profile — own their timers and keep their renders private, so a
+ * test drives them the way the panel does rather than by calling in. That is the honest form
+ * anyway: "the list holds still while it is typed into" is a claim about the POLL, and calling the
+ * render by hand would prove it about something no reader ever triggers.
+ *
+ * Fake timers go in FIRST, around the mount as well as the tick: `useFakeTimers` replaces the
+ * global, it does not adopt an interval already running, so a tab started under real timers polls
+ * on its own schedule and no amount of advancing reaches it.
+ */
+function underPoll<T>(body: () => T): T {
+  vi.useFakeTimers();
+  try {
+    return body();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+/** Advances past one tick of the query tab's 500 ms poll. Call inside `underPoll`. */
+function pollOnce(): void {
+  vi.advanceTimersByTime(600);
 }
 
 const summaries = (panel: Panel): string[] =>
@@ -321,54 +348,87 @@ describe("the name filter", () => {
   });
 });
 
-describe("the Query tab", () => {
-  const row = {
-    key: ["products"],
-    hash: '["products"]',
-    status: "success",
-    fetchStatus: "idle",
-    observers: 1,
-    updatedAt: 1,
-    failureCount: 0,
-    restored: true,
-    dataPreview: '{"products":[]}',
-    data: { products: [{ id: 1, title: "Mascara" }] },
+/**
+ * A source registered the way `@ramonda/query` registers: rows of typed fields, no markup.
+ *
+ * These used to mock `__RAMONDA_QUERY__`, a bridge this package understood. It does not any more —
+ * the cache describes itself now, and what is left here is the RENDERER, which is what devtools
+ * owns. So the fixtures speak the contract, and the assertions below are about how a row reads
+ * rather than about queries.
+ */
+function pluginRow(over: Record<string, unknown> = {}) {
+  return {
+    id: '0::["products"]',
+    title: '["products"]',
+    code: true,
+    status: "ok",
+    fields: [
+      { kind: "text", text: "success" },
+      { kind: "live", id: "age", text: "updated 1s ago" },
+      { kind: "text", text: "1 observer" },
+      { kind: "badge", text: "from server" },
+    ],
+    value: {
+      data: { products: [{ id: 1, title: "Mascara" }] },
+      preview: '{"products":[]}',
+      revision: 1,
+      editable: true,
+      writeNote: "a refetch will replace it",
+      write: () => undefined,
+    },
+    actions: [
+      { id: "invalidate", label: "invalidate" },
+      { id: "remove", label: "remove" },
+    ],
+    ...over,
   };
+}
 
-  function withBridge(rows: () => unknown[] = () => [row]): {
+describe("a registered tab", () => {
+  function withBridge(rows: () => unknown[] = () => [pluginRow()]): {
     panel: Panel;
     invalidate: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
+    off: () => void;
   } {
     const invalidate = vi.fn();
     const remove = vi.fn();
-    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
-      snapshot: () => ({ clients: [{ index: 0, queries: rows() }] }),
-      invalidate,
-      remove,
-    };
+    const off = panelRegistry().register({
+      version: 1,
+      id: "query",
+      label: "QUERY",
+      snapshot: () => ({ groups: [{ rows: rows() as never }] }),
+      run: (rowId, actionId) => {
+        if (actionId === "invalidate") invalidate(rowId);
+        else remove(rowId);
+        return undefined;
+      },
+    });
 
     const panel = mount(() => tree());
-    openTab(panel, "query");
-    return { panel, invalidate, remove };
+    openTab(panel, "plugin-query");
+    return { panel, invalidate, remove, off };
   }
 
   /**
-   * The bug this locks: a hash is JSON, so it carries quotes, and `data-q-hash="["products"]"`
-   * ends the attribute at the second one. `dataset.qHash` came back as `[`, the bridge looked up
-   * an entry that cannot exist, and both buttons did nothing — silently, with no error anywhere.
+   * The bug this locks: a row id carries the query's hash, which is JSON, so it carries quotes —
+   * and `data-p-row="0::["products"]"` ends the attribute at the second one. The id came back as
+   * `0::[`, the bridge looked up an entry that cannot exist, and both buttons did nothing —
+   * silently, with no error anywhere.
    */
   it("round-trips a quoted key hash through the markup", () => {
     const { panel, invalidate, remove } = withBridge();
 
-    const buttons = Array.from(panel.shadowRoot.querySelectorAll("[data-q-action]")) as HTMLElement[];
-    expect(buttons.map((b) => b.dataset.qHash)).toEqual(['["products"]', '["products"]']);
+    const buttons = Array.from(panel.shadowRoot.querySelectorAll("[data-p-action]")) as HTMLElement[];
+    expect(buttons.map((b) => b.dataset.pRow)).toEqual(['0::["products"]', '0::["products"]']);
 
+    // The id reaches `run` whole, quotes intact. Taking it apart is the SOURCE's job — it chose
+    // the format and is the only side that knows where the separator is.
     buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(invalidate).toHaveBeenCalledWith(0, '["products"]');
+    expect(invalidate).toHaveBeenCalledWith('0::["products"]');
 
     buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(remove).toHaveBeenCalledWith(0, '["products"]');
+    expect(remove).toHaveBeenCalledWith('0::["products"]');
 
     openTab(panel, "logs"); // stops the poll
   });
@@ -378,22 +438,57 @@ describe("the Query tab", () => {
    * `not a valid selector` four times a second once it was looked up by selector.
    */
   it("refreshes an age in place without building a selector from data", () => {
-    const { panel } = withBridge();
-    const container = panel.shadowRoot.querySelector("#query-container")!;
-    const age = container.querySelector("[data-q-age]") as HTMLElement;
+    underPoll(() => {
+      const { panel } = withBridge();
+      const container = panel.shadowRoot.querySelector("#plugin-query-container")!;
+      const age = container.querySelector("[data-live]") as HTMLElement;
 
-    expect(age.dataset.qAge).toBe('0:["products"]');
+      expect(age.dataset.live).toBe('0::["products"]::age');
 
-    const refresh = () => (panel as unknown as { renderQueries(): void }).renderQueries.call(panel);
-    expect(refresh).not.toThrow();
-    // The same element, updated in place: rebuilding the list is what made the tab flicker.
-    expect(container.querySelector("[data-q-age]")).toBe(age);
+      // Driven by the poll, which is where the broken selector threw four times a second.
+      expect(() => pollOnce()).not.toThrow();
+      // The same element, updated in place: rebuilding the list is what made the tab flicker.
+      expect(container.querySelector("[data-live]")).toBe(age);
 
-    openTab(panel, "logs");
+      openTab(panel, "logs");
+    });
   });
 });
 
 const margin = () => document.body.style.marginRight;
+
+/**
+ * A panel taken out of the document must stop asking the app for things.
+ *
+ * The flag every window listener is guarded on cannot cover an interval — it fires whether or not
+ * anybody reads the result — and both polling tabs poll a BRIDGE, so a removed panel went on
+ * calling into the query cache and the profiler. Measured before it was fixed: thirteen more calls
+ * over five seconds, and still going.
+ */
+describe("a removed panel", () => {
+  it("stops polling", () => {
+    underPoll(() => {
+      const commits = vi.fn(() => []);
+      (window as unknown as { __RAMONDA_PROFILE__: unknown }).__RAMONDA_PROFILE__ = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRecording: () => true,
+        commits,
+      };
+
+      const panel = mount(() => tree());
+      openTab(panel, "profile");
+      vi.advanceTimersByTime(1000);
+      expect(commits.mock.calls.length).toBeGreaterThan(0);
+
+      panel.remove();
+      const after = commits.mock.calls.length;
+      vi.advanceTimersByTime(5000);
+
+      expect(commits.mock.calls.length).toBe(after);
+    });
+  });
+});
 
 describe("docking", () => {
   const layout = (panel: Panel) => (panel as unknown as { applyLayout(): void }).applyLayout();
@@ -675,30 +770,25 @@ describe("the full view", () => {
 });
 
 describe("the Query tab's value", () => {
-  const base = {
-    key: ["products"],
-    hash: '["products"]',
-    status: "success",
-    fetchStatus: "idle",
-    observers: 1,
-    failureCount: 0,
-    restored: false,
-  };
+  /** A plugin row with a value on it — the shape a source hands over, not a query's. */
+  const valueRow = (value: Record<string, unknown>) =>
+    pluginRow({ value: { editable: true, write: () => undefined, ...value } });
 
   function bridgeWith(rows: () => unknown[]): Panel {
-    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
-      snapshot: () => ({ clients: [{ index: 0, queries: rows() }] }),
-      invalidate: vi.fn(),
-      remove: vi.fn(),
-    };
+    panelRegistry().register({
+      version: 1,
+      id: "query",
+      label: "QUERY",
+      snapshot: () => ({ groups: [{ rows: rows() as never }] }),
+    });
     const panel = mount(() => tree());
-    openTab(panel, "query");
+    openTab(panel, "plugin-query");
     return panel;
   }
 
   it("renders the cached value as a tree", () => {
     const panel = bridgeWith(() => [
-      { ...base, updatedAt: 1, dataPreview: "…", data: { pages: [{ products: [{ id: 1 }] }] } },
+      valueRow({ revision: 1, preview: "…", data: { pages: [{ products: [{ id: 1 }] }] } }),
     ]);
 
     const data = panel.shadowRoot.querySelector(".q-data")!;
@@ -713,23 +803,25 @@ describe("the Query tab's value", () => {
    * within the cap and the panel kept showing the seventh. A write moves `updatedAt`, always.
    */
   it("rebuilds when the data changes past the end of the preview", () => {
-    let pages = [{ id: 1 }];
-    let updatedAt = 1;
-    const panel = bridgeWith(() => [{ ...base, updatedAt, dataPreview: "x".repeat(2000), data: { pages } }]);
+    underPoll(() => {
+      let pages = [{ id: 1 }];
+      let updatedAt = 1;
+      const panel = bridgeWith(() => [valueRow({ revision: updatedAt, preview: "x".repeat(2000), data: { pages } })]);
 
-    expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toContain("Array(1)");
+      expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toContain("Array(1)");
 
-    pages = [{ id: 1 }, { id: 2 }];
-    updatedAt = 2;
-    (panel as unknown as { renderQueries(): void }).renderQueries();
+      pages = [{ id: 1 }, { id: 2 }];
+      updatedAt = 2;
+      pollOnce();
 
-    expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toContain("Array(2)");
-    openTab(panel, "logs");
+      expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toContain("Array(2)");
+      openTab(panel, "logs");
+    });
   });
 
   it("opens a query's value on the whole panel", () => {
     const many = Array.from({ length: 600 }, (_, i) => ({ id: i, title: `p${i}` }));
-    const panel = bridgeWith(() => [{ ...base, updatedAt: 1, dataPreview: "…", data: { products: many } }]);
+    const panel = bridgeWith(() => [valueRow({ revision: 1, preview: "…", data: { products: many } })]);
 
     panel.shadowRoot.querySelector(".q-row [data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
@@ -857,34 +949,16 @@ describe("a full view that has gone stale", () => {
   });
 
   it("keeps a query value readable while the Components tab is open", () => {
-    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+    panelRegistry().register({
+      version: 1,
+      id: "query",
+      label: "QUERY",
       snapshot: () => ({
-        clients: [
-          {
-            index: 0,
-            queries: [
-              {
-                key: ["products"],
-                hash: '["products"]',
-                status: "success",
-                fetchStatus: "idle",
-                observers: 1,
-                updatedAt: 1,
-                failureCount: 0,
-                restored: false,
-                dataPreview: "…",
-                data: { pages: [{ id: 1 }] },
-              },
-            ],
-          },
-        ],
+        groups: [{ rows: [pluginRow({ value: { data: { pages: [{ id: 1 }] }, revision: 1 } })] }] as never,
       }),
-      invalidate: vi.fn(),
-      remove: vi.fn(),
-    };
-
+    });
     const panel = mount(() => tree());
-    openTab(panel, "query");
+    openTab(panel, "plugin-query");
     panel.shadowRoot.querySelector(".q-row [data-full]")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(body(panel).textContent).toContain("pages");
 
@@ -996,7 +1070,7 @@ describe("what survives a reload", () => {
 
   it("picks the debugging session back up: open, tab, filter and focus", () => {
     const panel = mount(() => tree());
-    openTab(panel, "query");
+    openTab(panel, "plugin-query");
     openTab(panel, "components");
     focus(panel, "ProductDetail");
 
@@ -1223,25 +1297,20 @@ describe("the logs tab", () => {
 });
 
 describe("what the panel does while nobody is looking", () => {
-  const bridge = () => ({
-    snapshot: vi.fn(() => ({ clients: [] })),
-    invalidate: vi.fn(),
-    remove: vi.fn(),
-  });
-
   /**
    * The cost model the whole panel is built on: it PULLS, and only while its tab is open. A poll
    * that outlived the tab would read every live cache four times a second, forever, in every
    * development build.
    */
   it("stops polling the cache when its tab is left", () => {
-    const spy = bridge();
-    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = spy;
+    const snapshot = vi.fn(() => ({ groups: [{ rows: [] }] }));
+    panelRegistry().register({ version: 1, id: "query", label: "QUERY", snapshot });
+    const spy = { snapshot };
 
     vi.useFakeTimers();
     try {
       const panel = mount(() => tree());
-      openTab(panel, "query");
+      openTab(panel, "plugin-query");
       const opened = spy.snapshot.mock.calls.length;
       expect(opened).toBeGreaterThan(0);
 
@@ -1292,39 +1361,20 @@ describe("an older query package", () => {
    * the fallback is a fact about mixed versions, not a second code path to keep working.
    */
   it("falls back to the one-line preview when a row carries no structured value", () => {
-    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
+    panelRegistry().register({
+      version: 1,
+      id: "query",
+      label: "QUERY",
       snapshot: () => ({
-        clients: [
-          {
-            index: 0,
-            queries: [
-              {
-                key: ["products"],
-                hash: '["products"]',
-                status: "success",
-                fetchStatus: "idle",
-                observers: 1,
-                updatedAt: 1,
-                failureCount: 0,
-                restored: false,
-                dataPreview: '{"products":[…]}',
-              },
-            ],
-          },
-        ],
+        groups: [{ rows: [pluginRow({ value: { data: undefined, preview: "one line only" } })] }] as never,
       }),
-      invalidate: vi.fn(),
-      remove: vi.fn(),
-    };
-
+    });
     const panel = mount(() => tree());
-    openTab(panel, "query");
+    openTab(panel, "plugin-query");
 
-    const data = panel.shadowRoot.querySelector(".q-data")!;
-    expect(data.textContent).toBe('{"products":[…]}');
-    expect(data.querySelector(".jv")).toBe(null);
-    // And no ⤢, because there is no value to open.
-    expect(panel.shadowRoot.querySelector(".q-row [data-full]")).toBe(null);
+    // Nothing structured to render, and the source said what to show instead.
+    expect(panel.shadowRoot.querySelector(".q-data")!.textContent).toBe("one line only");
+    expect(panel.shadowRoot.querySelector("[data-full]")).toBe(null);
     openTab(panel, "logs");
   });
 });
@@ -1711,47 +1761,48 @@ describe("what the panel says about a write", () => {
 });
 
 describe("editing a query's cached data", () => {
-  const row = (extra: Record<string, unknown> = {}) => ({
-    key: ["products"],
-    hash: '["products"]',
-    status: "success",
-    fetchStatus: "idle",
-    observers: 1,
-    updatedAt: 1,
-    failureCount: 0,
-    restored: false,
-    dataPreview: "…",
-    data: { total: 2 },
-    truncated: false,
-    ...extra,
-  });
+  const row = (extra: Record<string, unknown> = {}) =>
+    pluginRow({
+      value: {
+        data: { total: 2 },
+        preview: "…",
+        revision: 1,
+        editable: true,
+        writeNote: "a refetch will replace it",
+        write: () => undefined,
+        ...extra,
+      },
+    });
 
   /**
    * `null` means "this query package has no write side", not `undefined` — passing `undefined` hands
    * the parameter its DEFAULT, which is how the first version of the no-write-side test asserted
    * against a bridge that had one.
    */
-  function withBridge(rows = [row()], setData: unknown = vi.fn(() => true)) {
-    (window as unknown as { __RAMONDA_QUERY__: unknown }).__RAMONDA_QUERY__ = {
-      snapshot: () => ({ clients: [{ index: 0, queries: rows }] }),
-      invalidate: vi.fn(),
-      remove: vi.fn(),
-      setData: setData ?? undefined,
-    };
+  function withBridge(rows: () => unknown[] = () => [row()]) {
+    panelRegistry().register({
+      version: 1,
+      id: "query",
+      label: "QUERY",
+      snapshot: () => ({ groups: [{ rows: rows() as never }] }),
+    });
     const panel = mount(() => tree());
-    openTab(panel, "query");
+    openTab(panel, "plugin-query");
     return panel;
   }
 
-  const pencil = (panel: Panel) => panel.shadowRoot.querySelector("#query-container [data-q-edit]") as HTMLElement;
+  const pencil = (panel: Panel) =>
+    panel.shadowRoot.querySelector("#plugin-query-container [data-p-edit]") as HTMLElement;
 
   /**
    * This is the one value in the panel whose change shows up on the page, because the cache is what a
    * query renders from — unlike a query hook's own `version`, which is an invalidation counter.
    */
   it("writes through the bridge, and says a refetch will replace it", () => {
-    const setData = vi.fn(() => true);
-    const panel = withBridge([row()], setData);
+    // `write` returns the REASON it refused, or nothing when it worked — so a source that returns
+    // a truthy "ok" would have its success read as a refusal.
+    const setData = vi.fn(() => undefined);
+    const panel = withBridge(() => [row({ write: setData })]);
 
     pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
@@ -1760,7 +1811,9 @@ describe("editing a query's cached data", () => {
     field.value = '{ "total": 99 }';
     field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
 
-    expect(setData).toHaveBeenCalledWith(0, '["products"]', { total: 99 });
+    // One argument: the panel hands over what was typed. WHICH entry that is was decided by the
+    // source when it built the row, and it closed over it.
+    expect(setData).toHaveBeenCalledWith({ total: 99 });
     expect(panel.shadowRoot.querySelector("#toast")!.textContent).toContain("a refetch will replace it");
     openTab(panel, "logs");
   });
@@ -1770,14 +1823,14 @@ describe("editing a query's cached data", () => {
    * dropped. Writing one back would put `"[… budget]"` into the cache.
    */
   it("offers no pencil for a value that arrived truncated", () => {
-    const panel = withBridge([row({ truncated: true })]);
+    const panel = withBridge(() => [row({ editable: false })]);
 
     expect(pencil(panel)).toBe(null);
     openTab(panel, "logs");
   });
 
   it("offers no pencil when the query package has no write side", () => {
-    const panel = withBridge([row()], null);
+    const panel = withBridge(() => [row({ editable: false })]);
 
     expect(pencil(panel)).toBe(null);
     openTab(panel, "logs");
@@ -1785,31 +1838,27 @@ describe("editing a query's cached data", () => {
 
   /** A cache event anywhere rebuilds this list twice a second; it must not do it mid-sentence. */
   it("holds the list still while it is being typed into", () => {
-    let updatedAt = 1;
-    const panel = withBridge();
-    (window as unknown as { __RAMONDA_QUERY__: { snapshot: unknown } }).__RAMONDA_QUERY__.snapshot = () => ({
-      clients: [{ index: 0, queries: [row({ updatedAt })] }],
+    underPoll(() => {
+      let revision = 1;
+      const panel = withBridge(() => [row({ revision })]);
+
+      pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
+      field.value = "typing…";
+
+      // A real cache event: the revision moves, which is exactly what the list keys its rebuild
+      // on — so without the guard this poll would replace the box mid-sentence.
+      revision = 2;
+      pollOnce();
+
+      expect(panel.shadowRoot.querySelector(".edit-input")).toBe(field);
+      expect((panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement).value).toBe("typing…");
+      openTab(panel, "logs");
     });
-
-    pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
-    field.value = "typing…";
-
-    // A real cache event: `updatedAt` moves, which is exactly what the list keys its rebuild on — so
-    // without the guard this poll would replace the box mid-sentence.
-    updatedAt = 2;
-    (panel as unknown as { renderQueries(): void }).renderQueries();
-
-    expect(panel.shadowRoot.querySelector(".edit-input")).toBe(field);
-    expect((panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement).value).toBe("typing…");
-    openTab(panel, "logs");
   });
 
   it("says so when the entry was collected while the box was open", () => {
-    const panel = withBridge(
-      [row()],
-      vi.fn(() => false),
-    );
+    const panel = withBridge(() => [row({ write: () => "that entry is no longer in the cache" })]);
 
     pencil(panel).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     const field = panel.shadowRoot.querySelector(".edit-input") as HTMLTextAreaElement;
@@ -1915,13 +1964,21 @@ describe("the profiler tab", () => {
 
   /** An idle poll must not rewrite the list — the same rule the query tab had to learn. */
   it("writes no DOM when a poll finds nothing new", () => {
-    const { panel } = withProfiler({ recording: true, commits: [commit(1, 4)] });
+    vi.useFakeTimers();
+    try {
+      const { panel } = withProfiler({ recording: true, commits: [commit(1, 4)] });
 
-    const before = panel.shadowRoot.querySelector(".p-row");
-    (panel as unknown as { renderProfile(): void }).renderProfile();
+      // Through the poll rather than by calling the render directly: the claim is about what
+      // POLLING does, and the identity check below only means something if the row survived a real
+      // tick. Several, so a slow reader is represented too.
+      const before = panel.shadowRoot.querySelector(".p-row");
+      vi.advanceTimersByTime(2000);
 
-    expect(panel.shadowRoot.querySelector(".p-row")).toBe(before);
-    openTab(panel, "logs");
+      expect(panel.shadowRoot.querySelector(".p-row")).toBe(before);
+      openTab(panel, "logs");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says so when the build has no profiler at all", () => {

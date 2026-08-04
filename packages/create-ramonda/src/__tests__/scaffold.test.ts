@@ -97,6 +97,41 @@ describe("first-party versions", () => {
   });
 });
 
+/**
+ * A package's devtools tab arrives with the package, not with the scaffolder.
+ *
+ * `@ramonda/query` and `@ramonda/form` each describe their own tab and register it from the
+ * lifecycle of something the app mounts — a provider, a form. So there is nothing to add here when
+ * an add-on is picked, and nothing to remove when it is not: the panel builds a tab for whatever
+ * registered one.
+ *
+ * This test is the guard on that arrangement. If a future package needs the scaffolder to wire its
+ * panel up, the wiring belongs with that package instead.
+ */
+describe("devtools tabs come from the packages", () => {
+  test("picking a package does not add panel wiring to the app", () => {
+    const { dir } = make("spa", ["query", "form", "devtools"]);
+    const entry = readFileSync(join(dir, "src", "main.tsx"), "utf8");
+
+    // One line, and it is the panel itself. No per-package registration in the app's code.
+    expect(entry).toContain('void import("@ramonda/devtools")');
+    expect(entry).not.toContain("registerDevtools");
+    expect(entry).not.toContain("panelRegistry");
+  });
+
+  test("the panel is still offered without them, and they without it", () => {
+    const alone = make("spa", ["devtools"]).pkg;
+    expect(alone.devDependencies["@ramonda/devtools"]).toBeDefined();
+    expect(alone.dependencies["@ramonda/form"]).toBeUndefined();
+
+    // A form with no panel installed registers into a registry nobody reads, which costs one Map
+    // and is why neither add-on has to imply the other.
+    const quiet = make("spa", ["form"]).pkg;
+    expect(quiet.dependencies["@ramonda/form"]).toBeDefined();
+    expect(quiet.devDependencies["@ramonda/devtools"]).toBeUndefined();
+  });
+});
+
 describe("third-party versions", () => {
   test("they are the ones this workspace is tested against", () => {
     const { pkg } = make("ssr", ["testing", "biome"]);

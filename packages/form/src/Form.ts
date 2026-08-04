@@ -1,4 +1,6 @@
 import { create, destroy, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
+import { registerDevtoolsForm } from "./devtoolsPanel";
+import type { InspectableForm } from "./devtoolsPanel";
 import { type FieldHost, FieldTree } from "./fieldTree";
 import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
@@ -135,7 +137,23 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * landing it would schedule a render on a page that has been sent. Such a form reports
    * `isValid: false` in the markup, which is the honest answer to "we have not heard back".
    */
+  /**
+   * `@create`, and the place the form joins the devtools tab.
+   *
+   * Registration is here rather than in `prime` because `prime` is not only the `@create` — a
+   * `reset()` calls it again to revalidate, and registering there put the same form in the list
+   * twice, with only the second registration reachable to undo. It is here rather than in a field
+   * initializer so a form that never mounts never appears, and not on the SERVER at all, where
+   * there is no panel and a registration would be module state outliving one request.
+   */
   @create
+  join(env: RenderEnv = "client"): void {
+    if (__DEV__ && env === "client") {
+      this.leavePanel = registerDevtoolsForm(this.panelView());
+    }
+    this.prime(env);
+  }
+
   prime(env: RenderEnv = "client"): void {
     const runId = ++this.runId;
     const outcome = validate(this.props.schema, this.current);
@@ -153,6 +171,53 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @destroy
   dispose(): void {
     this.disposed = true;
+    this.leavePanel?.();
+    this.leavePanel = undefined;
+  }
+
+  /** Removes this form from the Forms tab. Absent in a production build. */
+  private leavePanel: (() => void) | undefined;
+
+  /**
+   * Everything the Forms tab is allowed to read or ask for, and nothing else.
+   *
+   * A narrow object rather than the instance: the panel can see what is on screen and ask for a
+   * reset or a submit, and it cannot reach the schema, the field tree, or anything that would let
+   * it change the form in a way the form did not sanction. Getters rather than a copy, because it
+   * is read on every poll and must answer for the form as it is now.
+   */
+  private panelView(): InspectableForm {
+    const form = this;
+    return {
+      get values() {
+        return form.current;
+      },
+      get formErrors() {
+        return form.formErrors;
+      },
+      get isValid() {
+        return form.isValid;
+      },
+      get isDirty() {
+        return form.isDirty;
+      },
+      get isSubmitting() {
+        return form.submitting;
+      },
+      get submitCount() {
+        return form.submits;
+      },
+      get revision() {
+        return form.version;
+      },
+      fieldErrors: () => new Map([...form.issues].map(([key, messages]) => [readableKey(key), messages])),
+      interaction: () => ({
+        touched: [...form.touchedKeys].map(readableKey),
+        changed: [...form.changedKeys].map(readableKey),
+      }),
+      reset: () => form.reset(),
+      submit: () => form.submit(),
+    };
   }
 
   /**

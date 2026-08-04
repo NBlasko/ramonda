@@ -5,6 +5,7 @@ import { TablePage } from "./pages/TablePage";
 import { SlotsPage } from "./pages/SlotsPage";
 import { AsyncPage } from "./pages/AsyncPage";
 import { QueryPage } from "./pages/QueryPage";
+import { FormPage } from "./pages/FormPage";
 import { UserPage } from "./pages/UserPage";
 import { AboutPage } from "./pages/AboutPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
@@ -18,6 +19,7 @@ export const routes = createRoutes({
   "/slots": <SlotsPage />,
   "/async": <AsyncPage />,
   "/query": <QueryPage />,
+  "/form": <FormPage />,
   "/users/:id": <UserPage />,
   "/about": <AboutPage />,
   "/diagnostics": <DiagnosticsPage />,

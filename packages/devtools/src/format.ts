@@ -49,3 +49,9 @@ export const safeStringify = (v: unknown): string => {
   }
   return s.length > MAX_VALUE_LEN ? `${s.slice(0, MAX_VALUE_LEN)}…` : s;
 };
+
+/** A written value, short enough for a toast. */
+export const toOneLine = (value: unknown): string => {
+  const text = safeStringify(value);
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+};
