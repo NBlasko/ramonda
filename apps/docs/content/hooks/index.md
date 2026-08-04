@@ -59,8 +59,9 @@ when the goal is to share the behaviour itself.)
 ## Synchronising with the owner
 
 A hook often needs a value from the component using it — the id to fetch, the size to
-paginate by. You pass it as **props**. Pass a **callback**, and it re-runs every
-time the owner re-renders, so the hook stays in step with the owner's data.
+paginate by. You pass it as **props**. Pass a **callback**, and it re-runs whenever a signal it
+reads has moved, so the hook stays in step with the owner's data — and stays put when the owner
+re-renders for a reason that has nothing to do with it.
 
 ```tsx
 export class Resource<T> extends Hook<{ url: string }> {
@@ -89,7 +90,7 @@ export class Resource<T> extends Hook<{ url: string }> {
 
 ```tsx
 export class UserCard extends Component<{ id: string }> {
-  // The callback re-runs when this component re-renders, so `url` follows `id`.
+  // The callback reads `id`, so it re-runs when `id` moves and `url` follows it.
   user = this.use(Resource, (self: UserCard) => ({ url: `/api/users/${self.props.id}` }));
 
   render() {
@@ -133,9 +134,10 @@ each hook's props are re-evaluated in turn, down through the nested ones.
   built, its `@mount` once the owner's DOM is on the page, its `@destroy` when the
   owner is removed. You can watch the exact interleaving in the
   [lifecycle](/concepts/lifecycle) demo.
-- **On every re-render of the owner**, each hook's props callback re-runs, in
-  `use()` order, and the new values flow into the hook — cascading down through any
-  nested hooks.
+- **On every re-render of the owner**, the hook tree is walked in `use()` order and the new
+  values flow into each hook, cascading down through any nested hooks. A hook's props callback
+  is only *called* if a signal it reads has moved; the walk itself never skips, because a nested
+  hook can depend on state its parent's bag says nothing about.
 
 ## The one cost to know
 

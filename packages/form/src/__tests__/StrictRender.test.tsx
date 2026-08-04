@@ -1,8 +1,8 @@
 import { Component, configureDev, type RamondaNode, state } from "@ramonda/core";
-import { render } from "@ramonda/testing-library";
+import { act, render } from "@ramonda/testing-library";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Form } from "../Form";
-import type { StandardResult, StandardSchemaV1 } from "../types";
+import type { StandardResult, StandardSchemaV1, ValidateOn } from "../types";
 
 /**
  * What a form's props callback looks like to the strict render.
@@ -88,18 +88,31 @@ describe("a form under the strict render", () => {
   test("a literal built in the callback is what gets reported", () => {
     // The shape the docs warn about, kept here so the warning is about something real. If this ever
     // stops reporting, the paragraph in the docs is describing a diagnostic that no longer fires.
+    let page!: Rebuilds;
+
     class Rebuilds extends Component {
-      @state data: Values | undefined = undefined;
+      @state mode: ValidateOn = "submit";
 
       private f = this.use(Form<typeof schema>, (self: Rebuilds) => ({
         schema,
-        defaultValues: self.data ?? { name: "", tags: [] },
+        // Built here, with the same contents every time — the fault.
+        defaultValues: { name: "", tags: [] },
         onSubmit: self.save,
+        /**
+         * Moves, so the callback is genuinely invalidated and genuinely runs again.
+         *
+         * Without it there would be nothing to report and nothing wrong: a props callback is
+         * cached on the signals it reads, so one that reads none runs ONCE, and a value built
+         * once is not churn. RMD022 counts consecutive runs before it speaks, which is why this
+         * file needs a form whose props actually move.
+         */
+        validateOn: self.mode,
       }));
 
       save(_values: Values): void {}
 
       render(): RamondaNode {
+        page = this;
         void this.f.values;
         return <form />;
       }
@@ -107,6 +120,13 @@ describe("a form under the strict render", () => {
 
     const { unmount } = render((<Rebuilds />) as never);
     try {
+      // Four runs of the callback in total, which is the threshold.
+      for (const mode of ["change", "blur", "submit"] as ValidateOn[]) {
+        act(() => {
+          page.mode = mode;
+        });
+      }
+
       expect(named()).toEqual(["defaultValues"]);
       // And what it recommends is holding the value, which is what the docs say to do.
       expect(logs.join("\n")).toContain("@compute");
@@ -133,7 +153,7 @@ describe("a form under the strict render", () => {
 
     class Page extends Component {
       @state unrelated = 0;
-      private f = this.use(Form<typeof counting>, (self: Page) => ({
+      private f = this.use(Form<typeof counting>, () => ({
         schema: counting,
         defaultValues: BLANK,
         onSubmit: (_values: Values) => {},

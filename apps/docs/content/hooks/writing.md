@@ -35,7 +35,7 @@ Two forms, and the difference matters:
 // A plain object — fixed for the life of the hook. For constants.
 counter = this.use(Counter, { start: 10 });
 
-// A callback — re-run whenever the owner re-renders. Use this whenever a prop
+// A callback — re-run whenever a signal it reads moves. Use this whenever a prop
 // depends on something that changes.
 counter = this.use(Counter, (self: Panel) => ({ start: self.props.initial }));
 ```
@@ -72,8 +72,8 @@ into your own `@state`, or take a **callback prop** and ask the owner to change 
 
 ## They stay reactive, per key
 
-Each prop is its own signal. When the owner re-renders, the callback runs again and
-only the keys whose values actually changed update. So a hook that reads
+Each prop is its own signal. When the callback runs again, only the keys whose values actually
+changed update. So a hook that reads
 `this.props.start` reacts to `start` changing, not to some other key — exactly like a
 component. (A prop the caller stops passing becomes `undefined`, so a removed key
 can't linger.)
@@ -108,15 +108,39 @@ long as its owner; only its fields change.
 
 ## When a value in the bag should keep its identity
 
-The callback runs on every render of the owner, so the bag it returns is a new object
-each time — and so is every array and closure inside it. **Every prop is a signal**, and a
-signal compares by reference, so a rebuilt array is a *changed* prop: a `@compute` reading
-it recomputes, a `@watchProp` on it fires, and a subscription whose `connect` reads it
-reconnects. Every render. Measured across three renders of the owner: a compute reading a
-rebuilt array runs three times where one reading a scalar prop runs once.
+**The callback is cached on the signals it reads** — the same contract `@compute` gives a
+getter. On a render where none of them moved it is not called, and the bag it returned last
+time is handed over unchanged, down to the arrays and closures inside it. So the ordinary way
+of writing one is also the cheap way, and there is nothing to wrap:
 
-Development builds report it as [RMD022](/reference/diagnostics) — the callback is called
-twice in the same tick and the two bags compared, the same check `render()` gets.
+```tsx
+private list = this.use(Filtered, (self: Panel) => ({
+  filter: { q: self.query },          // one object until `query` moves
+  onPick: (id: string) => self.pick(id),   // one closure, likewise
+}));
+```
+
+This scales the way you would want it to. A component with ten hooks, where one signal moves:
+**one callback runs and one hook recomputes**, not ten of each. The nine whose callbacks read
+nothing that moved are not asked for a bag at all.
+
+`render()` is a separate matter — it runs on every rebuild. The cache is about the props
+callback, not about rendering.
+
+**What the cache does not do is make a rebuilt value equal to the last one.** On the renders
+where the callback *does* run — because something it reads moved — every array and closure in
+it is fresh, and **every prop is a signal** that compares by reference. So a `@compute` reading
+a rebuilt array recomputes, a `@watchProp` on it fires, and a subscription whose `connect`
+reads it reconnects, for the one key that changed and the ones that did not.
+
+That is the case the rest of this section is about. Development builds report it as
+[RMD022](/reference/diagnostics), which names a value only once it has been rebuilt several
+times running *without ever changing*. A key that genuinely differs each time is not churn, and
+is not reported.
+
+The other half of the bargain: a value that reaches the bag *without* passing through a signal
+is invisible to the cache, so the bag keeps the version it last built.
+[RMD027](/reference/diagnostics) reports that; the fix is to make the value reactive.
 
 **If you are WRITING the hook: declare which props are values.** A query key is a value —
 `["user", 7]` built again is the same question — and that is the hook's knowledge, not
@@ -221,16 +245,17 @@ The framework reports the mistakes it can see, and those reports are development
 hook — a **reusable** one especially — is written against what it might actually be handed,
 not against what a well-behaved caller would send. Four things you do not know:
 
-**When you will be called.** The props callback runs on every render of the owner, and the
-owner re-renders for reasons that have nothing to do with you. Being called is not news.
+**When you will be called.** The props callback runs when a signal *it* reads has moved. One
+callback can read six signals and hand you a single prop, so a run tells you something in the
+owner moved — not that your prop did. Being called is not news.
 
 **Whether a value is the same object as last time.** A declaration covers the props you
 thought of, to a bounded depth and width; everything else arrives fresh whenever the caller's
 callback rebuilds it, or whenever whatever they derived it from was invalidated. So a `@watchProp` handler has to be **cheap and idempotent** — it will run for a
 reference that changed and a value that did not. `Query` does exactly this: the framework
 already compares the key, and `onKeyChanged` still compares the parts itself, then the hash,
-before it will start a request. A handler that fetches, resets a form or scrolls without
-that guard does it on every render of somebody else's component.
+before it will start a request. A handler that fetches, resets a form or scrolls without that
+guard does it every time somebody else's callback is invalidated, which is not yours to predict.
 
 **What the value is.** A prop the caller stopped passing becomes `undefined` — a key that
 was there is gone, an array is nullish, a callback prop is missing. And a value can be

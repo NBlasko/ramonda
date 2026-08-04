@@ -112,7 +112,7 @@ function report(label: string): void {
     diagnose(
       "RMD021",
       `${props}:props:${label}`,
-      `\`${props}\` called ${label} while building a hook's props — and the props callback runs on every render, so the value is different every time. For a query key that is a new cache entry per render.`,
+      `\`${props}\` called ${label} while building a hook's props. The callback is cached on the signals it reads, and this value is not one of them — so it is frozen into the bag until something unrelated invalidates the callback, and then it jumps. For a query key that is an entry which changes on somebody else's state change, and never when this one does.`,
     );
     return;
   }

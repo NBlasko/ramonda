@@ -52,11 +52,16 @@ so a component that misuses the same property on every render reports once.
 | `RMD014` | error | A `For` hook was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | warning | A component updated while its element is not in the document |
+| `RMD017` | error | A deferred hydration never resumed |
+| `RMD018` | error | State written during a `@compute` |
+| `RMD019` | error | State set to a value that cannot be serialized |
 | `RMD020` | warning | `render()` produced a different value the second time |
 | `RMD021` | warning | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
 | `RMD022` | warning | A hook's props callback built a new value for the same contents |
 | `RMD023` | warning | Components built from an array, with no keys |
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
+| `RMD025` | error | Per-request data read in the browser |
+| `RMD027` | error | A props callback reads a value that is not reactive |
 
 ### RMD001 — State written during render()
 
@@ -646,17 +651,17 @@ else — components are constructed by the diff, `hostTag` is already cached, a 
 registers no signal dependencies, and `@memoizedHandler` returns the same function
 for the same arguments, so it reads as stable rather than as a fault.
 
-**Not** a hook's props callback. That was implemented and then removed after auditing
-what it said about real code: the callback exists in order to re-run per owner render,
-so the bag and the closures in it are fresh by design, and the reports had no action
-behind them. A vnode passed as a prop is likewise walked rather than called a rebuilt
-object — JSX is a fresh object every render.
+**Not** a hook's props callback. That was implemented and then removed after auditing what it
+said about real code: a bag and the closures in it are fresh whenever the callback runs, and the
+reports had no action behind them. RMD022 owns that ground now, with a run counter in front of
+it. A vnode passed as a prop is likewise walked rather than called a rebuilt object — JSX is a
+fresh object every render.
 
 **The hazard, and the switch.** A render with a side effect runs it twice. RMD001
 already makes a state write there an error, so "render is pure" is the position — but
 a `fetch()` or a `console.log` in a render really does happen twice in development.
 The framework's own test suites turn the check off in their setup files
-(`strictRender.enabled = false`), because they observe render ORDER by logging from
+(`configureDev({ strictRender: false })`), because they observe render ORDER by logging from
 `render()` — precisely the impurity this reports.
 
 ### RMD021 — randomness during a render, a @compute, a memoised handler or a hook's props
@@ -666,9 +671,9 @@ development build (the trick `timerGuard` already uses) and report when they are
 while `renderPhase`, `computePhase`, `memoPhase` or `propsPhase` is set. Four messages,
 because the consequence differs: a render disagrees with its own hydration, a `@compute`
 freezes the value until a dependency it READ changes, a memoised handler caches the
-value with the handler so every call uses the same one, and a hook's props callback runs
-on EVERY render, so the prop holds a different value each time — as a query key, a new
-cache entry per render.
+value with the handler so every call uses the same one, and a hook's props callback is cached
+on the signals it reads — a random value is not one of them, so it is frozen into the bag until
+something unrelated invalidates the callback, and then it jumps.
 
 `propsPhase` is also the answer to "should the props callback run twice in a strict
 render, like `render()` does". It should not: watching the call catches the same mistake,
@@ -726,6 +731,26 @@ The callback is called twice in one tick and the bags compared, key by key, with
 `classify` RMD020 uses — so the three findings and their names are the same: `handler`,
 `object`, `nondeterministic`. Gated on `isStrictRender()`, so one switch turns off both
 double calls.
+
+**Two conditions, and the second is what makes it worth reading.** The same-tick pair proves
+only that a value was built in place. On its own that reported `key: ["user", self.props.id]`,
+where the array genuinely differs each time and `@StableProps("key")` would hand back nothing —
+advice with no effect, on every render. A per-key counter (`RUNS = 3`, the same number and the
+same reasoning as RMD024) adds the second condition: rebuilt on four consecutive runs of the
+callback, and equal to last run's value every time. `nondeterministic` skips the counter and
+reports the first time — that is a fault rather than churn.
+
+For a `handler` the counter is frequency alone: two closures with the same body are not equal by
+any comparison that is safe to make, so what is counted is that the key was a fresh function on
+each of the last few runs. That is the honest measure for a closure, whose cost is exactly
+proportional to how often the bag is rebuilt.
+
+**Keyed by the call site's props cache**, in a `WeakMap`, not by owner and hook name: two
+`this.use(Query, …)` calls on one component share both of those, and one of them resetting the
+count would silence the other forever.
+
+**A callback that is never invalidated cannot be reported.** It runs once, its bag is cached, and
+a value built once is not churn.
 
 **Why a bag deserves its own check even though it is documented as re-running.** Every
 prop is a signal, and a signal compares by reference (`common.ts`: `newVal !==
@@ -795,6 +820,37 @@ test asserts the report COUNT for that reason rather than its presence.
 **The honest limit**, stated in the docs too: a compute that reads only something non-reactive
 is never invalidated, so it never recomputes and is never observed. The counter case is caught
 only when the compute is invalidated by something else.
+
+### RMD027 — a props callback reads a value that is not reactive
+
+The safety net under the props-callback cache, in `debug/propsStability.ts` next to RMD022.
+
+`useCommon` caches a hook's props callback on the signals it read, so on a render where none of
+them moved the callback is not called. That is right exactly as far as the tracking reaches: a
+value that gets into the bag WITHOUT passing through a signal is invisible to it, and the cache
+keeps serving the bag it last built.
+
+Under a strict render, a callback the cache SKIPPED is called anyway and the two bags compared.
+A difference means something it reads is not reactive.
+
+**Compared by value, not by reference.** A callback that returns `{ filter: { q } }` builds a new
+object every call by construction — the churn the cache exists to absorb, not a fault. Comparing
+references would report every well-written callback in the app. Function props are skipped for
+the same reason `resolveStable` skips them, and because a fresh closure on an untracked call
+proves nothing about staleness.
+
+**An error, not a warning**, unlike RMD022 next to it: the hook is running on a value the app has
+already moved past, so what renders is not what the state says. Nothing here is merely slower.
+
+**Why it did not need to exist before.** The shape it catches — a plain field standing in for
+`@state` — used to work by accident: the write scheduled nothing, but the next render for any
+other reason rebuilt the bag and carried the new value along. The value was never reactive; the
+framework stopped compensating for it.
+
+The probe deliberately does NOT go through `buildProps`. That one runs the RMD022 strict-render
+check, which then fired from inside a check of its own — reporting churn on a render where the
+callback was not going to be called, and, having no `declared` list to hand down, naming every
+`@StableProps` key as unstable. See `probeProps` in `helpers/common.ts`.
 
 ### RMD026 — retired 2026-08-03
 

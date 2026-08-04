@@ -164,16 +164,17 @@ export function checkRenderStability(component: BaseComponent, first: unknown, s
  * **A hook's props bag is deliberately NOT checked**, and that decision came from
  * auditing what the check actually said about one.
  *
- * The callback form of `this.use(Hook, …)` exists in order to be re-evaluated on
- * every owner render — that is its documented contract, and what keeps a hook in step
- * with its owner. So the bag is a fresh object by design, and the values inside it are
- * too: a fetcher closing over `self.props.id` cannot be a stable function, and a query
- * key is an array literal that `@ramonda/query` handles on purpose (it compares the
- * parts, measured at 31 ns). Reporting those produced a warning per hook per app with
- * no action behind it, which is how a diagnostic teaches people to ignore it.
+ * A props bag is a fresh object whenever its callback runs, and the values inside it
+ * are too: a fetcher closing over `self.props.id` cannot be a stable function, and a
+ * query key is an array literal that `@ramonda/query` handles on purpose (it compares
+ * the parts, measured at 31 ns). Reporting those from here produced a warning per hook
+ * per app with no action behind it, which is how a diagnostic teaches people to ignore
+ * it.
  *
- * The churn is real and it is documented where it belongs — a `@compute` bag is the
- * cure when an effect or a compute reads the bag — but it is not this check's business.
+ * The churn is real, and RMD022 is the check that owns it — with a run counter, so it
+ * speaks only for a value that keeps being rebuilt without ever moving. That is a
+ * judgement about a props callback across renders, which this check cannot make: it
+ * compares two outputs of one render, and knows nothing about the last one.
  */
 
 function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: Walk): void {

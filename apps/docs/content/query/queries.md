@@ -194,9 +194,9 @@ that the ordinary `if (isPending) return <Spinner />` gives way to it. `isPlaceh
 you tell: dim it, or hide the actions that would act on nothing. A **failure is never hidden**
 by it; a placeholder covers "nothing yet", not "it went wrong".
 
-Both take a function, and it is worth using for anything that is not free to build: the props
-callback runs on every render of the owner, so `placeholderData: buildEmpty()` builds it every
-time, while `placeholderData: buildEmpty` is called once.
+Both take a function, and it is worth using for anything that is not free to build:
+`placeholderData: buildEmpty()` runs the build every time the props callback runs — which for a
+query is whenever the key moves — while `placeholderData: buildEmpty` is called once.
 
 ## Holding a query back
 

@@ -119,7 +119,7 @@ describe("initialData", () => {
     const app = render(<Card />);
     try {
       await settle();
-      // The props callback runs on every render; building the value must not.
+      // The props callback runs whenever a signal it reads moves; building the value must not.
       expect(build).not.toHaveBeenCalled();
     } finally {
       app.unmount();

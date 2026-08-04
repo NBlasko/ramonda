@@ -1,5 +1,6 @@
 import { diagnose } from "./diagnostics";
 import { classify, type Kind } from "./renderStability";
+import { valueEqual } from "../helpers/valueEqual";
 
 /**
  * DEV-only: calls a hook's props callback twice and reports anything that came out
@@ -37,16 +38,41 @@ import { classify, type Kind } from "./renderStability";
  * false })` turns both off; every other diagnostic stays.
  */
 
+/**
+ * How many consecutive rebuilds count as churn rather than a coincidence.
+ *
+ * The same number, for the same reason, as RMD024 in `computeChurn.ts`: one rebuild that happens
+ * to produce an equal value is ordinary, and below three real code gets reported for accidents.
+ */
+const RUNS = 3;
+
+interface Churn {
+  /** The value this key held the last time the callback ran. */
+  previous: unknown;
+  /** Consecutive runs since it last actually moved. */
+  equalRuns: number;
+}
+
+/**
+ * Keyed by the per-`use()`-site cache object, not by the owner instance.
+ *
+ * Two `this.use(Query, …)` calls on one component are two different questions, and one of them
+ * churning says nothing about the other — but they share an owner and a hook name, so anything
+ * keyed by those would merge them. The cache object is allocated once per call site and lives
+ * exactly as long as the hook does, which is the granularity the counter needs.
+ */
+const churn = new WeakMap<object, Map<string, Churn>>();
+
 const DETAIL: Record<Kind, (owner: string, key: string) => string> = {
   handler: (owner, key) =>
-    `\`${owner}\` builds a new function for the \`${key}\` prop on every render — the source is the same, only the identity is fresh.\n` +
-    `Every prop is a signal, so a new identity is a change: a \`@compute\` reading it recomputes, a \`@watchProp\` on it fires, and a subscription whose \`connect\` reads it reconnects — on every render of the owner.`,
+    `\`${owner}\` built a new function for the \`${key}\` prop on ${RUNS + 1} consecutive runs of its props callback — the source is the same, only the identity is fresh.\n` +
+    `Every prop is a signal, so a new identity is a change: a \`@compute\` reading it recomputes, a \`@watchProp\` on it fires, and a subscription whose \`connect\` reads it reconnects — every time the callback runs.`,
   object: (owner, key) =>
-    `\`${owner}\` builds a new array or object for the \`${key}\` prop on every render, with the same contents.\n` +
-    `Every prop is a signal, so a new reference is a change: a \`@compute\` reading it recomputes, a \`@watchProp\` on it fires, and a subscription whose \`connect\` reads it reconnects — on every render of the owner.`,
+    `\`${owner}\` built a new array or object for the \`${key}\` prop on ${RUNS + 1} consecutive runs of its props callback, with the same contents every time.\n` +
+    `Every prop is a signal, so a new reference is a change: a \`@compute\` reading it recomputes, a \`@watchProp\` on it fires, and a subscription whose \`connect\` reads it reconnects — for a value that never moved.`,
   nondeterministic: (owner, key) =>
     `\`${owner}\` produced a different value for the \`${key}\` prop from two calls in the same tick, with no state change between them — so the prop does not come from state.\n` +
-    `The bag is rebuilt on every render, so this prop holds a different value every time: as a query key, a new cache entry per render and a fetch that never settles.`,
+    `Every run of the callback puts a different value in this prop: as a query key, a new cache entry each time and a fetch that never settles.`,
 };
 
 const FIX: Record<Kind, string> = {
@@ -70,8 +96,15 @@ export function checkPropsStability(
   first: unknown,
   second: unknown,
   declared: readonly string[] | undefined,
+  site: object,
 ): void {
   if (!isBag(first) || !isBag(second)) return;
+
+  let runs = churn.get(site);
+  if (runs === undefined) {
+    runs = new Map();
+    churn.set(site, runs);
+  }
 
   for (const key of Object.keys(first)) {
     // The hook declared this prop as a value (`static StableProps`), so the framework
@@ -86,10 +119,126 @@ export function checkPropsStability(
     const a = first[key];
     const b = second[key];
 
-    if (Object.is(a, b)) continue;
+    if (Object.is(a, b)) {
+      // Not built in place — it came from somewhere that HAS an identity. Any run it had is over,
+      // and leaving the count standing would let a key that was fixed report later from a stale
+      // tally.
+      runs.delete(key);
+      continue;
+    }
 
     const kind = classify(a, b);
-    if (kind) report(kind, owner, key, a, b);
+    if (kind === undefined) {
+      runs.delete(key);
+      continue;
+    }
+
+    /**
+     * A prop that is not a function of state is a fault the first time, so it is reported the
+     * first time. It is also the one kind the props cache makes WORSE rather than better: a
+     * `Math.random()` in the bag no longer merely churns, it gets frozen into the cached bag and
+     * stays until something else invalidates it.
+     */
+    if (kind === "nondeterministic") {
+      runs.delete(key);
+      report(kind, owner, key, a, b);
+      continue;
+    }
+
+    const seen = runs.get(key);
+    if (seen === undefined) {
+      runs.set(key, { previous: a, equalRuns: 0 });
+      continue;
+    }
+
+    /**
+     * The second condition, and the one this threshold is for.
+     *
+     * The same-tick pair above only proves the value was built in place. That alone is not worth
+     * reporting: `key: ["user", self.props.id]` is built in place too, and when `id` moves the
+     * array genuinely differs from last time — so `@StableProps("key")`, which the report
+     * recommends, would buy nothing. Comparing across runs is what separates the two.
+     *
+     * A function cannot be compared this way — two closures with the same body are not equal by
+     * any comparison that is safe to make — so for `handler` the count is frequency alone: this
+     * key was a fresh function on every one of the last few runs. That is the honest measure for
+     * a closure, whose cost is exactly proportional to how often the bag is rebuilt.
+     */
+    if (kind === "object" && !valueEqual(seen.previous, a, DEPTH)) {
+      seen.previous = a;
+      seen.equalRuns = 0;
+      continue;
+    }
+
+    seen.previous = a;
+    seen.equalRuns++;
+    if (seen.equalRuns < RUNS) continue;
+
+    // Reported once: the dedup key is the prop, and the point is made the first time. Reset so a
+    // later burst after a genuine change reports again.
+    seen.equalRuns = 0;
+    report(kind, owner, key, a, b);
+  }
+}
+
+/**
+ * Deeper than `classify`'s default, because this comparison decides whether to speak. `classify`
+ * only picks wording between two same-tick values it already knows differ.
+ */
+const DEPTH = 5;
+
+/**
+ * DEV-only: the safety net under the props-callback cache. RMD027.
+ *
+ * `useCommon` caches a hook's props callback on the signals it read, so on a render where none of
+ * them moved the callback is not called at all. That is right exactly as far as the tracking is:
+ * a value that reaches the bag WITHOUT passing through a signal is invisible to it, and the cache
+ * will keep serving the bag it built the last time something tracked changed.
+ *
+ * The shape that breaks is a plain field standing in for state:
+ *
+ * ```ts
+ * class Owner extends Component {
+ *   items: string[] = [];                              // not @state
+ *   add(x: string) { this.items = [...this.items, x] } // no signal is written
+ *   constructor() { super(); this.use(List, () => ({ items: this.items })) }
+ * }
+ * ```
+ *
+ * Before the cache this worked by accident: nothing about the write scheduled a render, but the
+ * next render for any OTHER reason rebuilt the bag and carried the new array along. With the
+ * cache that render no longer calls the callback, so the hook keeps the old array. The value was
+ * never reactive; what changed is that the framework stopped compensating for it.
+ *
+ * ## Why the comparison is by value, not by reference
+ *
+ * A callback that builds `{ filter: { q } }` returns a NEW object every call by construction —
+ * that is the churn the cache exists to absorb, not a fault. Comparing references would report
+ * every well-written callback in the app. So the check asks the only question that matters: does
+ * the callback produce a different VALUE than the one the cache is holding? If it does, something
+ * it reads is not a signal.
+ *
+ * A function prop is skipped for the same reason it is skipped in `resolveStable` — two closures
+ * with the same body are not equal by any comparison that is safe to make, and a fresh closure on
+ * an untracked call proves nothing about staleness.
+ */
+export function checkCachedProps(owner: string, cached: unknown, fresh: unknown, depth: number): void {
+  if (!isBag(cached) || !isBag(fresh)) return;
+
+  for (const key of Object.keys(fresh)) {
+    const a = cached[key];
+    const b = fresh[key];
+
+    if (typeof b === "function" || typeof a === "function") continue;
+    if (valueEqual(a, b, depth)) continue;
+
+    diagnose(
+      "RMD027",
+      `${owner}:${key}`,
+      `\`${owner}\` has a props callback whose \`${key}\` came out different when nothing it reads had changed.\n` +
+        `The callback is cached on the signals it reads, so on a render where none of them moved it is not called — and this prop is now holding a value the app has already moved past. Something feeding \`${key}\` is not reactive, so nothing marked the cache stale.`,
+      { cached: a, fresh: b },
+    );
   }
 }
 
