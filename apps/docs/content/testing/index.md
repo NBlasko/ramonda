@@ -52,7 +52,11 @@ export default defineConfig({
 ```ts
 // test/setup.ts
 import { h } from "@ramonda/core";
-(globalThis as unknown as { h: typeof h }).h = h;
+
+// The name has to match `jsxFactory` above. `h` is what the package exports;
+// `__ramondaH` is what compiled JSX calls, and it is deliberately a name nobody writes —
+// a local `h` in any file would otherwise shadow the injected one and silently win.
+(globalThis as unknown as { __ramondaH: typeof h }).__ramondaH = h;
 ```
 
 `globals: true` is what lets cleanup register its own `afterEach`.
