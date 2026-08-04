@@ -158,10 +158,10 @@ ctx.sibling((row: Contact) => row.kynd);  // a compile error
 ctx.sibling("kynd");                      // not — and this is what catches it
 ```
 
-## What is deliberately not here
+## Validation is always whole-form
 
-Per-field validation via `pick`, which was the original plan for this module. It was measured first,
-on a bguard schema with a `custom` per field plus one cross-field rule:
+Every keystroke runs the whole schema, and that is affordable. Measured on a bguard schema with a
+`custom` per field plus one cross-field rule:
 
 | fields | whole-form validation |
 |---|---|
@@ -170,10 +170,9 @@ on a bguard schema with a `custom` per field plus one cross-field rule:
 | 101 | 48.3 µs |
 | 301 | 154.8 µs |
 
-A three-hundred-field form revalidates in a hundredth of a 60fps frame. There is no problem to solve,
-and the fast path carried real hazards: `pick` carries the source schema's object-level assertions
-over, so a whole-form rule would run against a partial value and invent an issue; `pick` reaches
-top-level keys only, so a nested field could not use it; and the dependency graph is discovered by
-running rules rather than known up front, so a rule that had not run yet would be missed.
+A three-hundred-field form revalidates in a hundredth of a 60fps frame.
 
-Each of those shows a wrong or stale message. To save ten microseconds.
+It is also the only thing that is correct. A cross-field rule reads a value the form did not just
+change, so validating one field in isolation would leave a stale message under the field that
+depends on it — and which fields those are is only knowable by running the rules, since a `custom`
+is an opaque function.

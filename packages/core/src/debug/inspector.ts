@@ -1,5 +1,6 @@
 import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS } from "../helpers/constants";
 import { INSPECT } from "../base/inspect";
+import { inspectPhase } from "./renderPhase";
 import { definitionOf, type SourceLocation } from "./sourceLocation";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 
@@ -156,11 +157,19 @@ function readDetail(instance: Inspectable): Record<string, unknown> | undefined 
   const describe = instance[INSPECT];
   if (typeof describe !== "function") return undefined;
 
+  // Marked for the duration of the call, so a `@state` write inside it can be named (RMD030).
+  // Restored in `finally` rather than after the call: a `[INSPECT]()` that throws must not leave
+  // the phase set, or the next unrelated write anywhere in the app would be reported as this one's.
+  const previous = inspectPhase.instance;
+  inspectPhase.instance = instance;
+
   try {
     const detail = describe.call(instance);
     return detail !== null && typeof detail === "object" ? detail : undefined;
   } catch (error) {
     return { "[INSPECT] threw": String(error) };
+  } finally {
+    inspectPhase.instance = previous;
   }
 }
 

@@ -37,9 +37,8 @@ be thrown away and rebuilt. They do not, because each array numbers its own rows
 independently of which array a render happened to read first. Server and browser walk the same
 schema in the same order and arrive at the same ids.
 
-This is asserted, not assumed: the SSR playground's smoke test renders the form on a real
-server, hydrates it in a real browser, compares the row ids on both sides, splices a row, and
-checks that the surviving rows are still holding the same DOM elements.
+You can check it on your own form: render it on the server, hydrate it, and a row you had
+focused stays focused. If the ids disagreed, the input would be replaced and the focus with it.
 
 ## Validation at creation, and the async case
 

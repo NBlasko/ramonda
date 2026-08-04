@@ -3,6 +3,8 @@ import { act, render } from "@ramonda/testing-library";
 import { afterEach, describe, expect, test } from "vitest";
 import { QueryClientProvider } from "../context";
 import { Query } from "../Query";
+// Importing the entry is what registers the tab — the same line an app writes.
+import "../devtools";
 import { panelRegistry } from "../devtoolsPanel";
 import type { PanelPlugin, PanelRow } from "../devtoolsPanel";
 

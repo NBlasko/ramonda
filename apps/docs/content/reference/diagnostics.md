@@ -521,6 +521,123 @@ where that work belongs.
 
 # Query — `RMQ`
 
+## RMD028 — an element the HTML parser is not allowed to keep here
+
+```tsx
+<p>
+  intro
+  <div>a block</div>   {/* reported */}
+</p>
+```
+
+The client builds the DOM with `appendChild`, which puts a node exactly where it is told. A parser
+does not:
+
+```
+your markup:    <p>intro<div>a block</div></p>
+what a browser
+builds from it: <p>intro</p><div>a block</div>
+```
+
+The `<p>` is closed early and the `<div>` becomes its sibling. **So this works perfectly until the
+page is server-rendered**, and then the DOM the browser built is not the tree `render()` described.
+
+Without this, what you would see at that point is
+[RMD007](#rmd007-hydration-mismatch) — a mismatch — whose advice is about `new Date()` and
+`typeof window`. Neither is the problem: the server sent the right markup and the parser moved it.
+
+What is reported, and what the parser does with each:
+
+| markup | what happens |
+| --- | --- |
+| a block element inside `<p>` | the `<p>` is closed; the block becomes its sibling |
+| `<li>` outside `<ul>` / `<ol>` / `<menu>` | relocated |
+| `<tr>` outside a table, `<td>` outside a `<tr>` | relocated |
+| `<option>` outside `<select>` / `<optgroup>` / `<datalist>` | relocated |
+| `<form>` inside `<form>` | the inner one is **dropped**; its fields join the outer form |
+| `<a>` inside `<a>` | the outer link is closed where the inner one starts |
+
+"A block element" is every tag that closes a `<p>` by the parser's own rule — `div`, `ul`, `ol`,
+`table`, `h1`–`h6`, `blockquote`, `form`, `hr`, `section`, `article`, `pre`, `figure`, and the rest
+of flow content. Inline content — `<strong>`, `<em>`, `<a>`, `<span>` — is fine inside a `<p>`, which
+is what a `<p>` is for.
+
+**Put the element where the parser allows it.** A block beside the paragraph rather than inside it,
+list items in a list, rows in a table. When the misplaced element is a component's own,
+[`@Host`](/concepts/host) is what decides its tag — and if a *default* host is what is in the wrong
+place, [RMD010](#rmd010-the-default-host-is-not-allowed-in-this-parent) reports that instead, with
+the host tag to reach for.
+
+## RMD029 — a boolean attribute given the string "false"
+
+```tsx
+<input disabled="false" />     {/* reported — and the input IS disabled */}
+<input disabled={false} />     {/* what was meant */}
+```
+
+A boolean attribute is true whenever it is **present**. The parser never reads its value, so the
+string `"false"` turns the attribute on and the element does the opposite of what the line says:
+
+| written | result |
+| --- | --- |
+| `disabled="false"` | the control is disabled and cannot be used |
+| `hidden="false"` | the element is hidden |
+| `readonly="false"` | the field cannot be edited |
+| `required="false"` | the form will not submit without it |
+| `checked="false"` | the box is checked |
+
+Pass the boolean itself — `disabled={false}`, or `disabled={isLocked}`. A `false` **removes** the
+attribute, and that is what makes it off.
+
+**This is not fixed for you, on purpose.** `<input disabled="false">` is disabled in every browser,
+by the HTML spec. A framework that quietly read the string and decided otherwise would make its JSX
+mean something different from the markup it produces — the same page would behave one way rendered
+by us and another way pasted into an HTML file.
+
+**Only the exact string `"false"`, and only on a genuinely boolean attribute.** `aria-hidden="false"`
+is valid and means what it says: ARIA attributes are enumerated strings rather than boolean
+attributes. `data-open="false"` is your own data. `"no"`, `"off"` and `"0"` are not reported either —
+they are probably mistakes, and probably is not enough to warn on.
+
+Nothing in the type system catches this: JSX attributes are typed with an index signature, so any
+value compiles.
+
+## RMD030 — state written during `[INSPECT]()`
+
+```tsx
+[INSPECT]() {
+  this.scans = this.scans + 1;   // reported
+  return { scans: this.scans };
+}
+```
+
+[`[INSPECT]()`](/devtools#a-hook-that-keeps-its-state-outside-state) describes an instance. It does
+not change one.
+
+The panel calls it **on every commit** while it is open on the components tab, so a write here closes
+a circle: the write schedules a render, the render commits, the commit pings the panel, and the panel
+asks again. Two things go wrong, and the second is the worse one:
+
+- the app does more work to reach the same screen;
+- **the values on screen stop being the values the app had** — handed to the one reader least able
+  to doubt them, at exactly the moment they are trying to work out what is wrong.
+
+**Read fields, derive values, return.** If something has to be computed, compute it into a local. If
+something has to be cached, cache it in a **plain field** rather than `@state` — which is what
+`Form` and `Mutation` already do, holding what their version counter stands for:
+
+```tsx
+[INSPECT]() {
+  return { values: this.current, errors: [...this.issues], isDirty: this.isDirty };
+}
+```
+
+A write that changes nothing is reported too. It schedules no render, so there is no loop — but the
+method's contract is to read, and the same stance applies as in a
+[`@compute`](#rmd018-state-written-during-a-compute). This is the third of that family:
+[RMD001](#rmd001-state-written-during-render) during `render()`, RMD018 during a `@compute`, and
+this one during a describe.
+
 ## RMF001 — a field was assigned to
 
 ```tsx

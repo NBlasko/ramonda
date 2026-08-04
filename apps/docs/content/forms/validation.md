@@ -128,10 +128,75 @@ with a `custom` per field plus one cross-field rule, a whole-form pass costs 3.3
 14.9 µs at 31, 48.3 µs at 101 and 154.8 µs at 301 — a three-hundred-field form revalidates in a
 hundredth of a 60fps frame.
 
-There was a `revalidateAll` option, reserved for a form big enough that this would hurt. It is gone:
-the case does not exist, and a field-local pass cannot see a rule that reads another field, so it
-would trade a correct message for microseconds. [The bguard submodule](/forms/bguard#what-is-deliberately-not-here)
-records the rest of that reasoning.
+A field-local pass could not do better anyway: a rule that reads another field is invisible to it,
+so narrowing would trade a correct message for microseconds.
+
+## A schema that changes
+
+Sometimes the rules depend on something: a business account needs a tax number and a personal one
+does not, a country decides what a postcode looks like, an "advanced" toggle turns extra checks on.
+
+**Hold the schema in a `@compute`.** It is a value like any other, and the props callback is cached
+on the signals it reads — so a compute means the schema is rebuilt when what it depends on moves,
+and not otherwise:
+
+```tsx
+class Signup extends Component {
+  @state accountType: "personal" | "business" = "personal";
+
+  @compute get schema(): StandardSchemaV1<Signup, Signup> {
+    return this.accountType === "business" ? businessSchema : personalSchema;
+  }
+
+  private form = this.use(Form, (self: Signup) => ({
+    schema: self.schema,
+    defaultValues: BLANK,
+    onSubmit: self.save,
+  }));
+
+  chooseBusiness(): void {
+    this.accountType = "business";
+  }
+}
+```
+
+Two module constants here, which is the cheapest form. When the schema has to be *built* from the
+value — a country's postcode rule — build it in the compute; it runs when `country` moves and not
+on every render.
+
+**Do not build it in the props callback.** `schema: makeSchema(self.country)` builds a new schema
+object every time the callback runs, and a schema is usually the most expensive thing in the bag to
+construct.
+
+**A new schema applies from the next validation, not on arrival.** The form validates on the events
+you asked for, and a schema changing is not one of them — so what is on screen is what the previous
+schema said. Switch to a stricter schema and the form still reads valid until the next input or
+submit.
+
+That is usually what you want: the schema changed because the reader picked something, and putting
+fresh errors on fields they have not reached yet is what `validateOn: "submit"` exists to avoid.
+
+**Two things happen in order, and the order matters if you validate by hand.** Writing the state
+schedules a render; the props callback runs as part of it. So a `submit()` in the same handler runs
+*before* the form has the new schema, and validates against the old one:
+
+```tsx
+// ✗ submits against the schema it is replacing
+switchToBusiness(): void {
+  this.accountType = "business";
+  this.form.submit();
+}
+```
+
+```tsx
+// ✓ the state change is all it takes — the next submit uses the new rules
+switchToBusiness(): void {
+  this.accountType = "business";
+}
+```
+
+If a toggle really has to show its effect immediately, put the validation after the commit with
+[`@updated`](/concepts/lifecycle), which runs once the render has landed.
 
 ## Async schemas
 

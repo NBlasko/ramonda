@@ -1,5 +1,6 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
+import { checkBooleanAttribute } from "../debug/booleanAttribute";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -101,6 +102,10 @@ function attachNextOnenhancedNode(
 }
 
 function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, value: any, onServer: boolean) {
+  // Here rather than at vnode creation, because this is where the value is FINAL — anything that
+  // was going to normalise it already has.
+  if (__DEV__) checkBooleanAttribute(enhancedNode.nodeName, name, value);
+
   if (name === "ref") {
     // Remembered on the node so unmount can clear it. Without that, `current`
     // kept pointing at a detached element: `if (ref.current) ref.current.focus()`

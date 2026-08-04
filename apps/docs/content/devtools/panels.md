@@ -10,6 +10,23 @@ order: 106
 A library with state worth looking at can put a tab in the panel. `QUERY` and `FORMS` are built this
 way — nothing about a cache or a form is written into `@ramonda/devtools`, and yours works the same.
 
+## The app asks for it
+
+```ts
+if (import.meta.env.DEV) {
+  void import("@ramonda/devtools");
+  void import("@ramonda/query/devtools");
+  void import("@ramonda/form/devtools");
+}
+```
+
+A tab lives in its own entry, and importing that entry registers it. Nothing is exported to call.
+
+This is why: a package that imported the panel would put its whole tab description into the bundle
+of every application using it, whether or not anyone opens the devtools. A separate entry is only in
+the bundle of an app that asked for one. `create-ramonda` writes these lines for the add-ons you
+pick.
+
 ```ts
 import { panelRegistry } from "@ramonda/devtools";
 
@@ -113,25 +130,46 @@ writing back would be dishonest: `@ramonda/form` refuses because a form's values
 input side and JSON cannot round-trip a `Date`; `@ramonda/query` refuses for a value that arrived
 bounded, because sending it back would put the truncation markers into the cache.
 
-## Register from a lifecycle, not at import
+## Announce from your package; listen from the entry
+
+Your package should not import the module that describes your tab — that is what would drag the
+description into everybody's bundle. Send an **event** instead, and let the entry listen:
 
 ```ts
-class SocketProvider extends Hook {
-  @create join() {
-    if (__DEV__) this.off = panelRegistry().register(socketPanel());
-  }
+// @ramonda/sockets — one guarded line, and __DEV__ removes it
+@create join() {
+  if (__DEV__) window.dispatchEvent(new CustomEvent("sockets:open", { detail: { socket: this } }));
+}
 
-  @destroy leave() {
-    this.off?.();
-  }
+@destroy leave() {
+  if (__DEV__) window.dispatchEvent(new CustomEvent("sockets:closed", { detail: { socket: this } }));
 }
 ```
 
-Registering when the module loads would list a source that no longer exists, and would advertise the
-module-global pattern the framework steers away from. From a lifecycle, the list is exactly what is
-mounted — and the tab appears and disappears with it.
+```ts
+// @ramonda/sockets/devtools — imported only by an app that wants the tab
+const live = new Set<Socket>();
+window.addEventListener("sockets:open", (e) => live.add(e.detail.socket));
+window.addEventListener("sockets:closed", (e) => live.delete(e.detail.socket));
 
-Guard it with `__DEV__` so a production build strips both the registration and the description.
+panelRegistry().register({ version: 1, id: "sockets", label: "SOCKETS", snapshot, run });
+```
+
+**From a lifecycle, not at module load.** A source that registers when its module loads lists
+something that may never mount, and never stops listing it. Announcing from `@create` and `@destroy`
+means the list is exactly what is live — and the tab's ROWS appear and disappear with them.
+
+**The tab itself does not.** It is registered once, when its entry is imported, and never
+deregistered — so a submit that redirects, or any navigation that unmounts the last of something,
+leaves the tab in place saying there is none. That is what `empty` is for. A tab that came and went
+as somebody moved around an app would be unusable exactly when they are trying to follow something
+across pages.
+
+**Nothing about the panel belongs on your class.** Not a field holding a cleanup, not a method that
+builds a row: a class member cannot be tree-shaken, whatever guard surrounds its call, so it ships.
+Keep the list and the description in the entry, and leave one `if (__DEV__)` line at each end.
+
+This is the same shape core uses for `ramonda:tick` and `ramonda:dev-log`.
 
 ## The panel pulls
 

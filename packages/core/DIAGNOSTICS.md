@@ -62,6 +62,9 @@ so a component that misuses the same property on every render reports once.
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
 | `RMD025` | error | Per-request data read in the browser |
 | `RMD027` | error | A props callback reads a value that is not reactive |
+| `RMD028` | error | An element the HTML parser is not allowed to keep here |
+| `RMD029` | error | A boolean attribute given the string "false" |
+| `RMD030` | error | State written during `[INSPECT]()` |
 
 ### RMD001 — State written during render()
 
@@ -820,6 +823,91 @@ test asserts the report COUNT for that reason rather than its presence.
 **The honest limit**, stated in the docs too: a compute that reads only something non-reactive
 is never invalidated, so it never recomputes and is never observed. The counter case is caught
 only when the compute is invalidated by something else.
+
+### RMD030 — state written during [INSPECT]()
+
+The third of the phase family, and built the same way as the other two: a slot is marked around the
+call, and the `@state` setter reads it. `inspectPhase` in `debug/renderPhase.ts`, set by `readDetail`
+in `debug/inspector.ts`.
+
+**Reported BEFORE `shouldUpdate`**, beside the `@compute` check rather than the render one. Describing
+is meant to be a pure read, so a write that happens to change nothing is still the mistake. RMD001
+waits until after, because a no-op write during a render schedules nothing and is therefore not the
+bug it is looking for.
+
+**Restored in a `finally`.** A `[INSPECT]()` that throws — reading a field that is undefined
+mid-construction, which is exactly when someone has the panel open — must not leave the phase set,
+or the next unrelated write anywhere in the app is reported as though it came from the describe. A
+test covers that.
+
+**Why an error rather than a warning.** The wasted renders are the smaller half. The panel ends up
+showing values the app did not have, to the one reader least able to doubt them — a wrong result,
+which is what the severity rule is about.
+
+**The hole this filled, measured 2026-08-03 and again before the fix:** five scans over an
+`[INSPECT]()` that increments a `@state` field moved it five times and reported nothing. RMD009 does
+not fire, because it watches for a component that will not stop rendering and this one only turns
+while somebody is looking.
+
+### RMD029 — a boolean attribute given the string "false"
+
+`debug/booleanAttribute.ts`, called from `setNextOnenhancedNode` — the point where the value is
+FINAL, after anything that was going to normalise it has. Two comparisons, and only for a string: a
+real boolean, a number and everything else return on the first test.
+
+**Measured, which is what the message says:**
+
+```
+disabled={false}     attribute absent,  element enabled
+disabled={"false"}   attribute present, element DISABLED
+```
+
+**Why it is not fixed instead.** `<input disabled="false">` is disabled by the HTML spec, in every
+browser. Reading the string and deciding otherwise would make our JSX mean something different from
+the markup it emits, and the difference would surface as a hydration mismatch or as markup that
+behaves one way through us and another way pasted into a page. The attribute is set exactly as
+asked; this says what the result will be.
+
+**The bar for what is listed.** Only the exact string "false", and only on the spec's boolean
+attributes. `aria-*` is excluded because ARIA attributes are enumerated strings — `aria-hidden="false"`
+is correct and meaningful. "no", "off" and "0" are excluded because a `data-*` flag legitimately
+carries them, and a diagnostic that fires on correct code teaches people to skip the category.
+
+**Nothing in the types catches it:** `RamondaArgs` is `[val: Lowercase<string>]: any`, so every
+attribute value compiles.
+
+### RMD028 — an element the HTML parser is not allowed to keep here
+
+`debug/domNesting.ts`, called from the same point as `checkHostPlacement` — which already has the
+parent node and the freshly built child in hand. Reads `nodeName` on both, nothing else: no layout,
+no attributes, no walk. A set lookup per element in a development build.
+
+**Why it exists when hydration already notices.** It does notice, and it says the wrong thing.
+Measured:
+
+```
+server emits:   <p>intro<div>a block</div></p>
+browser parses: <p>intro</p><div>a block</div>
+
+RMD007 then says: "<Card /> rendered <div> but the server sent nothing."
+and advises:      "new Date() / Math.random() in render(): move the value into @create"
+```
+
+The server sent it. The parser moved it. A reader following that advice is looking for
+non-determinism that is not there. This reports at creation time and names both tags and what the
+parser will do.
+
+**Why the client never shows it.** `appendChild` puts a node where it is told; a parser follows the
+HTML spec's insertion rules. So the mistake survives any amount of SPA development and appears the
+first time the page is server-rendered — which is the worst time to meet it.
+
+**What is listed.** The `<p>`-closing set is the spec's flow-content list rather than a judgement
+about what looks reasonable; `ONLY_INSIDE` covers the list, table, select and details families; and
+`<form>` and `<a>` are the two tags the parser actively repairs rather than tolerates. Anything the
+parser merely allows is absent, per the standard below.
+
+**A default host in between is left to RMD010**, which can name the `@Host` to reach for. A component
+that IS the misplaced element is checked like any other, because by then the pair is the real one.
 
 ### RMD027 — a props callback reads a value that is not reactive
 

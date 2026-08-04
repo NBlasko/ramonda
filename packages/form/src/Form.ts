@@ -1,6 +1,5 @@
 import { create, destroy, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
-import { registerDevtoolsForm } from "./devtoolsPanel";
-import type { InspectableForm } from "./devtoolsPanel";
+
 import { type FieldHost, FieldTree } from "./fieldTree";
 import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
@@ -140,16 +139,25 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   /**
    * `@create`, and the place the form joins the devtools tab.
    *
-   * Registration is here rather than in `prime` because `prime` is not only the `@create` — a
-   * `reset()` calls it again to revalidate, and registering there put the same form in the list
-   * twice, with only the second registration reachable to undo. It is here rather than in a field
-   * initializer so a form that never mounts never appears, and not on the SERVER at all, where
-   * there is no panel and a registration would be module state outliving one request.
+   * An EVENT rather than a registration, and this package holds no list: `@ramonda/form/devtools`
+   * listens when an app has imported it, and nothing happens when it has not. Announcing rather
+   * than registering is what keeps the form from importing the module that describes it — which
+   * would put that module in the bundle of every application using forms.
+   *
+   * It is here rather than in `prime` because `prime` is not only the `@create` — a `reset()`
+   * calls it again to revalidate, and announcing there listed the same form twice. Here rather
+   * than in a field initializer so a form that never mounts never appears, and not on the SERVER
+   * at all, where there is no panel and the listener would outlive one request.
+   *
+   * `this` travels as the detail. The listener builds what it needs from it, so nothing that shapes
+   * a panel row lives on this class — a method or a field here would ship whatever the guard said.
    */
   @create
   join(env: RenderEnv = "client"): void {
     if (__DEV__ && env === "client") {
-      this.leavePanel = registerDevtoolsForm(this.panelView());
+      window.dispatchEvent(
+        new CustomEvent("ramonda:form", { detail: { form: this, key: this, readable: readableKey } }),
+      );
     }
     this.prime(env);
   }
@@ -171,12 +179,8 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @destroy
   dispose(): void {
     this.disposed = true;
-    this.leavePanel?.();
-    this.leavePanel = undefined;
+    if (__DEV__) window.dispatchEvent(new CustomEvent("ramonda:form-gone", { detail: { key: this } }));
   }
-
-  /** Removes this form from the Forms tab. Absent in a production build. */
-  private leavePanel: (() => void) | undefined;
 
   /**
    * Everything the Forms tab is allowed to read or ask for, and nothing else.
@@ -186,39 +190,6 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * it change the form in a way the form did not sanction. Getters rather than a copy, because it
    * is read on every poll and must answer for the form as it is now.
    */
-  private panelView(): InspectableForm {
-    const form = this;
-    return {
-      get values() {
-        return form.current;
-      },
-      get formErrors() {
-        return form.formErrors;
-      },
-      get isValid() {
-        return form.isValid;
-      },
-      get isDirty() {
-        return form.isDirty;
-      },
-      get isSubmitting() {
-        return form.submitting;
-      },
-      get submitCount() {
-        return form.submits;
-      },
-      get revision() {
-        return form.version;
-      },
-      fieldErrors: () => new Map([...form.issues].map(([key, messages]) => [readableKey(key), messages])),
-      interaction: () => ({
-        touched: [...form.touchedKeys].map(readableKey),
-        changed: [...form.changedKeys].map(readableKey),
-      }),
-      reset: () => form.reset(),
-      submit: () => form.submit(),
-    };
-  }
 
   /**
    * New `defaultValues` — "fetch the record, then fill the form".

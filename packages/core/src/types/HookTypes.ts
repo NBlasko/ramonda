@@ -22,23 +22,32 @@ export type HookProps = Record<string, any> | undefined;
  * RETURN type — and from there `TData` follows out of the `fetch` prop, with
  * nothing declared at the call site.
  *
- * Three parameter types were measured for that overload:
+ * Four parameter types were measured for that overload:
  *
- * - `this` — unusable. Resolving an overload needs the argument's type, which
- *   needs the arrow's contextual type, which needs the class's `this` type,
- *   which is the class whose field is being declared: TS7022 circularity on
- *   every call site, generic hook or not.
  * - `any` — works, and makes an UNANNOTATED `(self) => …` a silent `any`.
  * - `never` — works, and makes it a hard error instead
- *   (`Property 'props' does not exist on type 'never'`). The same reason
- *   `createSubscriptionDecorator` constrains its handler with `never[]`, and the
- *   same stance `@watchProp` takes: strict, never `any`.
+ *   (`Property 'props' does not exist on type 'never'`), so the owner's type had
+ *   to come from ANNOTATING the parameter. It left a hole: `never` accepts any
+ *   function, so a callback written for one class and handed to another passed
+ *   silently — a shared `(self: Panel) => ({ fetch: self.load })` used on a class
+ *   with no `load` compiled.
+ * - `this` — unusable on its own. Resolving an overload needs the argument's
+ *   type, which needs the arrow's contextual type, which needs the class's `this`
+ *   type, which is the class whose field is being declared: TS7022 circularity on
+ *   every call site, generic hook or not. Measured again before the change below,
+ *   and it still holds.
+ * - **`S extends this = this`** — what is here. `S` is inferred from the CALLBACK
+ *   and only then checked against `this`, so the field initializer never has to
+ *   resolve `this` to find the argument's type and the circle does not close.
  *
- * So the owner's type comes from ANNOTATING the parameter — `(self: Panel) =>
- * ({ … })` — which is how every call site in the framework and its docs already
- * writes it.
+ * So an unannotated parameter is typed as the owner, a member that does not exist
+ * is reported by name, and a callback annotated with the wrong class is refused.
+ * `HookPropsSelf.test.tsx` holds all three with `@ts-expect-error`.
+ *
+ * `S` defaults to `never` on the type itself, which is what the implementation
+ * signature uses — it takes either form and needs neither checked.
  */
-export type PropsFactory<Q> = (bag: never) => Q;
+export type PropsFactory<Q, S = never> = (self: S) => Q;
 
 /**
  * A type-only carrier for a hook's props type.

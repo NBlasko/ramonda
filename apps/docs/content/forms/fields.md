@@ -50,13 +50,13 @@ city.bind       // the attributes for a control
 
 ### Why one token instead of eleven names
 
-The first version of this API was flat — `f.address.city.value`, `f.address.city.error`. It
-collides with your data. A form with `contacts: { kind, value }[]` cannot say
-`f.contacts[0].value`, because `value` is both a field of yours and a property of the API. So
-would `name` on a person, `errors` on a report, `path` on a file picker.
+A flat API — `f.address.city.value`, `f.address.city.error` — collides with your data. A form
+with `contacts: { kind, value }[]` could not say `f.contacts[0].value`, because `value` would be
+both a field of yours and a property of the API. The same goes for `name` on a person, `errors`
+on a report, `path` on a file picker.
 
-Flat means eleven chances to collide, one for every member. `$` means one. And if you do have a
-field literally called `$`, the type tells you so by name and `at("$")` is the way through.
+Flat is eleven chances to collide, one per member. `$` is one. And if you do have a field
+literally called `$`, the type says so by name and `at("$")` is the way through.
 
 ```tsx
 f.settings.at("$");              // a field actually named "$"
@@ -98,17 +98,26 @@ see the tag. Either is fine when the field holds a string.
 <input {...f.age.$.bind} min={0} max={120} />
 ```
 
-To do something extra on an event, call the bound handler yourself:
+To do something extra on an event, call the bound handler from a method of your own:
 
 ```tsx
-<input
-  {...f.email.$.bind}
-  onInput={(event) => {
-    f.email.$.bind.onInput(event);
+class Signup extends Component {
+  private form = this.use(Form, () => ({ /* … */ }));
+
+  onEmailInput(event: Event): void {
+    this.form.fields.email.$.bind.onInput(event);
     this.searchAsYouType(event);
-  }}
-/>
+  }
+
+  render() {
+    return <input {...this.form.fields.email.$.bind} onInput={this.onEmailInput} />;
+  }
+}
 ```
+
+A method rather than an inline arrow, because methods are auto-bound: the identity never changes, so
+the listener is not removed and re-added on every render. An arrow here would be reported by
+[RMD020](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time).
 
 ## Fields without `bind`
 
@@ -116,12 +125,29 @@ To do something extra on an event, call the bound handler yourself:
 editor, a set of radio buttons — reads `value` and calls `set`:
 
 ```tsx
-<ColourPicker value={f.theme.$.value} onPick={(next) => f.theme.$.set(next)} />
+class Editor extends Component {
+  private form = this.use(Form, () => ({ /* … */ }));
+
+  pickTheme(next: string): void {
+    this.form.fields.theme.$.set(next);
+  }
+
+  render() {
+    return <ColourPicker value={this.form.fields.theme.$.value} onPick={this.pickTheme} />;
+  }
+}
 ```
 
-`set` is the only way to write a field. Assigning to `value` throws
-([RMF001](/reference/diagnostics#rmf001-a-field-was-assigned-to)) — a field node is a proxy
-over a path, not a place values live, so an assignment would land nowhere and the next read
+`set` is the only way to write a field. **`value` is `readonly`**, so an assignment is a compile
+error before it is anything else:
+
+```
+Cannot assign to 'value' because it is a read-only property. ts(2540)
+```
+
+It also throws at runtime ([RMF001](/reference/diagnostics#rmf001-a-field-was-assigned-to)), which
+is what catches it in JavaScript and in a file the checker is not covering. A field node is a proxy
+over a path rather than a place values live, so an assignment would land nowhere and the next read
 would hand back the old value.
 
 ## Labels, ids and accessibility

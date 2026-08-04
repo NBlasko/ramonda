@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "description": "Async state for Ramonda: cached, deduped, race-free queries and mutations that survive a server render.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -31,6 +31,10 @@
         "production": "./dist/index.prod.js",
         "default": "./dist/index.js"
       }
+    },
+    "./devtools": {
+      "types": "./dist/devtools.d.ts",
+      "import": "./dist/devtools.js"
     }
   },
   "main": "./dist/index.js",

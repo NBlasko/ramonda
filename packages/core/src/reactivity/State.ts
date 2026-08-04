@@ -1,6 +1,6 @@
 import { attach, detach } from "../helpers/constants";
 import { reactivityScope, trackerContainer } from "./tracker";
-import { reportWriteDuringRender, reportWriteDuringCompute } from "../debug/renderPhase";
+import { reportWriteDuringRender, reportWriteDuringCompute, reportWriteDuringInspect } from "../debug/renderPhase";
 import { guardArray, unwrapArray } from "../debug/mutationGuard";
 import { labelState } from "../debug/stateLabels";
 
@@ -146,6 +146,10 @@ export class State<T> {
       // meant to be pure, so even a write that changes nothing is a mistake to
       // surface, not the render-time no-op that RMD001 deliberately lets pass.
       reportWriteDuringCompute(this);
+
+      // Beside the compute check, and before shouldUpdate, for the same reason: describing an
+      // instance is meant to be a pure read, so a write that changes nothing is still the mistake.
+      reportWriteDuringInspect(this);
     }
 
     // First check shouldUpdate — if it prevents update, don't mark mutated
