@@ -1,7 +1,23 @@
 import { PANEL_CSS } from "./styles";
-import { escapeHtml, safeStringify, toServerPath } from "./format";
+import { escapeHtml, toServerPath } from "./format";
 import { resolveOriginal } from "./sourceMap";
-import { FULL, INLINE, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
+import { ValueView } from "./valueView";
+import { ProfileTab } from "./profileTab";
+import { PluginTabs } from "./pluginTabs";
+import { panelRegistry } from "./panelPlugin";
+import { ComponentsTab } from "./componentsTab";
+import {
+  FILTER_KEY,
+  MODE_KEY,
+  OPEN_KEY,
+  PIN_KEY,
+  TAB_KEY,
+  WIDTH_KEY,
+  read,
+  readSession,
+  write,
+  writeSession,
+} from "./session";
 
 interface DevLogPayload {
   data: any;
@@ -11,254 +27,9 @@ interface DevLogPayload {
   type: string;
 }
 
-/** Where a class is defined, as core read it off the stack of its first construction. */
-interface SourceLocation {
-  file: string;
-  line: number;
-  column: number;
-}
-
-interface InspectedNode {
-  /** The handle core handed out for this scan — what a write is addressed to. */
-  id: number;
-  name: string;
-  kind: "component" | "hook";
-  state: Record<string, unknown>;
-  props?: Record<string, unknown>;
-  options?: Record<string, unknown>;
-  /**
-   * What the instance said it holds, from its own `[INSPECT]()`.
-   *
-   * A hook that keeps its state in plain fields behind a `@state` counter shows that counter as its
-   * whole `state` — `{ version: 7 }` for a form, with inputs that never change. This is its own
-   * answer, and for a form it is the only thing anyone opens the panel to see.
-   */
-  detail?: Record<string, unknown>;
-  /** A context consumer's reads — the keys it subscribed to, and the ones it never touched. */
-  reads?: Record<string, unknown>;
-  /** Where the class is defined, when core could tell. */
-  source?: SourceLocation;
-  hooks: InspectedNode[];
-  children: InspectedNode[];
-  node?: Node;
-}
-
-type InspectFn = () => InspectedNode[];
-
-/**
- * What `@ramonda/query` publishes for this panel, and it is a snapshot rather than a live
- * object on purpose: the panel must not be able to hold a cache alive, and it has no
- * business reaching into an entry.
- *
- * The same pull model as `__RAMONDA_INSPECT__` — read while the tab is open, and not at all
- * otherwise. A cache changes on every fetch, observer and invalidate; pushing all of that
- * into a panel nobody is looking at would cost something in every development build.
- */
-interface QueryRow {
-  key: unknown[];
-  hash: string;
-  status: string;
-  fetchStatus: string;
-  observers: number;
-  updatedAt: number;
-  failureCount: number;
-  restored: boolean;
-  /** One line, kept as the change signal for the list. */
-  dataPreview: string;
-  /** True when the copy below hit a bound, which is what makes it unsafe to write back. */
-  truncated?: boolean;
-  /**
-   * The cached value, bounded by the bridge. Optional because a panel can be newer than the query
-   * package installed next to it — the preview is the fallback, not a second code path to keep.
-   */
-  data?: unknown;
-  error?: string;
-}
-
-type WriteFn = (id: number, key: string, value: unknown) => "ok" | "gone" | "not-state" | "unchanged";
-
-/** One component's share of a commit. */
-interface ComponentCost {
-  name: string;
-  builds: number;
-  ms: number;
-}
-
-/** One drain — what the app waited for. See core's `profiler.ts`. */
-interface CommitRecord {
-  index: number;
-  at: number;
-  duration: number;
-  builds: number;
-  components: ComponentCost[];
-}
-
-interface ProfileBridge {
-  start(): void;
-  stop(): void;
-  isRecording(): boolean;
-  commits(): CommitRecord[];
-}
-
-interface QueryBridge {
-  snapshot(): { clients: { index: number; queries: QueryRow[] }[] };
-  invalidate(clientIndex: number, hash: string): void;
-  remove(clientIndex: number, hash: string): void;
-  /** Absent on a query package older than this panel. */
-  setData?: (clientIndex: number, hash: string, data: unknown) => boolean;
-}
-
-/** One step of the pinned component's ancestry, rendered as a breadcrumb. */
-interface Crumb {
-  name: string;
-  kind: "component" | "hook";
-  path: string;
-}
-
-/** Where a pinned path sits in the freshly read tree — see `locate`. */
-interface Located {
-  node: InspectedNode;
-  /** Its position among its siblings, so the rendered path reproduces the full-tree one. */
-  index: number;
-  parentPrefix: string;
-  /** Ancestors first, the node itself last. */
-  trail: Crumb[];
-}
-
-interface WalkAcc {
-  /** One line per value, for change detection only. */
-  values: Map<string, string>;
-  /** The value itself, for the tree and for the full view. */
-  raw: Map<string, unknown>;
-  nodes: Map<string, Node>;
-  sig: string[];
-}
-
-// Cap the number of log rows kept in the DOM so a long session can't grow the
-// panel unboundedly. Newest are prepended, so the oldest is the last child.
 const MAX_LOG_NODES = 200;
-
-/**
- * Whether a value can be edited as JSON and come back the same kind of thing.
- *
- * A function, a `Map`, a DOM node, `undefined` — none of them survive `JSON.stringify` followed by
- * `JSON.parse`, so offering a box that appears to edit one is a lie the reader finds out about after
- * pressing Enter.
- */
-const isJsonLike = (value: unknown): boolean => {
-  if (value === null) return true;
-  const kind = typeof value;
-  if (kind === "string" || kind === "number" || kind === "boolean") return true;
-  if (kind !== "object") return false;
-
-  try {
-    const text = JSON.stringify(value);
-    if (text === undefined) return false;
-    // Round-tripped, so a `Date` (which stringifies to a string and parses back as one) is out.
-    return JSON.stringify(JSON.parse(text)) === text && (Array.isArray(value) || isPlainRecord(value as object));
-  } catch {
-    return false;
-  }
-};
-
-/**
- * Whether a value belongs on one line with its key.
- *
- * The test is not "is it a primitive" but **"does the tree render it as a leaf"**, which is the same
- * question the row is asking: only an array or a plain object gets a disclosure and children, so only
- * those need a block. A function is `ƒ()`, a `Date` is one line, and a class instance is its name — the
- * first version of this called those "objects" and gave `client: QueryClient` two lines for a one-word
- * value, which is the shape the whole change was fixing.
- */
-const rendersAsLeaf = (value: unknown): boolean => {
-  if (Array.isArray(value)) return false;
-  if (typeof value !== "object" || value === null) return true;
-  return !isPlainRecord(value);
-};
-
-const isPlainRecord = (value: object): boolean => {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-};
-
-/** A written value, short enough for a toast. */
-const toOneLine = (value: unknown): string => {
-  const text = safeStringify(value);
-  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
-};
-
-/**
- * `App.tsx:18` — what fits in a tooltip, and deliberately the SERVED position rather than the source
- * one. Resolving needs the module's sourcemap, which means a fetch; doing that for every row on
- * every render to fill in a tooltip would be absurd. So the tooltip says where the code was found
- * and the click says where it came from.
- */
-const shortFile = (source: SourceLocation): string => {
-  const path = toServerPath(source.file);
-  return `${path.slice(path.lastIndexOf("/") + 1)}:${source.line}`;
-};
-
 /** Narrow enough to peek past, wide enough that the drag handle is still there to grab. */
 const MIN_PANEL_WIDTH = 280;
-/**
- * Two stores, because the panel holds two different kinds of thing.
- *
- * A **preference** is about the tool: how wide you like it, docked or floating, whether you keep
- * state and props collapsed. That is how you work, it is the same tomorrow, and it belongs in
- * `localStorage`.
- *
- * A **session** is about the task: the panel being open, which tab, what you were filtering for,
- * which component you had focused. That is where you are in one piece of debugging, and it is
- * meaningless in another tab or next week — a focused path names a tree that no longer exists. It
- * belongs in `sessionStorage`, which the browser scopes to exactly this tab and clears when it is
- * closed. Nothing is written to the URL and nothing survives the tab, so a devtools session cannot
- * follow a shared link.
- */
-const WIDTH_KEY = "ramonda:devtools-width";
-const MODE_KEY = "ramonda:devtools-mode";
-const HIDE_VALUES_KEY = "ramonda:devtools-hide-values";
-const HIDE_HOOKS_KEY = "ramonda:devtools-hide-hooks";
-const OPEN_KEY = "ramonda:devtools-open";
-const TAB_KEY = "ramonda:devtools-tab";
-const FILTER_KEY = "ramonda:devtools-filter";
-const PIN_KEY = "ramonda:devtools-pin";
-
-/**
- * `localStorage` throws rather than returning null in a sandboxed iframe or with site data
- * blocked, and a devtools panel is the last thing that should take an app down with it.
- */
-const read = (key: string): string | null => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const write = (key: string, value: string): void => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* not storable here; the preference simply does not persist */
-  }
-};
-
-const readSession = (key: string): string | null => {
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const writeSession = (key: string, value: string | null): void => {
-  try {
-    if (value === null) sessionStorage.removeItem(key);
-    else sessionStorage.setItem(key, value);
-  } catch {
-    /* not storable here; the session simply does not survive a reload */
-  }
-};
-
-// packages/devtools/src/index.ts
 
 class RamondaDevTools extends HTMLElement {
   private isDragging = false;
@@ -269,69 +40,64 @@ class RamondaDevTools extends HTMLElement {
 
   // Component-tab state (pull model).
   private componentsTabActive = false;
-  private queryTabActive = false;
   private profileTabActive = false;
-  private profileTimer: ReturnType<typeof setInterval> | undefined;
-  /** The last rendered shape of the commit list, so an idle poll touches no DOM. */
-  private profileShape = "";
-  private queryTimer: ReturnType<typeof setInterval> | undefined;
-  /** The last rendered shape of the query list — see `renderQueries`. */
-  private queryShape = "";
-  private watching = false;
-  private lastSig = "";
-  private lastValues = new Map<string, string>();
-  /** The live values behind the rendered trees, by value id — read when a full view opens. */
-  private rawValues = new Map<string, unknown>();
   /**
-   * Query values are kept apart from component values because the component map is REPLACED on
-   * every structural render. Sharing one map meant that switching to the Components tab with a
-   * query value open would report it as gone, which it was not.
+   * Reading and editing values, shared by every tab that shows one — see `valueView.ts`.
+   *
+   * Assigned in the constructor, from the shadow root `attachShadow` returns, so that everything
+   * after construction can use it without checking whether it exists. `bind()` comes later, in
+   * `connectedCallback`: the full view's controls are part of the panel's HTML.
+   *
+   * It holds the two value maps. They stay separate — the component map is REPLACED on every
+   * structural render, and sharing one meant that switching to the Components tab with a query
+   * value open reported it as gone, which it was not.
    */
-  private queryValues = new Map<string, unknown>();
-  /** Value id → the element holding its tree, so no selector is ever built from a prop name. */
-  private valueElements = new Map<string, HTMLElement>();
-  private nodeMap = new Map<string, Node>();
-  private highlighted: HTMLElement | null = null;
-  /** Paths the reader folded shut. Absent means open, which is the default for a new node. */
-  private collapsed = new Set<string>();
+  private readonly values: ValueView;
+  /** The profiler tab, which owns its own poll timer and what it last drew — see `profileTab.ts`. */
+  private readonly profileTab: ProfileTab;
+  /** Every tab a source registered, built and polled here — see `pluginTabs.ts`. */
+  private readonly pluginTabs: PluginTabs;
+  /** The component tree and its tools — see `componentsTab.ts`. */
+  private readonly componentsTab: ComponentsTab;
   /** False once the element leaves the DOM — see `disconnectedCallback`. */
   private alive = false;
-  /**
-   * The path of the component the reader is working on, or `undefined` for the whole tree.
-   *
-   * Deliberately not persisted. A path is built from indices and names, so it survives a
-   * re-render but says nothing about a different page — restoring it after a reload would
-   * usually mean opening on "that component is gone".
-   */
-  private pinned: string | undefined;
-  private filter = "";
-  /** Picking from the page: see `setPicking`. */
-  private picking = false;
-  /**
-   * Element → path, the reverse of `nodeMap`, rebuilt on every structural render.
-   *
-   * A `WeakMap` because the keys are the app's live elements and this panel must never be the
-   * reason one of them is kept alive. Insertion follows the walk, so a parent is written before
-   * its children — and when a parent and a child share a host element, the deeper one wins, which
-   * is the one the cursor is actually over.
-   */
-  private elementPaths = new WeakMap<Node, string>();
 
   constructor() {
     super();
-    this.attachShadow({ mode: "open" });
+    const root = this.attachShadow({ mode: "open" });
+    this.values = new ValueView(root);
+    this.profileTab = new ProfileTab(root);
+    this.pluginTabs = new PluginTabs(
+      root,
+      panelRegistry(),
+      this.values,
+      (message) => this.toast(message),
+      () => this.setupTabSwitching(),
+    );
+    this.componentsTab = new ComponentsTab(
+      this,
+      root,
+      this.values,
+      (message) => this.toast(message),
+      (file, line, column) => void this.openInEditor(file, line, column),
+    );
   }
 
   connectedCallback() {
     this.alive = true;
     this.render();
+    // After render(), because it binds the full view's controls and those are in that HTML.
+    this.values.bind();
+    this.profileTab.bind();
+
+    this.pluginTabs.start();
     this.setupEventListeners();
     this.setupDrag();
 
     // Pull model: the core pings a cheap "tick"; we re-read the live tree only
     // while actively watching (panel open + components tab).
     window.addEventListener("ramonda:tick", () => {
-      if (this.alive && this.watching) this.refreshComponents();
+      if (this.alive && this.componentsTab.isWatching) this.componentsTab.refreshComponents();
     });
 
     this.restoreSession();
@@ -359,11 +125,9 @@ class RamondaDevTools extends HTMLElement {
     if (filter) {
       const input = root.querySelector("#tree-filter") as HTMLInputElement | null;
       if (input) input.value = filter;
-      this.filter = filter;
     }
 
-    const pin = readSession(PIN_KEY);
-    if (pin) this.pinned = pin;
+    this.componentsTab.restore(filter, readSession(PIN_KEY));
 
     const tab = readSession(TAB_KEY);
     if (tab && tab !== "logs") root.querySelector(`.tab[data-tab="${tab}"]`)?.dispatchEvent(new Event("click"));
@@ -371,9 +135,9 @@ class RamondaDevTools extends HTMLElement {
     if (readSession(OPEN_KEY) === "1") {
       this.setAttribute("open", "");
       this.applyLayout();
-      this.updateWatchState();
-      this.updateQueryWatch();
-      this.updateProfileWatch();
+      this.componentsTab.watch(this.hasAttribute("open") && this.componentsTabActive);
+      this.pluginTabs.setActive(this.activePluginId, this.hasAttribute("open"));
+      this.profileTab.watch(this.hasAttribute("open") && this.profileTabActive);
     }
   }
 
@@ -395,38 +159,23 @@ class RamondaDevTools extends HTMLElement {
      * bookkeeping a dozen listener references is not, and it costs one comparison per event.
      */
     this.alive = false;
-    this.setPicking(false);
+    this.componentsTab.setPicking(false);
     if (this.docked) {
       document.body.style.marginRight = this.savedMargin;
       this.docked = false;
     }
-    this.watching = false;
-  }
 
-  private get inspect(): InspectFn | undefined {
-    return (window as unknown as { __RAMONDA_INSPECT__?: InspectFn }).__RAMONDA_INSPECT__;
-  }
-
-  /**
-   * Core's write side. Narrow on purpose: one field, addressed by a handle from the last scan, and
-   * only when that field is `@state` or `@persist`. There is no way through it to an instance, a
-   * method, or a prop.
-   */
-  private get writer(): WriteFn | undefined {
-    return (window as unknown as { __RAMONDA_WRITE__?: WriteFn }).__RAMONDA_WRITE__;
-  }
-
-  /**
-   * The profiler's controls, off until this panel presses record — a commit is the hottest path in the
-   * framework, and sampling it unconditionally would tax every development build.
-   */
-  private get profile(): ProfileBridge | undefined {
-    return (window as unknown as { __RAMONDA_PROFILE__?: ProfileBridge }).__RAMONDA_PROFILE__;
-  }
-
-  /** Absent unless the app installed `@ramonda/query`, which is the ordinary case. */
-  private get queries(): QueryBridge | undefined {
-    return (window as unknown as { __RAMONDA_QUERY__?: QueryBridge }).__RAMONDA_QUERY__;
+    /**
+     * The polling tabs, stopped here rather than left to the flag above.
+     *
+     * A guard cannot help an interval: it fires whether or not anyone reads the result, and both of
+     * these poll a BRIDGE — so a removed panel kept asking the query cache for a snapshot and the
+     * profiler for its commits, forever. Measured before this line existed: a panel taken out of the
+     * document called `commits()` thirteen more times over five seconds and did not stop.
+     */
+    this.pluginTabs.stop();
+    this.profileTab.stop();
+    this.componentsTab.stop();
   }
 
   private setupEventListeners() {
@@ -581,7 +330,6 @@ class RamondaDevTools extends HTMLElement {
       <div class="tabs">
         <div class="tab active" data-tab="logs">LOGS</div>
         <div class="tab" data-tab="components">COMPONENTS</div>
-        <div class="tab" data-tab="query">QUERY</div>
         <div class="tab" data-tab="profile">PROFILE</div>
       </div>
       <div id="logs-tab" class="tab-content active">
@@ -623,16 +371,11 @@ class RamondaDevTools extends HTMLElement {
         </div>
         <div id="profile-container"></div>
       </div>
-      <div id="query-tab" class="tab-content">
-        <div id="query-container">
-          <small style="color:#666">No query cache…</small>
-        </div>
-      </div>
     </div>
     `;
 
     this.setupTabSwitching();
-    this.setupTools();
+    this.componentsTab.setupTools();
     this.setupResize();
     this.setupNavigation();
     this.shadowRoot!.querySelector("#close-btn")?.addEventListener("click", () => this.toggle());
@@ -699,9 +442,9 @@ class RamondaDevTools extends HTMLElement {
     // Opened by hand: the reader's own preference applies.
     this.forcedFloat = false;
     this.applyLayout();
-    this.updateWatchState();
-    this.updateQueryWatch();
-    this.updateProfileWatch();
+    this.componentsTab.watch(this.hasAttribute("open") && this.componentsTabActive);
+    this.pluginTabs.setActive(this.activePluginId, this.hasAttribute("open"));
+    this.profileTab.watch(this.hasAttribute("open") && this.profileTabActive);
   }
 
   /**
@@ -757,9 +500,9 @@ class RamondaDevTools extends HTMLElement {
     this.clearErrorAlert();
     writeSession(OPEN_KEY, "1");
     this.applyLayout();
-    this.updateWatchState();
-    this.updateQueryWatch();
-    this.updateProfileWatch();
+    this.componentsTab.watch(this.hasAttribute("open") && this.componentsTabActive);
+    this.pluginTabs.setActive(this.activePluginId, this.hasAttribute("open"));
+    this.profileTab.watch(this.hasAttribute("open") && this.profileTabActive);
   }
 
   /**
@@ -818,62 +561,6 @@ class RamondaDevTools extends HTMLElement {
   }
 
   /**
-   * The toolbar: two collapse controls and two filters.
-   *
-   * All four exist for one task — finding a component in a real app's tree. Expanded state and
-   * props are what you want when you have found it and what stand in the way while looking, so
-   * hiding them is a class on the container rather than a re-render: instant, and it keeps every
-   * `<details>` exactly as the reader left it.
-   */
-  private setupTools() {
-    const root = this.shadowRoot!;
-    const container = root.querySelector("#components-container");
-    if (!container) return;
-
-    for (const button of Array.from(root.querySelectorAll("[data-tool]"))) {
-      button.addEventListener("click", () => {
-        const tool = (button as HTMLElement).dataset.tool;
-
-        if (tool === "pick") {
-          this.setPicking(!this.picking);
-          return;
-        }
-
-        if (tool === "expand" || tool === "collapse") {
-          for (const details of Array.from(container.querySelectorAll("details"))) {
-            (details as HTMLDetailsElement).open = tool === "expand";
-          }
-          // The record follows the DOM, so the next structural rebuild comes back this way too.
-          this.syncCollapsed(container);
-          return;
-        }
-
-        const className = tool === "values" ? "no-values" : "no-hooks";
-        this.setTool(tool === "values" ? "values" : "hooks", !container.classList.contains(className));
-      });
-    }
-
-    // Restored before anything is rendered, so the tree never appears in a state the reader turned
-    // off and then flickers into the one they chose.
-    if (read(HIDE_VALUES_KEY) === "1") this.setTool("values", true);
-    if (read(HIDE_HOOKS_KEY) === "1") this.setTool("hooks", true);
-  }
-
-  /** One place for the class, the button's look, its label and the stored preference. */
-  private setTool(tool: "values" | "hooks", hidden: boolean): void {
-    const root = this.shadowRoot!;
-    const container = root.querySelector("#components-container");
-    const button = root.querySelector(`[data-tool="${tool}"]`);
-    if (!container || !button) return;
-
-    container.classList.toggle(tool === "values" ? "no-values" : "no-hooks", hidden);
-    button.classList.toggle("on", hidden);
-    const label = tool === "values" ? "state &amp; props" : "hooks";
-    button.innerHTML = `${tool === "values" ? "◧" : "⬡"}<span class="tw"> ${hidden ? "show" : "hide"} ${label}</span>`;
-    write(tool === "values" ? HIDE_VALUES_KEY : HIDE_HOOKS_KEY, hidden ? "1" : "0");
-  }
-
-  /**
    * The breadcrumb bar and the name filter.
    *
    * Bound once, on the bar rather than on each crumb, because the bar is rewritten on every
@@ -887,64 +574,11 @@ class RamondaDevTools extends HTMLElement {
       const crumb = (event.target as HTMLElement).closest("[data-crumb]") as HTMLElement | null;
       if (!crumb) return;
       // An empty value is the "all components" crumb: unpin.
-      this.pin(crumb.dataset.crumb || undefined);
-    });
-
-    root.querySelector("#profile-record")?.addEventListener("click", () => {
-      const bridge = this.profile;
-      if (!bridge) return;
-      // Recording starts from empty, which is what a profiler is for: you press it because you are
-      // about to do the thing you want to measure.
-      if (bridge.isRecording()) bridge.stop();
-      else bridge.start();
-      this.profileShape = "";
-      this.renderProfile();
-    });
-
-    root.querySelector("#jv-close")?.addEventListener("click", () => this.closeFullView());
-    root.querySelector("#jv-refresh")?.addEventListener("click", () => {
-      if (this.fullId === undefined) return;
-      const current = this.valueById(this.fullId);
-      if (current === undefined) return;
-      this.fullValue = current;
-      this.fullSig = safeStringify(current);
-      this.paintFullView();
-      this.markFullView(false);
-    });
-    root.querySelector("#jv-raw")?.addEventListener("click", (event) => {
-      this.fullRaw = !this.fullRaw;
-      (event.currentTarget as HTMLElement).classList.toggle("on", this.fullRaw);
-      this.paintFullView();
-    });
-    root.querySelector("#jv-copy")?.addEventListener("click", async (event) => {
-      const button = event.currentTarget as HTMLElement;
-      const text = toPrettyText(this.fullValue);
-      try {
-        // Absent on http:// and when the document is not focused, which is common enough here that
-        // failing silently would look like the button doing nothing.
-        await navigator.clipboard.writeText(text);
-        button.textContent = "copied";
-      } catch {
-        button.textContent = "cannot copy";
-      }
-      setTimeout(() => {
-        button.textContent = "copy";
-      }, 1200);
+      this.componentsTab.pin(crumb.dataset.crumb || undefined);
     });
 
     const input = root.querySelector("#tree-filter") as HTMLInputElement | null;
-    input?.addEventListener("input", () => {
-      this.filter = input.value;
-      writeSession(FILTER_KEY, input.value || null);
-      this.applyFilter();
-      // A hit inside a collapsed branch is a hit you cannot see. Typing opens everything; the
-      // reader can collapse again afterwards, and clearing the filter leaves it as they left it.
-      if (this.filter.trim() !== "") {
-        for (const details of Array.from(root.querySelectorAll("#components-container details"))) {
-          (details as HTMLDetailsElement).open = true;
-        }
-      }
-    });
+    input?.addEventListener("input", () => this.componentsTab.setFilter(input.value));
 
     /**
      * Escape widens the focus back to the whole tree.
@@ -957,17 +591,39 @@ class RamondaDevTools extends HTMLElement {
 
       // Innermost first: the value you opened, then the component you focused. Picking has its own
       // handler, which captures and stops the event before this one runs.
-      if (this.fullViewOpen) {
-        this.closeFullView();
+      if (this.values.isOpen) {
+        this.values.close();
         return;
       }
-      if (this.pinned !== undefined) this.pin(undefined);
+      if (this.componentsTab.isPinned) this.componentsTab.pin(undefined);
     });
   }
+
+  /**
+   * Which registered panel is showing, or `undefined` for one of the panel's own tabs.
+   *
+   * A plugin tab's `data-tab` is `plugin-<id>`, so this is the id back out of it — the switcher
+   * treats every tab the same and only this reads which kind it was.
+   */
+  private activePluginId: string | undefined;
+
+  /**
+   * Re-bound whenever a tab is added or removed, because a tab that appeared after this ran would
+   * have no click handler — it would look like a tab and do nothing.
+   *
+   * Binding twice on a surviving tab is prevented by the set: `addEventListener` deduplicates
+   * identical listeners, but these are fresh closures, so a second pass would make every click
+   * fire twice. Kept in a `WeakSet` rather than an attribute — what the panel has wired is its own
+   * bookkeeping, and a marker in the DOM is something a reader has to wonder about.
+   */
+  private readonly boundTabs = new WeakSet<Element>();
 
   private setupTabSwitching() {
     const tabs = this.shadowRoot!.querySelectorAll(".tab");
     tabs.forEach((tab) => {
+      if (this.boundTabs.has(tab)) return;
+      this.boundTabs.add(tab);
+
       tab.addEventListener("click", () => {
         tabs.forEach((t) => t.classList.remove("active"));
         this.shadowRoot!.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
@@ -975,549 +631,17 @@ class RamondaDevTools extends HTMLElement {
         const target = (tab as HTMLElement).dataset.tab;
         this.shadowRoot!.getElementById(`${target}-tab`)?.classList.add("active");
         if (target) writeSession(TAB_KEY, target);
+        this.activePluginId = (tab as HTMLElement).dataset.plugin;
         this.componentsTabActive = target === "components";
-        this.queryTabActive = target === "query";
         this.profileTabActive = target === "profile";
-        this.updateQueryWatch();
-        this.updateProfileWatch();
-        this.updateWatchState();
+        this.pluginTabs.setActive(this.activePluginId, this.hasAttribute("open"));
+        this.profileTab.watch(this.hasAttribute("open") && this.profileTabActive);
+        this.componentsTab.watch(this.hasAttribute("open") && this.componentsTabActive);
       });
     });
   }
 
   // --- Component inspector (pull model) -------------------------------------
-
-  /**
-   * We "watch" only while the panel is open AND the components tab is active.
-   * Entering that state tells the core to start emitting ticks and does an
-   * initial full render; leaving it tells the core to stop (cheap when hidden).
-   */
-  private updateWatchState() {
-    const shouldWatch = this.hasAttribute("open") && this.componentsTabActive;
-    if (shouldWatch === this.watching) return;
-    this.watching = shouldWatch;
-
-    if (shouldWatch) {
-      window.dispatchEvent(new CustomEvent("ramonda:devtools-watch"));
-      this.renderComponentsFull();
-    } else {
-      window.dispatchEvent(new CustomEvent("ramonda:devtools-unwatch"));
-      this.clearHighlight();
-      // Closing the panel or leaving the tab leaves the page with a crosshair cursor and a
-      // handler eating its clicks, with nothing on screen to explain either.
-      this.setPicking(false);
-    }
-  }
-
-  // --- Query cache (pull model, polled while its tab is open) ----------------
-
-  /**
-   * Polls while the panel is open AND the query tab is active, and not otherwise.
-   *
-   * A poll rather than a subscription, and the reason is what a cache is: it changes on
-   * every fetch, every observer arriving or leaving, every invalidate and every sweep.
-   * Subscribing to all of that would mean the cache notifying a panel that is usually not
-   * looking. Four times a second is well under what a human reads, and it stops dead the
-   * moment the tab is switched away from.
-   */
-  private updateQueryWatch() {
-    const shouldWatch = this.hasAttribute("open") && this.queryTabActive;
-
-    if (!shouldWatch) {
-      if (this.queryTimer !== undefined) {
-        clearInterval(this.queryTimer);
-        this.queryTimer = undefined;
-      }
-      return;
-    }
-
-    if (this.queryTimer !== undefined) return;
-    this.queryShape = "";
-    this.renderQueries();
-    // Twice a second. Faster buys nothing a human can read, and every tick is a poll of every
-    // live cache.
-    this.queryTimer = setInterval(() => this.renderQueries(), 500);
-  }
-
-  private renderQueries() {
-    const container = this.shadowRoot!.querySelector("#query-container");
-    if (!container) return;
-
-    // Nothing is rebuilt under an open editor. The poll is twice a second and a cache event anywhere
-    // rebuilds this list, so without this the box would vanish mid-sentence.
-    if (container.querySelector(".edit-input")) return;
-
-    const bridge = this.queries;
-    if (!bridge) {
-      this.write(
-        container,
-        '<small style="color:#666">No query cache. This tab fills in when a QueryClientProvider is mounted.</small>',
-      );
-      return;
-    }
-
-    const { clients } = bridge.snapshot();
-    const total = clients.reduce((sum, c) => sum + c.queries.length, 0);
-
-    if (total === 0) {
-      this.write(container, '<small style="color:#666">The cache is empty.</small>');
-      return;
-    }
-
-    const now = Date.now();
-    let html = "";
-
-    for (const client of clients) {
-      // The index is only worth showing when there IS more than one — an app usually has a
-      // single provider, and a label for it would be noise.
-      if (clients.length > 1) {
-        html += `<div class="q-client">client ${client.index + 1} · ${
-          client.queries.length
-        } ${client.queries.length === 1 ? "query" : "queries"}</div>`;
-      }
-
-      for (const row of client.queries) {
-        html += this.renderQueryRow(client.index, row, now);
-      }
-    }
-
-    /**
-     * The SHAPE, not the html: the age of each entry is rendered as "12s ago", so the markup
-     * differs on almost every tick even when nothing about the cache has moved. Comparing the
-     * html would therefore rewrite the list twice a second forever.
-     *
-     * That rewrite is what made the tab flicker while idle — `innerHTML` destroys and rebuilds
-     * every row, which resets hover, text selection and focus, and repaints. So the shape (keys,
-     * statuses, observer counts, data previews) decides whether to rebuild, and the ages are
-     * refreshed in place when it has not changed.
-     */
-    const shape = clients
-      .flatMap((client) =>
-        client.queries.map((row) =>
-          [
-            client.index,
-            row.hash,
-            row.status,
-            row.fetchStatus,
-            row.observers,
-            row.failureCount,
-            row.restored,
-            // `updatedAt` rather than the preview: a preview is one capped line, so a change past
-            // its end — an eighth page appended to an infinite query — would not show up here and
-            // the list would keep showing the seventh. A write moves `updatedAt`, always.
-            row.updatedAt,
-            row.dataPreview,
-            row.error,
-          ].join("|"),
-        ),
-      )
-      .join("\n");
-
-    if (shape === this.queryShape) {
-      this.refreshAges(container, clients, now);
-      return;
-    }
-
-    this.queryShape = shape;
-    container.innerHTML = html;
-    this.bindQueryActions();
-    this.markFullView();
-  }
-
-  /**
-   * The profiler tab: one row per commit, with the components that made it up.
-   *
-   * A list with numbers rather than a flamegraph, and that is a decision rather than a stopgap — what a
-   * Ramonda commit is made of is WHICH components rebuilt and how many times, and a flame chart of a
-   * flat drain is a picture of one bar. The bar per component here is its share of that commit, which
-   * is the question worth asking: not "is this slow" but "why did forty rows rebuild when one changed".
-   */
-  private renderProfile(): void {
-    const container = this.shadowRoot!.querySelector("#profile-container");
-    const button = this.shadowRoot!.querySelector("#profile-record") as HTMLElement | null;
-    const hint = this.shadowRoot!.querySelector("#profile-hint");
-    const bridge = this.profile;
-    if (!container || !button || !hint) return;
-
-    if (!bridge) {
-      container.innerHTML =
-        '<p class="p-empty">This build has no profiler. It arrives with a development build of @ramonda/core.</p>';
-      return;
-    }
-
-    const recording = bridge.isRecording();
-    button.classList.toggle("on", recording);
-    button.textContent = recording ? "■ stop" : "● record";
-
-    const commits = bridge.commits();
-    hint.textContent = recording
-      ? `recording · ${commits.length} commit${commits.length === 1 ? "" : "s"}`
-      : commits.length > 0
-        ? `${commits.length} commit${commits.length === 1 ? "" : "s"} · stopped`
-        : "";
-
-    if (commits.length === 0) {
-      container.innerHTML = recording
-        ? '<p class="p-empty">Recording. Interact with the app — every commit lands here.</p>'
-        : '<p class="p-empty">Press record, then use the app. A commit is one drain: everything a single state change rebuilt, including the effects and <code>@updated</code> bodies it scheduled — which is what the app actually waited for.</p>';
-      this.profileShape = "";
-      return;
-    }
-
-    // The list is keyed on the commits themselves, so a poll that finds nothing new writes no DOM.
-    const shape = commits.map((commit) => `${commit.index}:${commit.duration}`).join("|");
-    if (shape === this.profileShape) return;
-    this.profileShape = shape;
-
-    // Newest first: the commit you just caused is the one you are looking for.
-    container.innerHTML = [...commits]
-      .reverse()
-      .map((commit) => this.renderCommit(commit))
-      .join("");
-  }
-
-  private renderCommit(commit: CommitRecord): string {
-    const heaviest = commit.components[0]?.ms ?? 0;
-    const costs = commit.components
-      .map((cost) => {
-        const share = heaviest > 0 ? Math.max(2, Math.round((cost.ms / heaviest) * 100)) : 2;
-        const times = cost.builds > 1 ? ` ×${cost.builds}` : "";
-        return `<span class="p-name">${escapeHtml(cost.name)}${times}</span><span class="p-bar"><span style="width:${share}%"></span></span><span class="p-cost">${cost.ms.toFixed(
-          2,
-        )} ms</span>`;
-      })
-      .join("");
-
-    return `<div class="p-row" data-p-commit="${commit.index}">
-      <div class="p-head">
-        <span class="p-index">#${commit.index}</span>
-        <span class="p-ms">${commit.duration.toFixed(2)} ms</span>
-        <span class="p-builds">${commit.builds} build${commit.builds === 1 ? "" : "s"} · ${
-          commit.components.length
-        } component${commit.components.length === 1 ? "" : "s"}</span>
-      </div>
-      <div class="p-costs">${costs}</div>
-    </div>`;
-  }
-
-  /**
-   * Polls while the profile tab is open, for the same reason the query tab does: the panel PULLS. A
-   * commit does not notify anybody, and pushing would mean the profiler telling a panel nobody is
-   * looking at.
-   */
-  private updateProfileWatch(): void {
-    const shouldWatch = this.hasAttribute("open") && this.profileTabActive;
-
-    if (!shouldWatch) {
-      if (this.profileTimer !== undefined) {
-        clearInterval(this.profileTimer);
-        this.profileTimer = undefined;
-      }
-      return;
-    }
-
-    if (this.profileTimer !== undefined) return;
-    this.profileShape = "";
-    this.renderProfile();
-    this.profileTimer = setInterval(() => this.renderProfile(), 400);
-  }
-
-  /** Writes only if the content differs, so an idle panel does not touch the DOM at all. */
-  private write(container: Element, html: string): void {
-    if (this.queryShape === html) return;
-    this.queryShape = html;
-    container.innerHTML = html;
-  }
-
-  /**
-   * Updates just the "updated Ns ago" text, by hash, leaving every node in place.
-   *
-   * This is the whole reason the ages are in their own element: a text node written directly is
-   * the cheapest DOM change there is, and it does not disturb what the reader is doing.
-   */
-  private refreshAges(container: Element, clients: { index: number; queries: QueryRow[] }[], now: number): void {
-    /**
-     * Collected and matched in JS, never through an attribute SELECTOR.
-     *
-     * A hash is built from the key, so it carries quotes and brackets —
-     * `0:["products"]` — and interpolating that into `[data-q-age="…"]` produces a selector the
-     * parser rejects: `Failed to execute 'querySelector': not a valid selector`. It threw on
-     * every poll, four times a second, which is exactly the kind of thing an idle panel must not
-     * do. Reading `dataset` instead has no parser to offend.
-     */
-    const ages = new Map<string, Element>();
-    for (const element of Array.from(container.querySelectorAll("[data-q-age]"))) {
-      ages.set((element as HTMLElement).dataset.qAge ?? "", element);
-    }
-
-    for (const client of clients) {
-      for (const row of client.queries) {
-        const age = ages.get(`${client.index}:${row.hash}`);
-        if (!age) continue;
-        const text = this.ageOf(row, now);
-        if (age.textContent !== text) age.textContent = text;
-      }
-    }
-  }
-
-  private ageOf(row: QueryRow, now: number): string {
-    return row.updatedAt === 0 ? "never" : `${Math.max(0, Math.round((now - row.updatedAt) / 1000))}s ago`;
-  }
-
-  private renderQueryRow(clientIndex: number, row: QueryRow, now: number): string {
-    const colour = row.status === "error" ? "#ff4444" : row.status === "success" ? "#54c98a" : "#ffcc00";
-    const fetching = row.fetchStatus === "fetching";
-    const age = this.ageOf(row, now);
-
-    // `observers: 0` is the interesting one: the entry is alive but nobody is watching, so
-    // it is waiting out its gcTime. That is the state people ask about.
-    const observers =
-      row.observers === 0
-        ? '<span class="q-idle">0 observers · waiting for gc</span>'
-        : `<span class="q-obs">${row.observers} observer${row.observers === 1 ? "" : "s"}</span>`;
-
-    return `
-      <div class="q-row">
-        <div class="q-head">
-          <span class="q-status" style="background:${colour}"></span>
-          <code class="q-key">${escapeHtml(JSON.stringify(row.key))}</code>
-          ${this.queryEditButton(clientIndex, row)}
-          ${this.fullViewButton(`q::${clientIndex}::${row.hash}`, row.data)}
-          ${fetching ? '<span class="q-fetching">fetching…</span>' : ""}
-          ${row.restored ? '<span class="q-badge">from server</span>' : ""}
-        </div>
-        <div class="q-meta">
-          ${row.status}${
-            row.failureCount > 0 ? ` · ${row.failureCount} failure${row.failureCount === 1 ? "" : "s"}` : ""
-          } ·
-          updated <span data-q-age="${clientIndex}:${escapeHtml(row.hash)}">${age}</span> · ${observers}
-        </div>
-        ${row.error ? `<div class="q-error">${escapeHtml(row.error)}</div>` : ""}
-        <div class="q-data" data-q-data="${clientIndex}:${escapeHtml(row.hash)}">${
-          row.data === undefined ? escapeHtml(row.dataPreview) : renderJsonHtml(row.data, INLINE)
-        }</div>
-        <div class="q-actions">
-          <button type="button" data-q-action="invalidate" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
-            row.hash,
-          )}">invalidate</button>
-          <button type="button" data-q-action="remove" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
-            row.hash,
-          )}">remove</button>
-        </div>
-      </div>`;
-  }
-
-  /**
-   * There is no "refetch" button, and that is the design rather than an omission: the
-   * FETCHER belongs to the observer, not to the cache, so a query nobody is watching has no
-   * function to call. `invalidate` is the honest equivalent — it marks the entry stale and
-   * asks whoever is watching to refresh.
-   */
-  private bindQueryActions() {
-    const container = this.shadowRoot!.querySelector("#query-container");
-    if (!container) return;
-
-    // The rows are rebuilt whenever the cache moves, so the values behind their full-view buttons
-    // are re-registered here rather than kept from the last render.
-    const { clients } = this.queries?.snapshot() ?? { clients: [] };
-    for (const client of clients) {
-      for (const row of client.queries) {
-        this.queryValues.set(`q::${client.index}::${row.hash}`, row.data);
-      }
-    }
-
-    for (const button of Array.from(container.querySelectorAll("[data-full]"))) {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.openFullView((button as HTMLElement).dataset.full ?? "");
-      });
-    }
-
-    for (const button of Array.from(container.querySelectorAll("[data-q-edit]"))) {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.beginQueryEdit(button as HTMLElement);
-      });
-    }
-
-    for (const button of Array.from(container.querySelectorAll("[data-q-action]"))) {
-      button.addEventListener("click", () => {
-        const bridge = this.queries;
-        if (!bridge) return;
-
-        const element = button as HTMLElement;
-        const clientIndex = Number(element.dataset.qClient);
-        const hash = element.dataset.qHash ?? "";
-
-        if (element.dataset.qAction === "invalidate") bridge.invalidate(clientIndex, hash);
-        else bridge.remove(clientIndex, hash);
-
-        this.renderQueries();
-      });
-    }
-  }
-
-  /**
-   * Turns one value into an editable box, in place.
-   *
-   * ## What you are editing
-   *
-   * The WHOLE field, as JSON — not a path inside it. That is the framework's own rule, not a
-   * shortcut: a signal holds a value rather than a proxy, so mutating inside an object notifies
-   * nobody. "Change `user.name`" has to become "assign a new `user`", and the panel is held to the
-   * same rule as application code.
-   *
-   * ## Why JSON and not a friendlier parse
-   *
-   * Because it is unambiguous. `42` is a number, `"42"` is a string, `null` is null — and a reader
-   * who types something that is none of those gets told, rather than silently storing the text
-   * `[object Object]`. Invalid input never reaches the app: the parse happens first, the box stays
-   * open, and the row says what was wrong.
-   *
-   * Escape cancels, Enter commits a single-line value, and ⌘/Ctrl+Enter commits a multi-line one —
-   * where plain Enter has to stay a newline.
-   */
-  private beginEdit(button: HTMLElement): void {
-    const rawId = button.dataset.editNode ?? "";
-    const key = button.dataset.editKey ?? "";
-    const vid = button.dataset.editVid ?? "";
-    const box = this.valueElements.get(vid);
-    const writer = this.writer;
-    if (!box || !writer) return;
-
-    this.openValueEditor(box, this.rawValues.get(vid), (parsed) => {
-      const result = writer(Number(rawId), key, parsed);
-      if (result === "not-state") {
-        return `${key} is not @state — props are owned by the parent and cannot be written here`;
-      }
-      if (result === "gone") return "that component is no longer in the tree";
-
-      this.toast(result === "unchanged" ? `${key} is already that value` : `wrote ${key} = ${toOneLine(parsed)}`);
-      // Watched for one refresh: some fields are owned by the machinery around them and are set again
-      // immediately, which is the difference between "it worked" and "it did not".
-      this.pendingWrite = result === "ok" ? { vid, key, text: safeStringify(parsed) } : undefined;
-      return undefined;
-    });
-  }
-
-  /**
-   * The pencil on a query row, when writing that entry back would be honest.
-   *
-   * Absent when the copy the panel holds was BOUNDED: sending back a value containing `"[… budget]"`
-   * where the rest of a list used to be would put those markers into the cache. Absent too when the
-   * query package next door is older than this panel and has no write side.
-   */
-  private queryEditButton(clientIndex: number, row: QueryRow): string {
-    if (row.data === undefined || row.truncated || !this.queries?.setData) return "";
-    const reason = "edit the cached data — this is what the page renders from";
-    return `<button type="button" class="edit-btn" data-q-edit="1" data-q-client="${clientIndex}" data-q-hash="${escapeHtml(
-      row.hash,
-    )}" title="${reason}">✎</button>`;
-  }
-
-  /**
-   * Edits a query's cached data — the one value in the panel whose change is immediately visible on
-   * the page, because the cache is what a query renders from.
-   */
-  private beginQueryEdit(button: HTMLElement): void {
-    const clientIndex = Number(button.dataset.qClient);
-    const hash = button.dataset.qHash ?? "";
-    const bridge = this.queries;
-    const row = bridge?.snapshot().clients[clientIndex]?.queries.find((candidate) => candidate.hash === hash);
-    if (!bridge?.setData || !row) return;
-
-    // Found by matching `dataset` in JS, never by a selector built from a hash: a hash is JSON and
-    // carries quotes, which is the bug that once threw on every poll.
-    const target = Array.from(this.shadowRoot!.querySelectorAll("#query-container [data-q-data]")).find(
-      (element) => (element as HTMLElement).dataset.qData === `${clientIndex}:${hash}`,
-    ) as HTMLElement | undefined;
-    if (!target) return;
-
-    this.openValueEditor(target, row.data, (parsed) => {
-      if (!bridge.setData?.(clientIndex, hash, parsed)) return "that entry is no longer in the cache";
-      // Said out loud, because it is the honest behaviour of a cache rather than a limit of the panel:
-      // the next fetch for this key wins.
-      this.toast(`wrote data for ${JSON.stringify(row.key)} — a refetch will replace it`);
-      return undefined;
-    });
-  }
-
-  /**
-   * The inline JSON editor, shared by a component's state and a query's data.
-   *
-   * `commit` returns a message to show in the row when it refuses, or `undefined` when it worked — so
-   * the two callers keep their own vocabulary ("not @state", "no longer in the cache") without the
-   * editor knowing anything about either.
-   */
-  private openValueEditor(box: HTMLElement, value: unknown, commit: (parsed: unknown) => string | undefined): void {
-    if (box.querySelector(".edit-input")) return;
-
-    const current = toPrettyText(value);
-    const multiline = current.includes("\n") || current.length > 60;
-    const field = document.createElement(multiline ? "textarea" : "input");
-    field.className = "edit-input";
-    field.value = current;
-    if (field instanceof HTMLTextAreaElement) field.rows = Math.min(12, current.split("\n").length + 1);
-
-    const note = document.createElement("div");
-    note.className = "edit-note";
-    note.textContent = multiline ? "⌘/Ctrl+Enter to apply · Esc to cancel" : "Enter to apply · Esc to cancel";
-
-    const previous = box.innerHTML;
-    box.innerHTML = "";
-    box.append(field, note);
-    field.focus();
-    field.select();
-
-    const cancel = () => {
-      box.innerHTML = previous;
-    };
-
-    const apply = () => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(field.value);
-      } catch {
-        note.textContent = "not valid JSON — a string needs quotes";
-        note.classList.add("bad");
-        return;
-      }
-
-      const refusal = commit(parsed);
-      if (refusal === undefined) {
-        // Not repainted here: the write wakes whoever was watching, and the ordinary refresh redraws
-        // this row with the value the app actually holds — the only value worth showing.
-        cancel();
-        return;
-      }
-
-      note.textContent = refusal;
-      note.classList.add("bad");
-    };
-
-    field.addEventListener("keydown", (raw: Event) => {
-      const event = raw as KeyboardEvent;
-      // Contained, so the panel's own Escape handling does not release the focused component while
-      // the reader only meant to abandon an edit.
-      event.stopPropagation();
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancel();
-        return;
-      }
-      if (event.key !== "Enter") return;
-      if (multiline && !event.metaKey && !event.ctrlKey) return;
-      event.preventDefault();
-      apply();
-    });
-
-    field.addEventListener("blur", () => {
-      // Abandoned rather than applied: a value half-typed and clicked away from is not an intention.
-      if (box.contains(field)) cancel();
-    });
-  }
 
   /**
    * Opens a component's definition in the reader's editor.
@@ -1626,712 +750,6 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
-
-  /** The last value written from the panel, watched for one refresh — see the commit path above. */
-  private pendingWrite: { vid: string; key: string; text: string } | undefined;
-
-  /**
-   * Notices that the app replaced what was just written from the panel.
-   *
-   * This is the answer to "I edited it and nothing changed": some fields are owned by the machinery
-   * around them — a query's `version` is an invalidation counter, its `snapshot` is the hydration
-   * transport — and writing one is honoured and then immediately overwritten. Saying so is the
-   * difference between a panel that looks broken and a panel that explains the framework.
-   */
-  private checkPendingWrite(values: Map<string, string>): void {
-    const pending = this.pendingWrite;
-    if (!pending) return;
-    this.pendingWrite = undefined;
-
-    const current = values.get(pending.vid);
-    if (current === undefined || current === pending.text) return;
-    this.toast(`${pending.key} was written, and the app has since set it to ${current.slice(0, 60)}`);
-  }
-
-  /**
-   * Recursively walks the inspected tree, building HTML + refresh metadata.
-   *
-   * `indexOffset` exists for the pinned view: rendering one node means passing a single-element
-   * array, and its path has to come out as the path it has in the WHOLE tree — otherwise the pin
-   * would not match itself on the next tick, and every value id would move. Offsetting by the
-   * node's real sibling index reproduces it exactly, without a second path format to keep in
-   * sync with this one.
-   */
-  private walkTree(nodes: InspectedNode[], prefix: string, acc: WalkAcc, indexOffset = 0): string {
-    let html = "";
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i];
-      const path = `${prefix}/${indexOffset + i}:${n.kind}:${n.name}`;
-      if (n.node) acc.nodes.set(path, n.node);
-
-      // State is the only block that can be written: props are owned by whoever rendered this
-      // component and assigning to one throws in every build.
-      const stateHtml = this.renderValueBlock("State", n.state, path, "s", acc, n.id);
-      // No node id, so it is read-only: this is what the instance DERIVED, and assigning to a copy
-      // of it would change nothing while looking as though it had.
-      const detailHtml = this.renderValueBlock("Holds", n.detail, path, "d", acc);
-      const propsHtml = this.renderValueBlock("Props", n.props, path, "p", acc);
-      // A hook's inputs are its PROPS. They were called options once, the framework renamed
-      // them, and this label kept saying the old word to everyone inspecting a hook.
-      const optionsHtml = this.renderValueBlock("Props", n.options, path, "o", acc);
-      // A consumer holds no state and no props, so this is the only block it has — and it is the
-      // interesting one: which keys it actually reads is what decides when it re-renders.
-      const readsHtml = this.renderValueBlock("Reads from context", n.reads, path, "r", acc);
-
-      const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
-      const childrenHtml = this.walkTree(n.children, path, acc);
-      const badge = `<span class="kind-badge kind-${n.kind}">${n.kind === "hook" ? "HOOK" : "CMP"}</span>`;
-      // Focus, not select: the button makes this node the root of the panel so its state, props,
-      // hooks and children are all that is left on screen. Inside the summary, so it is on the
-      // row you are already reading — `preventDefault` in the handler stops it toggling the
-      // disclosure it lives in.
-      const pin = `<button type="button" class="pin-btn" data-pin="${escapeHtml(path)}" title="focus this ${n.kind}">◎</button>`;
-      /**
-       * The last manual step in the whole flow: you found it, focused it, and then alt-tabbed and
-       * searched for the class by name. This closes it.
-       *
-       * Only when core could say where the class is — a location it could not read is not a button
-       * that does nothing.
-       */
-      const open = n.source
-        ? `<button type="button" class="src-btn" data-src-file="${escapeHtml(n.source.file)}" data-src-line="${
-            n.source.line
-          }" data-src-column="${n.source.column}" title="open the definition in your editor (served at ${escapeHtml(
-            shortFile(n.source),
-          )})">&lt;/&gt;</button>`
-        : "";
-      const label =
-        n.kind === "hook"
-          ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
-          : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
-
-      const body = `${propsHtml}${stateHtml}${detailHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
-
-      // Collapsed is the reader's decision, so it survives a rebuild — the default is open.
-      const openAttr = this.collapsed.has(path) ? "" : " open";
-
-      // A leaf gets no disclosure triangle: a component with no state, no props, no hooks and
-      // no children has nothing to open, and a triangle that reveals emptiness is a lie the
-      // reader has to click to disprove.
-      html += body
-        ? `
-        <div class="component-node">
-          <details${openAttr}>
-            <summary class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}${open}</summary>
-            <div class="node-body">${body}</div>
-          </details>
-        </div>`
-        : `
-        <div class="component-node leaf">
-          <div class="comp-summary" data-path="${escapeHtml(path)}">${badge}${label}${pin}${open}</div>
-        </div>`;
-    }
-    return html;
-  }
-
-  /**
-   * Builds a labelled key/value block (State or Options) and records its values
-   * + signature for the fine-grained refresh path. `slot` ("s"/"o") keeps the
-   * two blocks' value ids distinct.
-   */
-  private renderValueBlock(
-    title: string,
-    obj: Record<string, unknown> | undefined,
-    path: string,
-    slot: string,
-    acc: WalkAcc,
-    /** Present only for a writable block — see `beginEdit`. */
-    nodeId?: number,
-  ): string {
-    const keys = obj ? Object.keys(obj) : [];
-    acc.sig.push(`${path}#${slot}[${keys.join(",")}]`);
-    if (keys.length === 0) return "";
-
-    const rows = keys
-      .map((k) => {
-        const vid = `${path}::${slot}::${k}`;
-        const value = obj![k];
-        // The one-line form is kept, but only as a CHANGE SIGNATURE — comparing two strings is
-        // cheaper than diffing two trees, and the reader never sees it.
-        acc.values.set(vid, safeStringify(value));
-        acc.raw.set(vid, value);
-        /**
-         * A pencil only where a write would actually land, and only for a value that survives a
-         * round trip through JSON. A function or a DOM node in state cannot be typed back in, and a
-         * control that pretends otherwise is worse than none.
-         */
-        const editable = nodeId !== undefined && this.writer !== undefined && isJsonLike(value);
-        /**
-         * Three attributes, not one packed string.
-         *
-         * It was `${nodeId}|${key}|${vid}` — and a value id contains the node's PATH, which marks a
-         * hooks branch with `|h`. So `split("|")` on `1|routeState|/0:component:App|h/0:hook:Router…`
-         * handed back a truncated id, the lookup missed, and the pencil did nothing on precisely the
-         * rows that have hooks. The unit tests could not see it: their trees put state on components
-         * whose paths have no `|` in them. Found by driving the real bundle.
-         *
-         * The lesson is the one this panel keeps relearning — a query hash in a selector, a prop name
-         * in a selector, now a path in a delimiter: never build a delimited string out of data that
-         * can contain the delimiter.
-         */
-        const edit = editable
-          ? `<button type="button" class="edit-btn" data-edit-node="${nodeId}" data-edit-key="${escapeHtml(
-              k,
-            )}" data-edit-vid="${escapeHtml(vid)}" title="edit ${escapeHtml(k)}">✎</button>`
-          : "";
-
-        /**
-         * A scalar sits on the SAME line as its key; only a container gets a block of its own.
-         *
-         * Every value used to be a heading with a body underneath, which was reasonable while every
-         * value was a tree and looked wrong the moment most of them were `3` and `"ada"` — two lines
-         * each, and a state block of six fields reading as twelve rows of mostly nothing.
-         *
-         * The `.sv` element stays in both shapes, because it is what the patch path looks up by id and
-         * what an editor replaces — only where it sits changes.
-         */
-        const inline = rendersAsLeaf(value);
-        const buttons = `${edit}${this.fullViewButton(vid, value)}`;
-
-        return inline
-          ? `<div class="state-row one-line">
-              <span class="sk">${escapeHtml(k)}:</span>
-              <span class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</span>
-              ${buttons}
-            </div>`
-          : `<div class="state-row">
-              <div class="state-head"><span class="sk">${escapeHtml(k)}:</span>${buttons}</div>
-              <div class="sv" data-sv="${escapeHtml(vid)}">${renderJsonHtml(value, INLINE)}</div>
-            </div>`;
-      })
-      .join("");
-    const titleHtml = title ? `<div class="state-title">${title}</div>` : "";
-    return `<div class="state-block">${titleHtml}${rows}</div>`;
-  }
-
-  /**
-   * The button that opens one value on the whole panel.
-   *
-   * Only for a value with something to open. A number does not need a full view, and a button
-   * that opens a bigger box containing `3` is noise on every row.
-   */
-  private fullViewButton(id: string, value: unknown): string {
-    const container = (Array.isArray(value) || (typeof value === "object" && value !== null)) && value !== null;
-    if (!container) return "";
-    return `<button type="button" class="jv-open" data-full="${escapeHtml(id)}" title="open ${escapeHtml(
-      summarize(value),
-    )} in the full view">⤢</button>`;
-  }
-
-  private renderComponentsFull() {
-    const container = this.shadowRoot!.querySelector("#components-container");
-    const inspect = this.inspect;
-    if (!container || !inspect) return;
-
-    /**
-     * Where the reader was, kept across the rebuild.
-     *
-     * A structural change — one component mounting anywhere in the app — replaces this whole
-     * subtree's markup, and `innerHTML` resets the scroll of its container to the top. So reading
-     * a component while the app was doing anything at all threw you back to the root of the tree.
-     * The collapsed set does the same job for the disclosures: without it every `<details>` came
-     * back open, and a tree the reader had folded down to what they cared about unfolded itself.
-     */
-    const scroller = this.shadowRoot!.querySelector("#components-tab") as HTMLElement | null;
-    const scrollTop = scroller?.scrollTop ?? 0;
-    this.syncCollapsed(container);
-
-    const tree = inspect();
-
-    /**
-     * The FULL tree fills `acc`, even when only a subtree is drawn.
-     *
-     * `refreshComponents` compares a signature read from the whole tree against `lastSig` to
-     * decide whether the structure moved. A signature covering only the pinned subtree would
-     * differ from it on every single tick, so the panel would rebuild itself four times a second
-     * — the flicker, back again, and only while pinned. The same reason `nodeMap` and the value
-     * map are the full ones: a path in them is the same path either way.
-     */
-    const acc: WalkAcc = { values: new Map(), raw: new Map(), nodes: new Map(), sig: [] };
-    const fullHtml = this.walkTree(tree, "", acc);
-
-    let html = fullHtml;
-    let crumbs = "";
-
-    if (this.pinned !== undefined) {
-      const found = this.locate(tree, "", this.pinned, []);
-      if (found) {
-        const sub: WalkAcc = { values: new Map(), raw: new Map(), nodes: new Map(), sig: [] };
-        html = this.walkTree([found.node], found.parentPrefix, sub, found.index);
-        crumbs = this.renderCrumbs(found.trail, false);
-      } else {
-        // Unmounted, or a route away. Say so and show the whole tree again rather than an empty
-        // panel: the pin is still there to click off, and the reader can see where they are.
-        crumbs = this.renderCrumbs([], true);
-      }
-    }
-
-    const crumbBar = this.shadowRoot!.querySelector("#crumbs");
-    if (crumbBar) {
-      crumbBar.innerHTML = crumbs;
-      crumbBar.classList.toggle("on", crumbs !== "");
-    }
-
-    container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
-    this.checkPendingWrite(acc.values);
-    this.lastValues = acc.values;
-    this.rawValues = acc.raw;
-    this.nodeMap = acc.nodes;
-    this.elementPaths = new WeakMap();
-    for (const [path, node] of acc.nodes) this.elementPaths.set(node, path);
-    this.lastSig = acc.sig.join(";");
-    this.attachInspectorEvents(container);
-    this.applyFilter();
-    if (scroller && scrollTop > 0) scroller.scrollTop = scrollTop;
-    // Also here, not only on the value-patch path: a STRUCTURAL change is how an open value most
-    // often moves or disappears, and `refreshComponents` hands straight over to this method when
-    // the signature moved — so a check only there never ran for the case that matters most.
-    this.markFullView();
-  }
-
-  /**
-   * Records which branches are folded, read straight off the DOM about to be replaced.
-   *
-   * Read rather than listened to, deliberately: `toggle` is dispatched as a QUEUED TASK, so a
-   * structural rebuild landing in the same task as the reader's click would replace the markup
-   * before the event arrived and the fold would be lost. The elements themselves cannot be out of
-   * date. Only the paths currently rendered are touched, so a fold inside a branch that is not on
-   * screen — because something else is focused — keeps whatever it had.
-   */
-  private syncCollapsed(container: Element): void {
-    for (const details of Array.from(container.querySelectorAll("details"))) {
-      const path = details.querySelector(".comp-summary")?.getAttribute("data-path");
-      if (!path) continue;
-      if ((details as HTMLDetailsElement).open) this.collapsed.delete(path);
-      else this.collapsed.add(path);
-    }
-  }
-
-  /**
-   * Finds a path in a freshly read tree, and the ancestry that leads to it.
-   *
-   * It rebuilds each candidate path exactly the way `walkTree` does instead of parsing the
-   * pinned one. Parsing would need to know that a name cannot contain a separator and that
-   * `|h` marks the hooks list — two assumptions that would rot the moment either changes.
-   * Recomputing has neither, and one walk of a component tree costs nothing here.
-   */
-  private locate(nodes: InspectedNode[], prefix: string, target: string, trail: Crumb[]): Located | undefined {
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i];
-      const path = `${prefix}/${i}:${n.kind}:${n.name}`;
-      const here = [...trail, { name: n.name, kind: n.kind, path }];
-
-      if (path === target) return { node: n, index: i, parentPrefix: prefix, trail: here };
-
-      const inHooks = this.locate(n.hooks, `${path}|h`, target, here);
-      if (inHooks) return inHooks;
-      const inChildren = this.locate(n.children, path, target, here);
-      if (inChildren) return inChildren;
-    }
-    return undefined;
-  }
-
-  /**
-   * The breadcrumb: where the pinned component sits, and a way back up.
-   *
-   * Its real job is orientation. A pinned subtree looks exactly like a whole app, so without the
-   * ancestry you cannot tell whether you are looking at the root or at something six levels
-   * down — and every crumb is also a pin, which is how you widen the focus one step at a time.
-   */
-  private renderCrumbs(trail: Crumb[], missing: boolean): string {
-    const all = `<button type="button" class="crumb root" data-crumb="">all components</button>`;
-    if (missing) {
-      return `${all}<span class="crumb-sep">›</span><span class="crumb gone">the pinned component is no longer mounted</span>`;
-    }
-
-    const steps = trail
-      .map((crumb, i) => {
-        const last = i === trail.length - 1;
-        const label = crumb.kind === "hook" ? escapeHtml(crumb.name) : `&lt;${escapeHtml(crumb.name)} /&gt;`;
-        return `<span class="crumb-sep">›</span>${
-          last
-            ? `<span class="crumb here">${label}</span>`
-            : `<button type="button" class="crumb" data-crumb="${escapeHtml(crumb.path)}">${label}</button>`
-        }`;
-      })
-      .join("");
-
-    return `${all}${steps}`;
-  }
-
-  /**
-   * Picking a component by pointing at it on the page — the navigation the tree cannot give you.
-   *
-   * You almost always know what on SCREEN you care about, and almost never where it sits in the
-   * tree. This inverts the search: hover the page, the component under the cursor is outlined and
-   * named, and a click focuses it in the panel.
-   *
-   * Three things make it work, and each is load-bearing:
-   *
-   * - **The listeners capture on `window`.** Ramonda attaches a handler to its element directly,
-   *   in the bubble phase, so capturing before it and stopping propagation is what keeps a pick
-   *   from ALSO submitting the form or opening the menu you pointed at.
-   * - **The cursor becomes a crosshair.** The only signal that the next click will not reach the
-   *   app; a mode you cannot see is a mode you forget you are in.
-   */
-  private setPicking(on: boolean): void {
-    if (on === this.picking) return;
-    this.picking = on;
-
-    this.classList.toggle("picking", on);
-    this.shadowRoot!.querySelector('[data-tool="pick"]')?.classList.toggle("on", on);
-
-    const events = ["pointermove", "pointerdown", "pointerup", "click", "keydown"] as const;
-    for (const type of events) {
-      if (on) window.addEventListener(type, this.onPick, true);
-      else window.removeEventListener(type, this.onPick, true);
-    }
-
-    if (on) {
-      this.previousCursor = document.body.style.cursor;
-      document.body.style.cursor = "crosshair";
-    } else {
-      document.body.style.cursor = this.previousCursor;
-      this.clearHighlight();
-      this.showPickLabel(undefined, 0, 0);
-    }
-  }
-
-  private previousCursor = "";
-
-  /**
-   * One handler for every pointer event, and it swallows all of them.
-   *
-   * A field holding an arrow function rather than a method: the same reference has to come back
-   * out for `removeEventListener`, and `this.onPick.bind(this)` would produce a new one each time
-   * and leave the old listener attached forever.
-   */
-  private onPick = (event: Event): void => {
-    if (!this.picking) return;
-
-    // Anything inside the panel is retargeted to the host element, which is how a hover over the
-    // panel itself is told apart from a hover over the page.
-    const target = event.target;
-    if (target === this || (target instanceof Node && this.contains(target))) return;
-
-    if (event.type === "keydown") {
-      if ((event as KeyboardEvent).key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      this.setPicking(false);
-      return;
-    }
-
-    const path = this.pathForElement(target);
-
-    if (event.type === "pointermove") {
-      const pointer = event as PointerEvent;
-      if (path) this.highlight(path);
-      else this.clearHighlight();
-      this.showPickLabel(path, pointer.clientX, pointer.clientY);
-      return;
-    }
-
-    // Every remaining event is a press or a click on the app, and the app must not see it: a pick
-    // that also triggers what it pointed at is worse than no picker.
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (event.type !== "click") return;
-    this.setPicking(false);
-    if (path) this.pin(path);
-  };
-
-  /** The nearest ancestor that IS a component — the cursor is usually over some child element. */
-  private pathForElement(target: EventTarget | null): string | undefined {
-    let element = target instanceof HTMLElement ? target : null;
-    while (element) {
-      const path = this.elementPaths.get(element);
-      if (path) return path;
-      element = element.parentElement;
-    }
-    return undefined;
-  }
-
-  /**
-   * The name of what is under the cursor, next to the cursor.
-   *
-   * It has to be here rather than in the tree, because while picking the reader is looking at the
-   * page: a name in a panel they are not reading is a name they do not see. Clamped so it cannot
-   * push itself off the bottom-right edge, where the cursor spends much of its time.
-   */
-  private showPickLabel(path: string | undefined, x: number, y: number): void {
-    const label = this.shadowRoot!.querySelector("#pick-label") as HTMLElement | null;
-    if (!label) return;
-
-    if (path === undefined) {
-      label.classList.remove("on");
-      return;
-    }
-
-    const name = path.slice(path.lastIndexOf(":") + 1);
-    const kind = path.includes(`:hook:${name}`) ? "hook" : "component";
-    label.textContent = kind === "hook" ? name : `<${name} />`;
-    label.classList.add("on");
-    label.style.left = `${Math.min(x + 14, window.innerWidth - label.offsetWidth - 8)}px`;
-    label.style.top = `${Math.min(y + 18, window.innerHeight - label.offsetHeight - 8)}px`;
-  }
-
-  /**
-   * One value, on the whole panel.
-   *
-   * A snapshot rather than a live view, on purpose: this is opened to READ something carefully,
-   * and a tree that re-renders under the cursor while you are three levels into it is unreadable.
-   * Close and re-open for the current value.
-   *
-   * `raw` switches to pretty-printed JSON, which is what you want when the answer is "paste this
-   * into a test" rather than "what shape is this".
-   */
-  private openFullView(id: string): void {
-    const value = this.valueById(id);
-    if (value === undefined) return;
-
-    this.fullId = id;
-    this.fullValue = value;
-    this.fullSig = safeStringify(value);
-    this.fullRaw = false;
-
-    const root = this.shadowRoot!;
-    (root.querySelector("#jv-raw") as HTMLElement).classList.remove("on");
-    this.paintFullView();
-    root.querySelector("#jv-modal")!.classList.add("on");
-    this.markFullView(false);
-  }
-
-  /** A value id is either a component's `path::slot::key` or a query's `q::client::hash`. */
-  private valueById(id: string): unknown {
-    return id.startsWith("q::") ? this.queryValues.get(id) : this.rawValues.get(id);
-  }
-
-  /**
-   * Notices that the app wrote a different value while the full view was open.
-   *
-   * Compared as one line rather than by identity: structural sharing hands back the SAME object
-   * when an answer did not change, so identity alone would be enough for a query — but a component
-   * has no such guarantee, and a rebuilt-but-equal object must not light the button. The reader
-   * asked for "tell me it moved, and let me choose when to look", and that is a comparison of
-   * contents.
-   */
-  private markFullView(check = true): void {
-    const button = this.shadowRoot!.querySelector("#jv-refresh") as HTMLElement | null;
-    if (!button || this.fullId === undefined) return;
-
-    if (!check) {
-      button.classList.remove("stale", "gone");
-      button.title = "the value has not changed";
-      return;
-    }
-
-    const current = this.valueById(this.fullId);
-    if (current === undefined) {
-      // Unmounted, or collected out of the cache. There is nothing to refresh TO, and pretending
-      // otherwise would replace the value being read with an empty tree.
-      button.classList.remove("stale");
-      button.classList.add("gone");
-      button.title = "the value is no longer there — this is the last snapshot of it";
-      return;
-    }
-
-    const stale = safeStringify(current) !== this.fullSig;
-    button.classList.toggle("stale", stale);
-    button.classList.remove("gone");
-    button.title = stale ? "the app wrote a new value — click to show it" : "the value has not changed";
-  }
-
-  private paintFullView(): void {
-    // The title carries the size, so it is painted with the body — a refresh that brought two more
-    // pages has to stop saying Array(2).
-    const title = this.shadowRoot!.querySelector("#jv-modal-title") as HTMLElement;
-    const id = this.fullId ?? "";
-    title.textContent = `${id.slice(id.lastIndexOf("::") + 2)} — ${summarize(this.fullValue)}`;
-
-    const body = this.shadowRoot!.querySelector("#jv-modal-body") as HTMLElement;
-    body.innerHTML = this.fullRaw
-      ? `<pre class="jv-raw">${escapeHtml(toPrettyText(this.fullValue))}</pre>`
-      : renderJsonHtml(this.fullValue, FULL);
-  }
-
-  private closeFullView(): void {
-    this.shadowRoot!.querySelector("#jv-modal")?.classList.remove("on");
-    this.fullValue = undefined;
-    this.fullId = undefined;
-  }
-
-  private get fullViewOpen(): boolean {
-    return this.shadowRoot!.querySelector("#jv-modal")?.classList.contains("on") === true;
-  }
-
-  private fullValue: unknown;
-  private fullRaw = false;
-  /** Which value the full view is showing, so it can be re-read on demand. */
-  private fullId: string | undefined;
-  /** The one-line form of what it is showing, which is what "has it changed" compares against. */
-  private fullSig = "";
-
-  /** Focuses one component, or the whole tree when given `undefined`. */
-  private pin(path: string | undefined): void {
-    this.pinned = path;
-    writeSession(PIN_KEY, path ?? null);
-    this.renderComponentsFull();
-  }
-
-  /**
-   * Hides every branch with no match in it, by class rather than by re-rendering.
-   *
-   * A keystroke must not rebuild the tree: that would drop the reader's open/closed state and
-   * their scroll position on every letter typed. So a match is a class on the row and the
-   * ancestors follow from `:has()` in CSS — which also means the filter survives a structural
-   * re-render for free, because it is re-applied from the query and not from the DOM.
-   */
-  private applyFilter(): void {
-    const container = this.shadowRoot!.querySelector("#components-container");
-    if (!container) return;
-
-    const query = this.filter.trim().toLowerCase();
-    container.classList.toggle("filtering", query !== "");
-
-    for (const summary of Array.from(container.querySelectorAll(".comp-summary"))) {
-      const path = summary.getAttribute("data-path") ?? "";
-      // The name is the tail of the path, which beats reading `textContent`: that would also
-      // match the badge, the pin button and — inside a leaf — nothing predictable.
-      const name = path.slice(path.lastIndexOf(":") + 1).toLowerCase();
-      summary.closest(".component-node")?.classList.toggle("hit", query !== "" && name.includes(query));
-    }
-  }
-
-  /**
-   * Cheap update path: re-read the tree, and if the STRUCTURE is unchanged,
-   * patch only the value cells that changed (and flash them) instead of
-   * rebuilding the panel DOM. Structural changes fall back to a full render.
-   */
-  private refreshComponents() {
-    const container = this.shadowRoot!.querySelector("#components-container");
-    const inspect = this.inspect;
-    if (!container || !inspect) return;
-
-    const tree = inspect();
-    const acc: WalkAcc = { values: new Map(), raw: new Map(), nodes: new Map(), sig: [] };
-    this.walkTree(tree, "", acc); // fills acc (html discarded)
-
-    if (acc.sig.join(";") !== this.lastSig) {
-      this.renderComponentsFull();
-      return;
-    }
-
-    for (const [vid, val] of acc.values) {
-      if (this.lastValues.get(vid) !== val) {
-        // From a MAP, not from `[data-sv="…"]`. A value id carries a prop name, and a prop name
-        // can carry a quote — the same shape as the query hash that made `querySelector` throw on
-        // every poll. There is no selector here to break.
-        const span = this.valueElements.get(vid);
-        if (span) {
-          span.innerHTML = renderJsonHtml(acc.raw.get(vid), INLINE);
-          const row = span.closest(".state-row");
-          if (row) {
-            row.classList.remove("updated");
-            // reflow so the animation restarts
-            void (row as HTMLElement).offsetWidth;
-            row.classList.add("updated");
-          }
-        }
-      }
-    }
-
-    this.checkPendingWrite(acc.values);
-    this.lastValues = acc.values;
-    this.rawValues = acc.raw;
-    this.nodeMap = acc.nodes;
-    this.markFullView();
-  }
-
-  // Highlight the real DOM node on hover (direct reference — no name matching).
-  private attachInspectorEvents(container: Element) {
-    this.valueElements = new Map();
-    for (const element of Array.from(container.querySelectorAll("[data-sv]"))) {
-      this.valueElements.set((element as HTMLElement).dataset.sv ?? "", element as HTMLElement);
-    }
-
-    for (const button of Array.from(container.querySelectorAll("[data-full]"))) {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.openFullView((button as HTMLElement).dataset.full ?? "");
-      });
-    }
-
-    container.querySelectorAll(".comp-summary").forEach((summary) => {
-      const path = summary.getAttribute("data-path")!;
-      summary.addEventListener("mouseenter", () => this.highlight(path));
-      summary.addEventListener("mouseleave", () => this.clearHighlight());
-    });
-
-    container.querySelectorAll("[data-edit-node]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.beginEdit(button as HTMLElement);
-      });
-    });
-
-    container.querySelectorAll("[data-src-file]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        // Inside a `<summary>`, so the disclosure's default action has to be stopped — the same
-        // reason the focus button does it.
-        event.preventDefault();
-        event.stopPropagation();
-        const element = button as HTMLElement;
-        void this.openInEditor(element.dataset.srcFile ?? "", element.dataset.srcLine, element.dataset.srcColumn);
-      });
-    });
-
-    container.querySelectorAll("[data-pin]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        // The button lives inside a `<summary>`, and opening the disclosure is that summary's
-        // DEFAULT ACTION — so preventing it is what stops a focus click from also collapsing
-        // the row it was on.
-        event.preventDefault();
-        event.stopPropagation();
-        this.pin((button as HTMLElement).dataset.pin);
-      });
-    });
-  }
-
-  /**
-   * Highlights the real element, by direct reference rather than by name.
-   *
-   * It used to fade the panel first, because the panel covered the page it was describing and the
-   * highlight was often behind it. The panel docks now, so the app is beside it and there is
-   * nothing to get out of the way of. Nothing is unmounted and no layout moves either, which
-   * matters: the element being highlighted must not shift because the panel reacted.
-   */
-  private highlight(path: string) {
-    const node = this.nodeMap.get(path);
-    if (!node || !(node instanceof HTMLElement)) return;
-    this.clearHighlight();
-    this.highlighted = node;
-    node.dataset.ramondaPrevOutline = node.style.outline;
-    node.style.outline = "2px solid #7A4FBF";
-    node.style.backgroundColor = "rgba(255, 0, 85, 0.1)";
-  }
-
-  private clearHighlight() {
-    const node = this.highlighted;
-    if (!node) return;
-    node.style.outline = node.dataset.ramondaPrevOutline || "";
-    node.style.backgroundColor = "";
-    delete node.dataset.ramondaPrevOutline;
-    this.highlighted = null;
-  }
 }
 
 if (!customElements.get("ramonda-devtools")) {
@@ -2339,9 +757,22 @@ if (!customElements.get("ramonda-devtools")) {
 }
 
 /**
- * A side-effect module: importing it registers `<ramonda-devtools>` and nothing else. This
- * marks it as an ES module for TypeScript, which otherwise rejects an import of a file with no
- * import or export in it ("is not a module") — which is what an app hits when it imports the
- * panel explicitly, as it must.
+ * Mostly a side-effect module: importing it registers `<ramonda-devtools>`, which is what an app
+ * does and all an app needs.
+ *
+ * What IS exported is the plugin contract — the one thing in this package somebody writes code
+ * against. A library with state worth looking at registers a description of it and gets a tab; see
+ * `panelPlugin.ts`, and `/devtools/panels` in the docs.
  */
-export {};
+export { panelRegistry } from "./panelPlugin";
+export type {
+  PanelPlugin,
+  PanelRegistry,
+  PanelRow,
+  PanelSnapshot,
+  RowAction,
+  RowField,
+  RowGroup,
+  RowStatus,
+  RowValue,
+} from "./panelPlugin";

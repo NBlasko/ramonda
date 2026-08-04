@@ -1,5 +1,6 @@
 import type { QueryClient } from "./QueryClient";
-import type { QueryKey } from "./types";
+import { panelRegistry } from "./devtoolsPanel";
+import type { PanelPlugin, PanelRow, PanelSnapshot, RowField } from "./devtoolsPanel";
 
 /**
  * DEV-only: makes the live caches readable by `@ramonda/devtools`.
@@ -34,48 +35,6 @@ import type { QueryKey } from "./types";
  * Every export here is behind `__DEV__` at its call site, so a production build strips the
  * registration and the global is never installed.
  */
-
-interface QueryRow {
-  key: QueryKey;
-  hash: string;
-  status: string;
-  fetchStatus: string;
-  observers: number;
-  updatedAt: number;
-  failureCount: number;
-  restored: boolean;
-  /** One capped line, which the panel uses as the change signal for its list. */
-  dataPreview: string;
-  /**
-   * The cached value, bounded — what the panel renders as a collapsible tree.
-   *
-   * A preview was all the panel got at first, and it kept being the wrong answer: 120 characters
-   * showed the key back to you, 2000 stopped in the middle of the second page of an infinite
-   * query. The size that matters is not near any cap, so the panel gets the structure and decides
-   * how much of it to draw.
-   */
-  data: unknown;
-  /**
-   * True when the copy above hit one of its bounds, so what the panel holds is not the whole value.
-   *
-   * The panel needs this to decide whether the data may be EDITED: writing back a copy that contains
-   * `"[… budget]"` where the rest of a list used to be would put those markers into the cache. A
-   * bounded copy is fine to read and unsafe to send back.
-   */
-  truncated: boolean;
-  error: string | undefined;
-}
-
-interface QuerySnapshot {
-  clients: { index: number; queries: QueryRow[] }[];
-}
-
-interface QueryBridge {
-  snapshot(): QuerySnapshot;
-  invalidate(clientIndex: number, hash: string): void;
-  remove(clientIndex: number, hash: string): void;
-  setData(clientIndex: number, hash: string, data: unknown): boolean;
-}
 
 const clients: QueryClient[] = [];
 
@@ -179,64 +138,150 @@ function describeData(data: unknown): { data: unknown; truncated: boolean } {
   return { data: copy, truncated: budget.cut };
 }
 
-function bridge(): QueryBridge {
+/**
+ * The Query tab: every live cache, described as rows.
+ *
+ * What used to be `QueryBridge` — a snapshot shape the panel knew how to draw — is this instead: a
+ * description the panel renders without knowing anything about queries. The knowledge that moved
+ * here is the part that was always ours. Which badge means fetching, that `observers: 0` is worth
+ * calling out, that a bounded copy must not be editable — all of it is about a cache.
+ */
+function queryPanel(): PanelPlugin {
   return {
-    snapshot() {
+    version: 1,
+    id: "query",
+    label: "QUERY",
+
+    snapshot(): PanelSnapshot {
       return {
-        clients: clients.map((client, index) => ({
-          index,
-          queries: client.all().map((entry) => ({
-            key: entry.key,
-            hash: entry.hash,
-            status: entry.status,
-            fetchStatus: entry.fetchStatus,
-            observers: entry.observers.size,
-            updatedAt: entry.updatedAt,
-            failureCount: entry.failureCount,
-            restored: entry.restored === true,
-            dataPreview: preview(entry.data),
-            ...describeData(entry.data),
-            error: describeError(entry.error),
-          })),
-        })),
+        empty: "The cache is empty. It fills in when a query runs.",
+        groups: clients.map((client, index) => {
+          const entries = client.all();
+          return {
+            // The index is only worth showing when there IS more than one — an app usually has a
+            // single provider, and a label for it would be noise.
+            label:
+              clients.length > 1
+                ? `client ${index + 1} · ${entries.length} ${entries.length === 1 ? "query" : "queries"}`
+                : undefined,
+            rows: entries.map((entry) => row(index, entry)),
+          };
+        }),
       };
     },
 
-    // Both take the KEY rather than the hash: a hash cannot be taken apart again, and an
-    // exact key is a prefix of itself, so `invalidate`/`remove` hit this entry and nothing
-    // else. The entry is looked up fresh each time — a row the panel is showing may have
-    // been collected since it was drawn.
-    invalidate(clientIndex, hash) {
-      const entry = find(clientIndex, hash);
-      if (entry) clients[clientIndex]!.invalidate(entry.key);
-    },
-
-    remove(clientIndex, hash) {
-      const entry = find(clientIndex, hash);
-      if (entry) clients[clientIndex]!.remove(entry.key);
-    },
-
     /**
-     * Writes data into the cache from the panel, through `setData` — the same call an optimistic
-     * update makes.
-     *
-     * This is the one place in the panel where editing a value shows up on the page immediately, and
-     * that is not a coincidence: the cache IS what a query renders from. Editing a query hook's own
-     * `@state` does land, and looks like nothing, because `version` is an invalidation counter and
-     * `snapshot` is the hydration transport. Here there is nothing in between.
-     *
-     * It goes through `setData` rather than touching the entry, so everything that makes a write
-     * coherent still happens: a fetch in flight is abandoned (it is older information than this),
-     * structural sharing keeps the identity of what did not change, `updatedAt` moves, and every
-     * observer is notified. A refetch will replace it, which is the honest behaviour of a cache.
+     * Both actions take the KEY rather than the hash: a hash cannot be taken apart again, and an
+     * exact key is a prefix of itself, so these hit this entry and nothing else. Looked up fresh —
+     * a row the panel is showing may have been collected since it was drawn.
      */
-    setData(clientIndex, hash, data) {
+    run(rowId, actionId) {
+      const [clientIndex, hash] = splitRowId(rowId);
       const entry = find(clientIndex, hash);
-      if (!entry) return false;
-      clients[clientIndex]!.setData(entry.key, data);
-      return true;
+      const client = clients[clientIndex];
+      if (!entry || !client) return undefined;
+
+      if (actionId === "invalidate") client.invalidate(entry.key);
+      else client.remove(entry.key);
+      return undefined;
     },
   };
+}
+
+function row(clientIndex: number, entry: ReturnType<QueryClient["all"]>[number]): PanelRow {
+  const copy = describeData(entry.data);
+
+  return {
+    id: `${clientIndex}::${entry.hash}`,
+    title: JSON.stringify(entry.key),
+    code: true,
+    status: entry.status === "error" ? "error" : entry.status === "success" ? "ok" : "busy",
+    fields: fields(entry),
+    error: describeError(entry.error),
+    value: {
+      data: copy.data,
+      // What the panel shows when the value itself was too large to copy.
+      preview: preview(entry.data),
+      // `updatedAt` moves on every write, always — which a preview cannot promise, because a change
+      // past its capped end (an eighth page appended to an infinite query) leaves the first line
+      // identical.
+      revision: entry.updatedAt,
+      /**
+       * Refused for a copy that hit a bound: writing back a value containing `"[… budget]"` where
+       * the rest of a list used to be would put those markers into the cache. Reading a bounded
+       * copy is fine; sending it back is not.
+       */
+      editable: !copy.truncated,
+      writeNote: "a refetch will replace it",
+      /**
+       * Goes through `setData` rather than touching the entry, so everything that makes a write
+       * coherent still happens: a fetch in flight is abandoned (it is older information than this),
+       * structural sharing keeps the identity of what did not change, `updatedAt` moves, and every
+       * observer is notified.
+       *
+       * This is the one place in the panel where editing a value shows up on the page immediately,
+       * and that is not a coincidence: the cache IS what a query renders from.
+       */
+      write: (value: unknown) => {
+        const live = find(clientIndex, entry.hash);
+        if (!live) return "that entry is no longer in the cache";
+        clients[clientIndex]!.setData(live.key, value);
+        return undefined;
+      },
+    },
+    /**
+     * There is no "refetch", and that is the design rather than an omission: the FETCHER belongs to
+     * the observer, not to the cache, so a query nobody is watching has no function to call.
+     * `invalidate` is the honest equivalent — it marks the entry stale and asks whoever is watching
+     * to refresh, which is exactly what a mutation does.
+     */
+    actions: [
+      { id: "invalidate", label: "invalidate" },
+      { id: "remove", label: "remove" },
+    ],
+  };
+}
+
+function fields(entry: ReturnType<QueryClient["all"]>[number]): RowField[] {
+  const list: RowField[] = [
+    {
+      kind: "text",
+      text:
+        entry.failureCount > 0
+          ? `${entry.status} · ${entry.failureCount} failure${entry.failureCount === 1 ? "" : "s"}`
+          : entry.status,
+    },
+    // Live, because it is a clock: it differs on almost every poll while nothing about the cache
+    // has moved, and rebuilding the list for it is what made the tab flicker.
+    { kind: "live", id: "age", text: `updated ${age(entry.updatedAt)}` },
+    {
+      kind: "text",
+      // `observers: 0` is the interesting one: the entry is alive but nobody is watching, so it is
+      // waiting out its gcTime. That is the state people ask about.
+      text:
+        entry.observers.size === 0
+          ? "0 observers · waiting for gc"
+          : `${entry.observers.size} observer${entry.observers.size === 1 ? "" : "s"}`,
+    },
+  ];
+
+  if (entry.fetchStatus === "fetching") list.push({ kind: "badge", text: "fetching…", tone: "warn" });
+  if (entry.restored === true) list.push({ kind: "badge", text: "from server" });
+
+  return list;
+}
+
+function age(updatedAt: number): string {
+  return updatedAt === 0 ? "never" : `${Math.max(0, Math.round((Date.now() - updatedAt) / 1000))}s ago`;
+}
+
+/**
+ * Split on the FIRST separator only: a hash is JSON and can contain anything the key did,
+ * including the separator itself.
+ */
+function splitRowId(rowId: string): [number, string] {
+  const at = rowId.indexOf("::");
+  return [Number(rowId.slice(0, at)), rowId.slice(at + 2)];
 }
 
 /** The entry a row stands for, or `undefined` if it was collected in between. */
@@ -261,10 +306,18 @@ export function registerDevtoolsClient(client: QueryClient): () => void {
   };
 }
 
+/**
+ * Registers the Query tab, once, the first time a provider mounts.
+ *
+ * Once rather than per client: the tab lists every live cache, so a second provider adds a group to
+ * it rather than a second tab. Deregistering is deliberately not done when the last client goes —
+ * the tab then says the cache is empty, which is the truth and is more useful than a tab that
+ * appears and disappears as an app navigates.
+ */
 function install(): void {
-  const host = globalThis as { __RAMONDA_QUERY__?: QueryBridge };
-  if (host.__RAMONDA_QUERY__ !== undefined) return;
-  host.__RAMONDA_QUERY__ = bridge();
+  if (registered) return;
+  registered = true;
+  panelRegistry().register(queryPanel());
 }
 
-export type { QueryBridge, QueryRow, QuerySnapshot };
+let registered = false;

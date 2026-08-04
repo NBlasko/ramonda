@@ -181,7 +181,13 @@ async function main(): Promise<void> {
         { value: "form" as AddOn, label: "Form", hint: "@ramonda/form — typed fields and schema validation" },
         { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
         { value: "testing" as AddOn, label: "Testing", hint: "vitest + @ramonda/testing-library" },
-        { value: "devtools" as AddOn, label: "Devtools", hint: "@ramonda/devtools — dev inspector" },
+        {
+          value: "devtools" as AddOn,
+          label: "Devtools",
+          // Worth saying, because it is not obvious that the panel grows with the other choices:
+          // a package that has something to show registers its own tab when it is used.
+          hint: "@ramonda/devtools — dev inspector, with a tab per package you picked",
+        },
         { value: "biome" as AddOn, label: "Biome", hint: "@biomejs/biome — lint + format in one tool" },
       ],
       initialValues: ["devtools" as AddOn],

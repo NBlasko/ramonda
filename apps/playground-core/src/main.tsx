@@ -40,6 +40,9 @@ class NavBar extends Component {
         <Link href="/query" className="navlink">
           Query
         </Link>
+        <Link href="/form" className="navlink">
+          Form
+        </Link>
         <Link href="/users/42" className="navlink">
           User 42
         </Link>

@@ -241,6 +241,26 @@ There is no *refetch* button, and that is the design rather than an omission: th
 the observer, not to the cache, so an entry nobody is watching has no function to call. `invalidate`
 is the honest equivalent.
 
+## Forms
+
+The `FORMS` tab lists every mounted form: whether it is valid, how many fields have been blurred and
+how many edited, and whether it has been submitted. A valid form is one line.
+
+An invalid one gets **a row per field that is actually wrong**, with the message and whether that
+field has been interacted with at all. That last part answers the question forms actually raise —
+*it says this is required and I have not touched it* — which is usually `validateOn: "submit"` doing
+its job.
+
+Two actions, and both go through the form rather than around it:
+
+- **reset** — back to the defaults, revalidated.
+- **submit** — the real submit, validation and `onSubmit` included. The panel asks the app to do what
+  the button does; it does not simulate it.
+
+The values are read-only here, and the reason is the schema: a form holds the schema's **input** side,
+which is where a `Date` or a `File` lives, and those do not survive being typed back as JSON. `reset`
+is the honest write.
+
 ## What a commit cost
 
 The `PROFILE` tab is off until you press **record**, and that is the design rather than a limitation: a
@@ -316,6 +336,12 @@ Nothing goes into the URL, so a link you share carries none of it.
 | `</>` on a row | open its definition in your editor |
 | Drag the left edge | resize |
 | Drag the badge | move it out of the way |
+
+## A tab of your own
+
+`QUERY` and `FORMS` are not built into the panel — each package describes its own tab and registers
+it. Anything with state worth looking at can do the same, and it takes about fifteen lines. See
+[Adding a tab](/devtools/panels).
 
 ## In production
 
