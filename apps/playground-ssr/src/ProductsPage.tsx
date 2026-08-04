@@ -152,10 +152,10 @@ class ProductDetail extends Component<{ id: number }> {
    * was served:
    *
    * > A hook's props callback built a new value for the same contents: `ProductDetail → Query`
-   * > builds a new function for the `fetch` prop on every render.
+   * > built a new function for the `fetch` prop on 4 consecutive runs of its props callback.
    *
-   * The callback runs on every render of the owner, and every prop is a signal — so a fresh
-   * function is a *change*, on every render, forever. A bound method has nothing to capture:
+   * Every prop is a signal, so a fresh function is a *change* every time the callback runs. A
+   * bound method has nothing to capture:
    * `loadOne` reads its argument and `skeleton` reads `this.props` when they are CALLED, so the
    * identity never moves. Worth keeping the story rather than quietly writing the fixed version:
    * the diagnostic caught the framework author writing the framework's own example wrong.

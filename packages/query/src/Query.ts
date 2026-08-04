@@ -59,9 +59,10 @@ export interface QueryProps<TData, K extends QueryKey = QueryKey> extends QueryD
    * what you want from data you already had lying around (a list the previous page fetched, a
    * value from `localStorage`).
    *
-   * Pass a function when producing it is not free: the props callback runs on every render of
-   * the owner, so `initialData: build()` builds it every time, while `initialData: build` is
-   * called only when the cache is actually empty.
+   * Pass a function when producing it is not free: `initialData: build()` runs the build every
+   * time the props callback runs — which is whenever a signal it reads moves, and for a query
+   * that is exactly when the key changes. `initialData: build` is called only when the cache is
+   * actually empty.
    *
    * Use `initialDataUpdatedAt` when the data is not new — see below.
    */
@@ -999,9 +1000,10 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /**
    * Builds the placeholder, once per instance.
    *
-   * The function form exists because the props callback runs on every render of the owner, so
-   * an inline value would be rebuilt every time — and a rebuilt object handed to `data` would
-   * change identity on every render, which access tracking would then have to wake for.
+   * The function form exists because an inline value is rebuilt every time the props callback
+   * runs — and a rebuilt object handed to `data` changes identity, which access tracking would
+   * then have to wake for. The callback runs less often than it used to (it is cached on the
+   * signals it reads), but "less often" is not "once", and this value is wanted once.
    */
   private placeholder(): TData | undefined {
     if (this.placeholderValue === undefined) {

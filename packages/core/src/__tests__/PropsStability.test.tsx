@@ -37,6 +37,24 @@ function reported(): string {
   return logs.join("\n");
 }
 
+/**
+ * Drives an owner through enough renders for the run counter to speak.
+ *
+ * RMD022 reports on the fourth consecutive rebuild (`RUNS` in `debug/propsStability.ts`), so a
+ * test that mounts and stops proves nothing. And a props callback has to be INVALIDATED to run at
+ * all — it is cached on the signals it reads — which is why every bag below carries a `count` that
+ * moves alongside the value being examined.
+ *
+ * That pairing is not scaffolding around the check. It is the condition the check now describes:
+ * a callback that keeps running for a good reason, rebuilding one value that never moves.
+ */
+async function churn(app: { instance: { tick: number }; settle: () => Promise<void> }): Promise<void> {
+  for (let i = 1; i <= 3; i++) {
+    app.instance.tick = i;
+    await app.settle();
+  }
+}
+
 interface Bag {
   key?: readonly unknown[];
   filter?: Record<string, unknown>;
@@ -62,13 +80,14 @@ class Probe extends Hook<Bag> {
 describe("RMD022", () => {
   test("an array literal in a bag is reported, and named by its prop", async () => {
     class Panel extends Component {
-      probe = this.use(Probe, () => ({ key: ["user", 1] }));
+      @state tick = 0;
+      probe = this.use(Probe, (self: Panel) => ({ key: ["user", 1], count: self.tick }));
       render() {
         return <div>{this.probe.seen}</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
+    await churn(await getDOM<Panel>(<Panel />));
 
     expect(reported()).toContain("RMD022");
     expect(reported()).toContain("Panel → Probe");
@@ -78,15 +97,16 @@ describe("RMD022", () => {
 
   test("a closure in a bag is reported as a function, with the bound-method fix", async () => {
     class Panel extends Component {
-      probe = this.use(Probe, (self: Panel) => ({ fetch: () => self.constructor.name }));
+      @state tick = 0;
+      probe = this.use(Probe, (self: Panel) => ({ fetch: () => self.constructor.name, count: self.tick }));
       render() {
         return <div>ok</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
+    await churn(await getDOM<Panel>(<Panel />));
 
-    expect(reported()).toContain("builds a new function for the `fetch` prop");
+    expect(reported()).toContain("new function for the `fetch` prop");
     expect(reported()).toContain("bound method");
   });
 
@@ -353,6 +373,94 @@ describe("RMD022", () => {
   });
 });
 
+/**
+ * The run counter, which is what separates "built in place" from "built in place for nothing".
+ *
+ * The same-tick pair proves only the first. On its own it reported the case where the recommended
+ * fix does nothing — an array whose contents genuinely move — and it reported it on every render,
+ * which is how a diagnostic gets ignored.
+ */
+describe("RMD022 counts runs before it speaks", () => {
+  test("a value that genuinely moves is never reported, however often the callback runs", async () => {
+    class Panel extends Component {
+      @state id = 1;
+      probe = this.use(Probe, (self: Panel) => ({ key: ["user", self.id] }));
+      render() {
+        return <div>{this.probe.seen}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    for (let i = 2; i <= 6; i++) {
+      instance.id = i;
+      await settle();
+    }
+
+    /**
+     * Six runs, a fresh array every one of them — the same-tick check calls this "built in place"
+     * each time, and it is right. But `["user", 1]` and `["user", 2]` are not the same value, so
+     * `@StableProps("key")` would hand back nothing and change nothing.
+     *
+     * This is the report the threshold removes. It used to fire on every render.
+     */
+    expect(reported()).not.toContain("RMD022");
+    // And the hook really did see every one of them — silence here is not the check being blind.
+    expect(instance.probe.keys.length).toBe(6);
+  });
+
+  test("below the threshold it stays quiet, and speaks once past it", async () => {
+    class Panel extends Component {
+      @state tick = 0;
+      probe = this.use(Probe, (self: Panel) => ({ key: ["user", 1], count: self.tick }));
+      render() {
+        return <div>{this.probe.seen}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+
+    instance.tick = 1;
+    await settle();
+    instance.tick = 2;
+    await settle();
+
+    // Three runs. One rebuild that happens to produce an equal value is ordinary; two is not yet
+    // a pattern.
+    expect(reported()).not.toContain("RMD022");
+
+    instance.tick = 3;
+    await settle();
+
+    expect(reported()).toContain("RMD022");
+    expect(reported()).toContain("`key`");
+    expect(reported()).toContain("consecutive runs");
+  });
+
+  test("two use() sites of the same hook are counted separately", async () => {
+    class Panel extends Component {
+      @state tick = 0;
+      // Same hook, same prop name, opposite behaviour.
+      churning = this.use(Probe, (self: Panel) => ({ key: ["fixed"], count: self.tick }));
+      moving = this.use(Probe, (self: Panel) => ({ key: ["row", self.tick], count: self.tick }));
+
+      render() {
+        return <div>{`${this.churning.seen}:${this.moving.seen}`}</div>;
+      }
+    }
+
+    await churn(await getDOM<Panel>(<Panel />));
+
+    /**
+     * The counter is keyed by the call site's cache object rather than by owner and hook name,
+     * and this is the assertion that says why. Those two sites share an owner, a hook class and a
+     * prop name, so a counter keyed by those would merge them — and `moving` resets on every run,
+     * which would cancel `churning`'s climb and silence a real report forever.
+     */
+    expect(reported()).toContain("RMD022");
+    expect(reported()).toContain("`key`");
+  });
+});
+
 describe("static StableProps — the hook declares it, the call site does not", () => {
   /**
    * The DX question this answers: a query key is a value, and the hook AUTHOR knows that.
@@ -400,13 +508,14 @@ describe("static StableProps — the hook declares it, the call site does not", 
 
   test("a prop it did NOT declare is still reported", async () => {
     class Panel extends Component {
-      probe = this.use(Declared, () => ({ key: ["posts"], filter: { tag: "a" } }));
+      @state tick = 0;
+      probe = this.use(Declared, (self: Panel) => ({ key: ["posts"], filter: { tag: "a" }, count: self.tick }));
       render() {
         return <div>{this.probe.seen}</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
+    await churn(await getDOM<Panel>(<Panel />));
 
     // The declaration is per prop, not a blanket exemption.
     expect(reported()).toContain("RMD022");
@@ -425,14 +534,15 @@ describe("static StableProps — the hook declares it, the call site does not", 
     }
 
     class Panel extends Component {
-      probe = this.use(Fn, (self: Panel) => ({ fetch: () => self.constructor.name }));
+      @state tick = 0;
+      probe = this.use(Fn, (self: Panel) => ({ fetch: () => self.constructor.name, count: self.tick }));
       render() {
         return <div>{this.probe.seen}</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
-    expect(reported()).toContain("builds a new function for the `fetch` prop");
+    await churn(await getDOM<Panel>(<Panel />));
+    expect(reported()).toContain("new function for the `fetch` prop");
   });
 });
 
@@ -556,14 +666,15 @@ describe("@StableProps is a property of the KIND, not of an instance", () => {
     }
 
     class Panel extends Component {
-      declared = this.use(Base, () => ({ key: ["a"] }));
-      plain = this.use(Undeclared, () => ({ key: ["a"] }));
+      @state tick = 0;
+      declared = this.use(Base, (self: Panel) => ({ key: ["a"], count: self.tick }));
+      plain = this.use(Undeclared, (self: Panel) => ({ key: ["a"], count: self.tick }));
       render() {
         return <div>{`${this.declared.seen}:${this.plain.seen}`}</div>;
       }
     }
 
-    await getDOM<Panel>(<Panel />);
+    await churn(await getDOM<Panel>(<Panel />));
 
     // Read from the same bag shape, in the same component: only the hook that declared
     // `key` is exempt. A static is per class, not a global switch.

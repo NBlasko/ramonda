@@ -32,7 +32,8 @@ export type DiagnosticCode =
   | "RMD022"
   | "RMD023"
   | "RMD024"
-  | "RMD025";
+  | "RMD025"
+  | "RMD027";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -154,13 +155,20 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD022: {
     severity: "warning",
     title: "A hook's props callback built a new value for the same contents",
-    fix: 'The callback runs on every render of the owner, and every prop is a signal — so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects, on every render. For an array or an object, hold it somewhere that HAS an identity — a @compute (@compute get key() { return ["user", this.props.id] }), a field, a module constant — so the bag receives the same value instead of a fresh one, and the identity follows what it was derived from rather than a comparison. If you own the hook, @StableProps("key") declares the prop a value and settles it for every call site at once. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @create and keep it in @state.',
+    fix: 'Every prop is a signal, so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects — every time the callback runs. This is reported only when the value was rebuilt on four consecutive runs WITHOUT ever moving, so a prop that genuinely changes each time is not it, and neither is a callback that runs once and is then cached. For an array or an object, hold it somewhere that HAS an identity — a @compute (@compute get key() { return ["user", this.props.id] }), a field, a module constant — so the bag receives the same value instead of a fresh one, and the identity follows what it was derived from rather than a comparison. If you own the hook, @StableProps("key") declares the prop a value and settles it for every call site at once. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @create and keep it in @state; that one is reported the first time it happens.',
   },
   RMD023: {
     // error, not warning: items are matched by position, so state lands on the wrong row.
     severity: "error",
     title: "An array was rendered straight into children",
     fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
+  },
+  RMD027: {
+    // error, not warning: the hook keeps running on a value the app has already moved past, so
+    // what renders is not what the state says. Nothing is merely slower here.
+    severity: "error",
+    title: "A props callback reads a value that is not reactive",
+    fix: "A hook's props callback is cached on the signals it reads, so a render where none of them moved does not call it again. This prop came out different anyway, which means the value reaching it never passes through a signal — most often a plain field standing in for state (`items = []` rather than `@state items = []`), or a module-level variable something mutates. It used to work by accident: the write scheduled nothing, and the next render for any other reason happened to rebuild the bag. Make the value reactive and both problems go away at once — `@state` for something the component owns, `@compute` for something derived, a context signal for something shared. If it genuinely cannot be reactive (a `Date.now()`, a random id), read it once in `@create` and keep the result in `@state` instead of reading it in the callback.",
   },
   RMD025: {
     // error, not warning: the reader gets nothing where the server had a value.

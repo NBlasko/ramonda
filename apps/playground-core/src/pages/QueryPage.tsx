@@ -87,9 +87,9 @@ function createTodo(title: string): Promise<string> {
 class ProfileCard extends Component<{ id: string; label: string }> {
   private profile = this.use(Query<Profile>, (self: ProfileCard) => ({
     key: ["profile", self.props.id],
-    // A bound method, not a closure: the callback runs on every render, and a fresh
-    // function is a changed prop (RMD022). `load` reads `this.props` when it is CALLED,
-    // so there is nothing to capture and the identity never moves.
+    // A bound method, not a closure: a fresh function is a changed prop (RMD022) every time
+    // the callback runs. `load` reads `this.props` when it is CALLED, so there is nothing to
+    // capture and the identity never moves.
     fetch: self.load,
     staleTime: 10_000,
   }));

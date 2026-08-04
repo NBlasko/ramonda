@@ -180,13 +180,15 @@ Hand `defaultValues` an object you already have — what the fetch returned, a m
 field. Do not build it in the callback:
 
 ```tsx
-defaultValues: self.profile.data ?? { name: "", email: "" },   // ✗ a new object every render
+defaultValues: self.profile.data ?? { name: "", email: "" },   // ✗ a new object per run
 defaultValues: self.profile.data ?? BLANK,                     // ✓ one object
 ```
 
-A props callback runs on every render of the owner, so the first line builds a fresh object each
-time, and [RMD022](/reference/diagnostics) reports it in development. Holding the object is the fix
-it names, and it is the right one here: nothing is rebuilt, so there is nothing to report.
+The callback runs whenever a signal it reads moves — for a form fed by a query, every time the
+request settles or the key changes — and the first line builds a fresh object on each of those,
+which [RMD022](/reference/diagnostics) reports in development once it has happened four times
+running without the contents moving. Holding the object is the fix it names, and it is the right
+one here: nothing is rebuilt, so there is nothing to report.
 
 Declaring the prop stable — the other fix, for a hook you own — is deliberately **not** what
 `@ramonda/form` does. That comparison is bounded (five levels deep, and anything wider than fifty

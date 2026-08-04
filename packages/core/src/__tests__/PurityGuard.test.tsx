@@ -128,10 +128,11 @@ describe("RMD021", () => {
     await getDOM<Panel>(<Panel />);
 
     /**
-     * The sharpest of the four consequences, and the reason the callback does not need
-     * to run twice to be caught: the bag is rebuilt on every render, so this prop holds
-     * a different value each time. As a query key that is a new cache entry per render
-     * and a fetch that never settles.
+     * The strangest of the four consequences, and the reason the callback does not need to run
+     * twice to be caught: the callback is cached on the signals it reads, and a random value is
+     * not one of them, so it is frozen into the bag until something unrelated invalidates the
+     * callback and then it jumps. As a query key, an entry that moves on somebody else's state
+     * change and never on this one's.
      */
     expect(reported()).toContain("while building a hook's props");
     expect(reported()).toContain("Panel → Reader");

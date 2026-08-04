@@ -41,9 +41,10 @@ interface CardProps {
 @Host("div")
 class ProfileCard extends Component<CardProps> {
   /**
-   * A bound method rather than a closure: the callback runs on every render, so an inline
-   * `fetch` would be a fresh function every time and RMD022 would say so. `load` reads
-   * `this.props` when it is CALLED, so there is nothing to capture.
+   * A bound method rather than a closure: an inline `fetch` would be a fresh function every
+   * time the callback runs — every time this card's `id` moves — and RMD022 would say so once
+   * it had happened a few times running. `load` reads `this.props` when it is CALLED, so there
+   * is nothing to capture.
    *
    * The key needs nothing — `Query` declares it in `static StableProps`, so the framework
    * keeps one array identity while the parts are equal.

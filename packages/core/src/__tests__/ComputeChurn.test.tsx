@@ -12,6 +12,18 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * the compute is CACHED between the two calls, so both get the same value. RMD022 compares
  * props bags, and skips anything declared with `@StableProps` or wrapped in `stable()` — and a
  * compute reading a component prop is outside its reach entirely.
+ *
+ * ## Where the churn has to come from now
+ *
+ * A hook's props callback is cached on the signals it reads (`helpers/common.ts`), so a bag
+ * rebuilt inside one is no longer a source of churn at all — on a render where nothing it reads
+ * moved, the callback is not called and the array keeps its identity. That used to be how these
+ * tests produced their churn, and it stopped producing any.
+ *
+ * So the churn comes from JSX instead: `<Row items={[1, 2, 3]} />` builds a fresh array in the
+ * PARENT's render, and a component's props are not a callback and are not cached. That is the
+ * ground RMD024 still covers, and pointing the tests at it is what keeps them testing the
+ * diagnostic rather than the cache.
  */
 
 let logs: string[] = [];
@@ -36,18 +48,33 @@ describe("RMD024", () => {
       }
     }
 
-    class Panel extends Component {
-      @state tick = 0;
-      // A fresh array every render: the prop signal changes, the compute is invalidated, and
-      // the answer is always 6.
-      reader = this.use(Reader, () => ({ items: [1, 2, 3] }));
+    class Panel extends Component<{ items: readonly number[] }> {
+      // The callback passes a prop along instead of building one, so the cache follows the prop
+      // exactly: a new array from the parent invalidates it, nothing else does.
+      reader = this.use(Reader, (self: Panel) => ({ items: self.props.items }));
 
       render() {
-        return <div>{`${this.reader.total}:${this.tick}`}</div>;
+        return <div>{String(this.reader.total)}</div>;
       }
     }
 
-    const app = await getDOM<Panel>(<Panel />);
+    class App extends Component {
+      @state tick = 0;
+
+      // A fresh array every render of App: the prop signal changes, which invalidates the
+      // callback's cache, which changes the hook's prop, which invalidates the compute — and
+      // the answer is always 6.
+      render() {
+        return (
+          <div>
+            <Panel items={[1, 2, 3]} />
+            {String(this.tick)}
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
     for (let i = 1; i <= 4; i++) {
       app.instance.tick = i;
       await app.settle();
@@ -139,11 +166,10 @@ describe("RMD024", () => {
       }
     }
 
-    class Row extends Component<{ churn: boolean; tick: number }> {
-      reader = this.use(Reader, (self: Row) => ({
-        // One rebuilds, the other holds one array for its lifetime.
-        items: self.props.churn ? [1, 2, 3] : STABLE,
-      }));
+    class Row extends Component<{ items: readonly number[]; tick: number }> {
+      // Identical in both rows. What differs is what the PARENT hands each of them: one gets an
+      // array rebuilt in JSX on every render, the other gets the same array for its lifetime.
+      reader = this.use(Reader, (self: Row) => ({ items: self.props.items }));
 
       render() {
         // The tick is a PROP, so the parent's render actually reaches both rows — a child whose
@@ -158,8 +184,8 @@ describe("RMD024", () => {
       render() {
         return (
           <div>
-            <Row churn={false} tick={this.tick} />
-            <Row churn={true} tick={this.tick} />
+            <Row items={STABLE} tick={this.tick} />
+            <Row items={[1, 2, 3]} tick={this.tick} />
             <span>{String(this.tick)}</span>
           </div>
         );

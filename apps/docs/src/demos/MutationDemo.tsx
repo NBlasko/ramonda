@@ -27,9 +27,9 @@ function createTodo(title: string): Promise<string> {
  * ROLLBACK — the same "return the cleanup" contract `@effect` and
  * `createSubscriptionDecorator` use — and it runs only if the mutation fails.
  *
- * A module function, so its identity never changes. Declared inline it would be a fresh
- * closure on every render of the owner, which is a changed prop (RMD022) — and it needs
- * nothing from the component, only what the mutation hands it.
+ * A module function, so its identity never changes. Declared inline it would be a fresh closure
+ * every time the props callback ran, which is a changed prop (RMD022) — and it needs nothing from
+ * the component, only what the mutation hands it.
  */
 function optimisticAdd(title: string, { client }: { client: QueryClient }): () => void {
   const previous = client.peek<string[]>(["todos"])?.data;

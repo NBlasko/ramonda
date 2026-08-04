@@ -299,10 +299,12 @@ differently in each, so the message differs with it:
   handler*, keyed by the arguments, so every call to that handler uses the one value.
   The builder runs during a render, so without its own report the fix would look like a
   render problem.
-- **In a [hook's props callback](/hooks/writing)** it is the sharpest of the four: the
-  callback runs on every render, so the prop holds a different value every time. As a
-  [query key](/query/queries) that is a new cache entry per render and a fetch that
-  never settles.
+- **In a [hook's props callback](/hooks/writing)** it is the strangest of the four. The
+  callback is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) on
+  the signals it reads, and a random or clock value is not one of them — so it is frozen
+  into the bag until something *unrelated* invalidates the callback, and then it jumps. As
+  a [query key](/query/queries): an entry that changes when somebody else's state moves,
+  and never when yours does.
 
 Read it once in `@create` and keep it in `@state` (or `@persist`, so it survives
 hydration), take it as a prop, or read it in the event handler that needs it.
@@ -311,15 +313,25 @@ hydration), take it as a prop, or read it in the event handler that needs it.
 
 The props callback is called **twice in the same tick** and the two bags compared — the
 same check [RMD020](#rmd020-render-produced-a-different-value-the-second-time) runs on
-`render()`, on the other place the framework asks the app for a value on every render. It
-is part of the strict render, so `configureDev({ strictRender: false })` turns both off.
+`render()`, on the other place the framework asks the app for a value. It is part of the
+strict render, so `configureDev({ strictRender: false })` turns both off.
 
 Why it matters more here than it looks: **every prop is a signal**, and a signal compares
 by reference. A rebuilt array is a *changed* prop, so a `@compute` reading it recomputes, a
-`@watchProp` on it fires, and a subscription whose `connect` reads it reconnects — on
-every render of the owner. Measured across three renders: a compute reading a rebuilt
-array runs three times where one reading a scalar prop runs once, and a child component
-handed a rebuilt function re-renders 3/3.
+`@watchProp` on it fires, and a subscription whose `connect` reads it reconnects — every
+time the callback runs.
+
+**Two conditions, not one.** The same-tick pair proves a value was built in place. That
+alone is not worth saying: `key: ["user", self.props.id]` is built in place too, and when
+`id` moves the array genuinely differs from last time — so the fix below would hand back
+nothing. The second condition is a count *across* runs: this prop was rebuilt on four
+consecutive runs of the callback and its value never moved. Below four, ordinary code gets
+reported for coincidences; the same threshold, for the same reason, as
+[RMD024](#rmd024-a-compute-recomputes-without-its-answer-changing).
+
+A corollary worth knowing: a callback that is never invalidated cannot be reported. It runs
+once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
+and a value built once is not churn.
 
 Three findings, three fixes:
 
@@ -334,7 +346,10 @@ Three findings, three fixes:
   comparison that is safe to make, so a declared function prop is still reported.
 - **different contents from two calls in one tick** — the callback is not a function of
   state. Read the value once in `@create` and keep it in `@state`, or read it where it is
-  needed. Nothing can hide this one; what is compared is the contents.
+  needed. Nothing can hide this one; what is compared is the contents. **Reported on the
+  first occurrence**, with no count in front of it: this is a fault rather than churn, and
+  it is the one kind the cache makes worse — a `Math.random()` in the bag is now frozen
+  into the cached bag until something else invalidates it.
 
 A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
 answer when several are unstable together.
@@ -433,6 +448,41 @@ value straight from `requestContext()`.
 
 If the server rendered something where this read is, the two sides now disagree and hydration
 replaces the node — [`RMD007`](#rmd007-hydration-mismatch) reports that separately.
+
+## RMD027 — a props callback reads a value that is not reactive
+
+A hook's props callback is cached on the signals it reads, so a render where none of them moved
+does not call it again. This prop came out different anyway — which means the value reaching it
+never passes through a signal, so nothing marked the cache stale.
+
+```tsx
+class Panel extends Component {
+  items: string[] = [];                    // ✗ not @state
+  add(x: string) {
+    this.items = [...this.items, x];       // writes no signal
+  }
+  reader = this.use(List, (self) => ({ items: self.items }));
+}
+```
+
+There are really two faults here, and the second is the one you feel: `items` is not reactive, so
+assigning it schedules no render either. The hook is left holding a value the app has moved past,
+and the page shows it.
+
+Make the value reactive and both go away at once — `@state` for something the component owns,
+`@compute` for something derived, a context signal for something shared. If it genuinely cannot be
+(a `Date.now()`, a random id), read it once in `@create` and keep the result in `@state` rather
+than reading it in the callback.
+
+**The comparison is by value.** A callback that returns `{ filter: { q } }` builds a new object
+every call by construction, and the cache absorbs exactly that — so a bag whose contents match
+stays silent here. Identity is
+[`RMD022`](#rmd022-a-hooks-props-callback-built-a-new-value-for-the-same-contents)'s subject, on
+the renders where the callback does run.
+
+**Function props are skipped.** `load: () => self.tick` reads the signal when it is *called*, so
+one closure held across renders keeps answering with the current value — a fresh identity there
+says nothing about staleness.
 
 ## What is non-deterministic in JavaScript, and what catches it
 

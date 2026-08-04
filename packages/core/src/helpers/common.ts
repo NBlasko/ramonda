@@ -1,12 +1,15 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
-import { STABLE_PROPS } from "./constants";
+import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
-import { checkPropsStability } from "../debug/propsStability";
+import { checkPropsStability, checkCachedProps } from "../debug/propsStability";
 import { isStrictRender } from "../debug/renderStability";
 import type { HookClassKind } from "../types/commonTypes";
 import type { BaseHook, HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
 import { propsPhase } from "../debug/purityGuard";
+import { trackerContainer } from "../reactivity/tracker";
+import type { State } from "../reactivity/State";
+import { createId } from "./createId";
 
 /**
  * Calls the props callback, and in a development build holds it to the same two standards
@@ -18,7 +21,13 @@ import { propsPhase } from "../debug/purityGuard";
  * that happens to come out the same twice; the comparison watches the VALUE, so it catches
  * a rebuilt array or closure, which no patched global can see.
  */
-function buildProps(that: object, hookName: string, hookProps: unknown, declared: readonly string[] | undefined): any {
+function buildProps(
+  that: object,
+  hookName: string,
+  hookProps: unknown,
+  declared: readonly string[] | undefined,
+  site?: object,
+): any {
   if (typeof hookProps !== "function") return hookProps ?? {};
 
   const build = hookProps as (bag: unknown) => any;
@@ -38,8 +47,12 @@ function buildProps(that: object, hookName: string, hookProps: unknown, declared
 
       // A second call, compared against the first — the same check `render()` gets, on
       // the other place the framework asks the app for a value. See
-      // debug/propsStability.ts for why twice in one tick, and why on every render.
-      if (isStrictRender()) checkPropsStability(label, bag, build(that), declared);
+      // debug/propsStability.ts for why twice in one tick, and why a run counter on top.
+      //
+      // `site` is the call site's props cache, which the check counts runs against. It is absent
+      // only for a bag passed as a plain object, and that returned above — a plain object is not
+      // rebuilt, so there is nothing for this check to be about.
+      if (isStrictRender() && site !== undefined) checkPropsStability(label, bag, build(that), declared, site);
 
       return bag;
     } finally {
@@ -48,6 +61,28 @@ function buildProps(that: object, hookName: string, hookProps: unknown, declared
   }
 
   return build(that);
+}
+
+/**
+ * Calls the callback for an OBSERVATION rather than for a bag — the RMD027 freshness probe.
+ *
+ * Deliberately not `buildProps`: that one runs the RMD022 strict-render check, which would then
+ * fire from inside a check of its own. Two things went wrong when it did. It reported churn on a
+ * render where the callback was NOT going to be called, so the "rebuilt on every render" the
+ * message describes was not happening; and the probe has no `declared` list to hand down, so
+ * every `@StableProps` key was reported as unstable — the framework recommending its own
+ * declaration as the fix for a fault it had just invented.
+ *
+ * The phase marker stays, so RMD021 still attributes randomness read here to the bag.
+ */
+function probeProps(that: object, hookName: string, hookProps: unknown): any {
+  const previous = propsPhase.label;
+  propsPhase.label = `${that.constructor.name} → ${hookName}`;
+  try {
+    return (hookProps as (bag: unknown) => any)(that);
+  } finally {
+    propsPhase.label = previous;
+  }
 }
 
 /**
@@ -91,6 +126,46 @@ function resolveStable(next: any, prev: Record<string, any> | undefined, declare
  */
 const STABLE_DEPTH = 5;
 
+/**
+ * The props callback, cached on the signals it read — the same contract `@compute` gives a
+ * getter, applied to the one other place the framework asks the app for a value on every render.
+ *
+ * ## Why the callback is cached rather than called
+ *
+ * Every prop is a signal, so a fresh reference is a change. A callback written the natural way
+ * (`() => ({ filter: { q: this.q }, onPick: x => this.pick(x) })`) rebuilt its bag on every render
+ * of the owner, and each rebuilt object woke the prop signal holding it — so a `@compute` inside
+ * the hook recomputed, a `@watchProp` fired, a subscription reconnected, all because the OWNER
+ * rendered for an unrelated reason. Measured in `PropsFactoryCache.test.tsx`: ten hooks, five
+ * renders, one changed signal — 50 callback calls and 50 hook recomputes, where 5 and 5 is the
+ * whole of the work that changed.
+ *
+ * The fix used to be the app's to write: hold the value in a `@compute` and pass that along, which
+ * RMD022 recommends. That works, and it is ceremony the framework can do instead — the callback
+ * already reads its inputs through signals, so what it depends on is observable without being
+ * declared.
+ *
+ * ## The cost, honestly
+ *
+ * A CLEAN pass is one boolean. A DIRTY pass costs MORE than calling the callback used to: the
+ * dependency set is detached, re-tracked and re-attached, and a signal read by a callback gains a
+ * second listener, which promotes `State` off its single-listener slot onto a `Map`. So this is a
+ * trade, not a free win, and it pays exactly when hooks outnumber the signals that changed —
+ * which is the shape of a hook-heavy app.
+ *
+ * ## What it does not do
+ *
+ * It does not skip the owner's render, and it does not skip the walk: `updateFn` still visits
+ * every child hook, because a child can depend on state of its own that the parent's bag says
+ * nothing about. Only the CALL and the prop diff are skipped.
+ */
+interface PropsCache {
+  bag: any;
+  isDirty: boolean;
+  deps: Set<State<any>>;
+  addDep(s: State<any>): void;
+}
+
 export function useCommon<T extends BaseHook<any>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
   hook: HookClassKind<T, any>,
@@ -114,7 +189,91 @@ export function useCommon<T extends BaseHook<any>, P>(
   // non-configurable symbol on the class, so it cannot change afterwards.
   const declaredStable = (hook as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
 
-  const initialProps = resolveStable(buildProps(that, hook.name, hookProps, declaredStable), undefined, declaredStable);
+  // A bag passed as a plain object has one identity for the life of the call site, so there is
+  // nothing to cache and nothing to track. Only a CALLBACK rebuilds, so only a callback gets the
+  // machinery — and a hook taking no props at all pays for none of it.
+  const isFactory = typeof hookProps === "function";
+
+  const cacheId = isFactory ? createId() : 0;
+  const cache: PropsCache | undefined = isFactory
+    ? {
+        bag: undefined,
+        isDirty: true,
+        deps: new Set<State<any>>(),
+        addDep(s: State<any>) {
+          this.deps.add(s);
+        },
+      }
+    : undefined;
+
+  const invalidate = () => {
+    // Synchronous, fired from `State.set` — so by the time the update walk reaches this call
+    // site the flag is already correct. That ordering is what makes the walk safe to keep
+    // top-down: the parent sets the child's prop signals BEFORE recursing, so a child whose
+    // input just moved is marked dirty before it is consulted.
+    if (cache) cache.isDirty = true;
+  };
+
+  /**
+   * The bag for this render — the cached one when nothing it reads has moved.
+   *
+   * `prevProps` is threaded through to `resolveStable`, so `@StableProps` still settles a
+   * rebuilt-but-equal value on the renders where the callback DID run. The two do different
+   * jobs: the cache stops the call, the declaration stops the churn inside a call that had to
+   * happen anyway.
+   */
+  const readProps = (prevProps: Record<string, any> | undefined): any => {
+    if (!cache) return resolveStable(buildProps(that, hook.name, hookProps, declaredStable), prevProps, declaredStable);
+
+    if (cache.isDirty) {
+      // Detach first, then re-track: a callback with a branch in it reads a DIFFERENT set of
+      // signals depending on which way it went, so the old set cannot be assumed to be a subset
+      // of the new one.
+      for (const dep of cache.deps) dep[detach](cacheId);
+      cache.deps.clear();
+
+      const prevTracker = trackerContainer.current;
+      trackerContainer.current = cache;
+
+      let raw: any;
+      try {
+        raw = buildProps(that, hook.name, hookProps, declaredStable, cache);
+      } finally {
+        trackerContainer.current = prevTracker;
+      }
+
+      for (const dep of cache.deps) dep[attach]({ id: cacheId, onChange: invalidate });
+
+      cache.bag = resolveStable(raw, prevProps, declaredStable);
+      cache.isDirty = false;
+    } else if (__DEV__ && isStrictRender()) {
+      // RMD027: the cache claims nothing moved. Call the callback anyway and compare — a
+      // difference means it read something no signal backs, which is the one way this cache
+      // can serve a stale bag. Untracked deliberately: this call is an observation, and letting
+      // it record dependencies would make the check change the thing it is checking.
+      checkCachedProps(
+        `${that.constructor.name} → ${hook.name}`,
+        cache.bag,
+        probeProps(that, hook.name, hookProps),
+        STABLE_DEPTH,
+      );
+    }
+
+    // Whatever this callback read, an enclosing tracker read too. Without this a `use()` nested
+    // inside another tracked region would have its dependencies swallowed by this cache — the
+    // reads used to reach that tracker directly, and forwarding is what keeps them reaching it.
+    // On the HIT path as much as the miss path: a hit touches no signal at all, so a tracker
+    // above it would record nothing and never invalidate. That is the same trap `@compute` has
+    // to step around, for the same reason.
+    const outerTracker = trackerContainer.current;
+    if (outerTracker) {
+      for (const dep of cache.deps) outerTracker.addDep(dep);
+    }
+
+    return cache.bag;
+  };
+
+  const initialProps = readProps(undefined);
 
   const hookInstance = new hook(runtime, initialProps);
   const hookRuntime = hookInstance[HOOK_RUNTIME];
@@ -135,33 +294,44 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const updateFn = () => {
     const prevProps = hookRuntime.rawProps;
-    const nextProps = resolveStable(buildProps(that, hook.name, hookProps, declaredStable), prevProps, declaredStable);
-    hookRuntime.rawProps = nextProps;
-    const sigs = hookRuntime.propsSignals;
+    const nextProps = readProps(prevProps);
 
-    if (prevProps) {
-      // An update: both the old and the new props exist.
+    // The cache handed back the same bag, so every key in it is the same value it already had —
+    // the diff below would visit each one to prove that and wake nothing. Skipped by IDENTITY,
+    // not by a flag: a plain-object bag reaches the same conclusion by the same test, and so
+    // does a callback that happened to be re-run and settled by `@StableProps`.
+    //
+    // What is NOT skipped is the walk into the children further down. A child hook can depend on
+    // state of its own, which this hook's bag says nothing about, so skipping the recursion here
+    // would freeze whole subtrees on any render where only their own state moved.
+    if (nextProps !== prevProps) {
+      hookRuntime.rawProps = nextProps;
+      const sigs = hookRuntime.propsSignals;
 
-      // 1. Walk the new props and wake the signals whose value moved.
-      for (const key in nextProps) {
-        const newVal = nextProps[key];
-        if (newVal !== prevProps[key]) {
-          sigs.get(key)?.set(newVal);
+      if (prevProps) {
+        // An update: both the old and the new props exist.
+
+        // 1. Walk the new props and wake the signals whose value moved.
+        for (const key in nextProps) {
+          const newVal = nextProps[key];
+          if (newVal !== prevProps[key]) {
+            sigs.get(key)?.set(newVal);
+          }
         }
-      }
 
-      // 2. Walk the old props for keys the new one dropped. Without this a
-      //    removed key would keep its last value forever — nothing else ever
-      //    visits it again.
-      for (const key in prevProps) {
-        if (!(key in nextProps)) {
-          sigs.get(key)?.set(undefined);
+        // 2. Walk the old props for keys the new one dropped. Without this a
+        //    removed key would keep its last value forever — nothing else ever
+        //    visits it again.
+        for (const key in prevProps) {
+          if (!(key in nextProps)) {
+            sigs.get(key)?.set(undefined);
+          }
         }
-      }
-    } else {
-      // First render: nothing to compare against, so just seed every signal.
-      for (const key in nextProps) {
-        sigs.get(key)?.set(nextProps[key]);
+      } else {
+        // First render: nothing to compare against, so just seed every signal.
+        for (const key in nextProps) {
+          sigs.get(key)?.set(nextProps[key]);
+        }
       }
     }
 
@@ -177,6 +347,17 @@ export function useCommon<T extends BaseHook<any>, P>(
   };
 
   internalHooks.push(updateFn);
+
+  // The cache holds a listener on every signal its callback read, and those signals outlive the
+  // hook — an owner's `@state` belongs to the owner, and a context signal belongs to the
+  // provider. Without this the destroyed hook's cache stays subscribed and is invalidated
+  // forever by writes it can no longer do anything about.
+  if (cache) {
+    runtime.clearReactives.push(() => {
+      for (const dep of cache.deps) dep[detach](cacheId);
+      cache.deps.clear();
+    });
+  }
 
   return hookInstance;
 }
