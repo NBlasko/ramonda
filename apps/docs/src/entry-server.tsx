@@ -22,6 +22,11 @@ function attr(value: string): string {
 function headExtra(path: string, title: string): string {
   const url = BASE + (path === "/" ? "" : path);
   return [
+    // Before the stylesheet is parsed: this is the face the first paragraph is set in, and asking
+    // for it a round trip later is what makes a page flash from the fallback to the real thing.
+    // Only the roman — the italic and the mono are wanted by some pages and not others, and the
+    // browser fetches those itself when a rule actually uses them.
+    '<link rel="preload" href="/assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>',
     '<link rel="icon" type="image/svg+xml" href="/favicon.svg">',
     '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">',
     '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">',

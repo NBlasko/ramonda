@@ -198,8 +198,21 @@ export const panel = {
    * of the list is the fallback, and it should be the same list everywhere.
    */
   mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  /** Left as the bare generic on purpose: the panel must not inherit the page's font. */
-  sans: "sans-serif",
+  /**
+   * The platform's own interface font, and not a face of ours.
+   *
+   * `sans-serif` alone is the browser's default — Arial, or Liberation Sans — which is nobody's
+   * choice and looks foreign next to the rest of the machine. `system-ui` is the font the operating
+   * system draws its own windows in, so the panel looks like it belongs there.
+   *
+   * A face of our own was measured and rejected. `@font-face` does not register inside a shadow
+   * root — neither in an inline `<style>` nor through `adoptedStyleSheets`, both fall back — so a
+   * font shipped with the panel would have to be declared on the DOCUMENT, where its family name is
+   * visible to the page. And the panel exists only in a development build, so a page that started
+   * using that name would look right while you worked and different once you shipped. That is the
+   * class of bug this tool is for finding, not for creating.
+   */
+  sans: "system-ui, sans-serif",
 } as const;
 
 export type PanelTokens = typeof panel;
@@ -244,6 +257,62 @@ export const site = {
 } as const;
 
 export type SiteTokens = typeof site;
+
+/**
+ * The documentation site's type.
+ *
+ * IBM Plex, one family in two roles — the same reasoning that picked one icon set rather than the
+ * best icon from each. Plex was drawn for technical documentation and for code, which is the whole
+ * of what this site is.
+ *
+ * **The panel does not get this, and that is not an oversight.** `@font-face` does not register
+ * inside a shadow root — measured, both an inline `<style>` and `adoptedStyleSheets` fall back — so
+ * a font shipped with the devtools would have to be declared on the document, where the page can
+ * name it. And the panel exists only in a development build, so a page that started using that name
+ * would look right while you worked and different once you shipped.
+ *
+ * A stack and not a single name: the face is asked for first, and what follows is what draws the
+ * page in the moment before it arrives, and on any request that never gets it.
+ */
+export const siteFonts = {
+  sans: '"IBM Plex Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  mono: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+} as const;
+
+/**
+ * The faces themselves.
+ *
+ * Three files, and each one is here because something on the site needs it: the roman covers every
+ * weight through its axis (566 `<strong>`s and the headings come out of one file), the italic is a
+ * separate face because an axis cannot slant a letterform, and the mono is a single weight because
+ * the highlighter emits neither bold nor italic code — checked, zero of each across all 74 pages.
+ *
+ * `swap` on all three: the page is prose, and prose that is invisible while a font loads is worse
+ * than prose that changes face once.
+ */
+export const siteFaces = [
+  {
+    family: "IBM Plex Sans Variable",
+    style: "normal",
+    weight: "100 700",
+    file: "plex-sans-var.woff2",
+    format: "woff2-variations",
+  },
+  {
+    family: "IBM Plex Sans Variable",
+    style: "italic",
+    weight: "100 700",
+    file: "plex-sans-var-italic.woff2",
+    format: "woff2-variations",
+  },
+  {
+    family: "IBM Plex Mono",
+    style: "normal",
+    weight: "400",
+    file: "plex-mono.woff2",
+    format: "woff2",
+  },
+] as const;
 
 /**
  * The bloom.

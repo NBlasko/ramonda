@@ -6,12 +6,9 @@ body {
   margin: 0;
   background: var(--rmd-bg);
   color: var(--rmd-fg);
-  font:
-    16px / 1.65 -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  font-family: var(--rmd-font-sans);
 }
 a {
   color: var(--rmd-accent);
@@ -58,10 +55,31 @@ a:hover {
   padding: 32px 24px;
   align-items: flex-start;
 }
+/* The sidebar scrolls on its own.
+   Sticky alone only pins the TOP of it: a list taller than the window then has its last entries
+   below the fold, and the only way to reach them is to scroll the article to its end and keep
+   going. Bounding the height and letting it scroll means the whole list is reachable wherever the
+   page happens to be. `overscroll-behavior` stops that scroll from continuing into the page once
+   the list ends, which is what makes the two feel separate rather than chained. */
 nav {
   flex: 0 0 220px;
   position: sticky;
   top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the scrollbar, so it never sits on top of a link. */
+  padding-right: 6px;
+  /* Thin and quiet: the sidebar is chrome, and a full-weight scrollbar beside it reads as content. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--rmd-line) transparent;
+}
+nav::-webkit-scrollbar {
+  width: 8px;
+}
+nav::-webkit-scrollbar-thumb {
+  background: var(--rmd-line);
+  border-radius: 4px;
 }
 .sidebar-group h4 {
   margin: 20px 0 8px;
@@ -138,6 +156,7 @@ article code {
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
+  font-family: var(--rmd-font-mono);
 }
 article pre {
   background: var(--rmd-code-bg);
@@ -424,12 +443,19 @@ article img[src$=".gif"] {
     display: none;
   }
   /* ONE scroll container for the whole table, so every row's values move together and the columns
-     stay lined up down the page. A scroller per row would drift out of step the moment two rows
-     were scrolled by different amounts, and would put a scrollbar under each of them.
+     stay lined up down the page. A scroller per row would drift out of step the moment two rows were
+     scrolled by different amounts, and would put a scrollbar under each of them.
+
+     The frame belongs HERE and not on the rows, and that is the difference between one table and a
+     stack of small ones: a border on a row is inside the scrolled content, so its left and right
+     edges slide away as you scroll. On the scroller it stays where the table stops.
+
      `container-type` is what lets the name bar below ask for the visible width. */
   .table-wrap {
     overflow-x: auto;
     container-type: inline-size;
+    border: 1px solid var(--rmd-line);
+    border-radius: 8px;
   }
   .table-wrap table,
   .table-wrap tbody {
@@ -437,20 +463,18 @@ article img[src$=".gif"] {
     width: max-content;
     min-width: 100%;
   }
-  /* A row is two lines. `nowrap` stops a break BETWEEN the value cells, so they form the one long
-     line that scrolls; each cell sets `normal` again for its own text. */
+  /* A row is two bands, and nothing separates one row from the next but the change of colour —
+     grey, white, grey, white, with no rule and no gap. `nowrap` stops a break BETWEEN the value
+     cells, so they form the one long line that scrolls; each cell sets `normal` again for its text. */
   .table-wrap tr {
     display: block;
     white-space: nowrap;
     width: max-content;
     min-width: 100%;
-    margin: 0 0 10px;
-    border: 1px solid var(--rmd-line);
-    border-radius: 8px;
   }
-  /* Line one: the name, pinned. `100cqw` and not `100%`: the row is as wide as its widest line, and
-     a bar that width would carry the name off-screen with everything else. The container query unit
-     is the width you can SEE, which is exactly where the name has to stay. */
+  /* The grey band: the name, pinned. `100cqw` and not `100%` — the row is as wide as its widest
+     line, and a bar that width would carry the name off-screen with everything else. The container
+     query unit is the width you can SEE, which is exactly where the name has to stay. */
   .table-wrap td:first-child {
     display: block;
     position: sticky;
@@ -459,12 +483,11 @@ article img[src$=".gif"] {
     width: 100cqw;
     padding: 7px 12px;
     border: 0;
-    border-bottom: 1px solid var(--rmd-line);
     background: var(--rmd-code-bg);
     font-weight: 600;
     white-space: normal;
   }
-  /* Line two: the values, side by side, scrolling under the name.
+  /* The white band: the values, side by side, scrolling under the name.
      A FIXED width, not one from the content: every row is its own line of inline boxes, so nothing
      makes the second value of one row start where the second value of the next one does. With a
      single scrollbar moving all of them together, that misalignment is what you would notice —
@@ -478,6 +501,8 @@ article img[src$=".gif"] {
     border: 0;
     border-left: 1px solid var(--rmd-line);
   }
+  /* The column dividers scroll WITH the columns, because that is what they divide. The first one
+     would sit on the table's own left edge. */
   .table-wrap td:nth-child(2) {
     border-left: 0;
   }

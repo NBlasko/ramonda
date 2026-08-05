@@ -17,7 +17,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bloom, brand, declarations, logoGround, site } from "../../../packages/theme/src/index.ts";
+import {
+  bloom,
+  brand,
+  declarations,
+  logoGround,
+  site,
+  siteFaces,
+  siteFonts,
+} from "../../../packages/theme/src/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, "..", "public");
@@ -31,7 +39,20 @@ const files = {
     HEADER,
     "/* The site follows the reader's system preference; the devtools panel does not. See the",
     "   package for why those are two palettes rather than one. */",
+    ...siteFaces.map((face) =>
+      [
+        "@font-face {",
+        `  font-family: "${face.family}";`,
+        `  font-style: ${face.style};`,
+        `  font-weight: ${face.weight};`,
+        "  font-display: swap;",
+        `  src: url("/assets/fonts/${face.file}") format("${face.format}");`,
+        "}",
+      ].join("\n"),
+    ),
     ":root {",
+    `  --rmd-font-sans: ${siteFonts.sans};`,
+    `  --rmd-font-mono: ${siteFonts.mono};`,
     declarations(site.light),
     "}",
     "@media (prefers-color-scheme: dark) {",

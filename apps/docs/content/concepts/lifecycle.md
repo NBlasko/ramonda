@@ -86,9 +86,9 @@ deliberate:
 So the division is: **reacting to a value → `@watchProp`. Touching the DOM afterwards
 → `@updated`.**
 
-**And there is deliberately no post-commit `@watchProp`.** It is the obvious sugar —
-"run this method after the commit, but only when `props.selectedId` changed" — and it
-was considered and rejected, for three reasons worth knowing:
+**There is no post-commit `@watchProp`,** and knowing why keeps you from looking for it.
+It is the obvious sugar — "run this method after the commit, but only when
+`props.selectedId` changed" — and three things are wrong with it:
 
 - **It would be strictly narrower than `@updated`.** It sees props, and props only. Not
   the state of a hook you use (the list came from a query), not a context value, not any

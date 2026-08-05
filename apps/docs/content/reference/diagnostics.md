@@ -70,8 +70,9 @@ declare the context `optional`. See [Context](/composition/context).
 
 ## RMD004 — Props mutated by the receiving component
 
-Props belong to the parent. The assignment **throws**, in every build — it used to be swallowed,
-so reading the value back gave the old one and nothing said the write had been dropped.
+Props belong to the parent. The assignment **throws**, in every build. Swallowing it instead lets
+the mistake hide: you read the value back, get the old one, and have nothing telling you the write
+was dropped.
 
 Copy it into `@state`, or take a callback prop and ask the parent to change it. See
 [Props](/concepts/props).

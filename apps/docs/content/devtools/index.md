@@ -171,8 +171,9 @@ changes behaviour.
 
 ### What an instance holds
 
-Some hooks keep their state in plain fields behind a `@state` counter, and the panel used to show
-exactly that: `{ version: 7 }`, and props that never change.
+Some hooks keep their state in plain fields behind a `@state` counter, so their state reads
+`{ version: 7 }` and their props never change. Those two rows are all a tree of state and props can
+say about such a hook, and they say nothing.
 
 That shape is what the framework recommends rather than an oversight. `@state` means "serialise me
 into the hydration blob", so a hook holding a `Date`, a `File` or a class instance — a form's values,
