@@ -44,20 +44,13 @@ A few things are Ramonda's, because only Ramonda can know them:
 // vitest.config.ts
 export default defineConfig({
   define: { __DEV__: JSON.stringify(process.env.NODE_ENV !== "production") },
-  esbuild: { jsxFactory: "__ramondaH", target: "es2022" },
+  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core", target: "es2022" },
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```
 
-```ts
-// test/setup.ts
-import { h } from "@ramonda/core";
-
-// The name has to match `jsxFactory` above. `h` is what the package exports;
-// `__ramondaH` is what compiled JSX calls, and it is deliberately a name nobody writes —
-// a local `h` in any file would otherwise shadow the injected one and silently win.
-(globalThis as unknown as { __ramondaH: typeof h }).__ramondaH = h;
-```
+There is no setup file to write for JSX. The compiler imports Ramonda's runtime per file, so
+nothing has to be put on `globalThis` and there is no factory name to keep in step with the config.
 
 `globals: true` is what lets cleanup register its own `afterEach`.
 

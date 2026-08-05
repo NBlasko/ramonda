@@ -71,7 +71,7 @@ export type {
   // under a DOM shim where `window` exists.
   RenderEnv,
 } from "./types/vdom";
-export { h } from "./vdom/h";
+export { __h } from "./vdom/h";
 export * from "./global";
 
 if (__DEV__) {

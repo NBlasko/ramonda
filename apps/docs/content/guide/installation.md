@@ -64,8 +64,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxInject: `import { h as __ramondaH } from '@ramonda/core'`,
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
 });
@@ -78,50 +78,41 @@ export default defineConfig({
   "compilerOptions": {
     "target": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react",
-    "jsxFactory": "__ramondaH",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@ramonda/core",
     "strict": true
   }
 }
 ```
 
-(`"jsx": "react"` is just TypeScript's built-in name for this classic function-call
-transform — it turns `<p/>` into a call and pulls in no library. `jsxFactory` names the
-function to call.)
+That is the whole of it. There is no factory to name, nothing to inject into every module, and no
+`global.d.ts` declaring an identifier your source never mentions.
 
-And tell the type-checker that the factory is a global (the bundler injects it, so you
-never import it by hand):
+`"react-jsx"` is TypeScript's name for the **automatic** runtime, and it pulls in nothing from
+React: the compiler adds one import per file, and `jsxImportSource` says where from. So a `.tsx`
+file that writes `<p/>` gets `import { jsx } from "@ramonda/core/jsx-runtime"` at the top, written
+for it.
 
-```ts
-// global.d.ts
-import { h as _h } from "@ramonda/core";
+The classic transform is what needs a name in scope, and a name in scope is a name that can be
+taken. A bundler injects an identifier **only if it is not already bound**, so a helper of your own
+called `h` silently won and every tag in that file called it — no error, no warning, a page quietly
+built out of whatever your function returned. An import the compiler writes cannot be shadowed,
+which is why this is the arrangement now.
 
-declare global {
-  const __ramondaH: typeof _h;
-}
-```
+### Building a vnode by hand
 
-### Why the factory has such an ugly name
-
-Because a short one is a name you would reuse. The factory is only in scope because the
-bundler injects it — and a bundler injects an identifier **only if it is not already
-bound**. So a variable named `h` anywhere in a file silently wins:
+For the rare thing JSX cannot say — a tag name that is a value, children you have to spread — the
+factory is exported as `__h`:
 
 ```tsx
-function h(x: number) { return x; }   // your own helper
+import { __h } from "@ramonda/core";
 
-export function Card() {
-  return <div>ok</div>;               // compiles to YOUR h("div", …)
-}
+const node = __h(tag, attributes, ...children);
 ```
 
-No error, no warning: `<div>` becomes whatever your function returns, and the page is
-wrong. `__ramondaH` is a name nobody writes, so the collision cannot happen. It costs
-nothing — the bundle is byte-identical, since a named import tree-shakes as before and
-the minifier shortens the binding again.
-
-A project already set up with `jsxFactory: "h"` keeps working; `h` is still exported and
-still declared. There is nothing to migrate.
+Compiled JSX never calls it; that goes through the runtime import above. The name is deliberately
+one you would not reach for by habit, because reaching for it usually means a tag would have been
+clearer.
 
 ## Check it works
 

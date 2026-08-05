@@ -11,13 +11,15 @@ export default defineConfig({
   // Vite 7 uses esbuild and Vite 8 uses oxc, and with both present oxc wins and the
   // esbuild block is ignored entirely. This package has no vite of its own.
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxFragment: "Fragment",
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
   resolve: {
     alias: {
       // The `/testing` alias must come FIRST — a string alias matches by prefix.
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../core/src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "../core/src/jsx-runtime.ts"),
       "@ramonda/core/testing": resolve(__dirname, "../core/src/testing.ts"),
       "@ramonda/core": resolve(__dirname, "../core/src/index.ts"),
       "@ramonda/testing-library": resolve(__dirname, "../testing-library/src/index.ts"),
@@ -29,7 +31,6 @@ export default defineConfig({
     coverage,
     globals: true,
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
     // The `*.prod.test.*` files belong to `test:prod`, which runs them in a separate process
     // with NODE_ENV=production — `__DEV__` is baked in per process, so they would test the
     // development path here. See vitest.prod.config.ts.

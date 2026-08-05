@@ -1,9 +1,4 @@
-import { h } from "@ramonda/core";
 import { configureDev } from "@ramonda/core";
-
-// JSX in tests compiles to `__ramondaH(...)`; expose it globally like the core setup does.
-// The name is deliberately unusable — see core's `global.ts`.
-(globalThis as unknown as { __ramondaH: typeof h }).__ramondaH = h;
 
 // RMD020 renders every component twice in a development build to catch values built
 // in place. These suites deliberately log from `render()` to observe render ORDER —

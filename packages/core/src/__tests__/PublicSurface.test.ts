@@ -32,7 +32,10 @@ const EXPECTED = [
   // entry points
   "bootstrap",
   "unmount",
-  "h",
+  // The JSX factory, for the vnodes a tag cannot express — a runtime tag name, spread children.
+  // Compiled JSX never calls it: that goes through `@ramonda/core/jsx-runtime`, which the compiler
+  // imports itself. The name is deliberately one nobody reaches for by habit.
+  "__h",
   // server rendering
   "renderToString",
   "renderPage",

@@ -368,7 +368,7 @@ TypeScript). Each latest major breaks the setup for no shipped benefit — revis
 only with the fix in hand:
 
 - **`vite` held at `^7`.** Vite 8 switched to the oxc transformer, which ignores
-  the `esbuild: { jsxFactory: "__ramondaH" }` block the vitest configs use, so JSX stops
+  the `esbuild: { jsx: "automatic" }` block the vitest configs use, so JSX stops
   compiling in tests (`SyntaxError`). To move to 8, configure oxc's JSX pragma in
   every vitest config. (See the note in `packages/router/vitest.config.ts`.)
 - **`jsdom` pinned to `28.0.0`.** 28.1+/29 changed CSSOM `cssText` serialization

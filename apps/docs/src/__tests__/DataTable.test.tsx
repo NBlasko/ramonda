@@ -1,4 +1,4 @@
-import { bootstrap, configureDev, h, unmount } from "@ramonda/core";
+import { bootstrap, configureDev, __h, unmount } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { flushSync } from "@ramonda/core/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -6,8 +6,6 @@ import { DataTable } from "../DataTable";
 import { Markdown } from "../Markdown";
 import type { ContentNode } from "../content-types";
 import { pageLoaders } from "../generated/page-loaders";
-
-(globalThis as unknown as { __ramondaH: typeof h }).__ramondaH = h;
 
 /**
  * What a prose table becomes in the DOM.
@@ -72,7 +70,7 @@ const tableTree: ContentNode = {
 
 describe("a prose table", () => {
   test("carries its column heading on every cell but the first", () => {
-    const cells = mount(h(Markdown, { tree: [tableTree] })).querySelectorAll("tbody td");
+    const cells = mount(__h(Markdown, { tree: [tableTree] })).querySelectorAll("tbody td");
 
     expect(cells.length).toBe(2);
     // The first cell IS the row's name, so it gets the sticky bar rather than a heading.
@@ -82,7 +80,7 @@ describe("a prose table", () => {
   });
 
   test("keeps the markup a real table, so a wide screen is unaffected", () => {
-    const table = mount(h(Markdown, { tree: [tableTree] })).querySelector("table");
+    const table = mount(__h(Markdown, { tree: [tableTree] })).querySelector("table");
 
     expect(table).not.toBe(null);
     expect(table!.querySelectorAll("thead th").length).toBe(2);
@@ -119,7 +117,7 @@ describe("a prose table", () => {
         },
       ],
     };
-    const row = mount(h(Markdown, { tree: [rich] })).querySelector("tbody tr")!;
+    const row = mount(__h(Markdown, { tree: [rich] })).querySelector("tbody tr")!;
 
     expect(row.querySelector("code")!.textContent).toBe("@state");
     // Several nodes in one cell, all of them kept.
@@ -129,7 +127,7 @@ describe("a prose table", () => {
 
   test("takes data directly, so a page can build one in TSX", () => {
     const table = mount(
-      h(DataTable, {
+      __h(DataTable, {
         columns: ["Code", "Means"],
         rows: [["RMD001", "a write during render"]],
       }),
@@ -159,10 +157,10 @@ describe("the published pages", () => {
 
     for (const load of Object.values(pageLoaders)) {
       const loaded = (await load()) as Record<string, unknown>;
-      const Page = (loaded["default"] ?? loaded["Page"]) as Parameters<typeof h>[0];
+      const Page = (loaded["default"] ?? loaded["Page"]) as Parameters<typeof __h>[0];
       const container = document.createElement("div");
       document.body.appendChild(container);
-      bootstrap(h(Page, {}) as VNode, container);
+      bootstrap(__h(Page, {}) as VNode, container);
       flushSync();
 
       for (const table of container.querySelectorAll("table")) {

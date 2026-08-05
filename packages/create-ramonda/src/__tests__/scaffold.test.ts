@@ -310,9 +310,11 @@ describe("the generated project declares what its own code needs", () => {
     expect(read("global.d.ts")).toContain("__DEV__");
   });
 
-  test("the SPA template does not, because vite provides import.meta.env.DEV", () => {
-    const { read } = make("spa", ["devtools"]);
-    expect(read("global.d.ts")).not.toContain("__DEV__");
+  test("the SPA template has no globals to declare at all", () => {
+    const { dir, read } = make("spa", ["devtools"]);
+    // Vite provides `import.meta.env.DEV`, and the JSX factory is imported per file by the
+    // automatic runtime — so there is nothing left for a `global.d.ts` to say.
+    expect(existsSync(join(dir, "global.d.ts"))).toBe(false);
     expect(read("src/main.tsx")).toContain("import.meta.env.DEV");
   });
 });

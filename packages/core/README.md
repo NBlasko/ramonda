@@ -44,14 +44,14 @@ Measured across the pipelines this repo has used:
 | --- | --- |
 | esbuild directly | stripped ✅ |
 | core's own `tsup` build | stripped ✅ |
-| Vite 7 (esbuild) client build, **with** `jsxInject` | stripped ✅ |
-| Vite 7 client build, without `jsxInject` | **survive** ❌ |
+| Vite 7 (esbuild) client build, with a JSX transform configured | stripped ✅ |
+| Vite 7 client build, with no JSX transform at all | **survive** ❌ |
 | Vite 7 `--ssr` build | **survive** ❌ |
 | Vite 8 (oxc), any mode | **survive** ❌ |
 
-The Vite 7 row that works does so *by accident*: `jsxInject` adds an import to
+The Vite 7 row that works does so *by accident*: the JSX transform adds an import to
 every module, which forces each one through the esbuild transform, and that
-transform is what removes the decorators. Take `jsxInject` away for an unrelated
+transform is what removes the decorators. Take the JSX transform away for an unrelated
 reason and they come back.
 
 **So: build with esbuild, and check the output.** A bundle no engine can parse is

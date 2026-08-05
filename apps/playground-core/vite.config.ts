@@ -11,12 +11,16 @@ export default defineConfig({
     __DEV__: JSON.stringify(true),
   },
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxInject: `import { h as __ramondaH } from '@ramonda/core'`,
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
   resolve: {
     alias: {
+      // First: a string alias also matches `<key>/…`, so `@ramonda/core` would otherwise capture
+      // these and rewrite them to `…/index.ts/jsx-runtime`.
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../../packages/core/src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "../../packages/core/src/jsx-runtime.ts"),
       // Use framework source directly (live reload, no build step). Devtools is
       // dynamically imported by core in dev, so alias it to source too.
       // The subpaths come FIRST: a string alias also matches `<key>/…`, so `@ramonda/query` would

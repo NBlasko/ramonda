@@ -1,4 +1,4 @@
-import { Component, Host, compute, h, list } from "@ramonda/core";
+import { Component, Host, compute, __h, list } from "@ramonda/core";
 import type { ComponentChild, RamondaNode, VNode } from "@ramonda/core";
 
 /** One cell. An array because a markdown cell is often several nodes — `a **b** c` is three. */
@@ -75,11 +75,11 @@ class DataTableRow extends Component<{ item: Row }> {
   private cell(cell: Cell, index: number): VNode {
     // The first column IS the heading, so it gets none of its own.
     const attrs = index === 0 ? null : { "data-label": this.props.item.labels[index] ?? "" };
-    return h("td", attrs, ...spread(cell)) as VNode;
+    return __h("td", attrs, ...spread(cell)) as VNode;
   }
 }
 
-const headerCell = (column: Cell): VNode => h("th", null, ...spread(column)) as VNode;
+const headerCell = (column: Cell): VNode => __h("th", null, ...spread(column)) as VNode;
 
 /** The visible text of a vnode subtree — a heading is short, and `data-label` takes a string. */
 function textOf(child: Cell): string {

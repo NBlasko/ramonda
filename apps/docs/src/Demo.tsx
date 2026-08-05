@@ -1,4 +1,4 @@
-import { Component, Host, state, h } from "@ramonda/core";
+import { Component, Host, state, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import { demos, demoTitles } from "./demos";
 import { demoSources } from "./generated/demo-sources";
@@ -45,7 +45,7 @@ export class Demo extends Component<DemoProps> {
             {demoTitles[name] ?? name}
           </h3>
         ) : null}
-        <div className="demo-stage">{h(component as never, null) as ComponentChild}</div>
+        <div className="demo-stage">{__h(component as never, null) as ComponentChild}</div>
         <button type="button" className="demo-toggle" onClick={this.toggle}>
           {this.open ? "▾ hide source" : "▸ show source"} <span className="demo-file">{name}.tsx</span>
         </button>

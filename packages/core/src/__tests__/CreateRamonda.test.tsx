@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, h } from "../index";
+import { Component, Host, state, __h } from "../index";
 
 /**
  * `createRamonda` builds every vnode, so anything it gets wrong is wrong
@@ -26,7 +26,7 @@ describe("createRamonda", () => {
     @Host("div")
     class C extends Component {
       render() {
-        return h("p", { class: "legacy" }, "x") as any;
+        return __h("p", { class: "legacy" }, "x") as any;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -39,7 +39,7 @@ describe("createRamonda", () => {
     @Host("div")
     class C extends Component {
       render() {
-        return h("p", { class: "old", className: "new" }, "x") as any;
+        return __h("p", { class: "old", className: "new" }, "x") as any;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -57,7 +57,7 @@ describe("createRamonda", () => {
     @Host("div")
     class C extends Component {
       render() {
-        return h(Inner as any, { class: "from-class" }) as any;
+        return __h(Inner as any, { class: "from-class" }) as any;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -68,10 +68,10 @@ describe("createRamonda", () => {
   test("the caller's props object is not written to", async () => {
     // It used to be: `attributes.children = children` mutated whatever the
     // caller passed. JSX builds a fresh object per element so it never showed
-    // there, but `h()` is public and callable directly, and reusing a props
+    // there, but `__h()` is public and callable directly, and reusing a props
     // object is a reasonable thing to write.
     const reused: Record<string, unknown> = { label: "reused" };
-    h(Box as unknown as never, reused as never, "child-one" as never);
+    __h(Box as unknown as never, reused as never, "child-one" as never);
 
     expect(reused.children).toBeUndefined();
   });
@@ -84,8 +84,8 @@ describe("createRamonda", () => {
       render() {
         return (
           <div>
-            {h(Box as any, shared, "one") as any}
-            {h(Box as any, shared, "two") as any}
+            {__h(Box as any, shared, "one") as any}
+            {__h(Box as any, shared, "two") as any}
           </div>
         );
       }

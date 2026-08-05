@@ -211,17 +211,17 @@ function isListLike(value: unknown): boolean {
  * tag is a value rather than syntax — forced a cast at every call site, and a
  * cast is exactly what stops the props from being checked at all.
  */
-export function h<P extends Record<string, any>>(
+export function __h<P extends Record<string, any>>(
   name: ComponentClassKind<P>,
   attributes: P & { key?: string | number },
   ...children: ComponentChild[]
 ): RamondaNode;
-export function h<T extends Record<string, any> | { key?: string } | null>(
+export function __h<T extends Record<string, any> | { key?: string } | null>(
   name: ComponentKind | UnsupportedTagFn,
   rawAttributes: T,
   ...children: ComponentChild[]
 ): RamondaNode;
-export function h(
+export function __h(
   name: ComponentKind | UnsupportedTagFn,
   rawAttributes: Record<string, any> | null,
   ...children: ComponentChild[]

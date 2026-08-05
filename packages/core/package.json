@@ -3,7 +3,7 @@
   "version": "0.9.0",
   "description": "A UI framework. Explicit. Predictable. Readable.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -42,6 +42,22 @@
         "development": "./dist/testing.js",
         "production": "./dist/testing.prod.js",
         "default": "./dist/testing.js"
+      }
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": {
+        "development": "./dist/jsx-runtime.js",
+        "production": "./dist/jsx-runtime.prod.js",
+        "default": "./dist/jsx-runtime.js"
+      }
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "import": {
+        "development": "./dist/jsx-dev-runtime.js",
+        "production": "./dist/jsx-dev-runtime.prod.js",
+        "default": "./dist/jsx-dev-runtime.js"
       }
     }
   },

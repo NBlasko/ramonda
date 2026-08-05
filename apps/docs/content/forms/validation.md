@@ -77,10 +77,21 @@ disappears the moment the value is fixed, rather than making someone tab away to
 `error` is the first message for that field; `errors` is all of them.
 
 ```tsx
+// A method, so `list()` is handed the same function on every render.
+private message(text: string): RamondaNode {
+  return <li>{text}</li>;
+}
+
+// …in render()
 {f.email.$.error ? <em>{f.email.$.error}</em> : null}
 
-<ul>{f.password.$.errors.map((message) => <li>{message}</li>)}</ul>
+<ul>{list({ each: f.password.$.errors, render: this.message })}</ul>
 ```
+
+`list()` rather than `.map()`, even for markup this plain. A mapped array of `<li>`s is not
+reported — the diff matches plain elements by position and gets away with it — but `list()` is
+what gives each message an identity of its own, and a list written one way everywhere is one less
+thing to think about. See [rendering lists](/lists).
 
 An issue whose path is empty belongs to no field. Those arrive as `formErrors`:
 

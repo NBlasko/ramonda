@@ -13,8 +13,8 @@ export default defineConfig({
   // set so it works either way. (Copied from the router, where a hoisted Vite 8
   // silently dropped the JSX factory and every test stopped parsing.)
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxFragment: "Fragment",
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
   resolve: {
@@ -22,6 +22,8 @@ export default defineConfig({
       // Run tests against framework source (live), like the router does. The
       // `/testing` alias must come FIRST — a string alias matches by prefix, so
       // the bare "@ramonda/core" entry would otherwise swallow it.
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../core/src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "../core/src/jsx-runtime.ts"),
       "@ramonda/core/testing": resolve(__dirname, "../core/src/testing.ts"),
       "@ramonda/core": resolve(__dirname, "../core/src/index.ts"),
       "@ramonda/testing-library": resolve(__dirname, "../testing-library/src/index.ts"),

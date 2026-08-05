@@ -22,9 +22,11 @@ import { resolve } from "node:path";
  */
 export default defineConfig({
   define: { __DEV__: "true", __TEST__: "true" },
-  esbuild: { jsxFactory: "__ramondaH", jsxFragment: "Fragment", target: "es2022" },
+  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core", target: "es2022" },
   resolve: {
     alias: {
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../../packages/core/src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "../../packages/core/src/jsx-runtime.ts"),
       "@ramonda/core/testing": resolve(__dirname, "../../packages/core/src/testing.ts"),
       "@ramonda/core": resolve(__dirname, "../../packages/core/src/index.ts"),
       "@ramonda/query": resolve(__dirname, "../../packages/query/src/index.ts"),

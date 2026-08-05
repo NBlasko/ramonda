@@ -1,4 +1,4 @@
-import { Component, Host, h } from "@ramonda/core";
+import { Component, Host, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
@@ -45,20 +45,20 @@ export function toVNode(node: ContentNode): ComponentChild {
    * rather than a per-image note in the markdown.
    */
   if (node.t === "img") {
-    return h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
+    return __h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
   }
 
   // A Shiki code block becomes a component so it can carry a copy button. The
   // check is the `shiki` class the highlighter stamps on the `<pre>`; CodeBlock
   // renders the `<pre>` itself, so it does not route back through here.
   if (node.t === "pre" && node.a?.className?.includes("shiki")) {
-    return h(CodeBlock, { node }) as ComponentChild;
+    return __h(CodeBlock, { node }) as ComponentChild;
   }
 
   if (node.t === "demo") {
     const name = node.a?.name ?? "";
     // The examples page asks for the whole registry rather than one entry.
-    if (name === "__all__") return h(ExamplesIndex, {}) as ComponentChild;
+    if (name === "__all__") return __h(ExamplesIndex, {}) as ComponentChild;
     const demo = demos[name];
     if (!demo) {
       // Loud, and at the first render rather than as a blank space on a live
@@ -69,7 +69,7 @@ export function toVNode(node: ContentNode): ComponentChild {
           `Add it there, or fix the \`\`\`demo: fence.`,
       );
     }
-    return h(Demo, { name }) as ComponentChild;
+    return __h(Demo, { name }) as ComponentChild;
   }
 
   // A prose table goes through DataTable, which is what makes it readable on a phone. Markdown can
@@ -80,7 +80,7 @@ export function toVNode(node: ContentNode): ComponentChild {
     const { columns, rows } = readTable(node);
     // A table with no header row has no column names to put above the values, so the reflow has
     // nothing to say and the plain markup is the honest fallback.
-    if (columns.length > 0) return h(DataTable, { columns, rows }) as ComponentChild;
+    if (columns.length > 0) return __h(DataTable, { columns, rows }) as ComponentChild;
   }
 
   // An in-prose link to another docs page becomes a real <Link>, so it navigates
@@ -92,12 +92,12 @@ export function toVNode(node: ContentNode): ComponentChild {
     const href = node.a?.href ?? "";
     const internal = href.startsWith("/") && !node.a?.target;
     if (internal) {
-      return h(Link, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
+      return __h(Link, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
     }
   }
 
   const children = node.c?.map(toVNode) ?? [];
-  return h(node.t, node.a ?? null, ...children) as ComponentChild;
+  return __h(node.t, node.a ?? null, ...children) as ComponentChild;
 }
 
 /** The element children of a node, skipping the whitespace markdown-it leaves between rows. */

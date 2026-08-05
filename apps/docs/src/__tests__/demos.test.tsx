@@ -1,10 +1,8 @@
-import { bootstrap, configureDev, h, unmount } from "@ramonda/core";
+import { bootstrap, configureDev, __h, unmount } from "@ramonda/core";
 import type { VNode } from "@ramonda/core";
 import { flushSync } from "@ramonda/core/testing";
 import { describe, expect, test, vi } from "vitest";
 import { demos } from "../demos/index";
-
-(globalThis as unknown as { __ramondaH: typeof h }).__ramondaH = h;
 
 /**
  * Every demo on the site, mounted with the strict render ON — so both stability checks
@@ -34,7 +32,7 @@ describe("published demos", () => {
       configureDev({ strictRender: true });
 
       try {
-        bootstrap(h(Demo as never, null) as VNode, container);
+        bootstrap(__h(Demo as never, null) as VNode, container);
         flushSync();
       } catch (error) {
         offenders.push(`${name}: threw ${(error as Error).message}`);
