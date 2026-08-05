@@ -1,5 +1,87 @@
 # create-ramonda
 
+## 0.8.0
+
+### Minor Changes
+
+- 68f9163: JSX goes through an automatic runtime, and the factory is renamed `__h`
+
+  Setting Ramonda up used to mean naming a factory (`jsxFactory: "__ramondaH"`), injecting it into
+  every module, and declaring it in a `global.d.ts` — and then holding two names in your head, because
+  the package exported `h` while compiled JSX called `__ramondaH`.
+
+  Now the compiler imports what it needs, per file:
+
+  ```jsonc
+  { "jsx": "react-jsx", "jsxImportSource": "@ramonda/core" }
+  ```
+
+  ```js
+  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core" }
+  ```
+
+  No factory name, no `jsxInject`, no `jsx-shim.ts`, no global declaration. `npm create ramonda`
+  writes it this way, and both templates lost a file each.
+
+  **Breaking.** `h` is no longer exported; the factory is `__h`, for the vnodes a tag cannot express —
+  a runtime tag name, spread children. Compiled JSX never calls it. To migrate, change the two config
+  keys above, delete the inject and the global declaration, and rename any hand-written `h(` to `__h(`.
+
+  Two new subpaths ship with core: `@ramonda/core/jsx-runtime` and `@ramonda/core/jsx-dev-runtime`.
+  Both are needed — every bundler's development mode imports the second one.
+
+  Fragments still do not exist. `<>…</>` throws with the reason rather than half-working, because one
+  tag producing several elements is what the one-tag-one-element rule is about.
+
+### Patch Changes
+
+- e623571: `@ramonda/check` finds class fields holding a function literal, and its bin is now `ramonda-check`
+
+  Ramonda binds every method to its instance, so `onPick = (id) => this.select(id)` buys nothing over
+  `onPick(id) { … }` and costs one closure per instance. The check reports each one, and says which of
+  the two fixes applies: a body that reads `this` wants to be a method, a body that does not wants to
+  leave the class.
+
+  It reads the source because nothing else can. At runtime the two are indistinguishable — by the time
+  anything could look, the framework has written a bound function onto the instance under every
+  method's name, and a field holding `debounce(this.save, 200)` is a function there too. That one is
+  legitimate: a wrapper cannot be written as a method. Only the source tells a function literal from a
+  call that returns one. `static` fields are not reported either — one per class, so nothing to save.
+
+  **The bin is renamed** from `ramonda-check-context` to `ramonda-check`, because it no longer checks
+  only contexts. Update the `build` script: `ramonda-check && …`. `npm create ramonda` writes the new
+  name.
+
+  `@ramonda/query` had one of these itself — `Query.observe` was an arrow field and is now a method.
+
+- e06dd85: A devtools tab is its own entry, and a package only announces
+
+  ```ts
+  if (import.meta.env.DEV) {
+    void import("@ramonda/devtools");
+    void import("@ramonda/query/devtools");
+    void import("@ramonda/form/devtools");
+  }
+  ```
+
+  Each tab now lives behind `/devtools` on its package, and importing that entry registers it.
+  `create-ramonda` writes these lines for the add-ons you pick.
+
+  **Why it moved.** A package that imports the module describing its tab puts that description into
+  the bundle of every application using the package — `__DEV__` strips it from production, but not
+  from development. Measured: 12.4 KB of query and 5.2 KB of form were in the development bundle of
+  every app, whether or not anyone ever opened the panel. Both are now only in the bundle of an app
+  that asked for a tab.
+
+  **How a package reaches its tab instead.** An event. `QueryClientProvider` and `Form` announce
+  themselves arriving and leaving with one `__DEV__`-guarded line each, and the entry listens and
+  keeps whatever list it needs. Nothing about a panel lives on the class — no field, no method, both
+  of which ship whatever the guard says — and the package does not know whether anybody is listening.
+
+  That is the shape core already uses for `ramonda:tick` and `ramonda:dev-log`.
+
+  Nothing changes for an app beyond the import lines: both tabs look and behave as before.
+
 ## 0.7.1
 
 ### Patch Changes

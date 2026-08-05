@@ -1,6 +1,6 @@
 {
   "name": "create-ramonda",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Scaffold a Ramonda app — pick your packages and rendering mode, then just run it.",
   "type": "module",
   "bin": {
