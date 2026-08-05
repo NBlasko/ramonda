@@ -16,7 +16,8 @@
       "@ramonda/form": ["../../packages/form/src/index.ts"],
       "@ramonda/lens": ["../../packages/lens/src/index.ts"],
       "@ramonda/query": ["../../packages/query/src/index.ts"],
-      "@ramonda/router": ["../../packages/router/src/index.ts"]
+      "@ramonda/router": ["../../packages/router/src/index.ts"],
+      "@ramonda/theme": ["../../packages/theme/src/index.ts"]
     }
   },
   "include": ["src", "global.d.ts"]

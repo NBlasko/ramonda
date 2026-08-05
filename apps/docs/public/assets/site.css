@@ -1,28 +1,11 @@
-:root {
-  --bg: #fff;
-  --fg: #1b1b1f;
-  --muted: #6b6b76;
-  --line: #e5e5ec;
-  --accent: #7a4fbf;
-  --code-bg: #f6f6f9;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111114;
-    --fg: #e8e8ed;
-    --muted: #9a9aa6;
-    --line: #2a2a32;
-    --accent: #b18ae6;
-    --code-bg: #1a1a20;
-  }
-}
+/* Tokens live in tokens.css, generated from @ramonda/theme. */
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--rmd-bg);
+  color: var(--rmd-fg);
   font:
     16px / 1.65 -apple-system,
     BlinkMacSystemFont,
@@ -31,20 +14,20 @@ body {
     sans-serif;
 }
 a {
-  color: var(--accent);
+  color: var(--rmd-accent);
   text-decoration: none;
 }
 a:hover {
   text-decoration: underline;
 }
 .masthead {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--rmd-line);
   padding: 14px 24px;
 }
 .brand {
   font-weight: 700;
   font-size: 18px;
-  color: var(--fg);
+  color: var(--rmd-fg);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -85,7 +68,7 @@ nav {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--muted);
+  color: var(--rmd-muted);
 }
 .sidebar-group ul {
   list-style: none;
@@ -99,16 +82,16 @@ nav {
   display: block;
   padding: 5px 10px;
   border-radius: 6px;
-  color: var(--fg);
+  color: var(--rmd-fg);
   font-size: 14px;
 }
 .sidebar-group .link:hover {
-  background: var(--code-bg);
+  background: var(--rmd-code-bg);
   text-decoration: none;
 }
 .sidebar-group .link.active {
-  background: var(--code-bg);
-  color: var(--accent);
+  background: var(--rmd-code-bg);
+  color: var(--rmd-accent);
   font-weight: 600;
 }
 .content {
@@ -125,7 +108,7 @@ nav {
 }
 .notfound p {
   max-width: 60ch;
-  color: var(--fg);
+  color: var(--rmd-fg);
 }
 .notfound p + p {
   margin-top: 1.2em;
@@ -140,7 +123,7 @@ article h2 {
   font-size: 1.4rem;
   margin: 2em 0 0.6em;
   padding-top: 0.6em;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--rmd-line);
 }
 article h3 {
   font-size: 1.1rem;
@@ -151,13 +134,13 @@ article li {
   max-width: 70ch;
 }
 article code {
-  background: var(--code-bg);
+  background: var(--rmd-code-bg);
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
 }
 article pre {
-  background: var(--code-bg);
+  background: var(--rmd-code-bg);
   padding: 16px;
   border-radius: 8px;
   overflow-x: auto;
@@ -173,28 +156,28 @@ article pre code {
 .demo-counter button {
   font: inherit;
   padding: 8px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 8px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--rmd-bg);
+  color: var(--rmd-fg);
   cursor: pointer;
 }
 .demo-counter button:hover {
-  border-color: var(--accent);
+  border-color: var(--rmd-accent);
 }
 ramonda-host[data-ramonda="Counter"],
 div[data-ramonda="Counter"] {
   display: block;
   margin: 1.5em 0;
   padding: 20px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 10px;
 }
 
 /* ── demos ─────────────────────────────────────────────────────────────── */
 .demo {
   margin: 1.6em 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -202,8 +185,8 @@ div[data-ramonda="Counter"] {
   margin: 0;
   padding: 12px 16px;
   font-size: 0.95rem;
-  background: var(--code-bg);
-  border-bottom: 1px solid var(--line);
+  background: var(--rmd-code-bg);
+  border-bottom: 1px solid var(--rmd-line);
 }
 .demo-stage {
   padding: 18px 16px;
@@ -222,7 +205,7 @@ div[data-ramonda="Counter"] {
   margin-bottom: 0;
 }
 .demo-note {
-  color: var(--muted);
+  color: var(--rmd-muted);
   font-size: 0.85rem;
 }
 /* Long query strings (e.g. the lens demo's `last:` line) wrap instead of
@@ -231,7 +214,7 @@ div[data-ramonda="Counter"] {
   overflow-wrap: anywhere;
 }
 .demo-error {
-  color: #c0392b;
+  color: var(--rmd-error);
   margin: 0;
 }
 .demo-log {
@@ -239,24 +222,26 @@ div[data-ramonda="Counter"] {
   margin: 8px 0 0;
   padding: 0;
   font-size: 0.85rem;
-  color: var(--muted);
+  color: var(--rmd-muted);
 }
 .demo-log li {
   padding: 2px 0;
 }
 /* Structural sharing, shown as identity: new object vs the very same one. */
 .lens-fresh {
-  color: #a03070;
+  color: var(--rmd-fresh);
 }
 .lens-shared {
-  color: #2d7d46;
+  color: var(--rmd-ok);
 }
 .demo-badge {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 0.8rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
 }
+/* Fixed on purpose: these two show a dark and a light badge together, so neither may follow the
+   page. Their colours are the subject, not the chrome. */
 .demo-badge-dark {
   background: #1b1b22;
   color: #eee;
@@ -269,14 +254,14 @@ div[data-ramonda="Counter"] {
   font: inherit;
   font-size: 0.9rem;
   padding: 6px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 7px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--rmd-bg);
+  color: var(--rmd-fg);
   cursor: pointer;
 }
 .demo button:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--rmd-accent);
 }
 .demo button:disabled {
   opacity: 0.45;
@@ -286,14 +271,14 @@ div[data-ramonda="Counter"] {
   font: inherit;
   font-size: 0.9rem;
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 7px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--rmd-bg);
+  color: var(--rmd-fg);
 }
 .demo kbd {
-  background: var(--code-bg);
-  border: 1px solid var(--line);
+  background: var(--rmd-code-bg);
+  border: 1px solid var(--rmd-line);
   border-bottom-width: 2px;
   border-radius: 5px;
   padding: 1px 7px;
@@ -306,7 +291,7 @@ div[data-ramonda="Counter"] {
   padding: 0 2px;
   font-size: 1rem;
   line-height: 1;
-  color: var(--accent);
+  color: var(--rmd-accent);
 }
 .demo button.star:hover:not(:disabled) {
   border: 0;
@@ -316,10 +301,10 @@ div[data-ramonda="Counter"] {
   width: 100%;
   text-align: left;
   border: 0 !important;
-  border-top: 1px solid var(--line) !important;
+  border-top: 1px solid var(--rmd-line) !important;
   border-radius: 0 !important;
-  background: var(--code-bg) !important;
-  color: var(--muted) !important;
+  background: var(--rmd-code-bg) !important;
+  color: var(--rmd-muted) !important;
   font-size: 0.8rem !important;
   padding: 8px 16px !important;
 }
@@ -349,10 +334,10 @@ div[data-ramonda="Counter"] {
   font-size: 0.72rem;
   line-height: 1;
   padding: 5px 9px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 6px;
-  background: var(--bg);
-  color: var(--muted);
+  background: var(--rmd-bg);
+  color: var(--rmd-muted);
   cursor: pointer;
   opacity: 0;
   transition:
@@ -365,8 +350,8 @@ div[data-ramonda="Counter"] {
   opacity: 1;
 }
 .copy-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--rmd-accent);
+  border-color: var(--rmd-accent);
 }
 /* Touch devices have no hover, so the button has to be there from the start. */
 @media (hover: none) {
@@ -379,7 +364,7 @@ div[data-ramonda="Counter"] {
   margin: 0;
 }
 .code-block-demo pre {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--rmd-line);
   border-radius: 0;
   max-height: 420px;
 }
@@ -396,7 +381,7 @@ article img {
   max-width: 100%;
   height: auto;
   margin: 1.6rem 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 8px;
   /* A screenshot of a panel is a thing on the page, not a diagram in it. */
   box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
@@ -409,24 +394,87 @@ article img[src$=".gif"] {
 }
 
 /* ── prose tables, lists, blockquotes ──────────────────────────────────── */
-article table {
-  border-collapse: collapse;
+/* A DataTable is a real table until the screen is too narrow for one, at which point each row
+   becomes a card: a full-width name bar that stays put, and the remaining cells scrolling under it
+   with their column heading above each value. See src/DataTable.tsx for why the reflow is CSS. */
+.table-wrap {
   margin: 1.4em 0;
-  font-size: 0.92rem;
-  display: block;
-  overflow-x: auto;
-  max-width: 100%;
 }
-article th,
-article td {
-  border: 1px solid var(--line);
+.table-wrap table {
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  width: 100%;
+}
+.table-wrap th,
+.table-wrap td {
+  border: 1px solid var(--rmd-line);
   padding: 8px 12px;
   text-align: left;
   vertical-align: top;
 }
-article th {
-  background: var(--code-bg);
+.table-wrap th {
+  background: var(--rmd-code-bg);
   font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  /* The heading row is gone, so it must not be read out either — `display: none` is what does
+     both. Its text is not lost: it is on every cell as `data-label`. */
+  .table-wrap thead {
+    display: none;
+  }
+  .table-wrap table,
+  .table-wrap tbody,
+  .table-wrap tr,
+  .table-wrap td {
+    display: block;
+  }
+  .table-wrap tr {
+    /* The scroll container. The name bar is sticky INSIDE it, which is what keeps the row's
+       identity on screen while its values scroll — the thing a plain overflowing table loses. */
+    overflow-x: auto;
+    display: flex;
+    align-items: stretch;
+    margin: 0 0 10px;
+    border: 1px solid var(--rmd-line);
+    border-radius: 8px;
+  }
+  .table-wrap td {
+    border: 0;
+    border-left: 1px solid var(--rmd-line);
+    flex: 0 0 auto;
+    max-width: 20rem;
+  }
+  /* The name. Sticky at the left edge, opaque so the scrolling cells pass behind it.
+     A fixed basis rather than the content's width: sized by content, the bar would be a different
+     width on every row, and the column of names people scan down would not line up. */
+  .table-wrap td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    flex: 0 0 clamp(7rem, 38%, 11rem);
+    border-left: 0;
+    background: var(--rmd-code-bg);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    /* A long name wraps rather than widening the bar or spilling out of it. */
+    overflow-wrap: anywhere;
+  }
+  /* The column heading, in small type above its value. */
+  .table-wrap td:not(:first-child)::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--rmd-muted);
+  }
+  /* A heading with nothing under it is a blank line of small caps, so drop the cell entirely. */
+  .table-wrap td:empty {
+    display: none;
+  }
 }
 article ul,
 article ol {
@@ -438,12 +486,12 @@ article li {
 article blockquote {
   margin: 1.2em 0;
   padding: 0.4em 0 0.4em 1em;
-  border-left: 3px solid var(--line);
-  color: var(--muted);
+  border-left: 3px solid var(--rmd-line);
+  color: var(--rmd-muted);
 }
 article hr {
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--rmd-line);
   margin: 2em 0;
 }
 article strong {
@@ -467,7 +515,7 @@ article strong {
 /* Shiki ships its own theme background; the site's own is used instead so code
    blocks match the rest of the page in both themes. */
 article pre.shiki {
-  background: var(--code-bg) !important;
+  background: var(--rmd-code-bg) !important;
 }
 .shiki code {
   display: block;
@@ -484,22 +532,22 @@ article pre.shiki {
   font: inherit;
   font-size: 0.85rem;
   padding: 6px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 8px;
-  background: var(--bg);
-  color: var(--muted);
+  background: var(--rmd-bg);
+  color: var(--rmd-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .search-open:hover {
-  border-color: var(--accent);
-  color: var(--fg);
+  border-color: var(--rmd-accent);
+  color: var(--rmd-fg);
 }
 .search-open kbd {
-  background: var(--code-bg);
-  border: 1px solid var(--line);
+  background: var(--rmd-code-bg);
+  border: 1px solid var(--rmd-line);
   border-radius: 4px;
   padding: 0 5px;
   font-size: 0.75rem;
@@ -518,8 +566,8 @@ article pre.shiki {
   position: relative;
   max-width: 640px;
   margin: 10vh auto 0;
-  background: var(--bg);
-  border: 1px solid var(--line);
+  background: var(--rmd-bg);
+  border: 1px solid var(--rmd-line);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   overflow: hidden;
@@ -530,9 +578,9 @@ article pre.shiki {
   font-size: 1rem;
   padding: 16px 18px;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--rmd-line);
   background: transparent;
-  color: var(--fg);
+  color: var(--rmd-fg);
   outline: none;
 }
 /* Suppress the native clear (✕) a type="search" input draws — the panel has its
@@ -545,7 +593,7 @@ article pre.shiki {
 .search-note {
   margin: 0;
   padding: 18px;
-  color: var(--muted);
+  color: var(--rmd-muted);
   font-size: 0.9rem;
 }
 .search-results {
@@ -562,10 +610,10 @@ article pre.shiki {
   display: block;
   padding: 10px 12px;
   border-radius: 8px;
-  color: var(--fg);
+  color: var(--rmd-fg);
 }
 .search-result:hover {
-  background: var(--code-bg);
+  background: var(--rmd-code-bg);
   text-decoration: none;
 }
 .search-result strong {
@@ -575,13 +623,13 @@ article pre.shiki {
 }
 .search-excerpt {
   display: block;
-  color: var(--muted);
+  color: var(--rmd-muted);
   font-size: 0.83rem;
   line-height: 1.5;
 }
 .search-excerpt mark {
   background: transparent;
-  color: var(--accent);
+  color: var(--rmd-accent);
   font-weight: 600;
 }
 @media (max-width: 640px) {
@@ -599,14 +647,14 @@ article pre.shiki {
     font-size: 1.2rem;
     line-height: 1;
     padding: 5px 10px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--rmd-line);
     border-radius: 8px;
-    background: var(--bg);
-    color: var(--fg);
+    background: var(--rmd-bg);
+    color: var(--rmd-fg);
     cursor: pointer;
   }
   .nav-toggle:hover {
-    border-color: var(--accent);
+    border-color: var(--rmd-accent);
   }
   .masthead {
     padding: 12px 16px;
@@ -626,8 +674,8 @@ article pre.shiki {
     height: 100vh;
     margin: 0;
     padding: 14px 20px 20px;
-    background: var(--bg);
-    border-right: 1px solid var(--line);
+    background: var(--rmd-bg);
+    border-right: 1px solid var(--rmd-line);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -649,11 +697,11 @@ article pre.shiki {
     padding: 4px 10px;
     border: 0;
     background: none;
-    color: var(--muted);
+    color: var(--rmd-muted);
     cursor: pointer;
   }
   .drawer-close:hover {
-    color: var(--accent);
+    color: var(--rmd-accent);
   }
   nav .sidebar-inner {
     flex: 1 1 auto;
@@ -694,7 +742,7 @@ article pre.shiki {
     line-height: 1;
     border: 0;
     background: none;
-    color: var(--muted);
+    color: var(--rmd-muted);
     cursor: pointer;
   }
   .search-input {
@@ -716,23 +764,23 @@ article pre.shiki {
   font: inherit;
   font-size: 0.9rem;
   padding: 6px 9px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 7px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--rmd-bg);
+  color: var(--rmd-fg);
 }
 .demo-form input[aria-invalid="true"] {
-  border-color: #c0392b;
+  border-color: var(--rmd-error);
 }
 .demo-form fieldset {
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 8px;
   padding: 10px 12px;
   margin: 0 0 12px;
 }
 .demo-form legend {
   font-size: 0.85rem;
-  color: var(--muted);
+  color: var(--rmd-muted);
   padding: 0 4px;
 }
 .demo-rows {
@@ -751,12 +799,12 @@ article pre.shiki {
   font: inherit;
   font-size: 0.9rem;
   padding: 5px 9px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rmd-line);
   border-radius: 7px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--rmd-bg);
+  color: var(--rmd-fg);
 }
 .demo-ok {
-  color: #2d7d46;
+  color: var(--rmd-ok);
   margin: 0 0 8px;
 }

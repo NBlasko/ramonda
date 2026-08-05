@@ -118,7 +118,7 @@ value: {
 }
 ```
 
-`data` gets the collapsible tree, the ⤢ full view and the copy button, for free.
+`data` gets the collapsible tree, the full view and the copy button, for free.
 
 **`revision` is worth supplying whenever you have one** — a write timestamp, a counter, a hash.
 Without it the panel decides whether the value moved by looking at its shape, which misses a field

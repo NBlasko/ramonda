@@ -2,6 +2,7 @@ import { escapeHtml } from "./format";
 import { INLINE, renderJsonHtml } from "./jsonView";
 import type { PanelPlugin, PanelRow, PanelSnapshot, RowStatus, RowValue } from "./panelPlugin";
 import type { ValueView } from "./valueView";
+import { icon } from "@ramonda/theme";
 
 /**
  * Renders one plugin's rows, and is the only place that knows what a row LOOKS like.
@@ -49,7 +50,10 @@ export class PluginTab {
     } catch (error) {
       // A source that throws must not take the panel with it — the reader is most likely here
       // BECAUSE something is wrong.
-      this.write(container, `<small style="color:#ff6b6b">${escapeHtml(plugin.label)} could not be read.</small>`);
+      this.write(
+        container,
+        `<small style="color:var(--rmd-error-text)">${escapeHtml(plugin.label)} could not be read.</small>`,
+      );
       // eslint-disable-next-line no-console
       console.error(`[ramonda-devtools] ${plugin.id}.snapshot() threw`, error);
       return;
@@ -57,7 +61,10 @@ export class PluginTab {
 
     const rows = snapshot.groups.flatMap((group) => group.rows);
     if (rows.length === 0) {
-      this.write(container, `<small style="color:#666">${escapeHtml(snapshot.empty ?? "Nothing here yet.")}</small>`);
+      this.write(
+        container,
+        `<small style="color:var(--rmd-text-faint)">${escapeHtml(snapshot.empty ?? "Nothing here yet.")}</small>`,
+      );
       return;
     }
 
@@ -221,16 +228,16 @@ function valueHtml(value: RowValue): string {
 }
 
 function statusColour(status: RowStatus): string {
-  if (status === "error") return "#ff4444";
-  if (status === "ok") return "#54c98a";
-  if (status === "busy") return "#ffcc00";
-  return "#666";
+  if (status === "error") return "var(--rmd-error)";
+  if (status === "ok") return "var(--rmd-ok)";
+  if (status === "busy") return "var(--rmd-warn)";
+  return "var(--rmd-text-faint)";
 }
 
 function editButton(rowId: string): string {
   return `<button type="button" class="edit-btn" data-p-edit="${escapeHtml(
     rowId,
-  )}" title="edit this value — it is what the page renders from">✎</button>`;
+  )}" title="edit this value — it is what the page renders from">${icon("edit")}</button>`;
 }
 
 /**

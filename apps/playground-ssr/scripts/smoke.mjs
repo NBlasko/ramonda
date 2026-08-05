@@ -197,6 +197,25 @@ async function checkPanel() {
   await waitFor("core did not install the devtools write bridge", () => typeof window.__RAMONDA_WRITE__ === "function");
 
   panel.toggle();
+
+  /**
+   * The tabs this app's packages contribute, before anything else is asked of the panel.
+   *
+   * They are not in the panel: `@ramonda/query/devtools` and `@ramonda/form/devtools` each describe
+   * one and register it when the entry is imported, so an app that uses those packages has to import
+   * their entries too. Both playgrounds silently stopped doing that, and nothing said so — the panel
+   * still opened, the tree still worked, and two tabs were simply gone. `plugin-` is the prefix the
+   * registry puts on a tab it was handed.
+   */
+  for (const [id, entry] of [
+    ["plugin-query", "@ramonda/query/devtools"],
+    ["plugin-forms", "@ramonda/form/devtools"],
+  ]) {
+    if (!panel.shadowRoot.querySelector(`.tab[data-tab="${id}"]`)) {
+      fail(`the panel has no ${id.replace("plugin-", "").toUpperCase()} tab — does entry-client import ${entry}?`);
+    }
+  }
+
   panel.shadowRoot.querySelector('.tab[data-tab="components"]').dispatchEvent(new window.Event("click"));
 
   // Five is the "the tree came through at all" bar, not an exact count — the app is free to grow.
@@ -430,7 +449,8 @@ await checkModes();
 stop();
 console.log(
   `[smoke] the server rendered / with ${html.length} bytes, and all ${checks.length} checks passed\n` +
-    `[smoke] the panel listed ${panel.rows} components and edited ${panel.editing}\n` +
+    `[smoke] the panel listed ${panel.rows} components, edited ${panel.editing}, ` +
+    `and carried the QUERY and FORMS tabs\n` +
     `[smoke] the endpoint resolved ${editor.source} ` +
     `(${editor.opened ? "and opened it" : "no editor on this machine, which is not this test's business"}), ` +
     `and refused a path that does not exist\n` +

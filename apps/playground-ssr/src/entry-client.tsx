@@ -18,4 +18,11 @@ if (root) hydrateRoot(<App />, root);
  * One line fixes it, and it belongs in the app: the app is what knows the panel is there. The
  * same fix went into `create-ramonda`, which had shipped the same silence.
  */
-if (__DEV__) void import("@ramonda/devtools");
+if (__DEV__) {
+  void import("@ramonda/devtools");
+  // The QUERY and FORMS tabs are not in the panel — each package describes its own and registers it
+  // when its entry is imported, so an app that uses those packages has to ask for their tabs too.
+  // This playground renders a products list and a signup form, which are exactly what they show.
+  void import("@ramonda/query/devtools");
+  void import("@ramonda/form/devtools");
+}

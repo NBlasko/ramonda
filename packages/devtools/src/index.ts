@@ -6,6 +6,7 @@ import { ProfileTab } from "./profileTab";
 import { PluginTabs } from "./pluginTabs";
 import { panelRegistry } from "./panelPlugin";
 import { ComponentsTab } from "./componentsTab";
+import { bloom, icon } from "@ramonda/theme";
 import {
   FILTER_KEY,
   MODE_KEY,
@@ -320,10 +321,10 @@ class RamondaDevTools extends HTMLElement {
     <div class="ramonda-panel">
       <div class="ramonda-resize" title="drag to resize"></div>
       <div class="header">
-        <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="-32 -32 64 64" aria-hidden="true"><g fill="#fff"><ellipse cy="-14" rx="8.6" ry="14"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(72)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(144)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(216)"/><ellipse cy="-14" rx="8.6" ry="14" transform="rotate(288)"/></g><circle r="6.6" fill="#E9B44C"/></svg>Ramonda</h2>
+        <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="-32 -32 64 64" aria-hidden="true">${bloom({ petals: "var(--rmd-text-strong)", centre: "var(--rmd-gold)", ring: null })}</svg>Ramonda</h2>
         <div class="head-tools">
           <button type="button" id="mode-btn" class="mode-btn">float</button>
-          <button id="close-btn" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer">×</button>
+          <button id="close-btn" style="background:none;border:none;color:var(--rmd-text-strong);font-size:22px;line-height:1;cursor:pointer">${icon("close")}</button>
         </div>
       </div>
       <div class="mode-note">floating, so the error did not reflow the app it happened in</div>
@@ -339,16 +340,16 @@ class RamondaDevTools extends HTMLElement {
         <div class="tree-head">
         <div class="tools">
           <input id="tree-filter" class="tool-search" type="search" placeholder="filter by name" />
-          <button type="button" data-tool="pick" title="pick a component from the page">⌖<span class="tw"> pick</span></button>
-          <button type="button" data-tool="expand" title="expand all">▾<span class="tw"> expand all</span></button>
-          <button type="button" data-tool="collapse" title="collapse all">▸<span class="tw"> collapse all</span></button>
-          <button type="button" data-tool="values" title="hide state &amp; props">◧<span class="tw"> hide state &amp; props</span></button>
-          <button type="button" data-tool="hooks" title="hide hooks">⬡<span class="tw"> hide hooks</span></button>
+          <button type="button" data-tool="pick" title="pick a component from the page">${icon("pick")}<span class="tw"> pick</span></button>
+          <button type="button" data-tool="expand" title="expand all">${icon("expand")}<span class="tw"> expand all</span></button>
+          <button type="button" data-tool="collapse" title="collapse all">${icon("collapse")}<span class="tw"> collapse all</span></button>
+          <button type="button" data-tool="values" title="hide state &amp; props">${icon("values")}<span class="tw"> hide state &amp; props</span></button>
+          <button type="button" data-tool="hooks" title="hide hooks">${icon("hooks")}<span class="tw"> hide hooks</span></button>
         </div>
         <div class="crumbs" id="crumbs"></div>
         </div>
         <div id="components-container">
-          <small style="color:#666">No active components…</small>
+          <small style="color:var(--rmd-text-faint)">No active components…</small>
         </div>
       </div>
       <div class="toast" id="toast"></div>
@@ -359,14 +360,14 @@ class RamondaDevTools extends HTMLElement {
             <button type="button" id="jv-refresh" title="the value has not changed">refresh</button>
             <button type="button" id="jv-raw" title="switch between the tree and pretty JSON">raw</button>
             <button type="button" id="jv-copy" title="copy the whole value as JSON">copy</button>
-            <button type="button" id="jv-close" title="close (Escape)">×</button>
+            <button type="button" id="jv-close" title="close (Escape)">${icon("close")}</button>
           </div>
         </div>
         <div class="jv-modal-body" id="jv-modal-body"></div>
       </div>
       <div id="profile-tab" class="tab-content">
         <div class="tools">
-          <button type="button" id="profile-record">● record</button>
+          <button type="button" id="profile-record">${icon("record")} record</button>
           <span class="profile-hint" id="profile-hint"></span>
         </div>
         <div id="profile-container"></div>
@@ -394,7 +395,7 @@ class RamondaDevTools extends HTMLElement {
     if (!container || !detail) return;
 
     const { type, message, timestamp, data, id } = detail;
-    const color = type === "error" ? "#ff4444" : type === "warning" ? "#ffcc00" : "#00aaff";
+    const color = type === "error" ? "var(--rmd-error)" : type === "warning" ? "var(--rmd-warn)" : "var(--rmd-busy)";
 
     const logEl = document.createElement("div");
     logEl.className = "log-item";
@@ -407,12 +408,12 @@ class RamondaDevTools extends HTMLElement {
     }
 
     logEl.innerHTML = `
-      <button class="delete-btn">&times;</button>
+      <button class="delete-btn" title="dismiss this log">${icon("close")}</button>
       <div style="display: flex; gap: 10px; margin-bottom: 5px;">
         <span style="color: ${color}; font-weight: bold;">[${type.toUpperCase()}]</span>
-        <span style="color: #888;">${timestamp}</span>
+        <span style="color: var(--rmd-text-muted);">${timestamp}</span>
       </div>
-      <div style="color: #eee;">${escapeHtml(message)}</div>
+      <div style="color: var(--rmd-text-bright);">${escapeHtml(message)}</div>
       ${dataHtml}
     `;
 

@@ -112,11 +112,10 @@ two reports.
 Props are owned by the parent, so the write has nothing to write to. The proxy's
 `set` trap **throws**, in every build.
 
-It used to report and continue, on the reasoning that a diagnostic must never
-change behaviour. That reasoning still holds — and is why the throw sits OUTSIDE
+A diagnostic must never change behaviour, which is why the throw sits OUTSIDE
 `if (__DEV__)`, as enforcement, while the diagnostic inside only explains it.
-What changed is the judgement about the write itself: dropping it left the
-component running on a value nobody had set, and the mistake stayed invisible
+The write itself is refused rather than dropped: dropping it leaves the
+component running on a value nobody set, and the mistake stays invisible
 until something downstream looked wrong for an unrelated-seeming reason.
 
 It throws explicitly rather than returning `false`, because a `false` return
@@ -227,12 +226,12 @@ Branching by side belongs in lifecycle `env`, which the framework already has.
 
 `@state` signals hold the component's `reBuild` as their listener, and nothing
 detaches it on teardown — only `@compute` and context register a
-`clearReactives` entry. So a late write (the fetch that resolves after the user
-navigated away) used to queue a render for a component whose DOM had already been
-removed: wasted work, a diff against detached nodes, and the whole subtree kept
-alive by the queue.
+`clearReactives` entry. So without a flag, a late write — the fetch that resolves after the reader
+navigated away — would queue a render for a component whose DOM is already gone:
+wasted work, a diff against detached nodes, and the whole subtree held alive by
+the queue.
 
-`lifecycleCleanupManagement` now sets `isDestroyed` on the runtime and
+`lifecycleCleanupManagement` sets `isDestroyed` on the runtime and
 `addTaskToQueue` refuses. **The drop is not a dev check — it ships in
 production**; only the report is stripped. `isDestroyed` is deliberately a
 separate flag from `isInitialized`: that one means "not built yet", which
@@ -475,14 +474,6 @@ subclass that never mentions `handleClick`. That took a fix — see BUGS.md; it 
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.
 
-### RMD012 — retired 2026-07-18
-
-It warned that an unkeyed list had other children after it, because flattening merged the two
-into one key space and the list could claim its siblings. Arrays are no longer flattened —
-each is its own group with its own key space — so the hazard cannot happen and the warning
-would be advice about a non-problem. See BUGS.md, "A component's own elements could be claimed
-by content passed into it".
-
 ### RMD013 — A For hook could not identify its items
 
 `For` exists to delete the key. Identity is the item itself — an object reference,
@@ -599,9 +590,9 @@ every render it does goes into nodes nobody can see.
 
 **Ramonda's own removals cannot cause this.** Every path that removes something
 goes through the diff, which unmounts. Measured on a component with an
-`@interval`: after a conditional render dropped it, **zero** further ticks. After
-a third-party library cleared the node via a `ref`, **five** ticks and five
-renders, with no diagnostic at all before this code existed.
+`@interval`: after a conditional render drops it, **zero** further ticks. After a
+third-party library clears the node via a `ref`, **five** ticks and five renders —
+which is the case this code is for, and the only one that reaches it.
 
 So it comes from the boundary:
 
@@ -762,12 +753,10 @@ Measured, three renders of the owner: a hook `@compute` reading a rebuilt array 
 times vs 1 for a scalar prop; `@watchProp` on a rebuilt array fires on every update
 render; a child handed a rebuilt function re-renders 3/3.
 
-**Why the fix had to come with the check.** An earlier version of this comparison existed
-inside `renderStability.ts` and was deleted, because the only thing it could say was
-"your query key is an array literal" — true, and with nothing to do about it. The two
-answers are `@StableProps` on the hook (the author states that a prop is a value, once,
-for every caller) and `stable()` at the call site (the same thing from outside, for a hook
-that declared nothing). That is the same reason `list()` exists next to RMD020's report
+**A check like this only earns its place alongside a fix.** On its own it can say no more than
+"your query key is an array literal" — true, and with nothing to do about it. The answer it points
+at is `@StableProps` on the hook: the author states that a prop is a value, once, for every caller.
+That is the same reason `list()` exists next to RMD020's report
 about a rebuilt `each`.
 
 **Why a declared prop is skipped outright.** `@StableProps` means the framework already
@@ -793,11 +782,10 @@ what makes `{this.props.children}` — the framework's own array, one level down
 distinguishable from a mapped one. Without that brand it fired on every component that
 forwards children.
 
-**Narrowed twice, and the history is the point.** The first version reported every raw
-array and broke 10 of core's own tests, all of them exercising child groups on purpose —
-a mapped array is supported here, and `SlotKeys.test.tsx` even carries the note that an
-earlier, broader check was rejected for firing on the safe shape. What shipped reports only
-what is genuinely unhandled: unkeyed COMPONENT rows, of which there are at least two. Plain
+**Narrow on purpose, and the bound is what makes it usable.** Reporting every raw array would
+fire on child groups, which are supported and common — `SlotKeys.test.tsx` carries the note about
+that shape being legitimate. What this reports is only what is genuinely unhandled: unkeyed
+COMPONENT rows, of which there are at least two. Plain
 markup is patched in place and correct; a component's row moving takes its state and its
 DOM with it. One keyed child anywhere means the app is managing identity and the framework
 does not second-guess it.
@@ -930,15 +918,32 @@ proves nothing about staleness.
 **An error, not a warning**, unlike RMD022 next to it: the hook is running on a value the app has
 already moved past, so what renders is not what the state says. Nothing here is merely slower.
 
-**Why it did not need to exist before.** The shape it catches — a plain field standing in for
-`@state` — used to work by accident: the write scheduled nothing, but the next render for any
-other reason rebuilt the bag and carried the new value along. The value was never reactive; the
-framework stopped compensating for it.
+**What it catches.** A plain field standing in for `@state`: assigning it writes no signal, so
+nothing marks the callback's cache stale and the hook keeps a value the app has moved past. Two
+faults in one line, and the second is the one that shows — the page renders what the form no longer
+holds.
 
 The probe deliberately does NOT go through `buildProps`. That one runs the RMD022 strict-render
 check, which then fired from inside a check of its own — reporting churn on a render where the
 callback was not going to be called, and, having no `declared` list to hand down, naming every
 `@StableProps` key as unstable. See `probeProps` in `helpers/common.ts`.
+
+## Retired codes
+
+Numbers that were used and are now dead. They sit here rather than among the live ones because
+nobody reading about a diagnostic needs them — and they cannot be deleted either: a reused number
+makes an old bug report point at the wrong thing.
+
+**A retired number is never reassigned.** A search for it should land here and find what it warned
+about and why the hazard is gone, which is what somebody who met it in an old changeset is asking.
+
+### RMD012 — retired 2026-07-18
+
+It warned that an unkeyed list had other children after it, because flattening merged the two
+into one key space and the list could claim its siblings. Arrays are no longer flattened —
+each is its own group with its own key space — so the hazard cannot happen and the warning
+would be advice about a non-problem. See BUGS.md, "A component's own elements could be claimed
+by content passed into it".
 
 ### RMD026 — retired 2026-08-03
 

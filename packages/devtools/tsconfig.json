@@ -7,8 +7,24 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "noEmit": true
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "noEmit": true,
+    // `src/__tests__/theme.test.ts` reads the package's own sources off disk, to check that no
+    // colour is written out by hand anywhere in them.
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@ramonda/theme": [
+        "../theme/src/index.ts"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
