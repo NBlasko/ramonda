@@ -1,9 +1,9 @@
 {
   "name": "@ramonda/core",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "A UI framework. Explicit. Predictable. Readable.",
   "license": "MIT",
-  "author": "Nikola Blagojevi\u0107",
+  "author": "Nikola Blagojević",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",

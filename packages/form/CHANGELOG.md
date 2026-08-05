@@ -1,5 +1,64 @@
 # @ramonda/form
 
+## 0.4.0
+
+### Minor Changes
+
+- e06dd85: A devtools tab is its own entry, and a package only announces
+
+  ```ts
+  if (import.meta.env.DEV) {
+    void import("@ramonda/devtools");
+    void import("@ramonda/query/devtools");
+    void import("@ramonda/form/devtools");
+  }
+  ```
+
+  Each tab now lives behind `/devtools` on its package, and importing that entry registers it.
+  `create-ramonda` writes these lines for the add-ons you pick.
+
+  **Why it moved.** A package that imports the module describing its tab puts that description into
+  the bundle of every application using the package — `__DEV__` strips it from production, but not
+  from development. Measured: 12.4 KB of query and 5.2 KB of form were in the development bundle of
+  every app, whether or not anyone ever opened the panel. Both are now only in the bundle of an app
+  that asked for a tab.
+
+  **How a package reaches its tab instead.** An event. `QueryClientProvider` and `Form` announce
+  themselves arriving and leaving with one `__DEV__`-guarded line each, and the entry listens and
+  keeps whatever list it needs. Nothing about a panel lives on the class — no field, no method, both
+  of which ship whatever the guard says — and the package does not know whether anybody is listening.
+
+  That is the shape core already uses for `ramonda:tick` and `ramonda:dev-log`.
+
+  Nothing changes for an app beyond the import lines: both tabs look and behave as before.
+
+### Patch Changes
+
+- e06dd85: Devtools registration no longer costs a production build
+
+  Registering a panel used to leave a method and a field on the class, and neither can be tree-shaken:
+  esbuild cannot prove a method is never reached dynamically, and a declared field is emitted on every
+  instance. So every form in a production app carried ~500 bytes of dead code and a per-instance slot,
+  and its `@destroy` called a cleanup that could not exist.
+
+  The description and the cleanup now live in the module that owns the panel — a free function and a
+  `WeakMap` keyed by instance — leaving one `if (__DEV__)` line at each end of the class. `@ramonda/form`'s
+  production bundle is 529 bytes smaller, and every devtools name is now absent from it.
+
+  No behaviour changes; the panel works exactly as before.
+
+- 4385dec: The QUERY and FORMS tabs find what was already there when the panel loads
+
+  A devtools tab arrives through a dynamic import, so it loads after the app has mounted — and
+  anything that announced itself during that mount announced to nobody. `QueryClientProvider`
+  announces from `@create`, which runs during hydration, and its provider sits at the root and never
+  mounts again: the QUERY tab was empty for the life of the page. `Form` had the same fault and only
+  looked fine because a form usually mounts on a later route.
+
+  Both now answer a request as well as announcing once, and both entries ask on load. The SSR
+  playground's smoke test asserts the QUERY tab knows of a client, and fails with the reason if either
+  half goes away.
+
 ## 0.3.0
 
 ### Minor Changes

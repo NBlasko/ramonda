@@ -1,5 +1,129 @@
 # @ramonda/core
 
+## 0.10.0
+
+### Minor Changes
+
+- e06dd85: A hook's props callback knows what its parameter is
+
+  ```tsx
+  private user = this.use(Query, (self) => ({ key: ["user", self.id], fetch: self.load }));
+  ```
+
+  `self` is now typed as the class the `use()` is written in, so a name that is not there is a compile
+  error that says which:
+
+  ```
+  Property 'load' does not exist on type 'Panel'.
+  ```
+
+  Before, the parameter was `never` and had to be annotated — `(self: Panel)` — to be usable at all.
+  That worked, and left a hole: `never` accepts any function, so a callback written once and shared
+  compiled against a class it did not fit, and failed at runtime instead. Now the annotation is
+  checked, which makes a shared callback worth annotating rather than necessary to annotate.
+
+  Existing code is unaffected: every annotation that was right stays right, and `() => ({ … })` using
+  `this` never used the parameter. Verified against every package, playground and docs example in the
+  repository.
+
+- 68f9163: JSX goes through an automatic runtime, and the factory is renamed `__h`
+
+  Setting Ramonda up used to mean naming a factory (`jsxFactory: "__ramondaH"`), injecting it into
+  every module, and declaring it in a `global.d.ts` — and then holding two names in your head, because
+  the package exported `h` while compiled JSX called `__ramondaH`.
+
+  Now the compiler imports what it needs, per file:
+
+  ```jsonc
+  { "jsx": "react-jsx", "jsxImportSource": "@ramonda/core" }
+  ```
+
+  ```js
+  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core" }
+  ```
+
+  No factory name, no `jsxInject`, no `jsx-shim.ts`, no global declaration. `npm create ramonda`
+  writes it this way, and both templates lost a file each.
+
+  **Breaking.** `h` is no longer exported; the factory is `__h`, for the vnodes a tag cannot express —
+  a runtime tag name, spread children. Compiled JSX never calls it. To migrate, change the two config
+  keys above, delete the inject and the global declaration, and rename any hand-written `h(` to `__h(`.
+
+  Two new subpaths ship with core: `@ramonda/core/jsx-runtime` and `@ramonda/core/jsx-dev-runtime`.
+  Both are needed — every bundler's development mode imports the second one.
+
+  Fragments still do not exist. `<>…</>` throws with the reason rather than half-working, because one
+  tag producing several elements is what the one-tag-one-element rule is about.
+
+- e06dd85: RMD030 — state written during `[INSPECT]()`
+
+  `[INSPECT]()` describes an instance to the devtools panel. The panel calls it on every commit while
+  it is open on the components tab, so writing `@state` from inside it closes a circle: the write
+  schedules a render, the render commits, the commit pings the panel, and the panel asks again.
+
+  Two things go wrong, and the second is the worse one. The app does more work to reach the same
+  screen — and the values on screen stop being the values the app had, handed to the one reader least
+  able to doubt them, at exactly the moment they are trying to work out what is wrong.
+
+  Nothing caught it before: RMD009 watches for a component that will not stop rendering, and this only
+  turns while somebody is looking. Measured, five scans moved a counter five times and reported
+  nothing.
+
+  The third of a family — RMD001 during `render()`, RMD018 during a `@compute` — and built the same
+  way, so a describe that throws still clears the phase rather than blaming the next write anywhere in
+  the app.
+
+  Read fields, derive values, return. To cache something, use a plain field rather than `@state`,
+  which is what `Form` and `Mutation` already do.
+
+- 4385dec: The JSX factories return `VNode`, and a list item that is not an element is reported (RMD031)
+
+  `__h`, `jsx`, `jsxs` and `jsxDEV` declared `RamondaNode`, which is `VNode | VNode[]` — but every tag
+  the types accept builds exactly one element. The wide return described only an unreachable branch (a
+  function in tag position, which TypeScript already rejects at the call site) and cost every caller
+  that builds a vnode by hand a cast back: a route table generated from a content directory, a table
+  cell, a test that bootstraps a component. Those casts are gone.
+
+  **RMD031 — a list item that is not an element.** A list writes each row's key onto the vnode it gets
+  back, and the diff matches rows on that key, so one item has to become one element. Anything else had
+  no `attributes` and threw `Cannot set properties of undefined (setting 'key')` — a message about the
+  assignment rather than about what to write instead. The item is now named and skipped, in production
+  too, so the page loses one row instead of the whole tree.
+
+  The case it is about is a nested list: a list of pages, each holding rows. The inner `list()` is a
+  descriptor, not an element, so nesting goes through a component — `as: PageView` — whose host element
+  wraps the inner rows and carries the key.
+
+- e06dd85: Two diagnostics from reading React's warning list: RMD028 and RMD029
+
+  **RMD028 — markup the HTML parser is not allowed to keep where you put it.** A `<div>` inside a
+  `<p>`, an `<li>` outside a list, a `<tr>` outside a table, a `<form>` inside a `<form>`. All of them
+  work perfectly on the client, because the DOM is built with `appendChild`, which puts a node exactly
+  where it is told. A parser does not:
+
+  ```
+  your markup:    <p>intro<div>a block</div></p>
+  what a browser
+  builds from it: <p>intro</p><div>a block</div>
+  ```
+
+  So the mistake is invisible through any amount of SPA development and appears the first time the
+  page is server-rendered — and what it reported then was a hydration mismatch (RMD007) whose advice
+  is about `new Date()` in `render()`. The server sent the right markup; the parser moved it. This
+  says so at the moment the element is created, and names what the parser will do with it.
+
+  **RMD029 — a boolean attribute given the string `"false"`.** `disabled="false"` disables the
+  control; `hidden="false"` hides the element. A boolean attribute is true whenever it is present, so
+  the string turns it on and the element does the opposite of what the line says. Pass the boolean —
+  `disabled={false}` removes the attribute, which is what makes it off.
+
+  Not fixed for you on purpose: `<input disabled="false">` is disabled in every browser by the HTML
+  spec, and quietly deciding otherwise would make our JSX mean something different from the markup it
+  emits. Only the exact string `"false"`, and only on the spec's boolean attributes — `aria-hidden="false"`
+  is valid and is left alone.
+
+  Both are development-only and read tag names and one value; production builds strip them.
+
 ## 0.9.0
 
 ### Minor Changes
