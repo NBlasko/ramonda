@@ -2,26 +2,26 @@
 /* The site follows the reader's system preference; the devtools panel does not. See the
    package for why those are two palettes rather than one. */
 :root {
-  --rmd-bg: #FFFFFF;
-  --rmd-fg: #1B1B1F;
-  --rmd-muted: #6B6B76;
-  --rmd-line: #E5E5EC;
-  --rmd-accent: #7A4FBF;
-  --rmd-code-bg: #F6F6F9;
-  --rmd-error: #C0392B;
-  --rmd-ok: #2D7D46;
-  --rmd-fresh: #A03070;
+  --rmd-bg: #ffffff;
+  --rmd-fg: #1b1b1f;
+  --rmd-muted: #6b6b76;
+  --rmd-line: #e5e5ec;
+  --rmd-accent: #7a4fbf;
+  --rmd-code-bg: #f6f6f9;
+  --rmd-error: #c0392b;
+  --rmd-ok: #2d7d46;
+  --rmd-fresh: #a03070;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --rmd-bg: #111114;
-    --rmd-fg: #E8E8ED;
-    --rmd-muted: #9A9AA6;
-    --rmd-line: #2A2A32;
-    --rmd-accent: #B18AE6;
-    --rmd-code-bg: #1A1A20;
-    --rmd-error: #FF8080;
-    --rmd-ok: #54C98A;
-    --rmd-fresh: #E58FBC;
+    --rmd-fg: #e8e8ed;
+    --rmd-muted: #9a9aa6;
+    --rmd-line: #2a2a32;
+    --rmd-accent: #b18ae6;
+    --rmd-code-bg: #1a1a20;
+    --rmd-error: #ff8080;
+    --rmd-ok: #54c98a;
+    --rmd-fresh: #e58fbc;
   }
 }

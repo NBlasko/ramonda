@@ -176,7 +176,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD029: {
     // error, not warning: the element does the OPPOSITE of what the line says.
     severity: "error",
-    title: "A boolean attribute given the string \"false\"",
+    title: 'A boolean attribute given the string "false"',
     fix: 'A boolean attribute is true whenever it is PRESENT — the parser never reads its value — so `disabled="false"` disables the control and `hidden="false"` hides the element. Pass the boolean itself: `disabled={false}`, or `disabled={someCondition}`. A `false` removes the attribute, which is what makes it off. This is not fixed for you on purpose: `<input disabled="false">` is disabled in every browser by the HTML spec, and a framework that quietly decided otherwise would make its JSX mean something different from the markup it produces. Only the exact string "false" is reported, and only on a genuinely boolean attribute — `aria-hidden="false"` is valid and means what it says, because ARIA attributes are enumerated strings rather than boolean attributes.',
   },
   RMD028: {

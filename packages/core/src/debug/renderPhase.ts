@@ -78,11 +78,7 @@ export function reportWriteDuringInspect(signal: object): void {
   const name = instance.constructor.name;
   const target = stateProperty(signal) ?? "a signal";
 
-  diagnose(
-    "RMD030",
-    `${name}:${target}`,
-    `<${name} /> wrote to \`${target}\` from inside its \`[INSPECT]()\`.`,
-  );
+  diagnose("RMD030", `${name}:${target}`, `<${name} /> wrote to \`${target}\` from inside its \`[INSPECT]()\`.`);
 }
 
 /**

@@ -45,8 +45,10 @@ describe("the panel's palette", () => {
     const start = PANEL_CSS.indexOf(":host {");
     expect(start).toBeGreaterThan(-1);
     const head = PANEL_CSS.slice(start, PANEL_CSS.indexOf("}", start));
+    // Lowercased on both sides: the table is written the way the brand is written down, and the
+    // stylesheet comes out the way `biome format` writes CSS. Same colour, one spelling each.
     for (const [token, value] of Object.entries(panel)) {
-      expect(head).toContain(`--rmd-${token}: ${value};`);
+      expect(head.toLowerCase()).toContain(`--rmd-${token}: ${value.toLowerCase()};`);
     }
   });
 

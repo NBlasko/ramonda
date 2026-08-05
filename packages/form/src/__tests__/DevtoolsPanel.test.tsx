@@ -242,7 +242,6 @@ describe("the Forms panel", () => {
     }
   });
 
-
   /**
    * Navigating away must not take the tab with it.
    *

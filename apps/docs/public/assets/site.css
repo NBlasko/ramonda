@@ -418,48 +418,68 @@ article img[src$=".gif"] {
 }
 
 @media (max-width: 700px) {
-  /* The heading row is gone, so it must not be read out either — `display: none` is what does
-     both. Its text is not lost: it is on every cell as `data-label`. */
+  /* The heading row is gone, so it must not be read out either — `display: none` does both. Its
+     text is not lost: it is on every cell as `data-label`. */
   .table-wrap thead {
     display: none;
   }
-  .table-wrap table,
-  .table-wrap tbody,
-  .table-wrap tr,
-  .table-wrap td {
-    display: block;
-  }
-  .table-wrap tr {
-    /* The scroll container. The name bar is sticky INSIDE it, which is what keeps the row's
-       identity on screen while its values scroll — the thing a plain overflowing table loses. */
+  /* ONE scroll container for the whole table, so every row's values move together and the columns
+     stay lined up down the page. A scroller per row would drift out of step the moment two rows
+     were scrolled by different amounts, and would put a scrollbar under each of them.
+     `container-type` is what lets the name bar below ask for the visible width. */
+  .table-wrap {
     overflow-x: auto;
-    display: flex;
-    align-items: stretch;
+    container-type: inline-size;
+  }
+  .table-wrap table,
+  .table-wrap tbody {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+  }
+  /* A row is two lines. `nowrap` stops a break BETWEEN the value cells, so they form the one long
+     line that scrolls; each cell sets `normal` again for its own text. */
+  .table-wrap tr {
+    display: block;
+    white-space: nowrap;
+    width: max-content;
+    min-width: 100%;
     margin: 0 0 10px;
     border: 1px solid var(--rmd-line);
     border-radius: 8px;
   }
-  .table-wrap td {
-    border: 0;
-    border-left: 1px solid var(--rmd-line);
-    flex: 0 0 auto;
-    max-width: 20rem;
-  }
-  /* The name. Sticky at the left edge, opaque so the scrolling cells pass behind it.
-     A fixed basis rather than the content's width: sized by content, the bar would be a different
-     width on every row, and the column of names people scan down would not line up. */
+  /* Line one: the name, pinned. `100cqw` and not `100%`: the row is as wide as its widest line, and
+     a bar that width would carry the name off-screen with everything else. The container query unit
+     is the width you can SEE, which is exactly where the name has to stay. */
   .table-wrap td:first-child {
+    display: block;
     position: sticky;
     left: 0;
     z-index: 1;
-    flex: 0 0 clamp(7rem, 38%, 11rem);
-    border-left: 0;
+    width: 100cqw;
+    padding: 7px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--rmd-line);
     background: var(--rmd-code-bg);
     font-weight: 600;
-    display: flex;
-    align-items: center;
-    /* A long name wraps rather than widening the bar or spilling out of it. */
-    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  /* Line two: the values, side by side, scrolling under the name.
+     A FIXED width, not one from the content: every row is its own line of inline boxes, so nothing
+     makes the second value of one row start where the second value of the next one does. With a
+     single scrollbar moving all of them together, that misalignment is what you would notice —
+     scroll a little and each row is showing a different column. */
+  .table-wrap td:not(:first-child) {
+    display: inline-block;
+    vertical-align: top;
+    white-space: normal;
+    width: 11rem;
+    padding: 6px 12px 8px;
+    border: 0;
+    border-left: 1px solid var(--rmd-line);
+  }
+  .table-wrap td:nth-child(2) {
+    border-left: 0;
   }
   /* The column heading, in small type above its value. */
   .table-wrap td:not(:first-child)::before {

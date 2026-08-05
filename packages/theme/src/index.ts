@@ -33,9 +33,19 @@ const PREFIX = "--rmd";
  */
 export function declarations(tokens: Record<string, string>, indent = "  "): string {
   return Object.entries(tokens)
-    .map(([name, value]) => `${indent}${PREFIX}-${name}: ${value};`)
+    .map(([name, value]) => `${indent}${PREFIX}-${name}: ${lowerHex(value)};`)
     .join("\n");
 }
+
+/**
+ * Hex, lowercased on the way out.
+ *
+ * The table above is written in upper case because that is how the brand is written down, and a
+ * stylesheet generated from it has to come out byte-identical to what `biome format` would produce
+ * — biome lowercases hex in CSS. Without this the generated file and the formatter rewrite each
+ * other forever, and CI fails on whichever ran last.
+ */
+const lowerHex = (value: string): string => value.replace(/#[0-9A-Fa-f]{3,8}\b/g, (hex) => hex.toLowerCase());
 
 /**
  * The marks. Five colours that are Ramonda wherever it appears.
