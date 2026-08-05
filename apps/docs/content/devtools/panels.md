@@ -180,8 +180,16 @@ So read state in it rather than computing over it, and do not push: a cache that
 on every change would cost something in every development build whether or not anybody had it open.
 If your `snapshot()` throws, the tab says so and the rest of the panel carries on.
 
-## Ids are yours, and the panel does not parse them
+## An id is yours, and it comes back untouched
 
-A row `id` reaches `run()` exactly as you wrote it — `@ramonda/query` uses `0::["products"]`, quotes
-and all. The panel never takes one apart, because it cannot know where your separator is. Take it
-apart yourself in `run`.
+The panel treats `id` as opaque: it stores it, addresses actions and values by it, and hands it to
+`run(rowId, actionId)` byte for byte. It never splits one, because it cannot know what a separator
+would be in your ids.
+
+So put in it whatever `run` needs in order to find the thing again — including structure.
+`@ramonda/query` writes `0::["products"]`, which is the client's index and the key, joined; `run`
+splits on `::` and looks both up. A plain `"ws-1"` is just as good when a plain lookup is all it takes.
+
+**What an id must be is stable across polls**, because that is how the panel knows the row it is
+looking at is the same row. An id built from something that moves — a position in a list, a counter —
+makes every poll look like a different set of rows, which resets whatever the reader had open.

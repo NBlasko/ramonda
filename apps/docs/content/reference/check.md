@@ -1,6 +1,6 @@
 ---
 title: Checking your app
-description: ramonda-check-context proves every context has a provider above it — before the app is ever opened.
+description: ramonda-check reads your source and proves two things a running page would not tell you.
 section: Reference
 order: 112
 ---
@@ -26,7 +26,7 @@ npm add -D @ramonda/check
 ```jsonc
 // package.json — run it first, so a broken app never reaches the bundler
 "scripts": {
-  "build": "ramonda-check-context && vite build"
+  "build": "ramonda-check && vite build"
 }
 ```
 
@@ -35,9 +35,9 @@ A scaffolded project (`npm create ramonda`) already has both lines.
 ## What it looks like
 
 ```
-$ ramonda-check-context
+$ ramonda-check
 
-[ramonda-check-context] 2 consumer(s) with no provider above them:
+[ramonda-check] 2 consumer(s) with no provider above them:
 
   src/pages/Account.tsx:14:9
     <Account> consumes "Session" — nothing provides it on this path:
@@ -53,7 +53,7 @@ has to go.
 When everything is connected it says so and exits zero:
 
 ```
-[ramonda-check-context] 68 components, 4 contexts, 1 root(s) — every consumer has a provider above it.
+[ramonda-check] 68 components, 4 contexts, 1 root(s) — every consumer has a provider above it.
 ```
 
 ## What it can see
@@ -89,7 +89,7 @@ They are not alternatives — each catches what the other cannot.
 
 | | when it speaks | catches |
 |---|---|---|
-| `ramonda-check-context` | before the app runs | every path it can prove, exercised or not |
+| `ramonda-check` | before the app runs | every path it can prove, exercised or not |
 | [`RMD003`](/reference/diagnostics) | when the component **mounts** | dynamic composition the checker cannot resolve |
 
 The static one is the only one that can speak about a branch nobody has opened yet. The runtime one

@@ -17,7 +17,20 @@ a {
 a:hover {
   text-decoration: underline;
 }
+/* The height of the bar, in one place, because the sidebar's height is measured from it. Change the
+   bar's padding or its type and this has to follow — measure it, do not guess. */
+:root {
+  --masthead-h: 66px;
+}
+/* Sticky, and that is what makes the sidebar's arithmetic work.
+   While it scrolled away, the sidebar sat at one offset at the top of the page and a different one
+   once pinned, so no single height could be right in both — it was 49px past the bottom of the
+   window until you had scrolled the bar off. Pinned, the offset is the same either way. */
 .masthead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--rmd-bg);
   border-bottom: 1px solid var(--rmd-line);
   padding: 14px 24px;
 }
@@ -64,8 +77,8 @@ a:hover {
 nav {
   flex: 0 0 220px;
   position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
+  top: calc(var(--masthead-h) + 24px);
+  max-height: calc(100vh - var(--masthead-h) - 48px);
   overflow-y: auto;
   overscroll-behavior: contain;
   /* Room for the scrollbar, so it never sits on top of a link. */
@@ -717,6 +730,10 @@ article pre.shiki {
     z-index: 60;
     width: min(280px, 82vw);
     height: 100vh;
+    /* The desktop rule caps the sidebar below the masthead, and the drawer is not below anything —
+       it covers the screen. Left in place it cut the drawer short by exactly the masthead's height
+       and left a gap under the links. */
+    max-height: none;
     margin: 0;
     padding: 14px 20px 20px;
     background: var(--rmd-bg);

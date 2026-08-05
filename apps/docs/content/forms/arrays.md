@@ -142,6 +142,14 @@ contacts: array(
 The row's index never appears, so the rule is right whatever position the row is at and stays right
 when rows move. The message lands on `value`, which is the field the reader has to fix.
 
+**What it saves you from is `ctx.ref("contacts." + index + ".kind")`** — an absolute path rebuilt by
+hand, which means reading the row's position out of the rule's own internals, interpolating it into a
+string, and having nothing check the result. `sibling` takes the same two forms as
+[`ref`](/forms/validation#cross-field-rules): a callback the compiler checks, or a string for a name
+known only at runtime. Either way it records the absolute path it resolved to, so a read of `kind`
+from row 0 is `contacts.0.kind` — exactly what the rebuilt version would have produced, and it flows
+through [`unknownRefPaths`](/forms/bguard) the same way.
+
 ## `rows` is stable until the list changes
 
 `rows` hands back the same array until something structural happens — an append, an insert, a

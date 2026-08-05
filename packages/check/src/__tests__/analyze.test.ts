@@ -49,3 +49,69 @@ describe("it can see the app at all", () => {
     expect(counts.components).toBeGreaterThanOrEqual(3);
   });
 });
+
+/**
+ * Function literals in class fields.
+ *
+ * The whole value of doing this in the SOURCE is the line between a function written in the field
+ * and a function a call returned. At runtime they are the same thing — `bindInstanceMethods` has
+ * put a bound function on the instance under every method's name by the time anything could look,
+ * and `debounce(this.save, 200)` is a function there too. Only one of them is a mistake.
+ */
+describe("function literals held in class fields", () => {
+  const found = () => run("arrows").arrowFields;
+
+  test("reports an arrow, a function expression, and nothing else", () => {
+    expect(found().map((f) => `${f.component}.${f.field}`)).toEqual([
+      "Panel.onPick",
+      "Panel.format",
+      "Panel.legacy",
+      "Counter.tick",
+    ]);
+  });
+
+  test("a field initialised from a CALL is left alone", () => {
+    // `debounce(this.persist, 200)` and `memoize(this.compute)` are functions, and both are
+    // legitimate: a wrapper cannot be written as a method. This is the case a runtime check
+    // cannot tell apart, and the reason this one reads the source.
+    const names = found().map((f) => f.field);
+    expect(names).not.toContain("save");
+    expect(names).not.toContain("cheap");
+  });
+
+  test("a value that is not a function is not a finding", () => {
+    const names = found().map((f) => f.field);
+    expect(names).not.toContain("label");
+    expect(names).not.toContain("rows");
+  });
+
+  test("a static field is one per class, so it is not a finding", () => {
+    expect(found().map((f) => f.component)).not.toContain("Statics");
+  });
+
+  test("a class that is not a component or a hook is not this check's business", () => {
+    expect(found().map((f) => f.component)).not.toContain("Plain");
+  });
+
+  test("says whether it reads `this`, because that decides the fix", () => {
+    const by = Object.fromEntries(found().map((f) => [f.field, f]));
+    // Reads the instance → it wants to be a method, which Ramonda binds for you.
+    expect(by["onPick"].readsThis).toBe(true);
+    expect(by["tick"].readsThis).toBe(true);
+    // Reads nothing of the instance → it wants to leave the class entirely.
+    expect(by["format"].readsThis).toBe(false);
+  });
+
+  test("names the file and the line, so the report is a place to go", () => {
+    const first = found()[0];
+    expect(first.file).toMatch(/fixtures\/arrows\/app\.tsx$/);
+    expect(first.line).toBeGreaterThan(0);
+    expect(first.column).toBeGreaterThan(0);
+  });
+
+  test("the other fixtures have none, so the check is silent on ordinary code", () => {
+    for (const name of ["ok", "missing", "reorder", "children"]) {
+      expect(run(name).arrowFields, name).toEqual([]);
+    }
+  });
+});

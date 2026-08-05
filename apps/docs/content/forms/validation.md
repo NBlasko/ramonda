@@ -119,6 +119,16 @@ const schema = object({
 `addIssue` takes what was **expected**, what was **received**, and a message key — the key is what
 a translation maps, and it is what to branch on rather than the message.
 
+**There is a string form, and it is for one case.** `ctx.ref("home.city")` takes a dotted path,
+splits it on the dots and indexes plainly — so it reaches into arrays too, `ctx.ref("contacts.0.kind")`.
+It hands back `unknown`, and a name that is not there is `undefined` rather than a compile error, so
+reach for it only when the path is genuinely not known until it runs. Everywhere else the callback is
+the same thing with the compiler watching.
+
+Inside a row, neither one is what you want: see [a rule about one row](/forms/arrays#a-rule-about-one-row),
+where `ctx.sibling` asks for the row's own field without your rebuilding the path from an index.
+`unknownRefPaths` catches what the compiler cannot — see [the bguard submodule](/forms/bguard).
+
 The message appears under `confirm`, which is the field the reader has to change. In zod the
 equivalent is `.refine(…, { path: ["confirm"] })` — the same outcome, with the path written out
 by hand.

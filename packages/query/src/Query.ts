@@ -513,7 +513,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     }
   }
 
-  private observe = (event: QueryEvent): void => {
+  private observe(event: QueryEvent): void {
     if (this.disposed) return;
 
     if (event === "invalidated") {
@@ -540,7 +540,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     if (this.onServer) this.captureSnapshot();
 
     this.wake();
-  };
+  }
 
   /**
    * Wakes the owner, unless nothing it has read actually changed.

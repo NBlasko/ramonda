@@ -36,9 +36,9 @@ export class LifecycleLog extends Component {
 
   // Not @state on `lines` alone — pushing into an array in place would not be a
   // new value, so nothing would notice. Replace it. (RMD005 reports the mistake.)
-  log = (line: string) => {
+  log(line: string): void {
     this.lines = [...this.lines, line];
-  };
+  }
 
   toggle() {
     this.shown = !this.shown;
