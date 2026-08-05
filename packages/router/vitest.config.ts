@@ -13,8 +13,8 @@ export default defineConfig({
   // day that became 8 every test stopped parsing: the JSX factory was silently
   // dropped. Both are set so it works either way.
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxFragment: "Fragment",
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
   resolve: {
@@ -22,6 +22,8 @@ export default defineConfig({
       // Run tests against framework source (live), like the playground. The
       // `/testing` alias must come FIRST — a string alias matches by prefix, so
       // the bare "@ramonda/core" entry would otherwise swallow it.
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../core/src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "../core/src/jsx-runtime.ts"),
       "@ramonda/core/testing": resolve(__dirname, "../core/src/testing.ts"),
       "@ramonda/core": resolve(__dirname, "../core/src/index.ts"),
       "@ramonda/testing-library": resolve(__dirname, "../testing-library/src/index.ts"),

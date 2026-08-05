@@ -1,6 +1,6 @@
 import { createRoutes, type RouteConfig } from "@ramonda/router";
 import type { VNode } from "@ramonda/core";
-import { h } from "@ramonda/core";
+import { __h } from "@ramonda/core";
 import { pages } from "./generated/content";
 import { DocPage } from "./DocPage";
 
@@ -14,9 +14,9 @@ import { DocPage } from "./DocPage";
  */
 const table: Record<string, VNode> = {};
 for (const page of pages) {
-  table[page.path] = h(DocPage, { meta: page }) as VNode;
+  table[page.path] = __h(DocPage, { meta: page });
 }
-table["*"] = h(DocPage, { meta: pages[0], notFound: true }) as VNode;
+table["*"] = __h(DocPage, { meta: pages[0], notFound: true });
 
 export const routes: RouteConfig = createRoutes(table);
 export { pages };

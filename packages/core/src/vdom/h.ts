@@ -1,5 +1,5 @@
 import { createRamonda } from "../vdom/CreateRamonda";
-import type { ComponentChild, ComponentKind, ComponentClassKind, UnsupportedTagFn, RamondaNode } from "../types/vdom";
+import type { ComponentChild, ComponentKind, ComponentClassKind, UnsupportedTagFn, VNode } from "../types/vdom";
 import {
   svgElements,
   COMPONENT_TYPE,
@@ -196,6 +196,11 @@ function isListLike(value: unknown): boolean {
  * A function is accepted only so it can be reported (RMD011) instead of quietly
  * behaving like a component that has no element. TypeScript already rejects it
  * at the call site — see JSX.ElementType in global.ts.
+ *
+ * The return is one `VNode`, which is the 1-1 rule stated in the type: every tag
+ * the types accept builds exactly one element. Declaring the wider `RamondaNode`
+ * described only the unreachable branch below, and made callers that build vnodes
+ * by hand — a generated route table, a table cell — cast the result back.
  */
 /**
  * A component class with its own props, called directly rather than through JSX.
@@ -211,21 +216,21 @@ function isListLike(value: unknown): boolean {
  * tag is a value rather than syntax — forced a cast at every call site, and a
  * cast is exactly what stops the props from being checked at all.
  */
-export function h<P extends Record<string, any>>(
+export function __h<P extends Record<string, any>>(
   name: ComponentClassKind<P>,
   attributes: P & { key?: string | number },
   ...children: ComponentChild[]
-): RamondaNode;
-export function h<T extends Record<string, any> | { key?: string } | null>(
+): VNode;
+export function __h<T extends Record<string, any> | { key?: string } | null>(
   name: ComponentKind | UnsupportedTagFn,
   rawAttributes: T,
   ...children: ComponentChild[]
-): RamondaNode;
-export function h(
+): VNode;
+export function __h(
   name: ComponentKind | UnsupportedTagFn,
   rawAttributes: Record<string, any> | null,
   ...children: ComponentChild[]
-): RamondaNode {
+): VNode {
   const parsedChildren = normalizeChildren(children);
 
   const attributes: Record<string, any> = rawAttributes ?? {};
@@ -257,7 +262,10 @@ export function h(
   if (typeof name === "function") {
     try {
       if (__DEV__) reportFunctionTag(name.name);
-      return (name as UnsupportedTagFn)(attributes as never);
+      // Cast because this branch is the one place the 1-1 rule is already broken:
+      // the function returns whatever it likes. It is unreachable from typed code,
+      // and it has just been reported.
+      return (name as UnsupportedTagFn)(attributes as never) as VNode;
     } catch (e) {
       if (__DEV__) {
         console.error(

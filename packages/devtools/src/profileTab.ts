@@ -1,4 +1,5 @@
 import { escapeHtml } from "./format";
+import { icon } from "@ramonda/theme";
 
 interface ComponentCost {
   name: string;
@@ -104,7 +105,7 @@ export class ProfileTab {
 
     const recording = bridge.isRecording();
     button.classList.toggle("on", recording);
-    button.textContent = recording ? "■ stop" : "● record";
+    button.innerHTML = recording ? `${icon("stop")} stop` : `${icon("record")} record`;
 
     const commits = bridge.commits();
     hint.textContent = recording

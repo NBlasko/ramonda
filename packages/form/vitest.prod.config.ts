@@ -29,12 +29,14 @@ export default defineConfig({
     __TEST__: 'process.env.NODE_ENV === "test"',
   },
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxFragment: "Fragment",
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
   resolve: {
     alias: {
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../core/src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "../core/src/jsx-runtime.ts"),
       "@ramonda/core/testing": resolve(__dirname, "../core/src/testing.ts"),
       "@ramonda/core": resolve(__dirname, "../core/src/index.ts"),
       "@ramonda/testing-library": resolve(__dirname, "../testing-library/src/index.ts"),
@@ -45,7 +47,6 @@ export default defineConfig({
     coverage,
     globals: true,
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.prod.test.{ts,tsx}"],
   },
 });

@@ -8,12 +8,13 @@
     "noUnusedParameters": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
-    "jsx": "react",
-    "jsxFactory": "__ramondaH",
-    "jsxFragmentFactory": "Fragment",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@ramonda/core",
     "allowJs": true,
     "paths": {
-      "@ramonda/shared": ["../shared/index.ts"]
+      "@ramonda/shared": ["../shared/index.ts"],
+      "@ramonda/core/jsx-runtime": ["./src/jsx-runtime.ts"],
+      "@ramonda/core/jsx-dev-runtime": ["./src/jsx-dev-runtime.ts"]
     },
     "skipLibCheck": true
   },

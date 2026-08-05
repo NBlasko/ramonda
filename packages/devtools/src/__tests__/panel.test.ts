@@ -881,14 +881,23 @@ describe("the stylesheet", () => {
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(10.5);
   });
 
-  it("keeps the disclosure triangles as single-backslash CSS escapes", () => {
-    const panel = mount(() => tree());
+  it("draws the disclosure triangles from the icon set, in both states", () => {
+    const css = styleText(mount(() => tree()));
 
-    // The stylesheet lives in a template literal, so `\\25B8` in the source is what puts `\25B8`
-    // in the CSS. Getting that wrong is a TS octal-escape error at build time in one direction and
-    // a literal backslash-2-5 in the content in the other.
-    expect(styleText(panel)).toContain('content: "\\25B8"');
-    expect(styleText(panel)).toContain('content: "\\25BE"');
+    // A `::before` has no element to hold an `<svg>`, so the marker is a masked data URI. Two things
+    // can go wrong and neither shows up as an error: an encoding slip leaves a URI the browser
+    // ignores, and a copy-paste leaves both states pointing at the same caret.
+    const masks = [...css.matchAll(/mask(?:-image)?: url\("data:image\/svg\+xml,([^"]+)"\)/g)].map((m) =>
+      decodeURIComponent(m[1]),
+    );
+
+    expect(masks.length).toBe(2);
+    for (const svg of masks) expect(svg).toMatch(/^<svg [^>]*viewBox="0 0 256 256"><path d="[^"]+"\/><\/svg>$/);
+    expect(masks[0]).not.toBe(masks[1]);
+
+    // The colour is still a token's, which is the whole reason for a mask over a background image.
+    expect(css).toContain("background-color: var(--rmd-syntax-punct)");
+    expect(css).toContain("background-color: var(--rmd-brand-light)");
   });
 });
 

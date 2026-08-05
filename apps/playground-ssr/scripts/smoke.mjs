@@ -197,6 +197,48 @@ async function checkPanel() {
   await waitFor("core did not install the devtools write bridge", () => typeof window.__RAMONDA_WRITE__ === "function");
 
   panel.toggle();
+
+  /**
+   * The tabs this app's packages contribute, before anything else is asked of the panel.
+   *
+   * They are not in the panel: `@ramonda/query/devtools` and `@ramonda/form/devtools` each describe
+   * one and register it when the entry is imported, so an app that uses those packages has to import
+   * their entries too. Both playgrounds silently stopped doing that, and nothing said so — the panel
+   * still opened, the tree still worked, and two tabs were simply gone. `plugin-` is the prefix the
+   * registry puts on a tab it was handed.
+   */
+  for (const [id, entry] of [
+    ["plugin-query", "@ramonda/query/devtools"],
+    ["plugin-forms", "@ramonda/form/devtools"],
+  ]) {
+    if (!panel.shadowRoot.querySelector(`.tab[data-tab="${id}"]`)) {
+      fail(`the panel has no ${id.replace("plugin-", "").toUpperCase()} tab — does entry-client import ${entry}?`);
+    }
+  }
+
+  /**
+   * The QUERY tab has something in it.
+   *
+   * Its existence is not enough, and that gap shipped: `QueryClientProvider` announced its client
+   * from `@create`, which runs during hydration — while `@ramonda/query/devtools` arrives through a
+   * dynamic import that resolves after. The one announcement went to nobody, and because the root
+   * provider never mounts again the tab was empty for the life of the page. The panel asks on load
+   * now, and the provider answers; this is what would notice if either half went away.
+   */
+  panel.shadowRoot.querySelector('.tab[data-tab="plugin-query"]').dispatchEvent(new window.Event("click"));
+  await new Promise((r) => setTimeout(r, 600));
+  const registry = window.__RAMONDA_PANELS__;
+  const query = registry?.list().find((plugin) => plugin.id === "query");
+  if (!query) fail("no QUERY plugin in the registry — does entry-client import @ramonda/query/devtools?");
+  const queryRows = query.snapshot().groups.length;
+  if (queryRows === 0) {
+    fail(
+      "the QUERY tab knows of no client. `QueryClientProvider` announces from `@create`, which runs\n" +
+        "  during hydration — before the dynamic import of `@ramonda/query/devtools` has resolved. The\n" +
+        "  panel has to ASK on load and the provider has to answer; one of those two is gone.",
+    );
+  }
+
   panel.shadowRoot.querySelector('.tab[data-tab="components"]').dispatchEvent(new window.Event("click"));
 
   // Five is the "the tree came through at all" bar, not an exact count — the app is free to grow.
@@ -227,7 +269,7 @@ async function checkPanel() {
   open.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
   await waitFor("clicking the editor button asked the server for nothing", () => editorCalls.length > 0);
 
-  return { rows, editing: pencil.dataset.editKey };
+  return { rows, editing: pencil.dataset.editKey, queryRows };
 }
 
 /**
@@ -430,7 +472,8 @@ await checkModes();
 stop();
 console.log(
   `[smoke] the server rendered / with ${html.length} bytes, and all ${checks.length} checks passed\n` +
-    `[smoke] the panel listed ${panel.rows} components and edited ${panel.editing}\n` +
+    `[smoke] the panel listed ${panel.rows} components, edited ${panel.editing}, ` +
+    `and the QUERY tab listed ${panel.queryRows} row(s)\n` +
     `[smoke] the endpoint resolved ${editor.source} ` +
     `(${editor.opened ? "and opened it" : "no editor on this machine, which is not this test's business"}), ` +
     `and refused a path that does not exist\n` +

@@ -3,12 +3,14 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react",
-    "jsxFactory": "__ramondaH",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@ramonda/core",
     "strict": true,
     "skipLibCheck": true,
     "types": ["vitest/globals", "node"],
     "paths": {
+      "@ramonda/core/jsx-runtime": ["../core/src/jsx-runtime.ts"],
+      "@ramonda/core/jsx-dev-runtime": ["../core/src/jsx-dev-runtime.ts"],
       "@ramonda/core": ["../core/src/index.ts"],
       "@ramonda/core/testing": ["../core/src/testing.ts"],
       "@ramonda/testing-library": ["../testing-library/src/index.ts"]

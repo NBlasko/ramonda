@@ -113,10 +113,10 @@ yours to define.
 | `refetch()` | — | Manual, ignores freshness, and joins a request already in flight rather than starting a second |
 | `invalidate(key)` | — | Marks stale and asks whoever is watching to refresh; the data stays on screen while it does |
 
-The visibility trigger keeps its `focus` name but watches `document.visibilityState`, which
-is the question it is really asking. A window that gains focus having been visible all along —
-a second monitor, a split screen, DevTools — no longer refetches; a phone returning from the
-background now does, which `focus` did not reliably report.
+The visibility trigger is named `focus` and watches `document.visibilityState`, which is the
+question it is really asking. So a window that gains focus having been visible all along — a second
+monitor, a split screen, DevTools — does not refetch, and a phone returning from the background does.
+A focus event reports neither of those reliably.
 
 A query with **no** data fetches under all of these: `refetchOnMount` decides whether
 to REFRESH, and there is nothing to refresh yet.

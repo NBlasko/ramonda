@@ -99,7 +99,10 @@ class AddTodo extends Component {
     mutate: (title) => api.createTodo(title),
     onMutate: (title, { client }) => {
       const previous = client.peek<Todo[]>(["todos"])?.data;
-      client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), draft(title)]);
+      // A stand-in for what the server will send back; the refetch replaces it with the real one.
+      const optimistic: Todo = { id: `pending:${title}`, title };
+
+      client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), optimistic]);
       return () => client.setData(["todos"], previous);   // the rollback
     },
     invalidates: [["todos"]],

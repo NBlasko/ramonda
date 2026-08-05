@@ -49,10 +49,15 @@ ancestors of a match stay — so the result still reads as a tree and you can se
 you searched for lives. State and props are hidden while filtering, because they are what you scroll
 past while looking. Typing also opens collapsed branches, so a hit is never hidden inside one.
 
+**Every button says what it is.** The panel's buttons are drawn rather than lettered, and each one
+carries the name used here — hover to read it. They are drawings and not characters because a
+character is drawn by whatever font the machine has, which made the same toolbar look different on
+every one of them.
+
 **Point at it on the page.** This is the reverse of the other two, and it matches how you actually
 think about a UI: you know what on screen you care about, not where it sits in the tree.
 
-1. Click **⌖ pick** in the toolbar. The cursor becomes a crosshair.
+1. Click **pick** in the toolbar. The cursor becomes a crosshair.
 2. Move over your app. The component under the cursor is outlined, and its name appears next to the
    cursor — a `<strong>` inside a row names the *component* that owns it, not the element.
 3. Click. The picker turns off and that component becomes the focus of the panel.
@@ -66,7 +71,7 @@ page is never left with a crosshair.
 
 ## Working on one component
 
-Clicking **◎** on any row *focuses* it: that component becomes the root of the panel, so its state,
+Clicking **focus this component** on any row *focuses* it: that component becomes the root of the panel, so its state,
 props, hooks and children are all that is left on screen. Above it, a breadcrumb says where it sits:
 
 ```
@@ -107,7 +112,7 @@ tree: keys and types coloured, containers labelled by size (`pages: Array(8)`), 
 first level collapsed until you open it. What you scan is the shape, not the first two thousand
 characters of it.
 
-**⤢** on a row opens that one value on the whole panel, where it can be scrolled, switched to
+**The full view button** on a row opens that one value on the whole panel, where it can be scrolled, switched to
 pretty-printed JSON with **raw**, and copied with **copy**.
 
 The full view is a **snapshot**, deliberately: a tree that moved while you were four levels into it
@@ -124,7 +129,7 @@ truncated into something that looks complete.
 
 ### Changing a value
 
-**✎ on a state row** opens the value as JSON, in place. Enter applies it, `Esc` abandons it,
+**The edit button on a state row** opens the value as JSON, in place. Enter applies it, `Esc` abandons it,
 and a multi-line value takes `⌘/Ctrl+Enter` so plain Enter can still be
 a newline. Invalid JSON never reaches your app: the parse happens first and the row tells you what was
 wrong.
@@ -166,8 +171,9 @@ changes behaviour.
 
 ### What an instance holds
 
-Some hooks keep their state in plain fields behind a `@state` counter, and the panel used to show
-exactly that: `{ version: 7 }`, and props that never change.
+Some hooks keep their state in plain fields behind a `@state` counter, so their state reads
+`{ version: 7 }` and their props never change. Those two rows are all a tree of state and props can
+say about such a hook, and they say nothing.
 
 That shape is what the framework recommends rather than an oversight. `@state` means "serialise me
 into the hydration blob", so a hook holding a `Date`, a `File` or a class instance — a form's values,
@@ -192,6 +198,10 @@ import { INSPECT } from "@ramonda/core";
 class Basket extends Hook {
   @state private version = 0;
   private lines: Line[] = [];
+
+  @compute private get total(): number {
+    return this.lines.length;
+  }
 
   [INSPECT]() {
     return { lines: this.lines, total: this.total };
@@ -225,7 +235,7 @@ Two actions per entry:
 - **invalidate** — marks it stale and asks whoever is watching to refresh.
 - **remove** — throws the data away. A query still being watched will fetch again from nothing.
 
-**✎ on a row edits the cached data**, and this is the one edit in the panel whose effect you see on
+**The edit button on a row edits the cached data**, and this is the one edit in the panel whose effect you see on
 the page immediately — because the cache is what a query renders from. It goes through the same
 `setData` an optimistic update calls, so a fetch in flight is abandoned (it is older information than
 your write), structural sharing keeps the identity of everything that did not change, and every
@@ -332,7 +342,7 @@ Nothing goes into the URL, so a link you share carries none of it.
 | --- | --- |
 | `Alt+D` | open or close the panel |
 | `Esc` | close the full value view, then release the focused component |
-| `◎` on a row | focus that component |
+| **focus this component**, on a row | make it the panel's root |
 | `</>` on a row | open its definition in your editor |
 | Drag the left edge | resize |
 | Drag the badge | move it out of the way |

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, h } from "../index";
+import { Component, Host, state, __h } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -88,7 +88,7 @@ describe("h: children and tags", () => {
     @Host("div")
     class C extends Component {
       render() {
-        return h("p", null, { nope: true } as never, "text" as never) as never;
+        return __h("p", null, { nope: true } as never, "text" as never) as never;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -97,11 +97,11 @@ describe("h: children and tags", () => {
   });
 
   test("a function in tag position is reported but still renders", async () => {
-    const Fn = (props: { label?: string }) => h("b", null, props.label ?? ("fn" as never)) as never;
+    const Fn = (props: { label?: string }) => __h("b", null, props.label ?? ("fn" as never)) as never;
     @Host("div")
     class C extends Component {
       render() {
-        return h(Fn as never, { label: "hello" }) as never;
+        return __h(Fn as never, { label: "hello" }) as never;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -119,7 +119,7 @@ describe("h: children and tags", () => {
     @Host("div")
     class C extends Component {
       render() {
-        return h("div", null, h(Bad as never, null) as never) as never;
+        return __h("div", null, __h(Bad as never, null) as never) as never;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -134,7 +134,7 @@ describe("h: children and tags", () => {
     @Host("div")
     class C extends Component {
       render() {
-        return h(42 as never, null) as never;
+        return __h(42 as never, null) as never;
       }
     }
     const app = await getDOM<C>(<C />);

@@ -30,7 +30,7 @@ const schema = object({
   password: string().custom(minLength(8)),
 });
 
-class Signup extends Component {
+class SignupForm extends Component {
   private form = this.use(Form<typeof schema>, {
     schema,
     defaultValues: { email: "", password: "" },
@@ -136,7 +136,7 @@ later. Move `defaultValues` when they land and the form follows:
 // A module constant, not a literal in the callback — see "one object, not a fresh one" below.
 const BLANK = { name: "", email: "" };
 
-class EditProfile extends Component {
+class EditProfile extends Component<{ id: string }> {
   private profile = this.use(Query, (self: EditProfile) => ({
     key: ["profile", self.props.id],
     fetch: self.load,

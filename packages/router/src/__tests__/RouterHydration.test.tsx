@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component, Host, renderToString } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { scanComponentTree } from "../../../core/src/debug/inspector";
@@ -58,8 +58,8 @@ class Players extends Component {
 }
 
 const routes = createRoutes({
-  "/": (<Home />) as VNode,
-  "/players": (<Players />) as VNode,
+  "/": <Home />,
+  "/players": <Players />,
 });
 
 @Host("div")

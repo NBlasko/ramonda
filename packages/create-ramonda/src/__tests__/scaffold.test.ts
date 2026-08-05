@@ -109,14 +109,29 @@ describe("first-party versions", () => {
  * panel up, the wiring belongs with that package instead.
  */
 describe("devtools tabs come from the packages", () => {
-  test("picking a package does not add panel wiring to the app", () => {
+  test("each package with a tab gets its own import, under the dev guard", () => {
     const { dir } = make("spa", ["query", "form", "devtools"]);
     const entry = readFileSync(join(dir, "src", "main.tsx"), "utf8");
 
-    // One line, and it is the panel itself. No per-package registration in the app's code.
     expect(entry).toContain('void import("@ramonda/devtools")');
+    expect(entry).toContain('void import("@ramonda/query/devtools")');
+    expect(entry).toContain('void import("@ramonda/form/devtools")');
+
+    /**
+     * Imports rather than registrations, and that is the whole arrangement: a package ANNOUNCES
+     * what it holds with an event and never imports the module that describes it, so the
+     * description is only in the bundle of an app that asked for it.
+     */
     expect(entry).not.toContain("registerDevtools");
     expect(entry).not.toContain("panelRegistry");
+  });
+
+  test("a package that was not picked contributes no import", () => {
+    const { dir } = make("spa", ["query", "devtools"]);
+    const entry = readFileSync(join(dir, "src", "main.tsx"), "utf8");
+
+    expect(entry).toContain('void import("@ramonda/query/devtools")');
+    expect(entry).not.toContain("@ramonda/form/devtools");
   });
 
   test("the panel is still offered without them, and they without it", () => {
@@ -201,10 +216,12 @@ describe("the devtools panel", () => {
      * ever appeared.
      */
     const ssr = make("ssr", ["devtools"]);
-    expect(ssr.read("src/entry-client.tsx")).toContain('if (__DEV__) void import("@ramonda/devtools")');
+    expect(ssr.read("src/entry-client.tsx")).toContain("if (__DEV__) {");
+    expect(ssr.read("src/entry-client.tsx")).toContain('void import("@ramonda/devtools")');
 
     const spa = make("spa", ["devtools"]);
-    expect(spa.read("src/main.tsx")).toContain('if (import.meta.env.DEV) void import("@ramonda/devtools")');
+    expect(spa.read("src/main.tsx")).toContain("if (import.meta.env.DEV) {");
+    expect(spa.read("src/main.tsx")).toContain('void import("@ramonda/devtools")');
   });
 
   test("is absent when the add-on was not chosen", () => {
@@ -293,9 +310,11 @@ describe("the generated project declares what its own code needs", () => {
     expect(read("global.d.ts")).toContain("__DEV__");
   });
 
-  test("the SPA template does not, because vite provides import.meta.env.DEV", () => {
-    const { read } = make("spa", ["devtools"]);
-    expect(read("global.d.ts")).not.toContain("__DEV__");
+  test("the SPA template has no globals to declare at all", () => {
+    const { dir, read } = make("spa", ["devtools"]);
+    // Vite provides `import.meta.env.DEV`, and the JSX factory is imported per file by the
+    // automatic runtime — so there is nothing left for a `global.d.ts` to say.
+    expect(existsSync(join(dir, "global.d.ts"))).toBe(false);
     expect(read("src/main.tsx")).toContain("import.meta.env.DEV");
   });
 });

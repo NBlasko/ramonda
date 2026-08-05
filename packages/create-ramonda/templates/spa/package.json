@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "ramonda-check-context && vite build",
+    "build": "ramonda-check && vite build",
     "preview": "vite preview"
   }
 }

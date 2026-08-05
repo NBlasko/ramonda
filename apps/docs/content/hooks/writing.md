@@ -31,7 +31,7 @@ export class Counter extends Hook<CounterProps> {
 
 Two forms, and the difference matters:
 
-```tsx
+```tsx alternatives
 // A plain object — fixed for the life of the hook. For constants.
 counter = this.use(Counter, { start: 10 });
 
@@ -43,12 +43,16 @@ counter = this.use(Counter, (self: Panel) => ({ start: self.props.initial }));
 The callback receives the owner (`self`), so a hook's props can be built from the
 owner's own props or state — that is what keeps them in sync.
 
-**If you use that parameter, annotate it** — `(self: Panel)` — as above. It is what
-gives the owner its type; leaving the annotation off is an error rather than a silent
-`any`, the same stance [`@watchProp`](/concepts/props) takes for its selector. (A *class*
-decorator like [`@Host`](/concepts/host) needs no annotation, because there the decorated
-class supplies the type. Here there is no class to read it from — the callback is an
-argument to a method call.)
+**The parameter is typed for you.** `self` is the class the `use()` is written in, so
+`self.load` is checked and a name that is not there is a compile error that says which:
+
+```
+Property 'load' does not exist on type 'Panel'.
+```
+
+Annotating it — `(self: Panel)` — still works and is worth doing when a callback is written
+once and shared: the annotation is then checked against every class that uses it, so a
+shared callback handed to a class it does not fit is refused rather than failing at runtime.
 
 **Or just write `this`,** which is equally correct: the callback is an arrow function in a
 field initializer, so `this` is the instance both at runtime and to the type-checker —
@@ -83,6 +87,8 @@ can't linger.)
 A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
+import { Navigator } from "@ramonda/router";
+
 export class Pagination extends Hook<PaginationProps> {
   private route = this.use(Navigator);
   // …

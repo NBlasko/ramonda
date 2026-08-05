@@ -48,8 +48,8 @@ so a component that misuses the same property on every render reports once.
 | `RMD009` | error | Update loop — a component never stopped re-rendering |
 | `RMD010` | warning | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
-| `RMD013` | error | A `For` hook could not identify its items |
-| `RMD014` | error | A `For` hook was given both `as` and `render`, or neither |
+| `RMD013` | error | A list could not identify its items |
+| `RMD014` | error | A list was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | warning | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
@@ -62,6 +62,10 @@ so a component that misuses the same property on every render reports once.
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
 | `RMD025` | error | Per-request data read in the browser |
 | `RMD027` | error | A props callback reads a value that is not reactive |
+| `RMD028` | error | An element the HTML parser is not allowed to keep here |
+| `RMD029` | error | A boolean attribute given the string "false" |
+| `RMD030` | error | State written during `[INSPECT]()` |
+| `RMD031` | error | A list item that is not an element |
 
 ### RMD001 — State written during render()
 
@@ -109,11 +113,10 @@ two reports.
 Props are owned by the parent, so the write has nothing to write to. The proxy's
 `set` trap **throws**, in every build.
 
-It used to report and continue, on the reasoning that a diagnostic must never
-change behaviour. That reasoning still holds — and is why the throw sits OUTSIDE
+A diagnostic must never change behaviour, which is why the throw sits OUTSIDE
 `if (__DEV__)`, as enforcement, while the diagnostic inside only explains it.
-What changed is the judgement about the write itself: dropping it left the
-component running on a value nobody had set, and the mistake stayed invisible
+The write itself is refused rather than dropped: dropping it leaves the
+component running on a value nobody set, and the mistake stays invisible
 until something downstream looked wrong for an unrelated-seeming reason.
 
 It throws explicitly rather than returning `false`, because a `false` return
@@ -224,12 +227,12 @@ Branching by side belongs in lifecycle `env`, which the framework already has.
 
 `@state` signals hold the component's `reBuild` as their listener, and nothing
 detaches it on teardown — only `@compute` and context register a
-`clearReactives` entry. So a late write (the fetch that resolves after the user
-navigated away) used to queue a render for a component whose DOM had already been
-removed: wasted work, a diff against detached nodes, and the whole subtree kept
-alive by the queue.
+`clearReactives` entry. So without a flag, a late write — the fetch that resolves after the reader
+navigated away — would queue a render for a component whose DOM is already gone:
+wasted work, a diff against detached nodes, and the whole subtree held alive by
+the queue.
 
-`lifecycleCleanupManagement` now sets `isDestroyed` on the runtime and
+`lifecycleCleanupManagement` sets `isDestroyed` on the runtime and
 `addTaskToQueue` refuses. **The drop is not a dev check — it ships in
 production**; only the report is stripped. `isDestroyed` is deliberately a
 separate flag from `isInitialized`: that one means "not built yet", which
@@ -472,35 +475,28 @@ subclass that never mentions `handleClick`. That took a fix — see BUGS.md; it 
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.
 
-### RMD012 — retired 2026-07-18
+### RMD013 — A list could not identify its items
 
-It warned that an unkeyed list had other children after it, because flattening merged the two
-into one key space and the list could claim its siblings. Arrays are no longer flattened —
-each is its own group with its own key space — so the hazard cannot happen and the warning
-would be advice about a non-problem. See BUGS.md, "A component's own elements could be claimed
-by content passed into it".
-
-### RMD013 — A For hook could not identify its items
-
-`For` exists to delete the key. Identity is the item itself — an object reference,
-or the value for a primitive — held in a `Map<item, id[]>`, so there is nothing to
-write and nothing to get wrong. This code fires only where a mistake is still
-possible.
+`list()` exists to delete the key. Identity is the item itself — an object
+reference, or the value for a primitive — held in a `Map<item, id[]>` by
+`helpers/listEngine.ts`, so there is nothing to write and nothing to get wrong.
+This code fires only where a mistake is still possible.
 
 **A colliding `key` callback.** The `key:` option survives for one real case:
 items re-created as fresh objects that mean the same entity (a refetch). A
 callback can still return the same value twice, which is exactly the failure
-`For` was built to remove — so it is checked. Identity minted from the item cannot
+minted identity removes — so it is checked. Identity minted from the item cannot
 collide, so that path is not checked at all.
 
 **A render callback that returned nothing.** There is no vnode to key or place.
+A callback that returns something which is not an element is RMD031 instead.
 
 **Why the same item twice is not an error.** `[tag, tag]` is legitimate. Reference
 identity cannot tell two occurrences apart — and neither could a hand-written key
 — so each occurrence gets its own id (`Map<item, id[]>`, one id per occurrence)
 and both rows stay stable across a reorder. Verified by test.
 
-**Why `For` also fixes the slot problem.** The vnodes come out keyed, so the diff
+**Why a list also fixes the slot problem.** The vnodes come out keyed, so the diff
 claims them by identity instead of by position, and nothing after the list can be
 mistaken for a list item. That is what corrupts a component's own chrome when a
 caller passes an unkeyed list into `{this.props.children}`. The keys are
@@ -508,11 +504,11 @@ synthetic strings rather than the items themselves because the diff's key index 
 a plain object — an object key would stringify to `"[object Object]"` and every
 item would collide into one.
 
-**What `For` does not fix.** A `Card` still cannot force its caller to use `For`.
-`For` makes the correct call the shorter one; RMD012 is the net for whoever maps
-anyway. The distinction that settled this: **a wrong key is an accident, using
-`.map()` is a decision** — you can teach a decision, you cannot defend against an
-accident.
+**What it does not fix.** A `Card` cannot force its caller to use `list()`.
+`list()` makes the correct call the shorter one; RMD023 is the net for whoever
+maps anyway. The distinction that settled this: **a wrong key is an accident,
+using `.map()` is a decision** — you can teach a decision, you cannot defend
+against an accident.
 
 #### RMD009's production counterpart
 
@@ -542,16 +538,16 @@ re-queues a component from its own build — a write in `render()` included.
 so flipping it inside a test silently keeps testing the DEV path. Verify with a
 whole process: `NODE_ENV=production npx vitest run <file>`.
 
-### RMD014 — A For hook was given both `as` and `render`, or neither
+### RMD014 — A list was given both `as` and `render`, or neither
 
 A list needs exactly one way to turn an item into markup:
 
-- `as: RowView` when an item maps to a component. `For` builds
+- `as: RowView` when an item maps to a component. The list builds
   `<RowView item={item} />` itself, so there is no per-item function to write.
 - `render: (item) => <li>{item.name}</li>` when an item maps to plain markup.
 
-TypeScript already rejects both together (`ForAs` sets `render?: never`,
-`ForRender` sets `as?: never`) and rejects neither. This code is for JavaScript,
+TypeScript already rejects both together (`ListAs` sets `render?: never`,
+`ListRender` sets `as?: never`) and rejects neither. This code is for JavaScript,
 where there are no types — and where both mistakes fail **quietly**: with both
 given, `as` wins and the render callback is never called, so the list renders
 something other than what was written and nothing says why. With neither, the
@@ -596,9 +592,9 @@ every render it does goes into nodes nobody can see.
 
 **Ramonda's own removals cannot cause this.** Every path that removes something
 goes through the diff, which unmounts. Measured on a component with an
-`@interval`: after a conditional render dropped it, **zero** further ticks. After
-a third-party library cleared the node via a `ref`, **five** ticks and five
-renders, with no diagnostic at all before this code existed.
+`@interval`: after a conditional render drops it, **zero** further ticks. After a
+third-party library clears the node via a `ref`, **five** ticks and five renders —
+which is the case this code is for, and the only one that reaches it.
 
 So it comes from the boundary:
 
@@ -759,12 +755,10 @@ Measured, three renders of the owner: a hook `@compute` reading a rebuilt array 
 times vs 1 for a scalar prop; `@watchProp` on a rebuilt array fires on every update
 render; a child handed a rebuilt function re-renders 3/3.
 
-**Why the fix had to come with the check.** An earlier version of this comparison existed
-inside `renderStability.ts` and was deleted, because the only thing it could say was
-"your query key is an array literal" — true, and with nothing to do about it. The two
-answers are `@StableProps` on the hook (the author states that a prop is a value, once,
-for every caller) and `stable()` at the call site (the same thing from outside, for a hook
-that declared nothing). That is the same reason `list()` exists next to RMD020's report
+**A check like this only earns its place alongside a fix.** On its own it can say no more than
+"your query key is an array literal" — true, and with nothing to do about it. The answer it points
+at is `@StableProps` on the hook: the author states that a prop is a value, once, for every caller.
+That is the same reason `list()` exists next to RMD020's report
 about a rebuilt `each`.
 
 **Why a declared prop is skipped outright.** `@StableProps` means the framework already
@@ -790,11 +784,10 @@ what makes `{this.props.children}` — the framework's own array, one level down
 distinguishable from a mapped one. Without that brand it fired on every component that
 forwards children.
 
-**Narrowed twice, and the history is the point.** The first version reported every raw
-array and broke 10 of core's own tests, all of them exercising child groups on purpose —
-a mapped array is supported here, and `SlotKeys.test.tsx` even carries the note that an
-earlier, broader check was rejected for firing on the safe shape. What shipped reports only
-what is genuinely unhandled: unkeyed COMPONENT rows, of which there are at least two. Plain
+**Narrow on purpose, and the bound is what makes it usable.** Reporting every raw array would
+fire on child groups, which are supported and common — `SlotKeys.test.tsx` carries the note about
+that shape being legitimate. What this reports is only what is genuinely unhandled: unkeyed
+COMPONENT rows, of which there are at least two. Plain
 markup is patched in place and correct; a component's row moving takes its state and its
 DOM with it. One keyed child anywhere means the app is managing identity and the framework
 does not second-guess it.
@@ -821,6 +814,91 @@ test asserts the report COUNT for that reason rather than its presence.
 is never invalidated, so it never recomputes and is never observed. The counter case is caught
 only when the compute is invalidated by something else.
 
+### RMD030 — state written during [INSPECT]()
+
+The third of the phase family, and built the same way as the other two: a slot is marked around the
+call, and the `@state` setter reads it. `inspectPhase` in `debug/renderPhase.ts`, set by `readDetail`
+in `debug/inspector.ts`.
+
+**Reported BEFORE `shouldUpdate`**, beside the `@compute` check rather than the render one. Describing
+is meant to be a pure read, so a write that happens to change nothing is still the mistake. RMD001
+waits until after, because a no-op write during a render schedules nothing and is therefore not the
+bug it is looking for.
+
+**Restored in a `finally`.** A `[INSPECT]()` that throws — reading a field that is undefined
+mid-construction, which is exactly when someone has the panel open — must not leave the phase set,
+or the next unrelated write anywhere in the app is reported as though it came from the describe. A
+test covers that.
+
+**Why an error rather than a warning.** The wasted renders are the smaller half. The panel ends up
+showing values the app did not have, to the one reader least able to doubt them — a wrong result,
+which is what the severity rule is about.
+
+**The hole this filled, measured 2026-08-03 and again before the fix:** five scans over an
+`[INSPECT]()` that increments a `@state` field moved it five times and reported nothing. RMD009 does
+not fire, because it watches for a component that will not stop rendering and this one only turns
+while somebody is looking.
+
+### RMD029 — a boolean attribute given the string "false"
+
+`debug/booleanAttribute.ts`, called from `setNextOnenhancedNode` — the point where the value is
+FINAL, after anything that was going to normalise it has. Two comparisons, and only for a string: a
+real boolean, a number and everything else return on the first test.
+
+**Measured, which is what the message says:**
+
+```
+disabled={false}     attribute absent,  element enabled
+disabled={"false"}   attribute present, element DISABLED
+```
+
+**Why it is not fixed instead.** `<input disabled="false">` is disabled by the HTML spec, in every
+browser. Reading the string and deciding otherwise would make our JSX mean something different from
+the markup it emits, and the difference would surface as a hydration mismatch or as markup that
+behaves one way through us and another way pasted into a page. The attribute is set exactly as
+asked; this says what the result will be.
+
+**The bar for what is listed.** Only the exact string "false", and only on the spec's boolean
+attributes. `aria-*` is excluded because ARIA attributes are enumerated strings — `aria-hidden="false"`
+is correct and meaningful. "no", "off" and "0" are excluded because a `data-*` flag legitimately
+carries them, and a diagnostic that fires on correct code teaches people to skip the category.
+
+**Nothing in the types catches it:** `RamondaArgs` is `[val: Lowercase<string>]: any`, so every
+attribute value compiles.
+
+### RMD028 — an element the HTML parser is not allowed to keep here
+
+`debug/domNesting.ts`, called from the same point as `checkHostPlacement` — which already has the
+parent node and the freshly built child in hand. Reads `nodeName` on both, nothing else: no layout,
+no attributes, no walk. A set lookup per element in a development build.
+
+**Why it exists when hydration already notices.** It does notice, and it says the wrong thing.
+Measured:
+
+```
+server emits:   <p>intro<div>a block</div></p>
+browser parses: <p>intro</p><div>a block</div>
+
+RMD007 then says: "<Card /> rendered <div> but the server sent nothing."
+and advises:      "new Date() / Math.random() in render(): move the value into @create"
+```
+
+The server sent it. The parser moved it. A reader following that advice is looking for
+non-determinism that is not there. This reports at creation time and names both tags and what the
+parser will do.
+
+**Why the client never shows it.** `appendChild` puts a node where it is told; a parser follows the
+HTML spec's insertion rules. So the mistake survives any amount of SPA development and appears the
+first time the page is server-rendered — which is the worst time to meet it.
+
+**What is listed.** The `<p>`-closing set is the spec's flow-content list rather than a judgement
+about what looks reasonable; `ONLY_INSIDE` covers the list, table, select and details families; and
+`<form>` and `<a>` are the two tags the parser actively repairs rather than tolerates. Anything the
+parser merely allows is absent, per the standard below.
+
+**A default host in between is left to RMD010**, which can name the `@Host` to reach for. A component
+that IS the misplaced element is checked like any other, because by then the pair is the real one.
+
 ### RMD027 — a props callback reads a value that is not reactive
 
 The safety net under the props-callback cache, in `debug/propsStability.ts` next to RMD022.
@@ -842,15 +920,53 @@ proves nothing about staleness.
 **An error, not a warning**, unlike RMD022 next to it: the hook is running on a value the app has
 already moved past, so what renders is not what the state says. Nothing here is merely slower.
 
-**Why it did not need to exist before.** The shape it catches — a plain field standing in for
-`@state` — used to work by accident: the write scheduled nothing, but the next render for any
-other reason rebuilt the bag and carried the new value along. The value was never reactive; the
-framework stopped compensating for it.
+**What it catches.** A plain field standing in for `@state`: assigning it writes no signal, so
+nothing marks the callback's cache stale and the hook keeps a value the app has moved past. Two
+faults in one line, and the second is the one that shows — the page renders what the form no longer
+holds.
 
 The probe deliberately does NOT go through `buildProps`. That one runs the RMD022 strict-render
 check, which then fired from inside a check of its own — reporting churn on a render where the
 callback was not going to be called, and, having no `declared` list to hand down, naming every
 `@StableProps` key as unstable. See `probeProps` in `helpers/common.ts`.
+
+### RMD031 — a list item that is not an element
+
+`helpers/listEngine.ts`, one line above the assignment it replaces. The engine writes the row's key
+onto the vnode — `vnode.attributes.key = key` — and the diff matches rows on that key, so an item
+that is not one element has nowhere to carry its identity.
+
+**What it replaces, measured:** returning a nested `list()` from a `render:` callback threw
+`Cannot set properties of undefined (setting 'key')`. A message about the assignment, from inside
+the framework, naming neither the list nor what to write instead.
+
+**The case it is really about.** A list of pages, each page a list of rows. The inner `list()` is a
+descriptor, not an element, and nesting goes through a **component**: `as: PageView`, whose host
+element wraps the inner rows and takes the key. `content/lists/nested.md` teaches that; a docs
+example that did the other thing was a live crash until this check was written.
+
+**Skipped, not thrown, in production too** — same reason as RMD013's empty item. The page loses one
+row and keeps rendering, which is recoverable; a throw takes the whole tree down.
+
+`describe()` names the value in the writer's words: "a nested `list()`" rather than "an object",
+because the object literal somebody would then go looking for is not what happened.
+
+## Retired codes
+
+Numbers that were used and are now dead. They sit here rather than among the live ones because
+nobody reading about a diagnostic needs them — and they cannot be deleted either: a reused number
+makes an old bug report point at the wrong thing.
+
+**A retired number is never reassigned.** A search for it should land here and find what it warned
+about and why the hazard is gone, which is what somebody who met it in an old changeset is asking.
+
+### RMD012 — retired 2026-07-18
+
+It warned that an unkeyed list had other children after it, because flattening merged the two
+into one key space and the list could claim its siblings. Arrays are no longer flattened —
+each is its own group with its own key space — so the hazard cannot happen and the warning
+would be advice about a non-problem. See BUGS.md, "A component's own elements could be claimed
+by content passed into it".
 
 ### RMD026 — retired 2026-08-03
 

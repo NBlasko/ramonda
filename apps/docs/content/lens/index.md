@@ -30,7 +30,7 @@ this.data = {
 ```tsx
 import { focusOn } from "@ramonda/lens";
 
-this.data = focusOn(this.data)
+const updated = focusOn(state)
   .get("posts")
   .where((post) => post.id === 102)
   .get("tags")

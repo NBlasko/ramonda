@@ -2,6 +2,7 @@ import { renderPage, renderDocument } from "@ramonda/core";
 import { routePaths } from "@ramonda/router";
 import { App } from "./App";
 import { routes } from "./routes";
+import { brand } from "@ramonda/theme";
 
 /** Where the site is served from — used to build absolute og:image / canonical URLs. */
 const BASE = "https://ramonda.pages.dev";
@@ -21,11 +22,16 @@ function attr(value: string): string {
 function headExtra(path: string, title: string): string {
   const url = BASE + (path === "/" ? "" : path);
   return [
+    // Before the stylesheet is parsed: this is the face the first paragraph is set in, and asking
+    // for it a round trip later is what makes a page flash from the fallback to the real thing.
+    // Only the roman — the italic and the mono are wanted by some pages and not others, and the
+    // browser fetches those itself when a rule actually uses them.
+    '<link rel="preload" href="/assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>',
     '<link rel="icon" type="image/svg+xml" href="/favicon.svg">',
     '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">',
     '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">',
     '<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
-    '<meta name="theme-color" content="#7A4FBF">',
+    `<meta name="theme-color" content="${brand.purple}">`,
     // The per-page <Head> already emits <meta name="description"> for all 50
     // pages (from the page's own meta), so none is added here — a second one
     // would be a duplicate. og:/twitter: descriptions below are the site-wide
@@ -66,7 +72,7 @@ export async function renderOne(path: string): Promise<string> {
   const page = await renderPage(<App />);
   return renderDocument(page, {
     lang: "en",
-    styles: ["/assets/site.css"],
+    styles: ["/assets/tokens.css", "/assets/site.css"],
     scripts: ["/assets/client.js"],
     headExtra: headExtra(path, page.title),
     rootId: "app",

@@ -310,7 +310,15 @@ try {
 
   if (asked("query")) {
     await scene(session, `http://localhost:${port}/query`);
-    await drive(session, `root.querySelector('.tab[data-tab="query"]').dispatchEvent(new Event("click"));`);
+    // `plugin-query`, not `query`: the tab is registered by `@ramonda/query/devtools` through the
+    // panel's plugin contract, which prefixes every tab it is given. A missing tab here means the
+    // playground stopped importing that entry.
+    await drive(
+      session,
+      `const tab = root.querySelector('.tab[data-tab="plugin-query"]');
+       if (!tab) throw new Error("no QUERY tab — does the playground import @ramonda/query/devtools?");
+       tab.dispatchEvent(new Event("click"));`,
+    );
     await wait(600);
     await shoot(session, "query");
   }

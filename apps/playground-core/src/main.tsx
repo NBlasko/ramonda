@@ -112,4 +112,10 @@ bootstrap(<App />, document.querySelector<HTMLDivElement>("#app")!);
  *
  * `import.meta.env.DEV` so a production build drops it.
  */
-if (import.meta.env.DEV) void import("@ramonda/devtools");
+if (import.meta.env.DEV) {
+  void import("@ramonda/devtools");
+  // A tab lives in its own entry, and importing it is what registers it — the same three lines the
+  // documentation tells an application to write, and `scripts/shots.mjs` photographs the result.
+  void import("@ramonda/query/devtools");
+  void import("@ramonda/form/devtools");
+}

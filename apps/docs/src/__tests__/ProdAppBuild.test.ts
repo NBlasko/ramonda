@@ -58,6 +58,10 @@ const run = promisify(execFile);
  * pulls the panel in when it is genuinely installed.
  */
 const ALIASES = [
+  // The subpaths FIRST: an esbuild alias also matches `<key>/…`, so the bare `@ramonda/core`
+  // below would otherwise rewrite them to `…/index.ts/jsx-runtime`.
+  `--alias:@ramonda/core/jsx-dev-runtime=${join(packages, "core/src/jsx-dev-runtime.ts")}`,
+  `--alias:@ramonda/core/jsx-runtime=${join(packages, "core/src/jsx-runtime.ts")}`,
   `--alias:@ramonda/core=${join(packages, "core/src/index.ts")}`,
   `--alias:@ramonda/query=${join(packages, "query/src/index.ts")}`,
   `--alias:@ramonda/router=${join(packages, "router/src/index.ts")}`,
@@ -141,8 +145,8 @@ async function build(mode: Mode): Promise<Build> {
     "--bundle",
     "--format=esm",
     "--splitting",
-    "--jsx-factory=__ramondaH",
-    `--inject:${join(app, "jsx-shim.ts")}`,
+    "--jsx=automatic",
+    "--jsx-import-source=@ramonda/core",
     `--define:__DEV__=${dev ? "true" : "false"}`,
     "--target=es2022",
     ...flags,

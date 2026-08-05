@@ -21,8 +21,9 @@ in one place — it publishes, and a second pin there could drift.
 ## Running the gate locally: `pnpm check`
 
 ```
-pnpm check      # preflight-node + check-workflows, then lint, format:check,
-                # and turbo run check-types test build
+pnpm check      # preflight-node + check-workflows + ramonda-check, then lint,
+                # format:check, turbo run check-types test build, and finally
+                # check-examples
 ```
 
 `test` carries `--coverage`, so this also leaves an lcov report under each package —
@@ -43,11 +44,23 @@ scripts that turbo never sees:
   against the corrected one, so it is known to catch the first and not the second
    — the first version anchored its patterns with `^`, matched nothing, and
   cheerfully reported the broken workflow as clean.
+- `scripts/check-examples.mjs` type-checks every `ts`/`tsx` fence in the docs and the
+  package READMEs against the real sources, so a renamed export breaks every example
+  still using the old name. It runs **last**, after the build, because it derives the
+  framework's names from `packages/*/dist/index.d.ts` — without them every example
+  fails on `Component`. CI runs it as the second step of the `build` job for that
+  reason, rather than in a job of its own.
+- `node packages/check/dist/cli.js apps/docs/tsconfig.json` walks the docs app for a
+  consumed context with no provider above it, and for class fields holding a function
+  literal. This one is **local only** — in CI the same binary runs through the two
+  `create-ramonda` templates' build scripts, which covers the published check but not
+  this repository's own code.
 
 A branch was once "green" on `turbo run check-types test build` while carrying a
 sparse array in `apps/playground-ssr/server.mjs` and a misformatted file in
 `apps/playground-core` — both committed, both would have failed `ci.yml`. Verify with
-`pnpm check`, which runs what CI runs, in the same order.
+`pnpm check`, which runs everything CI runs, in the same order — plus the context
+and arrow-field walk noted above, which CI does not run over this repository.
 
 **The runtime is part of the gate too.** A newer local Node accepts APIs CI does
 not have, so a green run here can still die on the first line there — which is how
@@ -342,18 +355,23 @@ Run locally, uncached (`--force`), in the runner's conditions — `ps` shadowed 
 `$EDITOR`/`$VISUAL` empty, so nothing can pass by finding a tool a runner does not
 have:
 
-- **`pnpm check`** — 29 of 29 turbo tasks, plus the root scripts turbo never sees.
-- **Test** — 21 of 21 task runs, no filters and nothing excluded. That includes
-  `@ramonda/playground-ssr`, whose test builds the app, boots a real Node server and
-  smoke-tests it, and `@ramonda/docs`. Coverage comes out of this same run:
-  **95.72% of lines**, 4294 of 4486, across 109 files.
+- **`pnpm check`** — 39 of 39 turbo tasks, 0 of them cached, plus the root scripts
+  turbo never sees.
+- **Test** — 16 test tasks, no filters and nothing excluded: **1504 tests in 184
+  files**. That includes `@ramonda/playground-ssr`, whose test builds the app, boots a
+  real Node server and smoke-tests it, and `@ramonda/docs`. Coverage comes out of this
+  same run — `node scripts/merge-lcov.mjs` — at **95.16% of lines**, 5293 of 5562,
+  across 135 files.
 - **Build** — green across every package and app, including the docs
   content → esbuild → prerender → pagefind chain and `ramonda-check-bundle` parsing
   every emitted file.
+- **Documentation examples** — 235 `ts`/`tsx` blocks across 80 files type-check
+  against the real sources; 24 are not standalone code and 4 are marked as not one
+  program.
 - **Type-check** — green. core runs `strict` plus `noUnusedLocals` /
   `noUnusedParameters` / `noImplicitOverride` / `noFallthroughCasesInSwitch`.
 - **Lint** — **green and blocking** (oxlint), 0 errors across the monorepo.
-- **Format** — **green and blocking** (biome), 407 tracked files, no fixes to apply.
+- **Format** — **green and blocking** (biome), 529 tracked files, no fixes to apply.
 
 Both build-time checks run their own self-test first, since a check nobody has seen
 fail proves nothing: `scripts/check-workflows.mjs` (catches a workflow bypassing
@@ -368,7 +386,7 @@ TypeScript). Each latest major breaks the setup for no shipped benefit — revis
 only with the fix in hand:
 
 - **`vite` held at `^7`.** Vite 8 switched to the oxc transformer, which ignores
-  the `esbuild: { jsxFactory: "__ramondaH" }` block the vitest configs use, so JSX stops
+  the `esbuild: { jsx: "automatic" }` block the vitest configs use, so JSX stops
   compiling in tests (`SyntaxError`). To move to 8, configure oxc's JSX pragma in
   every vitest config. (See the note in `packages/router/vitest.config.ts`.)
 - **`jsdom` pinned to `28.0.0`.** 28.1+/29 changed CSSOM `cssText` serialization

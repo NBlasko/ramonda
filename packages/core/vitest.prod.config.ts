@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
 import { coverage } from "../../vitest.coverage.mjs";
 
 /**
@@ -20,9 +21,16 @@ import { coverage } from "../../vitest.coverage.mjs";
  */
 export default defineConfig({
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxFragment: "Fragment",
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
+  },
+  // Core cannot resolve its own published name, so point it at the source.
+  resolve: {
+    alias: {
+      "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "src/jsx-dev-runtime.ts"),
+      "@ramonda/core/jsx-runtime": resolve(__dirname, "src/jsx-runtime.ts"),
+    },
   },
   define: {
     __DEV__: 'process.env.NODE_ENV !== "production"',

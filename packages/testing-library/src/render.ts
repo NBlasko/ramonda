@@ -1,4 +1,4 @@
-import { bootstrap, h, hydrateRoot } from "@ramonda/core";
+import { bootstrap, __h, hydrateRoot } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { rerenderRoot, getComponentInstance } from "@ramonda/core/testing";
 import {
@@ -120,7 +120,7 @@ export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): Ren
   // The one cast in this file, and it is confined here. `h` wants core's own
   // `ComponentClassKind`, which is not part of the public type surface; the
   // structural `WrapperComponent` above is what a user can actually write.
-  const wrap = (node: VNode): VNode => (options.wrapper ? (h(options.wrapper as never, null, node) as VNode) : node);
+  const wrap = (node: VNode): VNode => (options.wrapper ? __h(options.wrapper as never, null, node) : node);
 
   if (typeof options.hydrate === "string") {
     container.innerHTML = options.hydrate;

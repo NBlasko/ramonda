@@ -42,7 +42,7 @@ recalculates when one of *its own* reads changed.
 
 Both work, and both cache the same way:
 
-```tsx
+```tsx alternatives
 @compute
 get total() {} // this.total
 

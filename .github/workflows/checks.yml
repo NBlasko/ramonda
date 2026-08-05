@@ -103,3 +103,11 @@ jobs:
       # Builds every package AND the docs/playground apps, so the whole
       # prerender + pagefind pipeline is exercised on every PR, not just at deploy.
       - run: pnpm exec turbo run build
+
+      # In this job, and after the build, because the checker derives the framework's
+      # own names from `packages/*/dist/index.d.ts`. Measured with `packages/core/dist`
+      # moved aside: the globals come out empty and every example fails on `Component`,
+      # which is exactly what a fresh checkout gives — so running it earlier, or in a
+      # job of its own, would report the missing build rather than the examples.
+      - name: Type-check the documentation examples
+        run: node scripts/check-examples.mjs

@@ -41,6 +41,8 @@ should be somewhere else, send them. But **the guard is only half of it**, and t
 half is what `render()` does meanwhile:
 
 ```tsx
+import { Navigator } from "@ramonda/router";
+
 class Account extends Component {
   private route = this.use(Navigator);
   private session = this.use(SessionConsumer);
@@ -81,6 +83,8 @@ Most real apps have a moment on startup where the token has not been checked yet
 "no", render your pending state on "not yet", and render the page only on "yes":
 
 ```tsx
+import { Navigator } from "@ramonda/router";
+
 class Account extends Component {
   private route = this.use(Navigator);
   private session = this.use(SessionConsumer); // { status: "pending" | "in" | "out" }

@@ -42,9 +42,10 @@ It is worth being precise about two things that look alike but aren't.
 **Props are coarse, like `@state`.** A component re-renders whenever its parent hands it
 a shallowly-different set of [props](/concepts/props) — regardless of which props
 `render()` actually reads. A change to a prop the component never touches still
-re-renders it. (Per-prop signals do exist, but they serve `@compute`, `@watchProp` and
-`@watchProp` on a specific prop — not the component's own render.) To skip a
-prop-driven re-render in the rare case it matters, gate it with
+re-renders it. (A signal per prop does exist, and it serves whatever READS that prop under
+tracking — a `@compute`, a subscription's `connect`, a hook's props callback. The component's
+own render is not one of those: it re-renders on the props bag, not on the keys it read.) To
+skip a prop-driven re-render in the rare case it matters, gate it with
 `@shouldUpdateOnPropsChange`.
 
 **[Context](/composition/context) is per-key** — and this one is free. A consumer reacts

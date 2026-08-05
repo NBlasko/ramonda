@@ -6,6 +6,7 @@ import { getDOM } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { renderPage } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
+import type { VNode } from "../types/vdom";
 
 /**
  * `list()` — the same job as the `For` hook, as a plain function call.
@@ -235,6 +236,43 @@ describe("identity — the whole reason For exists, kept", () => {
 
       expect(codes).toContain("RMD013");
       expect(messages.join("\n")).toContain("more than one item");
+    } finally {
+      window.removeEventListener("ramonda:dev-log", handler);
+    }
+  });
+
+  test("a nested list() returned from `render` is named, not thrown on", async () => {
+    // The mistake the docs made: a list of pages, each page a list of rows, written by
+    // returning the inner `list()` straight from `render`. It has no `attributes`, so
+    // writing the key onto it threw "Cannot set properties of undefined" — a message
+    // about the assignment rather than about what to write instead. Nesting goes
+    // through a component, whose host element wraps the inner rows.
+    const messages: string[] = [];
+    const handler = (event: Event) => {
+      const message = (event as CustomEvent).detail?.message as string;
+      if (message?.startsWith("[RMD031]")) messages.push(message);
+    };
+    window.addEventListener("ramonda:dev-log", handler);
+
+    try {
+      @Host("div")
+      class Pages extends Component {
+        @state pages: Task[][] = [[{ title: "a" }], [{ title: "b" }]];
+        render() {
+          return <ul>{list({ each: this.pages, render: this.page })}</ul>;
+        }
+        // Cast: this is exactly what the types reject, and the point is what the
+        // RUNTIME does with it — a JavaScript app has no such guard.
+        private page(rows: Task[]): VNode {
+          return list({ each: rows, as: Row }) as unknown as VNode;
+        }
+      }
+
+      const { container } = await getDOM<Pages>(<Pages />);
+
+      expect(messages.join("\n")).toContain("a nested `list()`");
+      // Skipped rather than crashed: the page renders, one row short.
+      expect(container.querySelectorAll("li").length).toBe(0);
     } finally {
       window.removeEventListener("ramonda:dev-log", handler);
     }

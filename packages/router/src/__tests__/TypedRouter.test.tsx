@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { Component, Host } from "@ramonda/core";
-import type { VNode } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { createRoutes } from "../match";
 import { createRouter } from "../createRouter";
@@ -27,11 +26,11 @@ class Profile extends Component {
 }
 
 const routes = createRoutes({
-  "/": (<Home />) as VNode,
-  "/about": (<Home />) as VNode,
-  "/u/:id": (<Profile />) as VNode,
-  "/u/:id/p/:pid": (<Profile />) as VNode,
-  "*": (<Home />) as VNode,
+  "/": <Home />,
+  "/about": <Home />,
+  "/u/:id": <Profile />,
+  "/u/:id/p/:pid": <Profile />,
+  "*": <Home />,
 });
 
 const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);

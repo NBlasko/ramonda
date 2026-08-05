@@ -1,5 +1,5 @@
-import { Component, h, state } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import { Component, __h, state } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { act } from "./act";
 import { render, type WrapperComponent } from "./render";
 
@@ -84,11 +84,11 @@ export function renderHook<T, O = undefined>(
     render(): RamondaNode {
       // A hook has no DOM of its own; the host still needs one element, because
       // every component in Ramonda is exactly one element.
-      return h("div", { "data-ramonda-hook-host": "" }) as RamondaNode;
+      return __h("div", { "data-ramonda-hook-host": "" }) as RamondaNode;
     }
   }
 
-  const result = render<HookHost>(h(HookHost, null) as VNode, {
+  const result = render<HookHost>(__h(HookHost, null), {
     wrapper: options.wrapper,
   });
 

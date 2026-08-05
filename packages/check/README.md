@@ -1,6 +1,7 @@
 # @ramonda/check
 
-Proves every context consumer has a provider above it — before the app is ever opened.
+Two things a running page will not tell you: a context with no provider above it, and a class
+field holding a function literal. Both found before the app is ever opened.
 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcheck)](https://www.npmjs.com/package/@ramonda/check)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcheck)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
@@ -12,7 +13,7 @@ npm add -D @ramonda/check
 ```jsonc
 // package.json — first, so a broken app never reaches the bundler
 "scripts": {
-  "build": "ramonda-check-context && vite build"
+  "build": "ramonda-check && vite build"
 }
 ```
 
@@ -29,9 +30,9 @@ fault and nothing has said a word. The commonest way to get there is a **reorder
 moves a level, the consumer stays, and everything still looks fine.
 
 ```
-$ ramonda-check-context
+$ ramonda-check
 
-[ramonda-check-context] 1 consumer(s) with no provider above them:
+[ramonda-check] 1 consumer(s) with no provider above them:
 
   src/pages/Account.tsx:14:9
     <Account> consumes "Session" — nothing provides it on this path:
@@ -86,3 +87,33 @@ does not typecheck and never did; that is `tsc`'s job.
 ## Docs
 
 **https://ramonda.pages.dev/reference/check**
+
+## Function literals in class fields
+
+Ramonda binds every method to its instance, so an arrow in a field buys nothing over a method — and
+costs one closure per instance, which for a list of a thousand rows is a thousand closures.
+
+```
+$ ramonda-check
+
+[ramonda-check] 2 class field(s) holding a function literal:
+
+  src/Panel.tsx:12:11
+    Panel.onPick — write it as a method. Ramonda binds every method to its instance, so it keeps `this`
+    when it is passed to an element, and one function is shared by every instance.
+
+  src/Panel.tsx:15:11
+    Panel.format — it does not read `this`, so move it out of the class — a module constant is built once
+    rather than once per instance.
+```
+
+Whether the body reads `this` decides which of the two answers applies, so the report says which.
+
+**It reads the source because nothing else can.** At runtime the two are the same thing: by the time
+anything could look, the framework has written a bound function onto the instance under every
+method's name — and a field holding `debounce(this.save, 200)` is a function there too. That one is
+legitimate, because a wrapper cannot be written as a method. Only the source tells a function
+LITERAL from a call that returns one, so only the source is checked.
+
+A `static` field is not reported either: it exists once per class, so there is no per-instance cost
+and nothing for binding to have done.

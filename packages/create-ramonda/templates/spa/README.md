@@ -15,7 +15,7 @@ npm run preview  # preview the production build
 - `src/main.tsx` — mounts `<App />` with `bootstrap`.
 - `src/App.tsx` — your first component. A component is a class; `@state` marks a
   signal, and changing a signal re-renders the component.
-- `vite.config.ts` — Ramonda needs `jsxFactory: "__ramondaH"` and the matching auto-import;
+- `vite.config.ts` — Ramonda needs `jsx: "automatic"` and `jsxImportSource: "@ramonda/core"`;
   both are set here.
 
 ## Learn Ramonda

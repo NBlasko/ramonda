@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { Mutation, type MutationContext } from "../Mutation";
@@ -48,7 +48,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Form>((<Form />) as VNode);
+    const { container, unmount, instance } = render<Form>(<Form />);
     try {
       expect(container.querySelector("#out")!.textContent).toBe("idle");
 
@@ -77,7 +77,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Form>((<Form />) as VNode);
+    const { container, unmount, instance } = render<Form>(<Form />);
     try {
       // A click handler must not have to catch: an unhandled rejection there is a
       // console error the user cannot act on.
@@ -102,7 +102,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { unmount, instance } = render<Form>((<Form />) as VNode);
+    const { unmount, instance } = render<Form>(<Form />);
     try {
       await expect(instance.add.mutateAsync("x")).rejects.toThrow("nope");
       await settle();
@@ -137,7 +137,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { unmount, instance } = render<Form>((<Form />) as VNode);
+    const { unmount, instance } = render<Form>(<Form />);
     try {
       await act(async () => {
         await instance.add.mutateAsync("t");
@@ -168,7 +168,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Page>((<Page />) as VNode);
+    const { container, unmount, instance } = render<Page>(<Page />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("list-1");
@@ -213,7 +213,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Page>((<Page />) as VNode);
+    const { container, unmount, instance } = render<Page>(<Page />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("first");
@@ -253,7 +253,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Page>((<Page />) as VNode);
+    const { container, unmount, instance } = render<Page>(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -291,7 +291,7 @@ describe("Mutation", () => {
 
     client.setData<string[]>(["todos"], ["first"]);
 
-    const { unmount, instance } = render<Page>((<Page />) as VNode);
+    const { unmount, instance } = render<Page>(<Page />);
     act(() => instance.add.mutate("second"));
     expect(client.peek<string[]>(["todos"])!.data).toEqual(["first", "second"]);
 
@@ -317,7 +317,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { unmount, instance } = render<Form>((<Form />) as VNode);
+    const { unmount, instance } = render<Form>(<Form />);
     try {
       act(() => instance.add.mutate("a"));
       act(() => instance.add.mutate("b"));
@@ -349,7 +349,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Form>((<Form />) as VNode);
+    const { container, unmount, instance } = render<Form>(<Form />);
     try {
       await act(async () => {
         await instance.add.mutateAsync();
@@ -378,7 +378,7 @@ describe("Mutation", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Form>((<Form />) as VNode);
+    const { container, unmount, instance } = render<Form>(<Form />);
     try {
       act(() => instance.add.mutate());
       await settle();
@@ -404,7 +404,7 @@ describe("Mutation", () => {
 
     const logs = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const { unmount, instance } = render<Orphan>((<Orphan />) as VNode);
+      const { unmount, instance } = render<Orphan>(<Orphan />);
       try {
         expect(() => instance.add.mutate()).toThrow(/QueryClientProvider/);
       } finally {

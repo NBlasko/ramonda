@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component, Host, Head, renderPage, renderDocument } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes, routePaths } from "../match";
 
@@ -58,10 +58,10 @@ class Player extends Component {
 }
 
 const routes = createRoutes({
-  "/": (<Home />) as VNode,
-  "/guide": (<Guide />) as VNode,
-  "/players/:id": (<Player />) as VNode,
-  "*": (<Home />) as VNode,
+  "/": <Home />,
+  "/guide": <Guide />,
+  "/players/:id": <Player />,
+  "*": <Home />,
 });
 
 @Host("div")

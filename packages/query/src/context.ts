@@ -1,5 +1,5 @@
 import { Hook, create, createContext, destroy } from "@ramonda/core";
-import { registerDevtoolsClient } from "./devtoolsBridge";
+import { announceClient, announceClientGone } from "./devtoolsBridge";
 import { QueryClient } from "./QueryClient";
 import type { QueryBehaviour } from "./types";
 
@@ -100,9 +100,6 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
     return this.ownClient;
   }
 
-  /** Set while this provider is registered with the devtools panel; DEV and client only. */
-  private unpublish: (() => void) | undefined;
-
   /**
    * Publishes this client to the devtools panel in a development build.
    *
@@ -110,20 +107,47 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    * long-lived server process would otherwise collect one client per request, since
    * `@destroy` does not run there.
    *
-   * The cleanup is stored and called from `@destroy` rather than returned: returning a
-   * teardown is `createSubscriptionDecorator`'s contract, not `@create`'s,
-   * which ignores what it is handed back. Measured the hard way — the registry grew by one
-   * per test until the two halves were written out like this.
+   * An EVENT rather than a registration, and this package holds no list.
+   *
+   * A registration would mean importing the module that describes the panel, which would put it in
+   * the bundle of every application using queries whether or not it ever opens one. Announcing
+   * points the other way: `@ramonda/query/devtools` listens when an app has imported it, and
+   * nothing happens when it has not. The same shape core uses for `ramonda:tick`.
+   *
+   * Both lines are behind `__DEV__`, so a production build carries neither — and neither a field
+   * nor a method here, both of which would ship whatever the guard said.
    */
   @create({ env: "client" })
   publishToDevtools(): void {
-    if (__DEV__) this.unpublish = registerDevtoolsClient(this.ownClient);
+    if (__DEV__) {
+      announceClient(this.ownClient);
+      /**
+       * And answer whenever the panel asks again.
+       *
+       * Announcing once is not enough, and the reason is the order an app loads in. A provider
+       * mounts during hydration, synchronously; `@ramonda/query/devtools` arrives through a dynamic
+       * import, which resolves after. So the one announcement happened before anything was
+       * listening, and the tab stayed empty for the life of the page — for the root provider always,
+       * since it never mounts again.
+       *
+       * `this.republish` is a method, so it is bound once and the same reference reaches
+       * `removeEventListener`.
+       */
+      window.addEventListener("ramonda:query-client-request", this.republish);
+    }
+  }
+
+  /** Says what is here, for a panel that started listening after this provider mounted. */
+  republish(): void {
+    if (__DEV__) announceClient(this.ownClient);
   }
 
   @destroy
   unpublishFromDevtools(): void {
-    this.unpublish?.();
-    this.unpublish = undefined;
+    if (__DEV__) {
+      window.removeEventListener("ramonda:query-client-request", this.republish);
+      announceClientGone(this.ownClient);
+    }
   }
 }
 

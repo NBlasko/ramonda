@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { Component, Host, mount, renderToString, ServerRedirect } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes } from "../match";
@@ -37,9 +37,9 @@ class Login extends Component {
 }
 
 const routes = createRoutes({
-  "/": (<Protected />) as VNode,
-  "/login": (<Login />) as VNode,
-  "*": (<Login />) as VNode,
+  "/": <Protected />,
+  "/login": <Login />,
+  "*": <Login />,
 });
 
 @Host("div")
@@ -94,8 +94,8 @@ describe("server-side route-guard redirect", () => {
     }
 
     const doubleRoutes = createRoutes({
-      "/": (<DoubleGuard />) as VNode,
-      "*": (<Login />) as VNode,
+      "/": <DoubleGuard />,
+      "*": <Login />,
     });
 
     @Host("div")

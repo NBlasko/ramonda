@@ -33,7 +33,11 @@ export type DiagnosticCode =
   | "RMD023"
   | "RMD024"
   | "RMD025"
-  | "RMD027";
+  | "RMD027"
+  | "RMD028"
+  | "RMD029"
+  | "RMD030"
+  | "RMD031";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -163,6 +167,26 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "An array was rendered straight into children",
     fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
   },
+  RMD030: {
+    // error, not warning: the panel then shows values the app did not have, to the reader least
+    // able to doubt them. The wasted renders are the smaller half of it.
+    severity: "error",
+    title: "State written during [INSPECT]()",
+    fix: "[INSPECT]() describes an instance; it does not change one. The panel calls it on every commit while it is open on the components tab, so a write here closes a circle: the write schedules a render, the render commits, the commit pings the panel, and the panel asks again. The app changes under the person debugging it, and the values on screen are no longer the values it had — at exactly the moment someone is trying to work out what is wrong. Read fields, derive values, and return. If a value has to be computed, compute it into a local; if it has to be cached, cache it in a plain field rather than @state, the way Form and Mutation hold what their version counter stands for.",
+  },
+  RMD029: {
+    // error, not warning: the element does the OPPOSITE of what the line says.
+    severity: "error",
+    title: 'A boolean attribute given the string "false"',
+    fix: 'A boolean attribute is true whenever it is PRESENT — the parser never reads its value — so `disabled="false"` disables the control and `hidden="false"` hides the element. Pass the boolean itself: `disabled={false}`, or `disabled={someCondition}`. A `false` removes the attribute, which is what makes it off. This is not fixed for you on purpose: `<input disabled="false">` is disabled in every browser by the HTML spec, and a framework that quietly decided otherwise would make its JSX mean something different from the markup it produces. Only the exact string "false" is reported, and only on a genuinely boolean attribute — `aria-hidden="false"` is valid and means what it says, because ARIA attributes are enumerated strings rather than boolean attributes.',
+  },
+  RMD028: {
+    // error, not warning: the page's structure is not the one that was written, and the diff then
+    // walks a tree it did not build.
+    severity: "error",
+    title: "An element the HTML parser is not allowed to keep here",
+    fix: "The client builds the DOM with appendChild, which puts a node exactly where it is told — so this works until the page is server-rendered, and then a parser moves it. A <div> inside a <p> becomes the <p>'s sibling; an <li> outside a list, a <tr> outside a table, an <option> outside a select are all relocated; a nested <form> is dropped and a nested <a> closes the outer one. After the move the DOM is not the tree render() described, so hydration reports a mismatch (RMD007) about non-determinism, which is not what went wrong. Put the element where the parser allows it: a block element beside the <p> rather than inside it, list items in a <ul>, rows in a <table>. If a component renders the misplaced element, give it the right @Host.",
+  },
   RMD027: {
     // error, not warning: the hook keeps running on a value the app has already moved past, so
     // what renders is not what the state says. Nothing is merely slower here.
@@ -185,6 +209,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A list could not identify its items",
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
+  },
+  RMD031: {
+    // error, not warning: the item is dropped, so the list on screen is shorter than `each`.
+    severity: "error",
+    title: "A list item that is not an element",
+    fix: "A list writes each row's key onto the vnode it gets back, and the diff matches rows on that key — so one item has to become exactly one element. A string or a number is not one: wrap it, `render: (name) => <li>{name}</li>`. A nested `list()` is not one either, and it is the common case: a list of pages, each holding a list of rows. Nesting goes through a COMPONENT rather than a bare descriptor — `render: (page) => <PageView item={page} />`, or `as: PageView` — because the component's host element is what wraps the inner rows and carries the key. The item is skipped rather than rendered, so the page is missing a row wherever this fires.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

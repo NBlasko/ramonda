@@ -1,6 +1,6 @@
 import { beforeEach, describe, test, expect } from "vitest";
 import { Component, Host } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { render, fireEvent } from "@ramonda/testing-library";
 import { Router } from "../Router";
 import { Link } from "../Link";
@@ -45,11 +45,9 @@ describe("Link determinism", () => {
    */
   test("a click goes to the same place the rendered href points at", () => {
     const { container } = render(
-      (
-        <RouterApp>
-          <Link href="evil.com/path">Go</Link>
-        </RouterApp>
-      ) as VNode,
+      <RouterApp>
+        <Link href="evil.com/path">Go</Link>
+      </RouterApp>,
     );
 
     const a = container.querySelector("a")!;
@@ -65,11 +63,9 @@ describe("Link determinism", () => {
 
   test("a normal href still routes, and lands exactly where it points", () => {
     const { container } = render(
-      (
-        <RouterApp>
-          <Link href="/players/9?tab=film">Go</Link>
-        </RouterApp>
-      ) as VNode,
+      <RouterApp>
+        <Link href="/players/9?tab=film">Go</Link>
+      </RouterApp>,
     );
 
     const a = container.querySelector("a")!;

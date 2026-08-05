@@ -10,6 +10,21 @@ import type { ListOptions } from "../types/list";
 let scopeSequence = 0;
 
 /**
+ * Names what came back instead of an element, in the words the writer would use.
+ *
+ * "an object" for a nested `list()` would send someone looking for a stray object
+ * literal; the nested list is the mistake worth naming, because it is the one a
+ * reasonable person makes.
+ */
+function describe(value: unknown): string {
+  if (Array.isArray(value)) return "an array";
+  if (value !== null && typeof value === "object" && (value as { [IS_LIST]?: true })[IS_LIST]) {
+    return "a nested `list()`";
+  }
+  return `a ${typeof value}`;
+}
+
+/**
  * One item's reactive scope: the vnode it produced, and the signals reading it
  * touched. While none of those changed and the item is the same object, the
  * mapper does not run again and the diff does not walk into its subtree.
@@ -159,6 +174,22 @@ export class ListEngine<T> {
         continue;
       }
 
+      // One item is one element, because the key is written onto it below and the
+      // key is what the diff matches rows on. Anything else — a string, a number,
+      // an array, a nested `list()` — has no `attributes`, and the assignment used
+      // to throw "Cannot set properties of undefined", which named the line rather
+      // than the mistake. Guards production too: skipping keeps the list rendering.
+      if (typeof vnode !== "object" || (vnode as { attributes?: unknown }).attributes === undefined) {
+        if (__DEV__) {
+          diagnose(
+            "RMD031",
+            `${host.name}:not-an-element`,
+            `${asComponent ? "The `as` component" : "The render callback"} returned ${describe(vnode)} for item ${i}.`,
+          );
+        }
+        continue;
+      }
+
       vnode.attributes.key = key;
       out.push(vnode);
       clean.push(false);
@@ -220,9 +251,9 @@ export class ListEngine<T> {
     try {
       // `as` builds <Component item={item} />; `render` is the flexible fallback.
       vnode = asComponent
-        ? (createRamonda(asComponent as unknown as ComponentClassKind, {
+        ? createRamonda(asComponent as unknown as ComponentClassKind, {
             item,
-          }) as VNode)
+          })
         : render?.(item, index);
     } finally {
       // Restored rather than nulled: a list may be built from inside a @compute,

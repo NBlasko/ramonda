@@ -1,7 +1,9 @@
-import { Component, type RamondaNode } from "@ramonda/core";
+import { Component, state, type RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { afterEach, describe, expect, test } from "vitest";
 import { Form } from "../Form";
+// Importing the entry is what registers the tab — the same line an app writes.
+import "../devtools";
 import { panelRegistry } from "../devtoolsPanel";
 import type { PanelPlugin, PanelRow } from "../devtoolsPanel";
 import type { StandardResult, StandardSchemaV1 } from "../types";
@@ -9,8 +11,12 @@ import type { StandardResult, StandardSchemaV1 } from "../types";
 /**
  * What `@ramonda/devtools` renders for the Forms tab.
  *
- * The panel cannot see a hook — it is a custom element outside the tree — so this package describes
- * its live forms as rows and registers that description. These tests hold the description still: a
+ * The panel cannot see a hook — it is a custom element outside the tree. `Form` ANNOUNCES itself
+ * with an event, `@ramonda/form/devtools` listens and describes what it heard about, and the panel
+ * draws that.
+ *
+ * These tests import `../devtools` the way an app does, so everything they assert travels the whole
+ * path: a form mounts, an event fires, the listener builds a view, the description changes. These tests hold the description still: a
  * mounted form is listed, an unmounted one is not, a broken field says what is wrong with it, and
  * the two actions do what their labels say.
  */
@@ -233,6 +239,61 @@ describe("the Forms panel", () => {
       expect(summary().value!.data).toEqual(BLANK);
     } finally {
       unmount();
+    }
+  });
+
+  /**
+   * Navigating away must not take the tab with it.
+   *
+   * The events carry DATA, not the tab's existence: the panel is registered once, when the entry is
+   * imported, and never deregistered. So a submit that redirects, or any route change that unmounts
+   * the last form, leaves the tab in place saying there are none — and the next form fills it in
+   * again. A tab that appeared and disappeared as somebody moved around an app would be unusable
+   * exactly when they are trying to follow something across pages.
+   */
+  test("a route change empties the tab but does not remove it", async () => {
+    let page!: App;
+
+    class FormPage extends Component {
+      f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: BLANK, onSubmit: () => {} }));
+      render(): RamondaNode {
+        void this.f.values;
+        return <form />;
+      }
+    }
+
+    class App extends Component {
+      @state showing: "form" | "thanks" = "form";
+      render(): RamondaNode {
+        page = this;
+        return this.showing === "form" ? <FormPage /> : <p>thanks</p>;
+      }
+    }
+
+    // Groups rather than rows: one group is one form, and a broken form adds a row per bad field.
+    const forms = () => panel().snapshot().groups.length;
+
+    const app = render(<App />);
+    try {
+      await settle();
+      expect(forms()).toBe(1);
+
+      // The submit redirected.
+      await act(async () => {
+        page.showing = "thanks";
+      });
+
+      expect(panel()).toBeDefined();
+      expect(forms()).toBe(0);
+      expect(panel().snapshot().empty).toContain("No forms are mounted");
+
+      // And back.
+      await act(async () => {
+        page.showing = "form";
+      });
+      expect(forms()).toBe(1);
+    } finally {
+      app.unmount();
     }
   });
 

@@ -283,7 +283,7 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = ramonda("@ramonda/lens");
   if (addons.includes("devtools")) {
     deps.devDependencies["@ramonda/devtools"] = ramonda("@ramonda/devtools");
-    importDevtools(targetDir, mode);
+    importDevtools(targetDir, mode, addons);
   }
 
   if (mode === "spa") {
@@ -364,15 +364,31 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
  * Guarded so a production build drops it — `import.meta.env.DEV` for vite, `__DEV__` for the
  * esbuild templates, which now define it per build.
  */
-function importDevtools(targetDir: string, mode: Mode): void {
+function importDevtools(targetDir: string, mode: Mode, addons: readonly AddOn[]): void {
   const entry = mode === "spa" ? join(targetDir, "src", "main.tsx") : join(targetDir, "src", "entry-client.tsx");
   if (!existsSync(entry)) return;
 
   const guard = mode === "spa" ? "import.meta.env.DEV" : "__DEV__";
+
+  /**
+   * A tab per package that has one, and each is its own import.
+   *
+   * A package ANNOUNCES what it holds with an event and never imports the module that describes
+   * it — so that description is only in the bundle of an app that asked for it. That is why these
+   * are separate lines rather than something `@ramonda/devtools` pulls in: it cannot reach them,
+   * and should not be able to.
+   */
+  const panels: string[] = [];
+  if (addons.includes("query")) panels.push('  void import("@ramonda/query/devtools");');
+  if (addons.includes("form")) panels.push('  void import("@ramonda/form/devtools");');
+
+  const body = ['  void import("@ramonda/devtools");', ...panels].join("\n");
   const line = `
 // The devtools panel — press Alt+D, or click the flower badge. Development only: this
 // branch is dropped from a production build, so the panel is never shipped.
-if (${guard}) void import("@ramonda/devtools");
+if (${guard}) {
+${body}
+}
 `;
 
   writeFileSync(entry, `${readFileSync(entry, "utf8").trimEnd()}\n${line}`);
@@ -431,8 +447,8 @@ function writeTestingFiles(targetDir: string, mode: Mode): void {
 
 export default defineConfig({
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxInject: \`import { h as __ramondaH } from '@ramonda/core'\`,
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
   test: {

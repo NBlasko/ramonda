@@ -2,6 +2,7 @@ import { escapeHtml, safeStringify, toOneLine, toServerPath } from "./format";
 import { INLINE, renderJsonHtml } from "./jsonView";
 import type { ValueView } from "./valueView";
 import { FILTER_KEY, HIDE_HOOKS_KEY, HIDE_VALUES_KEY, PIN_KEY, read, write, writeSession } from "./session";
+import { brand, icon } from "@ramonda/theme";
 
 interface SourceLocation {
   file: string;
@@ -291,7 +292,7 @@ export class ComponentsTab {
     container.classList.toggle(tool === "values" ? "no-values" : "no-hooks", hidden);
     button.classList.toggle("on", hidden);
     const label = tool === "values" ? "state &amp; props" : "hooks";
-    button.innerHTML = `${tool === "values" ? "◧" : "⬡"}<span class="tw"> ${hidden ? "show" : "hide"} ${label}</span>`;
+    button.innerHTML = `${icon(tool === "values" ? "values" : "hooks")}<span class="tw"> ${hidden ? "show" : "hide"} ${label}</span>`;
     write(tool === "values" ? HIDE_VALUES_KEY : HIDE_HOOKS_KEY, hidden ? "1" : "0");
   }
 
@@ -425,7 +426,7 @@ export class ComponentsTab {
       // hooks and children are all that is left on screen. Inside the summary, so it is on the
       // row you are already reading — `preventDefault` in the handler stops it toggling the
       // disclosure it lives in.
-      const pin = `<button type="button" class="pin-btn" data-pin="${escapeHtml(path)}" title="focus this ${n.kind}">◎</button>`;
+      const pin = `<button type="button" class="pin-btn" data-pin="${escapeHtml(path)}" title="focus this ${n.kind}">${icon("focus")}</button>`;
       /**
        * The last manual step in the whole flow: you found it, focused it, and then alt-tabbed and
        * searched for the class by name. This closes it.
@@ -442,8 +443,8 @@ export class ComponentsTab {
         : "";
       const label =
         n.kind === "hook"
-          ? `<span style="color:#8c6">${escapeHtml(n.name)}</span>`
-          : `<span style="color:#B18AE6">&lt;${escapeHtml(n.name)} /&gt;</span>`;
+          ? `<span style="color:var(--rmd-hook-text)">${escapeHtml(n.name)}</span>`
+          : `<span style="color:var(--rmd-brand-light)">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
       const body = `${propsHtml}${stateHtml}${detailHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
 
@@ -517,7 +518,7 @@ export class ComponentsTab {
         const edit = editable
           ? `<button type="button" class="edit-btn" data-edit-node="${nodeId}" data-edit-key="${escapeHtml(
               k,
-            )}" data-edit-vid="${escapeHtml(vid)}" title="edit ${escapeHtml(k)}">✎</button>`
+            )}" data-edit-vid="${escapeHtml(vid)}" title="edit ${escapeHtml(k)}">${icon("edit")}</button>`
           : "";
 
         /**
@@ -603,7 +604,7 @@ export class ComponentsTab {
       crumbBar.classList.toggle("on", crumbs !== "");
     }
 
-    container.innerHTML = html || `<small style="color:#666">No active components…</small>`;
+    container.innerHTML = html || `<small style="color:var(--rmd-text-faint)">No active components…</small>`;
     this.checkPendingWrite(acc.values);
     this.lastValues = acc.values;
     this.values.publishComponents(acc.raw);
@@ -961,7 +962,7 @@ export class ComponentsTab {
     this.clearHighlight();
     this.highlighted = node;
     node.dataset.ramondaPrevOutline = node.style.outline;
-    node.style.outline = "2px solid #7A4FBF";
+    node.style.outline = `2px solid ${brand.purple}`;
     node.style.backgroundColor = "rgba(255, 0, 85, 0.1)";
   }
 

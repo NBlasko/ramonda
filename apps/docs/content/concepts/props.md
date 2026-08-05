@@ -35,7 +35,7 @@ this.props.name = "Grace";   // ✗ throws (RMD004)
 ```
 
 It throws in every build, on purpose. The alternative — quietly ignoring the write —
-let bugs hide: you would assign, read back the old value, and get no hint why.
+lets bugs hide: you would assign, read back the old value, and get no hint why.
 
 If you need to change something a prop gave you, there are two honest ways:
 

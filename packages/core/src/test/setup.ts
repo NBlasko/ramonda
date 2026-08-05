@@ -6,9 +6,7 @@ import { bootstrap } from "../";
 import type { ComponentChild } from "../types/vdom";
 import { unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
-import { h } from "../vdom/h";
 import { configureDev } from "../";
-(globalThis as any).__ramondaH = h;
 
 const originalWindow = { ...window };
 

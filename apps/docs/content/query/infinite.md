@@ -15,6 +15,14 @@ the list stale, one snapshot across the SSR boundary.
 ```tsx
 import { InfiniteQuery } from "@ramonda/query";
 
+// One page of the feed. A `render:` callback has to produce an element, so a nested
+// list goes through a component — its host element is what wraps the rows.
+class PostPageView extends Component<{ item: PostPage }> {
+  render() {
+    return list({ each: this.props.item.items, as: PostRow });
+  }
+}
+
 class Feed extends Component<{ tag: string }> {
   private feed = this.use(InfiniteQuery<PostPage>, (self: Feed) => ({
     key: ["posts", self.props.tag],
@@ -23,15 +31,11 @@ class Feed extends Component<{ tag: string }> {
     getNextPageParam: (last) => last.nextCursor,
   }));
 
-  renderPage(page: PostPage) {
-    return list({ each: page.items, as: PostRow });
-  }
-
   render() {
     if (this.feed.isPending) return <p>Loading…</p>;
     return (
       <div>
-        {list({ each: this.feed.pages, render: this.renderPage })}
+        {list({ each: this.feed.pages, as: PostPageView })}
         <button
           type="button"
           onClick={this.feed.fetchNextPage}

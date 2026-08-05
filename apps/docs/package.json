@@ -5,17 +5,18 @@
   "scripts": {
     "content": "node scripts/build-content.mjs",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('.build',{recursive:true,force:true})\"",
-    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx-factory=__ramondaH --inject:./jsx-shim.ts --define:__DEV__=false --target=es2022 --minify --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/form=../../packages/form/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=dist/assets --entry-names=client --chunk-names=chunk-[hash] --metafile=.build/meta.json",
-    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx-factory=__ramondaH --inject:./jsx-shim.ts --define:__DEV__=false --target=es2022 --platform=node --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/form=../../packages/form/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=.build --entry-names=entry-server --chunk-names=chunk-[hash]",
+    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx=automatic --jsx-import-source=@ramonda/core --define:__DEV__=false --target=es2022 --minify --alias:@ramonda/theme=../../packages/theme/src/index.ts --alias:@ramonda/core/jsx-dev-runtime=../../packages/core/src/jsx-dev-runtime.ts --alias:@ramonda/core/jsx-runtime=../../packages/core/src/jsx-runtime.ts --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/form=../../packages/form/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=dist/assets --entry-names=client --chunk-names=chunk-[hash] --metafile=.build/meta.json",
+    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx=automatic --jsx-import-source=@ramonda/core --define:__DEV__=false --target=es2022 --platform=node --alias:@ramonda/theme=../../packages/theme/src/index.ts --alias:@ramonda/core/jsx-dev-runtime=../../packages/core/src/jsx-dev-runtime.ts --alias:@ramonda/core/jsx-runtime=../../packages/core/src/jsx-runtime.ts --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/form=../../packages/form/src/index.ts --alias:@ramonda/router=../../packages/router/src/index.ts --alias:@ramonda/lens=../../packages/lens/src/index.ts --alias:@ramonda/query=../../packages/query/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --splitting --outdir=.build --entry-names=entry-server --chunk-names=chunk-[hash]",
     "prerender": "node scripts/prerender.mjs",
-    "build": "node scripts/require-content.mjs && npm run clean && npm run check-api && npm run build:client && npm run manifest && npm run build:client && npm run build:server && ramonda-check-bundle dist/assets .build && npm run prerender && npm run index",
+    "build": "node scripts/require-content.mjs && node scripts/build-theme.mjs --check && npm run clean && npm run check-api && npm run build:client && npm run manifest && npm run build:client && npm run build:server && ramonda-check-bundle dist/assets .build && npm run prerender && npm run index",
     "check-types": "tsc --noEmit",
     "serve": "node scripts/serve.mjs",
     "manifest": "node scripts/build-manifest.mjs",
     "check-api": "node scripts/check-api-coverage.mjs",
     "index": "pagefind --site dist",
     "test": "vitest run",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "theme": "node scripts/build-theme.mjs"
   },
   "dependencies": {
     "@ramonda/core": "workspace:^",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@ramonda/shared": "workspace:^",
+    "@ramonda/theme": "workspace:^",
     "@types/node": "^26.1.2",
     "esbuild": "0.28.1",
     "jsdom": "28.0.0",

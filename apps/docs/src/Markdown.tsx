@@ -1,9 +1,11 @@
-import { Component, Host, h } from "@ramonda/core";
+import { Component, Host, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
 import { Demo } from "./Demo";
 import { CodeBlock } from "./CodeBlock";
+import { DataTable } from "./DataTable";
+import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
 import { Link } from "@ramonda/router";
 
@@ -43,20 +45,20 @@ export function toVNode(node: ContentNode): ComponentChild {
    * rather than a per-image note in the markdown.
    */
   if (node.t === "img") {
-    return h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
+    return __h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
   }
 
   // A Shiki code block becomes a component so it can carry a copy button. The
   // check is the `shiki` class the highlighter stamps on the `<pre>`; CodeBlock
   // renders the `<pre>` itself, so it does not route back through here.
   if (node.t === "pre" && node.a?.className?.includes("shiki")) {
-    return h(CodeBlock, { node }) as ComponentChild;
+    return __h(CodeBlock, { node }) as ComponentChild;
   }
 
   if (node.t === "demo") {
     const name = node.a?.name ?? "";
     // The examples page asks for the whole registry rather than one entry.
-    if (name === "__all__") return h(ExamplesIndex, {}) as ComponentChild;
+    if (name === "__all__") return __h(ExamplesIndex, {}) as ComponentChild;
     const demo = demos[name];
     if (!demo) {
       // Loud, and at the first render rather than as a blank space on a live
@@ -67,7 +69,18 @@ export function toVNode(node: ContentNode): ComponentChild {
           `Add it there, or fix the \`\`\`demo: fence.`,
       );
     }
-    return h(Demo, { name }) as ComponentChild;
+    return __h(Demo, { name }) as ComponentChild;
+  }
+
+  // A prose table goes through DataTable, which is what makes it readable on a phone. Markdown can
+  // only produce a plain <table>, and a plain <table> either overflows the screen or squeezes every
+  // cell to two words a line. The tree is turned into columns and rows here so DataTable takes data
+  // rather than markup — the same component serves a page that builds a table in TSX.
+  if (node.t === "table") {
+    const { columns, rows } = readTable(node);
+    // A table with no header row has no column names to put above the values, so the reflow has
+    // nothing to say and the plain markup is the honest fallback.
+    if (columns.length > 0) return __h(DataTable, { columns, rows }) as ComponentChild;
   }
 
   // An in-prose link to another docs page becomes a real <Link>, so it navigates
@@ -79,10 +92,48 @@ export function toVNode(node: ContentNode): ComponentChild {
     const href = node.a?.href ?? "";
     const internal = href.startsWith("/") && !node.a?.target;
     if (internal) {
-      return h(Link, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
+      return __h(Link, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
     }
   }
 
   const children = node.c?.map(toVNode) ?? [];
-  return h(node.t, node.a ?? null, ...children) as ComponentChild;
+  return __h(node.t, node.a ?? null, ...children) as ComponentChild;
+}
+
+/** The element children of a node, skipping the whitespace markdown-it leaves between rows. */
+function elements(node: ContentNode | undefined): ContentNode[] {
+  if (node === undefined || typeof node === "string") return [];
+  return (node.c ?? []).filter((child): child is ContentNode => typeof child !== "string");
+}
+
+/**
+ * The conversion, done once per table.
+ *
+ * A content tree is build output: one frozen module-level constant per page, so a node is the same
+ * object on every render and its conversion can be too. Building the arrays inside `toVNode` instead
+ * would hand `DataTable` a fresh `rows` on every render — the props of a component are compared by
+ * reference, so nothing would ever match and RMD020 would report it, correctly.
+ */
+const converted = new WeakMap<object, { columns: Cell[]; rows: Cell[][] }>();
+
+/** A built `<table>` node as the columns and rows DataTable takes. */
+function readTable(node: ContentNode): { columns: Cell[]; rows: Cell[][] } {
+  const cached = converted.get(node as object);
+  if (cached) return cached;
+  const built = buildTable(node);
+  converted.set(node as object, built);
+  return built;
+}
+
+function buildTable(node: ContentNode): { columns: Cell[]; rows: Cell[][] } {
+  const sections = elements(node);
+  const head = sections.find((section) => typeof section !== "string" && section.t === "thead");
+  const body = sections.find((section) => typeof section !== "string" && section.t === "tbody");
+
+  const cellsOf = (row: ContentNode): Cell[] =>
+    elements(row).map((cell) => (typeof cell === "string" ? cell : (cell.c?.map(toVNode) ?? [])));
+
+  const columns = elements(head).flatMap(cellsOf);
+  const rows = elements(body).map(cellsOf);
+  return { columns, rows };
 }

@@ -112,6 +112,47 @@ rendered a value where that read is, hydration reports the divergence too.
 already in the page as state. Reach for `exposeToClient` when several components read the same
 value directly from the context.
 
+## Telling a phone from a desktop
+
+`ctx.headers.get("user-agent")` is the header, and there is nothing else to it. What is worth
+knowing is what reading it costs and where it goes wrong.
+
+**Try CSS first.** A media query costs nothing, is right when somebody resizes the window, and lets
+the same HTML serve every visitor — so the page can still be [static](/ssr/modes). Reach for the
+header only when the two need different **markup**: a chart component you do not want to send to a
+phone at all, a list that is a table on one and cards on the other.
+
+**It makes the route per-request.** The header is part of who is asking, so a build cannot know it;
+reading it during one throws, on purpose, rather than baking one visitor's answer for everybody.
+
+**Decide once, on the server, and keep the answer in state.** This is the part that catches people:
+headers do not exist in the browser, so the same read at hydration returns nothing and the branch
+flips — the server sent the phone's markup and the client rebuilds the desktop's. `@state` is
+serialised into the page, so a decision made in `@create` arrives with it and hydration agrees:
+
+```tsx
+class Page extends Component {
+  // Serialised with the page, so the browser reads back what the server decided.
+  @state private phone = false;
+
+  @create({ env: "server" }) read() {
+    this.phone = /Mobi|Android|iPhone/i.test(requestContext().headers.get("user-agent") ?? "");
+  }
+
+  render() {
+    return this.phone ? <Cards /> : <Table />;
+  }
+}
+```
+
+Reading the header inside `render()` instead is the version that breaks, and it breaks loudly:
+[`RMD025`](/reference/diagnostics#rmd025-per-request-data-read-in-the-browser) in development, and
+a hydration mismatch when the two renders disagree.
+
+**The string is a guess, not a fact.** Every browser lies in its user agent for compatibility, and a
+tablet, a desktop in a narrow window and a phone in desktop mode are all cases a substring test gets
+wrong. Use it to choose what to *send*, and let CSS handle how it *looks*.
+
 ## It is not a place for secrets
 
 Whatever you expose is **published** — it sits in the page's HTML for anyone to read. Expose only

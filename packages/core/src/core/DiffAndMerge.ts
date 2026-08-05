@@ -37,6 +37,7 @@ import { hostTagMatches } from "../helpers/hostTag";
 import { queuePostCommit } from "./commit";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { checkHostPlacement } from "../debug/hostPlacement";
+import { checkNesting } from "../debug/domNesting";
 import { seedWatchProps } from "../helpers/watchProps";
 import type { Context } from "../types/commonTypes";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
@@ -86,6 +87,7 @@ function buildDetachedNode(
     const diff = diffAndMerge(vchild, placeholderComponent, undefined);
     if (__DEV__) {
       checkHostPlacement(parent, diff);
+      checkNesting(parent, diff);
     }
     return diff;
   } catch (e) {

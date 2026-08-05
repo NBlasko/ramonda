@@ -75,9 +75,9 @@ The report happens when the component **mounts** — not when a value is first r
 nothing to get it: `this.use(ThemeConsumer)` already says which context this component needs, and
 the consumer looks its provider up once, at that moment. So the answer exists at mount.
 
-That matters for the case that used to ship silently: a panel behind a condition nobody has clicked
-yet reads nothing, so a read-time check would never speak — and the page renders with the default
-filled in, looking fine.
+That matters for the case that would otherwise ship silently: a panel behind a condition nobody has
+clicked yet reads nothing, so a read-time check would never speak — and the page renders with the
+default filled in, looking fine.
 
 It is development-only: a production build reports nothing and reads exactly the same values.
 

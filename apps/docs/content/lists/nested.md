@@ -12,7 +12,11 @@ Because `list()` is just an expression, it nests wherever you write it:
 
 ```tsx
 @Host("table")
-export class Grid extends Component {
+export class Grid extends Component<{ rows: RowData[] }> {
+  private get rows() {
+    return this.props.rows;
+  }
+
   render() {
     return (
       <tbody>
@@ -46,9 +50,13 @@ class Row extends Component<{ item: RowData }> {
 }
 
 @Host("table")
-export class Grid extends Component {
+export class Grid extends Component<{ rows: RowData[] }> {
+  private get rows() {
+    return this.props.rows;
+  }
+
   render() {
-    return <tbody>{list({ each: this.data, as: Row })}</tbody>;
+    return <tbody>{list({ each: this.rows, as: Row })}</tbody>;
   }
 }
 ```
@@ -78,6 +86,8 @@ fresh objects (a refetch, an immutable update) **and** they own state you don't 
 reset:
 
 ```tsx
+@state rows: RowData[] = [];
+
 list({
   each: this.rows,
   key: (row) => row.id,

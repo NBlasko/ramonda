@@ -1,5 +1,5 @@
 import { Component, Hook, state } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { QueryClientProvider } from "../context";
@@ -48,7 +48,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<UserCard />) as VNode);
+    const { container, unmount } = render(<UserCard />);
     try {
       expect(container.querySelector("#out")!.textContent).toBe("pending");
 
@@ -82,7 +82,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<UserCard />) as VNode);
+    const { container, unmount } = render(<UserCard />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("ada");
@@ -111,7 +111,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<UserCard />) as VNode);
+    const { container, unmount } = render(<UserCard />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("success");
@@ -143,7 +143,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<Page />) as VNode);
+    const { container, unmount } = render(<Page />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);
@@ -169,7 +169,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<Card />) as VNode);
+    const { container, unmount } = render(<Card />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("no network");
@@ -202,7 +202,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Card>((<Card />) as VNode);
+    const { container, unmount, instance } = render<Card>(<Card />);
     try {
       gates.get(1)!.resolve({ name: "first" });
       await settle();
@@ -240,7 +240,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Card>((<Card />) as VNode);
+    const { container, unmount, instance } = render<Card>(<Card />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);
@@ -285,7 +285,7 @@ describe("Query", () => {
       }
     }
 
-    const { unmount, instance } = render<Card>((<Card />) as VNode);
+    const { unmount, instance } = render<Card>(<Card />);
     try {
       await settle();
 
@@ -332,7 +332,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Table>((<Table />) as VNode);
+    const { container, unmount, instance } = render<Table>(<Table />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);
@@ -372,7 +372,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Table>((<Table />) as VNode);
+    const { container, unmount, instance } = render<Table>(<Table />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("page-1");
@@ -409,7 +409,7 @@ describe("Query", () => {
       }
     }
 
-    const { unmount, instance } = render<Table>((<Table />) as VNode);
+    const { unmount, instance } = render<Table>(<Table />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);
@@ -442,7 +442,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Card>((<Card />) as VNode);
+    const { container, unmount, instance } = render<Card>(<Card />);
     try {
       await settle();
       expect(fetcher).not.toHaveBeenCalled();
@@ -477,7 +477,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount, instance } = render<Card>((<Card />) as VNode);
+    const { container, unmount, instance } = render<Card>(<Card />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("v1");
@@ -507,7 +507,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<Card />) as VNode);
+    const { container, unmount } = render(<Card />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("v1");
@@ -549,7 +549,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<Card />) as VNode);
+    const { container, unmount } = render(<Card />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("session-1");
@@ -581,7 +581,7 @@ describe("Query", () => {
       }
     }
 
-    const { unmount } = render((<Card />) as VNode);
+    const { unmount } = render(<Card />);
     await settle();
     expect(client.peek(["thing"])!.observers.size).toBe(1);
 
@@ -606,7 +606,7 @@ describe("Query", () => {
     // being asserted.
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      expect(() => render((<Orphan />) as VNode)).toThrow(/QueryClientProvider/);
+      expect(() => render(<Orphan />)).toThrow(/QueryClientProvider/);
     } finally {
       error.mockRestore();
     }
@@ -632,7 +632,7 @@ describe("Query", () => {
       }
     }
 
-    const { container, unmount } = render((<Card />) as VNode);
+    const { container, unmount } = render(<Card />);
     try {
       await settle();
       expect(container.querySelector("#out")!.textContent).toBe("user-3");

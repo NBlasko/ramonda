@@ -5,8 +5,8 @@ export default defineConfig({
     port: 3000,
   },
   esbuild: {
-    jsxFactory: "__ramondaH",
-    jsxInject: `import { h as __ramondaH } from '@ramonda/core'`,
+    jsx: "automatic",
+    jsxImportSource: "@ramonda/core",
     target: "es2022",
   },
 });

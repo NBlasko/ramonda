@@ -15,6 +15,11 @@ different acts, and neither should show the other's spinner or the other's error
 ```tsx
 import { Mutation } from "@ramonda/query";
 
+interface Todo {
+  id: string;
+  title: string;
+}
+
 // The host IS the form. `@onElement` listens on the component's host element, so a
 // `submit` handler needs the host to be the thing that emits `submit` — see
 // [the host element](/concepts/host).
@@ -32,6 +37,12 @@ class AddTodo extends Component {
     event.preventDefault();
     this.add.mutate(this.draft);
     this.draft = "";
+  }
+
+  // A method, not an inline arrow: methods are auto-bound, so the identity never changes
+  // and the listener is not removed and re-added on every render.
+  typed(event: Event) {
+    this.draft = (event.target as HTMLInputElement).value;
   }
 
   render() {
@@ -82,7 +93,11 @@ private add = this.use(Mutation<Todo, string>, () => ({
   mutate: (title) => api.createTodo(title),
   onMutate: (title, { client }) => {
     const previous = client.peek<Todo[]>(["todos"])?.data;
-    client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), draft(title)]);
+    // A stand-in for what the server will send back. The id is temporary — the refetch that
+    // `invalidates` triggers replaces this whole item with the real one.
+    const optimistic: Todo = { id: `pending:${title}`, title };
+
+    client.setData<Todo[]>(["todos"], (todos) => [...(todos ?? []), optimistic]);
     return () => client.setData(["todos"], previous);   // ← the rollback
   },
   invalidates: [["todos"]],
@@ -105,6 +120,34 @@ Two details make that safe:
 - **The rollback runs even if the component unmounted first.** It undoes a write to
   the cache, which outlives the hook; leaving an optimistic value in there because
   the button went away is how a list ends up showing a todo the server refused.
+
+### Editing one item rather than appending
+
+Appending is a spread. Changing something *inside* a cached value is where writing it by hand gets
+long — every level above the change has to be copied:
+
+```tsx
+client.setData<Todo[]>(["todos"], (todos) =>
+  (todos ?? []).map((todo) => (todo.id === id ? { ...todo, title } : todo)),
+);
+```
+
+[`@ramonda/lens`](/lens) says the same thing as a path:
+
+```tsx
+import { focusOn } from "@ramonda/lens";
+
+client.setData<Todo[]>(["todos"], (todos) =>
+  focusOn(todos ?? [])
+    .where((todo) => todo.id === id)
+    .get("title")
+    .set(title),
+);
+```
+
+Both produce a new array and leave the untouched items as the same objects, which is what keeps
+`list()` from rebuilding rows that did not change. The lens earns its place as the change goes
+deeper — two levels in, the hand-written version is three spreads and a `map`.
 
 ## The callbacks
 

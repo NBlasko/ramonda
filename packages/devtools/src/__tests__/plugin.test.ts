@@ -113,7 +113,9 @@ describe("a row described as data", () => {
     const panel = withRows([row({ status: "error", error: "Failed to fetch" })]);
 
     const dot = container(panel).querySelector(".q-status") as HTMLElement;
-    expect(dot.style.background).toBe("rgb(255, 68, 68)");
+    // The token, not the value: the panel owns what "error" looks like, and a source that returned
+    // a colour of its own would be the thing this test exists to prevent.
+    expect(dot.style.background).toBe("var(--rmd-error)");
     expect(container(panel).querySelector(".q-error")!.textContent).toBe("Failed to fetch");
   });
 
@@ -149,7 +151,7 @@ describe("a row described as data", () => {
     const panel = withRows([row({ value: { data: undefined, preview: "{products: […]}" } })]);
 
     expect(container(panel).querySelector(".q-data")!.textContent).toBe("{products: […]}");
-    // And no ⤢ button, because there is nothing structured to open.
+    // And no expand button, because there is nothing structured to open.
     expect(container(panel).querySelector("[data-full]")).toBe(null);
   });
 

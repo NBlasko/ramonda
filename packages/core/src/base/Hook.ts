@@ -77,9 +77,15 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
   }
 
   protected use<T extends BaseHook<undefined>>(hook: HookClassKind<T, undefined>): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: PropsFactory<Q>): T;
+  protected use<T extends BaseHook<Q>, Q extends HookProps, S extends this = this>(
+    hook: HookClassKind<T, Q>,
+    props: PropsFactory<Q, S>,
+  ): T;
   protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: Q): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props?: Q | PropsFactory<Q>): T {
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(
+    hook: HookClassKind<T, Q>,
+    props?: Q | PropsFactory<Q, never>,
+  ): T {
     return useCommon(this, hook, props);
   }
 }

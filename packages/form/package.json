@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "description": "Forms for Ramonda: typed field paths, Standard Schema validation, and rows that keep their identity.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -33,6 +33,10 @@
     "./bguard": {
       "types": "./dist/bguard.d.ts",
       "import": "./dist/bguard.js"
+    },
+    "./devtools": {
+      "types": "./dist/devtools.d.ts",
+      "import": "./dist/devtools.js"
     }
   },
   "main": "./dist/index.js",

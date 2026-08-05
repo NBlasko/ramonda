@@ -15,7 +15,7 @@ export default defineConfig([
   {
     // `bguard.ts` is a SEPARATE entry, not part of the main graph: it is the only file that imports
     // bguard, and a form over zod must not pull a validator it does not use into the bundle.
-    entry: ["src/index.ts", "src/bguard.ts"],
+    entry: ["src/index.ts", "src/bguard.ts", "src/devtools.ts"],
     format: ["esm"],
     dts: true,
     clean: true,

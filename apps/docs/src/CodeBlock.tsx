@@ -1,4 +1,4 @@
-import { Component, Host, state, destroy, h } from "@ramonda/core";
+import { Component, Host, state, destroy, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { toVNode } from "./Markdown";
@@ -65,7 +65,7 @@ export class CodeBlock extends Component<CodeBlockProps> {
       <button type="button" className="copy-btn" onClick={this.copy} aria-label="Copy code to clipboard">
         {this.copied ? "Copied" : "Copy"}
       </button>,
-      h(tag, attrs, ...children) as ComponentChild,
+      __h(tag, attrs, ...children) as ComponentChild,
     ] as RamondaNode;
   }
 }

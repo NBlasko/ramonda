@@ -1,5 +1,5 @@
 import { Component, state } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { Query } from "../Query";
@@ -43,13 +43,13 @@ describe("refetchOnMount", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, {}, client);
 
-    const first = render((<Page />) as VNode);
+    const first = render(<Page />);
     await settle();
     expect(fetcher).toHaveBeenCalledTimes(1);
     first.unmount();
 
     // staleTime defaults to 0, so what is cached is already stale.
-    const second = render((<Page />) as VNode);
+    const second = render(<Page />);
     await settle();
     expect(fetcher).toHaveBeenCalledTimes(2);
     second.unmount();
@@ -60,11 +60,11 @@ describe("refetchOnMount", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchOnMount: false }, client);
 
-    const first = render((<Page />) as VNode);
+    const first = render(<Page />);
     await settle();
     first.unmount();
 
-    const second = render((<Page />) as VNode);
+    const second = render(<Page />);
     await settle();
     expect(fetcher).toHaveBeenCalledTimes(1);
     second.unmount();
@@ -74,7 +74,7 @@ describe("refetchOnMount", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchOnMount: false });
 
-    const { container, unmount } = render((<Page />) as VNode);
+    const { container, unmount } = render(<Page />);
     try {
       await settle();
       // Nothing to refresh is not the same as nothing to fetch.
@@ -90,11 +90,11 @@ describe("refetchOnMount", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchOnMount: "always" }, client);
 
-    const first = render((<Page />) as VNode);
+    const first = render(<Page />);
     await settle();
     first.unmount();
 
-    const second = render((<Page />) as VNode);
+    const second = render(<Page />);
     await settle();
     expect(fetcher).toHaveBeenCalledTimes(2);
     second.unmount();
@@ -115,7 +115,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher);
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);
@@ -136,7 +136,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { staleTime: 60_000 });
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -156,7 +156,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher);
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -176,7 +176,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher);
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -202,7 +202,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchOnWindowFocus: false });
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -220,7 +220,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher);
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -238,7 +238,7 @@ describe("window triggers", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher);
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     await settle();
     unmount();
 
@@ -261,7 +261,7 @@ describe("refetchInterval", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchInterval: 1000 });
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);
@@ -290,7 +290,7 @@ describe("refetchInterval", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchInterval: 1000, staleTime: Number.POSITIVE_INFINITY });
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     try {
       await settle();
       await act(async () => {
@@ -310,7 +310,7 @@ describe("refetchInterval", () => {
     const fetcher = vi.fn(async () => "v");
     const Page = pageWith(fetcher, { refetchInterval: 1000 });
 
-    const { unmount } = render((<Page />) as VNode);
+    const { unmount } = render(<Page />);
     await settle();
     unmount();
 
@@ -339,7 +339,7 @@ describe("refetchInterval", () => {
       }
     }
 
-    const { unmount, instance } = render<Page>((<Page />) as VNode);
+    const { unmount, instance } = render<Page>(<Page />);
     try {
       await settle();
       expect(fetcher).toHaveBeenCalledTimes(1);

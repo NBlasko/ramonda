@@ -1,5 +1,6 @@
 import { escapeHtml, safeStringify } from "./format";
 import { FULL, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
+import { icon } from "@ramonda/theme";
 
 /**
  * Reading and editing one value, wherever in the panel it came from.
@@ -18,7 +19,7 @@ import { FULL, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
  *
  * ## What it does not own
  *
- * The rows. A tab decides what a value looks like inline and where the ⤢ button goes; this decides
+ * The rows. A tab decides what a value looks like inline and where the expand button goes; this decides
  * what happens when it is pressed. That line is what lets the query tab and the components tab
  * disagree about layout while agreeing about values.
  */
@@ -178,7 +179,7 @@ export class ValueView {
     if (!container) return "";
     return `<button type="button" class="jv-open" data-full="${escapeHtml(id)}" title="open ${escapeHtml(
       summarize(value),
-    )} in the full view">⤢</button>`;
+    )} in the full view">${icon("expandValue")}</button>`;
   }
 
   /**
