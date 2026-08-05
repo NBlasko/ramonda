@@ -36,7 +36,8 @@ export type DiagnosticCode =
   | "RMD027"
   | "RMD028"
   | "RMD029"
-  | "RMD030";
+  | "RMD030"
+  | "RMD031";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -208,6 +209,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A list could not identify its items",
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
+  },
+  RMD031: {
+    // error, not warning: the item is dropped, so the list on screen is shorter than `each`.
+    severity: "error",
+    title: "A list item that is not an element",
+    fix: "A list writes each row's key onto the vnode it gets back, and the diff matches rows on that key — so one item has to become exactly one element. A string or a number is not one: wrap it, `render: (name) => <li>{name}</li>`. A nested `list()` is not one either, and it is the common case: a list of pages, each holding a list of rows. Nesting goes through a COMPONENT rather than a bare descriptor — `render: (page) => <PageView item={page} />`, or `as: PageView` — because the component's host element is what wraps the inner rows and carries the key. The item is skipped rather than rendered, so the page is missing a row wherever this fires.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

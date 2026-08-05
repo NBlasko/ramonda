@@ -1,5 +1,5 @@
 import { jsx, jsxs } from "./jsx-runtime";
-import type { RamondaNode } from "./types/vdom";
+import type { VNode } from "./types/vdom";
 
 export { Fragment } from "./jsx-runtime";
 
@@ -22,11 +22,6 @@ type Props = Record<string, unknown> & { children?: unknown };
  * Ramonda's diagnostics get their position from `currentOrigin` instead, which also works for the
  * vnodes built by hand.
  */
-export function jsxDEV(
-  type: unknown,
-  props: Props | null,
-  key?: string | number,
-  isStaticChildren?: boolean,
-): RamondaNode {
+export function jsxDEV(type: unknown, props: Props | null, key?: string | number, isStaticChildren?: boolean): VNode {
   return isStaticChildren === true ? jsxs(type, props, key) : jsx(type, props, key);
 }

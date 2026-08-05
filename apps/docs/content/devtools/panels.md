@@ -136,24 +136,47 @@ Your package should not import the module that describes your tab — that is wh
 description into everybody's bundle. Send an **event** instead, and let the entry listen:
 
 ```ts
-// @ramonda/sockets — one guarded line, and __DEV__ removes it
+// @ramonda/sockets — guarded, so __DEV__ removes it
 @create join() {
-  if (__DEV__) window.dispatchEvent(new CustomEvent("sockets:open", { detail: { socket: this } }));
+  if (__DEV__) {
+    this.announce();
+    // And again whenever a panel asks: see below for why once is not enough.
+    window.addEventListener("sockets:request", this.announce);
+  }
+}
+
+announce() {
+  window.dispatchEvent(new CustomEvent("sockets:open", { detail: { socket: this } }));
 }
 
 @destroy leave() {
-  if (__DEV__) window.dispatchEvent(new CustomEvent("sockets:closed", { detail: { socket: this } }));
+  if (__DEV__) {
+    window.removeEventListener("sockets:request", this.announce);
+    window.dispatchEvent(new CustomEvent("sockets:closed", { detail: { socket: this } }));
+  }
 }
 ```
 
 ```ts
 // @ramonda/sockets/devtools — imported only by an app that wants the tab
 const live = new Set<Socket>();
-window.addEventListener("sockets:open", (e) => live.add(e.detail.socket));
-window.addEventListener("sockets:closed", (e) => live.delete(e.detail.socket));
+type SocketEvent = CustomEvent<{ socket: Socket }>;
+
+window.addEventListener("sockets:open", (e) => live.add((e as SocketEvent).detail.socket));
+window.addEventListener("sockets:closed", (e) => live.delete((e as SocketEvent).detail.socket));
 
 panelRegistry().register({ version: 1, id: "sockets", label: "SOCKETS", snapshot, run });
+
+// Last: ask what is already here, now that the listeners above are in place.
+window.dispatchEvent(new CustomEvent("sockets:request"));
 ```
+
+**Ask on load, or the tab starts empty.** This entry arrives through a dynamic import, so it loads
+*after* the app has mounted — and anything that announced itself during that mount announced to
+nobody. For something that comes and goes you might not notice; for something that mounts once at
+the root you never see it at all. `@ramonda/query` shipped exactly that: `QueryClientProvider`
+announces from `@create`, which runs during hydration, and the QUERY tab was empty for the life of
+every page until the panel started asking.
 
 **From a lifecycle, not at module load.** A source that registers when its module loads lists
 something that may never mount, and never stops listing it. Announcing from `@create` and `@destroy`

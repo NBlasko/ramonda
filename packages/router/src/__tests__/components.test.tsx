@@ -1,6 +1,6 @@
 import { beforeEach, describe, test, expect } from "vitest";
 import { Component, Host, create } from "@ramonda/core";
-import type { VNode, RamondaNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { Link } from "../Link";
@@ -74,18 +74,17 @@ class NotFound extends Component {
 }
 
 const routes = createRoutes({
-  "/": (<Home />) as VNode,
-  "/players/:id": (<Player />) as VNode,
-  "*": (<NotFound />) as VNode,
+  "/": <Home />,
+  "/players/:id": <Player />,
+  "*": <NotFound />,
 });
 
 /** The shell every test but a few mounts. */
-const app = () =>
-  (
-    <RouterApp>
-      <RouteOutlet routes={routes} />
-    </RouterApp>
-  ) as VNode;
+const app = () => (
+  <RouterApp>
+    <RouteOutlet routes={routes} />
+  </RouterApp>
+);
 
 describe("Router: single instance", () => {
   test("refuses a second Router while one is live", () => {
@@ -197,7 +196,7 @@ describe("Router: chrome above the outlet", () => {
       }
     }
 
-    const { container } = render((<Shell />) as VNode);
+    const { container } = render(<Shell />);
     expect(container.querySelector("#home")).toBeTruthy();
 
     const nav = container.querySelector("nav")!;
@@ -242,7 +241,7 @@ describe("Router: chrome above the outlet", () => {
       }
     }
 
-    const { container } = render((<Shell />) as VNode);
+    const { container } = render(<Shell />);
     act(() => route.push("/players/3"));
 
     expect(container.querySelector("#nav")?.textContent).toBe("/players/3");
@@ -311,16 +310,14 @@ describe("Navigator: partial-state updates", () => {
 describe("Link", () => {
   test("renders a real href and intercepts a plain left click", () => {
     const { container } = render(
-      (
-        <RouterApp>
-          <RouteOutlet
-            routes={createRoutes({
-              "/": (<Link href="/players/9">Go</Link>) as VNode,
-              "/players/:id": (<Player />) as VNode,
-            })}
-          />
-        </RouterApp>
-      ) as VNode,
+      <RouterApp>
+        <RouteOutlet
+          routes={createRoutes({
+            "/": <Link href="/players/9">Go</Link>,
+            "/players/:id": <Player />,
+          })}
+        />
+      </RouterApp>,
     );
 
     const a = container.querySelector("a")!;
@@ -333,15 +330,13 @@ describe("Link", () => {
 
   test("does not intercept external links", () => {
     const { container } = render(
-      (
-        <RouterApp>
-          <RouteOutlet
-            routes={createRoutes({
-              "/": (<Link href="https://example.com">Ext</Link>) as VNode,
-            })}
-          />
-        </RouterApp>
-      ) as VNode,
+      <RouterApp>
+        <RouteOutlet
+          routes={createRoutes({
+            "/": <Link href="https://example.com">Ext</Link>,
+          })}
+        />
+      </RouterApp>,
     );
     const a = container.querySelector("a")!;
 
@@ -363,7 +358,7 @@ describe("Link", () => {
   });
 
   test("a Link with no Router refuses to navigate rather than failing quietly", () => {
-    const { container } = render((<Link href="/players/9">Go</Link>) as VNode);
+    const { container } = render(<Link href="/players/9">Go</Link>);
     const a = container.querySelector("a")!;
 
     // The href still renders — it is a real anchor either way.

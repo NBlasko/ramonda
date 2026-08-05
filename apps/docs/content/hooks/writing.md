@@ -31,7 +31,7 @@ export class Counter extends Hook<CounterProps> {
 
 Two forms, and the difference matters:
 
-```tsx
+```tsx alternatives
 // A plain object — fixed for the life of the hook. For constants.
 counter = this.use(Counter, { start: 10 });
 
@@ -87,6 +87,8 @@ can't linger.)
 A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
+import { Navigator } from "@ramonda/router";
+
 export class Pagination extends Hook<PaginationProps> {
   private route = this.use(Navigator);
   // …

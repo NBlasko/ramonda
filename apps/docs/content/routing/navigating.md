@@ -10,6 +10,8 @@ order: 73
 `Navigator` lets a component navigate from code:
 
 ```tsx
+import { Navigator } from "@ramonda/router";
+
 export class Toolbar extends Component {
   route = this.use(Navigator);
 

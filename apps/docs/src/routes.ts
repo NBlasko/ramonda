@@ -14,9 +14,9 @@ import { DocPage } from "./DocPage";
  */
 const table: Record<string, VNode> = {};
 for (const page of pages) {
-  table[page.path] = __h(DocPage, { meta: page }) as VNode;
+  table[page.path] = __h(DocPage, { meta: page });
 }
-table["*"] = __h(DocPage, { meta: pages[0], notFound: true }) as VNode;
+table["*"] = __h(DocPage, { meta: pages[0], notFound: true });
 
 export const routes: RouteConfig = createRoutes(table);
 export { pages };

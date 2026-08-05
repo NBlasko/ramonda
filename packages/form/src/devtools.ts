@@ -239,3 +239,11 @@ function describeInteraction(path: string, touched: readonly string[], changed: 
 
 // Importing this module is what registers the tab. There is nothing to call.
 panelRegistry().register(formsPanel());
+
+/**
+ * Ask what is already mounted, after the listeners above are in place.
+ *
+ * This module loads through a dynamic import, so a form that mounted during hydration announced
+ * itself before anything was listening. See `QueryClientProvider.republish`.
+ */
+window.dispatchEvent(new CustomEvent("ramonda:form-request"));

@@ -137,7 +137,7 @@ beforeEach(() => {
 
 describe("a guard does not stop the render it guards", () => {
   test("render() runs, and so does every other @mount on the component", async () => {
-    const app = mountAt((<Trusting />) as VNode);
+    const app = mountAt(<Trusting />);
     try {
       // Both already happened by the time bootstrap returned. This is why `render()` has to be
       // safe for a visitor being turned away, and why a fetch beside the guard fires for them.
@@ -150,7 +150,7 @@ describe("a guard does not stop the render it guards", () => {
   });
 
   test("a render that answers for itself builds nothing protected", () => {
-    const app = mountAt((<Careful />) as VNode);
+    const app = mountAt(<Careful />);
     try {
       expect(renders).toBe(1);
       // The render ran and produced nothing — which is the difference that matters.
@@ -163,7 +163,7 @@ describe("a guard does not stop the render it guards", () => {
 
 describe("when the redirect lands", () => {
   test("a synchronous check resolves within a microtask, so nothing is painted", async () => {
-    const app = mountAt((<Trusting />) as VNode);
+    const app = mountAt(<Trusting />);
     try {
       // Updates batch through queueMicrotask, and the browser paints AFTER microtasks — so one
       // microtask is the whole window in which the protected markup exists.
@@ -188,7 +188,7 @@ describe("when the redirect lands", () => {
      * both commits happen inside one microtask, so the protected markup is not merely unpainted —
      * it is never observable from outside at all.
      */
-    const app = mountAt((<Trusting />) as VNode, "/");
+    const app = mountAt(<Trusting />, "/");
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(app.container.textContent).toBe("home");
@@ -207,7 +207,7 @@ describe("when the redirect lands", () => {
   });
 
   test("a check that awaits the network is still showing the page a task later", async () => {
-    const app = mountAt((<AwaitsTheNetwork />) as VNode);
+    const app = mountAt(<AwaitsTheNetwork />);
     try {
       // A macrotask boundary is a paint boundary: the await released the frame, so this is what
       // the visitor sees. THIS is the flicker, and no amount of batching removes it — the fix is
@@ -321,7 +321,7 @@ describe("when the answer arrives after the page is already up", () => {
   });
 
   test("@mount alone strands the visitor: no page, no redirect", async () => {
-    const app = await settleWith((<OnlyOnMount />) as VNode);
+    const app = await settleWith(<OnlyOnMount />);
     try {
       expect(app.container.textContent).toBe("checking");
       expect(decisions).toBe(1);
@@ -340,7 +340,7 @@ describe("when the answer arrives after the page is already up", () => {
   });
 
   test("@mount + @updated decides again, and sends them away", async () => {
-    const app = await settleWith((<OnEveryCommit />) as VNode);
+    const app = await settleWith(<OnEveryCommit />);
     try {
       expect(app.container.textContent).toBe("checking");
       expect(decisions).toBe(1); // the @mount run

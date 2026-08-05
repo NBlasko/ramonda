@@ -1,5 +1,5 @@
 import { Component, renderToString } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { act, render, waitFor } from "@ramonda/testing-library";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ServerQueryError } from "../errors";
@@ -99,7 +99,7 @@ describe("server rendering", () => {
       }
     }
 
-    const { container } = render((<Card />) as VNode);
+    const { container } = render(<Card />);
 
     await act(async () => {});
     expect(container.querySelector("#out")!.textContent).toBe("pending");
@@ -321,7 +321,7 @@ describe("explicit dehydrate / hydrate", () => {
       }
     }
 
-    const { container, unmount } = render((<Card />) as VNode);
+    const { container, unmount } = render(<Card />);
     try {
       expect(container.querySelector("#out")!.textContent).toBe("ada");
       await settle();

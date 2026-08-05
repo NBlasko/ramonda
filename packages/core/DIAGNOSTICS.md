@@ -48,8 +48,8 @@ so a component that misuses the same property on every render reports once.
 | `RMD009` | error | Update loop — a component never stopped re-rendering |
 | `RMD010` | warning | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
-| `RMD013` | error | A `For` hook could not identify its items |
-| `RMD014` | error | A `For` hook was given both `as` and `render`, or neither |
+| `RMD013` | error | A list could not identify its items |
+| `RMD014` | error | A list was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | warning | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
@@ -65,6 +65,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD028` | error | An element the HTML parser is not allowed to keep here |
 | `RMD029` | error | A boolean attribute given the string "false" |
 | `RMD030` | error | State written during `[INSPECT]()` |
+| `RMD031` | error | A list item that is not an element |
 
 ### RMD001 — State written during render()
 
@@ -474,27 +475,28 @@ subclass that never mentions `handleClick`. That took a fix — see BUGS.md; it 
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.
 
-### RMD013 — A For hook could not identify its items
+### RMD013 — A list could not identify its items
 
-`For` exists to delete the key. Identity is the item itself — an object reference,
-or the value for a primitive — held in a `Map<item, id[]>`, so there is nothing to
-write and nothing to get wrong. This code fires only where a mistake is still
-possible.
+`list()` exists to delete the key. Identity is the item itself — an object
+reference, or the value for a primitive — held in a `Map<item, id[]>` by
+`helpers/listEngine.ts`, so there is nothing to write and nothing to get wrong.
+This code fires only where a mistake is still possible.
 
 **A colliding `key` callback.** The `key:` option survives for one real case:
 items re-created as fresh objects that mean the same entity (a refetch). A
 callback can still return the same value twice, which is exactly the failure
-`For` was built to remove — so it is checked. Identity minted from the item cannot
+minted identity removes — so it is checked. Identity minted from the item cannot
 collide, so that path is not checked at all.
 
 **A render callback that returned nothing.** There is no vnode to key or place.
+A callback that returns something which is not an element is RMD031 instead.
 
 **Why the same item twice is not an error.** `[tag, tag]` is legitimate. Reference
 identity cannot tell two occurrences apart — and neither could a hand-written key
 — so each occurrence gets its own id (`Map<item, id[]>`, one id per occurrence)
 and both rows stay stable across a reorder. Verified by test.
 
-**Why `For` also fixes the slot problem.** The vnodes come out keyed, so the diff
+**Why a list also fixes the slot problem.** The vnodes come out keyed, so the diff
 claims them by identity instead of by position, and nothing after the list can be
 mistaken for a list item. That is what corrupts a component's own chrome when a
 caller passes an unkeyed list into `{this.props.children}`. The keys are
@@ -502,11 +504,11 @@ synthetic strings rather than the items themselves because the diff's key index 
 a plain object — an object key would stringify to `"[object Object]"` and every
 item would collide into one.
 
-**What `For` does not fix.** A `Card` still cannot force its caller to use `For`.
-`For` makes the correct call the shorter one; RMD012 is the net for whoever maps
-anyway. The distinction that settled this: **a wrong key is an accident, using
-`.map()` is a decision** — you can teach a decision, you cannot defend against an
-accident.
+**What it does not fix.** A `Card` cannot force its caller to use `list()`.
+`list()` makes the correct call the shorter one; RMD023 is the net for whoever
+maps anyway. The distinction that settled this: **a wrong key is an accident,
+using `.map()` is a decision** — you can teach a decision, you cannot defend
+against an accident.
 
 #### RMD009's production counterpart
 
@@ -536,16 +538,16 @@ re-queues a component from its own build — a write in `render()` included.
 so flipping it inside a test silently keeps testing the DEV path. Verify with a
 whole process: `NODE_ENV=production npx vitest run <file>`.
 
-### RMD014 — A For hook was given both `as` and `render`, or neither
+### RMD014 — A list was given both `as` and `render`, or neither
 
 A list needs exactly one way to turn an item into markup:
 
-- `as: RowView` when an item maps to a component. `For` builds
+- `as: RowView` when an item maps to a component. The list builds
   `<RowView item={item} />` itself, so there is no per-item function to write.
 - `render: (item) => <li>{item.name}</li>` when an item maps to plain markup.
 
-TypeScript already rejects both together (`ForAs` sets `render?: never`,
-`ForRender` sets `as?: never`) and rejects neither. This code is for JavaScript,
+TypeScript already rejects both together (`ListAs` sets `render?: never`,
+`ListRender` sets `as?: never`) and rejects neither. This code is for JavaScript,
 where there are no types — and where both mistakes fail **quietly**: with both
 given, `as` wins and the render callback is never called, so the list renders
 something other than what was written and nothing says why. With neither, the
@@ -927,6 +929,27 @@ The probe deliberately does NOT go through `buildProps`. That one runs the RMD02
 check, which then fired from inside a check of its own — reporting churn on a render where the
 callback was not going to be called, and, having no `declared` list to hand down, naming every
 `@StableProps` key as unstable. See `probeProps` in `helpers/common.ts`.
+
+### RMD031 — a list item that is not an element
+
+`helpers/listEngine.ts`, one line above the assignment it replaces. The engine writes the row's key
+onto the vnode — `vnode.attributes.key = key` — and the diff matches rows on that key, so an item
+that is not one element has nowhere to carry its identity.
+
+**What it replaces, measured:** returning a nested `list()` from a `render:` callback threw
+`Cannot set properties of undefined (setting 'key')`. A message about the assignment, from inside
+the framework, naming neither the list nor what to write instead.
+
+**The case it is really about.** A list of pages, each page a list of rows. The inner `list()` is a
+descriptor, not an element, and nesting goes through a **component**: `as: PageView`, whose host
+element wraps the inner rows and takes the key. `content/lists/nested.md` teaches that; a docs
+example that did the other thing was a live crash until this check was written.
+
+**Skipped, not thrown, in production too** — same reason as RMD013's empty item. The page loses one
+row and keeps rendering, which is recoverable; a throw takes the whole tree down.
+
+`describe()` names the value in the writer's words: "a nested `list()`" rather than "an object",
+because the object literal somebody would then go looking for is not what happened.
 
 ## Retired codes
 

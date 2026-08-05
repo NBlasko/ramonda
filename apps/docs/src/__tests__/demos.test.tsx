@@ -1,5 +1,4 @@
 import { bootstrap, configureDev, __h, unmount } from "@ramonda/core";
-import type { VNode } from "@ramonda/core";
 import { flushSync } from "@ramonda/core/testing";
 import { describe, expect, test, vi } from "vitest";
 import { demos } from "../demos/index";
@@ -32,7 +31,7 @@ describe("published demos", () => {
       configureDev({ strictRender: true });
 
       try {
-        bootstrap(__h(Demo as never, null) as VNode, container);
+        bootstrap(__h(Demo as never, null), container);
         flushSync();
       } catch (error) {
         offenders.push(`${name}: threw ${(error as Error).message}`);

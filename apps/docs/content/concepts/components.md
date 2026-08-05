@@ -68,7 +68,7 @@ them in a container. `render()` may return an array:
 
 ```tsx
 @Host("tr")
-export class Row extends Component {
+export class Row extends Component<{ name: string; score: number }> {
   render() {
     return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
   }

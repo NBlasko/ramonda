@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
 import { Mutation, type MutationContext } from "../Mutation";
@@ -175,7 +175,7 @@ describe("typing", () => {
       }
     }
 
-    const { container, unmount } = render((<Page />) as VNode);
+    const { container, unmount } = render(<Page />);
     try {
       expect(container.querySelectorAll("#out").length).toBeGreaterThan(0);
     } finally {

@@ -1,5 +1,5 @@
 import { Component, __h, state } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { act } from "./act";
 import { render, type WrapperComponent } from "./render";
 
@@ -88,7 +88,7 @@ export function renderHook<T, O = undefined>(
     }
   }
 
-  const result = render<HookHost>(__h(HookHost, null) as VNode, {
+  const result = render<HookHost>(__h(HookHost, null), {
     wrapper: options.wrapper,
   });
 

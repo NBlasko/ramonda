@@ -119,12 +119,35 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    */
   @create({ env: "client" })
   publishToDevtools(): void {
+    if (__DEV__) {
+      announceClient(this.ownClient);
+      /**
+       * And answer whenever the panel asks again.
+       *
+       * Announcing once is not enough, and the reason is the order an app loads in. A provider
+       * mounts during hydration, synchronously; `@ramonda/query/devtools` arrives through a dynamic
+       * import, which resolves after. So the one announcement happened before anything was
+       * listening, and the tab stayed empty for the life of the page — for the root provider always,
+       * since it never mounts again.
+       *
+       * `this.republish` is a method, so it is bound once and the same reference reaches
+       * `removeEventListener`.
+       */
+      window.addEventListener("ramonda:query-client-request", this.republish);
+    }
+  }
+
+  /** Says what is here, for a panel that started listening after this provider mounted. */
+  republish(): void {
     if (__DEV__) announceClient(this.ownClient);
   }
 
   @destroy
   unpublishFromDevtools(): void {
-    if (__DEV__) announceClientGone(this.ownClient);
+    if (__DEV__) {
+      window.removeEventListener("ramonda:query-client-request", this.republish);
+      announceClientGone(this.ownClient);
+    }
   }
 }
 

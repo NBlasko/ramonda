@@ -1,5 +1,5 @@
 import { __h } from "./vdom/h";
-import type { ComponentChild, RamondaNode } from "./types/vdom";
+import type { ComponentChild, VNode } from "./types/vdom";
 import { reportFunctionTag } from "./debug/jsxRules";
 
 /**
@@ -47,7 +47,7 @@ function attributesOf(props: Props | null, key: string | number | undefined): Re
 }
 
 /** One child, or none. An array child stays one child — that is the whole point of `jsx` vs `jsxs`. */
-export function jsx(type: unknown, props: Props | null, key?: string | number): RamondaNode {
+export function jsx(type: unknown, props: Props | null, key?: string | number): VNode {
   const attributes = attributesOf(props, key);
   // `in` rather than `!== undefined`: `<p>{undefined}</p>` HAS a child, and it holds a slot the
   // diff matches siblings by. `<p/>` has none.
@@ -57,7 +57,7 @@ export function jsx(type: unknown, props: Props | null, key?: string | number): 
 }
 
 /** Children the compiler wrote itself: spread, so each one keeps its own index. */
-export function jsxs(type: unknown, props: Props | null, key?: string | number): RamondaNode {
+export function jsxs(type: unknown, props: Props | null, key?: string | number): VNode {
   const attributes = attributesOf(props, key);
   const children = (props?.children ?? []) as ComponentChild[];
   return __h(type as never, attributes as never, ...children);

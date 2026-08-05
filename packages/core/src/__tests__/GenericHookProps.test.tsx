@@ -97,13 +97,13 @@ function withApp(vnode: VNode, body: (container: HTMLElement) => void) {
 
 describe("a generic hook's props", () => {
   test("the hook's type parameter is inferred from the props callback", () => {
-    withApp((<Consumer id="42" />) as VNode, (container) => {
+    withApp(<Consumer id="42" />, (container) => {
       expect(container.querySelector("#out")!.textContent).toBe("thing-42@/api/thing/42");
     });
   });
 
   test("and from a plain props object too", () => {
-    withApp((<ObjectPropsConsumer />) as VNode, (container) => {
+    withApp(<ObjectPropsConsumer />, (container) => {
       expect(container.querySelector("#fixed")!.textContent).toBe("7");
     });
   });

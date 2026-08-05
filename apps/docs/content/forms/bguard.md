@@ -33,7 +33,7 @@ import { htmlConstraints } from "@ramonda/form/bguard";
 // Built once, outside render.
 const html = htmlConstraints(signupSchema);
 
-class Signup extends Component {
+class SignupForm extends Component {
   private form = this.use(Form<typeof signupSchema>, { schema: signupSchema, defaultValues, onSubmit });
 
   render() {
@@ -153,7 +153,7 @@ hand, `ref("rows.0.id")`, is also shown as `rows.*.id`.
 **`ctx.sibling` is checked too.** It resolves to an absolute path, so it flows through the same
 recording — which matters because its *string* form is the one the compiler cannot check:
 
-```ts
+```ts expect-error
 ctx.sibling((row: Contact) => row.kynd);  // a compile error
 ctx.sibling("kynd");                      // not — and this is what catches it
 ```

@@ -53,7 +53,9 @@ Sometimes a navigation is the result of an action, not a link someone clicks —
 redirect after saving. For that, use the router's `push` (next page):
 
 ```tsx
-export class SaveButton extends Component {
+import { Navigator } from "@ramonda/router";
+
+export class SaveButton extends Component<{ onSave: () => Promise<void> }> {
   route = this.use(Navigator);
 
   async save() {

@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component, Hook, bootstrap, unmount } from "../index";
-import type { VNode } from "../types/vdom";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -40,7 +39,7 @@ class Panel extends Component {
 function withApp(body: (container: HTMLElement) => void) {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  bootstrap((<Panel />) as VNode, container);
+  bootstrap(<Panel />, container);
   try {
     body(container);
   } finally {

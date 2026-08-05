@@ -101,12 +101,16 @@ see the tag. Either is fine when the field holds a string.
 To do something extra on an event, call the bound handler from a method of your own:
 
 ```tsx
-class Signup extends Component {
-  private form = this.use(Form, () => ({ /* … */ }));
+class SignupForm extends Component {
+  private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }));
 
   onEmailInput(event: Event): void {
     this.form.fields.email.$.bind.onInput(event);
     this.searchAsYouType(event);
+  }
+
+  searchAsYouType(event: Event): void {
+    // your own work, after the field has taken the value
   }
 
   render() {
@@ -126,7 +130,7 @@ editor, a set of radio buttons — reads `value` and calls `set`:
 
 ```tsx
 class Editor extends Component {
-  private form = this.use(Form, () => ({ /* … */ }));
+  private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }));
 
   pickTheme(next: string): void {
     this.form.fields.theme.$.set(next);

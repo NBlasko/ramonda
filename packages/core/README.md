@@ -177,17 +177,18 @@ class Clock extends Component {
 
 ### Lists
 
-`For` is a hook, not a component — a `<For>` component would have to *be* an
-element, so it could not put N siblings into the parent.
+`list()` is a function call in an expression slot, not a component — a `<List>` tag would have to
+*be* an element, so it could not put N siblings into the parent.
 
 ```tsx
-rows = this.use(For<Row>, () => ({ each: this.items, as: RowView }));
-render() { return <ul>{this.rows.nodes}</ul>; }
+render() {
+  return <ul>{list({ each: this.items, as: RowView })}</ul>;
+}
 ```
 
 **It mints the keys itself.** A hand-written key is an identity you *assert*: it
 can be derived from the index, typed wrong, forgotten, or collide, and a runtime
-check catches it only if that branch happens to run. `For` takes identity from
+check catches it only if that branch happens to run. `list()` takes identity from
 the item — object reference, or the value for primitives — so there is nothing to
 write and nothing to get wrong. `key: (item) => item.id` exists as an escape
 hatch for when a replaced item should keep its component's state.

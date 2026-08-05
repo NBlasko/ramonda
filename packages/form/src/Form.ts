@@ -155,11 +155,19 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @create
   join(env: RenderEnv = "client"): void {
     if (__DEV__ && env === "client") {
-      window.dispatchEvent(
-        new CustomEvent("ramonda:form", { detail: { form: this, key: this, readable: readableKey } }),
-      );
+      this.announce();
+      // And again whenever the panel asks. `@ramonda/form/devtools` arrives through a dynamic
+      // import, so a form already mounted when it loads announced itself to nobody — see
+      // `QueryClientProvider.republish` for the same fault, which showed there first because its
+      // provider mounts once, at the root, during hydration.
+      window.addEventListener("ramonda:form-request", this.announce);
     }
     this.prime(env);
+  }
+
+  /** Says this form is here — on mount, and again for a panel that started listening later. */
+  announce(): void {
+    window.dispatchEvent(new CustomEvent("ramonda:form", { detail: { form: this, key: this, readable: readableKey } }));
   }
 
   prime(env: RenderEnv = "client"): void {
@@ -179,7 +187,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   @destroy
   dispose(): void {
     this.disposed = true;
-    if (__DEV__) window.dispatchEvent(new CustomEvent("ramonda:form-gone", { detail: { key: this } }));
+    if (__DEV__) {
+      window.removeEventListener("ramonda:form-request", this.announce);
+      window.dispatchEvent(new CustomEvent("ramonda:form-gone", { detail: { key: this } }));
+    }
   }
 
   /**

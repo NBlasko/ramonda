@@ -199,6 +199,10 @@ class Basket extends Hook {
   @state private version = 0;
   private lines: Line[] = [];
 
+  @compute private get total(): number {
+    return this.lines.length;
+  }
+
   [INSPECT]() {
     return { lines: this.lines, total: this.total };
   }

@@ -49,7 +49,9 @@ runs on every render, so the host can react to your state:
 
 ```tsx
 @Host("nav", (self: Menu) => ({ className: self.open ? "open" : "" }))
-export class Menu extends Component {}
+export class Menu extends Component {
+  @state open = false;
+}
 ```
 
 ## Letting the caller choose the element

@@ -164,7 +164,7 @@ something other than what ships.
 
 ```ts
 const { current, rerender, unmount } = renderHook(CounterHook, {
-  initialOptions: { start: 2 },
+  initialProps: { start: 2 },
 });
 
 expect(current.count).toBe(2);
@@ -218,11 +218,9 @@ export default defineConfig({
 });
 ```
 
-```ts
-// test/setup.ts
-import { h } from "@ramonda/core";
-(globalThis as unknown as { h: typeof h }).h = h;
-```
+There is no setup file to write for JSX. With the automatic runtime the compiler imports what it
+needs per file, so nothing has to be put on `globalThis` and there is no factory name to keep in
+step with the config.
 
 `globals: true` is what lets cleanup register itself. Add
 `@testing-library/jest-dom` to the setup file if you want its matchers.

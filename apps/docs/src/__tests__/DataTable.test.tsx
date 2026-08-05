@@ -1,5 +1,5 @@
 import { bootstrap, configureDev, __h, unmount } from "@ramonda/core";
-import type { RamondaNode, VNode } from "@ramonda/core";
+import type { VNode } from "@ramonda/core";
 import { flushSync } from "@ramonda/core/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { DataTable } from "../DataTable";
@@ -17,10 +17,10 @@ import { pageLoaders } from "../generated/page-loaders";
 
 let host: HTMLElement | undefined;
 
-function mount(node: RamondaNode): HTMLElement {
+function mount(node: VNode): HTMLElement {
   host = document.createElement("div");
   document.body.appendChild(host);
-  bootstrap(node as VNode, host);
+  bootstrap(node, host);
   flushSync();
   return host;
 }
@@ -160,7 +160,7 @@ describe("the published pages", () => {
       const Page = (loaded["default"] ?? loaded["Page"]) as Parameters<typeof __h>[0];
       const container = document.createElement("div");
       document.body.appendChild(container);
-      bootstrap(__h(Page, {}) as VNode, container);
+      bootstrap(__h(Page, {}), container);
       flushSync();
 
       for (const table of container.querySelectorAll("table")) {

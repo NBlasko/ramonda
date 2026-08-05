@@ -216,6 +216,29 @@ async function checkPanel() {
     }
   }
 
+  /**
+   * The QUERY tab has something in it.
+   *
+   * Its existence is not enough, and that gap shipped: `QueryClientProvider` announced its client
+   * from `@create`, which runs during hydration — while `@ramonda/query/devtools` arrives through a
+   * dynamic import that resolves after. The one announcement went to nobody, and because the root
+   * provider never mounts again the tab was empty for the life of the page. The panel asks on load
+   * now, and the provider answers; this is what would notice if either half went away.
+   */
+  panel.shadowRoot.querySelector('.tab[data-tab="plugin-query"]').dispatchEvent(new window.Event("click"));
+  await new Promise((r) => setTimeout(r, 600));
+  const registry = window.__RAMONDA_PANELS__;
+  const query = registry?.list().find((plugin) => plugin.id === "query");
+  if (!query) fail("no QUERY plugin in the registry — does entry-client import @ramonda/query/devtools?");
+  const queryRows = query.snapshot().groups.length;
+  if (queryRows === 0) {
+    fail(
+      "the QUERY tab knows of no client. `QueryClientProvider` announces from `@create`, which runs\n" +
+        "  during hydration — before the dynamic import of `@ramonda/query/devtools` has resolved. The\n" +
+        "  panel has to ASK on load and the provider has to answer; one of those two is gone.",
+    );
+  }
+
   panel.shadowRoot.querySelector('.tab[data-tab="components"]').dispatchEvent(new window.Event("click"));
 
   // Five is the "the tree came through at all" bar, not an exact count — the app is free to grow.
@@ -246,7 +269,7 @@ async function checkPanel() {
   open.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
   await waitFor("clicking the editor button asked the server for nothing", () => editorCalls.length > 0);
 
-  return { rows, editing: pencil.dataset.editKey };
+  return { rows, editing: pencil.dataset.editKey, queryRows };
 }
 
 /**
@@ -450,7 +473,7 @@ stop();
 console.log(
   `[smoke] the server rendered / with ${html.length} bytes, and all ${checks.length} checks passed\n` +
     `[smoke] the panel listed ${panel.rows} components, edited ${panel.editing}, ` +
-    `and carried the QUERY and FORMS tabs\n` +
+    `and the QUERY tab listed ${panel.queryRows} row(s)\n` +
     `[smoke] the endpoint resolved ${editor.source} ` +
     `(${editor.opened ? "and opened it" : "no editor on this machine, which is not this test's business"}), ` +
     `and refused a path that does not exist\n` +

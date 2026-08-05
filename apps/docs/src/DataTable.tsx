@@ -75,11 +75,11 @@ class DataTableRow extends Component<{ item: Row }> {
   private cell(cell: Cell, index: number): VNode {
     // The first column IS the heading, so it gets none of its own.
     const attrs = index === 0 ? null : { "data-label": this.props.item.labels[index] ?? "" };
-    return __h("td", attrs, ...spread(cell)) as VNode;
+    return __h("td", attrs, ...spread(cell));
   }
 }
 
-const headerCell = (column: Cell): VNode => __h("th", null, ...spread(column)) as VNode;
+const headerCell = (column: Cell): VNode => __h("th", null, ...spread(column));
 
 /** The visible text of a vnode subtree — a heading is short, and `data-label` takes a string. */
 function textOf(child: Cell): string {

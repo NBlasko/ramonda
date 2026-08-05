@@ -19,7 +19,7 @@ working, and shows a fallback in place of the broken part.
     </p>
   )}
 >
-  <Report data={this.data} />
+  <ReportView data={this.data} />
 </ErrorBoundary>
 ```
 

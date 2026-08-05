@@ -105,6 +105,15 @@ Knowing one rule beats knowing when the exception applies.
 const TABS = ["overview", "activity", "settings"];
 
 class Panel extends Component {
+  @memoizedHandler
+  select(name: string) {
+    return () => {
+      this.active = name;
+    };
+  }
+
+  @state active = TABS[0];
+
   renderTab(name: string) {
     return <button type="button" onClick={this.select(name)}>{name}</button>;
   }

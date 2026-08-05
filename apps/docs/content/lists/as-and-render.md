@@ -34,6 +34,8 @@ render.
 ## `render` — the item is plain markup
 
 ```tsx
+@state tags: { id: string; label: string }[] = [];
+
 list({
   each: this.tags,
   render: (tag) => <span className="chip">{tag.label}</span>,

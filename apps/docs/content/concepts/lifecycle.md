@@ -55,6 +55,9 @@ changed.
 
 ```tsx
 class Row extends Component<{ selected: boolean }> {
+  private scrolled = false;
+  private element!: HTMLElement;
+
   @updated
   keepVisible() {
     if (!this.props.selected || this.scrolled) return;
@@ -153,7 +156,7 @@ it is handed `env` as an argument, `"client"` or `"server"`:
 @mount
 setup(env: RenderEnv) {
   if (env === "server") return; // nothing to wire up during a server render
-  this.observer = new IntersectionObserver(/* … */);
+  this.observer = new IntersectionObserver(() => {});
 }
 ```
 

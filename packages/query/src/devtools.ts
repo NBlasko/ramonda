@@ -37,6 +37,17 @@ import type { PanelPlugin, PanelRow, PanelSnapshot, RowField } from "./devtoolsP
 /** The live clients, learned from the events and held HERE — never in the package. */
 const clients: QueryClient[] = [];
 
+/**
+ * Ask what is already here, before listening for what arrives next.
+ *
+ * This module is imported dynamically, so it loads AFTER the app has hydrated — and a provider that
+ * mounted during hydration announced itself to nobody. Without this the Query tab was empty on any
+ * app whose provider sits at the root, which is every app.
+ */
+function askWhatIsAlreadyLive(): void {
+  window.dispatchEvent(new CustomEvent("ramonda:query-client-request"));
+}
+
 window.addEventListener("ramonda:query-client", (event) => {
   const client = (event as CustomEvent<{ client: QueryClient }>).detail?.client;
   if (client && !clients.includes(client)) clients.push(client);
@@ -353,3 +364,6 @@ function install(): void {
 }
 
 let registered = false;
+
+// Last, so the listeners above are in place when the answers come back.
+askWhatIsAlreadyLive();

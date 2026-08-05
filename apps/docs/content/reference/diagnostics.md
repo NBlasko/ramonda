@@ -142,7 +142,8 @@ Superseded by `list()`, which prevents the problem structurally rather than repo
 ## RMD013 — A list could not identify its items
 
 Either a `key` callback returned the same value twice, or the render callback returned nothing for
-an item.
+an item. A callback that returned something which is not an element is
+[RMD031](#rmd031-a-list-item-that-is-not-an-element) instead.
 
 If you passed `key`, consider dropping it — identity minted from the items cannot collide. Keep it
 only for objects re-created as fresh instances for the same entity. See [lists](/lists).
@@ -638,6 +639,26 @@ method's contract is to read, and the same stance applies as in a
 [`@compute`](#rmd018-state-written-during-a-compute). This is the third of that family:
 [RMD001](#rmd001-state-written-during-render) during `render()`, RMD018 during a `@compute`, and
 this one during a describe.
+
+## RMD031 — A list item that is not an element
+
+```tsx expect-error
+// reported: a nested list() is a descriptor, not an element
+list({ each: pages, render: (page: Post[]) => list({ each: page, as: PostRow }) });
+
+// the way: a component, whose host element wraps the inner rows
+list({ each: pages, as: PostPage });
+```
+
+One item becomes exactly one element. The list writes the row's key onto it and the diff matches
+rows on that key, so a string, a number, an array or a nested `list()` has nowhere to carry its
+identity — the item is **skipped**, and the page renders one row short.
+
+For plain values, wrap them: `render: (name) => <li>{name}</li>`. For a nested list — a list of
+pages, each holding rows — go through a component, as [nested lists](/lists/nested) shows. The
+component's host element is what wraps the inner rows.
+
+TypeScript rejects all of this at the call site; this fires when the build has no types.
 
 ## RMF001 — a field was assigned to
 

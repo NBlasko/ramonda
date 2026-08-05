@@ -110,7 +110,7 @@ The form re-runs the **whole schema** on every change, which is what makes this 
 In bguard the rule reads the other field through the context, and lands where it ran:
 
 ```ts
-import type { InferType } from "bguard";
+import { object, string, minLength, type InferType } from "bguard";
 import type { ExceptionContext } from "bguard/core";
 
 type Signup = InferType<typeof schema>;
@@ -162,18 +162,22 @@ on the signals it reads — so a compute means the schema is rebuilt when what i
 and not otherwise:
 
 ```tsx
-class Signup extends Component {
+class SignupForm extends Component {
   @state accountType: "personal" | "business" = "personal";
 
   @compute get schema(): StandardSchemaV1<Signup, Signup> {
     return this.accountType === "business" ? businessSchema : personalSchema;
   }
 
-  private form = this.use(Form, (self: Signup) => ({
+  private form = this.use(Form<typeof personalSchema>, (self: SignupForm) => ({
     schema: self.schema,
     defaultValues: BLANK,
     onSubmit: self.save,
   }));
+
+  save(values: Signup): void {
+    // your own submit
+  }
 
   chooseBusiness(): void {
     this.accountType = "business";
