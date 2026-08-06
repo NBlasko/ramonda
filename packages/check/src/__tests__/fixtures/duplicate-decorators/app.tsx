@@ -1,14 +1,12 @@
 import { Component, bootstrap, catchError, createContext, Host, ShouldUpdateOnPropsChange } from "../framework";
 
 /**
- * Written the way an app is written: real JSX, and the AUTOMATIC runtime that a real
- * `tsconfig.json` configures (`jsx: "react-jsx"` + `jsxImportSource`). Every other fixture here
- * uses the classic runtime with `jsxFactory: "h"` — a factory the framework no longer exports —
- * so this is also the one place the analyzer is proved to work against the configuration real
- * projects have.
+ * Written the way an app is written: real JSX, and the AUTOMATIC runtime a real `tsconfig.json`
+ * configures (`jsx: "react-jsx"` + `jsxImportSource`).
  *
- * The context pair is here for that reason and no other: finding it needs the analyzer to walk the
- * JSX tree, so a consumer reported with the right PATH is the proof that the walk happened.
+ * The context pair is here for one reason: finding it needs the analyzer to walk the JSX tree, so a
+ * consumer reported with the right PATH is the proof that the walk happened — under this runtime,
+ * which is the one every project has and the one nothing here used to exercise.
  */
 const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 

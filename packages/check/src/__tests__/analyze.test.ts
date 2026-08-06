@@ -146,11 +146,12 @@ describe("single-use decorators declared twice", () => {
     /**
      * The proof that this fixture's configuration is understood, not merely tolerated.
      *
-     * Every other fixture is on the classic runtime with `jsxFactory: "h"` — a factory the
-     * framework does not export any more — so nothing here had ever run against
-     * `jsx: "react-jsx"` + `jsxImportSource`, which is what a real project has. Finding a missing
-     * provider needs the JSX tree, and the PATH is what says the walk really happened: an analyzer
-     * that could not see the elements would report nothing at all.
+     * Every fixture used to be on the classic runtime, naming a factory the framework does not
+     * export (`jsxFactory: "h"`), so nothing had ever run against `jsx: "react-jsx"` +
+     * `jsxImportSource` — which is what a real project has. They are all on it now, and this is the
+     * assertion that says so: finding a missing provider needs the JSX tree, and the PATH is what
+     * says the walk really happened. An analyzer that could not see the elements would report
+     * nothing at all.
      */
     const { issues } = run("duplicate-decorators");
     expect(issues).toHaveLength(1);

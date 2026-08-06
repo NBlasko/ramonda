@@ -1,4 +1,4 @@
-import { Component, createContext, bootstrap, h } from "../framework";
+import { Component, createContext, bootstrap } from "../framework";
 const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
 class Reader extends Component {

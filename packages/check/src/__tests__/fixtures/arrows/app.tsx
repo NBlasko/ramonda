@@ -1,4 +1,4 @@
-import { Component, Hook, bootstrap, h } from "../framework";
+import { Component, Hook, bootstrap } from "../framework";
 
 declare function debounce<T>(fn: T, ms: number): T;
 declare function memoize<T>(fn: T): T;
