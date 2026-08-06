@@ -1,6 +1,6 @@
-import { exoticName, isArray, isContainer, shallowClone } from "./clone";
+import { exoticName, isArray, isContainer, isUnsafeKey, shallowClone } from "./clone";
+import { report } from "./diagnostics";
 import { formatPath, type Step } from "./steps";
-import { warn } from "./warn";
 
 /**
  * One walk down a recorded path, copying only what it must.
@@ -32,6 +32,15 @@ function resolveIndex(index: number, length: number): number {
   return resolved >= 0 && resolved < length ? resolved : NOT_FOUND;
 }
 
+/**
+ * Shared by the write path and the remove path, so one fault reads the same way
+ * whichever reached it. `at` is the index of the offending hop.
+ */
+function reportUnsafeKey(steps: readonly Step[], at: number, key: string): void {
+  const path = formatPath(steps, at + 1);
+  report("RML009", `${path} targets "${key}", so nothing was changed.`, { path, key });
+}
+
 export function walk(node: unknown, w: Walk, i: number): unknown {
   if (i === w.stopAt) return w.terminal(node, w.steps[i]);
 
@@ -39,9 +48,11 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
 
   if (!isContainer(node)) {
     if (__DEV__) {
-      warn(
+      report(
+        "RML001",
         `${formatPath(w.steps, i)} is ${node === undefined ? "undefined" : JSON.stringify(node)}, ` +
           `so ${formatPath(w.steps)} could not be reached. Nothing was changed.`,
+        { path: formatPath(w.steps), at: formatPath(w.steps, i), held: node === undefined ? "undefined" : typeof node },
       );
     }
     return node;
@@ -50,17 +61,22 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
   if (__DEV__) {
     const exotic = exoticName(node);
     if (exotic !== undefined) {
-      warn(
-        `${formatPath(w.steps, i)} is a ${exotic}. Its contents live in internal slots that a ` +
-          `copy cannot reach, so paths cannot descend into one — read it out, rebuild it, and ` +
-          `\`set\` the result. Nothing was changed.`,
-      );
+      report("RML002", `${formatPath(w.steps, i)} is a ${exotic}, so nothing was changed.`, {
+        path: formatPath(w.steps),
+        at: formatPath(w.steps, i),
+        container: exotic,
+      });
       return node;
     }
   }
 
   switch (step.kind) {
     case "key": {
+      if (isUnsafeKey(step.key)) {
+        if (__DEV__) reportUnsafeKey(w.steps, i, step.key);
+        return node;
+      }
+
       const container = node as Record<string, unknown>;
       // An ABSENT key is not refused here, deliberately. `draft?: boolean` is a
       // legitimate key that TypeScript accepts, and refusing it made
@@ -83,15 +99,20 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
 
     case "index": {
       if (!isArray(node)) {
-        if (__DEV__) warn(`${formatPath(w.steps, i)} is not an array, so \`at\` cannot be used.`);
+        if (__DEV__) {
+          const path = formatPath(w.steps, i);
+          report("RML003", `${path} is not an array, so \`at\` cannot be used.`, { path, operation: "at" });
+        }
         return node;
       }
       const index = resolveIndex(step.index, node.length);
       if (index === NOT_FOUND) {
         if (__DEV__) {
-          warn(
-            `${formatPath(w.steps, i)} has ${node.length} element(s), so index ${step.index} is ` +
-              `out of range. Nothing was changed.`,
+          const path = formatPath(w.steps, i);
+          report(
+            "RML004",
+            `${path} has ${node.length} element(s), so index ${step.index} is out of range. ` + `Nothing was changed.`,
+            { path, operation: "at", index: step.index, length: node.length },
           );
         }
         return node;
@@ -107,7 +128,10 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
 
     case "where": {
       if (!isArray(node)) {
-        if (__DEV__) warn(`${formatPath(w.steps, i)} is not an array, so \`where\` cannot be used.`);
+        if (__DEV__) {
+          const path = formatPath(w.steps, i);
+          report("RML003", `${path} is not an array, so \`where\` cannot be used.`, { path, operation: "where" });
+        }
         return node;
       }
       // The array is copied at most ONCE regardless of how many elements match,
@@ -127,7 +151,12 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
       }
 
       if (__DEV__ && matched === 0) {
-        warn(`${formatPath(w.steps, i)}.where(…) matched no element. Nothing was changed.`);
+        const path = formatPath(w.steps, i);
+        report("RML005", `${path}.where(…) matched no element. Nothing was changed.`, {
+          path,
+          operation: "where",
+          length: node.length,
+        });
       }
       return copy ?? node;
     }
@@ -162,15 +191,36 @@ function removeFrom(node: unknown, step: Step, steps: readonly Step[]): unknown 
   const where = formatPath(steps, steps.length - 1);
 
   if (!isContainer(node)) {
-    if (__DEV__) warn(`${where} is not a container, so there is nothing to remove from.`);
+    if (__DEV__) {
+      report("RML007", `${where} is not a container, so there is nothing to remove from.`, {
+        path: where,
+        operation: "remove",
+      });
+    }
     return node;
   }
 
   switch (step.kind) {
     case "key": {
+      // `removeAt` stops one hop early, so the LAST step never passes through
+      // `walk` — this is the only place that sees it, and the only place that can
+      // refuse it. Without this, `.get("__proto__").remove()` would find the
+      // inherited key `in` the object, delete nothing, and still hand back a copy
+      // — breaking the promise that a no-op returns the original root.
+      if (isUnsafeKey(step.key)) {
+        if (__DEV__) reportUnsafeKey(steps, steps.length - 1, step.key);
+        return node;
+      }
+
       const container = node as Record<string, unknown>;
       if (!(step.key in container)) {
-        if (__DEV__) warn(`${where} has no property "${step.key}", so nothing was removed.`);
+        if (__DEV__) {
+          report("RML007", `${where} has no property "${step.key}", so nothing was removed.`, {
+            path: where,
+            operation: "remove",
+            key: step.key,
+          });
+        }
         return node;
       }
       const copy = shallowClone(container);
@@ -180,13 +230,23 @@ function removeFrom(node: unknown, step: Step, steps: readonly Step[]): unknown 
 
     case "index": {
       if (!isArray(node)) {
-        if (__DEV__) warn(`${where} is not an array, so \`at(…).remove()\` cannot be used.`);
+        if (__DEV__) {
+          report("RML003", `${where} is not an array, so \`at(…).remove()\` cannot be used.`, {
+            path: where,
+            operation: "at().remove()",
+          });
+        }
         return node;
       }
       const index = resolveIndex(step.index, node.length);
       if (index === NOT_FOUND) {
         if (__DEV__) {
-          warn(`${where} has ${node.length} element(s), so index ${step.index} cannot be removed.`);
+          report("RML004", `${where} has ${node.length} element(s), so index ${step.index} cannot be removed.`, {
+            path: where,
+            operation: "at().remove()",
+            index: step.index,
+            length: node.length,
+          });
         }
         return node;
       }
@@ -195,12 +255,23 @@ function removeFrom(node: unknown, step: Step, steps: readonly Step[]): unknown 
 
     case "where": {
       if (!isArray(node)) {
-        if (__DEV__) warn(`${where} is not an array, so \`where(…).remove()\` cannot be used.`);
+        if (__DEV__) {
+          report("RML003", `${where} is not an array, so \`where(…).remove()\` cannot be used.`, {
+            path: where,
+            operation: "where().remove()",
+          });
+        }
         return node;
       }
       const kept = node.filter((item, k) => !step.predicate(item, k));
       if (kept.length === node.length) {
-        if (__DEV__) warn(`${where}.where(…) matched no element, so nothing was removed.`);
+        if (__DEV__) {
+          report("RML005", `${where}.where(…) matched no element, so nothing was removed.`, {
+            path: where,
+            operation: "where().remove()",
+            length: node.length,
+          });
+        }
         return node;
       }
       return kept;

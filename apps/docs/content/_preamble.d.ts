@@ -63,6 +63,8 @@ declare global {
   const items: any[];
   const id: string;
   const container: HTMLElement;
+  /** Whatever the reader collects diagnostics with — a devtools panel, a test, a log shipper. */
+  const myCollector: { alert(record: unknown): void };
 
   /* ── a test file's globals, for the testing pages ────────────────────────────────────────── */
   const test: (name: string, body: () => unknown) => void;

@@ -56,7 +56,7 @@ none of them need a cleanup from you:
 |---|---|
 | [`@onElement`](/concepts/events) / `@onWindow` / `@onDocument` | a DOM listener, removed on destroy |
 | [`@interval`](/concepts/timers) / `@timeout` | a timer, cleared on destroy |
-| [`@deferHydration`](/ssr/hydration) | waits for a promise before hydrating |
+| [`@deferHydration`](/ssr/async) | waits for a promise before hydrating |
 
 ## Not everything outside is a subscription
 

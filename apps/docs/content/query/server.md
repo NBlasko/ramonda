@@ -38,7 +38,7 @@ Two mechanisms the framework already has, and neither is new here.
 promise is awaited during a server render. The query's `@mount` returns the fetch, so
 the render waits for it and for whatever that starts, then serializes.
 
-**Travelling** is the [hydration blob](/ssr/index). Every hook's `@state` is
+**Travelling** is the [hydration blob](/ssr). Every hook's `@state` is
 serialized per component and restored before any client render — so the query keeps
 its answer in a `@state` field and it rides along with everything else the component
 was holding. That is why there is no `dehydrate()` to call, no boundary component to

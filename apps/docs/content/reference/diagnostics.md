@@ -1,21 +1,27 @@
 ---
 title: Diagnostics
-description: Every diagnostic — RMD from the core, RMQ from the query cache, RMF from forms — what it means, what causes it, and what to do instead.
+description: Every diagnostic — RMD from the core, RMQ from the query cache, RMF from forms, RML from immutable updates — what it means, what causes it, and what to do instead.
 section: Reference
 order: 110
 ---
 
 # Diagnostics
 
-Ramonda reports the common mistakes below at runtime, in development only. Every one is wrapped in
-`if (__DEV__)`, so a production build ships none of the checks and none of the messages.
+Ramonda reports the common mistakes below at runtime, in development only. Every message is wrapped
+in `if (__DEV__)`, so a production build ships none of them. Nearly every *check* is stripped with
+its message; the exception is named where it applies (`RML009`), because a guard that ran only in
+development would protect the one build that was never exposed to a request.
 
 **They exist because these mistakes are silent.** Almost every bug this framework has had produced
 a *wrong result* rather than an error: state landing on the wrong row, a click doing nothing, a
 subtree rendering into nodes nobody can see. None of them threw. A diagnostic is the framework
 saying the thing a stack trace never would.
 
-Each is deduplicated by cause, so a mistake in a list of a thousand rows is reported once.
+Most are deduplicated by cause, so a mistake in a list of a thousand rows is reported once. Whether
+to dedupe is the reporting package's call, and it follows from what the fault depends on: a core
+diagnostic fires from the render path for a fixed piece of code, so the second report carries nothing
+new, while an `RML` miss depends on the data — the same line can miss for one record and land for the
+next, and collapsing those would hide the case that matters.
 
 **Error or warning says what is at stake, not how bad the code looks.** An **error** means the end
 result is wrong — something renders the wrong thing, loses state, never becomes interactive, or
@@ -23,20 +29,92 @@ hands you a value that is not what you asked for; the devtools panel raises its 
 **warning** means the result is the same and the app just did more work to get there: a wasted
 render, a refetch, a listener re-attached.
 
-**The prefix says which package reported it**: `RMD` is `@ramonda/core`, `RMQ` is `@ramonda/query`.
-They are listed apart below, because a reader who hits `RMQ001` wants the query codes together and
-not one of them wedged between two core ones — which is exactly how this page read until now.
+**The prefix says which package reported it**: `RMD` is `@ramonda/core`, `RMQ` is `@ramonda/query`,
+`RMF` is `@ramonda/form`, `RML` is `@ramonda/lens`. They are listed apart below, because a reader who
+hits `RMQ001` wants the query codes together and not one of them wedged between two core ones.
+
+A code is stable forever and never reused. When a check is removed, its section stays and says
+`retired` — a reader who hits an old message in an old build still lands somewhere.
 
 ---
 
-## Reading them
+## Capturing them
 
-Every message names the component and says what to do instead. They go through the same reporter,
-so a devtools panel or a test can capture them:
+A diagnostic is also a **record**, so a devtools panel, a test, or a log collector can group and filter
+reports instead of parsing prose. A collector installs one function, and a reporting package finds it
+with no dependency on anything:
+
+`RML` reports arrive this way. The other prefixes reach the devtools' `LOGS` tab through the
+framework's own log channel, and join this one as each package moves onto it.
 
 ```ts
-window.addEventListener("ramonda:diagnostic", (event) => { … });
+interface RamondaDiagnostic {
+  /** Stable forever. The prefix says which package raised it. */
+  code: string;
+  /** Who emitted it — `"ramonda/lens"`. OpenTelemetry calls this `InstrumentationScope.name`. */
+  scope: string;
+  /** Mapping to OpenTelemetry SeverityNumber 5 · 9 · 13 · 17. */
+  severity: "debug" | "info" | "warn" | "error";
+  /** One sentence, human first. Interpolated values are fine — grouping is by `code`. */
+  message: string;
+  /** What to do instead. Always present for an `error`. */
+  fix?: string;
+  /** The values the message interpolated, structured. What a collector queries. */
+  data?: Record<string, unknown>;
+  /** Epoch millis. Sortable, comparable, locale-free. */
+  time: number;
+  /** Identifies the SOURCE of a fault. Absent means "never deduplicate this". */
+  dedupKey?: string;
+}
+
+declare global {
+  var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;
+}
+
+globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => {
+  if (record.severity === "error") myCollector.alert(record);
+};
 ```
+
+**If you have `@ramonda/devtools`, subscribe instead of assigning.** The sink is one function, so an
+assignment replaces whoever was there — which is normally the panel's own bridge, and it then quietly
+stops filling. `installDiagnostics` shares one sink between any number of subscribers and hands back
+the uninstall:
+
+```tsx
+import { installDiagnostics } from "@ramonda/devtools";
+
+const stop = installDiagnostics((record) => myCollector.alert(record));
+```
+
+The assignment above is the protocol-level form, for a package that will not take a dependency to
+report a warning. Write it when that is the situation, and chain what was already there:
+
+```ts
+const previous = globalThis.__RAMONDA_DIAGNOSTICS__;
+globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => {
+  previous?.(record);
+  myCollector.alert(record);
+};
+```
+
+Four rules make it work across packages that share no code:
+
+- **`globalThis`, not an event on `window`.** The same line runs in the browser, in Node, in a worker
+  and during a server render. A reporting package needs no dependency and no DOM.
+- **A collector is optional.** With nothing installed, the call is one property read and the message
+  still goes to the console. Installing a sink adds a consumer; it does not silence the console.
+- **Read tolerantly.** Ignore fields you do not know, and assume only `code`, `scope`, `severity`,
+  `message` and `time`. That is what lets the record grow without a version on every one of them.
+- **`data` holds values, not live objects.** A collector keeps a bounded history, and a record holding
+  a component or a DOM node would keep it alive for as long as that history does.
+
+The field names line up with OpenTelemetry's log data model, so bridging to a collector is a rename
+rather than a redesign. Anything can emit into this channel — the contract is the shape above and the
+name of the sink, not a package to depend on.
+
+On the server the sink is process-wide, so a collector sees every concurrent request at once; there
+is no per-request attribution in the record.
 
 ---
 
@@ -449,7 +527,7 @@ re-reads the request at all. Reach for `exposeToClient` when several components 
 value straight from `requestContext()`.
 
 If the server rendered something where this read is, the two sides now disagree and hydration
-replaces the node — [`RMD007`](#rmd007-hydration-mismatch) reports that separately.
+replaces the node — [`RMD007`](#rmd007-server-and-client-rendered-different-output) reports that separately.
 
 ## RMD027 — a props callback reads a value that is not reactive
 
@@ -521,8 +599,6 @@ or ambient state during a render — `getBoundingClientRect()`, `window.innerWid
 much as a forced layout and a dependency on something outside the tree; `@updated` is
 where that work belongs.
 
-# Query — `RMQ`
-
 ## RMD028 — an element the HTML parser is not allowed to keep here
 
 ```tsx
@@ -545,7 +621,7 @@ The `<p>` is closed early and the `<div>` becomes its sibling. **So this works p
 page is server-rendered**, and then the DOM the browser built is not the tree `render()` described.
 
 Without this, what you would see at that point is
-[RMD007](#rmd007-hydration-mismatch) — a mismatch — whose advice is about `new Date()` and
+[RMD007](#rmd007-server-and-client-rendered-different-output) — a mismatch — whose advice is about `new Date()` and
 `typeof window`. Neither is the problem: the server sent the right markup and the parser moved it.
 
 What is reported, and what the parser does with each:
@@ -613,7 +689,7 @@ value compiles.
 }
 ```
 
-[`[INSPECT]()`](/devtools#a-hook-that-keeps-its-state-outside-state) describes an instance. It does
+[`[INSPECT]()`](/devtools#what-an-instance-holds) describes an instance. It does
 not change one.
 
 The panel calls it **on every commit** while it is open on the components tab, so a write here closes
@@ -660,6 +736,8 @@ component's host element is what wraps the inner rows.
 
 TypeScript rejects all of this at the call site; this fires when the build has no types.
 
+# Forms — `RMF`
+
 ## RMF001 — a field was assigned to
 
 ```tsx
@@ -673,8 +751,8 @@ would re-render, and the next read would return the old value — a write that l
 worked. `set` records the change where the form can see it.
 
 This one **throws** rather than warning, and in production too, because there is no correct
-program in which the assignment does something. Everything else on this page is development
-only.
+program in which the assignment does something. `RML009` is the only other check that survives
+into production; every other report on this page is development only.
 
 ## RMF002 — the list members were used on a field that is not a list
 
@@ -704,6 +782,8 @@ async save(values: Signup) {
   }
 }
 ```
+
+# Query — `RMQ`
 
 ## RMQ001 — a query key that cannot be hashed
 
@@ -742,3 +822,143 @@ ordinary as a timeout.
 Reading any one of those four silences it, per render: a component that showed the error and
 then stopped (a collapsed panel, a switched tab) is reported again, because each render is
 judged on its own reads.
+
+# Immutable updates — `RML`
+
+Every one of these means **the write did not happen**: the value handed back is the original root,
+unchanged and uncopied, and the app carried on with the value it already had. What the severity
+separates is whether the *code* can be right —
+
+- **error** — it cannot be, whatever the data holds. A wrong kind of value for the operation, a
+  refused key, a branch that returns nothing.
+- **warn** — it may well be, and the data was simply empty or absent. A path through a `null`, a
+  predicate that matched nothing, a key already gone.
+
+A path steps *through* a nullable value by design, so reporting that as an error would raise an alarm
+about a program doing exactly what it was written to do.
+
+None of them is deduplicated. [Messages you might see](/lens/messages) maps every message text to its
+code, for when you have the console output and not the code.
+
+## RML001 — a path that could not be reached
+
+```tsx
+const profile: { profile: { city: string } | null } = { profile: null };
+
+focusOn(profile).get("profile").get("city").set("Niš");
+// .profile is undefined, so .profile.city could not be reached.
+```
+
+A hop *before* the last one holds `undefined`, `null`, or a primitive, so there is nothing to descend
+into. Only the last hop creates what it names — `set`, `update`, `push` and `insert` all write where
+nothing is — and a gap before it cannot be walked through.
+
+Set the intermediate value first, or `merge` the whole object into place. A warning rather than an
+error because [stepping through an optional value](/lens/paths#stepping-through-optional-values) is
+what the types are built for: the path is legal, and this run found the value absent.
+
+## RML002 — a path into a `Map`, `Set` or `Date`
+
+Those hold their contents in internal slots that a copy cannot reach, so a clone of one would look
+right and throw on first use. They are fine as **values** — `set(new Date())` stores one like any
+other leaf — but a path cannot descend into one.
+
+Read the value out, rebuild it, and `set` the result:
+
+```tsx
+const store: { byId: Map<string, { title: string }> } = { byId: new Map() };
+
+focusOn(store).get("byId").set(new Map(store.byId).set(id, { title: "Renamed" }));
+```
+
+## RML003 — an array hop on something that is not an array
+
+`at` and `where` exist only where the focused value is an array, so TypeScript refuses this at the
+call site. It fires when the build has no types, or through a cast. Use `get(key)` for an object.
+
+## RML004 — an index outside the array
+
+`at(i)` accepts `-length … length - 1`, negative counting from the end, so `at(-1)` is the last
+element. `insert(i, …)` accepts one more — `length` itself, which appends, and `push` says that more
+plainly.
+
+A warning, not an error: the index is the code's, but the length is the data's, and an array that came
+back shorter than expected is a normal thing for it to do.
+
+## RML005 — a predicate that matched nothing
+
+`where` matches **every** element that satisfies it, so matching none is a write with no target.
+Reading the same path with `values()` shows what is actually there — a stale id and a comparison
+against the wrong field both look like this.
+
+Often legitimate: "publish every draft" over a list with no drafts left is a program working
+correctly, which is why this warns rather than erring.
+
+## RML006 — an operation that needs a different kind of value
+
+`push` and `insert` need an array. A **missing or `null`** one counts as empty and is created; a value
+that is present and is not an array — a number, a string, an object — is a genuine mistake.
+
+`merge` needs an object and does **not** create one, and the line between them is what the operation
+can supply: `push` hands over a complete array, while `merge` has only a `Partial`, so creating from it
+would mint a half-built object typed as a whole one. Use `set` where the object itself may be missing.
+
+## RML007 — nothing to remove
+
+Either the container above the removal is not one, or the property named is already gone. Check the
+hop before the one being removed, and the spelling of the key — a typo reads exactly the same way.
+
+A warning: removing a key that is not there is the idempotent case, and a program that runs twice
+lands here the second time.
+
+## RML008 — a fork branch that returned nothing
+
+```tsx
+// ✗ returns undefined, so the branch is skipped
+.and((post) => { post.get("title").set("Renamed"); })
+// ✓
+.and((post) => post.get("title").set("Renamed"))
+```
+
+What a branch returns *is* the new value of the forked node, so a block body without `return` hands
+back `undefined`. TypeScript rejects it; this fires when the types were loose enough to let it
+through. For the same reason a branch that ends in a **read** replaces the node with what it read.
+
+## RML009 — a key a write is refused for
+
+`get` takes a `string | number`, so a key can come from data — a field name, a key off a parsed
+request body — and every write ends in an assignment into the copy. `__proto__`, `constructor` and
+`prototype` are refused there, in `remove`, and in a `merge` partial: assigning to `__proto__` does
+not create a property at all, it runs the setter `Object.prototype` provides and replaces the copy's
+prototype.
+
+If the key came from data, this is the guard doing its job — filter the key before building the path.
+
+**This is the one check that is not compiled out of production**; only its message is. A check that
+ran solely in development would protect the one build that was never exposed to a request.
+
+## RML010 — a chain written through twice
+
+```tsx
+const blog: { posts: { title: string }[] } = { posts: [{ title: "a" }, { title: "b" }] };
+
+const posts = focusOn(blog).get("posts");
+posts.at(0).get("title").set("one");
+posts.at(1).get("title").set("two"); // ✗ throws
+```
+
+`focusOn(root)` captures `root` once, so the second write is computed from the **original** value and
+silently drops the first edit. The result looks plausible and is missing a change, which is far harder
+to find than a throw.
+
+Feed the result back in — `focusOn(next).…` — or make one [`and`](/lens/updating#several-edits-in-one-pass)
+of the edits. Sharing a prefix to **read** is fine and never trips this.
+
+## RML011 — `remove()` at the root
+
+Removal needs the container holding the value, and the root has none. Focus the property or element
+to drop first: `focusOn(state).get("home").remove()`.
+
+`RML010` and `RML011` **throw** in development and are a silent no-op in production, so neither is
+control flow to rely on — do not wrap either in a `try` expecting to catch something in a shipped
+build.
