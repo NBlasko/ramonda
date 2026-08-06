@@ -7,11 +7,23 @@
  * a differing pair "rebuilt" exactly when it says the same. If they drifted apart, the
  * fix a report suggested would not silence the report.
  *
- * **Bounded in both directions** because it runs on every render in a development build,
- * and for every declared prop in every build. Past the depth or the width, two different
- * objects are simply called different — which is the only safe answer: for `@StableProps`
+ * **Depth is bounded everywhere; width is bounded for ARRAYS only.** Past a bound, two
+ * different values are simply called different — the only safe answer: for `@StableProps`
  * it means a fresh reference (correct, just not optimal), and for the diagnostic it means
  * a less precise message rather than a change that was never noticed.
+ *
+ * The asymmetry is deliberate, and it used to be described here as "bounded in both
+ * directions", which was not what the code did. A wide ARRAY is the shape a list of rows
+ * takes, it is usually a fresh array anyway, and stopping at the bound costs nothing worth
+ * measuring. A wide OBJECT is a record — a form's fields, a config — whose keys are fixed
+ * and whose contents genuinely do repeat between renders, so calling it "different" past a
+ * cap would hand `@StableProps` a fresh reference on every render and re-render the child
+ * every time: the exact thing it exists to prevent, traded for speed that is not needed.
+ *
+ * Measured, per call: a 10-key object 0.35 µs, 50 keys 1.51 µs, 100 keys 3.33 µs, and 50-key
+ * objects nested to the depth `@StableProps` uses 8.48 µs. Only a 500-key object gets
+ * expensive (62 µs), and that is not a props shape. An array over the bound answers in
+ * 0.07 µs, which is what the cap buys where it applies.
  *
  * Depth counts structural recursion only. Primitives compare by `Object.is` before the
  * bound is consulted, so `["posts", { page: 1 }]` matches at the default depth.

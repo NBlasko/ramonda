@@ -39,26 +39,26 @@ so a component that misuses the same property on every render reports once.
 | --- | --- | --- |
 | `RMD001` | error | State written during `render()` |
 | `RMD002` | error | Duplicate `key` among siblings |
-| `RMD003` | warning | Context consumed with no Provider above it |
+| `RMD003` | error | Context consumed with no Provider above it |
 | `RMD004` | error | Component wrote to its own props |
 | `RMD005` | error | Array in state mutated in place |
 | `RMD006` | error | Timer still running after unmount |
 | `RMD007` | error | Server and client rendered different output |
 | `RMD008` | warning | State changed after the component was unmounted |
 | `RMD009` | error | Update loop — a component never stopped re-rendering |
-| `RMD010` | warning | The default host is not allowed in this parent |
+| `RMD010` | error | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
 | `RMD013` | error | A list could not identify its items |
 | `RMD014` | error | A list was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
-| `RMD016` | warning | A component updated while its element is not in the document |
+| `RMD016` | error | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
 | `RMD018` | error | State written during a `@compute` |
 | `RMD019` | error | State set to a value that cannot be serialized |
 | `RMD020` | warning | `render()` produced a different value the second time |
-| `RMD021` | warning | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
+| `RMD021` | error | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
 | `RMD022` | warning | A hook's props callback built a new value for the same contents |
-| `RMD023` | warning | Components built from an array, with no keys |
+| `RMD023` | error | Components built from an array, with no keys |
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
 | `RMD025` | error | Per-request data read in the browser |
 | `RMD027` | error | A props callback reads a value that is not reactive |
@@ -66,6 +66,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD029` | error | A boolean attribute given the string "false" |
 | `RMD030` | error | State written during `[INSPECT]()` |
 | `RMD031` | error | A list item that is not an element |
+| `RMD032` | error | More than one `@catchError` on a component |
 
 ### RMD001 — State written during render()
 

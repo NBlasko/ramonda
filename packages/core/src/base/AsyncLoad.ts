@@ -241,6 +241,21 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
         if (!res[namedExport]) throw new Error(`Missing named export: ${namedExport}`);
 
         const component = res[namedExport];
+
+        // Checked HERE, where the module is, rather than where it is rendered.
+        // Anything not a class was taken as already callable and cached, so an
+        // export that is neither surfaced a render later as "loadedComponent is
+        // not a function" — a line that knows nothing about which module or
+        // which export, and one the error fallback never saw, because nothing
+        // had failed as far as the loading knew. A config object, a styles
+        // module, a barrel file or a named export pointing at a constant all
+        // land here, and they are the same mistake as the missing export above.
+        if (typeof component !== "function") {
+          throw new Error(
+            `The "${namedExport}" export is a ${typeof component}, and only a component class or a function returning markup can be rendered.`,
+          );
+        }
+
         // A class is wrapped into the one callable shape the cache holds, so
         // `render` has a single thing to call whatever the module exported.
         // This is `createTemplate` inlined — it was the helper's last real use,

@@ -30,7 +30,7 @@ function readWatchedProps(entry: WatchPropEntry): unknown {
   };
 
   // A component carries COMPONENT_RUNTIME and a hook carries HOOK_RUNTIME, which is
-  // the same test `@shouldUpdateOnPropsChange` uses to tell the two apart.
+  // the same test `@ShouldUpdateOnPropsChange` uses to tell the two apart.
   const componentRuntime = owner[COMPONENT_RUNTIME];
   if (componentRuntime) return componentRuntime.rawProps;
   return owner[HOOK_RUNTIME]?.rawProps;

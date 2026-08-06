@@ -116,9 +116,18 @@ function buildRenderOutput(component: BaseComponent) {
       // 'Node'` — a crash, not a wrong render.
       //
       // Same composite identity `normalizeChildren` uses — origin plus position.
-      // `currentOrigin.id` is this component's, set just above.
+      //
+      // Read from the COMPONENT rather than from `currentOrigin`, which by this
+      // line has already been restored: the try/finally above puts back the
+      // previous origin as soon as `render()` returns, and this runs after it.
+      // The id it used to read was therefore never this component's — it was
+      // whatever was on the stack outside, which is always 0, because a build is
+      // never entered while another render is in progress. Stable and unique per
+      // host, so nothing ever misbehaved; it simply was not the identity the
+      // comment claimed, and `h.ts` stamps the live origin — the component's id —
+      // for the wrapped `<ul>{list()}</ul>` form. Now the two agree.
       const listChild = child as { owner?: unknown };
-      if (listChild.owner === undefined) listChild.owner = `${currentOrigin.id}:g${i}`;
+      if (listChild.owner === undefined) listChild.owner = `${component[GLOBAL_RUNTIME].id}:g${i}`;
       // No `break`: with several lists each needs its own position.
     }
   }

@@ -1,5 +1,5 @@
 import { attach, detach } from "../helpers/constants";
-import { reactivityScope, trackerContainer } from "./tracker";
+import { reactivityScope, trackDependency } from "./tracker";
 import { reportWriteDuringRender, reportWriteDuringCompute, reportWriteDuringInspect } from "../debug/renderPhase";
 import { guardArray, unwrapArray } from "../debug/mutationGuard";
 import { labelState } from "../debug/stateLabels";
@@ -103,18 +103,10 @@ export class State<T> {
   }
 
   get(): T {
-    // Only register dep if:
-    // - there is a current effect running, and
-    // - that effect has NOT mutated THIS specific signal during this run.
-    const currentEffect = reactivityScope.currentEffect;
-    if (currentEffect && !currentEffect.mutated.has(this as any)) {
-      currentEffect.deps.add(this as any);
-    }
-
-    const tracker = trackerContainer.current;
-    if (tracker) {
-      tracker.addDep(this as any);
-    }
+    // Records this read against the effect or the tracker that is running, if
+    // either is — see trackDependency, which a @compute calls too so that a
+    // cache hit subscribes its reader to exactly what a miss would have.
+    trackDependency(this as any);
 
     if (__DEV__) {
       // Arrays go out behind a guard that reports in-place mutation (RMD005).

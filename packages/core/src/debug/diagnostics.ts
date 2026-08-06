@@ -37,7 +37,8 @@ export type DiagnosticCode =
   | "RMD028"
   | "RMD029"
   | "RMD030"
-  | "RMD031";
+  | "RMD031"
+  | "RMD032";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -209,6 +210,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A list could not identify its items",
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
+  },
+  RMD032: {
+    // error, not warning: the last declaration wins, so errors go to a handler the author did not
+    // pick, and the one they were reading goes silent.
+    severity: "error",
+    title: "More than one @catchError on a component",
+    fix: 'A component has one answer to "who handles an error from below?", and the last @catchError declared is the one that gets it — the others never run, silently. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
   },
   RMD031: {
     // error, not warning: the item is dropped, so the list on screen is shorter than `each`.

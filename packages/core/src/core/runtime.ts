@@ -23,11 +23,6 @@ export interface Runtime {
    */
   deferHydrations: (() => unknown)[];
   /**
-   * The `@shouldUpdateOnPropsChange` predicate, bound. Undefined means the default
-   * shallow compare decides — i.e. take the props whenever they differ.
-   */
-  shouldUpdateOnPropsChange?: (prev: unknown, next: unknown) => boolean;
-  /**
    * DEV only. The component this runtime belongs to, so a diagnostic can name it.
    *
    * A hook shares its owner's runtime, so this is always the COMPONENT — which is the
@@ -53,6 +48,12 @@ export interface Runtime {
 export interface ComponentRuntime {
   depth: number;
   rawProps: RenderableProps<any>;
+  /**
+   * The method `@catchError` declared, if any — the seam `errorHandler` walks the
+   * parent chain looking for. Held per instance because the handler is bound to
+   * one, and dispatched by name so a subclass override wins.
+   */
+  catchError?: (e: unknown) => unknown;
   propsSignals: Map<string, State<any>>;
   parent?: BaseComponent;
   inBuildQueue?: boolean;

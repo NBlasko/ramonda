@@ -27,7 +27,8 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@updated`](/concepts/lifecycle) | client in practice¹ | component · hook | yes |
 | [`@watchProp`](/concepts/props) | client in practice¹ | component · hook | yes — one per selector |
 | [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
-| [`@shouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — the last wins |
+| [`@catchError`](/composition/error-boundaries) | both | **component only** | **no** — a subclass may override |
+| [`@ShouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — a subclass may override |
 | [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | **hook only** | **no** — it takes a list |
 | [`@Host`](/concepts/host) | both | **component only** | **no** |
 | [`@onElement`](/concepts/events) | **client only**² | **component only** | yes |
@@ -72,12 +73,12 @@ a lint you can talk past — the second exists because the first is not there in
 |---|---|
 | `@Host` | It names the element a component **is**. A hook adds no element — that is the point of a hook. |
 | `@onElement` | It binds a listener to the component's host element. A hook has none. Use `@onWindow` / `@onDocument`, which work on both. |
-| `@shouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
+| `@ShouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
 
 One goes the other way. **`@StableProps` is hooks only**, and refused twice in the same way: a
 hook's props are rebuilt by its own callback on every owner render, which is the situation it
 answers. A component's props come from the parent's JSX and are compared by the diff, where
-`@shouldUpdateOnPropsChange` is the control.
+`@ShouldUpdateOnPropsChange` is the control.
 
 ## How many times
 
@@ -87,13 +88,17 @@ Most decorators stack, and the order is defined:
   undoes setup in the order it was done.
 - **`@watchProp`** takes one selector each, so several watch different props.
 - **`@deferHydration`** may appear several times; hydration waits for all of them.
+- **`@catchError`** is single: there is one answer to "who handles an error from below?". Two on one
+  class are reported (RMD032) and the last wins. A **subclass** declaring its own overrides the base's,
+  which is not a duplicate and is not reported.
 - **Listeners and timers** stack freely — that is the normal way to bind several events.
 
 Three are single:
 
 - **`@Host`** — a component is exactly one element, so there is one answer to which.
-- **`@shouldUpdateOnPropsChange`** — there is one answer to "take these props?". A second one is
-  reported in development, and the last declared wins.
+- **`@ShouldUpdateOnPropsChange`** — there is one answer to "take these props?". Two on ONE class are
+  reported in development, and the one written closest to the class wins. A **subclass** may declare
+  its own, which overrides the base's — that is not a duplicate and is not reported.
 - **`@StableProps`** — it already takes as many names as you like, so there is nothing a second
   one would add. Two on one class throws. A **subclass** may declare its own, and that one
   *merges* with what the parent declared rather than replacing it.
