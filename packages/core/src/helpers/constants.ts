@@ -28,6 +28,19 @@ export const HOST_TAG = "RAMONDA-HOST";
 export const hostStyle = "display: contents";
 export const svgNamespaceUri = "http://www.w3.org/2000/svg";
 
+/**
+ * The tags built with `createElementNS(svgNamespaceUri, …)` instead of
+ * `createElement`. SVG-ness is decided by NAME, not by tree context — which is why
+ * HTML inside `<foreignObject>` comes out as HTML, as SVG requires.
+ *
+ * It must hold every tag `global.ts` types as `SVGArgs<…>`. A name that is typed
+ * but missing here fails silently: `createElement` accepts anything, so the tag
+ * becomes an unknown HTML element that looks right in the DOM and never renders as
+ * SVG. Eight of them were (`tspan`, `textPath`, `foreignObject`, `image`, `desc`,
+ * `metadata`, `mpath`, `switch`) — the two lists live in different files and
+ * neither imports the other, so nothing noticed. `SvgNamespace.test.tsx` now pins
+ * them to each other in both directions.
+ */
 export const svgElements = new Set([
   "svg",
   "circle",
@@ -38,9 +51,17 @@ export const svgElements = new Set([
   "polyline",
   "polygon",
   "ellipse",
+  "image",
   "text",
+  "tspan",
+  "textPath",
+  "foreignObject",
+  "switch",
   "use",
   "defs",
+  "desc",
+  "metadata",
+  "mpath",
   "linearGradient",
   "radialGradient",
   "stop",
