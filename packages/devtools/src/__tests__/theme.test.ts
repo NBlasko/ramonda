@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Reads CSS out of source files; no DOM anywhere in it. Declared rather than inherited, for the
+// same reason as the others here — `node:` builtins do not resolve under jsdom once NODE_ENV is set.
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { icon, panel } from "@ramonda/theme";

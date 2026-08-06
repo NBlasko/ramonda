@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Bundles a file and reads the output. No DOM, and `node:` builtins do not resolve under the
+// config's jsdom default once NODE_ENV is set.
 import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

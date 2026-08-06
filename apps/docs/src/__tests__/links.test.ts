@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Reads markdown off disk and touches no DOM. Declared rather than inherited: the config's
+// jsdom default cannot resolve `node:` builtins, which is a failure that only appears once
+// something sets NODE_ENV — the shape of bug that passes locally and fails on a runner.
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
