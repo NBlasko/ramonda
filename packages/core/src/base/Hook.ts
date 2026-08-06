@@ -1,4 +1,4 @@
-import type { BaseHook, HookProps, PropsFactory } from "../types/HookTypes";
+import type { BaseHook, HookMeta, HookProps, PropsFactory } from "../types/HookTypes";
 import type { PROPS_TYPE } from "../types/HookTypes";
 import { useCommon } from "../helpers/common";
 import type { HookClassKind } from "../types/commonTypes";
@@ -76,16 +76,38 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
     bindInstanceMethods(this, Hook.prototype);
   }
 
-  protected use<T extends BaseHook<undefined>>(hook: HookClassKind<T, undefined>): T;
+  /**
+   * A hook, optionally with props, optionally with metadata ABOUT this use.
+   *
+   * The third argument is not passed to the hook; it is what a `use()` says about the hook to the
+   * tools looking at it — see `HookMeta`. Separate from the props because a hook's props belong to
+   * whoever wrote it, and a framework word reserved in there collides with a real one eventually.
+   *
+   * ```tsx
+   * private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+   * private timer = this.use(Poll, undefined, { label: "prices" });
+   * ```
+   *
+   * A propless hook needs the `undefined` placeholder, and that is deliberate: a second overload
+   * taking metadata in the props position would be ambiguous, since `{ label: "…" }` is a perfectly
+   * good props bag for some hook somewhere.
+   */
+  protected use<T extends BaseHook<undefined>>(
+    hook: HookClassKind<T, undefined>,
+    props?: undefined,
+    meta?: HookMeta,
+  ): T;
   protected use<T extends BaseHook<Q>, Q extends HookProps, S extends this = this>(
     hook: HookClassKind<T, Q>,
     props: PropsFactory<Q, S>,
+    meta?: HookMeta,
   ): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: Q): T;
+  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: Q, meta?: HookMeta): T;
   protected use<T extends BaseHook<Q>, Q extends HookProps>(
     hook: HookClassKind<T, Q>,
     props?: Q | PropsFactory<Q, never>,
+    meta?: HookMeta,
   ): T {
-    return useCommon(this, hook, props);
+    return useCommon(this, hook, props, meta);
   }
 }

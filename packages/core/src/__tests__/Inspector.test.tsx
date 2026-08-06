@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, persist } from "../base/decorators";
+import { create, state, persist } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { createContext } from "../base/Context";
@@ -55,6 +55,77 @@ describe("inspector: component + hook state", () => {
     expect(node.hooks[0].state).toEqual({ mid: 2 });
     expect(node.hooks[0].hooks[0].name).toBe("Inner");
     expect(node.hooks[0].hooks[0].state).toEqual({ deep: 1 });
+  });
+
+  /**
+   * Two of one hook in one component are two nodes with one name, because a class is shared by every
+   * instance. The third argument to `use()` is where the distinguishing name can come from — a `use()`
+   * call is the one place that knows which of the two it is.
+   */
+  test("names a hook by the `label` in its use() metadata", async () => {
+    class Store extends Hook<{ seed: number }> {
+      @state value = this.props.seed;
+    }
+    class Page extends Component {
+      signup = this.use(Store, { seed: 1 }, { label: "signup" });
+      login = this.use(Store, { seed: 2 }, { label: "login" });
+      plain = this.use(Store, { seed: 3 });
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const node = scanComponentTree(app.container)[0];
+
+    // The class AND the label: `Store` says what the node is, `signup` says which one.
+    expect(node.hooks.map((hook) => hook.name)).toEqual(["Store (signup)", "Store (login)", "Store"]);
+  });
+
+  test("the metadata is not props — the hook never sees it", async () => {
+    const read: Record<string, unknown> = {};
+    class Store extends Hook<{ seed: number }> {
+      @state value = this.props.seed;
+      @create look() {
+        read.seed = this.props.seed;
+        // Asked for by name, the way a hook would if it had its own use for the word.
+        read.label = (this.props as { label?: unknown }).label;
+      }
+    }
+    class Page extends Component {
+      store = this.use(Store, { seed: 1 }, { label: "signup" });
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const node = scanComponentTree(app.container)[0];
+
+    // The whole reason it is a third argument: a hook's props belong to whoever wrote the hook, so
+    // nothing the framework wants to say ABOUT a hook may appear among them.
+    expect(read).toEqual({ seed: 1, label: undefined });
+    expect(node.hooks[0].options).toEqual({ seed: 1 });
+    expect(node.hooks[0].name).toBe("Store (signup)");
+  });
+
+  test("ignores a label that is not a name, or that only repeats the class", async () => {
+    class Store extends Hook {
+      @state value = 1;
+    }
+    class Page extends Component {
+      blank = this.use(Store, undefined, { label: "   " });
+      same = this.use(Store, undefined, { label: "Store" });
+      none = this.use(Store);
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const node = scanComponentTree(app.container)[0];
+
+    expect(node.hooks.map((hook) => hook.name)).toEqual(["Store", "Store", "Store"]);
   });
 
   test("exposes a component's props (minus children/key)", async () => {

@@ -71,15 +71,20 @@ afterEach(() => {
   expect(rows()).toEqual([]);
 });
 
-function mount(defaults: Values = BLANK) {
+function mount(defaults: Values = BLANK, label?: string) {
   let form!: Form<typeof schema>;
 
   class SignupForm extends Component {
-    private f = this.use(Form<typeof schema>, () => ({
-      schema,
-      defaultValues: defaults,
-      onSubmit: () => {},
-    }));
+    private f = this.use(
+      Form<typeof schema>,
+      () => ({
+        schema,
+        defaultValues: defaults,
+        onSubmit: () => {},
+      }),
+      // The third argument: what this `use()` says ABOUT the form, never something the form reads.
+      { label },
+    );
 
     render(): RamondaNode {
       form = this.f;
@@ -338,6 +343,50 @@ describe("the Forms panel", () => {
     } finally {
       broken.unmount();
       valid.unmount();
+    }
+  });
+
+  test("a form labelled in its use() metadata is called that, everywhere the panel names it", async () => {
+    // The escape hatch a number cannot be: two forms, and a reader who wants to know which is which.
+    const signup = mount(BLANK, "signup");
+    const login = mount({ name: "Ada", email: "ada@example.com" }, "login");
+    try {
+      await settle();
+      const groups = panel().snapshot().groups;
+
+      // The class and the label, not one instead of the other — the component tree names hooks the
+      // same way, so there is one reading to learn rather than two.
+      expect(groups.map((group) => group.label)).toEqual(["Form (signup)", "Form (login)"]);
+      expect(groups.map((group) => group.rows[0]!.title)).toEqual(["Form (signup)", "Form (login)"]);
+      // And the message an action reports back speaks the same name.
+      expect(panel().run!(groups[0]!.rows[0]!.id, "reset")).toBe("reset Form (signup)");
+    } finally {
+      signup.unmount();
+      login.unmount();
+    }
+  });
+
+  test("the label is read off the instance, not carried on the announce event", async () => {
+    // The event fires once, at mount, and everything else in this tab is read live. Reading the label
+    // the same way is what keeps one frozen field from hiding among current ones — and it is why the
+    // panel reaches for `Symbol.for("ramonda.hook.meta")` rather than expecting a payload.
+    const only = mount(BLANK, "signup");
+    try {
+      await settle();
+      const form = panel().snapshot().groups[0]!.rows[0]!;
+      expect(form.title).toBe("Form (signup)");
+    } finally {
+      only.unmount();
+    }
+  });
+
+  test("no label means the number still answers", async () => {
+    const only = mount();
+    try {
+      await settle();
+      expect(panel().snapshot().groups[0]!.rows[0]!.title).toMatch(/^Form \d+$/);
+    } finally {
+      only.unmount();
     }
   });
 

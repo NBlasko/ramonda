@@ -2,6 +2,7 @@ import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS } from "../helpers/constants";
 import { INSPECT } from "../base/inspect";
 import { inspectPhase } from "./renderPhase";
 import { definitionOf, type SourceLocation } from "./sourceLocation";
+import { HOOK_META, type HookMeta } from "../types/HookTypes";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 
 export interface InspectedNode {
@@ -192,6 +193,29 @@ function readProps(instance: Inspectable): Record<string, unknown> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * What to call a hook in the tree: its class, plus the `label` from its `use()` metadata —
+ * `Form (Sign Up)`.
+ *
+ * Added to the name rather than replacing it. The class says WHAT the node is, which is the first
+ * thing a reader needs and the one thing a label cannot recover; the label says WHICH one it is,
+ * which the class cannot give — `this.constructor.name` is `Form` for every form on the page.
+ *
+ * Read from the metadata argument of `use()`, never from the props: a hook's props belong to whoever
+ * wrote the hook, and a framework word reserved in there collides with a real one eventually. On a
+ * form it collides at once, since a form is full of labels.
+ */
+function hookName(hook: Inspectable): string {
+  const name = hook.constructor?.name ?? "Hook";
+  const label = (hook as { [HOOK_META]?: HookMeta })[HOOK_META]?.label;
+  if (typeof label !== "string") return name;
+
+  const trimmed = label.trim();
+  // A label that only repeats the class earns nothing but a pair of brackets.
+  if (trimmed === "" || trimmed === name) return name;
+  return `${name} (${trimmed})`;
+}
+
 /** Serializes an instance's child hooks (and their hooks) recursively. */
 function readHooks(instance: Inspectable): InspectedNode[] {
   const childHooks = instance[CHILD_HOOKS];
@@ -199,7 +223,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
 
   return childHooks.map((hook) => ({
     id: handles.push(hook) - 1,
-    name: hook.constructor?.name ?? "Hook",
+    name: hookName(hook),
     kind: "hook" as const,
     state: readState(hook),
     detail: readDetail(hook),
