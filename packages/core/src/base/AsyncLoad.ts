@@ -272,7 +272,21 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
         this.loadCount = this.loadCount + 1;
       })
       .catch((e) => {
-        console.error(e);
+        /**
+         * Development only, because production has already been told.
+         *
+         * `errorFallback` is handed `{ error, retry, attempt }`, so the app can
+         * render what it likes, report where it likes and offer the retry. An
+         * unconditional `console.error` beside that is a second channel it cannot
+         * turn off — and a chunk that fails to load is not always an incident: a
+         * deploy rotating its assets, a reader going offline, one dropped request.
+         * Apps handle those, and a red line for each is noise they did not ask for.
+         *
+         * In development the reason is what you need and there is nowhere else it
+         * would go, which is the same split `h.ts` makes for a function in tag
+         * position.
+         */
+        if (__DEV__) console.error(e);
         this.loading = false;
         if (this.disposed) return;
         this.failure = e;
