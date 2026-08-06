@@ -36,6 +36,14 @@ function describe(value: unknown): string {
 interface ItemScope<T> {
   listenerId: number;
   item: T;
+  /**
+   * The position the vnode was built at.
+   *
+   * Not part of the item, and not a signal — it is where the item sat in `each`
+   * last pass. A reorder changes it while changing nothing else the skip looks
+   * at, so it is checked separately, and only for a mapper that can see it.
+   */
+  index: number;
   vnode: VNode;
   deps: Set<State<unknown>>;
   dirty: boolean;
@@ -95,6 +103,27 @@ export class ListEngine<T> {
 
     if (__DEV__) lintOptions(asComponent, render, host.name);
 
+    /**
+     * Whether a moved item has to be rebuilt — decided by the mapper's ARITY.
+     *
+     * The index is the one input to `render` that is not the item and not a
+     * signal, so nothing else can notice it went stale. Rebuilding every moved
+     * item unconditionally would be correct and would also hand a 10000-row list
+     * that never mentions the index the full cost of the one that does: a
+     * prepend would go from one mapper call to ten thousand.
+     *
+     * A function's `length` says how many parameters it declares, so
+     * `(item) => …` cannot observe its position and `(item, index) => …` can.
+     * The reuse then costs nothing where it is safe, and the rebuild happens
+     * exactly where it is needed. `as` takes no index at all, hence `render` only.
+     *
+     * The known gap is a mapper whose arity under-reports: `(item, index = 0)`
+     * and `(...args)` both report fewer parameters than they use, and would keep
+     * the stale index. Neither is a way anyone writes a list item, and the
+     * alternative is paying for the check on every list forever.
+     */
+    const usesIndex = render !== undefined && render.length >= 2;
+
     if (!each) return this.wrap(owner, []);
 
     // Whole-list skip. The array is replaced on every change (mutating it in
@@ -149,10 +178,11 @@ export class ListEngine<T> {
       const scopeKey = String(key);
       const existing = this.scopes.get(scopeKey);
 
-      // Nothing this item's output depends on has changed, and it is still the
-      // same object: reuse last render's vnode untouched. `clean` tells the diff
-      // it may skip the subtree entirely.
-      if (existing && existing.item === item && !existing.dirty) {
+      // Nothing this item's output depends on has changed, it is still the same
+      // object, and it has not moved out from under a mapper that reads the
+      // position: reuse last render's vnode untouched. `clean` tells the diff it
+      // may skip the subtree entirely.
+      if (existing && existing.item === item && !existing.dirty && (!usesIndex || existing.index === i)) {
         out.push(existing.vnode);
         clean.push(true);
         nextScopes.set(scopeKey, existing);
@@ -231,6 +261,7 @@ export class ListEngine<T> {
     const scope: ItemScope<T> = existing ?? {
       listenerId: ++scopeSequence,
       item,
+      index,
       vnode: undefined as unknown as VNode,
       deps: new Set(),
       dirty: false,
@@ -273,6 +304,7 @@ export class ListEngine<T> {
     }
 
     scope.item = item;
+    scope.index = index;
     scope.dirty = false;
     if (vnode !== null && vnode !== undefined) scope.vnode = vnode;
     this.lastScope = scope;
