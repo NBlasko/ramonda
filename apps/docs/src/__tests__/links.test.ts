@@ -35,7 +35,7 @@ import { describe, expect, it } from "vitest";
 const here = dirname(fileURLToPath(import.meta.url));
 const content = join(here, "..", "..", "content");
 
-/** Every markdown file under `content/`, walked by hand — `globSync` needs Node 22 and CI runs 20. */
+/** Every markdown file under `content/`, walked the same way `scripts/build-content.mjs` walks them. */
 function pages(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);

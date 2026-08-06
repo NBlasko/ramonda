@@ -68,6 +68,8 @@ async function bundle(entry: string, name: string): Promise<string> {
   const out = join(work, `${name}.out.js`);
   writeFileSync(source, `import ${JSON.stringify(entry)};\n`);
 
+  // `esbuild` is a declared devDependency of this package rather than one it happens to reach
+  // through tsup, so the binary is the pinned version and `npx` never has to go looking for it.
   await run("npx", ["esbuild", "--bundle", "--format=esm", "--minify", `--outfile=${out}`, source]);
   return readFileSync(out, "utf8");
 }
