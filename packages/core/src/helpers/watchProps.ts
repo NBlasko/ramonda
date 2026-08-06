@@ -1,6 +1,6 @@
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, HOOK_RUNTIME } from "../core/runtime";
 import type { BaseComponent, WatchPropEntry } from "../types/vdom";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * The props the entry's own owner was given.
@@ -51,11 +51,10 @@ function safeSelect(entry: WatchPropEntry, props: unknown): unknown {
     return entry.selector(props);
   } catch (e) {
     if (__DEV__) {
-      ramondaLog(
-        "error",
-        `[watchProp] The selector in <${ownerName(entry)} /> threw — most likely it reads a value that is not there. Guard the path while you drill into it (e.g. \`p.foo?.[5]?.bar\`). Returning undefined so the app keeps running.`,
-        e,
-      );
+      diagnose("RMD037", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
+        component: ownerName(entry),
+        reason: e instanceof Error ? e.message : String(e),
+      });
     }
     return undefined;
   }

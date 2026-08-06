@@ -11,7 +11,7 @@ import {
   OWN_CHILDREN,
 } from "../helpers/constants";
 import { isArray } from "../helpers/utils";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 import { currentOrigin } from "../core/origin";
 import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
 
@@ -132,7 +132,9 @@ function normalizeChildren(arr: unknown[]): unknown[] {
         result.push(el);
       } else {
         if (__DEV__) {
-          ramondaLog("error", "Invalid object among JSX children. Dropped from the render.", el);
+          diagnose("RMD036", `child:${Object.prototype.toString.call(el)}`, "It was dropped from the render.", {
+            kind: Object.prototype.toString.call(el),
+          });
         }
         // Replaced by a hole rather than removed, so the slot survives — see the empty
         // list above. What it renders is nothing either way.

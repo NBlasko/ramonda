@@ -1,6 +1,6 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { HOOK_RUNTIME } from "../core/runtime";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 
 interface PropSnapshot {
   value: unknown;
@@ -76,9 +76,14 @@ export function lintUnpersistedState(instance: object, before: Map<string, PropS
       (previous.shape !== undefined && previous.shape !== shapeOf(value));
     if (!changed) continue;
 
-    ramondaLog(
-      "warning",
-      `[hydration] <${name}> changed "${key}" during create/mount but it is not @state or @persist — the client will not have that value after hydration, because create/mount do not re-run there. Mark it with @persist.`,
+    diagnose(
+      "RMD033",
+      `${name}.${key}`,
+      `<${name}> changed "${key}" during create/mount, and it is neither @state nor @persist.`,
+      {
+        component: name,
+        key,
+      },
     );
   }
 }

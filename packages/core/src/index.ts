@@ -187,6 +187,18 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
       notifyComponentUpdate();
     }
   } catch (e) {
+    /**
+     * Deliberately NOT a diagnostic code.
+     *
+     * Every `RMD` code names a mistake and carries a fix: a reader who searches one lands on a
+     * page saying what to do instead. This is not that. It is the app's own error, on its way up —
+     * rethrown on the next line, so whoever threw it still gets it, and a boundary or the console
+     * still reports it with its real stack. A code here would promise advice that cannot exist,
+     * for a fault this framework knows nothing about beyond having been in the call stack.
+     *
+     * It stays on the log channel so a panel that is already open shows the crash next to whatever
+     * was reported just before it, which is usually the more useful half.
+     */
     if (__DEV__) {
       ramondaLog("error", "App crashed", e);
     }

@@ -1,6 +1,6 @@
 import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM } from "../helpers/constants";
 import { currentOrigin } from "../core/origin";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 import type { ComponentKind, VNode, VNodeComponent, VNodeString } from "../types/vdom";
 
 /**
@@ -13,7 +13,7 @@ function normalizeClassName(attributes: Record<string, any>): void {
   if (!("class" in attributes)) return;
 
   if (__DEV__) {
-    ramondaLog("warning", "Ramonda uses `className`, not `class`. Rename it to `className`.");
+    diagnose("RMD038", "class", "A `class` attribute was given where `className` is read.");
   }
 
   if (attributes.className === undefined) attributes.className = attributes.class;

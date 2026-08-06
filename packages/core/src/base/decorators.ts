@@ -7,7 +7,7 @@ import { trackerContainer } from "../reactivity/tracker";
 import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
@@ -479,10 +479,9 @@ export function shouldUpdateOnPropsChange<This extends PropsGateOwner>(
 
     const runtime = this[GLOBAL_RUNTIME];
     if (__DEV__ && runtime.shouldUpdateOnPropsChange !== undefined) {
-      ramondaLog(
-        "error",
-        `<${this.constructor.name} /> has more than one @shouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the last one wins — remove the others.`,
-      );
+      diagnose("RMD039", this.constructor.name, `<${this.constructor.name} /> declares more than one.`, {
+        component: this.constructor.name,
+      });
     }
     runtime.shouldUpdateOnPropsChange = (previous, next) => value.call(this, previous, next);
   });
@@ -1056,15 +1055,22 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
             const target = resolveTarget(component);
             if (!target) {
               if (__DEV__) {
-                ramondaLog("warning", `[${decoratorName}] No target found for "${type}" listener.`);
+                diagnose(
+                  "RMD040",
+                  `${component.constructor.name}.${decoratorName}.${type}`,
+                  `@${decoratorName} found no target for its "${type}" listener.`,
+                  { component: component.constructor.name, decorator: decoratorName, event: type },
+                );
               }
               return;
             }
 
             if (__DEV__ && decoratorName === "onElement" && (target as Node).nodeName === HOST_TAG) {
-              ramondaLog(
-                "warning",
-                `[onElement] Host is the default <ramonda-host> (display: contents), which generates no box of its own and so is never the direct target of "${type}". Events that bubble from children still reach it; anything that does not (pointer position, hover, focus on the host itself) will not. Give the component a real host tag via @Host('div').`,
+              diagnose(
+                "RMD041",
+                `${component.constructor.name}.${type}`,
+                `@onElement is listening for "${type}" on the default <ramonda-host>.`,
+                { component: component.constructor.name, event: type },
               );
             }
 

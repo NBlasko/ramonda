@@ -66,6 +66,36 @@ so a component that misuses the same property on every render reports once.
 | `RMD029` | error | A boolean attribute given the string "false" |
 | `RMD030` | error | State written during `[INSPECT]()` |
 | `RMD031` | error | A list item that is not an element |
+| `RMD032` | warning | State that cannot cross to the client |
+| `RMD033` | warning | State written during create or mount is not carried to the client |
+| `RMD034` | warning | The client's hook tree does not match the server's |
+| `RMD035` | error | The state blob could not be read |
+| `RMD036` | error | An object among JSX children that is not markup |
+| `RMD037` | error | A `@watchProp` selector threw |
+| `RMD038` | warning | `class` where `className` was meant |
+| `RMD039` | error | More than one `@shouldUpdateOnPropsChange` |
+| `RMD040` | warning | A listener with no target |
+| `RMD041` | warning | The default host cannot be the direct target of this event |
+
+### RMD032–RMD041 — the ten that were messages before they were codes
+
+Each of these was a `ramondaLog` call with its advice written inline: a real fault, reported, but with
+no stable name to search for, no `fix` a panel could render apart from the message, and no way for a
+collector to group two occurrences of one cause. They live in `hydration/serialize.ts`,
+`hydration/lint.ts`, `hydration/restore.ts`, `hydration/hydrate.ts`, `vdom/h.ts`,
+`helpers/watchProps.ts`, `vdom/CreateRamonda.ts` and `base/decorators.ts`.
+
+Two things came with the port. Each is now **deduplicated by source** like every other code, where
+before it reported per occurrence — a hydration warning over a component with six unserializable
+fields was six lines and is now one per field. And the severities are the ones the messages already
+carried: the port gave them identity, it did not re-judge them.
+
+What each one means and what to do about it is on the public reference rather than here, because that
+is the page a reader lands on from a message: [ramonda.pages.dev/reference/diagnostics](https://ramonda.pages.dev/reference/diagnostics).
+
+**One message deliberately has no code.** `bootstrap`'s "App crashed" is the app's own error on its
+way up, rethrown on the next line. Every code names a mistake and carries a fix; this one cannot,
+because the framework knows nothing about the fault beyond having been in the call stack.
 
 ### RMD001 — State written during render()
 
