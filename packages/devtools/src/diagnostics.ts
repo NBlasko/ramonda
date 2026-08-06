@@ -246,6 +246,21 @@ export function bridgeDiagnosticsToPanel(): () => void {
     // panel mounts — measured: 65 of them across one run of the panel suite.
     if (record.severity === "debug") return;
 
+    /**
+     * Core reaches the tab on its own, so this bridge must not carry it there twice.
+     *
+     * `@ramonda/core` dispatches `ramonda:dev-log` from its own logger and keeps its own replay
+     * vault, and in DEV it is what dynamically imports THIS package — so the bridge is always
+     * present wherever core is reporting. Without this line every core diagnostic renders as two
+     * rows, which core's own suite caught the moment it started emitting records: a test reading the
+     * dev-log channel found this bridge's payload instead of core's message.
+     *
+     * Skipped for the tab only. A record from core still reaches every other subscriber, which is
+     * the entire point of `installDiagnostics` — and when core's channel is eventually retired, this
+     * condition goes with it.
+     */
+    if (record.scope === "ramonda/core") return;
+
     const payload = toDevLog(record);
     vault.push(payload);
     if (vault.length > MAX_VAULT) vault.shift();

@@ -44,8 +44,8 @@ A diagnostic is also a **record**, so a devtools panel, a test, or a log collect
 reports instead of parsing prose. A collector installs one function, and a reporting package finds it
 with no dependency on anything:
 
-`RML` reports arrive this way. The other prefixes reach the devtools' `LOGS` tab through the
-framework's own log channel, and join this one as each package moves onto it.
+`RML`, `RMQ` and `RMF` reports arrive this way. `RMD` reaches the devtools' `LOGS` tab through the
+framework's own log channel, and joins this one when core moves onto it.
 
 ```ts
 interface RamondaDiagnostic {

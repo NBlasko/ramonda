@@ -1,4 +1,28 @@
 import { ramondaLog } from "./logger";
+
+/**
+ * One diagnostic as a collector receives it — the record every reporting package shares,
+ * documented at https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ *
+ * Declared here rather than imported, and that is the whole design: a package that reports
+ * something must be free to have no dependencies, so what is shared is the SHAPE and the name
+ * of the sink, never a module. `@ramonda/devtools` compares these declarations across packages,
+ * which is what keeps the copies identical.
+ */
+declare global {
+  interface RamondaDiagnostic {
+    code: string;
+    scope: string;
+    severity: "debug" | "info" | "warn" | "error";
+    message: string;
+    fix?: string;
+    data?: Record<string, unknown>;
+    time: number;
+    dedupKey?: string;
+  }
+
+  var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;
+}
 /**
  * DEV-only diagnostics: catch code that fights the framework's design, name the
  * problem, and say what to do instead.
@@ -231,7 +255,51 @@ export function diagnose(code: DiagnosticCode, dedupKey: string, detail?: string
   if (reported.size < MAX_TRACKED) reported.add(id);
   const spec = SPECS[code];
   const message = `[${code}] ${spec.title}${detail ? `\n${detail}` : ""}\n\n→ ${spec.fix}`;
+
+  /**
+   * The record, for a collector that asked for one — a devtools panel, a test, a log shipper.
+   *
+   * The console line above is unchanged and still the default: this adds a consumer rather than
+   * replacing one. `severity` is translated because the protocol's word is `warn` while this
+   * package has always said `warning`, and the vocabulary belongs to the protocol.
+   */
+  globalThis.__RAMONDA_DIAGNOSTICS__?.({
+    code,
+    scope: "ramonda/core",
+    severity: spec.severity === "warning" ? "warn" : "error",
+    message: detail === undefined ? spec.title : `${spec.title}: ${detail}`,
+    fix: spec.fix,
+    data: reportable(data),
+    time: Date.now(),
+    dedupKey: id,
+  });
+
   ramondaLog(spec.severity, message, data);
+}
+
+/**
+ * The part of a diagnostic's `data` a record may carry: values, never live objects.
+ *
+ * `data` here is `unknown` and always has been, because it goes to a console — where an object is
+ * the useful thing, expandable and inspectable. A record is different: a collector keeps a bounded
+ * history, so anything live in one stays alive for as long as that history does. `propsStability`
+ * passes `{ cached, fresh }`, which are the actual prop values — a component, a DOM node and an
+ * array of them are all ordinary things to find there.
+ *
+ * So the console keeps the whole object and the record keeps the primitives, and the filter is here
+ * rather than trusted to call sites: there are thirty-nine of them and `unknown` promises nothing.
+ */
+function reportable(data: unknown): Record<string, unknown> | undefined {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return undefined;
+
+  const values: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== null && typeof value === "object") continue;
+    if (typeof value === "function" || typeof value === "symbol") continue;
+    values[key] = value;
+  }
+
+  return Object.keys(values).length === 0 ? undefined : values;
 }
 /** Test-only: lets each test observe a diagnostic that a previous one deduped. */
 export function resetDiagnostics(): void {

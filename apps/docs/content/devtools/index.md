@@ -328,7 +328,7 @@ the message named.
 
 ### Collecting them yourself
 
-An `RML*` diagnostic is a [record](/reference/diagnostics#capturing-them), and this panel is only one
+Every diagnostic is a [record](/reference/diagnostics#capturing-them), and this panel is only one
 consumer of it. To take them somewhere else — a test, a log shipper, your own overlay — subscribe:
 
 ```tsx
@@ -339,7 +339,7 @@ const stop = installDiagnostics((record) => {
 });
 ```
 
-The other prefixes reach the tab through the framework's own log channel and are not on this one yet.
+Core's rows reach this tab through its own log channel rather than through the sink, so subscribing gets them once and the tab shows them once.
 
 Subscribe rather than assigning `globalThis.__RAMONDA_DIAGNOSTICS__` yourself: the sink is one
 function, so an assignment replaces whoever was there — usually this panel, which then quietly stops
