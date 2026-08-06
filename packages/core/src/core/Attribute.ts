@@ -21,6 +21,36 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
+  releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
+}
+
+/**
+ * Lets go of a ref the JSX has stopped giving this element.
+ *
+ * `ref` is not a DOM attribute, so it is never among the PREVIOUS attributes read
+ * back off the node, and the attach loop only walks the keys present in the NEXT
+ * ones. A disappearing `ref` was therefore invisible to both, and the element went
+ * on holding the handle — a stale strong reference from the node to a ref nothing
+ * points at, and a `current` still aimed at an element the JSX no longer connects
+ * it to. A component's ref has behaved correctly since it was unified across
+ * create, update and adopt; this is the same rule on the element side.
+ *
+ * AFTER the attach loop, so what is held is already this render's answer: equal
+ * means the ref is still given and there is nothing to do. That ordering is also
+ * what keeps the deliberate re-assertion intact — an element applies its ref on
+ * every render, which is what makes two elements sharing one fall back to the
+ * first when the second goes away.
+ *
+ * `current === node` for the same reason `releaseRef` checks it: another element
+ * may have claimed the ref earlier in this same pass, and clearing then would wipe
+ * a value that is now correct.
+ */
+function releaseDroppedRef(enhancedNode: EnhancedHTMLNode, nextRef: unknown): void {
+  const held = enhancedNode[REF_SYM];
+  if (held === undefined || held === nextRef) return;
+
+  enhancedNode[REF_SYM] = undefined;
+  if (held.current === enhancedNode) held.setCurrent(null);
 }
 
 /**
