@@ -147,6 +147,145 @@ describe("a component's ref prop", () => {
     expect(seen).toBe(undefined);
   });
 
+  /**
+   * The same arrangements an ELEMENT already handled, on a component.
+   *
+   * On an element a swapped ref works because `Attribute.ts` releases the one it
+   * replaces and points the new one at the node, on every render. A component's
+   * ref was applied from `createComponent` alone, so a component that stayed put
+   * while its ref changed kept the old one: the new ref never filled, and the old
+   * one went on pointing at a host that no longer claimed it. Silent both ways,
+   * and the opposite of what the identical JSX does one line down on a `<p>`.
+   */
+  describe("moving a ref while the component stays", () => {
+    test("the new ref fills and the old one is released", async () => {
+      const r1 = createRef<HTMLElement>();
+      const r2 = createRef<HTMLElement>();
+
+      @Host("p")
+      class Child extends Component {
+        render() {
+          return <i />;
+        }
+      }
+
+      @Host("div")
+      class App extends Component {
+        @state useFirst = true;
+
+        render() {
+          return <Child ref={this.useFirst ? r1 : r2} />;
+        }
+      }
+
+      const app = await getDOM<App>(<App />);
+      await app.settle();
+
+      const host = app.container.querySelector("p");
+      expect(r1.current).toBe(host);
+      expect(r2.current).toBe(null);
+
+      app.instance.useFirst = false;
+      await app.settle();
+
+      expect(r2.current).toBe(host);
+      expect(r1.current).toBe(null);
+    });
+
+    test("a ref removed from the JSX is released", async () => {
+      const ref = createRef<HTMLElement>();
+
+      @Host("p")
+      class Child extends Component {
+        render() {
+          return <i />;
+        }
+      }
+
+      @Host("div")
+      class App extends Component {
+        @state keep = true;
+
+        render() {
+          return <Child ref={this.keep ? ref : undefined} />;
+        }
+      }
+
+      const app = await getDOM<App>(<App />);
+      await app.settle();
+      expect(ref.current).toBe(app.container.querySelector("p"));
+
+      app.instance.keep = false;
+      await app.settle();
+
+      expect(ref.current).toBe(null);
+    });
+
+    test("a ref added later still finds the host", async () => {
+      const ref = createRef<HTMLElement>();
+
+      @Host("p")
+      class Child extends Component {
+        render() {
+          return <i />;
+        }
+      }
+
+      @Host("div")
+      class App extends Component {
+        @state attach = false;
+
+        render() {
+          return <Child ref={this.attach ? ref : undefined} />;
+        }
+      }
+
+      const app = await getDOM<App>(<App />);
+      await app.settle();
+      expect(ref.current).toBe(null);
+
+      app.instance.attach = true;
+      await app.settle();
+
+      expect(ref.current).toBe(app.container.querySelector("p"));
+    });
+
+    test("swapping a ref does not re-render the child", async () => {
+      let childRenders = 0;
+      const r1 = createRef<HTMLElement>();
+      const r2 = createRef<HTMLElement>();
+
+      @Host("p")
+      class Child extends Component {
+        render() {
+          childRenders++;
+          return <i />;
+        }
+      }
+
+      @Host("div")
+      class App extends Component {
+        @state useFirst = true;
+
+        render() {
+          return <Child ref={this.useFirst ? r1 : r2} />;
+        }
+      }
+
+      const app = await getDOM<App>(<App />);
+      await app.settle();
+
+      childRenders = 0;
+      app.instance.useFirst = false;
+      await app.settle();
+
+      // A ref is not a render input: pointing it somewhere else changes nothing
+      // the child renders.
+      expect(childRenders).toBe(0);
+      expect(r2.current).toBe(app.container.querySelector("p"));
+    });
+  });
+
   test("the inspector does not show ref among a component's props", async () => {
     class Child extends Component<{ label: string }> {
       render() {

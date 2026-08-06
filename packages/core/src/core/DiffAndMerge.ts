@@ -881,6 +881,12 @@ function createOrUpdateComponent(
   if (!component) return createComponent(vnode, placeholderComponent);
 
   const nextProps = vnode.attributes ?? {};
+
+  // Before the props comparison, and independent of it: a ref is not data the
+  // component renders from, so it is neither compared with the props nor gated
+  // on them changing.
+  applyRefFromProps(enhancedNode, nextProps.ref);
+
   const componentRuntime = component[COMPONENT_RUNTIME];
   const decide = component[GLOBAL_RUNTIME].shouldUpdateOnPropsChange;
   const takeProps = decide
@@ -1226,11 +1232,34 @@ function buildComponent(
   return enhancedNode;
 }
 
-function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
-  const handle = ref as { current: unknown; setCurrent(current: unknown): void } | undefined;
-  if (!handle) return;
-  node[REF_SYM] = handle;
-  handle.setCurrent(node);
+/**
+ * Points a component's ref at its host, and releases the one it replaces.
+ *
+ * Called on UPDATE as well as on creation, and that is the whole point. It used
+ * to run from `createComponent` alone, so a component that stayed put while its
+ * `ref` prop changed kept the ref it was born with: the new one never filled, and
+ * the old one went on pointing at a host that no longer claimed it. Both silent,
+ * and the opposite of what the same JSX does on a plain element — `Attribute.ts`
+ * has released and re-pointed an element's ref all along.
+ *
+ * A ref is not a render input, so this is deliberately outside the props-changed
+ * branch: pointing a ref somewhere else changes nothing the component renders,
+ * and it must happen even when nothing schedules a render.
+ */
+export function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
+  type RefHandle = { current: unknown; setCurrent(current: unknown): void };
+
+  const next = ref as RefHandle | undefined;
+  const previous = node[REF_SYM];
+  if (previous === next) return;
+
+  node[REF_SYM] = next;
+
+  // Cleared only if it still points HERE — the same guard `releaseRef` needs,
+  // and for the same reason: another node may already have claimed it earlier in
+  // this pass, and wiping it then would erase a value that is now correct.
+  if (previous && previous.current === node) previous.setCurrent(null);
+  next?.setCurrent(node);
 }
 
 function componentFactory(component: ComponentClassKind, props: any, ctx: Context): BaseComponent {

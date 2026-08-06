@@ -5,7 +5,7 @@ import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "../core/runtime";
-import { diffAndMerge, filterVirtualChild, isListNode, listHostFor } from "../core/DiffAndMerge";
+import { applyRefFromProps, diffAndMerge, filterVirtualChild, isListNode, listHostFor } from "../core/DiffAndMerge";
 import { buildLazyList, isLazyList, type ListEngine, type LazyListNode } from "../helpers/listEngine";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
@@ -479,6 +479,13 @@ function adoptHost(component: BaseComponent, host: EnhancedChildNode, vnode: VNo
   host._componentDefinition = vnode.name;
   host[ORIGIN_SYM] = vnode[ORIGIN_SYM];
   component[COMPONENT_RUNTIME].enhancedNode = host;
+  // Adopting is the third way a component reaches its host — create, update,
+  // adopt — and the ref has to arrive by all three. It used to arrive by the
+  // first two only, so on a server-rendered page a component's ref stayed empty
+  // until something re-rendered it, which on a static page is never. An
+  // element's ref filled correctly the whole time, because hydration runs an
+  // element's attributes through the ordinary path.
+  applyRefFromProps(host, vnode.attributes?.ref);
 }
 
 /**
