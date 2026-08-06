@@ -116,6 +116,30 @@ export class Head extends Hook<HeadOptions> {
   }
 
   /**
+   * The same application again, client only — which is a no-op except on the one
+   * path where the `shared` one above never runs: HYDRATION.
+   *
+   * Hydrating runs only the `env === "client"` creates, because create and mount
+   * already ran on the server and their state was restored. Correct for a
+   * component; wrong for this hook, whose `@create` does not carry state forward
+   * but takes OWNERSHIP: `claim()` is what puts the server's title and meta tags
+   * into `owned`, and `@destroy` removes exactly what is owned. Without it the
+   * tags the server wrote belonged to nobody, and a page that unmounted with
+   * nothing replacing it left them in the document — invisible in an app that
+   * navigates, because the next page's `Head` claims them on its way past.
+   *
+   * Running twice on a client-built page costs nothing and changes nothing:
+   * `claim` adopts a tag it already owns only once, `upsert` writes the same
+   * values back, and `previousTitle` is captured only while it is undefined. That
+   * is what makes one extra call the cheapest correct answer here — the hook
+   * cannot otherwise tell that it was hydrated rather than built.
+   */
+  @create({ env: "client" })
+  adoptOnHydrate(): void {
+    this.apply();
+  }
+
+  /**
    * The reactive half, client only: re-applies when the options actually change.
    *
    * ## Why `@watchProp` with a selector that returns a STRING
