@@ -115,3 +115,37 @@ describe("function literals held in class fields", () => {
     }
   });
 });
+
+/**
+ * Single-use decorators declared twice on one class.
+ *
+ * The framework reports what it can once a component mounts (RMD032 for `@catchError`), which is
+ * exactly the gap this package exists for: a class behind a condition nobody clicked ships with the
+ * fault and nothing has said a word. The line that matters is the same one as everywhere else here
+ * — a SUBCLASS declaring its own is an override, not a duplicate, and reporting it would be advice
+ * to delete the line doing the work.
+ */
+describe("single-use decorators declared twice", () => {
+  const found = () => run("duplicate-decorators").duplicateDecorators;
+
+  test("reports a method decorator and a class decorator, once each", () => {
+    expect(found().map((d) => `${d.component}.@${d.decorator}x${d.count}`)).toEqual([
+      "Twice.@catchError x2".replace(" ", ""),
+      "GatedTwice.@ShouldUpdateOnPropsChange x2".replace(" ", ""),
+    ]);
+  });
+
+  test("a subclass declaring its own is silent, and so is one of each", () => {
+    const names = found().map((d) => d.component);
+    expect(names).not.toContain("Sub");
+    expect(names).not.toContain("Base");
+    expect(names).not.toContain("Fine");
+  });
+
+  test("it points at the declaration", () => {
+    const first = found()[0];
+    expect(first.file).toMatch(/duplicate-decorators\/app\.tsx$/);
+    expect(first.line).toBeGreaterThan(0);
+    expect(first.column).toBeGreaterThan(0);
+  });
+});

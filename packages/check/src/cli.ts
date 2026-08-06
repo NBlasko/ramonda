@@ -24,14 +24,15 @@ if (!existsSync(tsconfig)) {
   process.exit(2);
 }
 
-const { issues, arrowFields, counts, notes } = analyzeProject(tsconfig);
+const { issues, arrowFields, duplicateDecorators, counts, notes } = analyzeProject(tsconfig);
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
-if (issues.length === 0 && arrowFields.length === 0) {
+if (issues.length === 0 && arrowFields.length === 0 && duplicateDecorators.length === 0) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
-      `every consumer has a provider above it, and no class field holds a function literal.`,
+      `every consumer has a provider above it, no class field holds a function literal, and no ` +
+      `single-use decorator is declared twice.`,
   );
   process.exit(0);
 }
@@ -69,6 +70,22 @@ if (arrowFields.length > 0) {
     `A field initialised from a CALL is a different thing and is not reported: ` +
       `\`debounce(this.save, 200)\`\nhas nowhere else to live. This is about a function written in ` +
       `the field itself.\n`,
+  );
+}
+
+if (duplicateDecorators.length > 0) {
+  console.error(`\n${TAG} ${duplicateDecorators.length} class(es) declaring a single-use decorator twice:\n`);
+  for (const duplicate of duplicateDecorators) {
+    console.error(`  ${duplicate.file}:${duplicate.line}:${duplicate.column}`);
+    console.error(
+      `    <${duplicate.component}> declares @${duplicate.decorator} ${duplicate.count} times — ` +
+        `there is one answer to what it asks, so the last wins and the others never run.`,
+    );
+    console.error("");
+  }
+  console.error(
+    `${TAG} A SUBCLASS declaring its own is an override, not a duplicate — only declarations on one\n` +
+      `        class body are counted here.\n`,
   );
 }
 
