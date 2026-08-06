@@ -133,7 +133,7 @@ describe("the ten that were messages", () => {
     expect(of("RMD040")?.data?.component).toBe("Twice");
     // The advice has to name the right one, and which one that is reads backwards — see
     // `PropsGateInheritance.test.tsx`, which measures it.
-    expect(of("RMD040")?.fix).toContain("FURTHEST");
+    expect(of("RMD040")?.fix).toContain("HIGHEST");
     unmount();
   });
 

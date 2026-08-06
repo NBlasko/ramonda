@@ -89,16 +89,19 @@ Most decorators stack, and the order is defined:
 - **`@watchProp`** takes one selector each, so several watch different props.
 - **`@deferHydration`** may appear several times; hydration waits for all of them.
 - **`@catchError`** is single: there is one answer to "who handles an error from below?". Two on one
-  class are reported (RMD032) and the last wins. A **subclass** declaring its own overrides the base's,
-  which is not a duplicate and is not reported.
+  class are reported (RMD032), and **the lowest** is the one that runs — members initialise top to
+  bottom, so it is applied last. A **subclass** declaring its own overrides the base's, which is not a
+  duplicate and is not reported.
 - **Listeners and timers** stack freely — that is the normal way to bind several events.
 
 Three are single:
 
 - **`@Host`** — a component is exactly one element, so there is one answer to which.
 - **`@ShouldUpdateOnPropsChange`** — there is one answer to "take these props?". Two on ONE class are
-  reported in development, and the one written closest to the class wins. A **subclass** may declare
-  its own, which overrides the base's — that is not a duplicate and is not reported.
+  reported in development (RMD040), and **the highest** is the one that decides — class decorators apply
+  bottom-up, so it is applied last. That is the opposite line from `@catchError` above, and the same
+  rule: whichever is applied last is the one that stands. A **subclass** may declare its own, which
+  overrides the base's — that is not a duplicate and is not reported.
 - **`@StableProps`** — it already takes as many names as you like, so there is nothing a second
   one would add. Two on one class throws. A **subclass** may declare its own, and that one
   *merges* with what the parent declared rather than replacing it.

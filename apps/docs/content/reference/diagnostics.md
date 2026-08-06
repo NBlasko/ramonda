@@ -749,8 +749,14 @@ class Panel extends Component {
 }
 ```
 
-A component has one answer to "who handles an error from below?". The last `@catchError` declared is
-the one that gets it; the others never run, and nothing says so — you read a handler that is dead.
+A component has one answer to "who handles an error from below?", so one of them gets it; the others
+never run, and nothing says so — you read a handler that is dead.
+
+**The one that runs is the LOWEST**, `showFallback` above. One rule covers this and
+[`RMD040`](#rmd040-more-than-one-shouldupdateonpropschange-on-one-class): the declaration applied last
+is the one that stands. `@catchError` is a **member** decorator and members initialise top to bottom,
+so the lowest is applied last. A **class** decorator applies bottom-up, so there it is the highest —
+the same rule, the opposite line.
 
 Keep one, and let it decide. It receives the error, and returning `false` **declines** it, so the
 next component above with a handler takes over:
@@ -861,9 +867,13 @@ class Gated extends Component<{ v: number }> { render() { … } }
 There can only be one answer to "take these props?", so one of them decides and the others never run —
 a gate that looks present and is not.
 
-**The one that decides is the one written furthest from the class**, which reads backwards: class
-decorators are applied bottom-up, so the lower declaration writes the rule and the upper one overwrites
-it. Remove the extras and combine their conditions into one callback.
+**The one that decides is the HIGHEST**, which reads backwards. One rule covers this and
+[`RMD032`](#rmd032-more-than-one-catcherror-on-a-component): the declaration applied last is the one
+that stands. `@ShouldUpdateOnPropsChange` is a **class** decorator and class decorators apply bottom-up,
+so the lower declaration writes the rule and the upper one overwrites it. A **member** decorator
+initialises top to bottom, so there it is the lowest — the same rule, the opposite line.
+
+Remove the extras and combine their conditions into one callback.
 
 A **subclass** declaring its own is not this. That is an override — the ordinary way to specialise the
 rule — and it is silent. This fires only for two applications on the same class.

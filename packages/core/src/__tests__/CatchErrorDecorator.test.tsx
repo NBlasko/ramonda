@@ -181,19 +181,46 @@ describe("@catchError", () => {
     expect(app.container.textContent).toContain("caught:boom");
   });
 
-  test("two in ONE class is reported (RMD032); a subclass override is not", async () => {
+  /**
+   * Which of the two is in effect, measured — because `RMD032`'s advice names it and the answer is the
+   * OPPOSITE of the one for `@ShouldUpdateOnPropsChange` (see `PropsGateInheritance.test.tsx`).
+   *
+   * One rule underneath both: the last declaration APPLIED wins. `@catchError` is a member decorator,
+   * and members initialise top-to-bottom, so the LOWEST is the last to write and the one that gets the
+   * error. A class decorator applies bottom-up, so there the highest wins. Same rule, opposite source
+   * order, which is why one sentence cannot serve both.
+   */
+  test("two in ONE class is reported (RMD032), the lower one catches, and a subclass override is not", async () => {
+    const ran: string[] = [];
+
+    class Boom extends Component {
+      render(): never {
+        throw new Error("boom");
+      }
+    }
+
     @Host("div")
     class Twice extends Component {
-      @catchError first() {}
-      @catchError second() {}
+      @state failed = "";
+      @catchError first(e: unknown) {
+        ran.push("first");
+        this.failed = (e as Error).message;
+      }
+      @catchError second(e: unknown) {
+        ran.push("second");
+        this.failed = (e as Error).message;
+      }
       render() {
-        return <i>x</i>;
+        return <div>{this.failed ? "caught" : <Boom />}</div>;
       }
     }
 
     const app = await getDOM(<Twice />);
     await app.settle();
     expect(reported("RMD032").length).toBe(1);
+    // Only one ran, and it is the one written lower — so the upper handler is dead code.
+    expect(ran).toEqual(["second"]);
+    expect(app.container.textContent).toContain("caught");
 
     logged.length = 0;
     resetDiagnostics();

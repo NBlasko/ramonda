@@ -248,11 +248,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
   },
   RMD032: {
-    // error, not warning: the last declaration wins, so errors go to a handler the author did not
-    // pick, and the one they were reading goes silent.
+    // error, not warning: one declaration wins, so errors go to a handler the author did not pick,
+    // and the one they were reading goes silent.
     severity: "error",
     title: "More than one @catchError on a component",
-    fix: 'A component has one answer to "who handles an error from below?", and the last @catchError declared is the one that gets it — the others never run, silently. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
+    fix: 'A component has one answer to "who handles an error from below?", so one @catchError gets it and the others never run, silently. **The LOWEST of them is the one that runs**: the last declaration applied is the one that stands, and members initialise top to bottom, so the one written last is applied last — the opposite of RMD040, where a class decorator applies bottom-up. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
   },
   /* ── the ten that were messages before they were codes ────────────────────────────────────
    *
@@ -302,7 +302,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD040: {
     severity: "error",
     title: "More than one `@ShouldUpdateOnPropsChange` on one class",
-    fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. The one that decides is the one written FURTHEST from the class: class decorators are applied bottom-up, so the lower declaration writes the rule and the upper one overwrites it. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
+    fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. **The HIGHEST of them is the one that decides**: the last declaration applied is the one that stands, and class decorators apply bottom-up, so the one written furthest from the class is applied last — the opposite of RMD032, where a member decorator initialises top to bottom. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
   },
   RMD041: {
     severity: "warning",
