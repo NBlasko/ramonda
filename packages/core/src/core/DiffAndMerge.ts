@@ -993,20 +993,33 @@ export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[]) {
   for (const child of children) {
     if (child === DONE) continue;
 
-    if (child.childNodes.length > 0) {
-      loopThroughSoonToBeRemovedNodes(child.childNodes as NodeListOf<EnhancedChildNode>);
-    }
-
-    releaseRef(child);
-    releaseListRecord(child);
-
-    const component = child._componentInstance;
-    if (component) {
-      lifecycleCleanupManagement(component);
-      child._componentInstance = undefined;
-    }
-
+    unmountNodeInPlace(child);
     child.remove();
+  }
+}
+
+/**
+ * The teardown above, WITHOUT taking the node out of the document.
+ *
+ * For the one caller that has to put something else in the node's place:
+ * hydration replacing a subtree it could not adopt. `replaceChild` needs the old
+ * node to still be a child, so removing it first is not an option — and skipping
+ * the teardown is what used to happen instead, leaving a live component with no
+ * DOM: no `@destroy`, no effect cleanups, no signal detach, its timers still
+ * firing and a later write scheduling a render into nodes nobody can see.
+ */
+export function unmountNodeInPlace(node: EnhancedChildNode): void {
+  if (node.childNodes.length > 0) {
+    loopThroughSoonToBeRemovedNodes(node.childNodes as NodeListOf<EnhancedChildNode>);
+  }
+
+  releaseRef(node);
+  releaseListRecord(node);
+
+  const component = node._componentInstance;
+  if (component) {
+    lifecycleCleanupManagement(component);
+    node._componentInstance = undefined;
   }
 }
 

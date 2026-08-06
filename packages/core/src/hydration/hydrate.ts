@@ -5,8 +5,16 @@ import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "../core/runtime";
-import { applyRefFromProps, diffAndMerge, filterVirtualChild, isListNode, listHostFor } from "../core/DiffAndMerge";
+import {
+  applyRefFromProps,
+  diffAndMerge,
+  filterVirtualChild,
+  isListNode,
+  listHostFor,
+  unmountNodeInPlace,
+} from "../core/DiffAndMerge";
 import { buildLazyList, isLazyList, type ListEngine, type LazyListNode } from "../helpers/listEngine";
+import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
 import { ramondaLog } from "../debug/logger";
@@ -278,6 +286,11 @@ function hydrateComponent(
   const rendered = generateRenderOutput(component) as VNodeString;
 
   if (existingHostNode.nodeName !== rendered.name) {
+    // Same fallback as the deferred path above, and the same obligation. This
+    // component was never adopted onto a node, so there is nothing to unmount —
+    // but its client `@create` has already run, and whatever that started is
+    // only reachable through the teardown.
+    lifecycleCleanupManagement(component);
     return hydrationFallback(vnode, placeholder, existingHostNode, parent);
   }
 
@@ -520,6 +533,16 @@ function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void 
     // The client wants a different element than the server wrote. Nothing can be
     // adopted, so fall back to building — the same decision the synchronous path
     // makes, just reached later.
+    //
+    // Torn down FIRST, and in place. By now this component has been adopted onto
+    // the server's node: it is initialized, holds restored state and whatever
+    // its client `@create` started. `replaceChild` takes only the node, so
+    // without this the component went on living with no DOM — `@destroy` never
+    // ran, effect cleanups never ran, its signals stayed attached, its timers
+    // went on firing, and a later write would render into nodes nobody can see.
+    // In place rather than through `unmountChildrenNodes`, because the node has
+    // to still be a child for `replaceChild` to put the fresh one where it was.
+    unmountNodeInPlace(host);
     hydrationFallback(vnode, componentRuntime.parent, host, parent);
     return;
   }
