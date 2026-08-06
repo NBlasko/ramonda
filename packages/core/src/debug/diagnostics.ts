@@ -38,7 +38,8 @@ export type DiagnosticCode =
   | "RMD029"
   | "RMD030"
   | "RMD031"
-  | "RMD032";
+  | "RMD032"
+  | "RMD033";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -210,6 +211,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A list could not identify its items",
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
+  },
+  RMD033: {
+    // error, not warning: development stops at it, and in production the handler is rebuilt on every
+    // render — so everything it is passed to re-renders with it, for the life of the page.
+    severity: "error",
+    title: "A memoized handler was given an argument it cannot key on",
+    fix: "@memoizedHandler caches by the ARGUMENTS, and a cache key can hold a string, a number or a boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its identity would miss every time — a fresh object per render would fill the map and hand back a new handler on every pass, which is the churn the decorator exists to prevent. Pass the primitive the object stands for — `row.id` rather than `row` — and read the rest inside the handler. Development throws so the mistake is not shipped; production builds the handler and moves on WITHOUT caching that call, so the page keeps working and only the memoisation is lost.",
   },
   RMD032: {
     // error, not warning: the last declaration wins, so errors go to a handler the author did not

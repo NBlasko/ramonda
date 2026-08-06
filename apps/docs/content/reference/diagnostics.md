@@ -765,6 +765,35 @@ A **subclass** declaring its own is not this. That is an override: the subclass'
 the base's, which is how a specialised boundary is written, and it is not reported. This fires only
 for two declarations on the same class.
 
+## RMD033 — A memoized handler was given an argument it cannot key on
+
+```tsx expect-error
+@memoizedHandler
+pick(row: Row) {          // reported: a Row cannot be part of a cache key
+  return () => this.select(row.id);
+}
+```
+
+```tsx
+@memoizedHandler
+pick(id: string) {        // the way: key on the primitive, read the rest inside
+  return () => this.select(id);
+}
+```
+
+`@memoizedHandler` caches by the ARGUMENTS, and a cache key can hold a string, a number or a
+boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its
+identity would miss every time — a fresh object per render would fill the map and hand back a new
+handler on every pass, which is the churn the decorator exists to prevent.
+
+**Development throws**, so the mistake is not shipped. **Production builds the handler and moves on
+without caching that call**: the page keeps working and only the memoisation is lost. It used to
+throw there too, from inside a render, so one handler receiving an object took the whole page down —
+and which handler that was depended on the data, so it could pass every test and fail for one user.
+
+The code is on the thrown error as well as in the log, the way [RMD004](#rmd004-props-mutated-by-the-receiving-component)
+is, so a codebase can be swept for it.
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to

@@ -19,6 +19,35 @@ describe("@memoizedHandler with an un-keyable argument", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
+  test("it is reported as RMD033 as well as thrown, so it can be swept for", async () => {
+    /**
+     * The same shape a props write has (RMD004, RMD015): the throw stops the
+     * mistake being shipped, and the diagnostic makes it an identifiable thing —
+     * one code to grep for, one entry in the stream the panel carries, so a
+     * codebase can be swept for a class of fault rather than for a sentence
+     * somebody has to recognise.
+     */
+    const logged: string[] = [];
+    (console.log as unknown as { mockRestore?: () => void }).mockRestore?.();
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(" "));
+    });
+
+    @Host("div")
+    class Panel extends Component {
+      @memoizedHandler
+      pick(row: unknown) {
+        return () => row;
+      }
+      render() {
+        return <button onClick={this.pick({ id: 7 } as unknown as string)}>x</button>;
+      }
+    }
+
+    await expect(getDOM(<Panel />)).rejects.toThrow(/\[RMD033\]/);
+    expect(logged.filter((line) => line.includes("RMD033")).length).toBeGreaterThan(0);
+  });
+
   test("development throws, naming the method and the argument", async () => {
     @Host("div")
     class Panel extends Component {

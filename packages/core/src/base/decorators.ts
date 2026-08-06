@@ -863,8 +863,22 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
        * object is standing in for.
        */
       if (__DEV__) {
+        const owner = (this as { constructor: { name: string } }).constructor.name;
+        /**
+         * Reported AND thrown, the way a props write is (RMD004, RMD015).
+         *
+         * The throw is what stops the mistake being shipped; the diagnostic is what
+         * makes it an identifiable thing — one code to grep for, one entry in the
+         * log the panel streams, so a codebase can be swept for a whole class of
+         * fault rather than for a sentence somebody has to recognise.
+         */
+        diagnose(
+          "RMD033",
+          `${owner}:${String(context.name)}`,
+          `<${owner} /> called ${String(context.name)} with ${describeUnkeyableArgs(args)}.`,
+        );
         throw new Error(
-          `[Ramonda] @memoizedHandler on ${(this as { constructor: { name: string } }).constructor.name}.${String(
+          `[RMD033] @memoizedHandler on ${owner}.${String(
             context.name,
           )} was called with an argument it cannot build a cache key from: ${describeUnkeyableArgs(args)}. ` +
             `A key can hold a string, a number or a boolean — an object cannot be compared by value, and keying ` +

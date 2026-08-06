@@ -67,6 +67,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD030` | error | State written during `[INSPECT]()` |
 | `RMD031` | error | A list item that is not an element |
 | `RMD032` | error | More than one `@catchError` on a component |
+| `RMD033` | error | A memoized handler was given an argument it cannot key on |
 
 ### RMD001 — State written during render()
 
