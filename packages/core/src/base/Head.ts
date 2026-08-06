@@ -374,7 +374,18 @@ function registryForDocument(): HeadRegistry {
  * request boundary already is.
  */
 export function resetHeadRegistry(): void {
+  const registry = registries.get(document);
   registries.delete(document);
+
+  /**
+   * Unmarked as well as dropped.
+   *
+   * A registry marked for recompute and then discarded is still in `dirty`, and the
+   * next commit would recompute it — writing a finished request's title and tags
+   * into the document the NEXT one is rendering into. The whole reason this function
+   * exists is that boundary, so leaving a way across it defeats it.
+   */
+  if (registry !== undefined) dirty.delete(registry);
 }
 
 /** The selector that identifies a `<meta>`, or `undefined` when nothing does. */
@@ -471,6 +482,42 @@ function resolve(root: HeadEntry | undefined): { title: string | undefined; tags
  * the HTML, so the client must recognise and update them rather than append a
  * second copy of every one.
  */
+/**
+ * The element, unless it is no longer in the head.
+ *
+ * A remembered element is not proof of a tag in the document: an extension, an
+ * analytics snippet or anything writing `document.head.innerHTML` can take it out,
+ * and then every later update wrote attributes onto a detached node — the page had
+ * no description, nothing said so, and the next write did not fix it either,
+ * because the registry went on believing it owned one.
+ *
+ * `parentNode`, not `isConnected`: this runs under whatever DOM a server render
+ * installed, and the cheap check is the one every implementation has.
+ */
+function live(element: Element | undefined): Element | undefined {
+  if (element === undefined) return undefined;
+  return element.parentNode === document.head ? element : undefined;
+}
+
+/**
+ * Takes off what this tag no longer asks for.
+ *
+ * The upsert only ever SET attributes, so one a page stopped passing stayed on the
+ * element forever: `<link rel="alternate" href="/a" hreflang="en">` that became
+ * plain `<link rel="alternate" href="/a">` was still telling a crawler the page is
+ * in English. The resolved tag is the whole truth about what the element should
+ * carry, so anything else on it is left over.
+ *
+ * `HEAD_ATTR` is kept, because it is not part of the tag's meaning — it is how the
+ * server tells its own tags apart from the shell's.
+ */
+function dropUnwantedAttributes(element: Element, wanted: Record<string, string>): void {
+  for (const name of element.getAttributeNames()) {
+    if (name === HEAD_ATTR || name in wanted) continue;
+    element.removeAttribute(name);
+  }
+}
+
 function elementFor(selector: string, tagName: string): Element {
   const existing = document.head.querySelector(selector);
   if (existing) {
@@ -527,10 +574,11 @@ function applyRegistry(registry: HeadRegistry): void {
   const { title, tags } = resolve(registry.root);
 
   for (const [selector, spec] of tags) {
-    const element = registry.managed.get(selector) ?? elementFor(selector, spec.tagName);
+    const element = live(registry.managed.get(selector)) ?? elementFor(selector, spec.tagName);
     // setAttribute, never innerHTML: the DOM escapes the value, so a title or
     // description carrying a quote cannot break out of the attribute.
     for (const name in spec.attributes) element.setAttribute(name, spec.attributes[name]);
+    dropUnwantedAttributes(element, spec.attributes);
     registry.managed.set(selector, element);
   }
 

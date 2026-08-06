@@ -351,6 +351,76 @@ describe("the head when one page replaces another", () => {
     expect(document.head.querySelector('meta[name="description"]')!.getAttribute("content")).toBe("still here");
   });
 
+  test("an attribute a tag stops asking for comes OFF it", async () => {
+    /**
+     * The upsert only ever set attributes, so one a page stopped passing stayed on
+     * the element for the life of the document. A `<link rel="alternate">` that
+     * dropped its `hreflang` went on telling a crawler the page is in English —
+     * metadata that is not merely stale but was never true of the page showing.
+     *
+     * The resolved tag is the whole truth about what its element should carry, so
+     * anything else on it is left over. `data-ramonda-head` survives, because it is
+     * not part of the tag's meaning.
+     */
+    @Host("div")
+    class Page extends Component {
+      @state full = true;
+      head = this.use(Head, () =>
+        this.full
+          ? { link: [{ rel: "alternate", href: "/a", hreflang: "en", type: "text/html" }] }
+          : { link: [{ rel: "alternate", href: "/a" }] },
+      );
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+
+    const link = () => document.head.querySelector('link[rel="alternate"]')!;
+    expect(link().getAttribute("hreflang")).toBe("en");
+
+    app.instance.full = false;
+    await app.settle();
+
+    expect(link().getAttribute("hreflang")).toBeNull();
+    expect(link().getAttribute("type")).toBeNull();
+    expect(link().getAttribute("href")).toBe("/a");
+    expect(link().hasAttribute(HEAD_ATTR)).toBe(true);
+  });
+
+  test("a tag something else deleted comes back on the next change", async () => {
+    /**
+     * Remembering an element is not the same as owning one. An extension, an
+     * analytics snippet, anything writing `document.head.innerHTML` can take a tag
+     * out — and then every later update wrote attributes onto a DETACHED node. The
+     * page had no description, nothing said so, and the next write did not fix it
+     * either, because the registry went on believing it had one.
+     */
+    @Host("div")
+    class Page extends Component {
+      @state version = 1;
+      head = this.use(Head, () => ({ description: `v${this.version}` }));
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    expect(description()!.getAttribute("content")).toBe("v1");
+
+    // Something that is not Ramonda removes it.
+    description()!.remove();
+
+    app.instance.version = 2;
+    await app.settle();
+
+    expect(description()).not.toBeNull();
+    expect(description()!.getAttribute("content")).toBe("v2");
+  });
+
   test("what the last page owned still goes when nothing replaces it", async () => {
     @Host("div")
     class Page extends Component {

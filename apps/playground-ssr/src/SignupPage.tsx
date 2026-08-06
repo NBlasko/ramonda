@@ -1,4 +1,4 @@
-import { Component, Host, list, memoizedHandler, type RamondaNode } from "@ramonda/core";
+import { Component, Head, Host, list, memoizedHandler, type RamondaNode } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 /**
@@ -98,6 +98,11 @@ function register(values: Signup): Promise<{ ok: boolean }> {
 
 @Host("div")
 export class SignupPage extends Component {
+  head = this.use(Head, () => ({
+    title: "Sign up — Ramonda SSR",
+    description: "A form, validated on both sides.",
+    link: [{ rel: "canonical", href: "https://example.com/signup" }],
+  }));
   private form = this.use(Form<typeof schema>, {
     schema,
     defaultValues: DEFAULTS,

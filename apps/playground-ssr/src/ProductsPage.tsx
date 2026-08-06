@@ -1,4 +1,4 @@
-import { Component, Host, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
+import { Component, Head, Host, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
 import { InfiniteQuery, Query, QueryClientAccess, type FetchContext, type PageContext } from "@ramonda/query";
 
 /**
@@ -144,6 +144,15 @@ class ProductPageRows extends Component<{
  */
 @Host("aside")
 class ProductDetail extends Component<{ id: number }> {
+  /**
+   * A Head BELOW the page's own — the nested case. Selecting a product should take
+   * the title; deselecting should hand it back to the products page, not to the
+   * layout and not to nothing.
+   */
+  head = this.use(Head, () => ({
+    title: `Product ${this.props.id} — Ramonda SSR`,
+    description: `Detail for product ${this.props.id}.`,
+  }));
   private queries = this.use(QueryClientAccess);
 
   /**
@@ -217,6 +226,11 @@ class ProductDetail extends Component<{ id: number }> {
 
 @Host("div")
 export class ProductsPage extends Component {
+  head = this.use(Head, () => ({
+    title: "Products — Ramonda SSR",
+    description: "A paged list, fetched on the server.",
+    meta: [{ property: "og:type", content: "product.group" }],
+  }));
   @state selected: number | undefined = undefined;
 
   /**

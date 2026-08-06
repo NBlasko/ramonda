@@ -202,7 +202,24 @@ export function flushAfterCommit(): void {
   // pass rather than extending this one.
   const work = Array.from(pendingCommitWork);
   pendingCommitWork.clear();
-  for (const run of work) run();
+
+  for (const run of work) {
+    try {
+      run();
+    } catch (e) {
+      /**
+       * Isolated the way a `@mount` is, and for the same reason: one piece of
+       * commit-level work must not stop the rest.
+       *
+       * It does not go to `errorHandler`, because there is no component to hand it
+       * to — that is what makes this work commit-level rather than a lifecycle
+       * callback. And it is not rethrown: this runs from the `finally` below, where
+       * a throw would REPLACE whatever error the commit was already unwinding with,
+       * and losing a component's real failure to a metadata one is the worse trade.
+       */
+      if (__DEV__) console.error("[Ramonda] Post-commit work failed:", e);
+    }
+  }
 }
 
 export function flushPostCommit(): void {
@@ -245,11 +262,18 @@ export function flushPostCommit(): void {
         errorHandler(e, next.component);
       }
     }
-
-    // After every mount, because that is what "the DOM this commit builds is in
-    // place" means — and commit-level work is entitled to read the finished result.
-    flushAfterCommit();
   } finally {
+    /**
+     * After every mount, because that is what "the DOM this commit builds is in
+     * place" means — and commit-level work is entitled to read the finished result.
+     *
+     * In the `finally` rather than after the loop: a `@mount` with no
+     * `ErrorBoundary` above it rethrows, and leaving this in the try meant one
+     * throwing component deferred the whole commit's work to whenever something
+     * next happened to commit. The page would go on with the head of the commit
+     * before it, and nothing would say so.
+     */
+    flushAfterCommit();
     flushing = false;
   }
 }

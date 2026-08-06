@@ -79,22 +79,39 @@ function parseCookies(header) {
   return out;
 }
 
-function sendHtml(res, html, mode) {
+function sendHtml(res, document, mode) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
-  res.end(template.replace("<!--ssr-->", html));
+  res.end(document);
+}
+
+/**
+ * Puts one render into the shell: body, title, and the head tags the `Head` chain
+ * resolved to.
+ *
+ * The title is REPLACED rather than appended to — two `<title>` elements is not a
+ * document with a fallback, it is a document a crawler reads the first of. A page
+ * that set none keeps the shell's.
+ */
+function fillTemplate({ html, title, head }) {
+  let out = template.replace("<!--ssr-->", html ?? "");
+  if (title) out = out.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
+  return out.replace("<!--head-->", head ?? "");
 }
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
 async function bakeShared(path) {
   const dom = await installDom(`${origin}${path}`);
   try {
-    const { html, blockedBy } = await prerender(path);
+    const { html, title, head, blockedBy } = await prerender(path);
     if (blockedBy !== undefined) {
       throw new Error(`Route ${path} is cached (static/isr) but read the request (${blockedBy}).`);
     }
-    return html;
+    // The FULL document is what goes in the cache, head included. Caching the body
+    // alone and filling the shell at send time would work until the shell changed
+    // under a cached page — and the head is what would silently go stale.
+    return fillTemplate({ html, title, head });
   } finally {
     dom.close();
   }
@@ -221,7 +238,10 @@ const server = createServer(async (req, res) => {
     //    reads for auth / per-user output; the router reads the URL off the shimmed `window`.
     const dom = await installDom(`${origin}${url}`);
     const started = process.hrtime.bigint();
-    const { html, redirect } = await render({ url: new URL(url, origin), cookies: parseCookies(req.headers.cookie) });
+    const { html, title, head, redirect } = await render({
+      url: new URL(url, origin),
+      cookies: parseCookies(req.headers.cookie),
+    });
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     dom.close();
 
@@ -236,7 +256,7 @@ const server = createServer(async (req, res) => {
     }
 
     res.setHeader("Server-Timing", `render;dur=${ms.toFixed(1)}`);
-    sendHtml(res, html, "dynamic");
+    sendHtml(res, fillTemplate({ html, title, head }), "dynamic");
     console.log(`${req.method} ${url} → ${ms.toFixed(1)}ms, ${html.length}b`);
   } catch (error) {
     res.statusCode = 500;

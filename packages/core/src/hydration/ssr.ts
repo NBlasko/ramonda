@@ -200,6 +200,18 @@ export interface StaticRender {
   /** The baked HTML — present only when the route read nothing per-request. */
   html?: string;
   /**
+   * The `<title>` and the serialized `<meta>` / `<link>` this route's `Head` set, the
+   * same two `renderPage` returns — and absent for the same reason `html` is, because
+   * a route that cannot be baked has nothing to bake.
+   *
+   * A static page is the one that needs them MOST. Nothing runs on a crawler that
+   * does not execute JavaScript, so what is baked into the file is the whole of what
+   * it sees — and a build that dropped the head shipped exactly the pages whose
+   * titles and descriptions matter with none of either.
+   */
+  title?: string;
+  head?: string;
+  /**
    * Set when the render touched per-request data (a cookie, a header, a seeded value), naming
    * the field. The route CANNOT be prerendered — bake it and one visitor's data would be served
    * to everyone — so the build must fail or fall the route back to per-request rendering.
@@ -220,18 +232,22 @@ export interface StaticRender {
 export async function renderStatic(vnode: ComponentChild, url: URL): Promise<StaticRender> {
   const scope = createRequestScope({ mode: "build", url });
   setRequestScope(scope);
+  // Cleared before, so this page starts from an empty head rather than inheriting the
+  // last route the build baked — a build renders every page into one document.
+  resetHead();
   try {
     const html = await renderToString(vnode);
     // A read inside an async @mount throws into the drain's allSettled and is swallowed, so the
     // recorded field — not the throw — is the authority here.
     const blockedBy = getBuildRead(scope);
-    return blockedBy !== undefined ? { blockedBy } : { html };
+    return blockedBy !== undefined ? { blockedBy } : { html, ...collectHead() };
   } catch (e) {
     // A synchronous read (render / @create / sync @mount) throws straight out.
     if (e instanceof RequestReadDuringBuild) return { blockedBy: e.field };
     throw e; // a ServerRedirect or a genuine error is the caller's to handle.
   } finally {
     setRequestScope(undefined);
+    resetHead();
   }
 }
 
@@ -272,18 +288,16 @@ export interface RenderedPage {
  * empty and the title already restored. An earlier version of this comment
  * claimed the before-reset was what covered that case. It is not.
  */
-export async function renderPage(vnode: ComponentChild): Promise<RenderedPage> {
+export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
   resetHead();
 
   try {
-    const body = await renderToString(vnode);
+    // Forwarded, so a per-request render can use this instead of `renderToString` —
+    // it could not before, and a server that needed `request` had to give up the head
+    // to get it.
+    const body = await renderToString(vnode, opts);
 
-    const tags = Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
-    return {
-      body,
-      title: document.title,
-      head: tags.map((tag) => tag.outerHTML).join(""),
-    };
+    return { body, ...collectHead() };
   } finally {
     // Cleared once the markup is safely captured — and in a `finally` so a render
     // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
@@ -292,6 +306,21 @@ export async function renderPage(vnode: ComponentChild): Promise<RenderedPage> {
     // server process from carrying a rendered page's tags between requests.
     resetHead();
   }
+}
+
+/**
+ * Reads back what the `Head`s of the render just finished put in the document.
+ *
+ * Shared by `renderPage` and `renderStatic` so a page carries the same head whether
+ * it is rendered per request or baked — one of them collecting and the other not is
+ * how a static build came to ship its pages with no title at all.
+ */
+function collectHead(): { title: string; head: string } {
+  const tags = Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
+  return {
+    title: document.title,
+    head: tags.map((tag) => tag.outerHTML).join(""),
+  };
 }
 
 /** Clears the tags a previous `Head` left behind, and the title with them. */
