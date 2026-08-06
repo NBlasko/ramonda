@@ -169,11 +169,18 @@ function run() {
 
   const work = mkdtempSync(join(tmpdir(), "ramonda-side-effects-"));
   const wrong = [];
+  const unbuilt = [];
+  let measured = 0;
 
   try {
     for (const { name, entry } of packages) {
       const decision = DECIDED[name];
-      if (decision === undefined || !existsSync(entry)) continue;
+      if (decision === undefined) continue;
+      if (!existsSync(entry)) {
+        unbuilt.push(name);
+        continue;
+      }
+      measured += 1;
 
       const source = join(work, `${name.replace("/", "-")}.js`);
       const out = `${source}.out.js`;
@@ -208,6 +215,28 @@ function run() {
     }
   } finally {
     rmSync(work, { recursive: true, force: true });
+  }
+
+  /**
+   * Every package in the table has to have been measured, or this half proved nothing.
+   *
+   * Found by moving `packages/lens/dist` aside: the run skipped the package it could not read and still
+   * reported that every declaration was honoured. On a fresh checkout with nothing built, that is a
+   * green run over zero packages — the shape of check this repository has been bitten by before.
+   */
+  if (unbuilt.length > 0) {
+    throw new Error(
+      `[side-effects] These packages are not built, so nothing could be asked of a bundler:\n` +
+        unbuilt.map((name) => `        ${name}`).join("\n") +
+        `\n\n        This check reads what the build EMITTED. Run \`turbo run build\` first.`,
+    );
+  }
+
+  if (measured !== Object.keys(DECIDED).length) {
+    throw new Error(
+      `[side-effects] Measured ${measured} of ${Object.keys(DECIDED).length} packages in the table, ` +
+        `which means the loop skipped one silently.`,
+    );
   }
 
   if (wrong.length > 0) {
