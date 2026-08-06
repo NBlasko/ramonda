@@ -36,3 +36,11 @@ still receives everything.
 Still on the older channel: the handful of core messages that carry no code — `hydration/*`,
 `vdom/h`, `watchProps`, `decorators`, `CreateRamonda` — which reach the console and the panel but not
 the sink, because a record needs a stable code and these have none yet. They are the last ones left.
+
+Two things a record will not carry, both about `data` holding what an application put in a prop.
+A **getter is never invoked**: `Object.entries` would, and a getter is arbitrary code — it can throw,
+out of the diagnostic that was explaining what was wrong with the app, or write state, which lands
+mid-render and raises `RMD001` against whoever was rendering. It is skipped by descriptor, so it is
+never read. And a **`bigint` arrives as its digits**: it is the one primitive `JSON.stringify` throws
+on, which is what every collector shipping a record performs, and a `bigint` prop needs no cooperation
+from anybody.

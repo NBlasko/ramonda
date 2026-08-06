@@ -33,3 +33,8 @@ package depends on the other to pass a name along. The same contract shape as th
 
 Development-only. A production build stores none of it, and a label that is blank, is not a string, or
 only repeats the class is ignored.
+
+A hook that calls `Object.freeze(this)` keeps working and keeps its class name in the panel. Such a
+hook works everywhere else in this package, and `Object.defineProperty` on a frozen object throws —
+from a field initializer, before the component exists, and **only in development**, since production
+never stores the metadata. A cosmetic label is what gives way.

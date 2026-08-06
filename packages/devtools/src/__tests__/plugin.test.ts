@@ -274,6 +274,21 @@ describe("a row described as data", () => {
     panel.remove();
   });
 
+  /**
+   * A group label is the first string in this panel that an APPLICATION writes — `@ramonda/form`
+   * builds it from the `label` a `use()` gave, so `{ label: "<img src=x onerror=…>" }` reaches here.
+   * Everything else in a plugin row is a key or a class name the framework minted.
+   */
+  it("renders markup in a group label as text", () => {
+    const panel = withGroups([{ label: '<img src=x onerror="throw 1">', rows: [row()] }]);
+    const header = container(panel).querySelector(".q-client")!;
+
+    expect(header.querySelector("img")).toBe(null);
+    expect(header.textContent).toBe('<img src=x onerror="throw 1">');
+
+    panel.remove();
+  });
+
   it("draws no label when a group has none, which is the single-group case", () => {
     const panel = withGroups([{ rows: [row()] }]);
 

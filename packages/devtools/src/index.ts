@@ -1,6 +1,6 @@
 import { PANEL_CSS } from "./styles";
 import { bridgeDiagnosticsToPanel, diagnosticsReachUs } from "./diagnostics";
-import { escapeHtml, toServerPath } from "./format";
+import { escapeHtml, safeJson, toServerPath } from "./format";
 import { resolveOriginal } from "./sourceMap";
 import { ValueView } from "./valueView";
 import { ProfileTab } from "./profileTab";
@@ -425,7 +425,7 @@ class RamondaDevTools extends HTMLElement {
 
     let dataHtml = "";
     if (data) {
-      const dataString = data instanceof Error ? data.message : JSON.stringify(data, null, 2);
+      const dataString = data instanceof Error ? data.message : safeJson(data);
       dataHtml = `<div class="data-preview">Data: ${escapeHtml(dataString)}</div>`;
     }
 

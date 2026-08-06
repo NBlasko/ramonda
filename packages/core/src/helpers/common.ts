@@ -292,8 +292,15 @@ export function useCommon<T extends BaseHook<any>, P>(
    * exactly that collision, because a form is full of labels.
    *
    * DEV only. Nothing reads it in a production build, so nothing stores it there either.
+   *
+   * **`isExtensible` first, and it is not defensive.** A hook that calls `Object.freeze(this)` in its
+   * constructor works everywhere else in this package — measured — and `defineProperty` on it throws
+   * `Cannot define property …, object is not extensible`, from a field initializer, before the
+   * component exists. That is a cosmetic devtools label taking an application down, and taking it down
+   * ONLY IN DEVELOPMENT, since production never reaches this line. A frozen instance cannot carry the
+   * property by any means, so the label is what gives way: the hook keeps its class name in the panel.
    */
-  if (__DEV__ && meta !== undefined) {
+  if (__DEV__ && meta !== undefined && Object.isExtensible(hookInstance)) {
     Object.defineProperty(hookInstance, HOOK_META, { value: meta, enumerable: false, configurable: true });
   }
 

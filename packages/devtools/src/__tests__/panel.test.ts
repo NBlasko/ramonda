@@ -1303,6 +1303,37 @@ describe("the logs tab", () => {
     expect(rows(panel)[0].querySelector("img")).toBe(null);
     expect(rows(panel)[0].textContent).toContain("<img src=x>");
   });
+
+  /**
+   * A diagnostic's `data` reaches this tab exactly as the framework passed it, and for
+   * `propsStability` that is the real prop values — so anything an application can put in a prop
+   * arrives here. `JSON.stringify` THROWS on two of those, and thrown from inside this listener it is
+   * an uncaught exception: the row never renders and the panel fails on the report it exists to show.
+   */
+  it("renders a row whose `data` cannot be JSON", () => {
+    const panel = mount(() => tree());
+    const loop: Record<string, unknown> = { name: "outer" };
+    loop.self = loop;
+
+    // A `bigint` prop needs no cooperation from anybody — "Do not know how to serialize a BigInt".
+    log("big", "error", { size: 10n });
+    log("loop", "error", loop);
+    // An accessor that throws when read. The console invokes one too, so this is not exotic.
+    log("getter", "error", {
+      get boom(): string {
+        throw new Error("read me and see");
+      },
+    });
+
+    // Newest first, and all three are there rather than one killing the listener.
+    expect(rows(panel)).toHaveLength(3);
+    expect(rows(panel)[0].textContent).toContain("msg getter");
+
+    // The two that can be read still show the value and the shape, which is what a reader came for.
+    expect(rows(panel)[2].textContent).toContain("10n");
+    expect(rows(panel)[1].textContent).toContain("outer");
+    expect(rows(panel)[1].textContent).toContain("[circular]");
+  });
 });
 
 describe("what the panel does while nobody is looking", () => {

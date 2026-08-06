@@ -109,6 +109,40 @@ describe("inspector: component + hook state", () => {
     expect(node.hooks[0].name).toBe("Store (signup)");
   });
 
+  /**
+   * A cosmetic label must never be able to take an application down — and least of all in
+   * development only, where a production build skips the line that stores it.
+   *
+   * A hook that freezes itself works everywhere else in this package (asserted below, so this is not
+   * a claim about an unsupported shape), and `Object.defineProperty` on a frozen object throws. It
+   * happens in a field initializer, before the component exists. The label is what gives way.
+   */
+  test("a hook that froze itself keeps working, and keeps its class name", async () => {
+    class Sealed extends Hook {
+      @state n = 1;
+      constructor(...args: ConstructorParameters<typeof Hook<undefined>>) {
+        super(...args);
+        Object.freeze(this);
+      }
+    }
+    class Page extends Component {
+      labelled = this.use(Sealed, undefined, { label: "frozen" });
+      plain = this.use(Sealed);
+      render() {
+        return <p>{this.labelled.n + this.plain.n}</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const node = scanComponentTree(app.container)[0];
+
+    // The hook works: it rendered, and its state is readable.
+    expect(app.container.textContent).toBe("2");
+    // The label is absent rather than fatal — a frozen instance cannot carry the property at all.
+    expect(node.hooks.map((hook) => hook.name)).toEqual(["Sealed", "Sealed"]);
+    app.unmount();
+  });
+
   test("ignores a label that is not a name, or that only repeats the class", async () => {
     class Store extends Hook {
       @state value = 1;

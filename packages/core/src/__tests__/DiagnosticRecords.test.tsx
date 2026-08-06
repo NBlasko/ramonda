@@ -93,6 +93,40 @@ describe("the diagnostic record", () => {
     expect(records.find((r) => r.code === "RMD003")?.data).toBeUndefined();
   });
 
+  /**
+   * Reporting must not become the fault. Both of these are about `data` holding something an
+   * application put in a prop, which is exactly what `propsStability` passes on.
+   */
+  test("a getter in `data` does not take `diagnose` with it", () => {
+    const hostile = {
+      get boom(): string {
+        throw new Error("a getter is arbitrary code");
+      },
+      safe: 1,
+    };
+
+    // `Object.entries` would have run it, and the throw would have come out of the diagnostic that
+    // was explaining what was wrong with the app. An accessor is skipped by descriptor instead — a
+    // computed value is not "what the message interpolated" in any case.
+    expect(() => diagnose("RMD022", "attack.getter", "detail", hostile)).not.toThrow();
+    expect(records.find((r) => r.code === "RMD022")?.data).toEqual({ safe: 1 });
+
+    // Scoped claim on purpose: this is about the RECORD channel. A consumer that serializes `data`
+    // itself still invokes the getter, which is inherent to handing an object to a console — so what
+    // this guarantees is that `diagnose` returns and the record is clean, not that nobody downstream
+    // ever reads it. `@ramonda/devtools` survives its own read; that is asserted in its suite.
+  });
+
+  test("a bigint arrives as digits, because a record gets serialized", () => {
+    // A `bigint` prop needs no cooperation from anybody, and it is the one primitive
+    // `JSON.stringify` throws on — which is what every collector shipping a record does.
+    diagnose("RMD022", "attack.bigint", "detail", { size: 9007199254740993n, ok: true });
+
+    const record = records.find((r) => r.code === "RMD022");
+    expect(record?.data).toEqual({ size: "9007199254740993", ok: true });
+    expect(() => JSON.stringify(record)).not.toThrow();
+  });
+
   test("the console and the dev-log channel are untouched by any of this", () => {
     const logged: unknown[] = [];
     const handler = (event: Event) => logged.push((event as CustomEvent).detail);

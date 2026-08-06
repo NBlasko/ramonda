@@ -367,15 +367,33 @@ export function diagnose(code: DiagnosticCode, dedupKey: string, detail?: string
  *
  * So the console keeps the whole object and the record keeps the primitives, and the filter is here
  * rather than trusted to call sites: there are thirty-nine of them and `unknown` promises nothing.
+ *
+ * ## Two things it refuses to do, both because reporting must not become the fault
+ *
+ * **It never invokes a getter.** `Object.entries` would, and a getter is arbitrary code: it can throw
+ * — taking the app down from inside the diagnostic that was explaining what was wrong with it — or
+ * write state, which lands mid-render and raises RMD001 attributed to whoever was rendering. Every
+ * call site today passes a fresh literal, so this is unreachable from any of them; it is written this
+ * way because the argument is `unknown` and the next call site is not required to be one of those. A
+ * computed value is not "what the message interpolated" in any case.
+ *
+ * **A `bigint` becomes its digits.** It is a value, so the rules above admit it, and it is the one
+ * primitive `JSON.stringify` throws on — which every collector that ships a record somewhere performs.
+ * A prop can be a `bigint` and `propsStability` passes prop values, so this is reachable. Dropping it
+ * would delete a value the message names; the string is what the console prints for it anyway.
  */
 function reportable(data: unknown): Record<string, unknown> | undefined {
   if (data === null || typeof data !== "object" || Array.isArray(data)) return undefined;
 
   const values: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
+  for (const key of Object.keys(data)) {
+    const described = Object.getOwnPropertyDescriptor(data, key);
+    if (described === undefined || !("value" in described)) continue;
+
+    const value = described.value;
     if (value !== null && typeof value === "object") continue;
     if (typeof value === "function" || typeof value === "symbol") continue;
-    values[key] = value;
+    values[key] = typeof value === "bigint" ? String(value) : value;
   }
 
   return Object.keys(values).length === 0 ? undefined : values;
