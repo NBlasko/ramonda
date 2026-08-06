@@ -452,8 +452,31 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
  */
 type PropsGateOwner = { [COMPONENT_RUNTIME]: ComponentRuntime; [GLOBAL_RUNTIME]: Runtime };
 
+/**
+ * The prototype that actually declares `name` — the most-derived one, since the
+ * walk stops at the first that owns it.
+ *
+ * DEV only, and only to tell "two declarations in one class" from "a subclass
+ * overriding the base's". Two initializers whose declarations share an owner are
+ * the first; different owners are the second.
+ */
+function ownerOfMethod(instance: object, name: string): object | undefined {
+  let proto: object | null = Object.getPrototypeOf(instance);
+  while (proto !== null) {
+    if (Object.hasOwn(proto, name)) return proto;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return undefined;
+}
+
+/** runtime -> the class that last declared its props gate. DEV only. */
+const gateOwners = new WeakMap<object, object | undefined>();
+
 export function shouldUpdateOnPropsChange<This extends PropsGateOwner>(
-  value: (this: This, previous: any, next: any) => boolean,
+  // The method is dispatched by NAME below, so the function itself is not kept —
+  // but the parameter stays, because it is what TypeScript checks the decorated
+  // method's shape against.
+  _value: (this: This, previous: any, next: any) => boolean,
   // Typed by its `This`, which is what refuses a hook at COMPILE time: a Hook has no
   // COMPONENT_RUNTIME, so the method's implicit `this` does not satisfy the constraint. The
   // throw in the initializer below stays for the build that has no types.
@@ -462,7 +485,7 @@ export function shouldUpdateOnPropsChange<This extends PropsGateOwner>(
   if (__DEV__) {
     assertMethod(context.kind, "shouldUpdateOnPropsChange", context.name);
   }
-  ensureStringContextName(context.name, "shouldUpdateOnPropsChange");
+  const contextName = ensureStringContextName(context.name, "shouldUpdateOnPropsChange");
 
   context.addInitializer(function (this) {
     // A hook reaches its inputs a different way (the this.use() callback), and the
@@ -478,13 +501,41 @@ export function shouldUpdateOnPropsChange<This extends PropsGateOwner>(
     }
 
     const runtime = this[GLOBAL_RUNTIME];
-    if (__DEV__ && runtime.shouldUpdateOnPropsChange !== undefined) {
-      ramondaLog(
-        "error",
-        `<${this.constructor.name} /> has more than one @shouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the last one wins — remove the others.`,
-      );
+
+    if (__DEV__) {
+      /**
+       * Reported only when both declarations are in the SAME class.
+       *
+       * Base and subclass each declaring one is not a duplicate, it is an
+       * override — the ordinary way to specialise a rule where `extends` is the
+       * composition mechanism — and the subclass correctly wins, because
+       * initializers run base-first and the last write to the slot stands.
+       * Reporting it told people to delete the very line that was doing the
+       * work. `undefined !== undefined` cannot tell the two apart; the class
+       * that declared it can.
+       */
+      const owner = ownerOfMethod(this, contextName);
+      if (runtime.shouldUpdateOnPropsChange !== undefined && gateOwners.get(runtime) === owner) {
+        ramondaLog(
+          "error",
+          `<${this.constructor.name} /> has more than one @shouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the last one wins — remove the others.`,
+        );
+      }
+      gateOwners.set(runtime, owner);
     }
-    runtime.shouldUpdateOnPropsChange = (previous, next) => value.call(this, previous, next);
+
+    /**
+     * Dispatched by NAME, not through the function the decorator was handed.
+     *
+     * Captured, it was the BASE's method for ever: a subclass overriding it
+     * without re-decorating had its body silently ignored, while the identical
+     * override works for `@create` and `@watchProp`, which register
+     * `this[name].bind(this)` and so find whatever the instance actually has.
+     * One decorator out of three failing at the pattern the docs recommend is
+     * worse than any of the three failing at it.
+     */
+    runtime.shouldUpdateOnPropsChange = (previous, next) =>
+      (this as unknown as Record<string, (p: unknown, n: unknown) => boolean>)[contextName](previous, next);
   });
 }
 
