@@ -1,6 +1,7 @@
 import { Hook } from "./Hook";
 import { create, destroy, watchProp } from "./decorators";
 import { HEAD_ATTR } from "../helpers/constants";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * One `<meta>`. **Exactly one** of `name` / `property` / `httpEquiv` identifies
@@ -224,9 +225,7 @@ export class Head extends Hook<HeadOptions> {
 
     if (key === undefined) {
       if (__DEV__) {
-        console.warn(
-          `[Ramonda] A <meta> passed to Head has no name, property or http-equiv, so there is nothing to identify it by and it would be duplicated on every update. Skipped: ${JSON.stringify(tag)}`,
-        );
+        diagnose("RMD042", JSON.stringify(tag), `Skipped: ${JSON.stringify(tag)}`);
       }
       return;
     }

@@ -270,6 +270,9 @@ export function __h(
       return (name as UnsupportedTagFn)(attributes as never) as VNode;
     } catch (e) {
       if (__DEV__) {
+        // No code of its own: RMD011 has already named this mistake one line above, and what
+        // follows is the crash it caused. A second code for the consequence of the first would put
+        // two entries in the reference for one fault.
         console.error(
           "Ramonda Critical: a function in tag position threw while rendering.",
           "\nFunction:",
@@ -288,7 +291,7 @@ export function __h(
   }
   // Nothing matched: not a string, not a component class, not a function.
   if (__DEV__) {
-    console.error("Ramonda Error: unknown element type in h():", name);
+    diagnose("RMD043", `tag:${typeof name}`, `A tag of type ${typeof name} was passed.`, { kind: typeof name });
   }
 
   return createRamonda(HOST_TAG, {}, []);

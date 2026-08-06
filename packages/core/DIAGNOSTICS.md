@@ -76,6 +76,8 @@ so a component that misuses the same property on every render reports once.
 | `RMD039` | error | More than one `@shouldUpdateOnPropsChange` |
 | `RMD040` | warning | A listener with no target |
 | `RMD041` | warning | The default host cannot be the direct target of this event |
+| `RMD042` | warning | A `<meta>` with nothing to identify it |
+| `RMD043` | error | An unknown element type in JSX |
 
 ### RMD032–RMD041 — the ten that were messages before they were codes
 
@@ -93,7 +95,13 @@ carried: the port gave them identity, it did not re-judge them.
 What each one means and what to do about it is on the public reference rather than here, because that
 is the page a reader lands on from a message: [ramonda.pages.dev/reference/diagnostics](https://ramonda.pages.dev/reference/diagnostics).
 
-**One message deliberately has no code.** `bootstrap`'s "App crashed" is the app's own error on its
+**Five messages deliberately have no code**, and each says so where it is: `bootstrap`'s "App
+crashed", a lazily loaded component that failed to arrive, a cleanup that threw during destroy, the
+crash following RMD011, and — outside this package — an ISR rebake failure and a devtools plugin's
+own error. Every one is somebody else's fault surfaced with context, not a mistake this framework can
+offer a fix for, and a code that promises advice it cannot give is worse than a sentence.
+
+**One of them:** `bootstrap`'s "App crashed" is the app's own error on its
 way up, rethrown on the next line. Every code names a mistake and carries a fix; this one cannot,
 because the framework knows nothing about the fault beyond having been in the call stack.
 

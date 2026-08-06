@@ -71,7 +71,9 @@ export type DiagnosticCode =
   | "RMD038"
   | "RMD039"
   | "RMD040"
-  | "RMD041";
+  | "RMD041"
+  | "RMD042"
+  | "RMD043";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -300,6 +302,16 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "The default host cannot be the direct target of this event",
     fix: '`<ramonda-host>` is `display: contents`, so it generates no box: events that bubble from children still reach it, but anything tied to a box — pointer position, hover, focus on the host itself — never will. Give the component a real host tag with `@Host("div")` if the event needs one.',
+  },
+  RMD042: {
+    severity: "warning",
+    title: "A `<meta>` with nothing to identify it",
+    fix: "`Head` matches tags it has already written so an update replaces rather than appends, and a `<meta>` is matched by `name`, `property` or `http-equiv`. One with none of them cannot be found again, so it would be added on every update — it is skipped instead. Give it whichever of the three describes it.",
+  },
+  RMD043: {
+    severity: "error",
+    title: "An unknown element type in JSX",
+    fix: "A tag has to be a string, a component class, or — for the one unsupported case — a function. This was none of them, so an empty host is rendered in its place and whatever it was meant to be is missing. It is usually a value used where a tag belongs: `<{Thing} />` rather than `<Thing />`, an object read off a map with the wrong key, or a component that failed to import and arrived as undefined.",
   },
   RMD031: {
     // error, not warning: the item is dropped, so the list on screen is shorter than `each`.

@@ -838,6 +838,28 @@ will.
 Give the component a real host tag with `@Host("div")` if the event needs one. See
 [one tag, one element](/why/one-element).
 
+## RMD042 — A `<meta>` with nothing to identify it
+
+```tsx
+head({ meta: [{ content: "…" }] });                    // reported, and skipped
+head({ meta: [{ name: "description", content: "…" }] }); // the way
+```
+
+`Head` matches the tags it has already written so that an update replaces them rather than appending,
+and a `<meta>` is matched by `name`, `property` or `http-equiv`. One with none of the three cannot be
+found again, so it would be added on every update — it is skipped instead.
+
+Give it whichever of the three describes it.
+
+## RMD043 — An unknown element type in JSX
+
+A tag has to be a string, a component class, or — for the one unsupported case — a function. This was
+none of them, so an empty host renders in its place and whatever it was meant to be is missing.
+
+Usually a value used where a tag belongs: an object read off a map with the wrong key, or a component
+whose import failed and arrived as `undefined`. A function in tag position is a different mistake with
+its own advice — see [`RMD011`](#rmd011-a-function-was-used-as-a-jsx-tag).
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to

@@ -103,6 +103,12 @@ function defaultOnError(path: string, error: unknown): void {
    * A route key comes from the app's own table, so nothing hostile reaches here. It costs nothing
    * to be right anyway, and the placeholder form is what Node's own logging expects.
    */
+  /**
+   * Not a diagnostic code, and this package has no prefix of its own for one reason: an ISR rebake
+   * failing is an operational event — a slow origin, a 500, a timeout — not a mistake in the
+   * caller's code, so there is no fix to write. It belongs in a server log next to the request it
+   * failed, which is where it is.
+   */
   console.error("[ramonda:isr] background rebake of %s failed:", path, error);
 }
 
