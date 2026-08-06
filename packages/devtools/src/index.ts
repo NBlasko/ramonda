@@ -114,6 +114,9 @@ class RamondaDevTools extends HTMLElement {
      * round trip, run once here rather than per report.
      */
     if (!diagnosticsReachUs()) {
+      // Not a diagnostic code, and this package raises none: it is the collector, not a reporter.
+      // What it has to say is about ITSELF — that the channel it reads was taken — which no code in
+      // any registry describes.
       console.warn(
         "[Ramonda devtools] Something replaced `globalThis.__RAMONDA_DIAGNOSTICS__`, so reports " +
           "from lens and any other package are no longer reaching this panel. Subscribe with " +
