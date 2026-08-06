@@ -1,5 +1,48 @@
 # @ramonda/check
 
+## 0.3.0
+
+### Minor Changes
+
+- a4ac681: Reports a single-use decorator declared twice on one class
+
+  `@catchError`, `@Host`, `@ShouldUpdateOnPropsChange` and `@StableProps` each answer a question that
+  has one answer. Declared twice, the last one wins and the others never run — silently, and the one
+  being read may be the dead one.
+
+  The framework reports what it can at runtime (RMD032 for `@catchError`), but only once the component
+  mounts, which is the gap this package exists for: a class behind a condition nobody clicked ships
+  with the fault and nothing has said a word.
+
+  A SUBCLASS declaring its own is not this. That is an override — the way a role is specialised — so
+  only declarations on one class body are counted.
+
+### Patch Changes
+
+- 2d71ce2: Every fixture is on the JSX runtime real projects use
+
+  They were all on the classic one — `"jsx": "react"` with `"jsxFactory": "h"`, naming a factory the
+  framework does not export (core has `__h`, and both `create-ramonda` templates configure
+  `jsxImportSource: "@ramonda/core"`). So the analyzer was only ever proved against a configuration
+  nobody has. TypeScript emits the same JSX AST either way, but "should" is not "does", and one of the
+  fixtures now asserts a missing provider is found with the right PATH — which needs the JSX tree
+  walked — under `"jsx": "react-jsx"`.
+
+  No behaviour changed. The `h` stub the fixtures declared for themselves is gone with them.
+
+- fb3f4a3: The analyzer is now proved against the JSX runtime real projects use
+
+  Its fixtures were all on the CLASSIC runtime — `"jsx": "react"` with `"jsxFactory": "h"`, a factory
+  the framework no longer exports (core has `__h`, and an app is configured with
+  `jsxImportSource: "@ramonda/core"`). So nothing had ever run the analyzer against
+  `"jsx": "react-jsx"`, which is the configuration every real project has. TypeScript emits the same
+  JSX AST either way, but "should" is not "does".
+
+  One fixture is on the automatic runtime now, and asserts a missing provider is found with the right
+  PATH — which needs the JSX tree walked, so it is the fact rather than the assumption. The same
+  fixture also stopped writing its components as `h(...)` calls and writes JSX, like every other one
+  and like the code it stands for.
+
 ## 0.2.0
 
 ### Minor Changes
