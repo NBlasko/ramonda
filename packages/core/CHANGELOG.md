@@ -1,5 +1,360 @@
 # @ramonda/core
 
+## 0.11.0
+
+### Minor Changes
+
+- 2d9e789: **Breaking:** `@shouldUpdateOnPropsChange` is now the class decorator `@ShouldUpdateOnPropsChange`
+
+  ```diff
+  +@ShouldUpdateOnPropsChange((self, previous, next) => previous.id !== next.id)
+   @Host("li")
+   class Row extends Component<RowProps> {
+  -  @shouldUpdateOnPropsChange
+  -  onlyWhenIdChanges(previous: RowProps, next: RowProps) {
+  -    return previous.id !== next.id;
+  -  }
+     render() { … }
+   }
+  ```
+
+  `self` is inferred from the class it is written on, so nothing needs annotating — the same shape as
+  `@Host`'s tag-from-props callback. Capitalised, because a class decorator names what the component IS.
+
+  The move fixes two faults the method form could not avoid, both silent. A subclass overriding the
+  decorated METHOD without re-decorating ran the BASE's body, because the function was captured at
+  decoration time — there is no method to capture now. And declaring the rule at both levels, the
+  ordinary way to override it where `extends` is the composition mechanism, was reported as "more than
+  one … remove the others": the rule now lives on the constructor, so `Object.hasOwn` tells "declared
+  here" from "inherited", an override is silent, and two applications on ONE class are still reported.
+
+  Two smaller consequences: the rule is inherited through the static chain like `@Host`'s tag, and
+  putting it on a hook throws when the CLASS IS DEFINED rather than when something first renders it.
+
+- eabf6c1: **Breaking:** catching an error is declared with `@catchError`, not by naming a method `catchError`
+
+  ```diff
+   @Host("div")
+   class Panel extends Component {
+     @state failed = "";
+  -  catchError(e: unknown) {
+  +  @catchError whenSomethingBreaks(e: unknown) {
+       this.failed = (e as Error).message;
+     }
+     render() { … }
+   }
+  ```
+
+  It was the last capability handed out by NAME: the error walk called `component.catchError` on
+  whichever ancestor had one, so a component that defined a method by that name for its own reasons
+  silently became an error boundary and swallowed its subtree's failures. That is the footgun
+  `@deferHydration`, `@ShouldUpdateOnPropsChange` and `@StableProps` all exist to avoid — "a framework
+  that reserves a name on every class changes behaviour silently" — and error catching was the one
+  place still doing it. A plain method called `catchError` now means nothing to the framework.
+
+  It stays a METHOD decorator, unlike the props gate, because handling an error is behaviour a subclass
+  will want to extend: a boundary that reports to Sentry _and_ does what the base did is the ordinary
+  case, and that wants `super`. It is dispatched by name, so overriding the method without
+  re-decorating works. Returning `false` still declines the error and passes it to the next handler
+  above.
+
+  `ErrorBoundary`'s own handler moved with it: the method is now `handleFailure`, declared with
+  `@catchError`. A subclass that overrode `catchError` must override `handleFailure` instead — which is
+  the pattern this form exists for, since `super.handleFailure(e)` lets a specialised boundary report
+  _and_ fall back:
+
+  ```tsx
+  class ReportingBoundary extends ErrorBoundary {
+    override handleFailure(e: unknown) {
+      report(e);
+      return super.handleFailure(e);
+    }
+  }
+  ```
+
+  New **RMD032** reports two `@catchError` declarations on one class, where the last silently wins. A
+  subclass declaring its own is an override, not a duplicate, and is not reported.
+
+### Patch Changes
+
+- fadb0c5: An error thrown by a fallback now reaches the boundary above
+
+  A fallback renders inside its own `ErrorBoundary`, so when the fallback was the thing that threw, the
+  error walk found that same boundary first. It set the `hasError` it had already set — no change, so
+  no re-render — and the walk stopped and called the error handled. The result was a page frozen on the
+  DOM it had before the throw, with the boundary above, whose whole job is this, never told anything
+  had happened.
+
+  A `catchError` may now return `false` to decline an error, and the walk carries on to the next
+  ancestor that has one. `ErrorBoundary` declines while it is already showing its fallback, and catches
+  again once it has been `reset`. Returning nothing still means handled, so a `catchError` written
+  before this keeps working unchanged.
+
+- bdd4cb3: An effect that reads a `@compute` now subscribes to what the compute depends on
+
+  A fresh `@compute` touches no signal when it is read — it returns `cache.value` — so it forwards its
+  own dependencies to whoever is reading. That forwarding fed only the tracker scope
+  (`trackerContainer`: another `@compute`, a list item, a hook's props cache), not the effect scope.
+  An effect that read a cached compute therefore recorded no dependencies at all and never re-ran.
+
+  The ordering that produces it is the ordinary one, not a corner case: `render()` reads the compute
+  and fills its cache, effects flush after the commit, so an effect reading the same compute always
+  reads it on a hit. Every subscription decorator built on the effect machinery — `@onElement`,
+  `@onWindow`, `@interval`, `@timeout` and anything from `createSubscriptionDecorator` — was affected
+  whenever its body read a `@compute` instead of a raw `@state`.
+
+  Both scopes are now served by one function, `trackDependency`, which `State.get` and the compute's
+  hit-path forwarding both call — so they cannot be served unevenly again. An effect that writes a
+  signal still does not subscribe to it, so self-triggering loops stay broken.
+
+- 7ae07da: Five diagnostics were documented as warnings while they report as errors
+
+  `DIAGNOSTICS.md`'s table said "warning" for RMD003, RMD010, RMD016, RMD021 and RMD023, all of which
+  the registry reports as `error` — each with a comment in `diagnostics.ts` saying why it is one. The
+  distinction is the part a reader acts on: an error means the result is wrong, a warning means the app
+  only did more work to get there. The devtools panel raises its alert on `error` alone, so the table
+  disagreed with what a developer actually saw.
+
+  The table now follows the registry, and `DiagnosticsRegistry.test.ts` pins them to each other: the
+  `DiagnosticCode` union, the `SPECS` keys and the table must name the same codes with the same
+  severities, a retired number must be gone from both and still documented as retired, and no section
+  may describe a code nothing can raise. The docs site had this tripwire for its own reference page;
+  the package's table had none.
+
+  Two runtime messages also stopped naming `@effect`, a decorator that no longer exists — the runaway
+  and update-loop errors now point at `@mount`, `@updated` and subscriptions, which is what a reader
+  can go and look for.
+
+- 4d0fddd: Review pass over the decorator work: three faults found in it
+
+  **`@catchError` was reported as a duplicate when a subclass overrode the method and re-decorated it** —
+  the most natural way to specialise a role, since it keeps the name. The duplicate check looked the
+  declaration up by NAME, so both the base's and the subclass's resolved to the subclass's prototype and
+  read as two declarations on one class. It is found by the decorated function's identity now, which is
+  the only thing that separates them.
+
+  **`@catchError` on a hook was refused only at runtime.** `@ShouldUpdateOnPropsChange` rejects it at
+  compile time through its `This` constraint, and the method decorator had no equivalent — its context
+  type made `COMPONENT_RUNTIME` optional, so a `Hook` satisfied it. TypeScript refuses it now, and the
+  throw stays for a build with no types. Note the two report at different moments and always will: a
+  class decorator when the class is DEFINED, a method decorator at the first instance.
+
+  **A dangling doc comment** was left in `Runtime` where the old `shouldUpdateOnPropsChange` field had
+  been, describing a field that no longer exists.
+
+  Also tested rather than assumed: `value`/`checked` through a real server render and back through
+  hydration, `ErrorBoundary` extended with `super.handleFailure(e)`, a thrown non-`Error`, and that the
+  order `@Host` and `@ShouldUpdateOnPropsChange` are written in does not matter.
+
+- ba83dc3: A controlled radio group follows the model too
+
+  Radios have a rule of their own — checking one unchecks its group, and the browser does that itself —
+  so a click the app never accepted has to be undone by the model. The attribute cannot do it, for the
+  same dirty-checkedness reason a single checkbox cannot. Now tested alongside the rest: picking a third
+  option while the model says the second puts it back on the next render.
+
+- b5b5f6c: Hydration falling back to a fresh element no longer leaves a live component behind
+
+  When the client renders a different host element than the server wrote, nothing can be adopted and
+  hydration builds fresh, replacing the server's node. `replaceChild` takes only the NODE — the
+  component sitting on it was left exactly where it was.
+
+  The deferred path is where it hurts. A `@deferHydration` subtree ADOPTS the server's node and then
+  waits, so by the time the promise settles there is an initialized component there, holding restored
+  state and whatever its client `@create` started. Replacing its node left it running with no DOM: no
+  `@destroy`, no effect cleanups, no signal detach — its timers went on firing, its subscriptions
+  stayed attached, and a later write to a signal it had read would render into nodes nobody can see.
+  Silent, because the page looks right: the fresh element is there and the old one is gone.
+
+  Both fallbacks now tear down first — the deferred one in place, through a new `unmountNodeInPlace`
+  (the node has to still be a child for `replaceChild` to put the fresh one where it was), and the
+  synchronous one through the ordinary cleanup, since its component was never adopted onto a node but
+  has already run its client `@create`.
+
+- de4ecda: The props gate behaves under `extends` like every other decorated method
+
+  Two things did not, and both were silent.
+
+  Overriding the decorated method without re-decorating ran the BASE's body: the decorator kept the
+  function it was handed at decoration time instead of looking the method up on the instance, so the
+  subclass's version was dead code that read as live. `@create` and `@watchProp` register
+  `this[name].bind(this)` and honour the override; one decorator out of three failing at the pattern the
+  docs recommend is worse than any of them failing at it. The gate now dispatches by name too.
+
+  And declaring the gate on both levels — the ordinary way to override a rule — reported "more than one
+  … remove the others", which is advice to delete the line doing the work. The subclass already won
+  correctly; only the report was wrong. It is now raised for two declarations in the SAME class, told
+  apart by the prototype that owns each one.
+
+- d69a224: `index` in a list's `render` no longer goes stale after a reorder
+
+  The per-item clean-skip reused an item's vnode when the object was unchanged and none of the signals
+  it read had fired. An item's INDEX is neither: it is the position in `each`, and a reorder changes it
+  while changing nothing the skip looked at. So a row that moved kept the vnode built at its old
+  position, and `render: (item, index) => …` displayed a number that no longer matched where the row
+  was — silently, and only after a reorder.
+
+  An item that moved is now rebuilt, but only when the mapper can actually see its position, which is
+  read from the parameter list: `(item, index) => …` gets the check, `(item) => …` keeps the skip
+  untouched. A 10000-row list that never mentions the index still reorders without a single mapper
+  call, and only the rows whose position really changed pay for one. `as` components take no index and
+  are unaffected.
+
+  The one gap is a mapper that hides its arity — `(item, index = 0)` or `(...args)` — which reports
+  fewer parameters than it uses and so opts out of the check. Documented on `render`.
+
+- 8686610: A list returned straight from `render()` is identified by the component that built it
+
+  A region is identified by its owner — the component plus the position — so a list a component built
+  for itself can never be matched against one handed to it through a prop. `<ul>{list({…})}</ul>` gets
+  that from the live origin, which is the component's id. `return list({…})` never goes through that
+  path, so the owner is stamped in `generateRenderOutput` instead — after the block that RESTORES the
+  previous origin, so the id it read was never the component's, whatever the comment beside it said.
+
+  Nothing misbehaved: what it actually read was 0, which is stable and unique per host. But the two
+  paths produced different identities for the same idea, only one of them was the one described, and it
+  held only because a build is never entered while another render is in progress.
+
+  The stamp now reads the component's own id, so both paths agree. `StraightReturnListOwner.test.tsx`
+  pins the identity and the behaviour that had to hold either way — a straight-returned list keeps its
+  rows across a re-render, and two of them side by side never claim each other's.
+
+- 4ada87c: A control the user has touched now follows the model again
+
+  `value` and `checked` are the two attributes that stop describing their element the moment someone
+  interacts with it. Typing changes `input.value` and leaves the `value` attribute where it was;
+  clicking a checkbox changes `.checked` and sets the dirty-checkedness flag, after which the `checked`
+  attribute never drives the box again. The diff compared the model against those attributes only — so
+  it compared the model against a stale record of itself, agreed, and wrote nothing, while the control
+  went on showing whatever the user had left there.
+
+  Concretely: an `<input value={this.text}>` the user typed into kept the typed text through later
+  renders, and a `<input type="checkbox" checked={this.on}>` the user clicked ignored the model from
+  then on, in both directions — `checked={false}` could not untick it, because removing an attribute
+  cannot untick a dirty box.
+
+  The attribute comparison is unchanged; the live property is now consulted as well, and the property
+  is written alongside the attribute. An untouched control still compares equal and is not rewritten,
+  which matters: writing `.value` sends the caret to the end. `checked={undefined}` is still an
+  uncontrolled box and is left alone.
+
+  One case remains open by design: a handler that REJECTS a keystroke — clamping the length, say — and
+  so leaves `@state` unchanged schedules no render at all, and nothing re-applies the value. Making
+  that work means deciding what an input with a `value` and no handler is, which is a design question
+  rather than a defect in the diff.
+
+- ac06dc9: A wide update no longer costs O(n²) before anything renders
+
+  The build queue is kept depth-descending, and a component was placed in it by scanning from the front
+  until it found its spot. That made the ordinary case the worst one: a parent handing new props to N
+  children queues N components at the SAME depth, and each of them walked the entire queue to reach the
+  end. The scan happened before a single component had rendered.
+
+  Measured, inserting N same-depth components: 1000 → 1.5 ms, 5000 → 13.4 ms, 10000 → 54.4 ms, 20000 →
+  216 ms. With a binary search: 0.3, 0.3, 0.4, 0.7 ms. On a mixed-depth batch of 20000 — where the
+  splice's own memmove is the rest of the cost — 132.8 ms → 12.0 ms.
+
+  Nothing else changed. It is the same array in the same order: the search stops after every entry of
+  the same depth, exactly where walking past them landed, so the queue is built as it always was and
+  the drain is untouched. `TaskQueueOrder.test.tsx` pins the ordering that had to survive — parents
+  before children, depth never going backwards across a wide mixed-depth batch — and passes against
+  both the old scan and the new search.
+
+- 8686610: `valueEqual`'s bounds are documented as what they are
+
+  The header said the comparison was "bounded in both directions". Depth is bounded everywhere, but
+  width is bounded for ARRAYS only — a wide plain object was, and still is, compared key by key.
+
+  The asymmetry is right, and the measurements say why: a 100-key object compares in 3.33 µs and 50-key
+  objects nested to the depth `@StableProps` uses in 8.48 µs, while capping them would call a form's
+  record "different" on every render, hand `@StableProps` a fresh reference and re-render the child
+  every time — the thing it exists to prevent. A wide array, by contrast, is usually a fresh array
+  anyway, and answers in 0.07 µs at the bound.
+
+  So the comment now describes the code, with the numbers behind the choice, and `ValueEqual.test.ts`
+  pins both sides of it so the asymmetry stays a decision rather than an oversight.
+
+- 80d832e: A component's `ref` now follows the JSX, and fills on a hydrated page
+
+  `<Child ref={r} />` pointed `r` at the child's host when the child was CREATED, and never again. A
+  component that stayed put while its ref changed therefore kept the ref it was born with: the new one
+  never filled, and the old one went on pointing at a host that no longer claimed it. Measured —
+  swapping `r1` for `r2` on the same component left `r1.current` on the host and `r2.current` null,
+  where the identical JSX one line down on a `<p>` swapped correctly, because `Attribute.ts` has
+  released and re-pointed an element's ref all along.
+
+  The same gap on the third route to a host: hydration ADOPTS the server's element rather than building
+  one, and `adoptHost` did everything `createComponent` does except point the ref at it. On a
+  server-rendered page a component's ref stayed empty until something re-rendered it — on a static page,
+  never. An element's ref filled correctly the whole time.
+
+  Create, update and adopt now all go through one `applyRefFromProps`, which releases the ref it
+  replaces (only if it still points at that node, so a ref another element has already claimed in the
+  same pass is not wiped) and points the new one at the host. Removing a `ref` from the JSX releases it;
+  adding one later fills it. A ref change schedules no render, because a ref is not a render input.
+
+- 3c87606: Two list items under one key no longer leak the shadowed item's subscription
+
+  Each item in a `list()` gets a reactive scope, stored under its key. When two items produce the SAME
+  key, the second one's scope overwrote the first in the map being built for that pass — after the
+  first had already subscribed to everything its mapper read. It was then in neither map: gone from
+  this pass's, never in the previous pass's, so the cleanup loop that detaches the scopes which did not
+  carry over could not reach it.
+
+  A live subscription with no owner. Every change to a signal that shadowed mapper had read went on
+  calling `reBuild()` on the list's owner for an item that no longer exists, for the life of the page,
+  and marked the engine dirty each time — which defeats the whole-list skip as well.
+
+  Duplicate keys are user error and DEV reports them (RMD013), but the leak was production behaviour,
+  and a warning does not detach a listener. A scope that is displaced under a key is now released. The
+  surviving item's subscription is untouched, so a list with distinct keys behaves exactly as before.
+
+- 8686610: A module `AsyncLoad` cannot render now says so, instead of throwing at render time
+
+  `AsyncLoad` caches a module's export and later calls it — a component class is wrapped, anything else
+  was taken as already callable. An export that is neither reached the cache unchecked, and the failure
+  surfaced a render later as "loadedComponent is not a function": a line that names neither the module
+  nor the export, and one the error fallback never saw, because nothing had failed as far as the
+  loading knew. The page stayed on its loading state.
+
+  A default export that is a config object, a styles module, a barrel file, a named export pointing at
+  a constant — all ordinary mistakes, and the same class as a missing named export, which has always
+  been caught at load time and reported through the error fallback. The two now agree: the export is
+  checked where the module is, and the error names both the export and what was found there.
+
+- 4ec436c: An inline `ref` on a component no longer re-renders it on every parent render
+
+  A component's `ref` is the framework's, not the app's data: `<Child ref={r} />` points `r` at the
+  child's host element when the child is created, and it is never read again. Its identity therefore
+  says nothing about whether the child should re-render — but it sat in the props bag and was compared
+  like any other prop, so `ref={createRef()}` written inline handed the child a new object every parent
+  render, which read as "the props changed". Measured: one wasted child render per parent render,
+  forever, with no diagnostic.
+
+  The comparison now ignores `ref`; everything else about it is unchanged, because it has to be —
+  `generateRenderOutput` reads `props.key` to put the key on the host element, and a component's `ref`
+  has to survive to creation. `key` is deliberately still compared: `areSimilarNodes` refuses a node
+  whose key differs, so a component that reaches the update path always has an equal key and ignoring
+  it would remove nothing.
+
+  The devtools inspector also stops listing `ref` among a component's props, where it showed as an
+  opaque `{ current: … }` next to the component's actual data.
+
+- 205a41c: Eight typed SVG tags were created as HTML elements
+
+  `<tspan>`, `<textPath>`, `<foreignObject>`, `<image>`, `<desc>`, `<metadata>`, `<mpath>` and
+  `<switch>` were declared in the JSX types but missing from the `svgElements` set the runtime uses to
+  decide a namespace. SVG-ness is decided by tag NAME, not by tree context, so those eight were built
+  with `createElement` — an unknown HTML element wearing the tag's name — even inside an `<svg>`.
+
+  It failed silently. `createElement` accepts any name, the node is in the DOM, `querySelector` finds
+  it, `textContent` reads back; it simply never renders as SVG, and `foreignObject` / `textPath` also
+  lost their camelCase, which is part of an SVG element's identity. `<svg><text><tspan/></text></svg>` —
+  the ordinary way to place a second line of SVG text — was affected.
+
+  The eight names are now in the set, and `SvgNamespace.test.tsx` pins the runtime set to the JSX
+  declarations in both directions, so the two lists cannot drift apart again.
+
 ## 0.10.0
 
 ### Minor Changes
