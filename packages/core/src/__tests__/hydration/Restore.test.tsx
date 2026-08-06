@@ -118,3 +118,74 @@ describe("hydration: client restore", () => {
     expect((app.instance as unknown as Record<string, unknown>).bogus).toBeUndefined();
   });
 });
+
+/**
+ * The metadata a `use()` carries is a symbol property written onto the hook instance IN DEVELOPMENT
+ * ONLY. State is restored by POSITION over the hook list, so anything that made a labelled hook
+ * enumerate, serialize or count differently from an unlabelled one would be a hydration mismatch that
+ * exists in development and not in production — the hardest kind to be told about.
+ *
+ * The property is non-enumerable and keyed by a symbol, which is what makes that safe. This asserts it
+ * across the two walks that decide hydration rather than trusting the descriptor.
+ */
+describe("hydration: a hook labelled in its use() metadata", () => {
+  test("serializes and restores exactly as an unlabelled one", async () => {
+    class Store extends Hook<{ seed: number }> {
+      @state value = this.props.seed;
+    }
+    class Page extends Component {
+      named = this.use(Store, { seed: 1 }, { label: "signup" });
+      plain = this.use(Store, { seed: 2 });
+      @state top = 0;
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+
+    // The SERVER's half: the blob a labelled hook produces is the shape the client expects, and the
+    // label is nowhere in it — it is a development label, not application state.
+    const blob = serializeComponentToJSON(app.instance);
+    expect(JSON.parse(blob)).toEqual({
+      state: { top: 0 },
+      hooks: [{ state: { value: 1 } }, { state: { value: 2 } }],
+    });
+    expect(blob).not.toContain("signup");
+
+    // The CLIENT's half: two hooks, in order, both restored — a count that differed by one would
+    // land the second hook's state on the first or nowhere.
+    restoreComponentTree(app.instance, {
+      state: { top: 7 },
+      hooks: [{ state: { value: 11 } }, { state: { value: 22 } }],
+    });
+
+    expect(app.instance.top).toBe(7);
+    expect(app.instance.named.value).toBe(11);
+    expect(app.instance.plain.value).toBe(22);
+  });
+
+  test("is invisible to an enumeration of the instance", async () => {
+    class Store extends Hook {
+      @state value = 1;
+    }
+    class Page extends Component {
+      named = this.use(Store, undefined, { label: "signup" });
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const hook = app.instance.named;
+
+    // The three walks anything in this repository does over an instance.
+    expect(Object.keys(hook)).not.toContain("label");
+    expect(JSON.stringify(hook)).not.toContain("signup");
+    expect(Object.entries(hook).map(([key]) => key)).not.toContain("label");
+    // Present all the same, which is how the panel reads it.
+    expect((hook as never as Record<symbol, unknown>)[Symbol.for("ramonda.hook.meta")]).toEqual({
+      label: "signup",
+    });
+  });
+});
