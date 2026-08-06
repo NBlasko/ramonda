@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -98,7 +98,8 @@ const reference = readFileSync(join(root, "content", "reference", "api.md"), "ut
  * Prove the check can fail before trusting that it passes — and prove each one SEPARATELY.
  *
  * With a single flag the first check threw and the second never ran, so its self-test proved nothing
- * about it. `DOCS_SELFTEST=api`, `=diagnostics`, or `=1` for both.
+ * about it. `DOCS_SELFTEST=api`, `=prefix`, `=diagnostics`, `=retired`, or `=1` — which reaches only
+ * the first, since one process observes one throw.
  */
 const selftest = process.env.DOCS_SELFTEST ?? "";
 const selftesting = (which) => selftest === "1" || selftest === which;
@@ -132,7 +133,27 @@ console.log(`[docs] API reference covers all ${expected.length} public exports`)
  * build fails. The floor is the same idea as `atLeast` above: if the scan finds implausibly few codes,
  * the scan broke and a green build would be proving nothing.
  */
-const codeInSource = /\[?(RM[DQF]\d{3})\]?/g;
+/**
+ * A code where it is RAISED, not where it is mentioned.
+ *
+ * The quote is what makes the difference, and it has to be there: a code reaches a reporter as a
+ * string — `diagnose("RMD001", …)`, `report("RML004", …)`, `"[RMF001] A field cannot be assigned"` —
+ * while a doc comment referring to another package's diagnostic writes it bare, as prose. Measured
+ * across the four packages: matching bare finds eighteen occurrences of `RMD` inside `@ramonda/form`
+ * and `@ramonda/query`, every one of them a sentence explaining how core's check interacts with
+ * theirs. Requiring the quote finds the same 45 codes and none of the sentences, which is what lets
+ * the prefix check below mean anything.
+ */
+const codeInSource = /["'`]\[?(RM[A-Z]\d{3})\]?/g;
+
+/**
+ * Which prefix belongs to which package.
+ *
+ * A code says which package raised it, and that is only true if it is enforced: a diagnostic
+ * copied from core into another package keeps `RMD`, and then the code lies about its origin
+ * while the reference still has a section for it — so nothing above would notice.
+ */
+const PREFIX_OF = { core: "RMD", query: "RMQ", form: "RMF", lens: "RML" };
 
 /**
  * Every `.ts` under a directory, walked by hand.
@@ -154,14 +175,33 @@ function tsFilesIn(dir) {
   return out;
 }
 
-const sources = ["core", "query", "form"].flatMap((pkg) => tsFilesIn(join(packages, pkg, "src")));
-
 const raised = new Set();
-for (const file of sources) {
-  // Only where a code is REPORTED, not where a test asserts one: a test naming a retired code would
-  // otherwise demand a section for something that no longer exists.
-  if (file.includes("__tests__")) continue;
-  for (const [, code] of readFileSync(file, "utf8").matchAll(codeInSource)) raised.add(code);
+const misprefixed = [];
+
+for (const [pkg, prefix] of Object.entries(PREFIX_OF)) {
+  for (const file of tsFilesIn(join(packages, pkg, "src"))) {
+    // Only where a code is REPORTED, not where a test asserts one: a test naming a retired code would
+    // otherwise demand a section for something that no longer exists.
+    if (file.includes("__tests__")) continue;
+    for (const [, code] of readFileSync(file, "utf8").matchAll(codeInSource)) {
+      raised.add(code);
+      if (!code.startsWith(prefix)) misprefixed.push({ code, pkg, prefix, file: relative(root, file) });
+    }
+  }
+}
+
+if (selftesting("prefix")) {
+  misprefixed.push({ code: "RMZ001", pkg: "lens", prefix: "RML", file: "(selftest)" });
+}
+
+if (misprefixed.length > 0) {
+  throw new Error(
+    `[docs] These diagnostics are raised by a package whose prefix they do not carry:\n` +
+      misprefixed
+        .map(({ code, pkg, prefix, file }) => `        ${code} in ${file} — ${pkg} raises ${prefix}###`)
+        .join("\n") +
+      `\n\n        A code names the package that raised it. Give it this package's prefix, or move it.`,
+  );
 }
 
 if (raised.size < 20) {
@@ -184,4 +224,31 @@ if (undocumented.length > 0) {
   );
 }
 
-console.log(`[docs] Diagnostics reference covers all ${raised.size} codes the packages raise`);
+/**
+ * The other direction, which nothing checked: a section for a code no longer raised.
+ *
+ * A code is never reused, so a removed check keeps its section — a reader who hits an old message in
+ * an old build still lands somewhere. What that section must not do is keep describing a live check.
+ * `RMD012` is the precedent and the format: its title says `retired`, which is the one thing this
+ * looks for.
+ */
+const documented = [...diagnostics.matchAll(/^## (RM[A-Z]\d{3})(.*)$/gm)];
+const stale = documented
+  .filter(([, code]) => !raised.has(code))
+  .filter(([, , rest]) => !/retired/i.test(rest))
+  .map(([, code]) => code);
+
+if (selftesting("retired")) stale.push("RMD001");
+
+if (stale.length > 0) {
+  throw new Error(
+    `[docs] These diagnostics have a section but are raised nowhere:\n` +
+      stale.map((code) => `        ${code}`).join("\n") +
+      `\n\n        A code is never reused, so keep the section and mark it: "## ${stale[0]} — retired".`,
+  );
+}
+
+console.log(
+  `[docs] Diagnostics reference covers all ${raised.size} codes the packages raise ` +
+    `(${documented.length - raised.size} retired)`,
+);

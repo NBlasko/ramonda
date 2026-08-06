@@ -17,6 +17,27 @@ export function isContainer(value: unknown): value is object {
 }
 
 /**
+ * Keys a write is never allowed to land on.
+ *
+ * `get(key)` takes a `string | number`, so the key can come from data — a form
+ * field name, a key off a parsed request body — and every write ends in
+ * `copy[key] = value`. For `__proto__` that assignment does not create a
+ * property at all: it runs the setter `Object.prototype` provides and swaps the
+ * copy's prototype, which is a change at a place no path named. `constructor`
+ * and `prototype` are refused with it — a write through either targets an
+ * object's machinery rather than its data, and no legitimate path needs to.
+ *
+ * Checked in production too, not only under `__DEV__`. A guard that runs only
+ * where the diagnostics run protects the one build that was never at risk.
+ *
+ * Three comparisons rather than a `Set`, because this sits on the per-hop path
+ * and the strings are literals the engine has already interned.
+ */
+export function isUnsafeKey(key: string): boolean {
+  return key === "__proto__" || key === "constructor" || key === "prototype";
+}
+
+/**
  * Copies one node, preserving its prototype.
  *
  * A spread would silently turn a class instance into a plain object, and the

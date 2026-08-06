@@ -1,8 +1,8 @@
 import { NOT_FOUND, collect, removeAt, replace, resolveInsertIndex } from "./apply";
-import { isArray, isContainer, shallowClone } from "./clone";
+import { isArray, isContainer, isUnsafeKey, shallowClone } from "./clone";
+import { fatal, report } from "./diagnostics";
 import { NO_STEPS, type Predicate, type Step, formatPath } from "./steps";
 import type { Focus } from "./types";
-import { warn } from "./warn";
 
 /**
  * Shared by every chain grown from one `focusOn` call, and by nothing else.
@@ -71,13 +71,9 @@ class Chain {
     if (origin === undefined) return;
 
     if (origin.spent) {
-      throw new Error(
-        "[Ramonda lens] This chain has already been written through. `focusOn(root)` captures " +
-          "`root` once, so this second write would be computed from the ORIGINAL value and would " +
-          "silently drop the first edit. Feed the result back in instead:\n" +
-          "  const next = focusOn(state).get('a').set(1);\n" +
-          "  const after = focusOn(next).get('b').set(2);",
-      );
+      throw fatal("RML010", `${formatPath(this.steps)} — this chain has already been written through.`, {
+        path: formatPath(this.steps),
+      });
     }
     origin.spent = true;
   }
@@ -92,12 +88,39 @@ class Chain {
     return replace(this.root, this.steps, updater);
   }
 
+  /**
+   * The entries of a `merge` that are allowed to be written.
+   *
+   * `merge(JSON.parse(body))` is the realistic way an unsafe key gets here: an
+   * object literal cannot even carry an own `__proto__`, but a parsed one can,
+   * and the assignment below would replace the copy's prototype rather than set
+   * a property. See `isUnsafeKey`.
+   */
+  private safeEntries(partial: object): Array<[string, unknown]> {
+    const entries = Object.entries(partial);
+    if (!entries.some(([key]) => isUnsafeKey(key))) return entries;
+
+    return entries.filter(([key]) => {
+      if (!isUnsafeKey(key)) return true;
+      if (__DEV__) {
+        const path = formatPath(this.steps);
+        report("RML009", `${path} — \`merge\` skipped "${key}".`, { path, key, operation: "merge" });
+      }
+      return false;
+    });
+  }
+
   merge(partial: object): unknown {
     this.beginWrite();
     return replace(this.root, this.steps, (node) => {
+      // A missing object is NOT created here, which is the one place this API
+      // refuses what `set` and `push` allow — see `writableArray`. `partial` is a
+      // `Partial`, so creating from it would mint a half-built object typed as a
+      // whole one, and the type error would surface wherever it was next read.
       if (!isContainer(node)) {
         if (__DEV__) {
-          warn(`${formatPath(this.steps)} is not an object, so \`merge\` did nothing.`);
+          const path = formatPath(this.steps);
+          report("RML006", `${path} is not an object, so \`merge\` did nothing.`, { path, operation: "merge" });
         }
         return node;
       }
@@ -105,7 +128,7 @@ class Chain {
       // An assignment that changes no value must not mint a new object — the
       // identity guarantee has to hold for `merge` exactly as it does for `set`,
       // or a merge of unchanged fields would invalidate the whole path above it.
-      const entries = Object.entries(partial);
+      const entries = this.safeEntries(partial);
       const current = node as Record<string, unknown>;
       if (entries.every(([key, value]) => key in current && Object.is(current[key], value))) {
         return node;
@@ -117,38 +140,71 @@ class Chain {
     });
   }
 
+  /**
+   * The array `push` and `insert` are about to write into, or `undefined` when
+   * there is nothing writable there.
+   *
+   * A MISSING array counts as an empty one, and for exactly the reason `set`
+   * creates a missing key: `tags?: string[]` is a type TypeScript accepts and it
+   * offers `push` on it, so refusing at runtime made the API disagree with its
+   * own types — `.get("tags").set(["a"])` created the array while
+   * `.get("tags").push("a")` warned and did nothing. Both spellings now land.
+   *
+   * `null` counts too; it is the other way a type spells "no array yet". A value
+   * that IS there and is not an array is a genuine mistake, so that one is still
+   * reported and still changes nothing.
+   *
+   * `merge` deliberately does NOT create, and the line between them is what the
+   * operation can supply: `push` hands over a complete `E[]`, while `merge` has
+   * only a `Partial`, so creating from one would produce a half-built object
+   * typed as a whole one.
+   */
+  private writableArray(node: unknown, operation: string): unknown[] | undefined {
+    if (isArray(node)) return node;
+    if (node === undefined || node === null) return [];
+
+    if (__DEV__) {
+      const path = formatPath(this.steps);
+      report("RML006", `${path} is not an array, so \`${operation}\` did nothing.`, { path, operation });
+    }
+    return undefined;
+  }
+
   push(...items: unknown[]): unknown {
     this.beginWrite();
     return replace(this.root, this.steps, (node) => {
-      if (!isArray(node)) {
-        if (__DEV__) warn(`${formatPath(this.steps)} is not an array, so \`push\` did nothing.`);
-        return node;
-      }
+      // Before the create, so pushing nothing onto a missing array stays a
+      // no-op rather than minting an empty one.
       if (items.length === 0) return node;
-      return [...node, ...items];
+
+      const array = this.writableArray(node, "push");
+      if (array === undefined) return node;
+      return [...array, ...items];
     });
   }
 
   insert(index: number, ...items: unknown[]): unknown {
     this.beginWrite();
     return replace(this.root, this.steps, (node) => {
-      if (!isArray(node)) {
-        if (__DEV__) warn(`${formatPath(this.steps)} is not an array, so \`insert\` did nothing.`);
-        return node;
-      }
       if (items.length === 0) return node;
 
-      const at = resolveInsertIndex(index, node.length);
+      const array = this.writableArray(node, "insert");
+      if (array === undefined) return node;
+
+      const at = resolveInsertIndex(index, array.length);
       if (at === NOT_FOUND) {
         if (__DEV__) {
-          warn(
-            `${formatPath(this.steps)} has ${node.length} element(s), so ${index} is not a valid ` +
-              `insertion point. Nothing was inserted.`,
+          const path = formatPath(this.steps);
+          report(
+            "RML004",
+            `${path} has ${array.length} element(s), so ${index} is not a valid insertion point. ` +
+              `Nothing was inserted.`,
+            { path, operation: "insert", index, length: array.length },
           );
         }
         return node;
       }
-      return [...node.slice(0, at), ...items, ...node.slice(at)];
+      return [...array.slice(0, at), ...items, ...array.slice(at)];
     });
   }
 
@@ -171,13 +227,11 @@ class Chain {
         const next = branch(focusOn(value));
 
         if (__DEV__ && next === undefined && value !== undefined) {
-          warn(
-            `${formatPath(this.steps)}.and(…) — a branch returned undefined, so it was skipped. ` +
-              `A branch has to RETURN its terminal operation: ` +
-              `\`(post) => post.get("title").set("x")\`, not ` +
-              `\`(post) => { post.get("title").set("x") }\` — what it returns is what replaces ` +
-              `the focused value.`,
-          );
+          const path = formatPath(this.steps);
+          report("RML008", `${path}.and(…) — a branch returned undefined, so it was skipped.`, {
+            path,
+            branch: branches.indexOf(branch),
+          });
           continue;
         }
 
@@ -193,10 +247,7 @@ class Chain {
 
     if (this.steps.length === 0) {
       if (__DEV__) {
-        throw new Error(
-          "[Ramonda lens] `focusOn(root).remove()` has nothing to remove from — the root has no " +
-            "container. Focus the property or element you meant to drop first.",
-        );
+        throw fatal("RML011", "`focusOn(root).remove()` has nothing to remove from.", { path: "(root)" });
       }
       return this.root;
     }

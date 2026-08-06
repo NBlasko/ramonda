@@ -242,7 +242,7 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 
 | | |
 |---|---|
-| `.get(key)` | Descends into a property. Creating an absent key is allowed at the end of a path. |
+| `.get(key)` | Descends into a property. `__proto__`, `constructor` and `prototype` are refused. |
 | `.at(index)` | Descends into one element. Negative counts from the end. |
 | `.where(pred)` | Descends into **every** element the predicate accepts. Narrow explicitly: `where<T>(…)`. |
 
@@ -250,12 +250,12 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 
 | | |
 |---|---|
-| `.set(value)` | Replaces the focused value. An equal value copies nothing. |
+| `.set(value)` | Replaces the focused value. An equal value copies nothing. Creates an absent key. |
 | `.update(fn)` | Replaces it with `fn(current)`. |
-| `.merge(partial)` | Copies the focused object and assigns over it. |
+| `.merge(partial)` | Copies the focused object and assigns over it. Does not create a missing object. |
 | `.remove()` | Drops the property or element from its container. |
-| `.push(...items)` | Appends to the focused array. |
-| `.insert(i, ...items)` | Inserts at a position. `i === length` appends. |
+| `.push(...items)` | Appends to the focused array. A missing or `null` array counts as an empty one. |
+| `.insert(i, ...items)` | Inserts at a position. `i === length` appends; negative counts from the end. |
 | `.and(...branches)` | Forks the path: several edits, one walk of the shared prefix. |
 
 **Reading**

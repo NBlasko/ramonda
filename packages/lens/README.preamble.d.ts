@@ -7,6 +7,8 @@ declare global {
     title: string;
     draft: boolean;
     tags: string[];
+    /** Optional on purpose — the create-on-write example writes into an array that is not there yet. */
+    labels?: string[];
     author: { name: string; city?: string };
   }
   interface BlogState {
@@ -20,6 +22,8 @@ declare global {
     users: { id: number; name: string; profile: { name: string } }[];
   }
   const state: BlogState;
+  /** The reader's own diagnostics collector — a devtools panel, a test, a log shipper. */
+  const myCollector: { alert(record: unknown): void };
   /** What an update returns — the same shape, with the untouched parts identical. */
   const next: BlogState;
 }

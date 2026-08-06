@@ -17,25 +17,38 @@ function makeState(): AppState {
   return {
     users: [{ id: 1, name: "Nikola" }],
     posts: [
-      { id: 101, title: "Prvi post", tags: ["js", "web"] },
-      { id: 102, title: "Drugi post", tags: ["ssr", "draft"] },
+      { id: 101, title: "First post", tags: ["js", "web"] },
+      { id: 102, title: "Second post", tags: ["ssr", "draft"] },
     ],
   };
 }
 
+/** Everything printed, whichever channel a severity routed it to. */
 let warned: string[] = [];
-let warnSpy: ReturnType<typeof vi.spyOn>;
+/** Everything a collector would have received. Asserted by code, not by prose. */
+let records: RamondaDiagnostic[] = [];
+let spies: Array<ReturnType<typeof vi.spyOn>> = [];
 
 beforeEach(() => {
   warned = [];
-  warnSpy = vi.spyOn(console, "warn").mockImplementation((message: unknown) => {
-    warned.push(String(message));
-  });
+  records = [];
+  // Both channels: an `error` severity prints with `console.error`, and the suite
+  // asks "what was reported", which is a question about the report and not about
+  // which console method carried it.
+  spies = (["warn", "error"] as const).map((channel) =>
+    vi.spyOn(console, channel).mockImplementation((message: unknown) => {
+      warned.push(String(message));
+    }),
+  );
+  globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
 });
 
 afterEach(() => {
-  warnSpy.mockRestore();
+  for (const spy of spies) spy.mockRestore();
+  globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
 });
+
+const codes = (): string[] => records.map((record) => record.code);
 
 describe("the shape of the result", () => {
   test("edits the focused value and leaves the rest alone", () => {
@@ -52,8 +65,8 @@ describe("the shape of the result", () => {
     expect(next).toEqual({
       users: [{ id: 1, name: "Nikola" }],
       posts: [
-        { id: 101, title: "Prvi post", tags: ["js", "web"] },
-        { id: 102, title: "Drugi post", tags: ["ssr", "published"] },
+        { id: 101, title: "First post", tags: ["js", "web"] },
+        { id: 102, title: "Second post", tags: ["ssr", "published"] },
       ],
     });
   });
@@ -109,7 +122,7 @@ describe("structural sharing", () => {
       .get("posts")
       .where((post) => post.id === 102)
       .get("title")
-      .set("Drugi post");
+      .set("Second post");
 
     // Not "deeply equal" — the very same object. No level was copied at all.
     expect(next).toBe(state);
@@ -129,7 +142,7 @@ describe("structural sharing", () => {
 
   test("merge of unchanged fields returns the original root", () => {
     const state = makeState();
-    const next = focusOn(state).get("posts").at(0).merge({ title: "Prvi post" });
+    const next = focusOn(state).get("posts").at(0).merge({ title: "First post" });
 
     expect(next).toBe(state);
   });
@@ -290,15 +303,243 @@ describe("operations", () => {
     expect(focusOn(state).get("tags").insert(5, "b")).toBe(state);
     expect(warned.join("\n")).toContain("not a valid insertion point");
   });
+
+  test("insert counts from the end when the index is negative", () => {
+    const state = { tags: ["a", "b", "c"] };
+    // -1 is "before the last element", which is what makes `insert` able to reach
+    // every gap: 0 is the front, -1 is one from the back, `length` appends.
+    expect(focusOn(state).get("tags").insert(-1, "x").tags).toEqual(["a", "b", "x", "c"]);
+    expect(
+      focusOn({ tags: ["a", "b"] })
+        .get("tags")
+        .insert(-2, "x").tags,
+    ).toEqual(["x", "a", "b"]);
+  });
+});
+
+/**
+ * The asymmetry this closes: `set` created a missing key while `push` on the same
+ * missing key warned and did nothing, so the two spellings of one intent
+ * disagreed — and the type system offered both.
+ */
+describe("writing into an array that is not there yet", () => {
+  interface Draft {
+    id: number;
+    tags?: string[];
+    labels: string[] | null;
+  }
+
+  const draft = (): { draft: Draft } => ({ draft: { id: 1, labels: null } });
+
+  test("push creates the array when the key is absent", () => {
+    const state = draft();
+    const next = focusOn(state).get("draft").get("tags").push("a", "b");
+
+    expect(next.draft.tags).toEqual(["a", "b"]);
+    expect(next).not.toBe(state);
+    // Creating it is a real change, so there is nothing to report.
+    expect(warned).toEqual([]);
+  });
+
+  test("push creates the array when the value is null", () => {
+    const state = draft();
+    const next = focusOn(state).get("draft").get("labels").push("x");
+
+    expect(next.draft.labels).toEqual(["x"]);
+    expect(warned).toEqual([]);
+  });
+
+  test("insert creates the array too, and still rejects an unreachable position", () => {
+    const state = draft();
+    expect(focusOn(state).get("draft").get("tags").insert(0, "a").draft.tags).toEqual(["a"]);
+
+    const missed = focusOn(draft()).get("draft").get("tags").insert(3, "a");
+    expect(missed.draft.tags).toBeUndefined();
+    expect(warned.join("\n")).toContain("has 0 element(s)");
+  });
+
+  test("`set` and `push` now agree, and both share everything off the path", () => {
+    const state = draft();
+    const viaPush = focusOn(state).get("draft").get("tags").push("a");
+    const viaSet = focusOn(state).get("draft").get("tags").set(["a"]);
+
+    expect(viaPush.draft.tags).toEqual(viaSet.draft.tags);
+    expect(viaPush.draft.id).toBe(state.draft.id);
+  });
+
+  test("pushing nothing does NOT create an empty array", () => {
+    const state = draft();
+    const next = focusOn(state).get("draft").get("tags").push();
+
+    // A no-op has to stay a no-op: the original root, not a copy with `tags: []`.
+    expect(next).toBe(state);
+    expect("tags" in next.draft).toBe(false);
+  });
+
+  test("inserting nothing does not create one either", () => {
+    const state = draft();
+    // The same rule `push()` follows, and it has to hold for both or the pair disagrees
+    // about what "no items" means.
+    const result = focusOn(state).get("draft").get("tags").insert(0);
+    expect(result).toBe(state);
+    expect("tags" in result.draft).toBe(false);
+  });
+
+  test("two created arrays are two arrays", () => {
+    // The create path returns a fresh `[]` each time. Returning one shared empty array would
+    // be invisible until two writes landed in the same place — which nothing else would catch,
+    // because both results LOOK right on their own.
+    const one = focusOn(draft()).get("draft").get("tags").push("a");
+    const two = focusOn(draft()).get("draft").get("tags").push("b");
+
+    expect(one.draft.tags).toEqual(["a"]);
+    expect(two.draft.tags).toEqual(["b"]);
+    expect(one.draft.tags).not.toBe(two.draft.tags);
+  });
+
+  test("insert cannot reach a gap that is not there in an array it just created", () => {
+    // An empty array has exactly one insertion point, 0. A negative index counts from the end
+    // and there is no end, so -1 is out of range rather than "the front".
+    const state = draft();
+    expect(focusOn(state).get("draft").get("tags").insert(-1, "a")).toBe(state);
+    expect(warned.join("\n")).toContain("has 0 element(s)");
+  });
+
+  test("a value that IS there and is not an array is still refused", () => {
+    const state = { count: 3 };
+    const next = focusOn(state as unknown as { count: number[] })
+      .get("count")
+      .push(1);
+
+    expect(next).toBe(state);
+    expect(warned.join("\n")).toContain("is not an array, so `push` did nothing");
+  });
+
+  test("merge deliberately does not create — a Partial cannot fill a whole object", () => {
+    const state: { post?: { id: number; title: string } } = {};
+    const next = focusOn(state).get("post").merge({ title: "x" });
+
+    // `{ title: "x" }` is not a `{ id, title }`, so creating from it would mint a
+    // half-built object typed as a whole one. `set` is the operation that creates.
+    expect(next).toBe(state);
+    expect(warned.join("\n")).toContain("is not an object, so `merge` did nothing");
+  });
+});
+
+/**
+ * `get` takes a `string | number`, so a key can come from data — and every write
+ * ends in `copy[key] = value`. Refused in production too, which is why the
+ * production suite asserts the same thing.
+ */
+describe("keys a write is refused for", () => {
+  test("a write through __proto__ changes nothing and returns the original root", () => {
+    const state: Record<string, unknown> = { a: 1 };
+    const next = focusOn(state).get("__proto__").set({ polluted: true });
+
+    expect(next).toBe(state);
+    expect(Object.getPrototypeOf(next)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(warned.join("\n")).toContain('targets "__proto__"');
+  });
+
+  test("all three keys are refused, whichever operation aims at one", () => {
+    const state: Record<string, unknown> = { a: 1 };
+
+    for (const key of ["__proto__", "constructor", "prototype"] as const) {
+      expect(focusOn(state).get(key).set(2)).toBe(state);
+      expect(warned.join("\n")).toContain(`targets "${key}"`);
+    }
+  });
+
+  test("a data-driven key mid-path is refused as well", () => {
+    const state: { config: Record<string, unknown> } = { config: { theme: "dark" } };
+    // What the guard is for: the key is not in the source, it is in the request.
+    const fromRequest = "constructor";
+    const next = focusOn(state).get("config").get(fromRequest).set(1);
+
+    expect(next).toBe(state);
+    expect(warned.join("\n")).toContain('.config.constructor targets "constructor"');
+  });
+
+  test("remove is refused too, rather than handing back a pointless copy", () => {
+    const state: Record<string, unknown> = { a: 1 };
+    const next = focusOn(state).get("__proto__").remove();
+
+    // `"__proto__" in state` is true by inheritance, so without the guard this
+    // deleted nothing and still returned a copy.
+    expect(next).toBe(state);
+    expect(warned.join("\n")).toContain('targets "__proto__"');
+  });
+
+  test("merge skips an unsafe key and writes the rest", () => {
+    const state: { post: Record<string, unknown> } = { post: { id: 1 } };
+    const payload = JSON.parse('{"title": "ok", "__proto__": {"polluted": true}}') as Record<string, unknown>;
+
+    const next = focusOn(state).get("post").merge(payload);
+
+    expect(next.post).toEqual({ id: 1, title: "ok" });
+    expect(Object.getPrototypeOf(next.post)).toBe(Object.prototype);
+    expect(warned.join("\n")).toContain('`merge` skipped "__proto__"');
+  });
+
+  test("an unsafe key NESTED inside a value is data, not an instruction", () => {
+    // The guard is about keys a WRITE targets, and only the top level of a `merge` partial is
+    // assigned key by key. A `__proto__` deeper than that is part of a value being stored, so
+    // it is written as-is and nothing is polluted — worth pinning, because a guard that also
+    // walked values would be both slower and wrong.
+    const payload = JSON.parse('{"meta": {"__proto__": {"polluted": true}}}') as Record<string, unknown>;
+    const state: { post: Record<string, unknown> } = { post: { id: 1 } };
+
+    const result = focusOn(state).get("post").merge(payload);
+
+    expect(result.post.meta).toBe(payload.meta);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.getPrototypeOf(result.post)).toBe(Object.prototype);
+    // Storing a value is not a refusal, so nothing is reported.
+    expect(warned).toEqual([]);
+  });
+
+  test("`set` of a value carrying an unsafe key stores it whole", () => {
+    const payload = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
+    const state: { config: unknown } = { config: null };
+
+    const result = focusOn(state).get("config").set(payload);
+
+    expect(result.config).toBe(payload);
+    expect(warned).toEqual([]);
+  });
+
+  test("a merge of nothing but unsafe keys returns the original root", () => {
+    const state: { post: Record<string, unknown> } = { post: { id: 1 } };
+    const payload = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
+
+    expect(focusOn(state).get("post").merge(payload)).toBe(state);
+  });
 });
 
 describe("remove", () => {
   test("drops a property from an object", () => {
-    const state = makeState();
+    // Created first, deliberately: `draft` is optional and absent from the fixture,
+    // so removing it straight away asserted nothing — `"draft" in post` was already
+    // false, and the run took the "has no property" branch instead. The round trip
+    // is what proves a removal happened.
+    const state = focusOn(makeState()).get("posts").at(0).get("draft").set(true);
+    expect(state.posts[0].draft).toBe(true);
+
     const next = focusOn(state).get("posts").at(0).get("draft").remove();
 
     expect("draft" in next.posts[0]).toBe(false);
+    expect(next.posts[0].title).toBe("First post");
     expect(next.posts[1]).toBe(state.posts[1]);
+    expect(warned).toEqual([]);
+  });
+
+  test("removing a property that is not there says so, and copies nothing", () => {
+    const state = makeState();
+    const next = focusOn(state).get("posts").at(0).get("draft").remove();
+
+    expect(next).toBe(state);
+    expect(warned.join("\n")).toContain('has no property "draft"');
   });
 
   test("drops an element by position", () => {
@@ -351,7 +592,7 @@ describe("reading", () => {
         .where((post) => post.id === 102)
         .get("title")
         .value(),
-    ).toBe("Drugi post");
+    ).toBe("Second post");
   });
 
   test("value on a path that resolves to nothing is undefined", () => {
@@ -367,7 +608,7 @@ describe("reading", () => {
 
   test("values returns every match", () => {
     const state = makeState();
-    expect(focusOn(state).get("posts").where(Boolean).get("title").values()).toEqual(["Prvi post", "Drugi post"]);
+    expect(focusOn(state).get("posts").where(Boolean).get("title").values()).toEqual(["First post", "Second post"]);
   });
 
   test("reading a missing path is silent — it is a fair question", () => {
@@ -401,8 +642,8 @@ describe("chain reuse", () => {
     const state = makeState();
     const posts = focusOn(state).get("posts");
 
-    expect(posts.where((p) => p.id === 101).value()?.title).toBe("Prvi post");
-    expect(posts.where((p) => p.id === 102).value()?.title).toBe("Drugi post");
+    expect(posts.where((p) => p.id === 101).value()?.title).toBe("First post");
+    expect(posts.where((p) => p.id === 102).value()?.title).toBe("Second post");
     // `posts` focuses the ARRAY, so it is one value — the array itself.
     expect(posts.value()).toBe(state.posts);
   });
@@ -542,6 +783,321 @@ describe("missing paths", () => {
 
     expect(next).toBe(state);
     expect(warned.join("\n")).toContain("could not be reached");
+  });
+});
+
+/**
+ * The record this package hands a collector — the protocol, asserted rather than
+ * described.
+ *
+ * A written contract is the one thing in this repository with no tripwire behind
+ * it, and it would rot the way every hand-maintained copy does: nothing stops a
+ * `severity: "warning"` where the shape says `"warn"`, and no reviewer catches it
+ * twice. So the shape is checked here, and the code registry is checked by the
+ * docs' `check-api-coverage.mjs`, which fails the build when a code has no section
+ * in the reference.
+ *
+ * See https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ */
+describe("the diagnostic record", () => {
+  const SEVERITIES = ["debug", "info", "warn", "error"];
+
+  test("every field is the shape the protocol names", () => {
+    const state = makeState();
+    focusOn(state)
+      .get("posts")
+      .where((post) => post.id === 999)
+      .get("title")
+      .set("x");
+
+    expect(records).toHaveLength(1);
+    const record = records[0];
+
+    expect(record.code).toMatch(/^RML\d{3}$/);
+    expect(record.scope).toBe("ramonda/lens");
+    expect(SEVERITIES).toContain(record.severity);
+    expect(typeof record.message).toBe("string");
+    expect(typeof record.fix).toBe("string");
+    expect(typeof record.time).toBe("number");
+    // Sortable and comparable, not a locale-formatted string.
+    expect(record.time).toBeGreaterThan(1_700_000_000_000);
+    // Nothing here deduplicates, so nothing here claims a dedup key.
+    expect(record.dedupKey).toBeUndefined();
+  });
+
+  test("`data` carries the values the message interpolated", () => {
+    const state = makeState();
+    focusOn(state).get("posts").at(9).get("title").set("x");
+
+    expect(records[0].data).toEqual({ path: ".posts", operation: "at", index: 9, length: 2 });
+  });
+
+  test("`data` holds values, never live objects", () => {
+    const state = makeState();
+
+    // A collector keeps a bounded history. A record holding a component, a DOM
+    // node or a piece of the state tree would keep it alive for as long as that
+    // history does, which is a leak that only shows up in a long session.
+    focusOn(state).get("posts").at(9).get("title").set("x");
+    focusOn(state)
+      .get("posts")
+      .where(() => false)
+      .set(state.posts[0]);
+    focusOn(state)
+      .get("data" as "posts")
+      .merge({ x: 1 } as never);
+
+    for (const record of records) {
+      for (const value of Object.values(record.data ?? {})) {
+        expect(["string", "number", "boolean", "undefined"]).toContain(typeof value);
+      }
+    }
+  });
+
+  test("a report reaches the console even with no collector installed", () => {
+    globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+    focusOn(makeState()).get("posts").at(9).get("title").set("x");
+
+    expect(warned.join("\n")).toContain("out of range");
+    expect(records).toEqual([]);
+  });
+
+  test("every code carries a fix, and an error always does", () => {
+    const state = makeState();
+    const loose = (value: unknown) => value as never;
+
+    // One of each severity path, so the assertion is over real records rather
+    // than over the table they came from.
+    focusOn(state).get("posts").at(9).set(loose(1));
+    focusOn(state).get("posts").at(0).get(loose("__proto__")).set(loose(1));
+    focusOn(state)
+      .get("posts")
+      .where(() => false)
+      .set(loose(1));
+
+    expect(codes()).toEqual(["RML004", "RML009", "RML005"]);
+    for (const record of records) {
+      if (record.severity === "error") expect(record.fix).toBeTruthy();
+      expect(record.message.endsWith(" ")).toBe(false);
+    }
+  });
+});
+
+/**
+ * Every code in the registry, raised — and every record it produces, checked against the
+ * rules the protocol states rather than against the one case a test happened to pick.
+ *
+ * The completeness half is what a per-case test cannot give: a code declared and never
+ * reachable is a section in the reference for something that cannot happen, and a code
+ * reachable but never asserted is a message nobody has read since it was written.
+ */
+describe("the whole registry", () => {
+  const loose = (value: unknown) => value as never;
+
+  /** One of each fault class, in code order, so a gap in the set names itself. */
+  function raiseEverything(): void {
+    // RML001 — a hop before the last one holds nothing.
+    focusOn({} as { a?: { b: number } })
+      .get("a")
+      .get("b")
+      .set(1);
+    // RML002 — a path into an exotic container.
+    focusOn({ data: new Map([["a", 1]]) })
+      .get("data")
+      .get(loose("size"))
+      .set(loose(9));
+    // RML003 — an array hop on something that is not an array. It has to be an OBJECT: `at`
+    // on a primitive never reaches the array check, because a primitive is not a container
+    // and the walk reports RML001 one step earlier.
+    focusOn(loose({ a: { b: 1 } }))
+      .get("a")
+      .at(0)
+      .set(loose(1));
+    // RML004 — an index outside the array.
+    focusOn({ list: [1] })
+      .get("list")
+      .at(9)
+      .set(2);
+    // RML005 — a predicate that matched nothing.
+    focusOn({ list: [1] })
+      .get("list")
+      .where(() => false)
+      .set(2);
+    // RML006 — an operation that needs a different kind of value.
+    focusOn({ count: 1 } as unknown as { count: number[] })
+      .get("count")
+      .push(1);
+    // RML007 — nothing to remove.
+    focusOn({ a: 1 } as { a: number; gone?: number })
+      .get("gone")
+      .remove();
+    // RML008 — a fork branch that returned nothing.
+    focusOn({ a: { b: 1 } })
+      .get("a")
+      .and(loose(() => undefined));
+    // RML009 — a key a write is refused for.
+    focusOn({} as Record<string, unknown>)
+      .get("__proto__")
+      .set(1);
+    // RML010 — a chain written through twice.
+    const chain = focusOn({ list: [1, 2] }).get("list");
+    chain.at(0).set(9);
+    expect(() => chain.at(1).set(9)).toThrow();
+    // RML011 — remove at the root.
+    expect(() => focusOn({ a: 1 }).remove()).toThrow();
+  }
+
+  test("every code the registry declares is reachable", () => {
+    raiseEverything();
+
+    const raised = [...new Set(codes())].sort();
+    expect(raised).toEqual([
+      "RML001",
+      "RML002",
+      "RML003",
+      "RML004",
+      "RML005",
+      "RML006",
+      "RML007",
+      "RML008",
+      "RML009",
+      "RML010",
+      "RML011",
+    ]);
+  });
+
+  test("every record obeys the protocol, not just the ones a test picked", () => {
+    raiseEverything();
+    expect(records.length).toBeGreaterThanOrEqual(11);
+
+    for (const record of records) {
+      expect(record.code).toMatch(/^RML\d{3}$/);
+      expect(record.scope).toBe("ramonda/lens");
+      expect(["debug", "info", "warn", "error"]).toContain(record.severity);
+      // A message that is empty, or that trails off, is one nobody proof-read.
+      expect(record.message.length).toBeGreaterThan(10);
+      expect(record.message.trim()).toBe(record.message);
+      expect(record.time).toBeGreaterThan(1_700_000_000_000);
+      // Nothing here deduplicates, so nothing may claim a key for it.
+      expect(record.dedupKey).toBeUndefined();
+      // An `error` promises a fix. The type enforces it; this proves the type is doing so
+      // over real records rather than over the table they were read from.
+      if (record.severity === "error") expect(record.fix?.length ?? 0).toBeGreaterThan(20);
+      // `data` carries values a collector can hold for as long as it likes.
+      for (const value of Object.values(record.data ?? {})) {
+        expect(["string", "number", "boolean"]).toContain(typeof value);
+      }
+      // Every record names where it happened, which is the one field every message shares.
+      expect(typeof record.data?.path).toBe("string");
+    }
+  });
+
+  test("what is printed and what is thrown say the same thing", () => {
+    // Two spellings of one fault would drift the moment either is edited, and the throw is
+    // the one a developer reads in a stack trace.
+    let thrown = "";
+    try {
+      focusOn({ a: 1 }).remove();
+    } catch (error) {
+      thrown = (error as Error).message;
+    }
+
+    expect(warned).toHaveLength(1);
+    expect(thrown).toBe(warned[0]);
+    expect(thrown).toContain("[Ramonda lens RML011]");
+    expect(thrown).toContain("→ ");
+  });
+});
+
+/**
+ * Every message the docs page promises, triggered once.
+ *
+ * The page maps each string to its cause, and a reader searches for the part they
+ * saw — so the strings are documentation, and a silent edit to one leaves the page
+ * describing a message nobody will ever get. This is what makes that a test failure.
+ *
+ * Several of these are unreachable from TypeScript: the types refuse `at` on
+ * something that is not an array. They are reachable from JavaScript, which is who
+ * the runtime check is for, so they are provoked through a cast.
+ */
+describe("the documented messages", () => {
+  /** What a JavaScript caller can pass and a TypeScript caller cannot. */
+  const loose = (value: unknown) => value as never;
+
+  /**
+   * A focus with the types switched off, for the hops TypeScript refuses outright:
+   * `at` and `where` are not even present on a focus that is not an array, so there
+   * is no argument to cast — the whole chain has to be untyped.
+   */
+  const anyFocus = (value: unknown) => focusOn(loose(value));
+
+  const trigger = (fn: () => unknown): string => {
+    warned = [];
+    records = [];
+    fn();
+    return warned.join("\n");
+  };
+
+  test("a primitive mid-path is named with its value", () => {
+    const state = makeState();
+    expect(trigger(() => focusOn(state).get("posts").at(0).get("title").get(loose("length")).set(loose(1)))).toContain(
+      'is "First post", so .posts[0].title.length could not be reached',
+    );
+  });
+
+  test("the array hops on something that is not an array", () => {
+    const state = makeState();
+
+    expect(trigger(() => anyFocus(state).get("users").at(0).at(0).set(loose(1)))).toContain(
+      "is not an array, so `at` cannot be used",
+    );
+    expect(
+      trigger(() =>
+        anyFocus(state)
+          .get("users")
+          .at(0)
+          .where(() => true)
+          .set(loose(1)),
+      ),
+    ).toContain("is not an array, so `where` cannot be used");
+    expect(trigger(() => anyFocus(state).get("users").at(0).insert(0, loose(1)))).toContain(
+      "is not an array, so `insert` did nothing",
+    );
+  });
+
+  test("the remove variants", () => {
+    const state = makeState();
+
+    expect(trigger(() => focusOn(state).get("posts").at(0).get("title").get(loose("length")).remove())).toContain(
+      "is not a container, so there is nothing to remove from",
+    );
+    expect(trigger(() => focusOn(state).get("posts").at(0).get(loose("nope")).remove())).toContain(
+      'has no property "nope", so nothing was removed',
+    );
+    expect(trigger(() => anyFocus(state).get("users").at(0).at(0).remove())).toContain(
+      "is not an array, so `at(…).remove()` cannot be used",
+    );
+    expect(trigger(() => focusOn(state).get("posts").at(9).remove())).toContain(
+      "has 2 element(s), so index 9 cannot be removed",
+    );
+    expect(
+      trigger(() =>
+        anyFocus(state)
+          .get("users")
+          .at(0)
+          .where(() => true)
+          .remove(),
+      ),
+    ).toContain("is not an array, so `where(…).remove()` cannot be used");
+  });
+
+  test("every one of them is prefixed, and no read produces any", () => {
+    const state = makeState();
+
+    const message = trigger(() => focusOn(state).get("posts").at(9).get("title").set("x"));
+    expect(message).toMatch(/^\[Ramonda lens RML\d{3}] /);
+
+    expect(trigger(() => focusOn(state).get("posts").at(9).get("title").value())).toBe("");
   });
 });
 
@@ -738,7 +1294,7 @@ describe("and — several paths, one walk", () => {
       .get("posts")
       .at(0)
       .and(
-        (post) => post.get("title").set("Prvi post"),
+        (post) => post.get("title").set("First post"),
         (post) => post.get("id").set(101),
       );
 

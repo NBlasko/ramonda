@@ -248,6 +248,9 @@ importers:
 
   packages/devtools:
     devDependencies:
+      '@ramonda/lens':
+        specifier: workspace:^
+        version: link:../lens
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../shared
@@ -257,6 +260,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3
+      esbuild:
+        specifier: '>=0.28.1'
+        version: 0.28.1
       jsdom:
         specifier: 28.0.0
         version: 28.0.0

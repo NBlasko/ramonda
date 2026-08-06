@@ -5,7 +5,9 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals"]
+    // `node` for the surface test alone, which reads the emitted `.d.ts` off disk — the
+    // published declarations are a file, so asserting about them means opening one.
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src", "env.d.ts"]
 }

@@ -27,6 +27,10 @@ this.data = {
 
 `@ramonda/lens` does the same thing, readably:
 
+```sh
+pnpm add @ramonda/lens
+```
+
 ```tsx
 import { focusOn } from "@ramonda/lens";
 
@@ -60,6 +64,28 @@ returns the original:
 focusOn(state).get("title").set(state.title) === state; // true
 ```
 
+Anything that compares by reference gets the same benefit: a memo, a store subscriber,
+an equality check in a test.
+
+## The result shares objects with the input
+
+Keeping the untouched parts identical means the result and the input hold **the same
+objects** wherever nothing changed. So mutating one of them changes the other:
+
+```tsx
+const updated = focusOn(state).get("home").get("city").set("Niš");
+
+// `posts` was off the path, so `updated.posts` IS `state.posts`.
+updated.posts.push(newPost); // ✗ this also changes state.posts
+```
+
+Treat both values as read-only and go through `focusOn` for every change — that is
+what keeps a reference that didn't change meaning a value that didn't change:
+
+```tsx
+const withPost = focusOn(updated).get("posts").push(newPost);
+```
+
 ## It pairs with `list()`
 
 An immutable edit gives the edited item a **new object**. In a [`list()`](/lists)
@@ -73,12 +99,18 @@ list({ each: this.posts, key: (post) => post.id, as: PostRow });
 
 `focusOn` and `key` belong together whenever list items own state.
 
-## Small and dependency-free
+## Small, and usable on its own
 
-It's about 1.2 KB, has no dependencies, and uses no proxies — nothing is copied or
+It's about 1.3 KB, has no dependencies, and uses no proxies — nothing is copied or
 wrapped until a final operation runs; the chain just records where to go.
+
+Nothing in it knows about Ramonda, either. It's a standalone package for immutable
+updates: import it into any TypeScript or JavaScript project, in the browser or on the
+server, wherever a deep value has to change without the old one moving. It lives here
+because the framework's diff depends on exactly the guarantee it makes.
 
 ## Next
 
 - [Walking a path](/lens/paths) — `get`, `at`, `where`, and reading.
 - [Updating](/lens/updating) — the operations, and forking a path with `and`.
+- [Messages you might see](/lens/messages) — every development message, and its cause.
