@@ -168,6 +168,43 @@ export function hasPendingPostCommit(): boolean {
  * because an earlier callback in this same flush can destroy a component whose
  * mount is still pending behind it.
  */
+/**
+ * Work that belongs to the COMMIT rather than to any one component: it runs once,
+ * after every `@mount` in this flush, however many components asked for it.
+ *
+ * `pending` above cannot express that. Every entry there is tied to a component, is
+ * skipped if that component was destroyed, and runs once per entry — right for a
+ * lifecycle callback, wrong for something the whole tree contributes to and that
+ * must be computed from the finished result. `Head` is the case: each one publishes
+ * during its own `@create`, and the head the document should have is a function of
+ * all of them together, so recomputing per publication both does the work N times
+ * and puts the document through states no commit ever meant to show.
+ *
+ * A `Set` of the work itself, so ten publications in one commit are one recompute.
+ */
+const pendingCommitWork = new Set<() => void>();
+
+export function queueAfterCommit(work: () => void): void {
+  pendingCommitWork.add(work);
+}
+
+/**
+ * Runs the commit-level work now.
+ *
+ * Exported because not every teardown goes through a drain: unmounting a root is
+ * called directly, and the work queued by the `@destroy`s it runs would otherwise
+ * sit until something else happened to commit.
+ */
+export function flushAfterCommit(): void {
+  if (pendingCommitWork.size === 0) return;
+
+  // Snapshotted and cleared first, so work that queues more belongs to the next
+  // pass rather than extending this one.
+  const work = Array.from(pendingCommitWork);
+  pendingCommitWork.clear();
+  for (const run of work) run();
+}
+
 export function flushPostCommit(): void {
   if (flushing) return;
   flushing = true;
@@ -208,6 +245,10 @@ export function flushPostCommit(): void {
         errorHandler(e, next.component);
       }
     }
+
+    // After every mount, because that is what "the DOM this commit builds is in
+    // place" means — and commit-level work is entitled to read the finished result.
+    flushAfterCommit();
   } finally {
     flushing = false;
   }

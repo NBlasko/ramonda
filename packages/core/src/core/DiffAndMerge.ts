@@ -35,7 +35,7 @@ import {
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { hostTagMatches } from "../helpers/hostTag";
-import { queuePostCommit } from "./commit";
+import { queuePostCommit, flushAfterCommit } from "./commit";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { checkHostPlacement } from "../debug/hostPlacement";
 import { checkNesting } from "../debug/domNesting";
@@ -1001,6 +1001,14 @@ export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[]) {
     unmountNodeInPlace(child);
     child.remove();
   }
+
+  /**
+   * Teardown is a commit too, and this one is not reached from a drain: unmounting
+   * a root is called directly, so nothing else would run what the `@destroy`s just
+   * queued. Cheap when there is nothing — the queue is empty on every teardown that
+   * did not touch it.
+   */
+  flushAfterCommit();
 }
 
 /**

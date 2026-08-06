@@ -1,5 +1,6 @@
 import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
+import { queueAfterCommit } from "../core/commit";
 import { create, destroy, watchProp } from "./decorators";
 import { HEAD_ATTR } from "../helpers/constants";
 
@@ -207,7 +208,7 @@ export class Head extends Hook<HeadOptions> {
 
     this.registry = registry;
     this.entry = entry;
-    applyRegistry(registry);
+    scheduleApply(registry);
   }
 
   /**
@@ -237,7 +238,7 @@ export class Head extends Hook<HeadOptions> {
   republishOnChange(): void {
     if (this.entry === undefined || this.registry === undefined) return;
     this.entry.options = this.readOptions();
-    applyRegistry(this.registry);
+    scheduleApply(this.registry);
   }
 
   /**
@@ -271,7 +272,7 @@ export class Head extends Hook<HeadOptions> {
       return; // already replaced; the document is the incoming branch's business
     }
 
-    applyRegistry(registry);
+    scheduleApply(registry);
   }
 
   /**
@@ -456,6 +457,38 @@ function elementFor(selector: string, tagName: string): Element {
  * result depends only on which entries are currently registered, so it does not
  * matter whether a page published before or after another retracted.
  */
+/**
+ * Registries with something to recompute, drained once per commit.
+ *
+ * Marking rather than applying is the point. Every `Head` in a tree publishes
+ * during its own `@create`, and the head the document should have is a function of
+ * all of them — so applying per publication does the work once per page in the
+ * chain AND walks the document through states no commit ever meant to show: on a
+ * route swap, the incoming page title beside the outgoing page tags, for the
+ * length of one build.
+ *
+ * A `Set`, so a whole tree of publications collapses into one recompute. Held here
+ * rather than as a flag on the registry, so a commit that never comes cannot leave
+ * a registry marked and permanently skipped.
+ */
+const dirty = new Set<HeadRegistry>();
+
+function scheduleApply(registry: HeadRegistry): void {
+  dirty.add(registry);
+  queueAfterCommit(flushHeads);
+}
+
+/**
+ * Recomputes every marked registry. Idempotent, and safe to call with nothing
+ * marked — which is what lets the teardown path call it unconditionally.
+ */
+export function flushHeads(): void {
+  if (dirty.size === 0) return;
+  const registries = Array.from(dirty);
+  dirty.clear();
+  for (const registry of registries) applyRegistry(registry);
+}
+
 function applyRegistry(registry: HeadRegistry): void {
   const { title, tags } = resolve(registry.root);
 
