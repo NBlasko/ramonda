@@ -197,6 +197,21 @@ The guard **stops** it rather than only reporting it, because a synchronous loop
 Production has a blunter version of the same stop that throws — a frozen tab is a worse outcome
 than an error, and leaves nothing to debug.
 
+### What a runaway does in production
+
+Two counters, and they are the only errors the framework raises in a production build that can take a
+page down. Both are deliberate: the alternative is a tab that stops responding.
+
+| | what it counts | when it throws |
+| --- | --- | --- |
+| `MAX_BUILDS_PER_DRAIN` | components rebuilt in one drain | 100 000 |
+| `MAX_WORK_PER_FLUSH` | `@mount` callbacks in one flush | 100 000 |
+
+The message names the last component in the loop, which is where to look first, though the cause may
+be any component it updates. Neither is reachable by an app that settles: a hundred thousand builds
+in a single tick is a loop, not a busy page. In development this code is reported by name long before
+either counter is approached.
+
 Note that a *single* effect writing what it reads does **not** loop: the framework detaches a
 signal an effect mutated itself. See [Subscriptions](/concepts/subscriptions).
 

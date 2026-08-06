@@ -25,6 +25,12 @@ export class Cart extends Component {
 Read it like a field — `this.total`. It recomputes only when something it read has
 changed; the rest of the time you get the cached value back.
 
+And it recomputes **when you read it**, not when the change happens. A `@state`
+write marks the compute as stale and goes on; the body runs on the next read. So a
+compute nothing reads costs nothing — a value behind a closed panel is not
+recalculated while the panel is closed — and the work lands in whoever asks for it
+rather than in the write.
+
 ```demo:ComputeDemo
 ```
 
