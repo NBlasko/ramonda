@@ -3,7 +3,7 @@ import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
-import { trackerContainer } from "../reactivity/tracker";
+import { trackerContainer, trackDependency } from "../reactivity/tracker";
 import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
@@ -1244,14 +1244,16 @@ export function compute<T, R>(
         }
 
         // Whatever this compute depends on, whoever is reading it depends on
-        // too. Without this, a cache HIT touches no State at all, so the
-        // enclosing tracker records nothing and never invalidates: a @compute
-        // reading another @compute returned a stale value forever. Runs on the
-        // hit path as well as the miss path — the hit is exactly the broken case.
-        const outerTracker = trackerContainer.current;
-        if (outerTracker) {
-          for (const dep of cache.deps) outerTracker.addDep(dep);
-        }
+        // too. Without this, a cache HIT touches no State at all, so the reader
+        // records nothing and never invalidates: a @compute reading another
+        // @compute returned a stale value forever. Runs on the hit path as well
+        // as the miss path — the hit is exactly the broken case.
+        //
+        // Through `trackDependency` rather than the tracker directly, because a
+        // reader can also be an EFFECT, and an effect reading a fresh compute
+        // used to subscribe to nothing at all — the deps went to the tracker
+        // scope, which an effect is not in.
+        for (const dep of cache.deps) trackDependency(dep);
 
         return cache.value;
       },
