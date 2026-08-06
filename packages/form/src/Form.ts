@@ -168,11 +168,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
 
   /** Says this form is here — on mount, and again for a panel that started listening later. */
   announce(): void {
-    window.dispatchEvent(
-      new CustomEvent("ramonda:form", {
-        detail: { form: this, key: this, readable: readableKey, label: this.props.label },
-      }),
-    );
+    window.dispatchEvent(new CustomEvent("ramonda:form", { detail: { form: this, key: this, readable: readableKey } }));
   }
 
   prime(env: RenderEnv = "client"): void {

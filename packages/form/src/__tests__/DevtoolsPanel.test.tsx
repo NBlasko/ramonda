@@ -366,6 +366,49 @@ describe("the Forms panel", () => {
     }
   });
 
+  /**
+   * The case the announce event could not serve, and the reason the label is read live.
+   *
+   * A label may be computed in the props callback, which re-runs when the signals it reads move. An
+   * event fires once, at mount, so a name taken from it would be the name the form had when it
+   * appeared while every other field in the tab was current — one frozen field among live ones.
+   */
+  test("a label computed in the props callback follows the signal it reads", async () => {
+    let bump!: () => void;
+
+    class Orders extends Component {
+      @state which = "first";
+      private f = this.use(Form<typeof schema>, (self: Orders) => ({
+        schema,
+        defaultValues: BLANK,
+        onSubmit: () => {},
+        label: `order ${self.which}`,
+      }));
+
+      render(): RamondaNode {
+        bump = () => {
+          this.which = "second";
+        };
+        void this.f.values;
+        return <form />;
+      }
+    }
+
+    const mounted = render(<Orders />);
+    try {
+      await settle();
+      expect(panel().snapshot().groups[0]!.rows[0]!.title).toBe("Form (order first)");
+
+      bump();
+      await settle();
+
+      // The tab reads the label the way it reads values and errors — through the instance, now.
+      expect(panel().snapshot().groups[0]!.rows[0]!.title).toBe("Form (order second)");
+    } finally {
+      mounted.unmount();
+    }
+  });
+
   test("a blank label is no label, so the number still answers", async () => {
     const only = mount(BLANK, "   ");
     try {
