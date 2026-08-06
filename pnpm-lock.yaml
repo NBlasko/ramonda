@@ -248,6 +248,9 @@ importers:
 
   packages/devtools:
     devDependencies:
+      '@ramonda/lens':
+        specifier: workspace:^
+        version: link:../lens
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../shared

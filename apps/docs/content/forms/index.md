@@ -101,7 +101,7 @@ except one place: an inline callback whose parameter you have not annotated. `on
 gives up and hands you `any`.
 
 Writing `Form<typeof schema>` pins the schema first, so everything else follows from it. It is
-the same restriction [`Query`](/query/queries#typing-the-callbacks) documents, for the same
+the same restriction [`Query`](/query/queries) documents, for the same
 reason.
 
 ```tsx

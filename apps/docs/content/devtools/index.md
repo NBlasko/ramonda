@@ -321,8 +321,31 @@ badge with a count](/devtools/badge.gif) Nothing about your app moves, and what 
 where you left it. Open the panel when you are ready; the `LOGS` tab has the error, with its data
 logged to the console when you click it.
 
-Diagnostics (`RMD*`, `RMQ*`) land there too. Each one is explained in the
-[diagnostics reference](/reference/diagnostics).
+Diagnostics land there too — `RMD*` from the core, `RMQ*` from the query cache, `RMF*` from forms,
+`RML*` from immutable updates. Each one is explained in the
+[diagnostics reference](/reference/diagnostics), and the row's data carries its `fix` and the values
+the message named.
+
+### Collecting them yourself
+
+An `RML*` diagnostic is a [record](/reference/diagnostics#capturing-them), and this panel is only one
+consumer of it. To take them somewhere else — a test, a log shipper, your own overlay — subscribe:
+
+```tsx
+import { installDiagnostics } from "@ramonda/devtools";
+
+const stop = installDiagnostics((record) => {
+  if (record.severity === "error") myCollector.alert(record);
+});
+```
+
+The other prefixes reach the tab through the framework's own log channel and are not on this one yet.
+
+Subscribe rather than assigning `globalThis.__RAMONDA_DIAGNOSTICS__` yourself: the sink is one
+function, so an assignment replaces whoever was there — usually this panel, which then quietly stops
+filling. Several subscribers share one sink, and the returned function removes yours (call it from
+`import.meta.hot?.dispose` in a module that hot-reloads). The panel says so in the console if it finds
+the sink taken.
 
 ## What is remembered
 

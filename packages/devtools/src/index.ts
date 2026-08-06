@@ -1,4 +1,5 @@
 import { PANEL_CSS } from "./styles";
+import { bridgeDiagnosticsToPanel, diagnosticsReachUs } from "./diagnostics";
 import { escapeHtml, toServerPath } from "./format";
 import { resolveOriginal } from "./sourceMap";
 import { ValueView } from "./valueView";
@@ -102,6 +103,24 @@ class RamondaDevTools extends HTMLElement {
     });
 
     this.restoreSession();
+
+    /**
+     * Says so when the diagnostics sink no longer reaches this panel.
+     *
+     * The sink is one property on `globalThis`, and the reference page shows how
+     * to assign it — so somebody following that example, or a second collector
+     * written by hand, replaces the bridge and the Logs tab quietly stops filling.
+     * There is no hook that fires when a global is overwritten, so the check is a
+     * round trip, run once here rather than per report.
+     */
+    if (!diagnosticsReachUs()) {
+      console.warn(
+        "[Ramonda devtools] Something replaced `globalThis.__RAMONDA_DIAGNOSTICS__`, so reports " +
+          "from lens and any other package are no longer reaching this panel. Subscribe with " +
+          "`installDiagnostics(sink)` from `@ramonda/devtools` instead of assigning the global, " +
+          "which lets several collectors share it.",
+      );
+    }
 
     window.dispatchEvent(new CustomEvent("ramonda:devtools-ready"));
   }
@@ -758,6 +777,16 @@ if (!customElements.get("ramonda-devtools")) {
 }
 
 /**
+ * Collects diagnostics from every package that reports any, at import time.
+ *
+ * Import time rather than on mount, for the same reason the vault behind it
+ * exists: the reports worth seeing happen while the app starts, which is before a
+ * panel element has connected. Calling it twice replaces the first bridge rather
+ * than adding a second — see `bridgeDiagnosticsToPanel`.
+ */
+bridgeDiagnosticsToPanel();
+
+/**
  * Mostly a side-effect module: importing it registers `<ramonda-devtools>`, which is what an app
  * does and all an app needs.
  *
@@ -766,6 +795,7 @@ if (!customElements.get("ramonda-devtools")) {
  * `panelPlugin.ts`, and `/devtools/panels` in the docs.
  */
 export { panelRegistry } from "./panelPlugin";
+export { installDiagnostics } from "./diagnostics";
 export type {
   PanelPlugin,
   PanelRegistry,
