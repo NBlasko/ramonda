@@ -841,15 +841,15 @@ Give the component a real host tag with `@Host("div")` if the event needs one. S
 ## RMD042 — A `<meta>` with nothing to identify it
 
 ```tsx
-head({ meta: [{ content: "…" }] });                    // reported, and skipped
-head({ meta: [{ name: "description", content: "…" }] }); // the way
+head = this.use(Head, { meta: [{ name: "description", content: "A framework." }] });
 ```
 
 `Head` matches the tags it has already written so that an update replaces them rather than appending,
 and a `<meta>` is matched by `name`, `property` or `http-equiv`. One with none of the three cannot be
 found again, so it would be added on every update — it is skipped instead.
 
-Give it whichever of the three describes it.
+`MetaTag` requires one of the three, so TypeScript refuses the tag that would trip this. It fires for a
+build with no types, or through a cast.
 
 ## RMD043 — An unknown element type in JSX
 
