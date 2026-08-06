@@ -838,6 +838,36 @@ receiver.
 
 The array form of the same fault is [RMD005](#rmd005-array-in-state-mutated-in-place).
 
+## RMD035 — Two lazy functions with the same source
+
+```tsx expect-error
+const make = (path: string) => () => import(path);
+
+<AsyncLoad lazy={make("./Dashboard")} onLoading={<i />} errorFallback={<i />} />
+<AsyncLoad lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
+```
+
+```tsx
+<AsyncLoad cacheKey="./Dashboard" lazy={make("./Dashboard")} onLoading={<i />} errorFallback={<i />} />
+<AsyncLoad cacheKey="./Settings" lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
+```
+
+`AsyncLoad` identifies a module by the **source** of its `lazy`, which is right for
+`() => import("./Thing")` — two different imports read differently. A lazy a factory built breaks
+that: the path it closed over is not part of the source, so every module the factory produces
+stringifies the same.
+
+The instance that arrives second is given a key of its own, so it loads the module it asked for
+rather than the one already cached under that source. What it loses is the shared cache entry — a
+loading frame the second time, since the module system still dedupes the fetch itself. `cacheKey`
+gives that back.
+
+Before this was reported, the second one rendered the FIRST one's module: nothing failed, nothing
+was logged, and which module you got depended on which rendered first. A route table that builds its
+lazies from a list is the usual way to meet it.
+
+See [lazy loading](/composition/lazy) for the whole picture.
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to

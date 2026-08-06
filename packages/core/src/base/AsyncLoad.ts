@@ -3,6 +3,7 @@ import type { RamondaNode } from "../types/vdom";
 import { createRamonda } from "../vdom/CreateRamonda";
 import { mount, destroy, state, create, deferHydration, watchProp } from "./decorators";
 import { addModulePreload } from "./Head";
+import { diagnose } from "../debug/diagnostics";
 
 export type Lazy = () => Promise<any>;
 
@@ -80,6 +81,16 @@ export interface AsyncLoadProps {
  */
 const cachedFiles = new Map<string, LoadedComponent>();
 
+/**
+ * Which `lazy` function claimed each DERIVED key — see the `cacheKey` getter.
+ *
+ * Bounded by the number of distinct lazy sources an app has, and it holds the
+ * function rather than anything it loaded, so it keeps nothing alive that the
+ * module registry would not.
+ */
+const derivedKeyOwners = new Map<string, unknown>();
+let mintedKeys = 0;
+
 type LoadedComponent = ((loadedProps?: unknown) => RamondaNode) | undefined;
 
 /**
@@ -126,8 +137,61 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * Only ever right with a fixed `lazy`, which is how it was always used until a
    * router pointed one at a different module per route.
    */
+  /**
+   * The key this instance resolved to, kept so it cannot change under it — and so
+   * a minted one is minted once. Cleared when the `lazy` itself changes.
+   */
+  private resolvedKey: string | undefined;
+
+  /**
+   * The cache key, and the one case where the derived one cannot be trusted.
+   *
+   * Derived from the SOURCE of `lazy`, which is right for `() => import("./Thing")`:
+   * two different imports read differently. It is wrong for a lazy a FACTORY built
+   * — `const make = (path) => () => import(path)` — because the value each closed
+   * over is not part of the source, so every module the factory produces stringifies
+   * the same. The first one loaded and cached; the second never asked for its own and
+   * rendered the first one's module. Nothing failed and nothing was logged, and which
+   * module you got depended on which rendered first.
+   *
+   * It cannot be told apart by the source, but it CAN be told apart by the function:
+   * two lazies that collide are two different function objects with the same text.
+   * So a derived key is CLAIMED by the function that first used it, and a different
+   * function arriving at the same key gets one of its own instead of the wrong module.
+   * The same function used twice — one `lazy` handed to two `<AsyncLoad>`s — is the
+   * same object, so sharing is untouched.
+   *
+   * The cost of the minted key is that those two do not share a cache entry. The
+   * module system still dedupes the fetch; what is lost is rendering the second one
+   * without a loading frame, which `cacheKey` gives back.
+   */
   private get cacheKey(): string {
-    return this.props.cacheKey ?? this.props.lazy.toString();
+    const explicit = this.props.cacheKey;
+    if (explicit !== undefined) return explicit;
+
+    const memoized = this.resolvedKey;
+    if (memoized !== undefined) return memoized;
+
+    const lazy = this.props.lazy;
+    const derived = lazy.toString();
+    const owner = derivedKeyOwners.get(derived);
+
+    if (owner === undefined || owner === lazy) {
+      derivedKeyOwners.set(derived, lazy);
+      this.resolvedKey = derived;
+      return derived;
+    }
+
+    const minted = `${derived}#ramonda-${++mintedKeys}`;
+    if (__DEV__) {
+      diagnose(
+        "RMD035",
+        `asyncLoad:${derived}`,
+        "Two different `lazy` functions have the same source, so the cache key derived from it cannot tell them apart.",
+      );
+    }
+    this.resolvedKey = minted;
+    return minted;
   }
   /**
    * Only a re-render trigger. Whether the module is available is decided by the
@@ -145,7 +209,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * An increment always differs from what was restored, so the render that
    * finally reads the cache actually happens.
    */
-  @state loadCount = cachedFiles.has(this.props.cacheKey ?? this.props.lazy.toString()) ? 1 : 0;
+  @state loadCount = cachedFiles.has(this.cacheKey) ? 1 : 0;
   @state hasError = false;
   /** Bumped by `retry`, so the fallback can tell a first failure from a fifth. */
   @state attempt = 0;
@@ -187,6 +251,8 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    */
   @watchProp((props) => props.cacheKey ?? props.lazy.toString())
   onSourceChanged() {
+    // The key belongs to the OLD lazy; the new one claims or mints its own.
+    this.resolvedKey = undefined;
     this.loading = false;
     this.hasError = false;
     this.failure = undefined;
