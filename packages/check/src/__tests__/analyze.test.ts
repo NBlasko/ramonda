@@ -142,6 +142,23 @@ describe("single-use decorators declared twice", () => {
     expect(names).not.toContain("Fine");
   });
 
+  test("the analyzer walks the tree under the AUTOMATIC jsx runtime", () => {
+    /**
+     * The proof that this fixture's configuration is understood, not merely tolerated.
+     *
+     * Every other fixture is on the classic runtime with `jsxFactory: "h"` — a factory the
+     * framework does not export any more — so nothing here had ever run against
+     * `jsx: "react-jsx"` + `jsxImportSource`, which is what a real project has. Finding a missing
+     * provider needs the JSX tree, and the PATH is what says the walk really happened: an analyzer
+     * that could not see the elements would report nothing at all.
+     */
+    const { issues } = run("duplicate-decorators");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Reader");
+    expect(issues[0].context).toBe("Theme");
+    expect(issues[0].path).toEqual(["App", "Reader"]);
+  });
+
   test("it points at the declaration", () => {
     const first = found()[0];
     expect(first.file).toMatch(/duplicate-decorators\/app\.tsx$/);
