@@ -42,7 +42,7 @@ describe("decorators", () => {
     expect(app.instance.pick("1" as never)).not.toBe(a1);
   });
 
-  test("a non-primitive argument is refused, loudly", async () => {
+  test("a non-primitive argument is refused, loudly — in DEVELOPMENT", async () => {
     @Host("div")
     class C extends Component {
       @memoizedHandler pick(o: unknown) {
@@ -56,7 +56,11 @@ describe("decorators", () => {
     await app.settle();
     // Objects would have to be stringified to build a key, and two different
     // objects would collide into one entry — the wrong handler, silently.
-    expect(() => app.instance.pick({ a: 1 })).toThrow(/Only string \| number \| boolean/);
+    //
+    // Loudly HERE and not in production, where this used to throw out of a render
+    // and take the page down over one argument. See `prod/MemoizedHandlerKey.prod.test.tsx`
+    // for the other half, and `MemoizedHandlerKey.test.tsx` for what the message says.
+    expect(() => app.instance.pick({ a: 1 })).toThrow(/@memoizedHandler on C\.pick/);
   });
 
   test("two instances of a component do not share handlers", async () => {

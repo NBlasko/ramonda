@@ -775,16 +775,45 @@ export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V
   };
 }
 
-function buildKey(args: any[]): string {
-  return args
-    .map((arg) => {
-      const typeofArg = typeof arg;
-      if (typeofArg === "string" || typeofArg === "number" || typeofArg === "boolean") {
-        return `${typeofArg[0]}:${String(arg)}`;
-      }
-      throw new Error(`[memoizedHandler] Invalid argument for key: ${arg}. Only string | number | boolean allowed.`);
+/**
+ * The cache key for one call, or `undefined` when the arguments cannot make one.
+ *
+ * Only a string, a number or a boolean can be part of a key: an object cannot be
+ * compared by value, and keying on it by identity would never hit — a fresh object
+ * per render would fill the map and return a new handler every time, which is the
+ * thing this decorator exists to prevent.
+ *
+ * So an object argument is a mistake. It used to be a mistake that THREW, outside
+ * any `__DEV__` guard and in the middle of a render, so one handler receiving an
+ * object took the whole page down in production. Nothing else in the framework
+ * answers a runtime mistake that way — a list item that is not an element is
+ * skipped so the list keeps rendering, a function in tag position is called rather
+ * than crashing the page, a corrupt hydration blob is ignored so the page still
+ * renders. Now the caller decides: development throws with a message that names
+ * the method and the argument, production goes on without memoising that call.
+ */
+function buildKey(args: any[]): string | undefined {
+  let key = "";
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const typeofArg = typeof arg;
+    if (typeofArg !== "string" && typeofArg !== "number" && typeofArg !== "boolean") return undefined;
+    if (i > 0) key += "|";
+    key += `${typeofArg[0]}:${String(arg)}`;
+  }
+  return key;
+}
+
+/** Names the argument in the way that helps: its position, its type, and what it looked like. */
+function describeUnkeyableArgs(args: any[]): string {
+  const bad = args
+    .map((arg, index) => ({ arg, index }))
+    .filter(({ arg }) => {
+      const t = typeof arg;
+      return t !== "string" && t !== "number" && t !== "boolean";
     })
-    .join("|");
+    .map(({ arg, index }) => `#${index + 1} (${arg === null ? "null" : typeof arg})`);
+  return bad.join(", ");
 }
 
 const memoMap = new WeakMap<any, Map<string, { fn: (...args: any[]) => any; used: boolean }>>();
@@ -821,6 +850,32 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
 
   return function (this: any, ...args: any[]) {
     const key = buildKey(args);
+
+    if (key === undefined) {
+      /**
+       * Development throws, because this is a mistake worth stopping at: the
+       * handler will be rebuilt on every render, so whatever it is passed to
+       * re-renders every time, silently, for the life of the page.
+       *
+       * Production builds it and moves on. The two differ here on purpose — the
+       * alternative was a page that dies over one argument — and the message says
+       * how to get the memoisation back, which is to key on the primitive the
+       * object is standing in for.
+       */
+      if (__DEV__) {
+        throw new Error(
+          `[Ramonda] @memoizedHandler on ${(this as { constructor: { name: string } }).constructor.name}.${String(
+            context.name,
+          )} was called with an argument it cannot build a cache key from: ${describeUnkeyableArgs(args)}. ` +
+            `A key can hold a string, a number or a boolean — an object cannot be compared by value, and keying ` +
+            `on its identity would miss every time, so the handler would be rebuilt on every render and everything ` +
+            `it is passed to would re-render with it. Pass the primitive the object stands for (\`row.id\` rather ` +
+            `than \`row\`) and read the rest inside the handler. In production this call is not memoised and the ` +
+            `page keeps working.`,
+        );
+      }
+      return originalMethod.call(this, ...args);
+    }
 
     const instanceMap = memoMap.get(this)!;
     let entry = instanceMap.get(key);
