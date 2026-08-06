@@ -151,4 +151,54 @@ describe("controlled form values", () => {
     expect(input.value).toBe("abcd");
     expect(input.selectionStart).toBe(1);
   });
+
+  test("a radio group follows the model, including after the user picks another", async () => {
+    /**
+     * Radios have their own rule: checking one UNCHECKS its group, and the
+     * browser does that itself. So the model has to win over a click the app
+     * never accepted — and the attribute cannot do it, for the same
+     * dirty-checkedness reason a single checkbox cannot.
+     */
+    @Host("form")
+    class F extends Component {
+      @state picked = "a";
+      @state tick = 0;
+
+      render() {
+        return (
+          <div data-tick={String(this.tick)}>
+            <input id="a" type="radio" name="g" value="a" checked={this.picked === "a"} />
+            <input id="b" type="radio" name="g" value="b" checked={this.picked === "b"} />
+            <input id="c" type="radio" name="g" value="c" checked={this.picked === "c"} />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<F>(<F />);
+    await app.settle();
+
+    const a = app.container.querySelector("#a") as HTMLInputElement;
+    const b = app.container.querySelector("#b") as HTMLInputElement;
+    const c = app.container.querySelector("#c") as HTMLInputElement;
+    const picked = () => [a, b, c].filter((input) => input.checked).map((input) => input.id);
+
+    expect(picked()).toEqual(["a"]);
+
+    app.instance.picked = "b";
+    await app.settle();
+    expect(picked()).toEqual(["b"]);
+
+    // The user picks a third; the model never agreed.
+    await app.user.click(c);
+    expect(picked()).toEqual(["c"]);
+
+    app.instance.tick++;
+    await app.settle();
+    expect(picked()).toEqual(["b"]);
+
+    app.instance.picked = "a";
+    await app.settle();
+    expect(picked()).toEqual(["a"]);
+  });
 });
