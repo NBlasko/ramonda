@@ -185,7 +185,7 @@ export class ListEngine<T> {
       if (existing && existing.item === item && !existing.dirty && (!usesIndex || existing.index === i)) {
         out.push(existing.vnode);
         clean.push(true);
-        nextScopes.set(scopeKey, existing);
+        this.claimScope(nextScopes, scopeKey, existing);
         continue;
       }
 
@@ -223,7 +223,7 @@ export class ListEngine<T> {
       vnode.attributes.key = key;
       out.push(vnode);
       clean.push(false);
-      nextScopes.set(scopeKey, this.lastScope!);
+      this.claimScope(nextScopes, scopeKey, this.lastScope!);
     }
 
     if (!keyOf) this.ids = next;
@@ -232,13 +232,37 @@ export class ListEngine<T> {
     // reference to a list entry that no longer exists.
     for (const [scopeKey, scope] of this.scopes) {
       if (nextScopes.get(scopeKey) === scope) continue;
-      for (const dep of scope.deps) dep[detach](scope.listenerId);
+      this.releaseScope(scope);
     }
     this.scopes = nextScopes;
 
     if (__DEV__ && keyOf) lintExplicitKeys(out);
 
     return this.wrap(owner, out, clean);
+  }
+
+  /**
+   * Stores this pass's scope for a key, releasing whatever it displaces.
+   *
+   * Two items answering the same key is user error, reported in DEV (RMD013),
+   * but the map only holds one scope per key — so the first item's scope was
+   * overwritten here after it had already subscribed to everything its mapper
+   * read. It was then in neither map: gone from this pass's, never in the
+   * previous pass's, so the cleanup loop that detaches the scopes which did not
+   * carry over could not reach it. A live subscription with no owner, calling
+   * `host.reBuild()` for an item that does not exist for the life of the page,
+   * and marking the engine dirty each time, which defeats the whole-list skip.
+   */
+  private claimScope(nextScopes: Map<string, ItemScope<T>>, scopeKey: string, scope: ItemScope<T>): void {
+    const shadowed = nextScopes.get(scopeKey);
+    if (shadowed !== undefined && shadowed !== scope) this.releaseScope(shadowed);
+    nextScopes.set(scopeKey, scope);
+  }
+
+  /** Unsubscribes a scope from every signal its mapper read. */
+  private releaseScope(scope: ItemScope<T>): void {
+    for (const dep of scope.deps) dep[detach](scope.listenerId);
+    scope.deps.clear();
   }
 
   /**
