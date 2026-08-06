@@ -191,7 +191,13 @@ export declare class BaseComponent<P = DefaultProps> {
   public [COMPONENT_RUNTIME]: ComponentRuntime;
 
   public [INTERNAL_HOOKS]?: (() => void)[];
-  public catchError?(e?: unknown): void;
+  /**
+   * Handles an error thrown anywhere below this component. Returning `false`
+   * declines it, and the error carries on to the next ancestor that has one —
+   * which is how a boundary already showing its fallback lets the boundary above
+   * take over. Anything else, `undefined` included, means handled.
+   */
+  public catchError?(e?: unknown): void | boolean;
 
   public props: RenderableProps<P>;
 

@@ -8,9 +8,24 @@ export function errorHandler(e: unknown, placeholderComponent: MaybeComponent) {
   while (errorCatcherComponent) {
     const catchError = errorCatcherComponent.catchError;
     if (catchError) {
-      catchError(e);
-      isErrorHandled = true;
-      break;
+      /**
+       * `false` means "not mine" and the walk goes on, which is what lets a
+       * boundary DECLINE the error it cannot do anything about.
+       *
+       * A fallback renders inside its own boundary, so when the fallback is what
+       * threw, the first ancestor found here is the boundary already showing it.
+       * It would set the same `hasError` it set before — no change, so no
+       * re-render — and the walk would stop and call the error handled, leaving
+       * the page on the DOM from before the throw while the boundary above,
+       * whose whole job is this, never heard about it.
+       *
+       * Anything else, `undefined` included, still means handled: a `catchError`
+       * written before this returns nothing and keeps working.
+       */
+      if (catchError(e) !== false) {
+        isErrorHandled = true;
+        break;
+      }
     }
 
     errorCatcherComponent = errorCatcherComponent[COMPONENT_RUNTIME].parent;

@@ -19,13 +19,26 @@ export class ErrorBoundary extends Component<Props> {
   @state err: Error | undefined = undefined;
 
   catchError(e: unknown) {
+    /**
+     * Already showing the fallback, so this error came FROM the fallback — the
+     * only thing left rendering in here. Catching it again would write the same
+     * `hasError` and change nothing, and the walk would stop at a boundary that
+     * cannot do anything about it: the page would keep the DOM it had before the
+     * throw, and the boundary above would never be told.
+     *
+     * Declining passes it up. A boundary that has been `reset` is healthy again
+     * and catches as before.
+     */
+    if (this.hasError) return false;
+
     this.hasError = true;
     if (e instanceof Error) {
       this.message = e.message;
       this.err = e;
-      return;
+      return true;
     }
     this.message = "unknown Error";
+    return true;
   }
 
   handleReset() {
