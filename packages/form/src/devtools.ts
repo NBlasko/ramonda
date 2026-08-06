@@ -139,7 +139,23 @@ function formsPanel(): PanelPlugin {
     snapshot(): PanelSnapshot {
       return {
         empty: "No forms are mounted. This tab fills in when a component uses Form.",
-        groups: forms.map((entry) => ({ rows: rowsFor(entry) })),
+        /**
+         * One group per form, and a label on each ONLY when there is more than one.
+         *
+         * The label is what ties a broken field to the form it belongs to. Without it the rows are
+         * siblings: a summary line, then a row per broken field, then the next form's summary — so
+         * with two forms on a page, `email` under the second one reads as if it belonged to the
+         * first. The panel already draws a group label as a header, which is the frame these rows
+         * were missing.
+         *
+         * Suppressed for a single form for the same reason `@ramonda/query` suppresses its client
+         * label: a page usually has one, and a header over the only group is noise that says
+         * nothing the row beneath it does not.
+         */
+        groups: forms.map((entry) => ({
+          label: forms.length > 1 ? entry.name : undefined,
+          rows: rowsFor(entry),
+        })),
       };
     },
 

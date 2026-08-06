@@ -95,6 +95,21 @@ describe("a row described as data", () => {
     return panel;
   }
 
+  /** Registers a source that describes GROUPS, which is how a page with two of anything looks. */
+  function withGroups(groups: unknown[]): Panel {
+    panelRegistry().register({
+      version: 1,
+      id: "query",
+      label: "QUERY",
+      snapshot: () => ({ groups: groups as never }),
+    });
+    const panel = document.createElement("ramonda-devtools") as Panel;
+    document.body.append(panel);
+    panel.toggle();
+    panel.shadowRoot.querySelector('.tab[data-tab="plugin-query"]')!.dispatchEvent(new Event("click"));
+    return panel;
+  }
+
   const row = (over: Record<string, unknown> = {}) => ({
     id: '0::["products"]',
     title: '["products"]',
@@ -231,5 +246,40 @@ describe("a row described as data", () => {
     } finally {
       error.mockRestore();
     }
+  });
+
+  /**
+   * The half of the forms fix that lives here.
+   *
+   * `@ramonda/form` had one group per form and no label on any of them, so a broken field's row sat
+   * as a sibling of the summary above it — with two forms, the second one's `email` read as if it
+   * belonged to the first. Giving the group a label only helps if the panel draws it, and nothing
+   * asserted that it did.
+   */
+  it("draws a group's label above its rows, so two groups are visibly two", () => {
+    const panel = withGroups([
+      { label: "Form 1", rows: [row({ id: "1::form", title: "Form 1" }), row({ id: "1::email", title: "email" })] },
+      { label: "Form 2", rows: [row({ id: "2::form", title: "Form 2" })] },
+    ]);
+
+    const labels = Array.from(container(panel).querySelectorAll(".q-client")).map((node) => node.textContent);
+    expect(labels).toEqual(["Form 1", "Form 2"]);
+
+    // In order, and each above its own rows: the label is the frame, so its position is the point.
+    const order = Array.from(container(panel).querySelectorAll(".q-client, .q-row")).map((node) =>
+      node.className.includes("q-client") ? `label:${node.textContent}` : "row",
+    );
+    expect(order).toEqual(["label:Form 1", "row", "row", "label:Form 2", "row"]);
+
+    panel.remove();
+  });
+
+  it("draws no label when a group has none, which is the single-group case", () => {
+    const panel = withGroups([{ rows: [row()] }]);
+
+    expect(container(panel).querySelectorAll(".q-client")).toHaveLength(0);
+    expect(container(panel).querySelectorAll(".q-row").length).toBeGreaterThan(0);
+
+    panel.remove();
   });
 });
