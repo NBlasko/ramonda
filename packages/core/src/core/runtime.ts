@@ -51,6 +51,12 @@ export interface Runtime {
 export interface ComponentRuntime {
   depth: number;
   rawProps: RenderableProps<any>;
+  /**
+   * The method `@catchError` declared, if any — the seam `errorHandler` walks the
+   * parent chain looking for. Held per instance because the handler is bound to
+   * one, and dispatched by name so a subclass override wins.
+   */
+  catchError?: (e: unknown) => unknown;
   propsSignals: Map<string, State<any>>;
   parent?: BaseComponent;
   inBuildQueue?: boolean;

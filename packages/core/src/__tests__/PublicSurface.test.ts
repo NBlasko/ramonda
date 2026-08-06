@@ -59,6 +59,7 @@ const EXPECTED = [
   "updated",
   "watchProp",
   "deferHydration",
+  "catchError",
   "memoizedHandler",
   "onElement",
   "onWindow",

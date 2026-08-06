@@ -6,7 +6,7 @@ export function errorHandler(e: unknown, placeholderComponent: MaybeComponent) {
   let isErrorHandled = false;
 
   while (errorCatcherComponent) {
-    const catchError = errorCatcherComponent.catchError;
+    const catchError = errorCatcherComponent[COMPONENT_RUNTIME].catchError;
     if (catchError) {
       /**
        * `false` means "not mine" and the walk goes on, which is what lets a

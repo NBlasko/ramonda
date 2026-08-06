@@ -27,6 +27,7 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@updated`](/concepts/lifecycle) | client in practice¹ | component · hook | yes |
 | [`@watchProp`](/concepts/props) | client in practice¹ | component · hook | yes — one per selector |
 | [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
+| [`@catchError`](/composition/error-boundaries) | both | **component only** | **no** — a subclass may override |
 | [`@ShouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — a subclass may override |
 | [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | **hook only** | **no** — it takes a list |
 | [`@Host`](/concepts/host) | both | **component only** | **no** |
@@ -87,6 +88,9 @@ Most decorators stack, and the order is defined:
   undoes setup in the order it was done.
 - **`@watchProp`** takes one selector each, so several watch different props.
 - **`@deferHydration`** may appear several times; hydration waits for all of them.
+- **`@catchError`** is single: there is one answer to "who handles an error from below?". Two on one
+  class are reported (RMD032) and the last wins. A **subclass** declaring its own overrides the base's,
+  which is not a duplicate and is not reported.
 - **Listeners and timers** stack freely — that is the normal way to bind several events.
 
 Three are single:

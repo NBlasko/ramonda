@@ -8,6 +8,7 @@ import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
@@ -408,6 +409,106 @@ export function updated(value: (...args: any[]) => void, context: EnhancedClassM
  *
  * Several methods may carry it; hydration waits for all of them.
  */
+/**
+ * The prototype that actually declares `name` — the most-derived one, since the
+ * walk stops at the first that owns it.
+ *
+ * Tells "two declarations in ONE class" from "a subclass overriding the base's".
+ * Two initializers whose declarations share an owner are the first; different
+ * owners are the second, which is how a role is specialised and must stay quiet.
+ */
+function ownerOfMethod(instance: object, name: string): object | undefined {
+  let proto: object | null = Object.getPrototypeOf(instance);
+  while (proto !== null) {
+    if (Object.hasOwn(proto, name)) return proto;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return undefined;
+}
+
+/**
+ * Declares the method that handles an error thrown anywhere below this component.
+ *
+ * ```tsx
+ * @Host("div")
+ * class Panel extends Component {
+ *   @state failed = "";
+ *
+ *   @catchError whenSomethingBreaks(e: unknown) {
+ *     this.failed = (e as Error).message;
+ *   }
+ *
+ *   render() { … }
+ * }
+ * ```
+ *
+ * A decorator rather than a method the framework looks up by name, for the same
+ * reason as `@deferHydration`: **the method is yours to name**, and a framework
+ * that reserves a name on every class changes behaviour silently the day someone
+ * writes a method that happens to be called that. Catching used to work exactly
+ * that way — any component with a method called `catchError` became an error
+ * boundary — which was the one capability still handed out by naming.
+ *
+ * **Return `false` to decline**, and the error carries on to the next ancestor
+ * that has one; anything else, `undefined` included, means handled. That is how
+ * `ErrorBoundary` steps aside when the thing that threw was its own fallback.
+ *
+ * A METHOD decorator, not a class one, because handling an error is behaviour and
+ * a subclass will want `super`: a specialised boundary that reports to Sentry
+ * *and* does what the base did is the ordinary case. It is dispatched by name, so
+ * overriding the method without re-decorating works.
+ *
+ * The error walk takes the FIRST ancestor that has a handler, so nesting them
+ * works the way the DOM does. Two on one class is a mistake (RMD032) — there is
+ * one answer to "who handles this?" — but a subclass declaring its own is an
+ * override, and silent.
+ */
+export function catchError(
+  // Dispatched by NAME below, so the function itself is not kept — the parameter
+  // stays because it is what TypeScript checks the decorated method against.
+  _value: (...args: any[]) => unknown,
+  context: EnhancedClassMethodDecoratorContext,
+) {
+  if (__DEV__) {
+    assertMethod(context.kind, "catchError", context.name);
+  }
+  const contextName = ensureStringContextName(context.name, "catchError");
+
+  context.addInitializer(function (this) {
+    // The error walk climbs COMPONENT_RUNTIME.parent, so a hook is not on it: a
+    // handler declared there would sit and never be called. Thrown in every
+    // build, like the other component-only decorators.
+    const runtime = this[COMPONENT_RUNTIME];
+    if (runtime === undefined) {
+      throw new Error(
+        `[Ramonda] @catchError is for components, not hooks. An error travels up the COMPONENT tree, ` +
+          `and a hook is not on it — the handler would never be called. Put it on the component that ` +
+          `uses ${this.constructor.name}, or drop it.`,
+      );
+    }
+
+    if (__DEV__) {
+      const owner = ownerOfMethod(this, contextName);
+      if (runtime.catchError !== undefined && catchErrorOwners.get(runtime) === owner) {
+        diagnose(
+          "RMD032",
+          `${this.constructor.name}:catchError`,
+          `<${this.constructor.name} /> declares @catchError on more than one method.`,
+        );
+      }
+      catchErrorOwners.set(runtime, owner);
+    }
+
+    // By NAME, so a subclass overriding the method — with or without `super` —
+    // is the one that runs. Capturing `value` would pin the base's body for ever,
+    // which is the trap @ShouldUpdateOnPropsChange used to have.
+    runtime.catchError = (e: unknown) => (this as unknown as Record<string, (e: unknown) => unknown>)[contextName](e);
+  });
+}
+
+/** runtime -> the class that last declared its error handler. DEV only. */
+const catchErrorOwners = new WeakMap<object, object | undefined>();
+
 export function deferHydration(value: (...args: any[]) => unknown, context: EnhancedClassMethodDecoratorContext) {
   if (__DEV__) {
     assertMethod(context.kind, "deferHydration", context.name);

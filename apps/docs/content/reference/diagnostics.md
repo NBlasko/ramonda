@@ -660,6 +660,34 @@ component's host element is what wraps the inner rows.
 
 TypeScript rejects all of this at the call site; this fires when the build has no types.
 
+## RMD032 — More than one `@catchError` on a component
+
+```tsx expect-error
+@Host("div")
+class Panel extends Component {
+  @catchError logIt(e: unknown) { report(e); }
+  @catchError showFallback() { this.failed = true; }   // reported: the first never runs
+  render() { … }
+}
+```
+
+A component has one answer to "who handles an error from below?". The last `@catchError` declared is
+the one that gets it; the others never run, and nothing says so — you read a handler that is dead.
+
+Keep one, and let it decide. It receives the error, and returning `false` **declines** it, so the
+next component above with a handler takes over:
+
+```tsx
+@catchError handle(e: unknown) {
+  if (!isRecoverable(e)) return false;   // not mine — let the boundary above have it
+  this.failed = (e as Error).message;
+}
+```
+
+A **subclass** declaring its own is not this. That is an override: the subclass's handler replaces
+the base's, which is how a specialised boundary is written, and it is not reported. This fires only
+for two declarations on the same class.
+
 ## RMF001 — a field was assigned to
 
 ```tsx
