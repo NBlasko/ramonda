@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../../test/setup";
 import { Component } from "../../base/Component";
 import { Host, state } from "../../base/decorators";
-import { Head } from "../../base/Head";
+import { Head, resetHeadRegistry } from "../../base/Head";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { HEAD_ATTR } from "../../helpers/constants";
 
@@ -27,6 +27,7 @@ describe("hydration: the Head owns what the server wrote", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => {
     vi.restoreAllMocks();
+    resetHeadRegistry();
     for (const tag of [...document.head.querySelectorAll(`[${HEAD_ATTR}]`)]) tag.remove();
     document.title = "";
   });
@@ -54,6 +55,7 @@ describe("hydration: the Head owns what the server wrote", () => {
     const html = server.container.innerHTML;
     expect(headTags().length).toBeGreaterThan(0);
     server.unmount();
+    resetHeadRegistry(); // the request ends; the browser is a different process
 
     // The server's tags are back in the document, standing for what the HTML carried.
     document.title = "Products";
@@ -134,6 +136,11 @@ describe("hydration: the Head owns what the server wrote", () => {
     const html = server.container.innerHTML;
     server.unmount();
     for (const tag of headTags()) tag.remove();
+
+    // The request ends here. `renderPage` clears the head registry at exactly this
+    // point, and it has to be cleared for the same reason it is there: the browser
+    // is a different process, and it starts with the document the HTML describes.
+    resetHeadRegistry();
 
     // The page as the browser received it: the server's title already in place.
     document.title = "Products";

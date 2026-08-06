@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { Head } from "../base/Head";
+import { Head, resetHeadRegistry } from "../base/Head";
 import { state } from "../base/decorators";
 import { renderPage, renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
@@ -22,6 +22,9 @@ function headTags(): Element[] {
 }
 
 beforeEach(() => {
+  // The registry lives as long as the document, which is right for a page and
+  // wrong for a file of tests that share one.
+  resetHeadRegistry();
   for (const tag of headTags()) tag.remove();
   document.title = "";
 });

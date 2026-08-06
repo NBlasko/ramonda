@@ -142,9 +142,11 @@ describe("a lazy whose source does not name a module", () => {
       }
     }
 
+    // A real module resolution, so it takes as many turns as the loader takes —
+    // waited on by CONDITION rather than a fixed count, which is only reliable
+    // until the machine is busy running the rest of the suite.
     const app = await getDOM(<Page />);
-    // A real module, so a real resolution: more turns than a resolved promise takes.
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 50 && app.container.querySelectorAll("span").length < 2; i++) {
       await tick();
       await app.settle();
     }

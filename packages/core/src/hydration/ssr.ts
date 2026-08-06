@@ -5,6 +5,7 @@ import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
 import { STATE_ATTR, HEAD_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { flushPostCommit } from "../core/commit";
+import { resetHeadRegistry } from "../base/Head";
 import {
   createServerWork,
   finishServerWork,
@@ -299,4 +300,7 @@ function resetHead(): void {
     tag.remove();
   }
   document.title = "";
+  // The registry goes with the tags: it holds the elements just removed and the
+  // title to go back to, both of which belong to the request that is ending.
+  resetHeadRegistry();
 }
