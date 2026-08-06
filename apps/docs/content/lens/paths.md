@@ -77,6 +77,12 @@ focusOn(state).get("posts").where(Boolean).get("title").values();
 asking for a path that doesn't exist is a fair question with a fair answer. It's
 *writes* that report a miss, because there a miss means an edit didn't happen.
 
+`value()` answers `undefined` both for a path that resolved to nothing and for a property
+that is there and holds `undefined` — its result can't tell them apart. When the difference
+matters, count instead: `values().length` is `0` for a miss and `1` for a present
+`undefined`.
+
 ## Next
 
 - [Updating](/lens/updating) — the operations, and forking a path with `and`.
+- [Messages you might see](/lens/messages) — every development message, and its cause.

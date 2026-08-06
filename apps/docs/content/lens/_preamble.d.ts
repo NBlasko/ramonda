@@ -9,6 +9,8 @@ declare global {
     title: string;
     draft: boolean;
     tags: string[];
+    /** Optional on purpose — the create-on-write examples write where nothing is yet. */
+    labels?: string[];
     author: { name: string; city?: string };
   }
   interface BlogState {
@@ -20,6 +22,8 @@ declare global {
     users: { id: number; name: string; profile: { name: string } }[];
   }
   const state: BlogState;
+  /** A post to add — the sharing page pushes it, correctly and incorrectly. */
+  const newPost: Post;
   /** What an update returns — the same shape, with the untouched parts identical. */
   const next: BlogState;
 }
