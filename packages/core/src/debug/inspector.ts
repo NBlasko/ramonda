@@ -57,7 +57,10 @@ interface Inspectable {
 }
 
 // Framework-internal props that aren't useful to inspect.
-const IGNORED_PROPS = new Set(["children", "key"]);
+// `ref` joins them for the same reason: it is the framework's, not the app's —
+// it is pointed at the host element and never read again — so in the panel it
+// was an opaque `{ current: … }` among a component's actual data.
+const IGNORED_PROPS = new Set(["children", "key", "ref"]);
 
 /**
  * The instances the LAST scan saw, by handle. Rebuilt by every scan, so it holds nothing longer than
