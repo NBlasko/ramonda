@@ -95,15 +95,19 @@ carried: the port gave them identity, it did not re-judge them.
 What each one means and what to do about it is on the public reference rather than here, because that
 is the page a reader lands on from a message: [ramonda.pages.dev/reference/diagnostics](https://ramonda.pages.dev/reference/diagnostics).
 
-**Five messages deliberately have no code**, and each says so where it is: `bootstrap`'s "App
-crashed", a lazily loaded component that failed to arrive, a cleanup that threw during destroy, the
-crash following RMD011, and — outside this package — an ISR rebake failure and a devtools plugin's
-own error. Every one is somebody else's fault surfaced with context, not a mistake this framework can
-offer a fix for, and a code that promises advice it cannot give is worse than a sentence.
+**Four messages in this package deliberately have no code**, and each says so where it is:
+`bootstrap`'s "App crashed" (`index.ts`), a lazily loaded component that failed to arrive
+(`base/AsyncLoad.ts`), a cleanup that threw during destroy (`helpers/lifecycleMenagement.ts`), and the
+crash that follows RMD011 once it has already named the mistake (`vdom/h.ts`).
 
-**One of them:** `bootstrap`'s "App crashed" is the app's own error on its
-way up, rethrown on the next line. Every code names a mistake and carries a fix; this one cannot,
-because the framework knows nothing about the fault beyond having been in the call stack.
+Every one is somebody else's fault surfaced with context, not a mistake this framework can offer a fix
+for. `bootstrap`'s is the clearest case: the app's own error on its way up, rethrown on the next line,
+so the framework knows nothing about it beyond having been in the call stack. A code promising advice
+that cannot exist is worse than a sentence.
+
+Three more sit outside this package for the same reason — a devtools plugin's own `snapshot()` error
+and the panel's warning that its sink was replaced (`@ramonda/devtools`), and an ISR rebake failure
+(`@ramonda/router`).
 
 ### RMD001 — State written during render()
 

@@ -44,8 +44,7 @@ A diagnostic is also a **record**, so a devtools panel, a test, or a log collect
 reports instead of parsing prose. A collector installs one function, and a reporting package finds it
 with no dependency on anything:
 
-`RML`, `RMQ` and `RMF` reports arrive this way. `RMD` reaches the devtools' `LOGS` tab through the
-framework's own log channel, and joins this one when core moves onto it.
+Every prefix arrives this way — `RMD`, `RML`, `RMQ` and `RMF`.
 
 ```ts
 interface RamondaDiagnostic {
@@ -86,6 +85,9 @@ import { installDiagnostics } from "@ramonda/devtools";
 
 const stop = installDiagnostics((record) => myCollector.alert(record));
 ```
+
+A subscriber sees every prefix. The panel's `LOGS` tab is the one place that differs: `RMD` rows reach
+it through core's own log channel, so the bridge does not carry them there a second time.
 
 The assignment above is the protocol-level form, for a package that will not take a dependency to
 report a warning. Write it when that is the situation, and chain what was already there:
@@ -805,6 +807,9 @@ It almost always reads through something absent, so guard the path as you drill 
 `p.foo?.[5]?.bar`. A selector runs on every props change and has to be total: no assertions, no
 lookups that can fail.
 
+The console line carries the error the selector threw, stack included, which is what names the failing
+path. A record carries its message as text instead — see [what a record may hold](#capturing-them).
+
 ## RMD038 — `class` where `className` was meant
 
 Ramonda reads `className`, so `class` is passed through as an unknown attribute and the styling it
@@ -812,6 +817,9 @@ names never applies.
 
 This is the one place the JSX deliberately differs from HTML, and the reason is the language: `class`
 is a reserved word in the object a JSX factory receives.
+
+Reported once per component and tag, so converting a codebase gets one report per place rather than one
+for the first `class` and silence for the rest.
 
 ## RMD039 — More than one `@shouldUpdateOnPropsChange`
 
@@ -841,7 +849,12 @@ Give the component a real host tag with `@Host("div")` if the event needs one. S
 ## RMD042 — A `<meta>` with nothing to identify it
 
 ```tsx
-head = this.use(Head, { meta: [{ name: "description", content: "A framework." }] });
+// Skipped. Nothing identifies it, so an update could only append a second copy.
+// The cast is what it takes to write this at all — see below.
+skipped = this.use(Head, { meta: [{ content: "A framework." } as never] });
+
+// Written, and matched by its `name` when it changes.
+described = this.use(Head, { meta: [{ name: "description", content: "A framework." }] });
 ```
 
 `Head` matches the tags it has already written so that an update replaces them rather than appending,
@@ -851,6 +864,10 @@ found again, so it would be added on every update — it is skipped instead.
 `MetaTag` requires one of the three, so TypeScript refuses the tag that would trip this. It fires for a
 build with no types, or through a cast.
 
+Reported once per set of fields the tag has, rather than once per tag: a `content` that carries the
+page description is a different string on every navigation, and one report for each of them would say
+nothing the first did not.
+
 ## RMD043 — An unknown element type in JSX
 
 A tag has to be a string, a component class, or — for the one unsupported case — a function. This was
@@ -859,6 +876,9 @@ none of them, so an empty host renders in its place and whatever it was meant to
 Usually a value used where a tag belongs: an object read off a map with the wrong key, or a component
 whose import failed and arrived as `undefined`. A function in tag position is a different mistake with
 its own advice — see [`RMD011`](#rmd011-a-function-was-used-as-a-jsx-tag).
+
+The empty host is rendered in every build, so a failed import costs the one element rather than the
+page. Reported once per component, so two of these in two files are two reports.
 
 # Forms — `RMF`
 

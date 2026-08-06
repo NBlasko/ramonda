@@ -51,9 +51,20 @@ function safeSelect(entry: WatchPropEntry, props: unknown): unknown {
     return entry.selector(props);
   } catch (e) {
     if (__DEV__) {
+      /**
+       * The Error itself goes in `data`, and it has to: the throw comes from the app's own selector,
+       * so its stack is the line that names the failing path — the one thing `e.message` cannot give
+       * and the first thing anybody reads. The console prints `data` whole.
+       *
+       * It reaches the RECORD as nothing, because `reportable` keeps only primitives: an Error holds
+       * its stack, which holds the scope it was thrown from, and a collector's history would keep
+       * that alive. So `reason` is the text a record can carry and `error` is for the console, which
+       * has held live objects all along.
+       */
       diagnose("RMD037", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
         component: ownerName(entry),
         reason: e instanceof Error ? e.message : String(e),
+        error: e,
       });
     }
     return undefined;

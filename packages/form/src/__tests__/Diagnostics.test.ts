@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { report } from "../diagnostics";
 import { FieldTree } from "../fieldTree";
 import type { Path } from "../path";
 import { pathKey, readAt } from "../path";
@@ -103,5 +104,39 @@ describe("a refusal", () => {
 
     expect(() => fields.email.$.rows).toThrow(/RMF002/);
     expect(records).toEqual([]);
+  });
+});
+
+describe("the other door", () => {
+  test("a diagnostic prints as well, because nothing else says it happened", () => {
+    report("RMF003", "`onSubmit` threw.", { reason: "network" });
+
+    expect(records).toHaveLength(1);
+    expect(records[0].code).toBe("RMF003");
+    expect(records[0].scope).toBe("ramonda/form");
+    expect(records[0].fix).toContain("Catch it inside the handler");
+    // The half a refusal skips: here the console line is the only trace a developer gets.
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(String(errors.mock.calls[0][0])).toContain("[Ramonda form RMF003]");
+  });
+
+  /**
+   * The asymmetry most likely to be "tidied" by someone who has not read why.
+   *
+   * The console is given the Error itself, because a stack a developer can click is the useful half
+   * and `String(error)` is not one. The record is given text, because a collector keeps a bounded
+   * history and an Error holds its stack, which holds the scope it was thrown from — one of these in
+   * a vault keeps a whole submit alive.
+   */
+  test("the Error goes to the console and never into the record", () => {
+    const thrown = new Error("network");
+    report("RMF003", "`onSubmit` threw.", { reason: thrown.message }, thrown);
+
+    expect(errors.mock.calls[0][1]).toBe(thrown);
+
+    expect(records[0].data).toEqual({ reason: "network" });
+    for (const value of Object.values(records[0].data ?? {})) {
+      expect(typeof value).toBe("string");
+    }
   });
 });

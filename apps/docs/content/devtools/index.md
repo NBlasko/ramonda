@@ -358,7 +358,8 @@ const stop = installDiagnostics((record) => {
 });
 ```
 
-Core's rows reach this tab through its own log channel rather than through the sink, so subscribing gets them once and the tab shows them once.
+Core's rows reach this tab through its own log channel rather than through the sink, so subscribing gets
+them once and the tab shows them once.
 
 Subscribe rather than assigning `globalThis.__RAMONDA_DIAGNOSTICS__` yourself: the sink is one
 function, so an assignment replaces whoever was there — usually this panel, which then quietly stops
