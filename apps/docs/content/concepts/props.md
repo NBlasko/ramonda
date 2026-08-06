@@ -69,7 +69,7 @@ costs nothing, and re-renders only when something really changed. Two ways to go
 finer when you need to:
 
 - To **skip** the re-render for some prop changes, gate it with
-  [`@shouldUpdateOnPropsChange`](/reference/api) — a rare tool, for a prop that is
+  [`@ShouldUpdateOnPropsChange`](/reference/api) — a rare tool, for a prop that is
   rebuilt every parent render but rarely matters.
 - To **react to one specific prop** — recompute a total, refetch when an `id`
   changes — read it inside a [`@compute`](/concepts/compute), a `@watchProp` (below),
@@ -132,4 +132,4 @@ export class Panel extends Component<{ children?: RamondaNode }> {
 ## Next
 
 - [Lifecycle](/concepts/lifecycle) — `@create`, `@mount`, `@destroy`, and their order.
-- [The decorator table](/reference/decorators) — `@watchProp` works on a hook; `@shouldUpdateOnPropsChange` does not.
+- [The decorator table](/reference/decorators) — `@watchProp` works on a hook; `@ShouldUpdateOnPropsChange` does not.

@@ -1,9 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, Host, updated, shouldUpdateOnPropsChange } from "../base/decorators";
+import { state, Host, updated, ShouldUpdateOnPropsChange } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
-import { bootstrap } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 function captureDiagnostics() {
@@ -254,18 +253,13 @@ describe("update rules", () => {
   });
 });
 
-describe("@shouldUpdateOnPropsChange", () => {
-  test("drops the incoming props when it returns false, and the method name is yours", async () => {
+describe("@ShouldUpdateOnPropsChange", () => {
+  test("drops the incoming props when it returns false", async () => {
     const renders: string[] = [];
 
+    @ShouldUpdateOnPropsChange((_self, previous, next) => previous.id !== next.id)
     @Host("div")
     class Row extends Component<{ id: string; noise: number }> {
-      // Named for what it means here, not for what the framework calls it.
-      @shouldUpdateOnPropsChange
-      onlyWhenIdChanges(previous: { id: string; noise: number }, next: { id: string; noise: number }) {
-        return previous.id !== next.id;
-      }
-
       render() {
         renders.push(`${this.props.id}/${this.props.noise}`);
         return <p>{this.props.id}</p>;
@@ -295,7 +289,7 @@ describe("@shouldUpdateOnPropsChange", () => {
     expect(renders.at(-1)).toBe("b/1");
   });
 
-  test("a plain method called shouldUpdateOnPropsChange has no framework meaning", async () => {
+  test("a plain method by that name has no framework meaning", async () => {
     const renders: string[] = [];
 
     @Host("div")
@@ -327,29 +321,22 @@ describe("@shouldUpdateOnPropsChange", () => {
     expect(renders).toEqual(["0", "1"]);
   });
 
-  test("throws when placed on a hook — a hook has no parent-driven prop update to gate", () => {
-    class BadHook extends Hook {
-      // @ts-expect-error TypeScript refuses it first: the decorator's `This` requires a
-      // COMPONENT_RUNTIME, which a Hook does not have. The throw below is what an untyped
+  test("throws at class-definition time when placed on a hook", () => {
+    // Sooner than it used to: as a method decorator the throw waited for the first
+    // instance, so a hook nobody had rendered yet looked fine. A class decorator runs
+    // when the class is defined, which is the moment the mistake was made.
+    expect(() => {
+      // @ts-expect-error TypeScript refuses it first: the decorator asks for a class
+      // branded `__isComponent`, which a Hook is not. The throw is what an untyped
       // build gets, and is what this test is about.
-      @shouldUpdateOnPropsChange
-      nope() {
-        return true;
+      @ShouldUpdateOnPropsChange(() => true)
+      class BadHook extends Hook {
+        nope() {
+          return true;
+        }
       }
-    }
-
-    @Host("div")
-    class App extends Component {
-      bad = this.use(BadHook);
-      render() {
-        return <p>x</p>;
-      }
-    }
-
-    const container = document.createElement("div");
-    // The throw happens while the hook is being constructed, synchronously inside
-    // the mount, so bootstrap surfaces it directly.
-    expect(() => bootstrap(<App />, container)).toThrow(/components, not hooks/);
+      return BadHook;
+    }).toThrow(/@ShouldUpdateOnPropsChange is for components, not hooks/);
   });
 });
 

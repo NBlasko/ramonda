@@ -31,6 +31,7 @@ import {
   CHILD_RECORD,
   ORIGIN_SYM,
   REF_SYM,
+  PROPS_GATE,
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { hostTagMatches } from "../helpers/hostTag";
@@ -49,6 +50,8 @@ import { snapshotOwnProps, lintUnpersistedState } from "../hydration/lint";
 import { lintChildKeys } from "../debug/lintChildren";
 import { timerOwner } from "../debug/timerGuard";
 import type { Runtime } from "./runtime";
+
+type PropsGate = (self: unknown, previous: unknown, next: unknown) => boolean;
 
 export function diffAndMerge(
   vnode: VNode,
@@ -888,9 +891,11 @@ function createOrUpdateComponent(
   applyRefFromProps(enhancedNode, nextProps.ref);
 
   const componentRuntime = component[COMPONENT_RUNTIME];
-  const decide = component[GLOBAL_RUNTIME].shouldUpdateOnPropsChange;
+  // Read off the CLASS, so a subclass inherits its base's rule through the static
+  // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.
+  const decide = (component.constructor as { [PROPS_GATE]?: PropsGate })[PROPS_GATE];
   const takeProps = decide
-    ? decide(componentRuntime.rawProps, nextProps)
+    ? decide(component, componentRuntime.rawProps, nextProps)
     : !areStringRecordsEqual(componentRuntime.rawProps, nextProps);
 
   if (takeProps) {

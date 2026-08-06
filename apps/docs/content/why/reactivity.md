@@ -46,7 +46,7 @@ re-renders it. (A signal per prop does exist, and it serves whatever READS that 
 tracking — a `@compute`, a subscription's `connect`, a hook's props callback. The component's
 own render is not one of those: it re-renders on the props bag, not on the keys it read.) To
 skip a prop-driven re-render in the rare case it matters, gate it with
-`@shouldUpdateOnPropsChange`.
+`@ShouldUpdateOnPropsChange`.
 
 **[Context](/composition/context) is per-key** — and this one is free. A consumer reacts
 only to the keys it reads: read `ctx.theme` and it re-renders when `theme` changes, but

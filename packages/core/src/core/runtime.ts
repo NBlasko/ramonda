@@ -23,10 +23,8 @@ export interface Runtime {
    */
   deferHydrations: (() => unknown)[];
   /**
-   * The `@shouldUpdateOnPropsChange` predicate, bound. Undefined means the default
    * shallow compare decides — i.e. take the props whenever they differ.
    */
-  shouldUpdateOnPropsChange?: (prev: unknown, next: unknown) => boolean;
   /**
    * DEV only. The component this runtime belongs to, so a diagnostic can name it.
    *

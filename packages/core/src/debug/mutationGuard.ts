@@ -22,7 +22,7 @@ const RAW = Symbol("ramondaRawArray");
 /**
  * One proxy per array instance. Identity has to stay stable: `this.items`
  * returning a fresh proxy each read would break every `===` comparison the diff
- * and `@shouldUpdateOnPropsChange` rely on.
+ * and `@ShouldUpdateOnPropsChange` rely on.
  */
 const guarded = new WeakMap<object, unknown[]>();
 

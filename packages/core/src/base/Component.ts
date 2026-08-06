@@ -23,7 +23,7 @@ const lifecycles = new Set(["render"]);
 
 // A prop-update gate used to be a method the framework looked up BY NAME, which
 // meant the name was reserved on every component whether or not the author knew it.
-// It is now the `@shouldUpdateOnPropsChange` decorator, so the method can be called
+// It is now the `@ShouldUpdateOnPropsChange` decorator, so the method can be called
 // anything and a class that happens to define a method by that name for its own
 // reasons is just a class with a method.
 //

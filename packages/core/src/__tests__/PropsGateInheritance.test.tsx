@@ -1,24 +1,25 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, shouldUpdateOnPropsChange } from "../index";
+import { Component, Host, state, ShouldUpdateOnPropsChange } from "../index";
 
 /**
- * The props gate under `extends`.
+ * `@ShouldUpdateOnPropsChange` — the rule a component follows when its parent
+ * hands it new props, and what happens to that rule under `extends`.
  *
- * Extending a component is a first-class pattern here — there are no fragments,
- * so inheritance is how behaviour is reused — and the gate has to behave the way
- * every other decorated method does when a subclass gets involved.
+ * It is a CLASS decorator because it describes what the component IS rather than
+ * something it does: exactly one answer per class, no body to override with
+ * `super`, and the same shape as `@Host`'s tag-from-props callback. Its `self` is
+ * inferred from the class it is written on, so nothing has to be annotated.
  *
- * Two things did not. Overriding the decorated method without re-decorating ran
- * the BASE's body, because the decorator kept the function it was handed at
- * decoration time rather than looking the method up on the instance the way the
- * lifecycle decorators do; the subclass's version was dead code that read as
- * live. And declaring the gate on both levels — the ordinary way to override a
- * rule — reported "more than one … remove the others", which is advice to break
- * working code, because the check could not tell a second declaration in ONE
- * class from an override in a subclass.
+ * As a method decorator it had two faults that this form cannot have. A subclass
+ * overriding the decorated METHOD without re-decorating ran the base's body,
+ * because the function was captured at decoration time — there is no method to
+ * capture now. And declaring it at both levels, the ordinary way to override a
+ * rule, was reported as "more than one" — the class that owns the declaration is
+ * now visible (`Object.hasOwn`), so an override is silent and a genuine
+ * double-application on one class is not.
  */
-describe("@shouldUpdateOnPropsChange and extends", () => {
+describe("@ShouldUpdateOnPropsChange", () => {
   const logged: string[] = [];
 
   beforeEach(() => {
@@ -32,27 +33,17 @@ describe("@shouldUpdateOnPropsChange and extends", () => {
 
   const duplicateReports = () => logged.filter((line) => line.includes("more than one"));
 
-  test("overriding the decorated method runs the subclass's body", async () => {
-    const calls: string[] = [];
+  test("refusing an update keeps the old props on screen", async () => {
+    const seen: string[] = [];
 
-    class Base extends Component<{ v: number }> {
-      @shouldUpdateOnPropsChange take() {
-        calls.push("base");
-        return false;
-      }
+    @ShouldUpdateOnPropsChange((_self, previous, next) => {
+      seen.push(`${previous.v}->${next.v}`);
+      return false;
+    })
+    @Host("b")
+    class Gated extends Component<{ v: number }> {
       render() {
         return <i>{this.props.v}</i>;
-      }
-    }
-
-    class Sub extends Base {
-      // No decorator: the base already declared the role, this only changes the answer.
-      override take() {
-        calls.push("sub");
-        return true;
-      }
-      override render() {
-        return <b>{this.props.v}</b>;
       }
     }
 
@@ -62,7 +53,7 @@ describe("@shouldUpdateOnPropsChange and extends", () => {
       render() {
         return (
           <div>
-            <Sub v={this.v} />
+            <Gated v={this.v} />
           </div>
         );
       }
@@ -74,31 +65,59 @@ describe("@shouldUpdateOnPropsChange and extends", () => {
     app.instance.v = 2;
     await app.settle();
 
-    expect(calls).toEqual(["sub"]);
-    // The override said "take them", so the new prop is on screen.
-    expect(app.container.querySelector("b")!.textContent).toBe("2");
+    expect(seen).toEqual(["1->2"]);
+    expect(app.container.querySelector("i")!.textContent).toBe("1");
   });
 
-  test("a subclass redeclaring the gate wins, and is not reported as a duplicate", async () => {
-    const calls: string[] = [];
+  test("taking the update lets the new props through, and `self` is the instance", async () => {
+    let sawSelf: unknown;
 
-    class Base extends Component<{ v: number }> {
-      @shouldUpdateOnPropsChange takeBase() {
-        calls.push("base");
-        return false;
+    @ShouldUpdateOnPropsChange((self, _previous, next) => {
+      sawSelf = self;
+      return next.v !== self.floor;
+    })
+    @Host("b")
+    class Gated extends Component<{ v: number }> {
+      floor = 99;
+      render() {
+        return <i>{this.props.v}</i>;
       }
+    }
+
+    @Host("div")
+    class App extends Component {
+      @state v = 1;
+      render() {
+        return (
+          <div>
+            <Gated v={this.v} />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    app.instance.v = 2;
+    await app.settle();
+
+    expect(app.container.querySelector("i")!.textContent).toBe("2");
+    expect((sawSelf as { floor: number }).floor).toBe(99);
+  });
+
+  test("a subclass inherits the rule without redeclaring it", async () => {
+    @ShouldUpdateOnPropsChange(() => false)
+    @Host("b")
+    class Base extends Component<{ v: number }> {
       render() {
         return <i>{this.props.v}</i>;
       }
     }
 
     class Sub extends Base {
-      @shouldUpdateOnPropsChange takeSub() {
-        calls.push("sub");
-        return true;
-      }
       override render() {
-        return <b>{this.props.v}</b>;
+        return <u>{this.props.v}</u>;
       }
     }
 
@@ -120,19 +139,57 @@ describe("@shouldUpdateOnPropsChange and extends", () => {
     app.instance.v = 2;
     await app.settle();
 
-    expect(calls).toEqual(["sub"]);
-    expect(app.container.querySelector("b")!.textContent).toBe("2");
+    expect(app.container.querySelector("u")!.textContent).toBe("1");
     expect(duplicateReports()).toEqual([]);
   });
 
-  test("two gates in ONE class is still reported", async () => {
+  test("a subclass redeclaring it overrides the base, with nothing reported", async () => {
+    @ShouldUpdateOnPropsChange(() => false)
+    @Host("b")
+    class Base extends Component<{ v: number }> {
+      render() {
+        return <i>{this.props.v}</i>;
+      }
+    }
+
+    @ShouldUpdateOnPropsChange(() => true)
+    @Host("b")
+    class Sub extends Base {
+      override render() {
+        return <u>{this.props.v}</u>;
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      @state v = 1;
+      render() {
+        return (
+          <div>
+            <Base v={this.v} />
+            <Sub v={this.v} />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    app.instance.v = 2;
+    await app.settle();
+
+    // The base still refuses; the subclass takes.
+    expect(app.container.querySelector("i")!.textContent).toBe("1");
+    expect(app.container.querySelector("u")!.textContent).toBe("2");
+    expect(duplicateReports()).toEqual([]);
+  });
+
+  test("applying it twice to ONE class is reported", async () => {
+    @ShouldUpdateOnPropsChange(() => true)
+    @ShouldUpdateOnPropsChange(() => false)
+    @Host("b")
     class Twice extends Component<{ v: number }> {
-      @shouldUpdateOnPropsChange first() {
-        return false;
-      }
-      @shouldUpdateOnPropsChange second() {
-        return false;
-      }
       render() {
         return <i>{this.props.v}</i>;
       }
@@ -153,43 +210,5 @@ describe("@shouldUpdateOnPropsChange and extends", () => {
     await app.settle();
 
     expect(duplicateReports().length).toBe(1);
-  });
-
-  test("a gate inherited without being redeclared still applies", async () => {
-    class Base extends Component<{ v: number }> {
-      @shouldUpdateOnPropsChange take() {
-        return false;
-      }
-      render() {
-        return <i>{this.props.v}</i>;
-      }
-    }
-    class Sub extends Base {
-      override render() {
-        return <b>{this.props.v}</b>;
-      }
-    }
-
-    @Host("div")
-    class App extends Component {
-      @state v = 1;
-      render() {
-        return (
-          <div>
-            <Sub v={this.v} />
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<App>(<App />);
-    await app.settle();
-
-    app.instance.v = 2;
-    await app.settle();
-
-    // The base said "refuse them", so the old prop is still on screen.
-    expect(app.container.querySelector("b")!.textContent).toBe("1");
-    expect(duplicateReports()).toEqual([]);
   });
 });

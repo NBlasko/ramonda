@@ -1,4 +1,4 @@
-import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
+import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS, PROPS_GATE } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import type { Effect } from "../reactivity/effect";
@@ -26,6 +26,7 @@ import {
   assertSelector,
   assertEnv,
   assertStablePropKeys,
+  assertPropsGate,
 } from "../debug/validateDecorator";
 
 type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
@@ -34,7 +35,7 @@ type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
 
 type EnhancedClassMethodDecoratorContext = ClassMethodDecoratorContext<
   // COMPONENT_RUNTIME is optional: components carry it, hooks do not — which is how
-  // a decorator can tell the two apart (see @shouldUpdateOnPropsChange).
+  // a decorator can tell the two apart (see @ShouldUpdateOnPropsChange).
   {
     [GLOBAL_RUNTIME]: Runtime;
     [COMPONENT_RUNTIME]?: ComponentRuntime;
@@ -419,124 +420,78 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
 }
 
 /**
- * Decides whether new props from the parent should be taken up by this component.
+ * The rule a component follows when its parent hands it new props: return `true`
+ * to take them, `false` to ignore the update.
  *
  * ```tsx
- * class Row extends Component<RowProps> {
- *   @shouldUpdateOnPropsChange
- *   onlyWhenIdChanges(previous: RowProps, next: RowProps) {
- *     return previous.id !== next.id;
- *   }
- * }
+ * @ShouldUpdateOnPropsChange((self, previous, next) => previous.id !== next.id)
+ * @Host("li")
+ * class Row extends Component<{ id: number; noisy: unknown }> { … }
  * ```
  *
  * It runs ONLY when the parent re-renders and hands this component a new set of
  * props — never for the component's own `@state` writes, which always render.
- * Return `true` and the incoming props are applied (the prop signals update and a
- * render is scheduled); return `false` and the whole update is dropped — **the
- * props are NOT updated either**, so the component keeps rendering its old ones
- * until some other change comes along.
  *
- * A decorator rather than a method the framework looks up by name, for the same
- * reason as `@deferHydration`: **the method is yours to name**, and a framework
- * that reserves a name on every class changes behaviour silently the day someone
- * writes a method that happens to be called that.
+ * A CLASS decorator, because it says what the component IS rather than something
+ * it does — one answer per class, and nothing a subclass would want to reach with
+ * `super`. `self` is inferred from the class it is written on, so nothing needs
+ * annotating; it is there for a rule that depends on the instance.
  *
  * **Components only.** A hook has no parent handing it JSX props — its `props`
  * come from the `this.use()` callback and are refreshed on every owner render — so
- * the decorator throws if placed on one rather than sitting there doing nothing.
+ * this throws if placed on one rather than sitting there doing nothing.
  *
  * Without it, props are compared shallowly, which is right for almost everything.
  * Reach for this only when you have measured that the default comparison is the
  * problem — a deep object that is rebuilt every render, most often.
- */
-type PropsGateOwner = { [COMPONENT_RUNTIME]: ComponentRuntime; [GLOBAL_RUNTIME]: Runtime };
-
-/**
- * The prototype that actually declares `name` — the most-derived one, since the
- * walk stops at the first that owns it.
  *
- * DEV only, and only to tell "two declarations in one class" from "a subclass
- * overriding the base's". Two initializers whose declarations share an owner are
- * the first; different owners are the second.
+ * It was a method decorator, and the move fixed two faults that this shape cannot
+ * have. A subclass overriding the decorated METHOD without re-decorating ran the
+ * base's body, because the function was captured at decoration time; there is no
+ * method to capture now. And declaring it at both levels — the ordinary way to
+ * override a rule — was reported as a duplicate, because nothing recorded WHICH
+ * class had declared it; the answer now lives on the constructor, where
+ * `Object.hasOwn` tells "declared here" from "inherited" exactly.
+ *
+ * **Refusing an update leaves the props STALE for the component's own later
+ * renders too.** Nothing re-reads them until the parent sends another update, so
+ * a re-render caused by this component's own `@state` still shows the props it
+ * last accepted. That is the trade the rule buys, and it is why it is an escape
+ * hatch rather than an optimisation to reach for.
  */
-function ownerOfMethod(instance: object, name: string): object | undefined {
-  let proto: object | null = Object.getPrototypeOf(instance);
-  while (proto !== null) {
-    if (Object.hasOwn(proto, name)) return proto;
-    proto = Object.getPrototypeOf(proto);
-  }
-  return undefined;
-}
-
-/** runtime -> the class that last declared its props gate. DEV only. */
-const gateOwners = new WeakMap<object, object | undefined>();
-
-export function shouldUpdateOnPropsChange<This extends PropsGateOwner>(
-  // The method is dispatched by NAME below, so the function itself is not kept —
-  // but the parameter stays, because it is what TypeScript checks the decorated
-  // method's shape against.
-  _value: (this: This, previous: any, next: any) => boolean,
-  // Typed by its `This`, which is what refuses a hook at COMPILE time: a Hook has no
-  // COMPONENT_RUNTIME, so the method's implicit `this` does not satisfy the constraint. The
-  // throw in the initializer below stays for the build that has no types.
-  context: ClassMethodDecoratorContext<This, (this: This, previous: any, next: any) => boolean>,
-) {
+export function ShouldUpdateOnPropsChange<
+  C extends (new (...args: any[]) => object) & { readonly __isComponent: true },
+>(decide: (self: InstanceOf<C>, previous: PropsOf<C>, next: PropsOf<C>) => boolean) {
   if (__DEV__) {
-    assertMethod(context.kind, "shouldUpdateOnPropsChange", context.name);
+    assertPropsGate(decide);
   }
-  const contextName = ensureStringContextName(context.name, "shouldUpdateOnPropsChange");
 
-  context.addInitializer(function (this) {
+  return (ctor: C) => {
     // A hook reaches its inputs a different way (the this.use() callback), and the
-    // component update path that consults this predicate never runs for one — so on
-    // a hook it would be a silent no-op. Throw instead, in every build, so the
-    // mistake surfaces rather than quietly doing nothing.
-    if (this[COMPONENT_RUNTIME] === undefined) {
+    // component update path that consults this rule never runs for one — so on a
+    // hook it would be a silent no-op. Thrown in every build, like @Host's; the
+    // TYPE already refuses it, so this is for the build that has no types.
+    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent !== true) {
       throw new Error(
-        `[Ramonda] @shouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
+        `[Ramonda] @ShouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
           `this.use() callback and refresh on every owner render — there is no parent-driven prop update to gate. ` +
-          `Put the decorator on the component that renders <${this.constructor.name} />, or drop it.`,
+          `Put the decorator on the component that renders <${ctor.name} />, or drop it.`,
       );
     }
 
-    const runtime = this[GLOBAL_RUNTIME];
-
-    if (__DEV__) {
-      /**
-       * Reported only when both declarations are in the SAME class.
-       *
-       * Base and subclass each declaring one is not a duplicate, it is an
-       * override — the ordinary way to specialise a rule where `extends` is the
-       * composition mechanism — and the subclass correctly wins, because
-       * initializers run base-first and the last write to the slot stands.
-       * Reporting it told people to delete the very line that was doing the
-       * work. `undefined !== undefined` cannot tell the two apart; the class
-       * that declared it can.
-       */
-      const owner = ownerOfMethod(this, contextName);
-      if (runtime.shouldUpdateOnPropsChange !== undefined && gateOwners.get(runtime) === owner) {
-        ramondaLog(
-          "error",
-          `<${this.constructor.name} /> has more than one @shouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the last one wins — remove the others.`,
-        );
-      }
-      gateOwners.set(runtime, owner);
+    // OWN property, not inherited: a subclass declaring its own rule shadows the
+    // base's, which is an override and silent. Two applications on the SAME class
+    // both write here, and the second finds the first — the one case worth
+    // reporting, and the one the method form could not see.
+    if (__DEV__ && Object.hasOwn(ctor, PROPS_GATE)) {
+      ramondaLog(
+        "error",
+        `<${ctor.name} /> has more than one @ShouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the one written closest to the class wins — remove the others.`,
+      );
     }
 
-    /**
-     * Dispatched by NAME, not through the function the decorator was handed.
-     *
-     * Captured, it was the BASE's method for ever: a subclass overriding it
-     * without re-decorating had its body silently ignored, while the identical
-     * override works for `@create` and `@watchProp`, which register
-     * `this[name].bind(this)` and so find whatever the instance actually has.
-     * One decorator out of three failing at the pattern the docs recommend is
-     * worse than any of the three failing at it.
-     */
-    runtime.shouldUpdateOnPropsChange = (previous, next) =>
-      (this as unknown as Record<string, (p: unknown, n: unknown) => boolean>)[contextName](previous, next);
-  });
+    (ctor as unknown as { [PROPS_GATE]?: unknown })[PROPS_GATE] = decide;
+  };
 }
 
 export interface LifecycleOptions {
@@ -975,7 +930,7 @@ type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q 
  * **Hooks only.** A component fails to type-check here, and throws in every build as the
  * backstop for a build with no types: a component's props come from the parent's JSX and
  * are compared by the diff, which is a different mechanism with its own control
- * (`@shouldUpdateOnPropsChange`).
+ * (`@ShouldUpdateOnPropsChange`).
  *
  * **The names are type-checked** against the hook's props — `@StableProps("kye")` is a
  * compile error that names `"kye"` — with no type argument to write at the call site.
@@ -1004,7 +959,7 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
     if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
       throw new Error(
         `[Ramonda] @StableProps is for hooks, not components. A component's props come from the parent's ` +
-          `JSX and are compared by the diff — use @shouldUpdateOnPropsChange to control that. Move the ` +
+          `JSX and are compared by the diff — use @ShouldUpdateOnPropsChange to control that. Move the ` +
           `decorator to the hook whose props these are, or drop it.`,
       );
     }
@@ -1167,7 +1122,7 @@ export const onElement = createEventListenerDecorator<ElementOwner, HTMLElementE
     // A hook has no element, so the resolver above would read `.enhancedNode` of `undefined` and
     // die with "Cannot read properties of undefined" — an error naming nothing the author wrote.
     // Thrown in every build, and at construction rather than at mount, matching
-    // `@shouldUpdateOnPropsChange`: one rule for "this decorator is for components".
+    // `@ShouldUpdateOnPropsChange`: one rule for "this decorator is for components".
     if ((owner as { [COMPONENT_RUNTIME]?: ComponentRuntime })[COMPONENT_RUNTIME] === undefined) {
       throw new Error(
         `[Ramonda] @onElement is for components, not hooks. It binds a listener to the component's ` +

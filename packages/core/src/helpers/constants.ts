@@ -136,6 +136,16 @@ export const STYLE_SYM = Symbol("style");
 /** The component whose render() built this vnode / this DOM node. See core/origin.ts. */
 export const ORIGIN_SYM = Symbol("origin");
 export const IS_LIST = Symbol("isList");
+/**
+ * The "take these props?" rule a component declared with
+ * `@ShouldUpdateOnPropsChange`, held on the CLASS.
+ *
+ * On the constructor rather than per instance, so it is inherited through the
+ * static chain — a subclass gets the base's rule, and declaring its own shadows
+ * it — and so `Object.hasOwn` can tell a real double-declaration from an
+ * override.
+ */
+export const PROPS_GATE = Symbol("propsGate");
 /** The prop names a hook declared with `@StableProps`, held on the class. */
 export const STABLE_PROPS = Symbol("stableProps");
 /**

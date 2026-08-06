@@ -87,7 +87,7 @@ once and so never produces the update it reacts to.
 | | |
 |---|---|
 | `@watchProp(selector)` | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| `@shouldUpdateOnPropsChange` | Gates whether new props from the parent are taken up (their signals update + a render). Components only; runs only on prop changes. |
+| `@ShouldUpdateOnPropsChange` | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). Components only; runs only on prop changes. |
 | `@deferHydration` | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 
 ### Decorators — the DOM
