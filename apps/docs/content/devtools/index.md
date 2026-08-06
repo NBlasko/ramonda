@@ -271,6 +271,24 @@ The values are read-only here, and the reason is the schema: a form holds the sc
 which is where a `Date` or a `File` lives, and those do not survive being typed back as JSON. `reset`
 is the honest write.
 
+### Naming a form
+
+With two forms on a page the tab groups each one's rows under its name, so a broken field is visibly
+inside the form it belongs to. Unnamed, that name is `Form 1`, `Form 2` — the order they mounted in,
+which is rarely what you wanted to know. Give the form a `label` and it says both:
+
+```tsx
+private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit, label: "signup" });
+```
+
+The tab and the component tree then call it **`Form (signup)`** — the class says what it is, the label
+says which one, and neither answers for the other. A tree of `signup` and `login` would no longer say
+either of them is a form.
+
+`label` works on any hook that declares it, for the same reason: a hook cannot see the component that
+used it, so `this.constructor.name` is `Form` for every form on the page and the panel has nothing else
+to go by. It is cosmetic and development-only.
+
 ## What a commit cost
 
 The `PROFILE` tab is off until you press **record**, and that is the design rather than a limitation: a

@@ -190,7 +190,7 @@ Typed field paths, Standard Schema validation, and array rows that keep their id
 
 | | |
 |---|---|
-| `Form` | A **hook** — `this.use(Form<typeof schema>, { schema, defaultValues, onSubmit })`. Adds no element; the `<form>` stays your JSX. `fields` · `values` · `formErrors` · `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `submit(event?)` · `reset(values?)` · `setError(path, message)`. [Your first form](/forms) |
+| `Form` | A **hook** — `this.use(Form<typeof schema>, { schema, defaultValues, onSubmit })`. Options also take `validateOn` and `label`, the name devtools calls it. Adds no element; the `<form>` stays your JSX. `fields` · `values` · `formErrors` · `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `submit(event?)` · `reset(values?)` · `setError(path, message)`. [Your first form](/forms) |
 
 `defaultValues` may move after the form exists — an untouched field takes the new value, an edited one
 keeps what was typed. [Editing a record you had to fetch](/forms#editing-a-record-you-had-to-fetch)

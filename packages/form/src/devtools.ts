@@ -60,10 +60,23 @@ let nextId = 1;
  * value tree is for.
  */
 window.addEventListener("ramonda:form", (event) => {
-  const detail = (event as CustomEvent<{ form: object; key: object; readable: (key: string) => string }>).detail;
+  const detail = (
+    event as CustomEvent<{ form: object; key: object; readable: (key: string) => string; label?: string }>
+  ).detail;
   if (!detail) return;
   const id = nextId++;
-  forms.push({ id, name: `Form ${id}`, form: view(detail.form, detail.readable), key: detail.key });
+  /**
+   * `Form (signup)` when it was labelled, `Form 3` when it was not.
+   *
+   * The label is ADDED to the name, never substituted for it: a tab of `signup` and `login` no longer
+   * says either of them is a form, and the same rule runs in the component tree, so one reading serves
+   * both. The number stays as the fallback — it says which form mounted third and nothing else, which
+   * is the wrong half of what a reader wanted, and a label is the only way the panel can learn the
+   * right half. A hook cannot see the component that used it.
+   */
+  const label = detail.label?.trim();
+  const name = label !== undefined && label !== "" ? `Form (${label})` : `Form ${id}`;
+  forms.push({ id, name, form: view(detail.form, detail.readable), key: detail.key });
 });
 
 /**

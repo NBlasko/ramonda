@@ -57,6 +57,55 @@ describe("inspector: component + hook state", () => {
     expect(node.hooks[0].hooks[0].state).toEqual({ deep: 1 });
   });
 
+  /**
+   * Two of one hook in one component are two nodes with one name, because a hook cannot name itself —
+   * `this.constructor.name` is the class, shared by every instance. `label` is the only place the
+   * distinguishing name can come from: it arrives per `use()`, which is where the difference exists.
+   */
+  test("names a hook by its `label` option when it has one", async () => {
+    class Store extends Hook<{ label?: string; seed: number }> {
+      @state value = this.props.seed;
+    }
+    class Page extends Component {
+      signup = this.use(Store, { label: "signup", seed: 1 });
+      login = this.use(Store, { label: "login", seed: 2 });
+      plain = this.use(Store, { seed: 3 });
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const node = scanComponentTree(app.container)[0];
+
+    // The class AND the label, because each answers a different question: `Store` says what the node
+    // is, `signup` says which one. A hook given no label reads exactly as it did before.
+    expect(node.hooks.map((hook) => hook.name)).toEqual(["Store (signup)", "Store (login)", "Store"]);
+    // The label is still visible as what it is, an option, so nothing is hidden by being used.
+    expect(node.hooks[0].options).toMatchObject({ label: "signup", seed: 1 });
+  });
+
+  test("ignores a label that is not a name, or that only repeats the class", async () => {
+    class Store extends Hook<{ label?: unknown }> {
+      @state value = 1;
+    }
+    class Page extends Component {
+      blank = this.use(Store, { label: "   " });
+      wrong = this.use(Store, { label: 42 });
+      same = this.use(Store, { label: "Store" });
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    const node = scanComponentTree(app.container)[0];
+
+    // A hook with other plans for the word keeps them: only a non-empty string is taken. And a label
+    // that repeats the class earns nothing but a pair of brackets, so it is dropped.
+    expect(node.hooks.map((hook) => hook.name)).toEqual(["Store", "Store", "Store"]);
+  });
+
   test("exposes a component's props (minus children/key)", async () => {
     class Child extends Component<{ label: string; count: number }> {
       render() {

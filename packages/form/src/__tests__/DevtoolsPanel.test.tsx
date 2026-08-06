@@ -71,7 +71,7 @@ afterEach(() => {
   expect(rows()).toEqual([]);
 });
 
-function mount(defaults: Values = BLANK) {
+function mount(defaults: Values = BLANK, label?: string) {
   let form!: Form<typeof schema>;
 
   class SignupForm extends Component {
@@ -79,6 +79,7 @@ function mount(defaults: Values = BLANK) {
       schema,
       defaultValues: defaults,
       onSubmit: () => {},
+      label,
     }));
 
     render(): RamondaNode {
@@ -103,8 +104,11 @@ describe("the Forms panel", () => {
     await settle();
 
     expect(rows().length).toBeGreaterThan(0);
-    // Named after the component that owns it, which is how a reader finds it on the page.
-    expect(summary().title).toBe("Form 1");
+    // Numbered, because a form with no `label` has no name to go by: a hook cannot see the component
+    // that used it. The number is the order it mounted in, and it is asserted as a shape rather than
+    // as a value — the counter runs for the whole session, so a case added above this one would move
+    // it.
+    expect(summary().title).toMatch(/^Form \d+$/);
 
     unmount();
     expect(rows()).toEqual([]);
@@ -338,6 +342,37 @@ describe("the Forms panel", () => {
     } finally {
       broken.unmount();
       valid.unmount();
+    }
+  });
+
+  test("a form given a `label` is called that, everywhere the panel names it", async () => {
+    // The escape hatch for the case a number cannot answer: two forms, and a reader who wants to know
+    // which is the signup.
+    const signup = mount(BLANK, "signup");
+    const login = mount({ name: "Ada", email: "ada@example.com" }, "login");
+    try {
+      await settle();
+      const groups = panel().snapshot().groups;
+
+      // The class and the label, not one instead of the other: a tab of `signup` and `login` would no
+      // longer say either of them is a form, and the component tree names hooks the same way.
+      expect(groups.map((group) => group.label)).toEqual(["Form (signup)", "Form (login)"]);
+      expect(groups.map((group) => group.rows[0]!.title)).toEqual(["Form (signup)", "Form (login)"]);
+      // And the run message speaks the same name back, which is the other place it is read.
+      expect(panel().run!(groups[0]!.rows[0]!.id, "reset")).toBe("reset Form (signup)");
+    } finally {
+      signup.unmount();
+      login.unmount();
+    }
+  });
+
+  test("a blank label is no label, so the number still answers", async () => {
+    const only = mount(BLANK, "   ");
+    try {
+      await settle();
+      expect(panel().snapshot().groups[0]!.rows[0]!.title).toMatch(/^Form \d+$/);
+    } finally {
+      only.unmount();
     }
   });
 
