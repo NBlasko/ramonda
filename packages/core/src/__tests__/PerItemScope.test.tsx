@@ -171,7 +171,7 @@ describe("per-item reactive scopes", () => {
 /**
  * The other half of the contract: what per-item scopes deliberately do NOT see.
  *
- * Both of these are accepted trade-offs, not defects (BUGS.md — "A non-signal
+ * Both of these are accepted trade-offs, not defects ("A non-signal
  * field read inside a list mapper never invalidates the item"). They are locked
  * so that changing either is a decision someone has to make on purpose, rather
  * than a side effect of touching the engine.

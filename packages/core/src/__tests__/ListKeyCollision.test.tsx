@@ -15,7 +15,7 @@ import { Component, Host, list, state } from "../index";
  * What moves is the components' internal state. Hence `#hits` rather than
  * labels — a text-only assertion passes while the bug is fully present.
  *
- * See BUGS.md → "Two `For` instances in one parent mint the same ids"; the
+ * The fault it stands for: "two `For` instances in one parent mint the same ids". The
  * mechanism is unchanged now that lists come from `list()` rather than a hook,
  * because the ids are minted per list either way.
  */

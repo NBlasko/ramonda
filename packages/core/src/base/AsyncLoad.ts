@@ -195,7 +195,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
 
   @mount afterCreate() {
     this.props.onCreate?.();
-    // Returned so a server render can await it — see docs/async-ssr-proposal.md.
+    // Returned so a server render can await it.
     return this.load();
   }
 

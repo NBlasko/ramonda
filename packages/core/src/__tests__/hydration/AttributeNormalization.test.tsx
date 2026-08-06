@@ -173,7 +173,7 @@ describe("attribute normalization across the hydration boundary", () => {
         // Thinner than it should be, and not by choice: `SVGArguments` types
         // only width/height/fill/viewBox, so `strokeWidth`, `cx`, `cy` and `r`
         // do not compile. That is a hole in the public types, not in hydration —
-        // see TODO.md.
+        // left as it is on purpose.
         return (
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
             <circle />

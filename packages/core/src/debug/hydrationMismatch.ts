@@ -31,7 +31,7 @@ function isComparable(name: string, value: unknown): boolean {
  * becomes `display: contents;`, `COLOR:RED` becomes `color: red;`, declaration
  * order can shift. Comparing the strings reported divergence for styles that
  * were identical, which is what made RMD007 fire on markup that was perfectly
- * correct (BUGS.md, RMD007). Anything that survives THIS comparison is a real
+ * correct (RMD007). Anything that survives THIS comparison is a real
  * difference in what the user will see.
  *
  * Deliberately dumb about CSS: it splits on `;` and `:` rather than parsing.

@@ -391,7 +391,7 @@ export function isLazyList(node: unknown): node is LazyListNode {
  * `vnodes` off the node, which a descriptor does not have until this runs. The
  * engine it returns must be stored on the region entry, or the FIRST render
  * after hydration finds no state and rebuilds the whole list — the same class of
- * bug as "Hook options were never refreshed after a state restore" in BUGS.md.
+ * bug as "hook options were never refreshed after a state restore".
  */
 export function buildLazyList(
   descriptor: LazyListNode,

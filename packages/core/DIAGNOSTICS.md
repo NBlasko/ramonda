@@ -473,7 +473,7 @@ is a **Hook** — state and lifecycle, no node — spliced in as `{group.cells()
 See "State and lifecycle with no markup of your own" above.
 
 Auto-binding covers inherited methods, so `onClick={this.handleClick}` works in a
-subclass that never mentions `handleClick`. That took a fix — see BUGS.md; it used
+subclass that never mentions `handleClick`. That took a fix; it used
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.
 
@@ -967,8 +967,8 @@ about and why the hazard is gone, which is what somebody who met it in an old ch
 It warned that an unkeyed list had other children after it, because flattening merged the two
 into one key space and the list could claim its siblings. Arrays are no longer flattened —
 each is its own group with its own key space — so the hazard cannot happen and the warning
-would be advice about a non-problem. See BUGS.md, "A component's own elements could be claimed
-by content passed into it".
+would be advice about a non-problem — the fault it was written for being that a component's own
+elements could be claimed by content passed into it.
 
 ### RMD026 — retired 2026-08-03
 

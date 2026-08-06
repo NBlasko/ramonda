@@ -110,7 +110,7 @@ function normalizeChildren(arr: unknown[]): unknown[] {
     } else if (el !== null && typeof el === "object" && (el as { [IS_LIST]?: true })[IS_LIST]) {
       // A list stays ONE child. Splicing its vnodes in here is exactly what let
       // two lists share the parent's key index and swap each other's nodes
-      // (BUGS.md — "Two `For` instances in one parent mint the same ids").
+      // ("two `For` instances in one parent mint the same ids").
       //
       // A `list()` descriptor arrives with no owner, because a plain function
       // cannot know where it was called. It gets the SAME position identity an

@@ -416,7 +416,7 @@ function hydrateLevel(
       // same before it can walk them. The engine it produces MUST be stored on
       // the entry: without it the first render after hydration finds no state
       // and rebuilds the whole list, which is the same class of bug as "Hook
-      // options were never refreshed after a state restore" in BUGS.md.
+      // options were never refreshed after a state restore".
       let listNode = rawVchild;
       let engine: ListEngine<unknown> | undefined;
 

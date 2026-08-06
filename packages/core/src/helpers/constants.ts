@@ -9,7 +9,7 @@
  * appendChild keeps them as real children (which is why the client worked), but
  * serializing dropped them and re-parsing would have made them inert — so SSR
  * silently emitted an empty <template> for every default-host component. No
- * serializer could fix that; the tag had to change. See BUGS.md.
+ * serializer could fix that; the tag had to change.
  */
 export const HOST_TAG = "RAMONDA-HOST";
 

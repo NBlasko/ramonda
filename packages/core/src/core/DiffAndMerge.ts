@@ -714,7 +714,7 @@ function collectRegionNodes(region: ListRegion, out: (EnhancedChildNode | DONE)[
  * one row near the front made every node between the insertion point and the end
  * look misplaced, and each got its own `insertBefore`. Measured at 10000 items:
  * 38.9s for an insert at index 0, 20.5s at the middle — while the mapper and the
- * diff walk together cost ~80ms. See BUGS.md.
+ * diff walk together cost ~80ms.
  *
  * Instead: take the longest run of nodes that are already in relative order and
  * leave them alone; move only the rest. One insertion then costs exactly one
