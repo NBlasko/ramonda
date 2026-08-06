@@ -410,17 +410,23 @@ export function updated(value: (...args: any[]) => void, context: EnhancedClassM
  * Several methods may carry it; hydration waits for all of them.
  */
 /**
- * The prototype that actually declares `name` — the most-derived one, since the
- * walk stops at the first that owns it.
+ * The prototype that holds THIS decorated function — found by identity, not by name.
  *
- * Tells "two declarations in ONE class" from "a subclass overriding the base's".
- * Two initializers whose declarations share an owner are the first; different
- * owners are the second, which is how a role is specialised and must stay quiet.
+ * Tells "two declarations in ONE class" from "a subclass specialising the base's".
+ * Two initializers whose declarations share an owner are the first; different owners
+ * are the second, which must stay quiet.
+ *
+ * By identity because the name is not enough, and getting that wrong reported the
+ * most natural way to specialise a role: a subclass that overrides the method AND
+ * re-decorates it keeps the NAME, so a walk looking for the first prototype owning
+ * that name returned the SUBCLASS's for both declarations and called them a
+ * duplicate. The base's function and the override are different objects on
+ * different prototypes, so identity separates them and nothing else does.
  */
-function ownerOfMethod(instance: object, name: string): object | undefined {
+function ownerOfDecoration(instance: object, name: string, fn: unknown): object | undefined {
   let proto: object | null = Object.getPrototypeOf(instance);
   while (proto !== null) {
-    if (Object.hasOwn(proto, name)) return proto;
+    if (Object.getOwnPropertyDescriptor(proto, name)?.value === fn) return proto;
     proto = Object.getPrototypeOf(proto);
   }
   return undefined;
@@ -463,11 +469,14 @@ function ownerOfMethod(instance: object, name: string): object | undefined {
  * one answer to "who handles this?" — but a subclass declaring its own is an
  * override, and silent.
  */
-export function catchError(
-  // Dispatched by NAME below, so the function itself is not kept — the parameter
-  // stays because it is what TypeScript checks the decorated method against.
-  _value: (...args: any[]) => unknown,
-  context: EnhancedClassMethodDecoratorContext,
+type CatchErrorOwner = { [COMPONENT_RUNTIME]: ComponentRuntime; [GLOBAL_RUNTIME]: Runtime };
+
+export function catchError<This extends CatchErrorOwner>(
+  value: (this: This, e: unknown) => unknown,
+  // Typed by its `This`, which is what refuses a hook at COMPILE time: a Hook has no
+  // COMPONENT_RUNTIME, so the method's implicit `this` does not satisfy the constraint.
+  // The throw in the initializer stays for the build that has no types.
+  context: ClassMethodDecoratorContext<This, (this: This, e: unknown) => unknown>,
 ) {
   if (__DEV__) {
     assertMethod(context.kind, "catchError", context.name);
@@ -488,7 +497,7 @@ export function catchError(
     }
 
     if (__DEV__) {
-      const owner = ownerOfMethod(this, contextName);
+      const owner = ownerOfDecoration(this, contextName, value);
       if (runtime.catchError !== undefined && catchErrorOwners.get(runtime) === owner) {
         diagnose(
           "RMD032",

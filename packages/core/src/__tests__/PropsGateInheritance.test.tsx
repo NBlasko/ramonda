@@ -211,4 +211,54 @@ describe("@ShouldUpdateOnPropsChange", () => {
 
     expect(duplicateReports().length).toBe(1);
   });
+
+  test("the order the class decorators are written in does not matter", async () => {
+    // Class decorators EVALUATE top-to-bottom and APPLY bottom-to-top. That is
+    // invisible here only because each writes its own slot on the constructor and
+    // reads nothing another wrote — a rule worth keeping, because the day one
+    // reads another's, the order becomes load-bearing and nothing in the source
+    // says so.
+    @ShouldUpdateOnPropsChange(() => false)
+    @Host("b")
+    class GateFirst extends Component<{ v: number }> {
+      render() {
+        return <i>{this.props.v}</i>;
+      }
+    }
+
+    @Host("b")
+    @ShouldUpdateOnPropsChange(() => false)
+    class HostFirst extends Component<{ v: number }> {
+      render() {
+        return <u>{this.props.v}</u>;
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      @state v = 1;
+      render() {
+        return (
+          <div>
+            <GateFirst v={this.v} />
+            <HostFirst v={this.v} />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    // Same host element either way…
+    expect(app.container.querySelectorAll("b").length).toBe(2);
+
+    app.instance.v = 2;
+    await app.settle();
+
+    // …and the same rule either way.
+    expect(app.container.querySelector("i")!.textContent).toBe("1");
+    expect(app.container.querySelector("u")!.textContent).toBe("1");
+    expect(duplicateReports()).toEqual([]);
+  });
 });

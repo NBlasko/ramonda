@@ -23,9 +23,6 @@ export interface Runtime {
    */
   deferHydrations: (() => unknown)[];
   /**
-   * shallow compare decides — i.e. take the props whenever they differ.
-   */
-  /**
    * DEV only. The component this runtime belongs to, so a diagnostic can name it.
    *
    * A hook shares its owner's runtime, so this is always the COMPONENT — which is the

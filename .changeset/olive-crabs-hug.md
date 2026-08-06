@@ -29,5 +29,19 @@ case, and that wants `super`. It is dispatched by name, so overriding the method
 re-decorating works. Returning `false` still declines the error and passes it to the next handler
 above.
 
+`ErrorBoundary`'s own handler moved with it: the method is now `handleFailure`, declared with
+`@catchError`. A subclass that overrode `catchError` must override `handleFailure` instead — which is
+the pattern this form exists for, since `super.handleFailure(e)` lets a specialised boundary report
+*and* fall back:
+
+```tsx
+class ReportingBoundary extends ErrorBoundary {
+  override handleFailure(e: unknown) {
+    report(e);
+    return super.handleFailure(e);
+  }
+}
+```
+
 New **RMD032** reports two `@catchError` declarations on one class, where the last silently wins. A
 subclass declaring its own is an override, not a duplicate, and is not reported.

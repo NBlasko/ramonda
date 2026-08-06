@@ -19,8 +19,9 @@ export function errorHandler(e: unknown, placeholderComponent: MaybeComponent) {
        * the page on the DOM from before the throw while the boundary above,
        * whose whole job is this, never heard about it.
        *
-       * Anything else, `undefined` included, still means handled: a `catchError`
-       * written before this returns nothing and keeps working.
+       * Anything else, `undefined` included, means handled — so a handler that
+       * just sets state and returns nothing is the ordinary case, and declining
+       * has to be written on purpose.
        */
       if (catchError(e) !== false) {
         isErrorHandled = true;
