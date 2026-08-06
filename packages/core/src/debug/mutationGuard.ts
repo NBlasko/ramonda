@@ -95,6 +95,33 @@ function childContext(context: GuardContext, key: string): GuardContext {
   return { label: context.label, path: `${context.path}.${key}` };
 }
 
+/**
+ * Whether the value read at `key` may be handed back wrapped.
+ *
+ * A proxy is not allowed to return something other than the real value for a
+ * property that is non-writable AND non-configurable: the engine throws a
+ * TypeError rather than let a proxy lie about a value that can never change.
+ * `Object.freeze` makes every own property exactly that, so a frozen object in
+ * state crashed the read it was meant to be guarding — in development only, which
+ * is the worst place for it, since production was fine and the app broke only
+ * while it was being worked on.
+ *
+ * Handing the raw value back loses nothing: a frozen property cannot be assigned,
+ * so there is no in-place change under it left to report.
+ *
+ * The check is a descriptor lookup, which is not free — so it runs only where the
+ * invariant can actually be broken, on a read that is ABOUT to be wrapped. A
+ * string, a number or anything else returned as-is never reaches it. Measured at
+ * ~15ns per object-valued read (3M nested reads, 104ms → 149ms), so a render would
+ * have to make tens of thousands of them to lose a millisecond, in DEV only.
+ */
+function mayWrap(target: object, key: string): boolean {
+  const descriptor = Object.getOwnPropertyDescriptor(target, key);
+  // Inherited, or an index past the end: not an own property, no invariant to keep.
+  if (descriptor === undefined) return true;
+  return descriptor.configurable === true || descriptor.writable === true;
+}
+
 function objectProxy(value: object, context: GuardContext): object {
   return new Proxy(value, {
     get(target, key, receiver) {
@@ -103,6 +130,7 @@ function objectProxy(value: object, context: GuardContext): object {
       // Lazily, and only for a key that names something: a symbol read is
       // machinery (iterators, `toStringTag`) and never the path a mutation takes.
       if (typeof key !== "string") return read;
+      if (!guardable(read) || !mayWrap(target, key)) return read;
       return guard(read, childContext(context, key));
     },
 
@@ -146,6 +174,7 @@ function arrayProxy(value: unknown[], context: GuardContext): object {
       // An index or a named property; the rest (`length`, symbols, methods) is
       // returned as it is.
       if (typeof key !== "string") return read;
+      if (!guardable(read) || !mayWrap(target, key)) return read;
       return guard(read, childContext(context, key));
     },
 

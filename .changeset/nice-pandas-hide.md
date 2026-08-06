@@ -16,7 +16,11 @@ their path — `user.address.city` rather than "an object in state" — and the 
 replacement, including the `@ramonda/lens` form.
 
 A `Date`, a `Map` and a class instance are left alone: their methods need the real receiver, and
-wrapping them would break working code for a report nobody asked for. Development only, as ever.
+wrapping them would break working code for a report nobody asked for. So is anything reached through
+a **frozen** property — a proxy may not hand back something other than the real value for a property
+that is non-writable and non-configurable, and `Object.freeze` makes every own property exactly that.
+Nothing is lost by it: a frozen property cannot be assigned, so there is no in-place change under it
+left to report. Development only, as ever.
 
 Measured on a dev update of 3000 rows reading two levels of object state plus an array element:
 49.1 ms → 57.1 ms, **+16%**. The first version cost 30% and was wrong: a proxy escapes into user code

@@ -78,7 +78,6 @@ describe("a props update the rule refuses", () => {
     @Host("div")
     class Board extends Component {
       @state label = "first";
-      row = this.use as unknown; // not used; kept so the shape reads like an app
       render() {
         return <Row label={this.label} />;
       }

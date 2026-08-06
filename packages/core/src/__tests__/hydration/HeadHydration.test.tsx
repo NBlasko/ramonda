@@ -84,6 +84,41 @@ describe("hydration: the Head owns what the server wrote", () => {
     container.remove();
   });
 
+  test("an ordinary client page applies twice and cannot tell", async () => {
+    /**
+     * The cost of the fix, pinned rather than asserted in a comment.
+     *
+     * The hook cannot tell that it was hydrated rather than built, so it applies on
+     * BOTH the shared create and the client one — and on a page that was never
+     * hydrated, that second call is pure repetition. It has to be repetition that
+     * changes nothing: `claim` adopts a tag it already owns only once, `upsert`
+     * writes the same values back, and `previousTitle` is captured only while it is
+     * undefined.
+     *
+     * So: one meta tag rather than two, and a title restored to what the document
+     * had before rather than to the hook's own.
+     */
+    @Host("div")
+    class Page extends Component {
+      head = this.use(Head, () => ({ title: "Client", description: "built here" }));
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    document.title = "before";
+    const app = await getDOM(<Page />);
+    await app.settle();
+
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1);
+    expect(document.title).toBe("Client");
+
+    app.unmount();
+
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(0);
+    expect(document.title).toBe("before");
+  });
+
   test("the hook is live after hydration, and gives the title back on the way out", async () => {
     @Host("div")
     class Page extends Component {

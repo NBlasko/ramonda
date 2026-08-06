@@ -215,11 +215,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
   },
   RMD035: {
-    // error, not warning: without the mint, one of the two rendered the other's module — the page
+    // error, not warning: without a key of its own, one lazy rendered another's module — the page
     // showed the wrong thing and said nothing.
     severity: "error",
     title: "Two lazy functions with the same source",
-    fix: "`AsyncLoad` identifies a module by the SOURCE of its `lazy`, which is right for `() => import('./Thing')` — two different imports read differently. A lazy built by a FACTORY breaks that: `const make = (path) => () => import(path)` closes over the path, and the closed-over value is not part of the source, so every module it builds stringifies the same. This instance has been given a key of its own so it loads the module it asked for rather than the one already cached under that source — but the two no longer share a cache entry, which costs a loading frame the second time. Pass `cacheKey` to get it back: `<AsyncLoad cacheKey=\"./Dashboard\" lazy={make('./Dashboard')} … />`. A route table that builds its lazies from a list is the usual way to meet this.",
+    fix: "`AsyncLoad` identifies a module by the SOURCE of its `lazy`, which works when that source names one: `() => import('./Thing')` says what it loads, so the same import written in two components shares one cache entry — which is what you want. A lazy a FACTORY built names nothing: `const make = (path) => () => import(path)` closes over the path, and a closed-over value is not part of the source, so every module it builds stringifies the same. These two were found to load DIFFERENT modules under one key, so the second has been given a key of its own and now renders what it asked for. What that costs is the shared cache entry — a loading frame the second time, since the module system still dedupes the fetch itself. Pass `cacheKey` to get it back: `<AsyncLoad cacheKey=\"./Dashboard\" lazy={make('./Dashboard')} … />`. A route table that builds its lazies from a list is the usual way to meet this.",
   },
   RMD034: {
     // error, not warning: the value the reader sees is not the value the app set. Nothing renders,

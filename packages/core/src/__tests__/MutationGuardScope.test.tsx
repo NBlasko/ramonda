@@ -198,6 +198,40 @@ describe("the in-place mutation guard", () => {
     expect(renders).toBeGreaterThan(1);
   });
 
+  test("a FROZEN object can still be read", async () => {
+    /**
+     * A proxy is not allowed to hand back something other than the real value for
+     * a property that is non-writable AND non-configurable — the engine throws a
+     * TypeError rather than letting a proxy lie about a value that can never
+     * change. `Object.freeze` makes every own property exactly that.
+     *
+     * So the guard crashed the very code that had already protected itself: freeze
+     * the object, read a nested value out of it, and the read threw — in
+     * development only, which is the worst place for it, because production was
+     * fine and the app was broken only while it was being worked on.
+     *
+     * Nothing is lost by handing the raw value back: a frozen property cannot be
+     * assigned, so there is no in-place change under it to report.
+     */
+    @Host("div")
+    class App extends Component {
+      @state config = Object.freeze({ nested: { label: "hi" } });
+      @state rows = Object.freeze([{ id: 1 }]);
+      render() {
+        return (
+          <p>
+            {this.config.nested.label}:{this.rows[0].id}
+          </p>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(app.container.querySelector("p")!.textContent).toBe("hi:1");
+  });
+
   test("a Date, a Map and a class instance are left alone", async () => {
     /**
      * Their methods need the real receiver — `proxy.getTime()` reaches for an

@@ -852,19 +852,25 @@ const make = (path: string) => () => import(path);
 <AsyncLoad cacheKey="./Settings" lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
 ```
 
-`AsyncLoad` identifies a module by the **source** of its `lazy`, which is right for
-`() => import("./Thing")` — two different imports read differently. A lazy a factory built breaks
-that: the path it closed over is not part of the source, so every module the factory produces
-stringifies the same.
+`AsyncLoad` identifies a module by the **source** of its `lazy`, which works when that source names
+one. `() => import("./Thing")` says what it loads, so the same import written in two components is
+two different functions with one meaning — and they share a cache entry, which is what you want.
 
-The instance that arrives second is given a key of its own, so it loads the module it asked for
-rather than the one already cached under that source. What it loses is the shared cache entry — a
-loading frame the second time, since the module system still dedupes the fetch itself. `cacheKey`
-gives that back.
+A lazy a factory built names nothing: the path it closed over is not part of the source, so every
+module the factory produces stringifies the same. Left alone, the first would load and cache and the
+second would render the **first one's module** — nothing failing, nothing logged, and which module
+you got depending on which rendered first.
 
-Before this was reported, the second one rendered the FIRST one's module: nothing failed, nothing
-was logged, and which module you got depended on which rendered first. A route table that builds its
-lazies from a list is the usual way to meet it.
+Which of the two you have written cannot be read from the text of the function — the source a
+bundler leaves behind is its own business, and a rule looking for a literal specifier would read one
+bundler's output correctly and another's backwards. So nothing is guessed: when a second `lazy`
+meets a key that is already taken, its module is loaded and **compared**. The module system serves a
+genuine duplicate from its own registry, so the ordinary case pays one resolved promise and confirms
+the sharing.
+
+A module that turns out to be a different one is given a key of its own. It then renders what it
+asked for; what it loses is the shared cache entry — a loading frame the second time. `cacheKey`
+gives that back, and a route table that builds its lazies from a list is the usual way to meet this.
 
 See [lazy loading](/composition/lazy) for the whole picture.
 
