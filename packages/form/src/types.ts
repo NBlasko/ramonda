@@ -271,19 +271,6 @@ export interface FormProps<S extends StandardSchemaV1> {
    */
   onSubmit: (values: InferOut<S>) => void | Promise<void>;
   validateOn?: ValidateOn;
-  /**
-   * What to call this form in devtools. Cosmetic, DEV-only, and read nowhere else.
-   *
-   * A hook cannot name itself — `this.constructor.name` is `Form` for every form on the page — so
-   * without this the panel can only number them, and two forms in one component are `Form 1` and
-   * `Form 2` with nothing saying which is the signup. Name it and the FORMS tab, the component tree
-   * and every field row under it say so instead.
-   *
-   * The same option `createContext` takes, for the same reason, by a different route: a context is a
-   * pair of classes and can be renamed, while a hook's options arrive per `use()` and the class is
-   * shared by every instance.
-   */
-  label?: string;
 }
 
 /**

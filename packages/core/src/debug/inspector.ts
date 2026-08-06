@@ -192,36 +192,6 @@ function readProps(instance: Inspectable): Record<string, unknown> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/**
- * What to call a hook in the tree: its class, plus its `label` when it was given one —
- * `Form (Sign Up)`.
- *
- * Added to the name rather than replacing it, and that is the whole design. The class says WHAT the
- * node is, which is the first thing a reader needs and the thing they cannot recover from a label; the
- * label says WHICH one it is, which the class cannot give. Replacing the class with the label was the
- * first version and it read worse: a tree of `signup` and `login` no longer says either of them is a
- * form.
- *
- * `label` is a reserved hook option — cosmetic, DEV-only, and read here and nowhere else. It exists
- * because a hook cannot name itself: `this.constructor.name` is `Form` for every form on the page, so
- * two `this.use(Form, …)` in one component are two nodes with one name, and a panel listing them can
- * only number them. `createContext` answers the same question by renaming the class, which cannot work
- * for a hook — the options arrive per `use()`, and the class is shared by every instance.
- *
- * A hook opts in by declaring `label?: string` in its own props. Nothing here requires it, and a hook
- * that has other plans for the word keeps them: only a non-empty string is taken.
- */
-function hookName(hook: Inspectable): string {
-  const name = hook.constructor?.name ?? "Hook";
-  const label = (hook[HOOK_RUNTIME]?.rawProps as { label?: unknown } | undefined)?.label;
-  if (typeof label !== "string") return name;
-
-  const trimmed = label.trim();
-  // A label that only repeats the class earns nothing but a pair of brackets.
-  if (trimmed === "" || trimmed === name) return name;
-  return `${name} (${trimmed})`;
-}
-
 /** Serializes an instance's child hooks (and their hooks) recursively. */
 function readHooks(instance: Inspectable): InspectedNode[] {
   const childHooks = instance[CHILD_HOOKS];
@@ -229,7 +199,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
 
   return childHooks.map((hook) => ({
     id: handles.push(hook) - 1,
-    name: hookName(hook),
+    name: hook.constructor?.name ?? "Hook",
     kind: "hook" as const,
     state: readState(hook),
     detail: readDetail(hook),

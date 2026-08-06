@@ -71,7 +71,7 @@ afterEach(() => {
   expect(rows()).toEqual([]);
 });
 
-function mount(defaults: Values = BLANK, label?: string) {
+function mount(defaults: Values = BLANK) {
   let form!: Form<typeof schema>;
 
   class SignupForm extends Component {
@@ -79,7 +79,6 @@ function mount(defaults: Values = BLANK, label?: string) {
       schema,
       defaultValues: defaults,
       onSubmit: () => {},
-      label,
     }));
 
     render(): RamondaNode {
@@ -104,11 +103,8 @@ describe("the Forms panel", () => {
     await settle();
 
     expect(rows().length).toBeGreaterThan(0);
-    // Numbered, because a form with no `label` has no name to go by: a hook cannot see the component
-    // that used it. The number is the order it mounted in, and it is asserted as a shape rather than
-    // as a value — the counter runs for the whole session, so a case added above this one would move
-    // it.
-    expect(summary().title).toMatch(/^Form \d+$/);
+    // Named after the component that owns it, which is how a reader finds it on the page.
+    expect(summary().title).toBe("Form 1");
 
     unmount();
     expect(rows()).toEqual([]);
@@ -342,80 +338,6 @@ describe("the Forms panel", () => {
     } finally {
       broken.unmount();
       valid.unmount();
-    }
-  });
-
-  test("a form given a `label` is called that, everywhere the panel names it", async () => {
-    // The escape hatch for the case a number cannot answer: two forms, and a reader who wants to know
-    // which is the signup.
-    const signup = mount(BLANK, "signup");
-    const login = mount({ name: "Ada", email: "ada@example.com" }, "login");
-    try {
-      await settle();
-      const groups = panel().snapshot().groups;
-
-      // The class and the label, not one instead of the other: a tab of `signup` and `login` would no
-      // longer say either of them is a form, and the component tree names hooks the same way.
-      expect(groups.map((group) => group.label)).toEqual(["Form (signup)", "Form (login)"]);
-      expect(groups.map((group) => group.rows[0]!.title)).toEqual(["Form (signup)", "Form (login)"]);
-      // And the run message speaks the same name back, which is the other place it is read.
-      expect(panel().run!(groups[0]!.rows[0]!.id, "reset")).toBe("reset Form (signup)");
-    } finally {
-      signup.unmount();
-      login.unmount();
-    }
-  });
-
-  /**
-   * The case the announce event could not serve, and the reason the label is read live.
-   *
-   * A label may be computed in the props callback, which re-runs when the signals it reads move. An
-   * event fires once, at mount, so a name taken from it would be the name the form had when it
-   * appeared while every other field in the tab was current — one frozen field among live ones.
-   */
-  test("a label computed in the props callback follows the signal it reads", async () => {
-    let bump!: () => void;
-
-    class Orders extends Component {
-      @state which = "first";
-      private f = this.use(Form<typeof schema>, (self: Orders) => ({
-        schema,
-        defaultValues: BLANK,
-        onSubmit: () => {},
-        label: `order ${self.which}`,
-      }));
-
-      render(): RamondaNode {
-        bump = () => {
-          this.which = "second";
-        };
-        void this.f.values;
-        return <form />;
-      }
-    }
-
-    const mounted = render(<Orders />);
-    try {
-      await settle();
-      expect(panel().snapshot().groups[0]!.rows[0]!.title).toBe("Form (order first)");
-
-      bump();
-      await settle();
-
-      // The tab reads the label the way it reads values and errors — through the instance, now.
-      expect(panel().snapshot().groups[0]!.rows[0]!.title).toBe("Form (order second)");
-    } finally {
-      mounted.unmount();
-    }
-  });
-
-  test("a blank label is no label, so the number still answers", async () => {
-    const only = mount(BLANK, "   ");
-    try {
-      await settle();
-      expect(panel().snapshot().groups[0]!.rows[0]!.title).toMatch(/^Form \d+$/);
-    } finally {
-      only.unmount();
     }
   });
 

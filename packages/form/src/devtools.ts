@@ -32,16 +32,6 @@ import type { PanelPlugin, PanelRow, PanelSnapshot, RowField } from "./devtoolsP
  * one place.
  */
 export interface InspectableForm {
-  /**
-   * The `label` its owner gave it, read LIVE like everything else here.
-   *
-   * Not carried on the announce event, and that is the point: a label may be computed in the props
-   * callback — `label: \`order ${self.id}\`` — which is re-run when the signals it reads move. An
-   * event fires once, at mount, so a name taken from it would be the name that form had when it
-   * appeared and not the one it has now, while every other field in this view is current. One frozen
-   * field among live ones is the kind of thing nobody notices until it is wrong.
-   */
-  readonly label: string | undefined;
   readonly values: unknown;
   readonly formErrors: readonly string[];
   readonly isValid: boolean;
@@ -58,7 +48,7 @@ export interface InspectableForm {
   readonly revision: number;
 }
 
-const forms: { id: number; form: InspectableForm; key: object }[] = [];
+const forms: { id: number; name: string; form: InspectableForm; key: object }[] = [];
 let nextId = 1;
 
 /**
@@ -72,22 +62,9 @@ let nextId = 1;
 window.addEventListener("ramonda:form", (event) => {
   const detail = (event as CustomEvent<{ form: object; key: object; readable: (key: string) => string }>).detail;
   if (!detail) return;
-  forms.push({ id: nextId++, form: view(detail.form, detail.readable), key: detail.key });
+  const id = nextId++;
+  forms.push({ id, name: `Form ${id}`, form: view(detail.form, detail.readable), key: detail.key });
 });
-
-/**
- * `Form (signup)` when it was labelled, `Form 3` when it was not — computed on every read.
- *
- * The label is ADDED to the name, never substituted for it: a tab of `signup` and `login` no longer
- * says either of them is a form, and the component tree names hooks the same way, so one reading
- * serves both. The number is the fallback: it says which form mounted third and nothing else, which is
- * the wrong half of what a reader wanted, and a label is the only way the panel can learn the right
- * half — a hook cannot see the component that used it.
- */
-function nameOf(entry: { id: number; form: InspectableForm }): string {
-  const label = entry.form.label;
-  return label === undefined ? `Form ${entry.id}` : `Form (${label})`;
-}
 
 /**
  * What a `Form` looks like from here.
@@ -115,15 +92,7 @@ function view(instance: object, readable: (key: string) => string): InspectableF
     submit: () => void;
   };
 
-  const owned = instance as { props?: { label?: unknown } };
-
   return {
-    get label() {
-      // `props` is a proxy over the owner's bag; a read is a read, and this one happens outside any
-      // render, so it subscribes to nothing.
-      const label = owned.props?.label;
-      return typeof label === "string" && label.trim() !== "" ? label.trim() : undefined;
-    },
     get values() {
       return form.current;
     },
@@ -184,7 +153,7 @@ function formsPanel(): PanelPlugin {
          * nothing the row beneath it does not.
          */
         groups: forms.map((entry) => ({
-          label: forms.length > 1 ? nameOf(entry) : undefined,
+          label: forms.length > 1 ? entry.name : undefined,
           rows: rowsFor(entry),
         })),
       };
@@ -196,24 +165,24 @@ function formsPanel(): PanelPlugin {
 
       if (actionId === "reset") {
         entry.form.reset();
-        return `reset ${nameOf(entry)}`;
+        return `reset ${entry.name}`;
       }
       // A real submit, validation and `onSubmit` included — which is the point: the panel is asking
       // the app to do what the button does, not simulating it.
       entry.form.submit();
-      return `submitted ${nameOf(entry)}`;
+      return `submitted ${entry.name}`;
     },
   };
 }
 
-function rowsFor(entry: { id: number; form: InspectableForm }): PanelRow[] {
+function rowsFor(entry: { id: number; name: string; form: InspectableForm }): PanelRow[] {
   const form = entry.form;
   const errors = form.fieldErrors();
   const { touched, changed } = form.interaction();
 
   const summary: PanelRow = {
     id: `${entry.id}::form`,
-    title: nameOf(entry),
+    title: entry.name,
     status: form.isSubmitting ? "busy" : form.isValid ? "ok" : "error",
     fields: fieldsFor(form, errors.size, touched.length, changed.length),
     // The form-level messages — a cross-field rule, or whatever `setError(ROOT)` put there. Field
