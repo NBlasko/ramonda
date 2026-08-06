@@ -91,11 +91,28 @@ function attachNextOnenhancedNode(
     if (!nextAttributes.hasOwnProperty(name)) continue;
     const nextAttribute = nextAttributes[name];
 
-    if (isInvisibleOnScreen(nextAttribute)) continue;
+    if (isInvisibleOnScreen(nextAttribute)) {
+      /**
+       * `checked={false}` is not "no attribute" — it is the model saying the box
+       * is OFF, and removing the attribute cannot say that. Clicking a checkbox
+       * sets its dirty-checkedness flag, after which the attribute no longer
+       * drives `.checked` at all, so a box the user ticked stays ticked however
+       * many times the model says otherwise. The property is the only thing left
+       * that speaks.
+       *
+       * `false` specifically, not every invisible value: `checked={undefined}`
+       * is a control the app is not driving, and forcing it off would take over
+       * an uncontrolled box.
+       */
+      if (nextAttribute === false && name === "checked" && "checked" in enhancedNode) {
+        enhancedNode.checked = false;
+      }
+      continue;
+    }
 
     const previousAttribute = getPreviousFromenhancedNode(enhancedNode, name, previousAttributes[name]);
 
-    if (!attributesEqual(nextAttribute, previousAttribute)) {
+    if (!attributesEqual(nextAttribute, previousAttribute) || formPropertyDiverged(enhancedNode, name, nextAttribute)) {
       setNextOnenhancedNode(enhancedNode, name, nextAttribute, onServer);
     }
   }
@@ -119,6 +136,20 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
 
   if (name === "value") {
     enhancedNode.value = value;
+    enhancedNode.setAttribute(name, value);
+    return;
+  }
+
+  if (name === "checked") {
+    // The property as well as the attribute, for the dirty-checkedness reason
+    // above: on a box the user has already clicked, the attribute is inert. The
+    // attribute is still written so a server render and a hydrated page agree.
+    //
+    // `true` for any visible value: a boolean attribute is on when it is
+    // PRESENT, so `checked=""` and even the mistaken `checked="false"` (RMD029)
+    // mean a ticked box in HTML, and the property has to say the same thing or
+    // the two disagree on the same element.
+    if ("checked" in enhancedNode) enhancedNode.checked = true;
     enhancedNode.setAttribute(name, value);
     return;
   }
@@ -207,6 +238,37 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
   // one, or the first render writes `style=""` onto every host.
   if (name === "style") return enhancedNode[STYLE_SYM] ?? "";
   return value;
+}
+
+/**
+ * Whether a form control is SHOWING something other than what the model says.
+ *
+ * `value` and `checked` are the two attributes that stop describing their
+ * element the moment a user touches it: typing changes `input.value` and leaves
+ * the attribute where it was, and clicking a checkbox changes `.checked` and
+ * makes the attribute inert for good (the dirty-checkedness flag). So an
+ * attribute-only diff compares the model against a stale record of itself,
+ * agrees, and writes nothing — while the control keeps showing whatever the user
+ * left there. The model silently stops being what is on screen.
+ *
+ * Asked IN ADDITION to the attribute comparison, never instead of it: the
+ * attribute is what the element serializes, so it has to stay right for a server
+ * render and for anything that reads the markup back.
+ *
+ * An untouched control's property already equals its attribute, so this answers
+ * false for the ordinary case and nothing is written — which matters, because
+ * writing `.value` sends the caret to the end and doing that on every unrelated
+ * render would be its own bug.
+ */
+function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next: unknown): boolean {
+  if (name !== "value" && name !== "checked") return false;
+  if (!(name in enhancedNode)) return false;
+
+  const live = (enhancedNode as unknown as Record<string, unknown>)[name];
+  // A boolean attribute is on when it is PRESENT, so any visible value means a
+  // ticked box — `checked=""` and the mistaken `checked="false"` (RMD029) both.
+  if (name === "checked") return live !== true;
+  return !attributesEqual(next, live);
 }
 
 function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
