@@ -165,7 +165,7 @@ rather than replacing it, so nothing can be dropped by forgetting to carry it ov
 **The names are checked against your props**, with no type argument to write:
 `@StableProps("kye")` is a compile error that names `"kye"`, and an optional prop counts as
 a prop. Putting it on a component is a compile error too — a component's props come from
-the parent's JSX, where [`@shouldUpdateOnPropsChange`](/concepts/props) is the control.
+the parent's JSX, where [`@ShouldUpdateOnPropsChange`](/concepts/props) is the control.
 
 Now the framework keeps one identity for those props for as long as their contents are
 equal (nested objects included), and the call site writes the plain literal:

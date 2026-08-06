@@ -138,7 +138,7 @@ function normalizeChildren(arr: unknown[]): unknown[] {
           // the first would be reported and the rest silently deduped against it.
           const kind = Object.prototype.toString.call(el);
           const owner = renderingOwner();
-          diagnose("RMD036", `${owner}:${kind}`, `A ${kind} among the children of ${owner}, dropped from the render.`, {
+          diagnose("RMD037", `${owner}:${kind}`, `A ${kind} among the children of ${owner}, dropped from the render.`, {
             kind,
             owner,
           });
@@ -257,7 +257,7 @@ export function __h(
   // 2. Classes (components) — each becomes exactly one element.
   //
   // The nullish check is load-bearing, not defensive. `<Thing />` where the import failed arrives
-  // here as `undefined`, which is the FIRST case RMD043 names — and reading `.__isComponent` off it
+  // here as `undefined`, which is the FIRST case RMD044 names — and reading `.__isComponent` off it
   // threw a TypeError from inside the JSX factory before the report at the bottom could be reached.
   // In production, where there is no report at all, that TypeError took the whole render down for a
   // fault this function is written to survive: the last line renders an empty host instead.
@@ -308,7 +308,7 @@ export function __h(
     // first bad tag in an application the only one ever reported. The component is what tells two
     // of them apart — a failed import in one file and a bad map lookup in another.
     const owner = renderingOwner();
-    diagnose("RMD043", `${owner}:${typeof name}`, `A tag of type ${typeof name} was passed, from ${owner}.`, {
+    diagnose("RMD044", `${owner}:${typeof name}`, `A tag of type ${typeof name} was passed, from ${owner}.`, {
       kind: typeof name,
       owner,
     });

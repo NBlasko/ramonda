@@ -19,7 +19,7 @@ function normalizeClassName(name: ComponentKind, attributes: Record<string, any>
     // mistake people make in every file they convert.
     const tag = typeof name === "string" ? name : (name.name ?? "a component");
     const owner = renderingOwner();
-    diagnose("RMD038", `${owner}:${tag}`, `\`class\` was given on <${tag}>, from ${owner}.`, { tag, owner });
+    diagnose("RMD039", `${owner}:${tag}`, `\`class\` was given on <${tag}>, from ${owner}.`, { tag, owner });
   }
 
   if (attributes.className === undefined) attributes.className = attributes.class;

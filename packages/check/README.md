@@ -1,7 +1,8 @@
 # @ramonda/check
 
-Two things a running page will not tell you: a context with no provider above it, and a class
-field holding a function literal. Both found before the app is ever opened.
+Three things a running page will not tell you: a context with no provider above it, a class field
+holding a function literal, and a single-use decorator declared twice on one class. All found
+before the app is ever opened.
 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcheck)](https://www.npmjs.com/package/@ramonda/check)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcheck)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)

@@ -73,7 +73,8 @@ export type DiagnosticCode =
   | "RMD040"
   | "RMD041"
   | "RMD042"
-  | "RMD043";
+  | "RMD043"
+  | "RMD044";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -246,69 +247,79 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "A list could not identify its items",
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
   },
+  RMD032: {
+    // error, not warning: the last declaration wins, so errors go to a handler the author did not
+    // pick, and the one they were reading goes silent.
+    severity: "error",
+    title: "More than one @catchError on a component",
+    fix: 'A component has one answer to "who handles an error from below?", and the last @catchError declared is the one that gets it — the others never run, silently. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
+  },
   /* ── the ten that were messages before they were codes ────────────────────────────────────
    *
    * Each of these was a `ramondaLog` call with the advice written inline: a real fault, reported,
    * but with no stable name to search for, no `fix` a panel could render apart from the message,
    * and no way for a collector to group two occurrences of one cause. Severities are the ones the
    * messages already carried — the port is about giving them identity, not about re-judging them.
+   *
+   * They are RMD033 upward because RMD032 was taken by `@catchError` while this was being written,
+   * and a code is never reassigned.
    */
-  RMD032: {
+  RMD033: {
     severity: "warning",
     title: "State that cannot cross to the client",
     fix: "Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a Map or a Date is lost on the way and the client starts with whatever the field initialises to. Keep the value out of state and derive it on the client — in `@create`, which does not run during hydration, or in a `@compute` — or store a serializable form of it (an id, an ISO string) and rebuild the object where it is used.",
   },
-  RMD033: {
+  RMD034: {
     severity: "warning",
     title: "State written during create or mount is not carried to the client",
     fix: "`@create` and `@mount` do not run again on the client: hydration adopts the server's DOM and restores state from the blob. So a value computed there is server-only unless it is `@state` (which is serialized) or marked `@persist`. Mark it `@persist` if the client needs the server's answer, or move the work to somewhere that runs on both sides.",
   },
-  RMD034: {
+  RMD035: {
     severity: "warning",
     title: "The client's hook tree does not match the server's",
     fix: "State is restored by position, so the two sides have to build the same hooks in the same order. A hook created behind a condition — `if (isServer) this.use(…)` — or a `this.use()` inside a branch makes the counts differ, and the state after it lands on the wrong hook or nowhere. Call every `this.use()` unconditionally, at the top of the class.",
   },
-  RMD035: {
+  RMD036: {
     severity: "error",
     title: "The state blob could not be read",
     fix: "The component starts from its initial values instead of the server's, so the page can differ from what was rendered and RMD007 usually follows. The blob is written into the markup, so this means it was altered on the way: HTML rewritten by a proxy or an extension, a truncated response, or markup that was manually edited. Compare what the server sent with what arrived before looking anywhere else.",
   },
-  RMD036: {
+  RMD037: {
     severity: "error",
     title: "An object among JSX children that is not markup",
     fix: "It is dropped, so the page renders without it. Almost always a value that was meant to be read from rather than rendered — a whole object where one of its fields belongs (`{user}` instead of `{user.name}`), a Promise that was never awaited, or a `list()` descriptor used as a child rather than returned. Render a string, a number, a vnode, or a list through `list()`.",
   },
-  RMD037: {
+  RMD038: {
     severity: "error",
     title: "A `@watchProp` selector threw",
     fix: "The selector returns `undefined` so the app keeps running, which means the watcher sees a change that is not one. It almost always reads through something absent, so guard the path as you drill into it — `p.foo?.[5]?.bar`. A selector is called on every props change and must be total: no assertions, no lookups that can fail.",
   },
-  RMD038: {
+  RMD039: {
     severity: "warning",
     title: "`class` where `className` was meant",
     fix: "Ramonda reads `className`, so `class` is passed through to the element as an unknown attribute and the styling it names never applies. Rename it. This is the one place the JSX deliberately differs from HTML, because `class` is a reserved word in the object literal a JSX factory receives.",
   },
-  RMD039: {
-    severity: "error",
-    title: "More than one `@shouldUpdateOnPropsChange`",
-    fix: 'There can only be one answer to "take these props?", so the last decorated method wins and the others never run — a gate that looks present and is not. Remove the extras and combine their conditions into one method.',
-  },
   RMD040: {
+    severity: "error",
+    title: "More than one `@ShouldUpdateOnPropsChange` on one class",
+    fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. The one that decides is the one written FURTHEST from the class: class decorators are applied bottom-up, so the lower declaration writes the rule and the upper one overwrites it. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
+  },
+  RMD041: {
     severity: "warning",
     title: "A listener with no target",
     fix: "The handler is never attached, so the event it waits for cannot arrive. The selector matched nothing at the moment the listener was set up, which usually means the element is rendered conditionally or arrives later — attach to the host and let the event bubble, or move the listener to where the element certainly exists.",
   },
-  RMD041: {
+  RMD042: {
     severity: "warning",
     title: "The default host cannot be the direct target of this event",
     fix: '`<ramonda-host>` is `display: contents`, so it generates no box: events that bubble from children still reach it, but anything tied to a box — pointer position, hover, focus on the host itself — never will. Give the component a real host tag with `@Host("div")` if the event needs one.',
   },
-  RMD042: {
+  RMD043: {
     severity: "warning",
     title: "A `<meta>` with nothing to identify it",
     fix: "`Head` matches tags it has already written so an update replaces rather than appends, and a `<meta>` is matched by `name`, `property` or `http-equiv`. One with none of them cannot be found again, so it would be added on every update — it is skipped instead. Give it whichever of the three describes it.",
   },
-  RMD043: {
+  RMD044: {
     severity: "error",
     title: "An unknown element type in JSX",
     fix: "A tag has to be a string, a component class, or — for the one unsupported case — a function. This was none of them, so an empty host is rendered in its place and whatever it was meant to be is missing. It is usually a value used where a tag belongs: `<{Thing} />` rather than `<Thing />`, an object read off a map with the wrong key, or a component that failed to import and arrived as undefined.",

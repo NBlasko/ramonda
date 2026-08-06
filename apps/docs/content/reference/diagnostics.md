@@ -738,12 +738,40 @@ component's host element is what wraps the inner rows.
 
 TypeScript rejects all of this at the call site; this fires when the build has no types.
 
+## RMD032 — More than one `@catchError` on a component
+
+```tsx expect-error
+@Host("div")
+class Panel extends Component {
+  @catchError logIt(e: unknown) { report(e); }
+  @catchError showFallback() { this.failed = true; }   // reported: the first never runs
+  render() { … }
+}
+```
+
+A component has one answer to "who handles an error from below?". The last `@catchError` declared is
+the one that gets it; the others never run, and nothing says so — you read a handler that is dead.
+
+Keep one, and let it decide. It receives the error, and returning `false` **declines** it, so the
+next component above with a handler takes over:
+
+```tsx
+@catchError handle(e: unknown) {
+  // Not mine — let the boundary above have it.
+  if (!(e instanceof RangeError)) return false;
+  this.failed = e.message;
+}
+```
+
+A **subclass** declaring its own is not this. That is an override: the subclass's handler replaces
+the base's, which is how a specialised boundary is written, and it is not reported. This fires only
+for two declarations on the same class.
 ## RMD026 — retired
 
 Superseded by the full fix for the ambiguity it reported, which removed the case rather than
 describing it.
 
-## RMD032 — State that cannot cross to the client
+## RMD033 — State that cannot cross to the client
 
 ```tsx
 @state formatter = new Intl.NumberFormat("sr-RS");   // reported
@@ -758,7 +786,7 @@ skipped during hydration, or in a [`@compute`](/concepts/compute). Where the ser
 needed, store a serializable form of it — an id, an ISO string — and rebuild the object where it is
 used.
 
-## RMD033 — State written during create or mount is not carried to the client
+## RMD034 — State written during create or mount is not carried to the client
 
 `@create` and `@mount` do not run again on the client: hydration adopts the server's DOM and restores
 state from the blob. A value computed in either is therefore server-only unless it is `@state`, which
@@ -767,7 +795,7 @@ is serialized, or marked `@persist`.
 Mark it `@persist` if the client needs the server's answer. If the work is cheap and deterministic,
 move it somewhere that runs on both sides instead. See [hydration mismatches](/ssr/mismatches).
 
-## RMD034 — The client's hook tree does not match the server's
+## RMD035 — The client's hook tree does not match the server's
 
 State is restored by **position**, so both sides have to build the same hooks in the same order. A
 `this.use()` behind a condition — `if (isServer)`, a feature flag, a branch on props — makes the
@@ -776,7 +804,7 @@ counts differ, and the state after it lands on the wrong hook or nowhere at all.
 Call every `this.use()` unconditionally, at the top of the class. A hook that should do nothing is
 still a hook that exists; give it options that make it idle rather than skipping it.
 
-## RMD035 — The state blob could not be read
+## RMD036 — The state blob could not be read
 
 The component starts from its initial values instead of the server's, so the page can differ from what
 was rendered — [`RMD007`](#rmd007-server-and-client-rendered-different-output) usually follows.
@@ -785,7 +813,7 @@ The blob is written into the markup, so this means it was altered on the way: HT
 proxy or a browser extension, a truncated response, or markup edited by hand. Compare what the server
 sent with what arrived before looking anywhere else in the app.
 
-## RMD036 — An object among JSX children that is not markup
+## RMD037 — An object among JSX children that is not markup
 
 ```tsx
 <p>{user}</p>          {/* reported, and dropped */}
@@ -798,7 +826,7 @@ descriptor passed as a child instead of returned.
 
 Render a string, a number, a vnode, or a list through [`list()`](/lists).
 
-## RMD037 — A `@watchProp` selector threw
+## RMD038 — A `@watchProp` selector threw
 
 The selector returns `undefined` so the app keeps running, which means the watcher now sees a change
 that is not one.
@@ -810,7 +838,7 @@ lookups that can fail.
 The console line carries the error the selector threw, stack included, which is what names the failing
 path. A record carries its message as text instead — see [what a record may hold](#capturing-them).
 
-## RMD038 — `class` where `className` was meant
+## RMD039 — `class` where `className` was meant
 
 Ramonda reads `className`, so `class` is passed through as an unknown attribute and the styling it
 names never applies.
@@ -821,14 +849,26 @@ is a reserved word in the object a JSX factory receives.
 Reported once per component and tag, so converting a codebase gets one report per place rather than one
 for the first `class` and silence for the rest.
 
-## RMD039 — More than one `@shouldUpdateOnPropsChange`
+## RMD040 — More than one `@ShouldUpdateOnPropsChange` on one class
 
-There can only be one answer to "take these props?", so the last decorated method wins and the others
-never run — a gate that looks present and is not.
+```tsx expect-error
+@ShouldUpdateOnPropsChange((_self, previous, next) => next.v !== previous.v)   // this one decides
+@ShouldUpdateOnPropsChange(() => false)                                       // never consulted
+@Host("b")
+class Gated extends Component<{ v: number }> { render() { … } }
+```
 
-Remove the extras and combine their conditions into one method.
+There can only be one answer to "take these props?", so one of them decides and the others never run —
+a gate that looks present and is not.
 
-## RMD040 — A listener with no target
+**The one that decides is the one written furthest from the class**, which reads backwards: class
+decorators are applied bottom-up, so the lower declaration writes the rule and the upper one overwrites
+it. Remove the extras and combine their conditions into one callback.
+
+A **subclass** declaring its own is not this. That is an override — the ordinary way to specialise the
+rule — and it is silent. This fires only for two applications on the same class.
+
+## RMD041 — A listener with no target
 
 The handler is never attached, so the event it waits for cannot arrive. The selector matched nothing
 at the moment the listener was set up, which usually means the element is rendered conditionally or
@@ -837,7 +877,7 @@ arrives later.
 Attach to the host and let the event bubble, or move the listener to where the element certainly
 exists.
 
-## RMD041 — The default host cannot be the direct target of this event
+## RMD042 — The default host cannot be the direct target of this event
 
 `<ramonda-host>` is `display: contents`, so it generates no box. Events that bubble from children
 still reach it; anything tied to a box — pointer position, hover, focus on the host itself — never
@@ -846,7 +886,7 @@ will.
 Give the component a real host tag with `@Host("div")` if the event needs one. See
 [one tag, one element](/why/one-element).
 
-## RMD042 — A `<meta>` with nothing to identify it
+## RMD043 — A `<meta>` with nothing to identify it
 
 ```tsx
 // Skipped. Nothing identifies it, so an update could only append a second copy.
@@ -868,7 +908,7 @@ Reported once per set of fields the tag has, rather than once per tag: a `conten
 page description is a different string on every navigation, and one report for each of them would say
 nothing the first did not.
 
-## RMD043 — An unknown element type in JSX
+## RMD044 — An unknown element type in JSX
 
 A tag has to be a string, a component class, or — for the one unsupported case — a function. This was
 none of them, so an empty host renders in its place and whatever it was meant to be is missing.

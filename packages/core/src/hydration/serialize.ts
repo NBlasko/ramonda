@@ -24,13 +24,13 @@ function componentName(instance: SerializableInstance): string {
 
 function warnIfNotSerializable(name: string, key: string, value: unknown): void {
   if (typeof value === "function") {
-    diagnose("RMD032", `${name}.${key}`, `<${name}> state "${key}" is a function.`, { component: name, key });
+    diagnose("RMD033", `${name}.${key}`, `<${name}> state "${key}" is a function.`, { component: name, key });
     return;
   }
   try {
     JSON.stringify(value);
   } catch (e) {
-    diagnose("RMD032", `${name}.${key}`, `<${name}> state "${key}" is not JSON-serializable.`, {
+    diagnose("RMD033", `${name}.${key}`, `<${name}> state "${key}" is not JSON-serializable.`, {
       component: name,
       key,
       reason: e instanceof Error ? e.message : String(e),

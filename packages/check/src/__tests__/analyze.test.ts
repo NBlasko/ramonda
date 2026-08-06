@@ -115,3 +115,55 @@ describe("function literals held in class fields", () => {
     }
   });
 });
+
+/**
+ * Single-use decorators declared twice on one class.
+ *
+ * The framework reports what it can once a component mounts (RMD032 for `@catchError`), which is
+ * exactly the gap this package exists for: a class behind a condition nobody clicked ships with the
+ * fault and nothing has said a word. The line that matters is the same one as everywhere else here
+ * — a SUBCLASS declaring its own is an override, not a duplicate, and reporting it would be advice
+ * to delete the line doing the work.
+ */
+describe("single-use decorators declared twice", () => {
+  const found = () => run("duplicate-decorators").duplicateDecorators;
+
+  test("reports a method decorator and a class decorator, once each", () => {
+    expect(found().map((d) => `${d.component}.@${d.decorator}x${d.count}`)).toEqual([
+      "Twice.@catchError x2".replace(" ", ""),
+      "GatedTwice.@ShouldUpdateOnPropsChange x2".replace(" ", ""),
+    ]);
+  });
+
+  test("a subclass declaring its own is silent, and so is one of each", () => {
+    const names = found().map((d) => d.component);
+    expect(names).not.toContain("Sub");
+    expect(names).not.toContain("Base");
+    expect(names).not.toContain("Fine");
+  });
+
+  test("the analyzer walks the tree under the AUTOMATIC jsx runtime", () => {
+    /**
+     * The proof that this fixture's configuration is understood, not merely tolerated.
+     *
+     * Every fixture used to be on the classic runtime, naming a factory the framework does not
+     * export (`jsxFactory: "h"`), so nothing had ever run against `jsx: "react-jsx"` +
+     * `jsxImportSource` — which is what a real project has. They are all on it now, and this is the
+     * assertion that says so: finding a missing provider needs the JSX tree, and the PATH is what
+     * says the walk really happened. An analyzer that could not see the elements would report
+     * nothing at all.
+     */
+    const { issues } = run("duplicate-decorators");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Reader");
+    expect(issues[0].context).toBe("Theme");
+    expect(issues[0].path).toEqual(["App", "Reader"]);
+  });
+
+  test("it points at the declaration", () => {
+    const first = found()[0];
+    expect(first.file).toMatch(/duplicate-decorators\/app\.tsx$/);
+    expect(first.line).toBeGreaterThan(0);
+    expect(first.column).toBeGreaterThan(0);
+  });
+});

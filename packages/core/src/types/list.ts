@@ -34,7 +34,19 @@ interface ListAs<T> extends ListBase<T> {
 }
 
 interface ListRender<T> extends ListBase<T> {
-  /** Builds the vnode for one item. Prefer `as` when the item maps to a component. */
+  /**
+   * Builds the vnode for one item. Prefer `as` when the item maps to a component.
+   *
+   * `index` is the item's CURRENT position: declare the parameter and a row that
+   * moves is rebuilt, so the number it shows always matches where the row is.
+   * That costs a mapper call per moved row, which is why declaring the parameter
+   * is what asks for it — a `render: (item) => …` skips untouched rows through a
+   * reorder, and is the one to write when the position is not on screen.
+   *
+   * It is read from the parameter LIST, so a mapper that hides its arity —
+   * `(item, index = 0)`, `(...args)` — opts out of the check and can show a stale
+   * position after a reorder.
+   */
   render: (item: T, index: number) => VNode;
   as?: never;
 }

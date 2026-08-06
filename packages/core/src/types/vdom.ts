@@ -191,7 +191,6 @@ export declare class BaseComponent<P = DefaultProps> {
   public [COMPONENT_RUNTIME]: ComponentRuntime;
 
   public [INTERNAL_HOOKS]?: (() => void)[];
-  public catchError?(e?: unknown): void;
 
   public props: RenderableProps<P>;
 

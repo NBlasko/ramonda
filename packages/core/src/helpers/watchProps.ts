@@ -30,7 +30,7 @@ function readWatchedProps(entry: WatchPropEntry): unknown {
   };
 
   // A component carries COMPONENT_RUNTIME and a hook carries HOOK_RUNTIME, which is
-  // the same test `@shouldUpdateOnPropsChange` uses to tell the two apart.
+  // the same test `@ShouldUpdateOnPropsChange` uses to tell the two apart.
   const componentRuntime = owner[COMPONENT_RUNTIME];
   if (componentRuntime) return componentRuntime.rawProps;
   return owner[HOOK_RUNTIME]?.rawProps;
@@ -61,7 +61,7 @@ function safeSelect(entry: WatchPropEntry, props: unknown): unknown {
        * that alive. So `reason` is the text a record can carry and `error` is for the console, which
        * has held live objects all along.
        */
-      diagnose("RMD037", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
+      diagnose("RMD038", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
         component: ownerName(entry),
         reason: e instanceof Error ? e.message : String(e),
         error: e,

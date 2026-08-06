@@ -77,7 +77,7 @@ export function lintUnpersistedState(instance: object, before: Map<string, PropS
     if (!changed) continue;
 
     diagnose(
-      "RMD033",
+      "RMD034",
       `${name}.${key}`,
       `<${name}> changed "${key}" during create/mount, and it is neither @state nor @persist.`,
       {

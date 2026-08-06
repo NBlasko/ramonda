@@ -40,7 +40,7 @@ function restoreNode(instance: RestorableInstance, node: SerializedNode): void {
 
   if (__DEV__ && childHooks.length !== serializedHooks.length) {
     diagnose(
-      "RMD034",
+      "RMD035",
       instanceName(instance),
       `<${instanceName(instance)}> built ${childHooks.length} hook(s) and the server serialized ${serializedHooks.length}.`,
       { component: instanceName(instance), client: childHooks.length, server: serializedHooks.length },

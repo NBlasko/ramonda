@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
-import { Host, onDocument, onElement, onWindow, shouldUpdateOnPropsChange, state } from "../base/decorators";
+import { Host, onDocument, onElement, onWindow, ShouldUpdateOnPropsChange, state } from "../base/decorators";
 
 /**
  * Three decorators are for components only, and each is refused twice: by the TYPE, and — for a
@@ -46,27 +46,19 @@ describe("refused at runtime, with a message that says what to do", () => {
     vi.restoreAllMocks();
   });
 
-  test("@shouldUpdateOnPropsChange — a hook has no parent-driven prop update to gate", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-
-    class Gated extends Hook {
+  test("@ShouldUpdateOnPropsChange — a hook has no parent-driven prop update to gate", () => {
+    // A class decorator, so this lands when the class is DEFINED rather than when
+    // something first renders it.
+    expect(() => {
       // @ts-expect-error the type refuses it too; this checks the untyped build.
-      @shouldUpdateOnPropsChange
-      gate() {
-        return true;
+      @ShouldUpdateOnPropsChange(() => true)
+      class Gated extends Hook {
+        gate() {
+          return true;
+        }
       }
-    }
-
-    @Host("div")
-    class Owner extends Component {
-      h = this.use(Gated);
-      render() {
-        return <span>x</span>;
-      }
-    }
-
-    await expect(getDOM<Owner>(<Owner />)).rejects.toThrow(/@shouldUpdateOnPropsChange is for components, not hooks/);
-    vi.restoreAllMocks();
+      return Gated;
+    }).toThrow(/@ShouldUpdateOnPropsChange is for components, not hooks/);
   });
 });
 

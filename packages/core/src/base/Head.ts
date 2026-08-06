@@ -228,7 +228,7 @@ export class Head extends Hook<HeadOptions> {
         // Keyed by which fields the tag HAS, not by what is in them. A `<meta>` whose `content` is
         // a page description changes on every navigation, and a key holding that value would report
         // again for every one of them — the same fault, announced forever.
-        diagnose("RMD042", Object.keys(tag).sort().join(","), `Skipped: ${JSON.stringify(tag)}`, {
+        diagnose("RMD043", Object.keys(tag).sort().join(","), `Skipped: ${JSON.stringify(tag)}`, {
           fields: Object.keys(tag).sort().join(","),
         });
       }

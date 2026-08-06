@@ -52,10 +52,36 @@ export interface ArrowFieldIssue {
   readsThis: boolean;
 }
 
+/**
+ * A decorator that answers a question with ONE answer, declared more than once on the same class.
+ *
+ * `@catchError` ("who handles an error from below?"), `@Host` ("which element am I?"),
+ * `@ShouldUpdateOnPropsChange` ("take these props?") and `@StableProps` are each single. Declared
+ * twice, the last one wins and the others never run — silently, and the one being read may be the
+ * dead one. The framework reports what it can at runtime (RMD032 for `@catchError`), but only once
+ * the component actually mounts; a class behind a condition nobody clicked ships with the fault.
+ *
+ * A SUBCLASS declaring its own is not this. That is an override — the way a role is specialised —
+ * so only declarations on one class body are counted.
+ */
+export interface DuplicateDecoratorIssue {
+  /** The class the duplicates are on. */
+  component: string;
+  /** The decorator's name, without the `@`. */
+  decorator: string;
+  /** How many times it appears on this class. */
+  count: number;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
   arrowFields: ArrowFieldIssue[];
+  /** Single-use decorators declared twice on one class — see `DuplicateDecoratorIssue`. */
+  duplicateDecorators: DuplicateDecoratorIssue[];
   counts: { components: number; contexts: number; roots: number };
   /** What the analyzer could not resolve, so a reader knows where it stayed silent. */
   notes: string[];
@@ -96,6 +122,18 @@ interface ComponentNode {
 
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
 
+/**
+ * The decorators that answer a question with one answer. Counted per CLASS BODY, so a subclass
+ * declaring its own — an override — is not a duplicate.
+ */
+const SINGLE_USE = new Set(["catchError", "Host", "ShouldUpdateOnPropsChange", "StableProps"]);
+
+/** The name of a decorator, whether it is bare (`@catchError`) or called (`@Host("div")`). */
+function decoratorName(decorator: ts.Decorator): string | undefined {
+  const expression = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
+  return ts.isIdentifier(expression) ? expression.text : undefined;
+}
+
 export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const { program, notes } = createProgram(tsconfigPath);
   const checker = program.getTypeChecker();
@@ -110,6 +148,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   const components = new Map<string, ComponentNode>();
   const arrowFields: ArrowFieldIssue[] = [];
+  const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const classSymbolToName = new Map<ts.Symbol, string>();
   const roots = new Set<string>();
   /** Where a hook was used, so a context it carries is reported at the use site. */
@@ -135,6 +174,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         if (node2) {
           readClassBody(node, node2);
           readArrowFields(node, node2.name);
+          readDuplicateDecorators(node, node2.name);
         }
       }
       collectRoot(node);
@@ -148,6 +188,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   return {
     issues,
     arrowFields,
+    duplicateDecorators,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -425,6 +466,28 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * call — `debounce(this.save, 200)`, `memoize(fn)` — is left alone, because a wrapper has nowhere
    * else to live and the value is a function only after the call has run.
    */
+  function readDuplicateDecorators(cls: ts.ClassDeclaration, owner: string): void {
+    const seen = new Map<string, { count: number; at: ts.Node }>();
+
+    const count = (node: ts.Node): void => {
+      for (const decorator of ts.getDecorators(node as ts.HasDecorators) ?? []) {
+        const name = decoratorName(decorator);
+        if (name === undefined || !SINGLE_USE.has(name)) continue;
+        const previous = seen.get(name);
+        if (previous) previous.count += 1;
+        else seen.set(name, { count: 1, at: decorator });
+      }
+    };
+
+    count(cls);
+    for (const member of cls.members) count(member);
+
+    for (const [decorator, { count: times, at }] of seen) {
+      if (times < 2) continue;
+      duplicateDecorators.push({ component: owner, decorator, count: times, ...positionOf(at) });
+    }
+  }
+
   function readArrowFields(cls: ts.ClassDeclaration, owner: string): void {
     for (const member of cls.members) {
       if (!ts.isPropertyDeclaration(member) || !member.initializer) continue;

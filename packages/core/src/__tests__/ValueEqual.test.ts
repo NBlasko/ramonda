@@ -58,6 +58,29 @@ describe("valueEqual", () => {
     expect(valueEqual(deep("one"), deep("two"), 5)).toBe(false);
   });
 
+  test("the width bound is for arrays, and a wide RECORD is still compared", () => {
+    /**
+     * The asymmetry, pinned so it stays a decision rather than an oversight — the
+     * header once claimed the value was "bounded in both directions", which is not what
+     * the code did.
+     *
+     * A wide array answers "different" at the bound; a wide object is walked. Capping the
+     * object too would call a form's 100-field record different on every render, hand
+     * `@StableProps` a fresh reference and re-render the child every time — the thing it
+     * exists to prevent. Measured, a 100-key object compares in 3.33 µs, which is not a
+     * cost worth that.
+     */
+    const record = (n: number, at = -1, what: unknown = null) =>
+      Object.fromEntries(Array.from({ length: n }, (_, i) => [`f${i}`, i === at ? what : i]));
+
+    expect(valueEqual(record(100), record(100))).toBe(true);
+    expect(valueEqual(record(100), record(100, 77, "CHANGED"))).toBe(false);
+
+    // The array of the same width does not get that treatment, by design.
+    expect(valueEqual(row(60), row(60))).toBe(false);
+    expect(valueEqual(row(50), row(50))).toBe(true);
+  });
+
   test("anything that is not a plain object or an array compares by identity", () => {
     // A Date, a File, a class instance: one comparison rather than a walk of its internals.
     const when = new Date(0);

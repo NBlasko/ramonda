@@ -2,16 +2,16 @@
 "@ramonda/core": patch
 ---
 
-`RMD042` and `RMD043`, and a reason written beside every message that keeps no code
+`RMD043` and `RMD044`, and a reason written beside every message that keeps no code
 
-Two more misuses become codes. `RMD042` — a `<meta>` passed to `Head` with no `name`, `property` or
+Two more misuses become codes. `RMD043` — a `<meta>` passed to `Head` with no `name`, `property` or
 `http-equiv`, which cannot be matched again and so would be appended on every update; it is skipped,
-and now says so with a fix. `RMD043` — a tag that is neither a string, a component class nor a
+and now says so with a fix. `RMD044` — a tag that is neither a string, a component class nor a
 function, which renders an empty host where something was meant to be.
 
 **A tag that is `undefined` renders that empty host rather than throwing**, which is the fix half of
-`RMD043` and matters in production, where there is no report at all. `<Thing />` whose import failed
-arrives at the JSX factory as `undefined` — the first case `RMD043` names — and the factory read
+`RMD044` and matters in production, where there is no report at all. `<Thing />` whose import failed
+arrives at the JSX factory as `undefined` — the first case `RMD044` names — and the factory read
 `.__isComponent` off it, so it raised a `TypeError` from inside itself and took down the whole render
 for a fault it is written to survive. One missing element now costs one element.
 
