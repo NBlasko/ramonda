@@ -95,7 +95,8 @@ export function drainSync(maxRounds = 50): void {
 
   throw new Error(
     `[Ramonda] flushSync gave up after ${maxRounds} rounds: rendering kept scheduling more work without settling. ` +
-      `Usually an @effect or @mount writing state that its own render reads back. ` +
+      `Usually a @mount, an @updated or a subscription (@onElement, @interval, …) writing state ` +
+      `that its own render reads back. ` +
       `In a development build the cause is reported by name (RMD009).`,
   );
 }
@@ -300,7 +301,8 @@ function processTask() {
             `[Ramonda] Update loop: one update rebuilt components ${MAX_BUILDS_PER_DRAIN} times without settling, ` +
               `so Ramonda stopped it rather than let the tab freeze. The last component in the loop was <${name} />, ` +
               `though the cause may be any component it updates. Rendering wrote state that scheduled another render, ` +
-              `forever — usually two @effect methods writing what the other reads, or a write inside render(). ` +
+              `forever — usually two subscriptions or @updated methods writing what the other reads, ` +
+              `or a write inside render(). ` +
               `Run this path in a development build: it reports the exact component (RMD009).`,
           );
         }

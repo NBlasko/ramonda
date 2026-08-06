@@ -49,7 +49,7 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
         dep[detach](eff.id);
       }
       const cleanup = eff.cleanup;
-      if (cleanup) runCleanup("an @effect cleanup", component, cleanup);
+      if (cleanup) runCleanup("a subscription cleanup", component, cleanup);
     }
   }
 
