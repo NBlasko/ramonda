@@ -61,8 +61,15 @@ this.items = [...this.items, next];  // ✓ a new array
 this.user = { ...this.user, name };  // ✓ a new object
 ```
 
-In development, changing an array or object in place is caught and reported as
-`RMD005`. In the finished app it is silent — which is exactly why the check exists.
+In development, changing an **array** in place is caught and reported as `RMD005`.
+An object is not: `this.user.name = "x"` is the same silent no-op, with nothing
+said about it. An array can be watched because the mutation goes through a method
+— `push`, `splice`, `sort` — and a property assignment on an object has no such
+seam without wrapping every object the state hands out.
+
+So the rule is the one above rather than the report: **replace, do not change in
+place.** The report is a help where it can be given, not the boundary of what goes
+wrong. In the finished app both are silent, which is why the rule matters.
 
 ## Don't change state while rendering
 

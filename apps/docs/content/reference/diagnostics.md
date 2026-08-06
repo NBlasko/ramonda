@@ -162,6 +162,12 @@ is the same array.
 
 Replace it: `this.items = [...this.items, x]`.
 
+**Arrays only.** A mutation goes through a method there — `push`, `splice`, `sort` — which is a seam
+the framework can watch. `this.user.name = "x"` is a property assignment, with no such seam, so it is
+the same silent no-op and nothing reports it. Replace the object too:
+`this.user = { ...this.user, name: "x" }`. The rule is what to follow; this message is a help where
+one can be given, not the boundary of what goes wrong.
+
 ## RMD006 — Timer still running after unmount
 
 A `setInterval` or `setTimeout` outlived its component, so it will fire into something that no

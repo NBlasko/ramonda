@@ -82,7 +82,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD005: {
     severity: "error",
     title: "Array in state mutated in place",
-    fix: "A signal fires when it is assigned a new value, not when the value it holds changes inside. Replace the array instead: `this.items = [...this.items, next]`, `this.items = this.items.filter(...)`. Reassigning the same array after mutating it does not help either — the signal compares references and sees no change.",
+    fix: "A signal fires when it is assigned a new value, not when the value it holds changes inside. Replace the array instead: `this.items = [...this.items, next]`, `this.items = this.items.filter(...)`. Reassigning the same array after mutating it does not help either — the signal compares references and sees no change. This report covers ARRAYS only: a mutation goes through a method there (`push`, `splice`, `sort`), which can be watched, while `this.user.name = 'x'` is a property assignment with no such seam. An object mutated in place is the same silent no-op and nothing reports it, so the rule — replace, do not change in place — is what to follow rather than the absence of this message.",
   },
   RMD006: {
     severity: "error",
