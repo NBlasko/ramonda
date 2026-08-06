@@ -8,6 +8,10 @@ import { installPurityGuard } from "./debug/purityGuard";
 import { installClientRequestScope } from "./hydration/requestContext";
 export { Component } from "./base/Component";
 export { Hook } from "./base/Hook";
+// What a `use()` says ABOUT a hook, in its third argument. Type-only: the shape is structural, so an
+// inline `{ label: "Sign Up" }` needs nothing imported — this is for naming it, in a helper that
+// builds one or a wrapper that passes it along.
+export type { HookMeta } from "./types/HookTypes";
 export { createContext, type ContextOptions } from "./base/Context";
 export { AsyncLoad } from "./base/AsyncLoad";
 export { ErrorBoundary } from "./base/ErrorBoundary";

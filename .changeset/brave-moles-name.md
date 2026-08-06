@@ -23,6 +23,10 @@ A propless hook takes the placeholder: `this.use(Poll, undefined, { label: "pric
 overload taking metadata in the props position would be ambiguous, because `{ label: "…" }` is a
 perfectly good props bag for some hook somewhere.
 
+The shape is published as `HookMeta`. An inline `{ label: "Sign Up" }` needs nothing imported, since the
+argument is structural — the name is there for a helper that builds one, or a wrapper that passes one
+along.
+
 The metadata is parked on the instance under `Symbol.for("ramonda.hook.meta")` and read from there by
 core's own inspector and by `@ramonda/form`'s panel — a documented key rather than an import, so neither
 package depends on the other to pass a name along. The same contract shape as the diagnostics sink.

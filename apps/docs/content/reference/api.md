@@ -117,7 +117,12 @@ once and so never produces the update it reacts to.
 `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
 `DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
 `AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
-`SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps`
+`SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps` · `HookMeta`
+
+`HookMeta` is the third argument to `this.use()` — what a `use()` says **about** a hook rather than
+what it passes into one. One field today, `label`, which devtools adds to the hook's class name:
+`Form (Sign Up)`. Development-only, and the hook never sees it. See
+[naming a hook](/hooks#naming-one-for-devtools).
 
 ---
 
