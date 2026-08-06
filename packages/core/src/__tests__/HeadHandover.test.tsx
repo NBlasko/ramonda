@@ -116,6 +116,67 @@ describe("the head when one page replaces another", () => {
     expect(document.head.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
   });
 
+  test("a wrapper between two Heads changes nothing", async () => {
+    /**
+     * The reason the chain is built from `Head`s and not from component depth.
+     *
+     * Component depth counts everything — a guard, a provider, a presentational
+     * shell — so wrapping a route in something that has nothing to do with the head
+     * would have moved it a level down and let it beat a page it is not actually
+     * nested under. Which page owns the title would have been decided by incidental
+     * nesting, and adding a wrapper to one branch would silently change the answer
+     * for the other.
+     *
+     * Each `Head` leaves itself on its own CONTEXT, and a component's context is
+     * `Object.create(parentContext)`. A component that publishes nothing writes
+     * nothing, so a descendant inherits the nearest `Head` above it however many
+     * components apart the two are.
+     */
+    @Host("div")
+    class Deep extends Component {
+      head = this.use(Head, () => ({ description: "the deep page" }));
+      render() {
+        return <p>deep</p>;
+      }
+    }
+
+    // Three components with no Head at all between the layout and the page.
+    @Host("div")
+    class Guard extends Component {
+      render() {
+        return <Shell />;
+      }
+    }
+    @Host("div")
+    class Shell extends Component {
+      render() {
+        return <Frame />;
+      }
+    }
+    @Host("div")
+    class Frame extends Component {
+      render() {
+        return <Deep />;
+      }
+    }
+
+    @Host("div")
+    class Layout extends Component {
+      head = this.use(Head, () => ({ title: "Layout", description: "the layout" }));
+      render() {
+        return <Guard />;
+      }
+    }
+
+    const app = await getDOM(<Layout />);
+    await app.settle();
+
+    // The page below wins the description; the layout still supplies the title it
+    // alone sets. Exactly what it would be with the wrappers taken out.
+    expect(description()!.getAttribute("content")).toBe("the deep page");
+    expect(document.title).toBe("Layout");
+  });
+
   test("what the last page owned still goes when nothing replaces it", async () => {
     @Host("div")
     class Page extends Component {

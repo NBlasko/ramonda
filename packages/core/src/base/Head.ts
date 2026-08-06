@@ -1,4 +1,5 @@
 import { Hook } from "./Hook";
+import { GLOBAL_RUNTIME } from "../core/runtime";
 import { create, destroy, watchProp } from "./decorators";
 import { HEAD_ATTR } from "../helpers/constants";
 
@@ -102,11 +103,26 @@ export interface HeadOptions {
  * `resetHeadRegistry` clears it at the request boundary for the case where one
  * document is reused.
  *
- * ## Resolution
+ * ## Resolution — a chain of `Head`s, not of components
  *
- * Entries are registered in `@create` order, which is parent→child — so a layout
- * sets a default, a route inside it overrides the title, and the deeper one wins by
- * being later. Per tag, later wins; the title is the last one published.
+ * Each `Head` finds the nearest one ABOVE it and hangs off it, so the registry
+ * holds a chain that is resolved outermost-first: a layout sets a default, a route
+ * inside it overrides the title, and per tag the deeper one wins.
+ *
+ * "Above" is read off the CONTEXT, which is what keeps components that have no
+ * `Head` out of it entirely. Component depth would have counted them, and then
+ * wrapping a route in a guard, a provider or a presentational shell would have moved
+ * it a level down and let it beat a page it is not nested under — which page owns
+ * the title decided by incidental nesting. A component's context is
+ * `Object.create(parentContext)`, so a `Head` writing itself onto its own context is
+ * inherited by every descendant however many wrappers apart they are, and by no
+ * sibling: two branches get two objects off the same ancestor.
+ *
+ * Where two `Head`s DO share a parent, the later one to publish takes the slot and
+ * the branch that was there goes with it — including everything its children
+ * published. That is a rule rather than a derivation, and it is the one that makes a
+ * route replacing its sibling discard the old branch whole instead of waiting for
+ * each of its children to be destroyed in an order nothing guarantees.
  *
  * Applying is an **upsert**, keyed by what identifies the tag (`name` / `property`
  * / `httpEquiv` for meta, `rel`+`href` for link), so hydration finds the server's
@@ -160,13 +176,37 @@ export class Head extends Hook<HeadOptions> {
     this.publish();
   }
 
+  /**
+   * Joins the chain under the nearest `Head` above, and leaves itself on the
+   * context for the ones below.
+   *
+   * Taking the slot means the branch that held it is gone — including everything
+   * ITS children published, since they hang off it. A route replacing its sibling
+   * therefore discards the old branch whole, rather than waiting for each of its
+   * children's `@destroy` to run in an order nothing guarantees.
+   *
+   * Done in `@create` rather than the constructor because the context a component
+   * writes to must be its OWN, and because its children are rendered afterwards —
+   * which is exactly when they need to find this.
+   */
   private publish(): void {
     if (this.entry !== undefined) return;
 
     const registry = registryForDocument();
+    const context = this[GLOBAL_RUNTIME].context as Record<symbol, unknown>;
+    const parent = context[HEAD_PARENT] as HeadEntry | undefined;
+
+    const entry: HeadEntry = { options: this.readOptions(), parent, child: undefined };
+
+    if (parent === undefined) registry.root = entry;
+    else parent.child = entry;
+
+    // An OWN property, so this component's descendants inherit it and its siblings
+    // — which read the same ancestor object — do not.
+    context[HEAD_PARENT] = entry;
+
     this.registry = registry;
-    this.entry = { options: this.readOptions() };
-    registry.entries.push(this.entry);
+    this.entry = entry;
     applyRegistry(registry);
   }
 
@@ -210,12 +250,27 @@ export class Head extends Hook<HeadOptions> {
   @destroy
   retract(): void {
     const registry = this.registry;
-    if (this.entry === undefined || registry === undefined) return;
-
-    const index = registry.entries.indexOf(this.entry);
-    if (index !== -1) registry.entries.splice(index, 1);
+    const entry = this.entry;
     this.entry = undefined;
     this.registry = undefined;
+    if (entry === undefined || registry === undefined) return;
+
+    /**
+     * Only if the slot is still THIS one.
+     *
+     * A page being replaced is destroyed after the page replacing it has published,
+     * so by now the slot may hold the incoming branch — and unlinking then would
+     * take away a head that is live. Comparing the entry rather than trusting the
+     * order is what makes the outcome the same whichever way round they run.
+     */
+    if (entry.parent === undefined) {
+      if (registry.root === entry) registry.root = undefined;
+    } else if (entry.parent.child === entry) {
+      entry.parent.child = undefined;
+    } else {
+      return; // already replaced; the document is the incoming branch's business
+    }
+
     applyRegistry(registry);
   }
 
@@ -230,10 +285,37 @@ export class Head extends Hook<HeadOptions> {
   }
 }
 
-/** One page's contribution, held by the registry and rewritten in place when it changes. */
+/**
+ * One page's contribution, and its place in the chain of `Head`s — not of components.
+ *
+ * `parent` is the nearest `Head` ABOVE this one, and `child` the one live `Head`
+ * below it. A chain rather than a general tree because only one path can be showing
+ * at a time: when two `Head`s share a parent, the later one to publish takes the
+ * slot, and the branch that was there goes with it. That is what makes a route
+ * replacing its sibling discard everything the old branch's children had published,
+ * without waiting for their `@destroy` to run in some particular order.
+ */
 interface HeadEntry {
   options: HeadOptions;
+  parent: HeadEntry | undefined;
+  child: HeadEntry | undefined;
 }
+
+/**
+ * Where a `Head` leaves itself for the `Head`s below it to find.
+ *
+ * On the CONTEXT, which is what makes the chain a chain of `Head`s rather than of
+ * components: a component's context is `Object.create(parentContext)`, so a
+ * descendant inherits whatever an ancestor wrote however many components apart they
+ * are — and a wrapper, a guard or a provider in between is invisible, because it
+ * writes nothing. Component depth would have counted those, so wrapping a route in
+ * anything at all would have changed which page owns the title.
+ *
+ * Two branches get two context objects off the same parent, so neither sees the
+ * other. Sibling isolation is not a rule anything has to enforce here; it is what
+ * prototype inheritance already does.
+ */
+const HEAD_PARENT = Symbol("ramondaHeadParent");
 
 /** A tag the resolved head should contain: the selector that identifies it, and what it says. */
 interface ResolvedTag {
@@ -248,7 +330,8 @@ interface ResolvedTag {
  * it is the ONLY record of which elements belong to Ramonda. No hook holds one.
  */
 interface HeadRegistry {
-  entries: HeadEntry[];
+  /** The outermost `Head`; the rest hangs off it through `child`. */
+  root: HeadEntry | undefined;
   managed: Map<string, Element>;
   /** What the document's title was before any `Head` published, to go back to. */
   originalTitle: string;
@@ -270,7 +353,12 @@ const registries = new WeakMap<Document, HeadRegistry>();
 function registryForDocument(): HeadRegistry {
   let registry = registries.get(document);
   if (registry === undefined) {
-    registry = { entries: [], managed: new Map(), originalTitle: document.title, appliedTitle: undefined };
+    registry = {
+      root: undefined,
+      managed: new Map(),
+      originalTitle: document.title,
+      appliedTitle: undefined,
+    };
     registries.set(document, registry);
   }
   return registry;
@@ -323,14 +411,15 @@ function collectLink(tags: Map<string, ResolvedTag>, tag: LinkTag): void {
 /**
  * The head the entries add up to.
  *
- * In order, so later wins: entries are registered by `@create`, which runs
- * parent→child, so a route nested in a layout overrides it.
+ * Down the chain, so later wins: the outermost `Head` first, then the one below
+ * it, and a route nested in a layout overrides it.
  */
-function resolve(entries: readonly HeadEntry[]): { title: string | undefined; tags: Map<string, ResolvedTag> } {
+function resolve(root: HeadEntry | undefined): { title: string | undefined; tags: Map<string, ResolvedTag> } {
   let title: string | undefined;
   const tags = new Map<string, ResolvedTag>();
 
-  for (const { options } of entries) {
+  for (let entry = root; entry !== undefined; entry = entry.child) {
+    const { options } = entry;
     if (options.title !== undefined) title = options.title;
     if (options.description !== undefined) collectMeta(tags, { name: "description", content: options.description });
     if (options.meta !== undefined) for (const tag of options.meta) collectMeta(tags, tag);
@@ -368,7 +457,7 @@ function elementFor(selector: string, tagName: string): Element {
  * matter whether a page published before or after another retracted.
  */
 function applyRegistry(registry: HeadRegistry): void {
-  const { title, tags } = resolve(registry.entries);
+  const { title, tags } = resolve(registry.root);
 
   for (const [selector, spec] of tags) {
     const element = registry.managed.get(selector) ?? elementFor(selector, spec.tagName);
