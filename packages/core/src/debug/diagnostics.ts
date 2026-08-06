@@ -39,7 +39,8 @@ export type DiagnosticCode =
   | "RMD030"
   | "RMD031"
   | "RMD032"
-  | "RMD033";
+  | "RMD033"
+  | "RMD034";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -211,6 +212,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A list could not identify its items",
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
+  },
+  RMD034: {
+    // error, not warning: the value the reader sees is not the value the app set. Nothing renders,
+    // and the page goes on showing what it showed before.
+    severity: "error",
+    title: "Object in state changed in place",
+    fix: "A signal fires when it is ASSIGNED a new value, not when the value it holds changes inside — so `this.user.name = 'x'` writes into the object the signal already has, nothing compares as different, and nothing re-renders. Replace it instead: `this.user = { ...this.user, name: 'x' }`, and for something nested, rebuild the path: `this.user = { ...this.user, address: { ...this.user.address, city } }`. @ramonda/lens does exactly that with less typing: `this.user = focusOn(this.user).get('address').get('city').set(city)`. Reassigning the same object after changing it does not help either — the signal compares references and sees no change.",
   },
   RMD033: {
     // error, not warning: development stops at it, and in production the handler is rebuilt on every

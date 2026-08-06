@@ -162,11 +162,8 @@ is the same array.
 
 Replace it: `this.items = [...this.items, x]`.
 
-**Arrays only.** A mutation goes through a method there — `push`, `splice`, `sort` — which is a seam
-the framework can watch. `this.user.name = "x"` is a property assignment, with no such seam, so it is
-the same silent no-op and nothing reports it. Replace the object too:
-`this.user = { ...this.user, name: "x" }`. The rule is what to follow; this message is a help where
-one can be given, not the boundary of what goes wrong.
+An object changed in place is the same fault and is reported as
+[RMD034](#rmd034-object-in-state-changed-in-place).
 
 ## RMD006 — Timer still running after unmount
 
@@ -799,6 +796,32 @@ and which handler that was depended on the data, so it could pass every test and
 
 The code is on the thrown error as well as in the log, the way [RMD004](#rmd004-props-mutated-by-the-receiving-component)
 is, so a codebase can be swept for it.
+
+## RMD034 — Object in state changed in place
+
+```tsx expect-error
+this.user.name = "grace";              // reported: nothing renders
+this.user.address.city = "paris";      // reported as `user.address.city`
+```
+
+```tsx
+this.user = { ...this.user, name: "grace" };
+this.user = { ...this.user, address: { ...this.user.address, city: "paris" } };
+```
+
+A signal fires when it is **assigned** a new value, not when the value it holds changes inside. So a
+write into the object the signal already has changes nothing it can compare, nothing re-renders, and
+the page goes on showing what it showed before.
+
+The check wraps lazily: a read returns a guarded child only when something asks for that child, so it
+follows the path a render actually touches. Reading `user.name` costs two proxies whatever the size
+of `user`, and a `Date`, a `Map` or a class instance is left alone — their methods need the real
+receiver.
+
+[`@ramonda/lens`](/lens) is the shorter way to rebuild a path:
+`this.user = focusOn(this.user).get("address").get("city").set(city)`.
+
+The array form of the same fault is [RMD005](#rmd005-array-in-state-mutated-in-place).
 
 # Forms — `RMF`
 

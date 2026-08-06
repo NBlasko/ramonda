@@ -1,24 +1,29 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, Host, state, list } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
- * How far the in-place mutation guard reaches, pinned — because the docs used to
- * claim it reached further.
+ * What the in-place mutation guard covers, and what it costs to cover it.
  *
- * RMD005 hands out a proxy for an ARRAY held in a signal, so `this.items.push(x)`
- * is reported instead of silently doing nothing. An object gets no proxy:
- * `this.user.name = "x"` is the same silent no-op with nothing said about it, and
- * `concepts/state.md` told readers that "changing an array or object in place is
- * caught and reported as RMD005".
+ * A signal fires when it is ASSIGNED a new value. Changing the value it already
+ * holds — `this.items.push(x)`, `this.user.name = "x"` — writes into that value,
+ * so nothing compares as different and nothing re-renders. The page goes on
+ * showing what it showed before, silently.
  *
- * Both halves are asserted here on purpose. The first is the feature; the second
- * is its limit, and it is the one that matters — the day an object guard is added,
- * this test fails, and whoever adds it is sent to the sentence that has to change
- * with it. A limit nobody can see is how documentation drifts.
+ * Arrays were reported (RMD005) and objects were not, which was the asymmetry a
+ * reader could not see: the docs even said both were caught. Objects are reported
+ * now too (RMD034), through a proxy that wraps LAZILY — a `get` returns a guarded
+ * child only when something asks for that child, so the proxy tree follows the
+ * path a render actually reads and nowhere else. Reading `user.name` costs two
+ * proxies whatever the size of `user`.
+ *
+ * The identity tests are not decoration. They are the reason the first version of
+ * this was wrong: a proxy escapes into user code the moment anything copies, and
+ * wrapping an escaped proxy again produces an identity nothing has seen. Measured
+ * before that was fixed: a no-op render moved 200 of 200 list nodes.
  */
-describe("what the in-place mutation guard covers", () => {
+describe("the in-place mutation guard", () => {
   const logged: string[] = [];
 
   beforeEach(() => {
@@ -30,9 +35,9 @@ describe("what the in-place mutation guard covers", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  const reported = () => logged.filter((line) => line.includes("RMD005"));
+  const reported = (code: string) => logged.filter((line) => line.includes(code));
 
-  test("an array mutated in place is reported", async () => {
+  test("an array mutated in place is reported (RMD005)", async () => {
     @Host("div")
     class App extends Component {
       @state items: string[] = ["a"];
@@ -45,11 +50,10 @@ describe("what the in-place mutation guard covers", () => {
     await app.settle();
 
     app.instance.items.push("b");
-
-    expect(reported().length).toBeGreaterThan(0);
+    expect(reported("RMD005").length).toBeGreaterThan(0);
   });
 
-  test("an object mutated in place is NOT — the guard is arrays only", async () => {
+  test("an object mutated in place is reported (RMD034)", async () => {
     @Host("div")
     class App extends Component {
       @state user = { name: "ada" };
@@ -64,18 +68,56 @@ describe("what the in-place mutation guard covers", () => {
     app.instance.user.name = "grace";
     await app.settle();
 
-    // Silent, and the render still shows the old value — the signal never fired,
-    // which is the whole point of the report the array case gets.
-    expect(reported()).toEqual([]);
+    expect(reported("RMD034").length).toBeGreaterThan(0);
+    // Still a no-op, which is what the report is about: the signal never fired.
     expect(app.container.querySelector("p")!.textContent).toBe("ada");
   });
 
-  test("replacing the object works, which is what the docs must tell people to do", async () => {
+  test("a NESTED change is reported, and named by its path", async () => {
     @Host("div")
     class App extends Component {
-      @state user = { name: "ada" };
+      @state user = { name: "ada", address: { city: "london" } };
       render() {
-        return <p>{this.user.name}</p>;
+        return <p>{this.user.address.city}</p>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    app.instance.user.address.city = "paris";
+
+    // The path is what makes the message actionable — `user.address.city`, not
+    // "an object in state".
+    expect(reported("RMD034").some((line) => line.includes("address.city"))).toBe(true);
+  });
+
+  test("deleting a key is a change too", async () => {
+    @Host("div")
+    class App extends Component {
+      @state config: Record<string, unknown> = { debug: true };
+      render() {
+        return <p>{String(this.config.debug)}</p>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    delete app.instance.config.debug;
+    expect(reported("RMD034").length).toBeGreaterThan(0);
+  });
+
+  test("replacing works, and rebuilding the path works — which is the advice", async () => {
+    @Host("div")
+    class App extends Component {
+      @state user = { name: "ada", address: { city: "london" } };
+      render() {
+        return (
+          <p>
+            {this.user.name}:{this.user.address.city}
+          </p>
+        );
       }
     }
 
@@ -84,7 +126,106 @@ describe("what the in-place mutation guard covers", () => {
 
     app.instance.user = { ...app.instance.user, name: "grace" };
     await app.settle();
+    expect(app.container.querySelector("p")!.textContent).toBe("grace:london");
 
-    expect(app.container.querySelector("p")!.textContent).toBe("grace");
+    app.instance.user = {
+      ...app.instance.user,
+      address: { ...app.instance.user.address, city: "paris" },
+    };
+    await app.settle();
+    expect(app.container.querySelector("p")!.textContent).toBe("grace:paris");
+
+    expect(reported("RMD034")).toEqual([]);
+  });
+
+  test("identity is stable, so nothing reads as changed for having been guarded", async () => {
+    @Host("div")
+    class App extends Component {
+      @state user = { address: { city: "london" } };
+      render() {
+        return <p>{this.user.address.city}</p>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    // Two reads of the same value are the same object, at every level.
+    expect(app.instance.user).toBe(app.instance.user);
+    expect(app.instance.user.address).toBe(app.instance.user.address);
+  });
+
+  test("a copy put back into state does not churn identity", async () => {
+    /**
+     * The regression this guard's first version had. `[...this.rows]` spreads
+     * GUARDED children into a new array, and the setter unwraps only the array it
+     * is handed — so the state ends up holding proxies. Reading them back must not
+     * wrap them a second time, or every row has an identity nothing has seen and
+     * the reconciler moves every node.
+     */
+    interface Row {
+      id: number;
+    }
+
+    let renders = 0;
+
+    @Host("ul")
+    class App extends Component {
+      @state rows: Row[] = [{ id: 1 }, { id: 2 }, { id: 3 }];
+      @state tick = 0;
+      render() {
+        renders++;
+        return list({
+          each: this.rows,
+          key: (r: Row) => r.id,
+          render: (r: Row) => <li>{r.id}</li>,
+        });
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+    const before = [...app.container.querySelectorAll("li")];
+
+    // A copy, exactly as an app would write it, put straight back.
+    app.instance.rows = [...app.instance.rows];
+    await app.settle();
+
+    const after = [...app.container.querySelectorAll("li")];
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    expect(after[2]).toBe(before[2]);
+    expect(renders).toBeGreaterThan(1);
+  });
+
+  test("a Date, a Map and a class instance are left alone", async () => {
+    /**
+     * Their methods need the real receiver — `proxy.getTime()` reaches for an
+     * internal slot a proxy does not have — so wrapping them would break working
+     * code for the sake of a report nobody asked for.
+     */
+    class Money {
+      constructor(public amount: number) {}
+      double() {
+        return this.amount * 2;
+      }
+    }
+
+    @Host("div")
+    class App extends Component {
+      @state when = new Date(0);
+      @state seen = new Map<string, number>([["a", 1]]);
+      @state price = new Money(5);
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(app.instance.when.getTime()).toBe(0);
+    expect(app.instance.seen.get("a")).toBe(1);
+    expect(app.instance.price.double()).toBe(10);
   });
 });

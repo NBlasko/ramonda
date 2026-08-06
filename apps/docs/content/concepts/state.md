@@ -61,15 +61,20 @@ this.items = [...this.items, next];  // ✓ a new array
 this.user = { ...this.user, name };  // ✓ a new object
 ```
 
-In development, changing an **array** in place is caught and reported as `RMD005`.
-An object is not: `this.user.name = "x"` is the same silent no-op, with nothing
-said about it. An array can be watched because the mutation goes through a method
-— `push`, `splice`, `sort` — and a property assignment on an object has no such
-seam without wrapping every object the state hands out.
+In development both are caught and reported — an array as `RMD005`, an object as
+`RMD034`, and a nested change is named by its path (`user.address.city`). In the
+finished app the check is gone and the change is silent, which is exactly why it
+exists.
 
-So the rule is the one above rather than the report: **replace, do not change in
-place.** The report is a help where it can be given, not the boundary of what goes
-wrong. In the finished app both are silent, which is why the rule matters.
+For something nested, rebuild the path:
+
+```tsx
+this.user.address.city = "paris";   // ✗ reported, and nothing renders
+this.user = { ...this.user, address: { ...this.user.address, city: "paris" } };  // ✓
+```
+
+[`@ramonda/lens`](/lens) does the same thing with less typing:
+`this.user = focusOn(this.user).get("address").get("city").set(city)`.
 
 ## Don't change state while rendering
 
