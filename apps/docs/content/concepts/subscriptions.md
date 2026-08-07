@@ -74,9 +74,9 @@ screen in the same pass rather than one frame later.
 **Deriving a value** — [`@compute`](/concepts/compute). If the answer is a value, return
 it; nothing needs to run and nothing needs to be cleaned up.
 
-## There is no `@effect`
+## There is no `useEffect`
 
-Nothing here corresponds to `useEffect`, and that is the design. An effect is defined by its
+Nothing here corresponds to it, and that is the design. An effect is defined by its
 dependencies rather than by its purpose, so one decorator would have to be all four of the
 things above — and which one it was would depend on what its body happened to read that
 render. Two of them writing what the other reads then re-trigger each other, which is the one

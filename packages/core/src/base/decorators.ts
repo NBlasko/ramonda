@@ -297,7 +297,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
  * a restored scroll offset) shows one frame of the wrong layout. This runs in the
  * same task, before paint.
  *
- * ## It is not `@effect`, and the difference is the point
+ * ## It is not an effect, and the difference is the point
  *
  * **No dependencies.** Nothing is tracked while it runs, so there is no dependency
  * list to get wrong — and no repeat of the trap that makes an effect the wrong
@@ -718,7 +718,7 @@ export const destroyed = createLifecycleDecorator("destroys", "destroyed");
 
 /**
  * Syncs derived state BEFORE the render, when a selected prop changes — without
- * the extra re-render an `@effect` would cause. The selector picks the value (it
+ * the extra re-render an effect would cause. The selector picks the value (it
  * may reach deep: `p => p.foo[5].bar`) and the decorated method receives the new
  * and old value. It does NOT fire on mount; use `@created` for the initial seed.
  *

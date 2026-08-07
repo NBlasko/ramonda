@@ -295,7 +295,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * The `lazy` changed — a different module is wanted now.
    *
    * Resets the failure state and loads again. `@watchProp` rather than an
-   * `@effect` because it runs BEFORE the render, so the render that follows a
+   * an effect because it runs BEFORE the render, so the render that follows a
    * route change already reads the right cache key instead of showing the old
    * module for one frame.
    */

@@ -191,8 +191,8 @@ class TodoPanel extends Component {
 
   private add = this.use(Mutation<string, string>, {
     mutate: (title) => createTodo(title),
-    // What this returns IS the rollback — the same contract @effect and
-    // createSubscriptionDecorator use — and it runs only if the write fails.
+    // What this returns IS the rollback — the same contract `createSubscriptionDecorator`
+    // uses — and it runs only if the write fails.
     onMutate: (title, { client }) => {
       const previous = client.peek<string[]>(["todos"])?.data;
       client.setData<string[]>(["todos"], (list) => [...(list ?? []), `${title} (saving…)`]);
@@ -424,9 +424,10 @@ export class QueryPage extends Component {
               way.
             </li>
             <li>
-              Nothing here uses <code>@effect</code>. The key change is a <code>@watchProp</code> (before the render, so
-              the request is in flight while the loading state paints), the poll interval is a <code>@created</code> +{" "}
-              <code>@watchProp</code> + <code>@destroyed</code> trio, and focus/reconnect are <code>@onWindow</code>.
+              Every reaction here is named for what it does. The key change is a <code>@watchProp</code> (before the
+              render, so the request is in flight while the loading state paints), the poll interval is a{" "}
+              <code>@created</code> + <code>@watchProp</code> + <code>@destroyed</code> trio, and focus/reconnect are{" "}
+              <code>@onWindow</code>.
             </li>
           </ul>
         </section>

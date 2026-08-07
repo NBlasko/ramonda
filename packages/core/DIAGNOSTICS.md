@@ -320,7 +320,7 @@ expects silence.
 50 is React's number and leaves room for a real cascade to settle.
 
 **Self-writing effects were already safe.** `runComponentEffects` detaches deps
-that the effect mutated itself, so an `@effect` writing the signal it reads runs
+that the effect mutated itself, so an effect writing the signal it reads runs
 once and stops — which is why reproducing a loop needs *two* effects. Pinned by a
 test, since it is the reason the obvious one-effect repro does nothing.
 

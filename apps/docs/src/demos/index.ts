@@ -75,7 +75,7 @@ export const demoTitles: Record<string, string> = {
   KeyboardShortcut: "@onDocument — a keyboard shortcut",
   TimeoutReveal: "@timeout — cancelled on unmount",
   IntervalClock: "@interval — and the two-pass pattern",
-  EffectCleanup: "@effect — the cleanup contract",
+  EffectCleanup: "Cleanup — what a subscription returns",
   WatchPropDemo: "@watchProp — reacting to a prop",
   ThemeContextDemo: "Context — a value without threading",
   MemoHandlers: "@memoizedHandler — stable handler identity",

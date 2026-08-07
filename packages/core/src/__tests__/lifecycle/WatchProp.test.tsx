@@ -185,7 +185,7 @@ describe("watchProp", () => {
 
     // The hook's own prop moves: it fires, and the derived state is in place for
     // the very render that follows — one pass, which is the reason to use
-    // `@watchProp` over an `@effect` here.
+    // `@watchProp` over an effect here.
     instance.userId = 2;
     await settle();
     expect(log).toEqual(["hook:/users/1->/users/2", "render:loaded-/users/2:light"]);
@@ -393,7 +393,7 @@ describe("watchProp", () => {
     await settle();
 
     // Fires before the render, and the state it writes is in place for that same
-    // render — one pass, which is the reason `@watchProp` exists next to `@effect`.
+    // render — one pass, which is the reason `@watchProp` exists next to an effect.
     expect(log).toEqual(["term:abc", "render:3"]);
   });
 
