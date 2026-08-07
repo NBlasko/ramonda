@@ -20,6 +20,23 @@ describe("reports a path with no provider", () => {
     expect(issues[0].path).toEqual(["App", "Reader"]);
   });
 
+  test("a hook written with its type argument does not blind the walk below it", () => {
+    /**
+     * `this.use(Store<string>)` is an INSTANTIATION EXPRESSION rather than an identifier, and every
+     * generic hook in the framework is documented to be written that way when the call site cannot
+     * infer: `Form<typeof schema>`, `Query<Todo>`, `Field<string>`. Read as an identifier only, none of
+     * them resolved — so the component holding one was marked opaque, and a component is opaque exactly
+     * when the walk STOPS beneath it. Every consumer under a form or a query went unjudged.
+     *
+     * The fixture puts the pinned hook on `App` and the unprovided consumer under it, so the silence is
+     * what fails.
+     */
+    const { issues } = run("pinned-hook");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Reader");
+    expect(issues[0].path).toEqual(["App", "Reader"]);
+  });
+
   test("THE REORDER: the provider exists, but not above this consumer", () => {
     const { issues } = run("reorder");
     expect(issues).toHaveLength(1);
@@ -237,5 +254,35 @@ describe("single-use decorators declared twice", () => {
     expect(first.file).toMatch(/duplicate-decorators\/app\.tsx$/);
     expect(first.line).toBeGreaterThan(0);
     expect(first.column).toBeGreaterThan(0);
+  });
+});
+
+describe("a form field read by a component that does not watch it", () => {
+  /**
+   * The silent one. Such a component never re-renders: the field node is one cached object for the
+   * life of the form, so its props never change, and the form's `@state` belongs to the form's owner.
+   * Nothing at runtime can report it — the form cannot see who is rendering — so this is the gate.
+   */
+  test("reports the read, however it is written", () => {
+    const { unwatchedFields } = run("unwatched-field");
+    expect(unwatchedFields.map((issue) => issue.component).sort()).toEqual(["Broken", "BrokenViaLocal"]);
+  });
+
+  test("stays quiet for the shapes that are correct as written", () => {
+    // Named in the negative on purpose: each of these is a false positive waiting to happen, and the
+    // fixture holds one of each — the watcher, the write-only handler, the layout that only passes the
+    // field down, and the owner reading its own fields.
+    const reported = new Set(run("unwatched-field").unwatchedFields.map((issue) => issue.component));
+    for (const quiet of ["Watched", "WriteOnly", "Layout", "Page"]) {
+      expect(reported.has(quiet)).toBe(false);
+    }
+  });
+
+  test("says which member would never update, and where", () => {
+    const { unwatchedFields } = run("unwatched-field");
+    const broken = unwatchedFields.find((issue) => issue.component === "Broken");
+    expect(broken?.member).toBe("bind");
+    expect(broken?.line).toBeGreaterThan(0);
+    expect(broken?.file.endsWith("app.tsx")).toBe(true);
   });
 });

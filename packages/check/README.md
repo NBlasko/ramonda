@@ -156,3 +156,44 @@ fields each carrying one `@state` is what every component looks like — countin
 
 A **subclass** declaring its own is never a duplicate. That is an override, which is how a role is
 specialised, so only declarations on one class body are counted.
+
+## A form field read by a component that does not watch it
+
+A component handed a field and reading it directly **never re-renders**. Its message never appears,
+and a write from anywhere else never reaches its input.
+
+```text
+[ramonda-check] 1 component(s) reading a form field they do not watch:
+
+  src/TextField.tsx:9:23
+    <TextField> reads `bind` from a field in its props, so it will
+    never show a change to it — the component does not re-render at all.
+```
+
+Two deliberate things make it so, and neither is going to change. A field node is **one object for
+the life of the form** — a fresh one per access means a fresh `bind.onInput` per access, which
+`RMD020` reports — so the props diff has nothing to notice and skips the component. And a hook's
+state belongs to whoever **used** the hook, so the form's counter wakes the form's owner and nobody
+else.
+
+The fix is the `Field` hook, which subscribes the component to that one path — and then a keystroke
+wakes it and no other field:
+
+```tsx
+class TextField extends Component<{ of: FieldNode<string> }> {
+  f = this.use(Field<string>, () => ({ of: this.props.of }));
+
+  render() {
+    return <input {...this.f.bind} />;
+  }
+}
+```
+
+**Only a READ is reported.** A component that writes through a field it was handed — `set` from a
+click handler — is correct as written: writing needs no subscription, and whoever shows the value is
+somebody else. A component that passes the field down without reading it is a layout, and is not
+reported either. `path` and `name` are not reads: they are fixed for the life of the field.
+
+**This one cannot be a runtime diagnostic at all**, which is why it is here. The form would have to
+know who is rendering, and it cannot — nothing in the running page distinguishes "the owner is
+reading its own field" from "a child is reading a field it will never hear about again".

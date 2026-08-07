@@ -13,7 +13,9 @@ import { analyzeProject } from "./analyze";
  * - a class field holding a function literal, which in Ramonda is a closure per instance for
  *   nothing, since every method is already bound;
  * - a single-use decorator declared twice, which the runtime can only report once the class is
- *   reached — a class behind a condition nobody clicked ships with the fault.
+ *   reached — a class behind a condition nobody clicked ships with the fault;
+ * - a component that READS a form field it was handed without watching it, which never re-renders and
+ *   which nothing at runtime can report, because the form cannot see who is rendering.
  *
  * Meant to sit in an app's `build` script: a check nobody runs is a check that does not exist.
  */
@@ -26,15 +28,20 @@ if (!existsSync(tsconfig)) {
   process.exit(2);
 }
 
-const { issues, arrowFields, duplicateDecorators, counts, notes } = analyzeProject(tsconfig);
+const { issues, arrowFields, duplicateDecorators, unwatchedFields, counts, notes } = analyzeProject(tsconfig);
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
-if (issues.length === 0 && arrowFields.length === 0 && duplicateDecorators.length === 0) {
+if (
+  issues.length === 0 &&
+  arrowFields.length === 0 &&
+  duplicateDecorators.length === 0 &&
+  unwatchedFields.length === 0
+) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
-      `every consumer has a provider above it, no class field holds a function literal, and no ` +
-      `single-use decorator is declared twice.`,
+      `every consumer has a provider above it, no class field holds a function literal, no ` +
+      `single-use decorator is declared twice, and every component reading a form field watches it.`,
   );
   process.exit(0);
 }
@@ -130,6 +137,27 @@ if (duplicateDecorators.length > 0) {
   console.error(
     `${TAG} A SUBCLASS declaring its own is an override, not a duplicate — only declarations on one\n` +
       `        class body are counted here.\n`,
+  );
+}
+
+if (unwatchedFields.length > 0) {
+  console.error(`\n${TAG} ${unwatchedFields.length} component(s) reading a form field they do not watch:\n`);
+  for (const unwatched of unwatchedFields) {
+    console.error(`  ${unwatched.file}:${unwatched.line}:${unwatched.column}`);
+    console.error(
+      `    <${unwatched.component}> reads \`${unwatched.member}\` from a field in its props, so it will\n` +
+        `    never show a change to it — the component does not re-render at all.`,
+    );
+    console.error("");
+  }
+  console.error(
+    `Two deliberate things make that so: a field node is ONE object for the life of the form, so the\n` +
+      `props diff has nothing to notice and skips the component; and a hook's state belongs to whoever\n` +
+      `used the hook, so the form's counter wakes the form's owner and nobody else.\n\n` +
+      `Watch the field, and the component wakes when that one field changes:\n\n` +
+      `    f = this.use(Field<string>, () => ({ of: this.props.of }));\n` +
+      `    render() { return <input {...this.f.bind} />; }\n\n` +
+      `A component that only WRITES through a field is correct as written and is not reported.\n`,
   );
 }
 

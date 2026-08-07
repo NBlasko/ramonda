@@ -14,3 +14,14 @@ export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unkno
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;
 export declare function compute(value: unknown, context: unknown): void;
+
+/** The form's two hooks, as much of them as a fixture needs. */
+export declare class Form<S> {
+  fields: any;
+}
+export declare class Field<T> {
+  value: T;
+  error?: string;
+  bind: Record<string, unknown>;
+  set(next: T): void;
+}
