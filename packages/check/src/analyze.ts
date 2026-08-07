@@ -91,12 +91,18 @@ export interface DuplicateDecoratorIssue {
   /**
    * What the second declaration DOES, which decides what advice makes sense.
    *
-   * `displaces` — one of them wins and the rest never run, so the reader has dead code and needs to
-   * know which line is live. `redundant` — the second application changes nothing at all, so there is
-   * no dead code and no behaviour to hunt for; the fix is simply to delete the extras. Telling somebody
-   * the wrong one of these sends them looking for a difference that is not there.
+   * Four, one per behaviour core actually has, because the advice differs for each and naming the wrong
+   * one sends a reader somewhere there is nothing to find:
+   *
+   * - `refuses` — it THROWS (`@Host`, RMD045). Nothing runs, so there is no live line to hunt for.
+   * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
+   *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
+   * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). Nothing is lost;
+   *   the spelling is redundant.
+   * - `redundant` — the second changes nothing at all (`@state`, `@compute`, `@persist`,
+   *   `@memoizedHandler`). No dead code and no behaviour to look for; delete the extras.
    */
-  effect: "displaces" | "redundant";
+  effect: "refuses" | "displaces" | "merges" | "redundant";
   /**
    * The member the duplicates sit on, for a `redundant` report — `n` in `@state @state n = 1`.
    *
@@ -156,11 +162,30 @@ interface ComponentNode {
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
 
 /**
- * The decorators that answer a question with one answer, so a second declaration DISPLACES the first
- * and one of them never runs. Counted per CLASS BODY, so a subclass declaring its own — an override —
- * is not a duplicate.
+ * A second declaration REFUSES the program: it throws, so nothing runs at all.
+ *
+ * `@Host` only. Two element names have no union and no winner worth picking, so core raises `RMD045` and
+ * throws in every build. Reporting it as "one of them wins" would be worse than saying nothing — the
+ * reader would go looking for which line is live when the answer is that the class never loads.
  */
-const DISPLACING = new Set(["catchError", "Host", "ShouldUpdateOnPropsChange", "StableProps"]);
+const REFUSING = new Set(["Host"]);
+
+/**
+ * A second declaration DISPLACES the first: one wins, the rest never run, and the program carries on
+ * wrongly. That is what a runtime code without a throw is for — `RMD032` and `RMD040`.
+ *
+ * Counted per CLASS BODY, so a subclass declaring its own — an override — is not a duplicate.
+ */
+const DISPLACING = new Set(["catchError", "ShouldUpdateOnPropsChange"]);
+
+/**
+ * A second declaration MERGES with the first, so both take effect and the result is the union.
+ *
+ * `@StableProps` only, and it follows from what the decorator IS: it names a set, and it already merges
+ * along the class chain. Nothing is displaced and nothing is wasted — the author asked for the union and
+ * got it, spelled twice. Core reports `RMD046`, a warning.
+ */
+const MERGING = new Set(["StableProps"]);
 
 /**
  * The decorators where a second application changes NOTHING — a different fault, and worth its own
@@ -177,8 +202,6 @@ const DISPLACING = new Set(["catchError", "Host", "ShouldUpdateOnPropsChange", "
  * that it runs once per changed prop.
  */
 const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoizedHandler"]);
-
-const SINGLE_USE = new Set([...DISPLACING, ...REDUNDANT_TWICE]);
 
 /** The name of a decorator, whether it is bare (`@catchError`) or called (`@Host("div")`). */
 function decoratorName(decorator: ts.Decorator): string | undefined {
@@ -537,7 +560,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const name = decoratorName(decorator);
         if (name === undefined) continue;
 
-        if (DISPLACING.has(name)) {
+        if (REFUSING.has(name) || DISPLACING.has(name) || MERGING.has(name)) {
           const previous = perClass.get(name);
           if (previous) previous.count += 1;
           else perClass.set(name, { count: 1, at: decorator, kind });
@@ -558,12 +581,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
     for (const [decorator, { count: times, at, kind }] of perClass) {
       if (times < 2) continue;
+      const effect = REFUSING.has(decorator) ? "refuses" : MERGING.has(decorator) ? "merges" : "displaces";
       duplicateDecorators.push({
         component: owner,
         decorator,
         count: times,
         kind,
-        effect: "displaces",
+        effect,
         ...positionOf(at),
       });
     }

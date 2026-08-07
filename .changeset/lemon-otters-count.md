@@ -2,13 +2,19 @@
 "@ramonda/check": patch
 ---
 
-Two decorators on one MEMBER, counted per member and told apart from two on one class
+A duplicate decorator report says what the second declaration actually does
 
-The duplicate report grew a second fault, and the two need counting at different levels — getting that
-wrong is not a near miss, it is a false positive on ordinary code.
+One report, four faults, four pieces of advice — because "one of them never runs" is true of exactly one
+of them, and naming the wrong one sends a reader after a difference that is not there.
 
-**`displaces`** — `@catchError`, `@Host`, `@ShouldUpdateOnPropsChange`, `@StableProps` answer a question
-the CLASS asks, so two anywhere in the body is the fault and one of them is dead code.
+**`refuses`** — `@Host`. It throws (RMD045): two element names have no union, so there is no live
+declaration to look for.
+
+**`displaces`** — `@catchError`, `@ShouldUpdateOnPropsChange`. One wins, the rest are dead code, and the
+report says WHICH is live.
+
+**`merges`** — `@StableProps`. Both take effect and the result is the union (RMD046); nothing is lost and
+only the spelling is redundant.
 
 **`redundant`** — `@state`, `@compute`, `@persist`, `@memoizedHandler` on one MEMBER twice. Measured in
 core rather than assumed: a doubled `@state` renders once per write with the right value, and

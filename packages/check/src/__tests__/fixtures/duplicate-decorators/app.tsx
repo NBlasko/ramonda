@@ -68,6 +68,24 @@ class ManyFields extends Component {
   }
 }
 
+// `refuses`: two @Host THROW at class definition (RMD045) — two element names have no union, so there
+// is no live declaration to point a reader at. Only analyzed here, never run.
+@Host("div")
+@Host("span")
+class HostTwice extends Component {
+  render() {
+    return <i />;
+  }
+}
+
+// `merges`: two @StableProps take BOTH effect (RMD046) — it names a set and already merges along the
+// class chain, so the result is the union and nothing is lost.
+@StableProps("a")
+@StableProps("b")
+class StableTwice extends Hook {
+  @state x = 1;
+}
+
 // The BASE declares one; the subclass overrides it. Not a duplicate.
 @Host("div")
 class Base extends Component {

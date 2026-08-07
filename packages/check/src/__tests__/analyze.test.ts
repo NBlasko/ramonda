@@ -134,16 +134,20 @@ describe("single-use decorators declared twice", () => {
       "GatedTwice.@ShouldUpdateOnPropsChange x2".replace(" ", ""),
       "RedundantTwice.@state x2".replace(" ", ""),
       "RedundantTwice.@compute x2".replace(" ", ""),
+      "HostTwice.@Host x2".replace(" ", ""),
+      "StableTwice.@StableProps x2".replace(" ", ""),
     ]);
   });
 
   /**
    * Two faults share this report and they need different advice.
    *
-   * `displaces` — one declaration wins and the rest are dead code, so the reader has to be told which
-   * line is live. `redundant` — the second application changes nothing, measured in core: a doubled
-   * `@state` renders once per write with the right value, and `@compute`'s body runs once for two reads.
-   * Saying "one of them never runs" there would send somebody after a difference that does not exist.
+   * Four, one per behaviour core actually has, each measured there rather than assumed here:
+   * `@Host` REFUSES (throws, RMD045), `@catchError` and `@ShouldUpdateOnPropsChange` DISPLACE (one wins,
+   * the rest are dead code), `@StableProps` MERGES (both take effect, RMD046), and `@state`/`@compute`
+   * are REDUNDANT (a doubled `@state` renders once per write with the right value). Saying "one of them
+   * never runs" is true of exactly one of the four, and sends a reader after a difference that is not
+   * there for the other three.
    */
   test("each report says what the second declaration does", () => {
     expect(found().map((d) => `${d.decorator}:${d.effect}`)).toEqual([
@@ -151,7 +155,12 @@ describe("single-use decorators declared twice", () => {
       "ShouldUpdateOnPropsChange:displaces",
       "state:redundant",
       "compute:redundant",
+      "Host:refuses",
+      "StableProps:merges",
     ]);
+
+    // All four, so no behaviour is described by a sentence nothing exercises.
+    expect(new Set(found().map((d) => d.effect))).toEqual(new Set(["displaces", "redundant", "refuses", "merges"]));
   });
 
   /**
@@ -169,6 +178,8 @@ describe("single-use decorators declared twice", () => {
       "ShouldUpdateOnPropsChange:class",
       "state:member",
       "compute:member",
+      "Host:class",
+      "StableProps:class",
     ]);
   });
 
