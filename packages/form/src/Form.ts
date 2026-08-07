@@ -201,8 +201,17 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     this.prime(env);
   }
 
-  /** Says this form is here — on mount, and again for a panel that started listening later. */
-  announce(): void {
+  /**
+   * Says this form is here — on mount, and again for a panel that started listening later.
+   *
+   * `private`, which is what it always meant. Methods are bound whether or not TypeScript can see them,
+   * so it still works as the listener registered above, and a hook's method that is not `private` is
+   * public API: an app could have called this and dispatched a form announcement of its own.
+   *
+   * `window` is reached without a guard because both callers are inside `if (__DEV__)` on the CLIENT
+   * side, and core cannot be imported without a DOM in a development build.
+   */
+  private announce(): void {
     window.dispatchEvent(new CustomEvent("ramonda:form", { detail: { form: this, key: this, readable: readableKey } }));
   }
 
@@ -597,6 +606,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     const value = readAt(this.current, path);
     const items = Array.isArray(value) ? [...value] : [];
     const at = Math.max(0, Math.min(start, items.length));
+    const was = items.length;
 
     // The ids are read BEFORE the values move. `rowIds` trims itself to the current length,
     // so reading afterwards would hand back a list already cut to the NEW size — and then
@@ -616,6 +626,14 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     // there. Dropping it is the honest answer: the messages come back from the next
     // validation, addressed to whatever now sits at those indexes.
     this.forgetUnder(path, { keepSelf: true });
+    // And the field nodes for rows the array no longer has. A node is kept for the life of the form on
+    // purpose — it is what keeps `bind.onInput` one function per field — but that was also true of a row
+    // that had been removed, so a form that once showed ten thousand rows held a node and a handle for
+    // every one of them afterwards. Both trees, since a watched field reads through the quiet one.
+    if (items.length < was) {
+      this.tree.forgetFrom(path, items.length);
+      this.quietTree.forgetFrom(path, items.length);
+    }
     this.bump();
     // The whole subtree, and every aspect of it: the rows at or after the change hold different values,
     // the array around them has a different length or order — which is the `shape` a list renders from —

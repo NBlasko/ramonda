@@ -1,4 +1,4 @@
-import { type Path, type PathSegment, pathKey, pathToString } from "./path";
+import { indexUnder, keyPrefix, type Path, type PathSegment, pathKey, pathToString } from "./path";
 import type { FieldNode, Row } from "./types";
 import { REFUSAL, refuse } from "./diagnostics";
 
@@ -135,6 +135,32 @@ export class FieldTree {
 
     this.nodes.set(key, created);
     return created;
+  }
+
+  /**
+   * Drops what an array no longer has: the cached node and handle for every row at or past `from`.
+   *
+   * A node is created once and kept forever, which is what keeps `bind.onInput` one function per field
+   * (see above) — but "forever" was also true of a row that had been removed. Measured on a form grown
+   * to 5000 rows of two fields and then shrunk: **15002 nodes and 10001 handles** still held, one per
+   * index the array had ever reached, and each handle carries two bound closures and a row cache.
+   *
+   * Safe to drop exactly because the rows are gone: a caller still holding the node for row 6000 of an
+   * array with 3 rows is holding a row that does not exist, and the next one to appear at that index is
+   * a different row and should get a different node. Nothing that survives the shrink loses its
+   * identity — only indexes past the new length are touched.
+   */
+  forgetFrom(path: Path, from: number): void {
+    const prefix = keyPrefix(path);
+
+    for (const key of this.nodes.keys()) {
+      const index = indexUnder(key, prefix);
+      if (index !== undefined && index >= from) this.nodes.delete(key);
+    }
+    for (const key of this.handles.keys()) {
+      const index = indexUnder(key, prefix);
+      if (index !== undefined && index >= from) this.handles.delete(key);
+    }
   }
 
   private handle(path: Path): FieldHandle {

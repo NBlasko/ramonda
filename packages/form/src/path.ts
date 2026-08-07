@@ -150,3 +150,21 @@ export function childKey(parentKey: string, parentDepth: number, segment: PathSe
   const own = typeof segment === "number" ? `#${segment}` : segment;
   return parentDepth === 0 ? own : `${parentKey}${SEPARATOR}${own}`;
 }
+
+/**
+ * The row number a key sits under, for a key somewhere beneath `prefix` — `undefined` if it is not
+ * under an index at all.
+ *
+ * `rows #12 v` answers 12, and so does `rows #12`. For dropping what an array no longer has: a form that
+ * once showed ten thousand rows kept a cached node and handle for every one of them.
+ */
+export function indexUnder(key: string, prefix: string): number | undefined {
+  if (!key.startsWith(prefix)) return undefined;
+
+  const end = key.indexOf(SEPARATOR, prefix.length);
+  const segment = end === -1 ? key.slice(prefix.length) : key.slice(prefix.length, end);
+  if (!segment.startsWith("#")) return undefined;
+
+  const index = Number(segment.slice(1));
+  return Number.isInteger(index) && index >= 0 ? index : undefined;
+}
