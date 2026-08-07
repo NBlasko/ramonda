@@ -1,5 +1,162 @@
 # @ramonda/core
 
+## 0.12.0
+
+### Minor Changes
+
+- cf9be97: `use()` takes a third argument: metadata about the hook
+
+  ```tsx
+  private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+  ```
+
+  Devtools then calls that hook **`Form (Sign Up)`** — its class plus its label. The class says what the
+  node is, which a label cannot recover; the label says which one it is, which the class cannot give,
+  because `this.constructor.name` is `Form` for every form on the page and two `this.use(Form, …)` in one
+  component are otherwise two nodes with one name.
+
+  **Why a third argument and not a prop.** A hook's props belong to whoever wrote the hook. A framework
+  that reserved a word in there would collide with a real one eventually — and on a form it collides
+  immediately, since a form is full of labels and `label` reads as the visible text of a field. So this is
+  metadata _about_ the hook rather than input _to_ it, and the hook never sees it. The first attempt at
+  this did reserve the prop, and that is why it was reverted rather than shipped.
+
+  A propless hook takes the placeholder: `this.use(Poll, undefined, { label: "prices" })`. Deliberate — an
+  overload taking metadata in the props position would be ambiguous, because `{ label: "…" }` is a
+  perfectly good props bag for some hook somewhere.
+
+  The shape is published as `HookMeta`. An inline `{ label: "Sign Up" }` needs nothing imported, since the
+  argument is structural — the name is there for a helper that builds one, or a wrapper that passes one
+  along.
+
+  The metadata is parked on the instance under `Symbol.for("ramonda.hook.meta")` and read from there by
+  core's own inspector and by `@ramonda/form`'s panel — a documented key rather than an import, so neither
+  package depends on the other to pass a name along. The same contract shape as the diagnostics sink.
+
+  Development-only. A production build stores none of it, and a label that is blank, is not a string, or
+  only repeats the class is ignored.
+
+  A hook that calls `Object.freeze(this)` keeps working and keeps its class name in the panel. Such a
+  hook works everywhere else in this package, and `Object.defineProperty` on a frozen object throws —
+  from a field initializer, before the component exists, and **only in development**, since production
+  never stores the metadata. A cosmetic label is what gives way.
+
+- ea40a1e: Every `RMD` diagnostic is also a record
+
+  `diagnose` now hands each report to [the collector every reporting package shares](https://ramonda.pages.dev/reference/diagnostics#capturing-them),
+  so a devtools panel, a test or a log shipper can group and filter them by `code` and `severity`
+  instead of parsing a message. The console line and the `ramonda:dev-log` event are unchanged: this
+  adds a consumer rather than replacing one.
+
+  Three details are decided rather than incidental.
+
+  **`warning` becomes `warn` in the record.** This package has always said `warning`, and the protocol's
+  word is `warn`; the vocabulary belongs to the protocol, so the translation happens at the emit point.
+  A collector filtering on severity depends on it being exact.
+
+  **The record carries the dedup key.** `diagnose` reports once per `code:dedupKey`, and that key is now
+  published, so a collector collapses exactly what core collapses rather than guessing.
+
+  **`data` carries values, and anything live is dropped.** That argument is `unknown` and always has
+  been, because it goes to a console — where an object is the useful thing, expandable and inspectable.
+  A record is different: a collector keeps a bounded history, so anything live in one stays alive as long
+  as the history does. `propsStability` passes `{ cached, fresh }`, which are the actual prop values — a
+  component, a DOM node, an array of them are all ordinary things to find there. So the console keeps
+  the whole object and the record keeps the primitives, filtered centrally rather than trusted to
+  thirty-nine call sites.
+
+  **A duplicate the tests caught before it shipped.** In DEV core dynamically imports
+  `@ramonda/devtools`, whose bridge also puts records in the `LOGS` tab — so every core diagnostic
+  rendered twice the moment core started emitting them. Seventeen of core's own cases failed on it: a
+  test reading the dev-log channel found the bridge's payload instead of core's message. The bridge now
+  skips core's scope for the tab and only for the tab, because core already reaches it; a subscriber
+  still receives everything.
+
+  Still on the older channel: the handful of core messages that carry no code — `hydration/*`,
+  `vdom/h`, `watchProps`, `decorators`, `CreateRamonda` — which reach the console and the panel but not
+  the sink, because a record needs a stable code and these have none yet. They are the last ones left.
+
+  Two things a record will not carry, both about `data` holding what an application put in a prop.
+  A **getter is never invoked**: `Object.entries` would, and a getter is arbitrary code — it can throw,
+  out of the diagnostic that was explaining what was wrong with the app, or write state, which lands
+  mid-render and raises `RMD001` against whoever was rendering. It is skipped by descriptor, so it is
+  never read. And a **`bigint` arrives as its digits**: it is the one primitive `JSON.stringify` throws
+  on, which is what every collector shipping a record performs, and a `bigint` prop needs no cooperation
+  from anybody.
+
+- be245b4: Ten messages become diagnostics: `RMD033` to `RMD042`
+
+  They start at `RMD033` and not `RMD032` because `@catchError` took that number while this was being
+  written. A code is never reassigned, so the range moved rather than the other one.
+
+  Each of these was a `ramondaLog` call with its advice written inline — a real fault, reported, but with
+  no stable name to search for, no `fix` a panel could show apart from the message, and no way for a
+  collector to group two occurrences of one cause. They are now codes like every other, which means they
+  reach the record channel as well as the console.
+
+  |          |                                                                               |
+  | -------- | ----------------------------------------------------------------------------- |
+  | `RMD033` | state that cannot cross to the client — a function, a class instance, a `Map` |
+  | `RMD034` | state written during create or mount, which the client never receives         |
+  | `RMD035` | the client's hook tree does not match the server's                            |
+  | `RMD036` | the state blob could not be read                                              |
+  | `RMD037` | an object among JSX children that is not markup                               |
+  | `RMD038` | a `@watchProp` selector threw                                                 |
+  | `RMD039` | `class` where `className` was meant                                           |
+  | `RMD040` | more than one `@ShouldUpdateOnPropsChange` on one class                       |
+  | `RMD041` | a listener with no target                                                     |
+  | `RMD042` | the default host cannot be the direct target of this event                    |
+
+  **They are deduplicated by source now**, where before they reported per occurrence: a component with
+  six unserializable fields printed six lines and now prints one per field, which is what "once per
+  source, not once per occurrence" has always meant everywhere else in this package.
+
+  **The severities are the ones the messages already carried.** The port gives them identity; it does not
+  re-judge them. Two of the ten sit at `error` because the result is wrong — a dropped child, a selector
+  returning a value nobody chose — and the rest warn.
+
+  `RMD040` gained one thing the message it replaces did not have: **the right answer to which declaration
+  is in effect.** Two `@ShouldUpdateOnPropsChange` on one class, and the one that decides is the one
+  written FURTHEST from the class — class decorators apply bottom-up, so the lower declaration writes the
+  rule and the upper one overwrites it. That reads backwards, so it is measured in
+  `PropsGateInheritance.test.tsx` rather than reasoned about, and the `fix` says which one to look at.
+
+  The advice moved out of the message and into each code's `fix`, so a panel renders it apart from what
+  happened, and every one has a section on the reference. `RMD026`, retired in this package's own
+  registry since August, finally has a retired section there too — a reader who hits it in an old build
+  now lands somewhere.
+
+  **One message deliberately keeps no code.** `bootstrap`'s "App crashed" is the app's own error on its
+  way up, rethrown on the very next line so whoever threw it still gets it with its real stack. Every
+  code names a mistake and carries a fix; this one cannot, because the framework knows nothing about the
+  fault beyond having been in the call stack. The reason is now written where the code is.
+
+### Patch Changes
+
+- 6dde55e: `RMD043` and `RMD044`, and a reason written beside every message that keeps no code
+
+  Two more misuses become codes. `RMD043` — a `<meta>` passed to `Head` with no `name`, `property` or
+  `http-equiv`, which cannot be matched again and so would be appended on every update; it is skipped,
+  and now says so with a fix. `RMD044` — a tag that is neither a string, a component class nor a
+  function, which renders an empty host where something was meant to be.
+
+  **A tag that is `undefined` renders that empty host rather than throwing**, which is the fix half of
+  `RMD044` and matters in production, where there is no report at all. `<Thing />` whose import failed
+  arrives at the JSX factory as `undefined` — the first case `RMD044` names — and the factory read
+  `.__isComponent` off it, so it raised a `TypeError` from inside itself and took down the whole render
+  for a fault it is written to survive. One missing element now costs one element.
+
+  More useful than either: **every message that deliberately keeps no code now says why, where it is.**
+  There are four, and each is somebody else's fault surfaced with context rather than a mistake this
+  framework can advise on — `bootstrap`'s "App crashed", a lazily loaded component that never arrived, a
+  cleanup that threw during destroy, and the crash that follows `RMD011` after it has already been
+  named. A code that promises advice it cannot give is worse than a sentence.
+
+  One of those five was genuinely poor and is fixed rather than excused: a failed lazy load logged a bare
+  `console.error(e)`, which in a page full of chunks names nothing. It now names the module it was
+  loading. Still unconditional, because a failed lazy route is exactly what somebody needs to see in a
+  production log, and still not a diagnostic, because the failure is the network's answer.
+
 ## 0.11.0
 
 ### Minor Changes

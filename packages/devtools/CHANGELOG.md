@@ -1,5 +1,35 @@
 # @ramonda/devtools
 
+## 0.5.1
+
+### Patch Changes
+
+- 4a51868: The `LOGS` tab renders a row whose `data` cannot be JSON
+
+  A diagnostic's `data` reaches that tab exactly as the framework passed it, and for `propsStability`
+  that is the real prop values — so anything an application can put in a prop arrives there. Three of
+  those defeat `JSON.stringify`, and each one **throws** rather than degrading: a `bigint` ("Do not know
+  how to serialize a BigInt"), a cycle, and a getter that throws when read. Out of the log listener that
+  is an uncaught exception, so the row never rendered — the panel failing on the report it exists to
+  show.
+
+  Measured with a `bigint`, which needs no cooperation from anybody: a `bigint` prop is an ordinary
+  thing to write. A `bigint` now reads as `10n` and a cycle as `[circular]`, so the value and the shape
+  both survive; a value that cannot be read at all falls back to the row without its data rather than
+  taking the row with it.
+
+- 53c5bb8: Core's diagnostics reach the Logs tab once, not twice
+
+  `@ramonda/core` now emits its diagnostics as records, and in DEV it is what dynamically imports this
+  package — so this bridge was carrying every core report to the `LOGS` tab a second time, next to the
+  one core's own log channel had already put there.
+
+  The bridge skips `scope === "ramonda/core"` for the tab, and only for the tab: a subscriber added
+  through `installDiagnostics` still receives everything, which is the entire point of that function.
+
+  This is one line, and it needs its own release: without it, a published devtools alongside the new core
+  shows every core diagnostic as two rows.
+
 ## 0.5.0
 
 ### Minor Changes

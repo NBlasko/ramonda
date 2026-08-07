@@ -1,5 +1,71 @@
 # @ramonda/form
 
+## 0.5.0
+
+### Minor Changes
+
+- f4e0b66: `RMF001`, `RMF002` and `RMF003` are records, and the two refusals stay refusals
+
+  All three now reach [the collector every reporting package shares](https://ramonda.pages.dev/reference/diagnostics#capturing-them),
+  so a devtools panel shows them and `installDiagnostics` can take them elsewhere.
+
+  **Two of the three are not diagnostics, and the port keeps that straight.** Assigning to a field and
+  asking a non-list field for its rows **throw**, in every build, because there is no correct program in
+  which either does something. For those, development adds the record and nothing else: printing as well
+  would make development noisier than production for a fault whose message is already in front of the
+  reader. `RMF003` is the opposite — nothing throws, the form has let go of the failure, and the console
+  line is the only trace, so it prints.
+
+  The thrown messages name the package now, `[Ramonda form RMF001] …`, and the sentence itself is
+  unchanged. Both still throw with `__DEV__` false, which the production suite asserts.
+
+  `RMF003` keeps handing the console the **Error object** and not just its message, because a console
+  given the Error prints a stack a reader can click. That object deliberately does not enter the record:
+  a collector keeps a bounded history, and an Error holds its stack, which holds the scope it was thrown
+  from — one of those in a vault keeps a whole submit alive. The record carries the message as text
+  instead. An existing test caught that distinction being flattened during the port, which is why it is
+  now written down where the code is.
+
+- cf9be97: The FORMS tab names a form from its `use()` metadata
+
+  ```tsx
+  private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+  ```
+
+  The tab and the component tree then call it **`Form (Sign Up)`** instead of `Form 2`. Which mattered as
+  soon as the tab started grouping: a header reading `Form 2` frames a form's broken fields correctly and
+  still does not say which form it is, and the number is only the order it mounted in.
+
+  Read off the instance under `Symbol.for("ramonda.hook.meta")` — a documented key, no import, and no
+  payload on the announce event. That event fires once at mount while every other field in this tab is
+  read live, and a name taken from it would have been one frozen field among current ones.
+
+  Unlabelled forms keep the number, so a page with one form is unchanged.
+
+### Patch Changes
+
+- 863983a: The FORMS tab says which form a broken field belongs to
+
+  A form's row is followed by one row per field that is wrong, and those rows were **siblings** of the
+  summary rather than visibly inside it. With one form on the page that reads fine. With two, the second
+  form's `email` row sits directly under the first form's fields and reads as if it belonged to them —
+  there was nothing on screen tying a field to its form.
+
+  The rows were grouped in the data all along, one group per form; the group simply had no label, so the
+  panel had nothing to draw. It has one now, and only when there is more than one form — the same rule
+  `@ramonda/query` uses for its client label, because a header over the only group says nothing the row
+  beneath it does not.
+
+  Two tests, one on each side of the contract: that a second form gets its own labelled group whose label
+  names the form in its summary row, and — in `@ramonda/devtools` — that a labelled group is actually
+  drawn as a header above its own rows, in order. Nothing asserted the second half before, so the label
+  could have been ignored by the panel and the fix would have looked done.
+
+  Still open, and it needs a decision rather than code: a form is called `Form 1`, `Form 2`, because a
+  hook cannot see the component that used it. Core keeps the owner on its runtime for exactly this kind of
+  naming, but not as public API — so `SIGNUP` instead of `FORM 2` is a question about core's surface, not
+  about this tab.
+
 ## 0.4.0
 
 ### Minor Changes
