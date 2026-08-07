@@ -209,6 +209,179 @@ describe("validation", () => {
     }
   });
 
+  /**
+   * A schema whose promise REJECTS, which is the other way into the same wedge.
+   *
+   * Standard Schema says `validate` returns a result or a promise of one; it does not say the
+   * promise resolves. An async rule doing real work — a uniqueness lookup against the server — is
+   * exactly the case, and it rejects the moment the network does. Every validator propagates that:
+   * a `fetch` that throws inside a refinement comes out as a rejected promise.
+   *
+   * Two things went wrong, and the second is the expensive one. Nothing anywhere gave the promise a
+   * rejection handler, so it surfaced as an unhandled rejection — which in Node is a process-level
+   * warning and in a browser a console error nobody can catch. And `submitting` was never released,
+   * so one failed lookup disabled the submit button for the life of the page.
+   */
+  function rejectingAfter(calls: number, error: unknown = new Error("the lookup died")) {
+    let seen = 0;
+    const schema: StandardSchemaV1<Values, Values> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: (value) => (seen++ < calls ? Promise.resolve({ value: value as Values }) : Promise.reject(error)),
+      },
+    };
+    return schema;
+  }
+
+  /** Only this package's records. The sink is one global, and other packages write to it too. */
+  function ours(records: readonly RamondaDiagnostic[]): RamondaDiagnostic[] {
+    return records.filter((record) => record.scope === "ramonda/form");
+  }
+
+  /** Fails the test if anything rejected without a handler while `body` ran. */
+  async function withNoUnhandledRejection(body: () => Promise<void>): Promise<void> {
+    const unhandled: unknown[] = [];
+    const watch = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", watch);
+    try {
+      await body();
+      // One more turn, because an unhandled rejection is reported a tick after it happens.
+      await new Promise((r) => setTimeout(r, 5));
+    } finally {
+      process.off("unhandledRejection", watch);
+    }
+    expect(unhandled).toEqual([]);
+  }
+
+  test("a rejected validation at creation leaves nothing unhandled, and the form does not claim to be valid", async () => {
+    const records: RamondaDiagnostic[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let mounted: ReturnType<typeof mount> | undefined;
+
+    try {
+      await withNoUnhandledRejection(async () => {
+        mounted = mount(rejectingAfter(0));
+        await new Promise((r) => setTimeout(r, 5));
+      });
+
+      // "We asked and did not hear back" is not "nothing failed", so `isValid` must stay false —
+      // the same answer a server render gives for an async schema it cannot await.
+      expect(mounted!.form.isValid).toBe(false);
+      // Filtered by SCOPE rather than asserted as the whole list: the sink is one global that every
+      // package writes to, and `@ramonda/devtools` probes a replaced one to check it still round-trips
+      // (`diagnosticsReachUs`). Its `selftest` record landing here is that check working, not noise.
+      expect(ours(records).map((record) => record.code)).toEqual(["RMF004"]);
+      expect(ours(records)[0]!.severity).toBe("error");
+      expect(ours(records)[0]!.data).toEqual({ reason: "the lookup died" });
+      // The Error itself goes to the console, where a stack is clickable, and never into the record.
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("RMF004"), expect.any(Error));
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+      spy.mockRestore();
+      mounted?.unmount();
+    }
+  });
+
+  test("a rejected validation during a submit releases the button instead of wedging it", async () => {
+    const onSubmit = vi.fn();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The priming call resolves; the submit's own call rejects.
+    const { form, unmount } = mount(rejectingAfter(1), { onSubmit });
+
+    try {
+      await withNoUnhandledRejection(async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        form.submit();
+        expect(form.isSubmitting).toBe(true);
+        await new Promise((r) => setTimeout(r, 5));
+      });
+
+      expect(form.isSubmitting).toBe(false);
+      // Nothing is known about these values, so the handler must not be called with them.
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(form.isValid).toBe(false);
+      // And the form is not wedged: a second submit is accepted.
+      form.submit();
+      expect(form.submitCount).toBe(2);
+    } finally {
+      spy.mockRestore();
+      unmount();
+    }
+  });
+
+  test("a rejected revalidation keeps the messages it already had", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let failing = false;
+    const schema: StandardSchemaV1<Values, Values> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: (value) =>
+          failing
+            ? Promise.reject(new Error("the lookup died"))
+            : Promise.resolve(
+                (value as Values).email === ""
+                  ? { issues: [{ path: ["email"], message: "required" }] }
+                  : { value: value as Values },
+              ),
+      },
+    };
+
+    const { form, unmount } = mount(schema);
+    try {
+      await withNoUnhandledRejection(async () => {
+        form.fields.email.$.set("");
+        await new Promise((r) => setTimeout(r, 5));
+        expect(form.fields.email.$.error).toBe("required");
+
+        failing = true;
+        form.fields.email.$.set("ada@example.com");
+        await new Promise((r) => setTimeout(r, 5));
+      });
+
+      // Blanking the form would claim the message was answered. It was not asked successfully.
+      expect(form.fields.email.$.error).toBe("required");
+      expect(form.isValid).toBe(false);
+    } finally {
+      spy.mockRestore();
+      unmount();
+    }
+  });
+
+  test("a rejection that arrives after the form is gone says nothing", async () => {
+    const records: RamondaDiagnostic[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let reject!: (reason: unknown) => void;
+    const schema: StandardSchemaV1<Values, Values> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: () =>
+          new Promise<never>((_resolve, r) => {
+            reject = r;
+          }),
+      },
+    };
+
+    const { unmount } = mount(schema);
+    try {
+      await withNoUnhandledRejection(async () => {
+        unmount();
+        // The same rule `land` follows: a dead form reports nothing and renders nothing.
+        globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
+        reject(new Error("too late"));
+        await new Promise((r) => setTimeout(r, 5));
+      });
+
+      expect(ours(records)).toEqual([]);
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+      spy.mockRestore();
+    }
+  });
+
   test("`validateOn: blur` waits for the blur", () => {
     const schema = schemaOf((values) => (values.email === "" ? [{ path: ["email"], message: "required" }] : []));
     const { form, unmount } = mount(schema, { validateOn: "blur" });

@@ -184,12 +184,46 @@ export class FieldHandle {
       "aria-invalid": invalid,
     };
 
-    if (typeof value === "boolean") return { ...common, type: "checkbox", checked: value };
-    if (typeof value === "number") return { ...common, type: "number", value };
-    if (value instanceof Date) return { ...common, type: "date", value: toDateInput(value) };
-
-    return { ...common, value: value === null || value === undefined ? "" : String(value) };
+    switch (this.controlFor(value)) {
+      case "checkbox":
+        return { ...common, type: "checkbox", checked: value === true };
+      case "number":
+        // `""` for an emptied field, which is what `fromControl` wrote and what the schema reports on.
+        return { ...common, type: "number", value: typeof value === "number" ? value : "" };
+      case "date":
+        return { ...common, type: "date", value: value instanceof Date ? toDateInput(value) : "" };
+      default:
+        return { ...common, value: value === null || value === undefined ? "" : String(value) };
+    }
   }
+
+  /**
+   * Which control this value belongs in — remembered, because an EMPTY value does not say.
+   *
+   * `fromControl` writes `""` for an emptied number field on purpose, so a schema can report
+   * "expected a number" instead of `NaN` poisoning arithmetic. But `""` is a string, so reading the
+   * kind off the runtime type alone lost the control the moment the reader pressed backspace:
+   * `type: "number"` vanished from the attributes, the element reverted to text, and from then on
+   * `fromControl` saw a text input and wrote strings. The field never became numeric again — the
+   * spinner gone, and on a phone the numeric keyboard gone mid-entry.
+   *
+   * So a present value decides AND is remembered, and an absent one reuses what the field already
+   * was. The handle is one object per path for the life of the form, which is what makes that memory
+   * the field's rather than a render's. It is derived from values on both sides of a hydration, so
+   * the server and the client reach the same answer.
+   *
+   * An ordinary string still answers `text` — the memory only fills a gap, it never invents a kind
+   * a value never had.
+   */
+  private controlFor(value: unknown): Control {
+    if (value === "" || value === null || value === undefined) return this.control ?? "text";
+
+    const kind = controlOf(value);
+    this.control = kind;
+    return kind;
+  }
+
+  private control: Control | undefined;
 
   /* ---- array members. The types keep these off a leaf; these throw if reached anyway. ---- */
 
@@ -263,6 +297,17 @@ export class FieldHandle {
 /** One array for "no rows", so a render over an absent list does not build one (RMD020). */
 const EMPTY: readonly never[] = [];
 
+/** The kinds of control `bind` knows how to describe. `text` is the one that needs no `type`. */
+type Control = "checkbox" | "number" | "date" | "text";
+
+/** The control a PRESENT value belongs in. An absent one says nothing — see `controlFor`. */
+function controlOf(value: unknown): Control {
+  if (typeof value === "boolean") return "checkbox";
+  if (typeof value === "number") return "number";
+  if (value instanceof Date) return "date";
+  return "text";
+}
+
 /**
  * What the control produced.
  *
@@ -278,14 +323,50 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
   if (element.type === "checkbox") return element.checked;
   if (element.type === "number") return element.value === "" ? "" : Number(element.value);
   if (element.type === "date" && current instanceof Date) {
-    const parsed = new Date(element.value);
-    return Number.isNaN(parsed.getTime()) ? element.value : parsed;
+    return fromDateInput(element.value, current) ?? element.value;
   }
 
   return element.value;
 }
 
-/** `yyyy-mm-dd`, which is the only thing `<input type="date">` accepts. */
+/**
+ * `yyyy-mm-dd` for the day the READER is in, which is not always the day UTC is in.
+ *
+ * `toISOString().slice(0, 10)` is the obvious way to write this and it is wrong for most of the
+ * world: 01:00 on the 7th in Belgrade is 23:00 on the 6th in UTC, so the control showed the 6th and
+ * picking that same shown day wrote the 6th back — the reader's date moved by being looked at, and
+ * the wrong day was submitted. `<input type="date">` has no timezone; it shows a calendar day, and
+ * the calendar day a local `Date` means is its local one.
+ */
 function toDateInput(value: Date): string {
-  return Number.isNaN(value.getTime()) ? "" : (value.toISOString().slice(0, 10) as string);
+  if (Number.isNaN(value.getTime())) return "";
+
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+/**
+ * The day the reader picked, as a local `Date`, keeping the time the value already held.
+ *
+ * `new Date("2026-08-07")` parses as UTC midnight — the same drift as above, in reverse. Built from
+ * the parts instead, which is unambiguously local.
+ *
+ * **The time comes across.** A date input cannot express one, so a value that carried 09:15 would
+ * silently move to midnight, and an appointment would lose its hour to a change of day. `setFullYear`
+ * takes all three parts at once, so there is no intermediate date to overflow through.
+ *
+ * `undefined` for anything that is not a day — an empty control, or a half-typed one — and the caller
+ * keeps the raw text, which is a value a schema can report on.
+ */
+function fromDateInput(text: string, current: Date): Date | undefined {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (parts === null) return undefined;
+
+  const [year, month, day] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])];
+  // An invalid held value has no time worth carrying, so the picked day starts at local midnight.
+  if (Number.isNaN(current.getTime())) return new Date(year, month, day);
+
+  const next = new Date(current.getTime());
+  next.setFullYear(year, month, day);
+  return Number.isNaN(next.getTime()) ? undefined : next;
 }

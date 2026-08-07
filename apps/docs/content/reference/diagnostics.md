@@ -1152,6 +1152,38 @@ async save(values: Signup) {
 }
 ```
 
+## RMF004 — the schema's validation rejected
+
+Standard Schema says `validate` answers with a result or a promise of one. It does not say the
+promise resolves, and an async rule doing real work rejects whenever that work does — a uniqueness
+lookup against a server comes back as a rejected promise the moment the network fails. Every
+validator propagates it.
+
+The form keeps the messages it already had, because blanking them would claim the values had been
+re-answered, and reports `isValid: false` — "we asked and did not hear back" is not "nothing
+failed". A submit whose validation rejected does not call `onSubmit`, and releases `isSubmitting`
+so the button is usable again.
+
+Catch the failure inside the rule and turn it into an issue, so the reader is told what happened
+instead of facing a form that will not answer:
+
+```ts
+import { object, string } from "bguard";
+import type { ExceptionContext } from "bguard/core";
+
+const schema = object({
+  email: string().customAsync(async (received: string, ctx: ExceptionContext) => {
+    try {
+      if (await taken(received)) ctx.addIssue("unused", received, "u:taken");
+    } catch {
+      // The lookup failed, which is not the same as the address being taken. Saying so is what
+      // keeps the form answerable.
+      ctx.addIssue("a reachable server", received, "u:unreachable");
+    }
+  }),
+});
+```
+
 # Query — `RMQ`
 
 ## RMQ001 — a query key that cannot be hashed

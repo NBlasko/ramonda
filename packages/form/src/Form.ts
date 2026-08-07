@@ -182,7 +182,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     }
 
     if (env === "server") return;
-    void outcome.then((resolved) => this.land(runId, resolved.issues));
+    void outcome.then(
+      (resolved) => this.land(runId, resolved.issues),
+      (error) => this.failed(runId, error),
+    );
   }
 
   @destroyed
@@ -389,9 +392,18 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     return this.touchedKeys.has(pathKey(path));
   }
 
+  /**
+   * Whether the value here has moved away from the baseline.
+   *
+   * Measured against `seenDefaults` rather than `props.defaultValues`, because that is the baseline
+   * the rest of the class already maintains: `reset` moves it to the values it was handed, `resetAt`
+   * moves one field's, and `onDefaultsChanged` moves it when a record arrives. Reading the prop here
+   * instead made the two disagree — `form.reset(record)` reported a dirty form that nobody had
+   * touched, so the unsaved-changes guard fired on the way out and Save came up enabled.
+   */
   dirtyAt(path: Path): boolean {
     void this.version;
-    return !equal(readAt(this.current, path), readAt(this.props.defaultValues, path));
+    return !equal(readAt(this.current, path), readAt(this.baseline, path));
   }
 
   touch(path: Path): void {
@@ -622,6 +634,17 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     return this.held;
   }
 
+  /**
+   * What "the user has not changed this" is measured against.
+   *
+   * `current` first, because that is what latches the pair on a form nothing has read yet — without
+   * it the very first `isDirty` would compare against `undefined` and call every field dirty.
+   */
+  private get baseline(): InferIn<S> {
+    void this.current;
+    return this.seenDefaults as InferIn<S>;
+  }
+
   private bump(): void {
     if (this.disposed) return;
     this.version++;
@@ -669,9 +692,12 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       return Promise.resolve();
     }
 
-    return outcome.then((resolved) => {
-      this.land(runId, resolved.issues);
-    });
+    return outcome.then(
+      (resolved) => {
+        this.land(runId, resolved.issues);
+      },
+      (error) => this.failed(runId, error),
+    );
   }
 
   private land(runId: number, issues: Issues): void {
@@ -681,6 +707,40 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
 
     this.issues = issues;
     this.validated = true;
+    this.bump();
+  }
+
+  /**
+   * The schema was asked and did not answer: its promise rejected.
+   *
+   * Standard Schema does not promise that the promise RESOLVES, and an async rule doing real work —
+   * a uniqueness lookup against the server — rejects whenever that work does. Every validator
+   * propagates it: a `fetch` that throws inside a refinement comes out as a rejected promise. So
+   * this is an ordinary condition to be in, not a broken program, which is why it reports rather
+   * than throws.
+   *
+   * **`validated` goes back to false**, and that is the whole answer. `isValid` reads it, so a form
+   * whose validation failed stops claiming to be valid — the same stance the class takes on the
+   * server, where an async answer cannot be awaited and the markup says `isValid: false`. "We asked
+   * and did not hear back" is not "nothing failed".
+   *
+   * **The messages it already had are kept.** Blanking them would say the form had been re-answered.
+   *
+   * Guarded by `runId` and `disposed` exactly as `land` is: a rejection from a superseded run is
+   * about values the form has moved past, and a dead form neither reports nor renders.
+   */
+  private failed(runId: number, error: unknown): void {
+    if (this.runId !== runId || this.disposed) return;
+
+    this.validated = false;
+    if (__DEV__) {
+      report(
+        "RMF004",
+        "The schema's validation rejected, so the form has no verdict on these values.",
+        { reason: error instanceof Error ? error.message : String(error) },
+        error,
+      );
+    }
     this.bump();
   }
 
@@ -709,7 +769,16 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     }
 
     this.bump();
-    void outcome.then((resolved) => this.finish(runId, resolved.issues, resolved.value));
+    void outcome.then(
+      (resolved) => this.finish(runId, resolved.issues, resolved.value),
+      (error) => {
+        // `settle` runs whatever `failed` decides, for the reason `finish` records: the submit this
+        // belonged to is over either way, and `submitting` is what the button is disabled by. One
+        // failed lookup used to disable it for the life of the page.
+        this.failed(runId, error);
+        this.settle();
+      },
+    );
   }
 
   private finish(runId: number, issues: Issues, value: unknown): void {
@@ -927,6 +996,16 @@ function adopt(
  */
 function equal(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
+
+  /**
+   * A `Date` names a moment, and two of them for one moment are equal here even though `Object.is`
+   * says otherwise. Without this a defaults factory writing `when: new Date(iso)` — a fresh object
+   * on every run — replaced the field, dropped the messages under it and re-ran the whole schema on
+   * every render of the owner, for a value that had not moved.
+   *
+   * Only `Date`. Anything else with a `getTime` is not one, and still compares by identity.
+   */
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
 
   if (Array.isArray(a) && Array.isArray(b)) {
     return a.length === b.length && a.every((item, index) => equal(item, b[index]));
