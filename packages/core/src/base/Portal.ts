@@ -51,13 +51,48 @@ export interface PortalProps {
  * identity when something it depends on actually moved — so an unrelated render
  * of the owner does not re-reconcile. When the head DID change, the owner's
  * render is the cost, and that is accepted: a portal is a portal.
+ *
+ * ## A reactive `target`, and "inline"
+ *
+ * `target` may change: point it at `document.body` on desktop and a local element
+ * on mobile, and the nodes MOVE — the same DOM node, keeping its state, not a
+ * second copy. That is also how "inline" is done: there is no `disabled` flag,
+ * because a hook has no position of its own to fall back to, so instead you aim
+ * `target` at an element in your own render. A `target` absent at mount and
+ * supplied later is placed then, not lost. (A target change is noticed through the
+ * same `children` signal, which a props factory rebuilds each run; a factory
+ * returning a genuinely STABLE `children` while only `target` moves would not
+ * re-reconcile — the uncommon case, worth knowing.)
+ *
+ * ## Events follow the DOM, not the logical tree
+ *
+ * There is no synthetic event layer — `@onElement` attaches a real listener to a
+ * real node — so a portal's events bubble through the DOM, from the TARGET's
+ * ancestors, not from the owner that declared the portal. A handler on an ancestor
+ * of the `Portal`'s owner will NOT see events from the portalled subtree: put it on
+ * the portalled content, or on an ancestor of the target.
  */
 export class Portal extends Hook<PortalProps> {
   /** The nodes this portal built, in order — the only record of what it owns. */
   private nodes: ChildNode[] = [];
+  /**
+   * Whether the first reconcile has run. NOT `nodes.length`, which cannot tell
+   * "placed, and it came to nothing" from "never placed": a portal whose children
+   * resolve to an empty list still ran, and on a client build must NOT then take
+   * the hydration `adopt` path and sweep up every other portal's marked nodes.
+   */
+  private placed = false;
+  /**
+   * The target the nodes are currently IN, so a change of `target` moves them
+   * rather than leaving a copy behind. `undefined` until the first successful
+   * placement, which also means a `target` that was missing at mount and appears
+   * later is simply the first placement, not a move.
+   */
+  private currentTarget: Element | undefined;
 
   @create({ env: "shared" })
   place(): void {
+    this.placed = true;
     this.reconcile();
   }
 
@@ -83,7 +118,8 @@ export class Portal extends Hook<PortalProps> {
    */
   @create({ env: "client" })
   adopt(): void {
-    if (this.nodes.length > 0) return;
+    if (this.placed) return;
+    this.placed = true;
     const target = this.props.target;
     if (!target) return;
 
@@ -120,7 +156,20 @@ export class Portal extends Hook<PortalProps> {
     const raw = this.props.children;
     if (!target) return;
 
-    const list = Array.isArray(raw) ? raw : [raw];
+    // The target moved: bring the nodes we already own across before reconciling,
+    // so the SAME node (and its state) relocates instead of a stale copy staying
+    // behind. This is how a portal follows a reactive `target` — a modal moving
+    // from an inline anchor to `document.body`, or "inline" being nothing more than
+    // a target that points at a local element. A target absent at mount and
+    // supplied later is not a move: `currentTarget` is still undefined, so this is
+    // the first placement.
+    if (this.currentTarget !== undefined && this.currentTarget !== target) {
+      for (const node of this.nodes) target.appendChild(node);
+    }
+    this.currentTarget = target;
+
+    const list: unknown[] = [];
+    flattenChildren(raw, list);
     const previous = this.nodes;
     const next: ChildNode[] = [];
 
@@ -166,5 +215,19 @@ export class Portal extends Hook<PortalProps> {
     if (stale.length > 0) unmountChildrenNodes(stale);
 
     this.nodes = next;
+  }
+}
+
+/**
+ * Flattens `children` into a single run of atoms, so a nested array — `{[a, [b,
+ * c]]}` — is not handed to `diffAndMerge`, which expects one vnode and would
+ * build `new Component(array)`. One flat list keeps the positional match simple
+ * and matches what an expression slot already does with arrays.
+ */
+function flattenChildren(raw: unknown, out: unknown[]): void {
+  if (Array.isArray(raw)) {
+    for (const child of raw) flattenChildren(child, out);
+  } else {
+    out.push(raw);
   }
 }

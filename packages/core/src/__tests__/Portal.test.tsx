@@ -4,6 +4,7 @@ import { state, create, mount, destroy } from "../base/decorators";
 import { Portal } from "../base/Portal";
 import { getDOM } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
+import type { RamondaNode } from "../types/vdom";
 
 /**
  * `Portal` — renders a subtree into a DOM target elsewhere (its whole reason to
@@ -160,6 +161,146 @@ describe("Portal owns only its own nodes", () => {
     // The portal cleaned up after itself and only itself.
     expect(document.head.querySelector('meta[name="shell"]')).toBe(shell);
     expect(document.head.querySelector('meta[name="p4"]')).toBeNull();
+  });
+});
+
+describe("Portal edge cases the review found", () => {
+  test("an empty portal does not adopt — and delete — another portal's nodes", async () => {
+    /**
+     * `adopt()` must fire only when the `shared` create never ran (hydration). A
+     * portal whose children resolve to NOTHING still ran `place()` on a client
+     * build, so guarding on "no nodes yet" mistook it for un-placed — and it then
+     * seeded itself with every marked node in the target and swept them away.
+     */
+    class WithMeta extends Component {
+      portal = this.use(Portal, {
+        children: <meta data-portal-test="1" name="keep" content="1" />,
+        target: document.head,
+      });
+      render() {
+        return <div>a</div>;
+      }
+    }
+    class Empty extends Component {
+      portal = this.use(Portal, { children: null, target: document.head });
+      render() {
+        return <div>b</div>;
+      }
+    }
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <WithMeta />
+            <Empty />
+          </div>
+        );
+      }
+    }
+
+    await getDOM(<Page />);
+
+    expect(document.head.querySelector('meta[name="keep"]')).not.toBeNull();
+  });
+
+  test("accepts nested-array children without crashing", async () => {
+    // The type is one level deep on purpose; this is the DEFENSIVE path for an
+    // untyped caller, so the input is cast to stand in for one.
+    const nested = [
+      [<meta data-portal-test="1" name="n1" content="1" />],
+      <meta data-portal-test="1" name="n2" content="2" />,
+    ] as unknown as RamondaNode;
+
+    class Page extends Component {
+      portal = this.use(Portal, {
+        children: nested,
+        target: document.head,
+      });
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    await getDOM(<Page />);
+
+    expect(document.head.querySelector('meta[name="n1"]')).not.toBeNull();
+    expect(document.head.querySelector('meta[name="n2"]')).not.toBeNull();
+  });
+});
+
+describe("Portal follows a reactive target", () => {
+  test("moves its nodes to the new target when the target changes", async () => {
+    const a = document.createElement("section");
+    a.id = "home-a";
+    document.body.appendChild(a);
+    const b = document.createElement("section");
+    b.id = "home-b";
+    document.body.appendChild(b);
+
+    class Page extends Component {
+      @state useB = false;
+      portal = this.use(Portal, (self: Page) => ({
+        children: (
+          <span data-portal-test="1" id="moved">
+            x
+          </span>
+        ),
+        target: self.useB ? b : a,
+      }));
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    expect(a.querySelector("#moved")).not.toBeNull();
+    expect(b.querySelector("#moved")).toBeNull();
+
+    instance.useB = true;
+    await settle();
+
+    // The SAME node moved — not a second copy in b and a stale one left in a.
+    expect(a.querySelector("#moved")).toBeNull();
+    expect(b.querySelector("#moved")).not.toBeNull();
+
+    a.remove();
+    b.remove();
+  });
+
+  test("inline is just a local target: point it at an element in your own render", async () => {
+    // There is no "disabled"/inline flag: with an Element-based target, inline is
+    // just a target that points at a local node instead of a far one.
+    const far = document.createElement("section");
+    far.id = "far";
+    document.body.appendChild(far);
+
+    class Page extends Component {
+      @state inline = true;
+      local = document.createElement("div");
+      portal = this.use(Portal, (self: Page) => ({
+        children: (
+          <span data-portal-test="1" id="content">
+            x
+          </span>
+        ),
+        target: self.inline ? self.local : far,
+      }));
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    expect(instance.local.querySelector("#content")).not.toBeNull();
+    expect(far.querySelector("#content")).toBeNull();
+
+    instance.inline = false;
+    await settle();
+
+    expect(instance.local.querySelector("#content")).toBeNull();
+    expect(far.querySelector("#content")).not.toBeNull();
+
+    far.remove();
   });
 });
 
