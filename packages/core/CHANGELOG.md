@@ -1,5 +1,103 @@
 # @ramonda/core
 
+## 0.13.0
+
+### Minor Changes
+
+- 78c79ef: `@watchProp` takes several selectors and runs once when any of them changed
+
+  ```tsx
+  @watchProp((p) => p.page, (p) => p.term, (p) => p.sort)
+  reload(next: [number, string, string], previous: [number, string, string]) { … }
+  ```
+
+  **"Run this when any of these props changed" was previously unwritable.** Stacking the decorator makes a
+  separate entry per selector, so the method runs once per CHANGED prop — twice when two moved in the same
+  update. And selecting a tuple from one selector is worse: comparison is `Object.is`, so a fresh array is
+  never equal to the last one, and the method fires on **every** props change with `previous` and `next`
+  holding identical contents. Both measured; both are now covered by tests.
+
+  Comparison stays `Object.is` per selector, so nothing is compared deeply and the cost is unchanged. Only
+  the CALL is coalesced. A selector whose value did not change keeps it in both arrays, so
+  `previous[i] === next[i]` is how the method tells which one moved.
+
+  **Breaking: the values are always a tuple, including for one selector.** `(next: string)` becomes
+  `([next]: [string])` — destructuring in the parameter list leaves every method body untouched.
+
+  That is about evolution rather than neatness. With a scalar for one selector and a tuple for several,
+  adding a second selector to a watcher that already exists silently changes the method's parameter type,
+  and what a decorator reports for that is `TS1241 Unable to resolve signature of method decorator`, which
+  names nothing useful. A tuple that grows leaves `next[0]` meaning what it always meant.
+
+  **Two of this package's own call sites were silently wrong after the change and the compiler accepted
+  both**, which is worth knowing if you have your own: a parameter typed as a deferred conditional
+  (`InferIn<S>` in `@ramonda/form`) or as anything array-shaped (`QueryKey` in `@ramonda/query`, which is
+  `readonly unknown[]`, so a one-tuple is assignable to it) type-checks and then receives the tuple.
+  `@ramonda/form`'s late-defaults suite caught it; the types did not. Audit by shape, not by `tsc`.
+
+- 87a3c8c: The lifecycle decorators are `@created`, `@mounted` and `@destroyed`
+
+  `@create` → `@created`, `@mount` → `@mounted`, `@destroy` → `@destroyed`. `@updated` is unchanged, and it
+  is the reason: it was the only one of the four already naming the moment rather than an action, and one
+  odd name out of four is a rule nobody can state.
+
+  **They report a moment, they do not perform one.** `@mount` reads as an instruction — as though the
+  method does the mounting — when what it means is "the framework will call you once this is mounted".
+  `@mounted` says that. So does `@destroyed`: the method does not destroy anything, it runs while teardown
+  is happening.
+
+  `@watchProp` keeps its name for the same reason it should: it IS an instruction. You are telling the
+  framework to watch a prop.
+
+  **One cost worth knowing before you upgrade.** `created`, `mounted` and `destroyed` are the natural names
+  for a local flag or counter — `let mounted = false` is an idiom — and a local shadows the import, so
+  `@created` silently resolves to your array. Six files in this repository had exactly that, and the
+  compiler reports it as `TS1241 Unable to resolve signature of method decorator`, which does not mention
+  shadowing. If that error appears on a decorator that was fine a moment ago, look for a local with the new
+  name.
+
+### Patch Changes
+
+- 13b2c75: `RMD045` — two `@Host` on one class, said in words and reported to a collector
+
+  It always failed, with V8's own message: `Cannot redefine property: Symbol(host:meta)`. `HOST_META` is
+  written non-configurable, so the second `defineProperty` threw — naming an internal symbol, offering no
+  advice, and pointing inside `decorators.ts` rather than at the class. For a mistake as easy as writing the
+  decorator twice, that was the worst report available.
+
+  It now throws with a sentence that says what to do, and **emits a record as well**. Those are not
+  alternatives: the throw is the developer's channel and ships in every build, while the record is what an
+  app streaming its diagnostics somewhere needs in order to see this alongside everything else it has to
+  tidy up. A fault that only throws is invisible to that.
+
+  What decides whether a fault also throws is whether the program can carry on. `RMD032` and
+  `RMD040` report and continue, because one declaration quietly wins; a component cannot have two elements,
+  so there is no winner to pick here.
+
+  A **subclass** declaring its own `@Host` is not this. It overrides the base's — how a specialised
+  component changes its element — and stays silent.
+
+- 607a5de: `RMD046` — two `@StableProps` on one class merge instead of throwing
+
+  It used to throw, and not on purpose: `STABLE_PROPS` was written non-configurable, so the second
+  `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`. An internal symbol and
+  no advice, for what is a spelling mistake.
+
+  Merging is the reading that matches the decorator. `@StableProps` names a **set**, and it already merges
+  along the class chain — a subclass adds names rather than shadowing the base's — so two on one class has
+  one unambiguous reading, the union, and both declarations now take effect. Combine them into
+  `@StableProps("a", "b")`.
+
+  **A warning rather than a refusal**, which is the line against `RMD045`: two `@Host` element names have no
+  union, so carrying on there would mean silently picking one. Here the result is exactly what was asked
+  for, so only the spelling is redundant.
+
+  The property is `configurable: true` for this, and the trade is smaller than it sounds. `writable: false`
+  still refuses an assignment — the door an app could actually reach — and the symbol is a plain
+  `Symbol("stableProps")`, neither exported nor `Symbol.for`, so nothing outside the package can name it
+  without walking `getOwnPropertySymbols`. What is given up is a deliberate `defineProperty` by code that
+  went looking for it.
+
 ## 0.12.0
 
 ### Minor Changes
