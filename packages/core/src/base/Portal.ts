@@ -160,7 +160,9 @@ export class Portal extends Hook<PortalProps> {
   @destroyed
   clear(): void {
     if (this.nodes.length === 0) return;
-    unmountChildrenNodes(this.nodes as EnhancedChildNode[]);
+    // `false`: a portal clearing itself is part of a larger teardown, whose enclosing
+    // flush drains commit-level work once — flushing here would run it mid-teardown.
+    unmountChildrenNodes(this.nodes as EnhancedChildNode[], false);
     this.nodes = [];
   }
 
@@ -266,7 +268,7 @@ export class Portal extends Hook<PortalProps> {
     for (const node of previous) {
       if (!kept.has(node)) stale.push(node as EnhancedChildNode);
     }
-    if (stale.length > 0) unmountChildrenNodes(stale);
+    if (stale.length > 0) unmountChildrenNodes(stale, false);
 
     // Line the DOM up with `next`. The last node anchors the block where it is; the
     // rest are moved before it only when out of place, so an unchanged order — the

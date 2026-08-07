@@ -421,7 +421,10 @@ function collectMeta(tags: Map<string, ResolvedTag>, tag: MetaTag): void {
     return;
   }
 
-  const attributes: Record<string, string> = { content: tag.content };
+  const attributes: Record<string, string> = {};
+  // Guarded, not `{ content: tag.content }`: the type requires `content`, but a JS
+  // caller can omit it, and stringifying undefined ships `content="undefined"`.
+  if (tag.content !== undefined) attributes.content = tag.content;
   if (tag.name) attributes.name = tag.name;
   if (tag.property) attributes.property = tag.property;
   if (tag.httpEquiv) attributes["http-equiv"] = tag.httpEquiv;

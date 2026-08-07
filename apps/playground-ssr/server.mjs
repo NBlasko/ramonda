@@ -95,9 +95,15 @@ function sendHtml(res, document, mode) {
  * that set none keeps the shell's.
  */
 function fillTemplate({ html, title, head }) {
-  let out = template.replace("<!--ssr-->", html ?? "");
-  if (title) out = out.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
-  return out.replace("<!--head-->", head ?? "");
+  // Function replacements, never string ones: a `$&`, `$$` or `` $` `` in the body,
+  // title or head (e.g. a description reading "Save $$ today") is a special pattern
+  // to String.prototype.replace and would corrupt the output. And the title is
+  // ESCAPED — it is raw text from `document.title`, so a title carrying markup would
+  // otherwise break out of the element (the head <meta>/<link> are already escaped,
+  // they come from outerHTML).
+  let out = template.replace("<!--ssr-->", () => html ?? "");
+  if (title) out = out.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(title)}</title>`);
+  return out.replace("<!--head-->", () => head ?? "");
 }
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */

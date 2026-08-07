@@ -149,9 +149,14 @@ export function discardPendingUpdates(component: BaseComponent): void {
  * For the synchronous drain a test harness needs: a @mounted can write state, and
  * that state schedules a render whose own @mounts land back here. "Settled" has
  * to mean both queues are empty, not just one. See `drainSync` in Task.ts.
+ *
+ * `pendingCommitWork` counts too: a `Head`/`Portal` recompute queued after the
+ * last `flushPostCommit` — with no `@mounted` behind it — is post-commit work
+ * nothing else will drain, so a drain that ignored it would report itself settled
+ * and strand the head update until an unrelated later commit.
  */
 export function hasPendingPostCommit(): boolean {
-  return pending.length > 0;
+  return pending.length > 0 || pendingCommitWork.size > 0;
 }
 
 /**

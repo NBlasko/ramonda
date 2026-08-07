@@ -197,6 +197,24 @@ describe("Head on the client", () => {
     // so every update would append another one.
     expect(headTags().length).toBe(0);
   });
+
+  test('a meta with an identity but no content does not emit content="undefined"', async () => {
+    class Page extends Component {
+      // @ts-expect-error — `content` is required by the type; this is the runtime
+      // guard for a JS caller that omits it.
+      head = this.use(Head, { meta: [{ name: "robots" }] });
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    await getDOM(<Page />);
+
+    const robots = document.head.querySelector('meta[name="robots"]');
+    expect(robots).not.toBeNull();
+    // `content` stringified from undefined would ship `content="undefined"`.
+    expect(robots?.hasAttribute("content")).toBe(false);
+  });
 });
 
 describe("Head on the server — the reason it exists", () => {
