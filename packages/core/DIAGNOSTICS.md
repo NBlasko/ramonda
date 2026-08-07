@@ -79,6 +79,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD042` | warning | The default host cannot be the direct target of this event |
 | `RMD043` | warning | A `<meta>` with nothing to identify it |
 | `RMD044` | error | An unknown element type in JSX |
+| `RMD045` | error | More than one `@Host` on a component |
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 

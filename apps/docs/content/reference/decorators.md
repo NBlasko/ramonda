@@ -100,7 +100,10 @@ Most decorators stack, and the order is defined:
 
 Three are single:
 
-- **`@Host`** — a component is exactly one element, so there is one answer to which.
+- **`@Host`** — a component is exactly one element, so there is one answer to which. Two on one class
+  **throws**, in every build, because there is no correct program in which both are honoured. A
+  **subclass** may declare its own, which overrides the base's — that is how a specialised component
+  changes its element, and it is silent.
 - **`@ShouldUpdateOnPropsChange`** — there is one answer to "take these props?". Two on ONE class are
   reported in development (RMD040), and **the highest** is the one that decides — class decorators apply
   bottom-up, so it is applied last. That is the opposite line from `@catchError` above, and the same

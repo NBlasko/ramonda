@@ -973,6 +973,39 @@ export function Host<C extends (new (...args: any[]) => object) & { readonly __i
             props: props as HostMeta["props"],
           };
 
+    /**
+     * Two `@Host` on ONE class, said in words.
+     *
+     * It already failed — `configurable: false` below means the second `defineProperty` throws — but
+     * with V8's own message: `Cannot redefine property: Symbol(host:meta)`. That names an internal
+     * symbol, gives no advice, and points at a line inside this file rather than at the class. For a
+     * mistake as easy as writing the decorator twice, it was the worst available report.
+     *
+     * **A record AND a throw**, which are not alternatives — the same two doors `@ramonda/form`'s
+     * `refuse` opens. The throw is the developer's channel and ships in every build, because there is no
+     * correct program here: a component is exactly one element, so two answers cannot both be honoured.
+     * The RECORD is the collector's, so an app streaming its diagnostics somewhere sees this alongside
+     * everything else it has to tidy up — a fault that only throws is invisible to that.
+     *
+     * What the tier decides is the THROW, not the code. `RMD032` and `RMD040` report and carry on,
+     * because one declaration quietly wins and the program still runs, wrongly. This one cannot pick a
+     * winner.
+     *
+     * `hasOwn`, not `in`: a SUBCLASS declaring its own `@Host` overrides the base's, which is how a
+     * specialised component changes its element, and it is measured as working. Only two on one class
+     * body are refused.
+     */
+    if (Object.hasOwn(ctor, HOST_META)) {
+      if (__DEV__) {
+        diagnose("RMD045", ctor.name, `<${ctor.name} /> declares more than one @Host.`, { component: ctor.name });
+      }
+      throw new Error(
+        `[Ramonda] <${ctor.name} /> has more than one @Host. A component is exactly one element, so ` +
+          `there is one answer to which — keep the @Host you meant and delete the rest. A SUBCLASS may ` +
+          `declare its own, which overrides the base's; this is two on the same class.`,
+      );
+    }
+
     Object.defineProperty(ctor, HOST_META, {
       value: meta,
       writable: false,

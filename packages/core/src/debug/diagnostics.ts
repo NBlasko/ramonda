@@ -74,7 +74,8 @@ export type DiagnosticCode =
   | "RMD041"
   | "RMD042"
   | "RMD043"
-  | "RMD044";
+  | "RMD044"
+  | "RMD045";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -323,6 +324,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "An unknown element type in JSX",
     fix: "A tag has to be a string, a component class, or — for the one unsupported case — a function. This was none of them, so an empty host is rendered in its place and whatever it was meant to be is missing. It is usually a value used where a tag belongs: `<{Thing} />` rather than `<Thing />`, an object read off a map with the wrong key, or a component that failed to import and arrived as undefined.",
+  },
+  RMD045: {
+    // error, and it also THROWS: a component is exactly one element, so two answers cannot both be
+    // honoured and there is no correct program to keep running.
+    severity: "error",
+    title: "More than one @Host on a component",
+    fix: "A component is exactly one element, so there is one answer to which — keep the `@Host` you meant and delete the rest. A SUBCLASS declaring its own is not this: that overrides the base's, which is how a specialised component changes its element, and it is silent. This is two on the same class. It throws as well as reporting, in every build, because unlike RMD032 and RMD040 there is no way to pick a winner and carry on.",
   },
   RMD031: {
     // error, not warning: the item is dropped, so the list on screen is shorter than `each`.

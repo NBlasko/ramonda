@@ -930,6 +930,27 @@ its own advice — see [`RMD011`](#rmd011-a-function-was-used-as-a-jsx-tag).
 The empty host is rendered in every build, so a failed import costs the one element rather than the
 page. Reported once per component, so two of these in two files are two reports.
 
+## RMD045 — More than one `@Host` on a component
+
+```tsx expect-error
+@Host("div")
+@Host("span")     // throws: two answers to "which element am I?"
+class Panel extends Component { render() { … } }
+```
+
+A component is exactly one element, so there is one answer to which. Keep the `@Host` you meant and
+delete the rest.
+
+**It throws as well as reporting**, in every build. Unlike
+[`RMD032`](#rmd032-more-than-one-catcherror-on-a-component) and
+[`RMD040`](#rmd040-more-than-one-shouldupdateonpropschange-on-one-class), where one declaration quietly
+wins and the page still renders, there is no way to pick a winner here and carry on. The record is
+emitted for a collector all the same — a fault that only throws is invisible to anything shipping your
+diagnostics somewhere.
+
+A **subclass** declaring its own is not this. That overrides the base's, which is how a specialised
+component changes its element, and it is silent.
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to
