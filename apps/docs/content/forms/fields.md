@@ -154,6 +154,103 @@ is what catches it in JavaScript and in a file the checker is not covering. A fi
 over a path rather than a place values live, so an assignment would land nowhere and the next read
 would hand back the old value.
 
+## A field in its own component
+
+A design system does not want `{...f.email.$.bind}` written at every call site — it wants a
+`<TextField>` that carries the label, the message and the class that turns red. A component that
+takes a field needs one thing from the form, and `Field` is it:
+
+```tsx
+import { Field, type FieldNode } from "@ramonda/form";
+
+@Host("label", (self: TextField) => ({ className: self.f.error ? "field field--invalid" : "field" }))
+class TextField extends Component<{ of: FieldNode<string>; label: string }> {
+  f = this.use(Field<string>, () => ({ of: this.props.of }));
+
+  render() {
+    return [<span className="field__label">{this.props.label}</span>, <input {...this.f.bind} />, this.f.error];
+  }
+}
+```
+
+And the call site hands over one prop, typed by the schema:
+
+```tsx
+<TextField of={f.email} label="E-mail" />
+<TextField of={f.address.street} label="Street" />
+```
+
+**`Field` is required, not an optimisation.** Without it such a component never re-renders: a field
+node is one cached object for the life of the form — deliberately, so `bind.onInput` keeps its
+identity — so the component's props never change and the diff skips it. Its message would never
+appear, and a write from anywhere else would never reach its input.
+
+`Field` answers everything a node's `$` does — `value`, `error`, `errors`, `touched`, `dirty`, `name`,
+`bind`, `set`, `reset`, and the list members for an array field — so a component written against
+`FieldApi<T>` needs nothing new to learn. Name the type at the `use`: `FieldNode<T>` is a conditional
+type, so `T` cannot be recovered from it by inference, and `Field<string>` is the same pin
+`Query<Todo>` takes.
+
+### The host element is the wrapper you were going to write
+
+`@Host("label", …)` makes the component's own element the field's wrapper, so there is no extra node
+in the DOM. The markup that comes out is what you would have written by hand:
+
+```html
+<label class="field">
+  <span class="field__label">E-mail</span>
+  <input name="email" value="">
+</label>
+```
+
+That is where the class, the label and the message belong anyway, and the host props callback runs on
+every render, so the class follows the message without any work.
+
+### Defaults and variants come from the class
+
+There is no `defaultProps`, and none is needed — a getter with a fallback is one, and a subclass
+specialises it:
+
+```tsx
+class TextField extends Component<{ of: FieldNode<string>; label?: string }> {
+  protected get labelText(): string {
+    return this.props.label ?? "Field";
+  }
+}
+
+class EmailField extends TextField {
+  protected override get labelText(): string {
+    return this.props.label ?? "E-mail";
+  }
+}
+```
+
+`@Host` is read off the class through the static chain, so a subclass inherits the wrapper and may
+declare its own to restyle it.
+
+### One keystroke, one field
+
+Because the subscription is per path, an edit wakes the fields that changed and no others. Measured
+over 300 rows through `list()`, one keystroke: **every row rebuilt, 45 ms**, before this existed;
+**one row** after. Inside a list the node arrives already — `list({ as })` hands each row its own —
+so a row component is the same shape:
+
+```tsx
+import { Field, type Row } from "@ramonda/form";
+
+class Line extends Component<{ item: Row<Contact> }> {
+  f = this.use(Field<string>, () => ({ of: this.props.item.field.value }));
+
+  render() {
+    return <input {...this.f.bind} />;
+  }
+}
+```
+
+What still re-renders on every change is the component that OWNS the form, because reaching into
+`form.fields` is asking about the form. Keep that component thin — the fields, the list, the submit
+button — and the work per keystroke is one field's.
+
 ## Labels, ids and accessibility
 
 `bind` supplies `name`, which is what a form posts under and what a `<label for>` cannot use.

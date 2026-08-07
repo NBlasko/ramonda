@@ -58,6 +58,12 @@ function host(initial: unknown) {
       items.splice(start, remove, ...insert);
       values = writeAt(values, path, items);
     },
+    // The tree is exercised here WITHOUT the per-field subscriptions — the fake host watches nothing,
+    // which is what keeps these assertions about the tree. `Field` has its own suite.
+    watch: () => {
+      throw new Error("this suite does not watch fields");
+    },
+    unwatch: () => {},
     move: (path: Path, from: number, to: number) => {
       const value = readAt(values, path);
       const items = Array.isArray(value) ? [...value] : [];

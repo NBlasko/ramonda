@@ -1,4 +1,6 @@
 export { Form } from "./Form";
+export { Field } from "./field";
+export type { FieldTarget } from "./field";
 export type {
   ArrayApi,
   ArrayNode,

@@ -17,10 +17,31 @@ export interface FieldHost {
   rowIds(path: Path): readonly string[];
   splice(path: Path, start: number, remove: number, insert: readonly unknown[]): void;
   move(path: Path, from: number, to: number): void;
+  watch(path: Path, watcher: Watcher): FieldHandle;
+  unwatch(path: Path, watcher: Watcher): void;
+}
+
+/**
+ * Something that wants to hear about one path.
+ *
+ * `Field` is the only implementation, and what it does with `bump` is increment a `@state` counter
+ * that belongs to the component which used it — so the poke wakes exactly that component.
+ */
+export interface Watcher {
+  bump(): void;
 }
 
 /** Marks a node, so a diagnostic or an inspector can tell one from an ordinary object. */
 export const IS_FIELD_NODE = Symbol.for("ramonda.form.node");
+
+/**
+ * What a node answers to `Field`: the form behind it, and where in it this node sits.
+ *
+ * A node is a proxy over a path and holds neither, so this is the one way across. Not
+ * `Symbol.for` — this is internal to the package, and a registered symbol is reachable by name
+ * from anywhere, which would make the form's host part of its public surface by accident.
+ */
+export const FIELD_TARGET = Symbol("ramonda.form.target");
 
 /**
  * String keys a node answers itself rather than treating as a child.
@@ -70,6 +91,8 @@ export class FieldTree {
         get: (_target, property) => {
           if (property === "$") return this.handle(path);
           if (property === IS_FIELD_NODE) return true;
+          // The one way from a node back to the form it belongs to — see `Field`.
+          if (property === FIELD_TARGET) return { host: this.host, path };
           // Every other symbol, and the string names something else reaches for.
           if (typeof property === "symbol" || NOT_A_CHILD.has(property)) return undefined;
 
@@ -243,23 +266,50 @@ export class FieldHandle {
     const items = this.list();
     const ids = this.host.rowIds(this.at_);
 
-    if (this.rowsCache && this.rowsItems === items && this.rowsIds === ids) return this.rowsCache;
+    if (this.rowsCache !== undefined && this.rowsItems === items && sameIds(this.rowsIds, ids)) return this.rowsCache;
 
-    const rows = items.map((_item, index) => ({
-      id: ids[index] as string,
-      index,
-      field: this.tree.node([...this.at_, index]) as FieldNode<unknown>,
-    }));
+    const rows = items.map((_item, index) => {
+      const id = ids[index] as string;
+      const kept = this.rowById.get(id);
+      // **One row object per row, for as long as the row is where it was.** `list({ as })` hands this
+      // object to a component as its `item` prop, so a fresh one is a changed prop — and a fresh one
+      // for every row is what made an edit in row 1 re-render all fifty. Nothing in it has changed
+      // for the others: the id is theirs, the index is the same, and the field node is one cached
+      // object per path already.
+      //
+      // A row whose INDEX moved does get a new object, and should: it is showing a different
+      // position, and `list()`'s `render(item, index)` contract says so too.
+      if (kept !== undefined && kept.index === index) return kept;
+
+      const built: Row<unknown> = {
+        id,
+        index,
+        field: this.tree.node([...this.at_, index]) as FieldNode<unknown>,
+      };
+      this.rowById.set(id, built);
+      return built;
+    });
+
+    // Rows that are gone stop being remembered, or the map grows for the life of the form.
+    if (this.rowById.size > rows.length) {
+      const alive = new Set(rows.map((row) => row.id));
+      for (const id of [...this.rowById.keys()]) {
+        if (!alive.has(id)) this.rowById.delete(id);
+      }
+    }
 
     this.rowsCache = rows;
     this.rowsItems = items;
-    this.rowsIds = ids;
+    // COPIED, because `rowIds` hands back the array it keeps and tops up in place — so holding the
+    // reference would compare a list against itself and the cache would never notice a new row.
+    this.rowsIds = [...ids];
     return rows;
   }
 
   private rowsCache: readonly Row<unknown>[] | undefined;
   private rowsItems: readonly unknown[] | undefined;
   private rowsIds: readonly string[] | undefined;
+  private readonly rowById = new Map<string, Row<unknown>>();
 
   append(item: unknown): void {
     this.host.splice(this.at_, this.list().length, 0, [item]);
@@ -296,6 +346,12 @@ export class FieldHandle {
 
 /** One array for "no rows", so a render over an absent list does not build one (RMD020). */
 const EMPTY: readonly never[] = [];
+
+/** Whether two id lists are the same, by content — see why `rows` copies them. */
+function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolean {
+  if (a === undefined || a.length !== b.length) return false;
+  return a.every((id, index) => id === b[index]);
+}
 
 /** The kinds of control `bind` knows how to describe. `text` is the one that needs no `type`. */
 type Control = "checkbox" | "number" | "date" | "text";
