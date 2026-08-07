@@ -173,7 +173,7 @@ export function assertDisconnect(value: unknown, decorator: string): void {
 
 const ENVS = ["client", "server", "shared"];
 
-/** @create({ env: "client" }) */
+/** @created({ env: "client" }) */
 export function assertEnv(env: unknown, decorator: string): void {
   if (env === undefined) return;
   if (typeof env !== "string" || !ENVS.includes(env)) {

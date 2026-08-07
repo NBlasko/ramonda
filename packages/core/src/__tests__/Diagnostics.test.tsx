@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, compute, create, destroy, mount, interval, Host } from "../base/decorators";
+import { state, compute, created, destroyed, mounted, interval, Host } from "../base/decorators";
 import { Component } from "../base/Component";
 import { createContext } from "../base/Context";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -373,7 +373,7 @@ describe("DEV diagnostics", () => {
 
   test("RMD006: reports a raw setInterval left running after unmount", async () => {
     class Clock extends Component {
-      @create start() {
+      @created start() {
         setInterval(() => {}, 10_000);
       }
       render() {
@@ -389,13 +389,13 @@ describe("DEV diagnostics", () => {
     expect(captured.messages[0]).toContain("@interval");
   });
 
-  test("RMD006: stays quiet when @destroy clears the timer", async () => {
+  test("RMD006: stays quiet when @destroyed clears the timer", async () => {
     class Clock extends Component {
       private timerId: ReturnType<typeof setInterval> | undefined;
-      @create start() {
+      @created start() {
         this.timerId = setInterval(() => {}, 10_000);
       }
-      @destroy stop() {
+      @destroyed stop() {
         clearInterval(this.timerId);
       }
       render() {
@@ -429,7 +429,7 @@ describe("DEV diagnostics", () => {
   test("RMD006: attributes a timer to the child that started it, not the parent", async () => {
     @Host("div")
     class Child extends Component {
-      @create start() {
+      @created start() {
         setInterval(() => {}, 10_000);
       }
       render() {
@@ -439,7 +439,7 @@ describe("DEV diagnostics", () => {
     class Parent extends Component {
       @state showChild = true;
       // Runs after the child is built — must not inherit the child's ownership.
-      @mount fine() {}
+      @mounted fine() {}
       render() {
         return <div>{this.showChild ? <Child /> : null}</div>;
       }

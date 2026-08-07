@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, create } from "../../base/decorators";
+import { Host, state, created } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { bootstrap } from "../../index";
@@ -96,7 +96,7 @@ describe("the server sends only what opted in", () => {
     @Host("main")
     class Page extends Component {
       @state seen = "";
-      @create init() {
+      @created init() {
         this.seen = requestContext().cookies.get("session") ?? "";
       }
       render() {

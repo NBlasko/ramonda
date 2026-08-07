@@ -1,7 +1,7 @@
 import { Component } from "..";
 import type { RamondaNode } from "../types/vdom";
 import { createRamonda } from "../vdom/CreateRamonda";
-import { mount, destroy, state, create, deferHydration, watchProp } from "./decorators";
+import { mounted, destroyed, state, created, deferHydration, watchProp } from "./decorators";
 import { addModulePreload } from "./Head";
 
 export type Lazy = () => Promise<any>;
@@ -119,7 +119,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * It used to be `private readonly cacheKey = …`, computed at construction — so
    * a component whose `lazy` prop CHANGED kept the first one's key forever. The
    * failure is precise and quiet: `render` reads the cache under the stale key
-   * and serves the OLD module, while nothing refetches because `@mount` already
+   * and serves the OLD module, while nothing refetches because `@mounted` already
    * ran. Measured in a route outlet — the URL changed, the title changed, and the
    * content stayed on the previous page with no request made.
    *
@@ -168,7 +168,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * `lazy()` is already running by the time anything here could execute, so a
    * preload link would be a duplicate request hint for a request in flight.
    */
-  @create({ env: "server" })
+  @created({ env: "server" })
   emitPreloadHints() {
     const preload = this.props.preload;
     if (!preload) return;
@@ -193,7 +193,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
     void this.load();
   }
 
-  @mount afterCreate() {
+  @mounted afterCreate() {
     this.props.onCreate?.();
     // Returned so a server render can await it — see docs/async-ssr-proposal.md.
     return this.load();
@@ -306,7 +306,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
     this.load();
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     this.disposed = true;
   }
 

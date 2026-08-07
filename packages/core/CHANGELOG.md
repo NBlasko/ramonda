@@ -279,7 +279,7 @@
   the package's table had none.
 
   Two runtime messages also stopped naming `@effect`, a decorator that no longer exists — the runaway
-  and update-loop errors now point at `@mount`, `@updated` and subscriptions, which is what a reader
+  and update-loop errors now point at `@mounted`, `@updated` and subscriptions, which is what a reader
   can go and look for.
 
 - 4d0fddd: Review pass over the decorator work: three faults found in it
@@ -318,15 +318,15 @@
 
   The deferred path is where it hurts. A `@deferHydration` subtree ADOPTS the server's node and then
   waits, so by the time the promise settles there is an initialized component there, holding restored
-  state and whatever its client `@create` started. Replacing its node left it running with no DOM: no
-  `@destroy`, no effect cleanups, no signal detach — its timers went on firing, its subscriptions
+  state and whatever its client `@created` started. Replacing its node left it running with no DOM: no
+  `@destroyed`, no effect cleanups, no signal detach — its timers went on firing, its subscriptions
   stayed attached, and a later write to a signal it had read would render into nodes nobody can see.
   Silent, because the page looks right: the fresh element is there and the old one is gone.
 
   Both fallbacks now tear down first — the deferred one in place, through a new `unmountNodeInPlace`
   (the node has to still be a child for `replaceChild` to put the fresh one where it was), and the
   synchronous one through the ordinary cleanup, since its component was never adopted onto a node but
-  has already run its client `@create`.
+  has already run its client `@created`.
 
 - de4ecda: The props gate behaves under `extends` like every other decorated method
 
@@ -334,7 +334,7 @@
 
   Overriding the decorated method without re-decorating ran the BASE's body: the decorator kept the
   function it was handed at decoration time instead of looking the method up on the instance, so the
-  subclass's version was dead code that read as live. `@create` and `@watchProp` register
+  subclass's version was dead code that read as live. `@created` and `@watchProp` register
   `this[name].bind(this)` and honour the override; one decorator out of three failing at the pattern the
   docs recommend is worse than any of them failing at it. The gate now dispatches by name too.
 
@@ -782,7 +782,7 @@
   module-level flag has a documented contract — only `createComponent` may read it, and only for a root
   mount — because it is restored before the first `await`, so an element built during the drain that
   follows would read "client" whatever side it is really on. There is a test for exactly that: a
-  `@mount` that fills a list after an await, whose rows appear in the markup and attach nothing. It
+  `@mounted` that fills a list after an await, whose rows appear in the markup and attach nothing. It
   fails if the flag is used instead.
 
 ## 0.7.0
@@ -977,8 +977,8 @@
   Also: in the browser `requestContext().url` follows the address bar, so it stays correct after a
   client-side navigation instead of freezing at whatever the server rendered.
 
-  Most apps need none of this — reading the request in `@create` and keeping the result in `@state`
-  already travels, because `@create` is skipped on hydration and the state is restored from the page.
+  Most apps need none of this — reading the request in `@created` and keeping the result in `@state`
+  already travels, because `@created` is skipped on hydration and the state is restored from the page.
   `exposeToClient` is for when several components read the same value straight from the context.
 
 - 621eaeb: `@Host`, `@onElement` and `@shouldUpdateOnPropsChange` are now refused on a hook by **TypeScript**,
@@ -999,7 +999,7 @@
   ```
 
   Everything else in the decorator set works on a hook — measured, not assumed: `@state`, `@persist`,
-  `@compute`, `@memoizedHandler`, `@create`, `@mount`, `@destroy`, `@updated`, `@watchProp`,
+  `@compute`, `@memoizedHandler`, `@created`, `@mounted`, `@destroyed`, `@updated`, `@watchProp`,
   `@deferHydration`, `@onWindow`, `@onDocument`, `@interval`, `@timeout`, and your own subscription
   decorators. A new [decorator table](https://ramonda.pages.dev/reference/decorators) answers all
   three questions at once: where each runs, what it goes on, and whether it may repeat.
@@ -1050,7 +1050,7 @@
     so someone reads and acts on data that is not what the app meant to show.
   - **RMD010** — a default host the parent does not allow: the browser rearranges or deletes the
     markup, so the page is not what was written.
-  - **RMD016** — a component updating while detached: `@destroy` never ran, its timers and listeners
+  - **RMD016** — a component updating while detached: `@destroyed` never ran, its timers and listeners
     are still live, and every render goes into nodes nobody can see.
   - **RMD017** — a deferred hydration that never resumed. The page looks finished but that subtree
     never becomes interactive.
@@ -1080,7 +1080,7 @@
   cookie, header, or seeded value literally cannot be turned into static HTML, so one visitor's
   data can never end up in another's cached page.
 
-  It catches reads wherever they happen — `render()`, `@create`, and even an async `@mount`
+  It catches reads wherever they happen — `render()`, `@created`, and even an async `@mounted`
   (whose throw is swallowed by the render drain, so the read is _recorded_ on the scope and
   checked afterwards). `url` stays readable throughout (it is the page identity). Sequential by
   design (a build renders one page at a time) — not for serving concurrent requests.
@@ -1112,9 +1112,9 @@
 
   The scope is live only across the render's **synchronous** section (the same window and the same
   concurrency guarantee as `renderEnv` — two concurrent requests must not share it across an
-  `await`). So read `requestContext()` **synchronously**: in `render()`, in `@create`, or before an
-  `@mount`'s first `await`. The idiomatic pattern needs nothing more — read the request in `@create`
-  and store it in `@state`; `@create` is skipped on hydration and the `@state` is restored from the
+  `await`). So read `requestContext()` **synchronously**: in `render()`, in `@created`, or before an
+  `@mounted`'s first `await`. The idiomatic pattern needs nothing more — read the request in `@created`
+  and store it in `@state`; `@created` is skipped on hydration and the `@state` is restored from the
   page's state blob, so the client never re-reads the request and there is no separate request blob
   to ship. New types: `RenderToStringOptions`, `ServerRequestInit`.
 
@@ -1283,7 +1283,7 @@
   happened to read that render.
 
   Elsewhere "effects" was the runtime's own vocabulary leaking into prose a reader cannot look up ("after
-  this commit's `@mount`s and effects"); those say _subscriptions_ now.
+  this commit's `@mounted`s and effects"); those say _subscriptions_ now.
 
 - 43c02cb: Two committed failures that `turbo run` cannot see, and a `pnpm check` that would have caught them.
 
@@ -1642,8 +1642,8 @@
   `Head` was the framework's own last user, and the migration made it smaller: as a
   `@watchProp` whose selector returns a serialized form, the comparison is by value for free
   and the `appliedSnapshot` guard field is gone. That guard only existed because effects run
-  child→parent while `@create` runs parent→child, so an effect handed a nested route's title
-  back to its layout on the first commit. A `@watchProp` runs in the same order as `@create`
+  child→parent while `@created` runs parent→child, so an effect handed a nested route's title
+  back to its layout on the first commit. A `@watchProp` runs in the same order as `@created`
   and does not fire on mount, so both halves agree and the deeper `Head` wins.
 
   Also in this release, from the same pass:
@@ -1704,7 +1704,7 @@
 
 - 894b094: New lifecycle decorator: `@updated` — runs after the DOM of an **update** is committed.
 
-  `@mount` runs once, with the element in the document. `@updated` runs after every commit after that, and it is the only way an app can read or correct its own committed DOM: updates are batched through a microtask, so the DOM is not touched yet when the handler that changed state returns — and not every update has a write site of yours to stand in (a parent re-renders you with new props, a context value changes, a hook you use writes its state).
+  `@mounted` runs once, with the element in the document. `@updated` runs after every commit after that, and it is the only way an app can read or correct its own committed DOM: updates are batched through a microtask, so the DOM is not touched yet when the handler that changed state returns — and not every update has a write site of yours to stand in (a parent re-renders you with new props, a context value changes, a hook you use writes its state).
 
   ```tsx
   class Row extends Component<{ selected: boolean }> {
@@ -1721,7 +1721,7 @@
 
   - Nothing is tracked while it runs, so there is no dependency list to get wrong — and no repeat of the trap that makes an effect the wrong tool for this: an effect re-runs when a dependency _changes_, and a dependency that is an array or object rebuilt by a props callback changes on every render.
   - The `if` that would want previous props is reconstructing what changed, which is `@watchProp`'s job. The `if` that belongs here asks "is the DOM already how I want it?" — and only the author can answer that. So: **reacting to a value → `@watchProp`; touching the DOM afterwards → `@updated`**.
-  - Cleanup is `@destroy`'s; a subscription is `createSubscriptionDecorator`'s.
+  - Cleanup is `@destroyed`'s; a subscription is `createSubscriptionDecorator`'s.
 
   It fires unconditionally, so guard an expensive body — a `getBoundingClientRect` forces a layout, which costs orders of magnitude more than the dispatch (~270ns).
 
@@ -1809,7 +1809,7 @@
   a hook (a hook has no parent-driven prop update to gate), instead of silently doing
   nothing.
 
-- 7b530bb: `@create`, `@mount` and `@destroy` now receive the render side as an argument.
+- 7b530bb: `@created`, `@mounted` and `@destroyed` now receive the render side as an argument.
 
   The decorated method is called with `env: RenderEnv` (`"client" | "server"`), read from the
   component's own runtime — so a shared lifecycle method can branch on where it is running (for

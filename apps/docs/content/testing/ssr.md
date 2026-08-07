@@ -51,7 +51,7 @@ while the *state* was wrong — only reading the state showed it.)
 ```tsx
 class Profile extends Component {
   @state name = "";
-  @mount async load() {
+  @mounted async load() {
     this.name = await getUser();
   }
   render() {

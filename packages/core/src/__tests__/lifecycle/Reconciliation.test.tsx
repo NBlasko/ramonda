@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, create, destroy } from "../../base/decorators";
+import { state, created, destroyed } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
 import { effectLike } from "../../test/effectLike";
@@ -11,11 +11,11 @@ let log: string[] = [];
  * Hook to track unique instances in a list
  */
 class ItemHook extends Hook<{ id: number }> {
-  @create init() {
+  @created init() {
     log.push(`ItemHook:Init:${this.props.id}`);
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push(`ItemHook:Cleanup:${this.props.id}`);
   }
 
@@ -27,11 +27,11 @@ class ItemHook extends Hook<{ id: number }> {
 class ListItem extends Component<{ id: number; text: string; key?: number }> {
   hook = this.use(ItemHook, (bag: ListItem) => ({ id: bag.props.id }));
 
-  @create init() {
+  @created init() {
     log.push(`ListItem:Init:${this.props.id}`);
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push(`ListItem:Cleanup:${this.props.id}`);
   }
 

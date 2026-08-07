@@ -81,7 +81,7 @@ const FIX: Record<Kind, string> = {
   object:
     'Hold it somewhere that HAS an identity and hand that over: a `@compute` (`@compute get key() { return ["user", this.props.id] }`), a field, a module constant — so the callback passes a value along instead of building one. A `@compute` holding the whole bag does it for every value in it at once. If you own the hook, `@StableProps("key")` declares the prop a value and settles it for every call site.',
   nondeterministic:
-    "A props callback must be a function of state and props only. Read the value once in `@create` and keep it in `@state` (or `@persist`, so it survives hydration), or read it in the handler that needs it.",
+    "A props callback must be a function of state and props only. Read the value once in `@created` and keep it in `@state` (or `@persist`, so it survives hydration), or read it in the handler that needs it.",
 };
 
 /**

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, ErrorBoundary, create, mount } from "../index";
+import { Component, Host, state, ErrorBoundary, created, mounted } from "../index";
 
 /**
  * `errorHandler` walks UP from the component that threw looking for a
@@ -9,10 +9,10 @@ import { Component, Host, state, ErrorBoundary, create, mount } from "../index";
  */
 @Host("div")
 class Boom extends Component<{ when?: string }> {
-  @create early() {
+  @created early() {
     if (this.props.when === "create") throw new Error("create-boom");
   }
-  @mount later() {
+  @mounted later() {
     if (this.props.when === "mount") throw new Error("mount-boom");
   }
   render() {
@@ -70,7 +70,7 @@ describe("error propagation", () => {
     await expect(getDOM<App>(<App />)).rejects.toThrow("render-boom");
   });
 
-  test("a throw in @create is caught", async () => {
+  test("a throw in @created is caught", async () => {
     @Host("div")
     class App extends Component {
       render() {
@@ -86,7 +86,7 @@ describe("error propagation", () => {
     expect(app.container.textContent).toBe("caught: create-boom");
   });
 
-  test("a throw in @mount is caught", async () => {
+  test("a throw in @mounted is caught", async () => {
     @Host("div")
     class App extends Component {
       render() {

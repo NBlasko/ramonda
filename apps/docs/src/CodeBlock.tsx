@@ -1,4 +1,4 @@
-import { Component, Host, state, destroy, __h } from "@ramonda/core";
+import { Component, Host, state, destroyed, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { toVNode } from "./Markdown";
@@ -48,7 +48,7 @@ export class CodeBlock extends Component<CodeBlockProps> {
     }, 1400);
   }
 
-  @destroy
+  @destroyed
   private stopTimer(): void {
     clearTimeout(this.timer);
   }

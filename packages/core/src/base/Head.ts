@@ -1,5 +1,5 @@
 import { Hook } from "./Hook";
-import { create, destroy, watchProp } from "./decorators";
+import { created, destroyed, watchProp } from "./decorators";
 import { HEAD_ATTR } from "../helpers/constants";
 import { diagnose } from "../debug/diagnostics";
 
@@ -111,7 +111,7 @@ export class Head extends Hook<HeadOptions> {
    * than in the reactive half: a `@watchProp` does not fire on mount, and nothing reactive
    * runs during a server render at all.
    */
-  @create({ env: "shared" })
+  @created({ env: "shared" })
   applyOnCreate(): void {
     this.apply();
   }
@@ -128,15 +128,15 @@ export class Head extends Hook<HeadOptions> {
    *
    * ## Why this is not an `@effect`, which is what it used to be
    *
-   * Order. `@create` runs parent→child, so a route nested in a layout applies last and
+   * Order. `@created` runs parent→child, so a route nested in a layout applies last and
    * wins — the semantics anyone would expect. Effects run the other way (child→parent, so
-   * a parent's `@mount` sees its children mounted), so an effect that re-applied handed the
+   * a parent's `@mounted` sees its children mounted), so an effect that re-applied handed the
    * title straight back to the layout on the first commit. That needed a guard: compare
-   * against the last applied snapshot, and let the first run be a no-op because `@create`
+   * against the last applied snapshot, and let the first run be a no-op because `@created`
    * had already done it in the right order.
    *
-   * A `@watchProp` runs in the build phase, in the same parent→child order as `@create`, and
-   * **does not fire on mount at all** — so the first application belongs to `@create`, later
+   * A `@watchProp` runs in the build phase, in the same parent→child order as `@created`, and
+   * **does not fire on mount at all** — so the first application belongs to `@created`, later
    * ones to this, and the deeper Head wins in both. The guard field went with the effect.
    */
   @watchProp((props) => JSON.stringify([props.title, props.description, props.meta, props.link]))
@@ -144,7 +144,7 @@ export class Head extends Hook<HeadOptions> {
     this.apply();
   }
 
-  @destroy
+  @destroyed
   removeOwnTags(): void {
     for (const element of this.owned) element.remove();
     this.owned.length = 0;

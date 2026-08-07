@@ -14,7 +14,7 @@ producing the HTML — so the data is in the page, not a spinner.
 export class Profile extends Component<{ id: string }> {
   @state user: User | undefined;
 
-  @mount async load() {
+  @mounted async load() {
     if (this.user) return; // already restored from the server
     this.user = await getUser(this.props.id);
   }
@@ -27,13 +27,13 @@ export class Profile extends Component<{ id: string }> {
 
 ## How it knows to wait
 
-There is no new API: a lifecycle method that returns a promise — an `async @mount`
+There is no new API: a lifecycle method that returns a promise — an `async @mounted`
 does — is awaited, **on the server only**. On the client it stays fire-and-forget,
 because a live page should paint before the data arrives.
 
-## `@mount` runs on both sides — so guard the fetch
+## `@mounted` runs on both sides — so guard the fetch
 
-A shared `@mount` runs on the server (where the data is fetched) *and* on the client.
+A shared `@mounted` runs on the server (where the data is fetched) *and* on the client.
 Without a guard it would fetch twice. But whatever the server fetched is in `@state`,
 sent in the blob, and restored **before** any client lifecycle runs — so one line is
 enough:

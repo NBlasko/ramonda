@@ -38,6 +38,12 @@ declare global {
   };
   const loadTodos: (...args: any[]) => any;
   const loadThing: (...args: any[]) => any;
+  /**
+   * Returns a real `Promise<User>` rather than `any`, because one example turns on what a fetcher's
+   * return type does: `Query<User, typeof key>` has to agree with what `fetch` resolves to, and an
+   * `any` here would make that example pass whatever it claimed.
+   */
+  const loadUser: (id: unknown, signal?: AbortSignal) => Promise<User>;
   const payload: string;
   const title: string;
   const page: number;

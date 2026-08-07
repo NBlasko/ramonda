@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { Component, Host, state, create, mount, bootstrap, unmount } from "../index";
+import { Component, Host, state, created, mounted, bootstrap, unmount } from "../index";
 import { flushSync, rerenderRoot, getComponentInstance } from "../testing";
 
 /**
@@ -51,16 +51,16 @@ describe("flushSync", () => {
 });
 
 describe("rerenderRoot", () => {
-  test("re-renders in place: same instance, @state survives, @create runs once", () => {
+  test("re-renders in place: same instance, @state survives, @created runs once", () => {
     let creates = 0;
 
     @Host("div")
     class Card extends Component<{ title: string }> {
       @state hits = 0;
-      @create init() {
+      @created init() {
         creates++;
       }
-      @mount ready() {
+      @mounted ready() {
         this.hits = 7;
       }
       render() {
@@ -73,7 +73,7 @@ describe("rerenderRoot", () => {
     }
 
     const el = mountInto(<Card title="a" />);
-    flushSync(); // settle the state write @mount queued
+    flushSync(); // settle the state write @mounted queued
     const host = el.firstElementChild!;
     const first = getComponentInstance(host);
     expect(host.textContent).toBe("a:7");
@@ -82,7 +82,7 @@ describe("rerenderRoot", () => {
     flushSync();
 
     // Same DOM node, same instance — the prop changed, the @state and the single
-    // @create did not.
+    // @created did not.
     expect(host.textContent).toBe("b:7");
     expect(getComponentInstance(el.firstElementChild)).toBe(first);
     expect(creates).toBe(1);

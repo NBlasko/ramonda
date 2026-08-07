@@ -9,8 +9,10 @@
     "prerender": "npm run build:server && node scripts/prerender.mjs",
     "dev": "npm run build && node server.mjs",
     "start": "node server.mjs",
-    "test": "npm run build && npm run prerender && node scripts/smoke.mjs",
-    "check-types": "tsc --noEmit"
+    "test": "npm run build && npm run prerender && npm run check:ssr-diagnostics && node scripts/smoke.mjs",
+    "check-types": "tsc --noEmit",
+    "build:diagnostics-fixture": "esbuild diagnostics-fixture.tsx --bundle --format=esm --jsx=automatic --jsx-import-source=@ramonda/core --define:__DEV__=true --target=es2022 --platform=node --alias:@ramonda/core/jsx-dev-runtime=../../packages/core/src/jsx-dev-runtime.ts --alias:@ramonda/core/jsx-runtime=../../packages/core/src/jsx-runtime.ts --alias:@ramonda/core=../../packages/core/src/index.ts --alias:@ramonda/devtools=./devtools-stub.ts --outfile=dist/server/diagnostics-fixture.js",
+    "check:ssr-diagnostics": "npm run build:diagnostics-fixture && node scripts/diagnostics.mjs"
   },
   "dependencies": {
     "@ramonda/core": "workspace:^",

@@ -22,7 +22,7 @@ goes too.
 @state id = Math.random(); // ✗
 ```
 
-Compute these in `@create({ env: "server" })` and mark them [`@persist`](/ssr/env) so
+Compute these in `@created({ env: "server" })` and mark them [`@persist`](/ssr/env) so
 the client restores rather than recomputes — or use the client-only pattern below.
 
 **Branching on the environment in `render()`.**
@@ -47,7 +47,7 @@ Render something stable, then fill it in once the browser is running:
 export class Chart extends Component {
   @state isClient = false;
 
-  @mount({ env: "client" })
+  @mounted({ env: "client" })
   ready() {
     this.isClient = true;
   }

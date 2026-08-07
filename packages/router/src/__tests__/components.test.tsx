@@ -1,5 +1,5 @@
 import { beforeEach, describe, test, expect } from "vitest";
-import { Component, Host, create } from "@ramonda/core";
+import { Component, Host, created } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -47,7 +47,7 @@ let route: Navigator;
 
 class Home extends Component {
   hook = this.use(Navigator);
-  @create expose() {
+  @created expose() {
     route = this.hook;
   }
   render() {
@@ -56,7 +56,7 @@ class Home extends Component {
 }
 class Player extends Component {
   hook = this.use(Navigator);
-  @create expose() {
+  @created expose() {
     route = this.hook;
   }
   render() {
@@ -65,7 +65,7 @@ class Player extends Component {
 }
 class NotFound extends Component {
   hook = this.use(Navigator);
-  @create expose() {
+  @created expose() {
     route = this.hook;
   }
   render() {

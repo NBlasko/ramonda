@@ -1,4 +1,13 @@
-import { Component, bootstrap, catchError, createContext, Host, ShouldUpdateOnPropsChange } from "../framework";
+import {
+  Component,
+  bootstrap,
+  catchError,
+  compute,
+  createContext,
+  Host,
+  ShouldUpdateOnPropsChange,
+  state,
+} from "../framework";
 
 /**
  * Written the way an app is written: real JSX, and the AUTOMATIC runtime a real `tsconfig.json`
@@ -28,6 +37,53 @@ class GatedTwice extends Component {
   render() {
     return <i />;
   }
+}
+
+// The other fault: applying it twice changes nothing, so the advice differs. Measured in core — a
+// doubled @state renders once per write with the right value, and @compute's body runs once for two
+// reads. Nothing is displaced; the belief is simply wrong.
+@Host("div")
+class RedundantTwice extends Component {
+  @state @state n = 1;
+  @compute @compute get doubled() {
+    return this.n * 2;
+  }
+  render() {
+    return <i />;
+  }
+}
+
+// What every component looks like: several fields, one @state each. Counting @state per CLASS reported
+// this as "declares @state 3 times", which is why the redundant kind is counted per MEMBER.
+@Host("div")
+class ManyFields extends Component {
+  @state a = 1;
+  @state b = 2;
+  @state c = 3;
+  @compute get sum() {
+    return this.a + this.b + this.c;
+  }
+  render() {
+    return <i />;
+  }
+}
+
+// `refuses`: two @Host THROW at class definition (RMD045) — two element names have no union, so there
+// is no live declaration to point a reader at. Only analyzed here, never run.
+@Host("div")
+@Host("span")
+class HostTwice extends Component {
+  render() {
+    return <i />;
+  }
+}
+
+// `merges`: two @StableProps take BOTH effect (RMD046) — it names a set and already merges along the
+// class chain, so the result is the union and nothing is lost.
+@StableProps("a")
+@StableProps("b")
+class StableTwice extends Hook {
+  @state x = 1;
 }
 
 // The BASE declares one; the subclass overrides it. Not a duplicate.
@@ -68,6 +124,8 @@ class App extends Component {
       <div>
         <Twice />
         <GatedTwice />
+        <RedundantTwice />
+        <ManyFields />
         <Sub />
         <Fine />
         <Reader />

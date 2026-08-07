@@ -22,7 +22,7 @@ import { diagnose } from "./diagnostics";
  *
  * Hydration does notice — it reports RMD007, having found a tree that is not the one it rendered.
  * But it reports it as a MISMATCH, and the fix RMD007 offers is about non-determinism: move
- * `new Date()` into `@create`, do not branch on `typeof window`. None of that is the problem here.
+ * `new Date()` into `@created`, do not branch on `typeof window`. None of that is the problem here.
  * The server sent the right markup and the parser moved it, so a reader following that advice is
  * looking for a bug that does not exist.
  *

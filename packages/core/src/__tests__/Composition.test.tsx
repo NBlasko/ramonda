@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, create } from "../index";
+import { Component, Host, Hook, state, created } from "../index";
 import type { RamondaNode } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -140,7 +140,7 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
     class FirstThree extends Hook<{ labels: string[] }> {
       @state active = 0;
 
-      @create init() {
+      @created init() {
         this.active = 1;
       }
 
@@ -181,7 +181,7 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
     // <tr>, with nothing wrapping them.
     expect(app.container.querySelectorAll("tr > td").length).toBe(4);
     expect(app.container.querySelector("ramonda-host")).toBeNull();
-    // The hook's @create ran and its state drove which cell is hot.
+    // The hook's @created ran and its state drove which cell is hot.
     expect(app.container.querySelectorAll("span.hot").length).toBe(1);
     expect(app.container.querySelectorAll("span.hot")[0].textContent).toBe("b");
 

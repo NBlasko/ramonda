@@ -137,7 +137,7 @@ description into everybody's bundle. Send an **event** instead, and let the entr
 
 ```ts
 // @ramonda/sockets — guarded, so __DEV__ removes it
-@create join() {
+@created join() {
   if (__DEV__) {
     this.announce();
     // And again whenever a panel asks: see below for why once is not enough.
@@ -149,7 +149,7 @@ announce() {
   window.dispatchEvent(new CustomEvent("sockets:open", { detail: { socket: this } }));
 }
 
-@destroy leave() {
+@destroyed leave() {
   if (__DEV__) {
     window.removeEventListener("sockets:request", this.announce);
     window.dispatchEvent(new CustomEvent("sockets:closed", { detail: { socket: this } }));
@@ -175,11 +175,11 @@ window.dispatchEvent(new CustomEvent("sockets:request"));
 *after* the app has mounted — and anything that announced itself during that mount announced to
 nobody. For something that comes and goes you might not notice; for something that mounts once at
 the root you never see it at all. `@ramonda/query` shipped exactly that: `QueryClientProvider`
-announces from `@create`, which runs during hydration, and the QUERY tab was empty for the life of
+announces from `@created`, which runs during hydration, and the QUERY tab was empty for the life of
 every page until the panel started asking.
 
 **From a lifecycle, not at module load.** A source that registers when its module loads lists
-something that may never mount, and never stops listing it. Announcing from `@create` and `@destroy`
+something that may never mount, and never stops listing it. Announcing from `@created` and `@destroyed`
 means the list is exactly what is live — and the tab's ROWS appear and disappear with them.
 
 **The tab itself does not.** It is registered once, when its entry is imported, and never

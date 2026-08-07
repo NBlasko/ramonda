@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { state, mount, create, Host } from "../../base/decorators";
+import { state, mounted, created, Host } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 import { getRenderEnv } from "../../core/renderEnv";
@@ -22,14 +22,14 @@ beforeEach(() => {
   effectsRan = [];
 });
 
-/** Appears only after its parent's @mount schedules an update — i.e. it is built
+/** Appears only after its parent's @mounted schedules an update — i.e. it is built
  *  during flushTaskQueue, after renderToString has already restored the flag. */
 @Host("span")
 class Late extends Component<{ tag: string }> {
-  @create({ env: "client" }) onClient() {
+  @created({ env: "client" }) onClient() {
     clientRan.push(this.props.tag);
   }
-  @create({ env: "server" }) onServer() {
+  @created({ env: "server" }) onServer() {
     serverRan.push(this.props.tag);
   }
   @effectLike() ranEffect() {
@@ -43,7 +43,7 @@ class Late extends Component<{ tag: string }> {
 @Host("div")
 class Reveals extends Component<{ tag: string }> {
   @state show = false;
-  @mount reveal() {
+  @mounted reveal() {
     this.show = true;
   }
   render() {
@@ -119,7 +119,7 @@ describe("render env: concurrent renders", () => {
     @Host("div")
     class Deferred extends Component<{ tag: string }> {
       @state show = false;
-      @mount reveal() {
+      @mounted reveal() {
         queueMicrotask(() => {
           this.show = true;
         });

@@ -1,4 +1,4 @@
-import { Hook, create, destroy, mount, onDocument, onWindow, StableProps, state, watchProp } from "@ramonda/core";
+import { Hook, created, destroyed, mounted, onDocument, onWindow, StableProps, state, watchProp } from "@ramonda/core";
 import type { QueryEntry } from "./cacheEntry";
 import { ClientConsumer, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
@@ -156,7 +156,7 @@ export type QueryResult<TData> =
  *
  * ## Where the work happens
  *
- * - **`@mount`** starts the first fetch and RETURNS its promise, which is what a
+ * - **`@mounted`** starts the first fetch and RETURNS its promise, which is what a
  *   server render awaits before serializing (core's `commit.ts` registers a
  *   promise returned from a lifecycle as work the render must wait for). So the
  *   data lands in the HTML with no separate server API.
@@ -319,7 +319,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
      */
     void this.version;
 
-    // The fallback covers the window before the first `@create`: a getter read from a
+    // The fallback covers the window before the first `@created`: a getter read from a
     // field initializer, which nothing does today but which must not throw.
     return this.attachedEntry ?? this.client.getEntry<TData>(this.props.key);
   }
@@ -364,7 +364,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * in flight instead of scheduling one from inside it.
    */
   @watchProp((props) => props.key)
-  onKeyChanged(next: QueryKey, previous: QueryKey): void {
+  onKeyChanged([next]: [QueryKey], [previous]: [QueryKey]): void {
     if (sameKeyParts(next, previous)) return;
 
     const hash = hashKey(next);
@@ -449,7 +449,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * `@state` is serialized into the hydration blob per hook and restored **before
    * any client render**, so by the time this runs the snapshot is already here —
    * and seeding it from the read path means the FIRST client render produces what
-   * the server produced. Do it later (from `@mount`, say) and the first render
+   * the server produced. Do it later (from `@mounted`, say) and the first render
    * shows a spinner where the HTML has content, which hydration resolves by
    * destroying that content: the reader watches finished text flash into a
    * placeholder, and core reports the disagreement as RMD007.
@@ -535,7 +535,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
 
     // On the server the blob is the only way out, and this is every moment the
     // entry changed — including a fetch another observer of the same key started,
-    // and a refetch triggered during the render's drain. `@mount` captures once
+    // and a refetch triggered during the render's drain. `@mounted` captures once
     // too, for data that was already there and so never notified anyone.
     if (this.onServer) this.captureSnapshot();
 
@@ -598,23 +598,23 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * Subscribes, and seeds whatever the server sent for this key.
    *
    * `env: "client"` and a separate `env: "server"` twin below, rather than one
-   * shared `@create`, because **a shared `@create` does not run while hydrating**:
+   * shared `@created`, because **a shared `@created` does not run while hydrating**:
    * hydration runs only the `client` ones, on the grounds that the server already
    * ran the others (core's hydrate.ts). A shared one here would therefore skip the
    * seeding on exactly the path that needs it.
    *
-   * It has to be a `@create` rather than `@mount` for the same reason: creates run
+   * It has to be a `@created` rather than `@mounted` for the same reason: creates run
    * BEFORE the first render, and the seed has to be in the cache before anything
    * reads it, or the first client render disagrees with the server's markup (RMD007)
    * and hydration resolves that by throwing the markup away.
    */
-  @create({ env: "client" })
+  @created({ env: "client" })
   initClient(): void {
     this.rekey(this.hash);
   }
 
   /** The server's half: subscribe, and remember that a snapshot has to be written. */
-  @create({ env: "server" })
+  @created({ env: "server" })
   initServer(): void {
     this.onServer = true;
     this.rekey(this.hash);
@@ -628,17 +628,17 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * serializing) and left fire-and-forget on the client. That split is the whole
    * SSR story — the HTML waits for the data, the live page paints first.
    *
-   * `@mount` rather than `@create`, and not only because the promise is awaited
-   * here: a shared `@create` is skipped while hydrating, so a first fetch there
+   * `@mounted` rather than `@created`, and not only because the promise is awaited
+   * here: a shared `@created` is skipped while hydrating, so a first fetch there
    * would never run for a page that arrived server-rendered.
    */
-  @mount
+  @mounted
   load(): Promise<void> {
     /**
      * The one case a notification never covers: an error restored from a server render is on screen at
      * the first paint, and nothing notifies afterwards.
      *
-     * Reported from here rather than from a `@mount` of its own, because a DEV-only lifecycle method is
+     * Reported from here rather than from a `@mounted` of its own, because a DEV-only lifecycle method is
      * not free in production — the decorator registers from an initializer, so every instance bound an
      * empty method and the flush called it. Placed before `fetchOnMount` and unaffected by it: a refetch
      * moves `fetchStatus`, not `status`, so the restored failure is still there to see.
@@ -739,7 +739,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    *
    * - **It fires only on a change**, so the "is this the first run?" guard is gone.
    *   The effect ran once on the first commit whether or not anything had flipped,
-   *   found the data `@mount` had just fetched already stale under the default
+   *   found the data `@mounted` had just fetched already stale under the default
    *   `staleTime: 0`, and fetched it again — two requests for one mounted query,
    *   until a flag was added to suppress it. A watcher does not fire at mount at
    *   all, so there is nothing to suppress.
@@ -753,7 +753,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    *   draws its loading state, rather than one commit later.
    */
   @watchProp((props) => props.enabled)
-  onEnabledChanged(enabled: boolean | undefined): void {
+  onEnabledChanged([enabled]: [boolean | undefined]): void {
     if (enabled === false) return;
     void this.fetchIfNeeded(false);
   }
@@ -763,11 +763,11 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    *
    * Three named methods rather than one effect, and no timer left to a cleanup:
    *
-   * - `@create({ env: "client" })` starts it, before the first render, and only on
+   * - `@created({ env: "client" })` starts it, before the first render, and only on
    *   the client — a pending interval on the server is a live handle on the event
    *   loop for every request.
    * - `@watchProp` restarts it when the interval changes, synchronously.
-   * - `@destroy` clears it. That order matters for core's DEV timer guard: a timer
+   * - `@destroyed` clears it. That order matters for core's DEV timer guard: a timer
    *   created during a lifecycle is attributed to the component, and anything still
    *   ticking at the END of teardown is reported as a leak (RMD006). Cleared here,
    *   there is nothing to report.
@@ -779,7 +779,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * staleness policy for a query that has one, and a `refetchInterval` shorter than
    * `staleTime` would otherwise do nothing at all.
    */
-  @create({ env: "client" })
+  @created({ env: "client" })
   startPolling(): void {
     this.schedulePoll();
   }
@@ -804,7 +804,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     }, every);
   }
 
-  @destroy
+  @destroyed
   dispose(): void {
     this.disposed = true;
     this.unsubscribe?.();
@@ -1063,7 +1063,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    *
    * TanStack has an option that rethrows a failure so an error boundary catches it. It is not
    * built here, and the reason is what a boundary DOES: it replaces the subtree, which means
-   * unmounting — `@destroy`, cleanups, lost local state, lost focus and scroll position — and a
+   * unmounting — `@destroyed`, cleanups, lost local state, lost focus and scroll position — and a
    * retry then has to rebuild all of it. A failed fetch is not an unexpected situation; the
    * network fails routinely, which is why `Query` models it as state and keeps the data it had.
    * Handing that to a boundary punishes the reader for somebody else's timeout.
@@ -1095,11 +1095,11 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
  * referenced only inside `if (__DEV__)` is dropped whole, which is why every other diagnostic in this
  * repo is written this way.
  *
- * Its DEV-only `@mount reportRestoredError` was the worse half. A lifecycle decorator registers from
+ * Its DEV-only `@mounted reportRestoredError` was the worse half. A lifecycle decorator registers from
  * an initializer, so in production every `Query` instance allocated an id, BOUND the empty method,
  * pushed an entry onto the runtime's mounts, and the flush then called it — per instance, not per
  * class, for a method that did nothing. The restored-error case now reports from the top of `load`,
- * which is an `@mount` that exists in every build.
+ * which is an `@mounted` that exists in every build.
  *
  * Takes what it needs rather than the instance: the read mask and the attached entry are the only
  * two things it looked at, and passing them keeps the private fields private.

@@ -18,7 +18,7 @@ import { requestContext } from "@ramonda/core";
 @Host("main")
 class Account extends Component {
   @state name = "";
-  @create init() {
+  @created init() {
     this.name = requestContext().get(currentUser)?.name ?? "guest";
   }
   render() {
@@ -65,12 +65,12 @@ the value you chose to seed.
 ## Read it synchronously
 
 `requestContext()`'s per-request values are available during the render's **synchronous** work
-— in `render()`, in `@create`, or at the top of a `@mount` before its first `await`. That is
+— in `render()`, in `@created`, or at the top of a `@mounted` before its first `await`. That is
 the natural place anyway: you read the user, *then* fetch. Read it after an `await` and it is no
 longer in scope.
 
-The idiomatic shape needs nothing more: **read the request in `@create`, store what you need in
-`@state`.** On the server that runs and the value lands in the HTML; on the client, `@create` is
+The idiomatic shape needs nothing more: **read the request in `@created`, store what you need in
+`@state`.** On the server that runs and the value lands in the HTML; on the client, `@created` is
 skipped and the `@state` is restored from the page — so the browser never re-reads the request,
 and there is no mismatch.
 
@@ -108,7 +108,7 @@ returns nothing and reports [`RMD025`](/reference/diagnostics#rmd025-per-request
 in development. It does not throw: breaking the page would be the worse outcome, and if the server
 rendered a value where that read is, hydration reports the divergence too.
 
-**Most pages need none of this**, because of the `@create` → `@state` shape above: the value is
+**Most pages need none of this**, because of the `@created` → `@state` shape above: the value is
 already in the page as state. Reach for `exposeToClient` when several components read the same
 value directly from the context.
 
@@ -128,14 +128,14 @@ reading it during one throws, on purpose, rather than baking one visitor's answe
 **Decide once, on the server, and keep the answer in state.** This is the part that catches people:
 headers do not exist in the browser, so the same read at hydration returns nothing and the branch
 flips — the server sent the phone's markup and the client rebuilds the desktop's. `@state` is
-serialised into the page, so a decision made in `@create` arrives with it and hydration agrees:
+serialised into the page, so a decision made in `@created` arrives with it and hydration agrees:
 
 ```tsx
 class Page extends Component {
   // Serialised with the page, so the browser reads back what the server decided.
   @state private phone = false;
 
-  @create({ env: "server" }) read() {
+  @created({ env: "server" }) read() {
     this.phone = /Mobi|Android|iPhone/i.test(requestContext().headers.get("user-agent") ?? "");
   }
 

@@ -62,8 +62,8 @@ describe("what @ramonda/devtools exports", () => {
     const offFirst = panelRegistry().register(first);
     const offSecond = panelRegistry().register(second);
 
-    // The order a provider actually produces: the new instance registers in its `@create`, and the
-    // old one's `@destroy` runs afterwards. Deleting by id alone would drop the LIVE panel.
+    // The order a provider actually produces: the new instance registers in its `@created`, and the
+    // old one's `@destroyed` runs afterwards. Deleting by id alone would drop the LIVE panel.
     offFirst();
     expect(panelRegistry().list()).toContain(second);
 

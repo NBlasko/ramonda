@@ -79,6 +79,11 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
 
 const expected = [
   ...publicSurfaceOf("core", 20),
+  // Core's TYPES, which `publicSurfaceOf` cannot see: types are erased, so the surface test reads them
+  // from `EXPECTED_TYPES` rather than from `Object.keys`. This line was missing while `form`'s
+  // equivalent was present, and that is how `HookMeta` was published and documented by nobody — ten
+  // more were undocumented behind it, `LifecycleOptions` and the whole per-request family among them.
+  ...publicTypesOf("core", 25),
   ...publicSurfaceOf("lens", 1),
   ...publicSurfaceOf("query", 8),
   // Form publishes one VALUE and twenty-odd types. `publicSurfaceOf` slices the first list in

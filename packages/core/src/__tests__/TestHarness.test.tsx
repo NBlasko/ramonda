@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, destroy } from "../index";
+import { Component, Host, state, destroyed } from "../index";
 
 /**
  * The harness itself. `getDOM` used to append a container to document.body and
@@ -9,7 +9,7 @@ import { Component, Host, state, destroy } from "../index";
  *
  * Two consequences, and the second is the one that actually bit:
  *
- * 1. Destroyed nothing — @destroy never ran, so timers, effects and window
+ * 1. Destroyed nothing — @destroyed never ran, so timers, effects and window
  *    listeners from earlier tests stayed armed and could report into later ones.
  * 2. Duplicate ids. jsdom resolves even a SCOPED `container.querySelector("#x")`
  *    through a document-wide id index, so with the same id in several leaked
@@ -49,14 +49,14 @@ describe("getDOM cleanup", () => {
     expect(containersInDocument()).toBe(1);
   });
 
-  test("cleanup unmounts the tree, so @destroy runs", async () => {
-    let destroyed = false;
+  test("cleanup unmounts the tree, so @destroyed runs", async () => {
+    let wasDestroyed = false;
 
     @Host("div")
     class Leaky extends Component {
       @state value = 1;
-      @destroy teardown() {
-        destroyed = true;
+      @destroyed teardown() {
+        wasDestroyed = true;
       }
       render() {
         return <p>{String(this.value)}</p>;
@@ -64,10 +64,10 @@ describe("getDOM cleanup", () => {
     }
 
     const app = await getDOM(<Leaky />);
-    expect(destroyed).toBe(false);
+    expect(wasDestroyed).toBe(false);
 
     app.unmount();
-    expect(destroyed).toBe(true);
+    expect(wasDestroyed).toBe(true);
     expect(containersInDocument()).toBe(0);
   });
 
@@ -80,7 +80,7 @@ describe("getDOM cleanup", () => {
 
     @Host("div")
     class Counted extends Component {
-      @destroy teardown() {
+      @destroyed teardown() {
         destroyCount++;
       }
       render() {

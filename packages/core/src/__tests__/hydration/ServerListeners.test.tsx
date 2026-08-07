@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { mount, state } from "../../base/decorators";
+import { mounted, state } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 
 /**
@@ -107,7 +107,7 @@ describe("event listeners and the server", () => {
     class Deferred extends Component {
       @state rows: string[] = [];
 
-      @mount
+      @mounted
       async load() {
         await Promise.resolve();
         this.rows = ["a", "b"];

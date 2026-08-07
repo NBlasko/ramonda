@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { state, mount, Host } from "../../base/decorators";
+import { state, mounted, Host } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
@@ -278,7 +278,7 @@ describe("hydration mismatch (RMD007)", () => {
     class Widget extends Component {
       @state isClient = false;
 
-      @mount({ env: "client" })
+      @mounted({ env: "client" })
       markClient() {
         this.isClient = true;
       }

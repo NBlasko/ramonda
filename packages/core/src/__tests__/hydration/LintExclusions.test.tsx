@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, Host, Hook, state, create, mount, createRef } from "../../index";
+import { Component, Host, Hook, state, created, mounted, createRef } from "../../index";
 import { renderToString } from "../../hydration/ssr";
 
 /**
@@ -33,7 +33,7 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     class C extends Component {
       myRef = createRef<HTMLElement>();
       other: unknown;
-      @create seed() {
+      @created seed() {
         this.other = createRef<HTMLElement>();
       }
       render() {
@@ -51,7 +51,7 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     @Host("div")
     class C extends Component {
       later: unknown;
-      @create seed() {
+      @created seed() {
         this.later = this.use(Helper);
       }
       render() {
@@ -66,7 +66,7 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     @Host("div")
     class C extends Component {
       fn: unknown;
-      @create seed() {
+      @created seed() {
         this.fn = () => 1;
       }
       render() {
@@ -81,7 +81,7 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     @Host("div")
     class C extends Component {
       keep = "same";
-      @create seed() {
+      @created seed() {
         this.keep = "same";
       }
       render() {
@@ -96,7 +96,7 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     @Host("div")
     class C extends Component {
       cfg: Record<string, unknown> = {};
-      @create seed() {
+      @created seed() {
         this.cfg.loaded = true;
       }
       render() {
@@ -106,17 +106,17 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     const html = await renderToString(<C />);
     // The server renders the mutation…
     expect(html).toContain("true");
-    // …and the client will not have it, because @create does not re-run there.
+    // …and the client will not have it, because @created does not re-run there.
     // The reference never changed, so a reference comparison called this
     // "unchanged" and said nothing — a silent hydration mismatch.
     expect(warnedAbout("cfg")).toBe(true);
   });
 
-  test("a field set in @mount is caught too, not only @create", async () => {
+  test("a field set in @mounted is caught too, not only @created", async () => {
     @Host("div")
     class C extends Component {
       late: unknown;
-      @mount seed() {
+      @mounted seed() {
         this.late = "x";
       }
       render() {

@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, mount, create, destroy } from "../../base/decorators";
+import { state, mounted, created, destroyed } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
 import { effectLike } from "../../test/effectLike";
@@ -11,11 +11,11 @@ let log: string[] = [];
  * Deeply nested hook to verify multi-level initialization and cleanup
  */
 class GrandChildHook extends Hook<{ val: number; label: string }> {
-  @create init() {
+  @created init() {
     log.push(`${this.props.label}:Unit:Init`);
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
@@ -38,11 +38,11 @@ class ChildHook extends Hook<{ count: number; label: string }> {
     return this.props;
   }
 
-  @create init() {
+  @created init() {
     log.push(`${this.props.label}:Unit:Init`);
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
@@ -68,15 +68,15 @@ class LifecycleTester extends Component<{ trigger: number }> {
     label: "HookB",
   }));
 
-  @create init() {
+  @created init() {
     log.push("Component:Unit:Init");
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push("Component:Unit:Cleanup");
   }
 
-  @mount mounted() {
+  @mounted mounted() {
     log.push("Component:Mount");
   }
 
@@ -148,8 +148,8 @@ test("Complex Lifecycle: Pure Declarative Hierarchy & Unmounting", async () => {
   /**
    * LIFO (Last-In-First-Out) Verification:
    * The framework must detect removal and clean up in reverse order of creation.
-   * Effect cleanups run first (reverse), then the unified @destroy pass (reverse) —
-   * @destroy is now the single cleanup for both @create and @mount.
+   * Effect cleanups run first (reverse), then the unified @destroyed pass (reverse) —
+   * @destroyed is now the single cleanup for both @created and @mounted.
    * Child components and their effects must be disposed of before parent resources.
    */
   expect(cleanups).toEqual([

@@ -37,7 +37,7 @@ let containerSeq = 0;
 
 function teardown(container: HTMLElement): void {
   // Unmount first: removing the node alone leaves the components mounted, so
-  // @destroy never runs and their subscriptions outlive the test.
+  // @destroyed never runs and their subscriptions outlive the test.
   unmountChildrenNodes([container]);
   container.remove();
   liveContainers.delete(container);
@@ -77,7 +77,7 @@ export async function getDOM<T = any>(component: ComponentChild) {
     user,
     instance,
     /**
-     * Commits every pending render, @mount and effect.
+     * Commits every pending render, @mounted and effect.
      *
      * It used to be `() => Promise.resolve()` — one microtask turn — and that
      * left the COUNT to the caller. Measured: a plain state write needs one

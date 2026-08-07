@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../../test/setup";
-import { mount, state, create, destroy } from "../../base/decorators";
+import { mounted, state, created, destroyed } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { createContext } from "../../base/Context";
 import { effectLike } from "../../test/effectLike";
@@ -39,15 +39,15 @@ describe("Context API: Lazy Selectors & Lifecycle", () => {
   class ComplexCounterWatcher extends Component {
     data = this.use(AppConsumer);
 
-    @create init() {
+    @created init() {
       log.push(`Unit:Complex:${this.data.counter}`);
     }
 
-    @destroy dispose() {
+    @destroyed dispose() {
       log.push("Unit:Cleanup");
     }
 
-    @mount mounted() {
+    @mounted mounted() {
       log.push(`Mount:Complex:${this.data.counter}`);
     }
 

@@ -33,7 +33,7 @@ export interface Runtime {
   effects: Effect[];
   /**
    * `@updated` methods, bound. Run after the DOM of an UPDATE is committed —
-   * never for the first commit, which is `@mount`'s.
+   * never for the first commit, which is `@mounted`'s.
    *
    * Plain thunks rather than `Effect`s, and that is the whole point of the
    * decorator: nothing here is tracked, so there are no dependencies to record,
@@ -78,7 +78,7 @@ export interface ComponentRuntime {
   /**
    * Set once the component has been torn down. Kept separate from
    * `isInitialized` on purpose: that one means "not built yet" (hydration and
-   * @create rely on the distinction), and a destroyed component is the opposite
+   * @created rely on the distinction), and a destroyed component is the opposite
    * end of the life cycle, not the same state.
    */
   isDestroyed?: boolean;

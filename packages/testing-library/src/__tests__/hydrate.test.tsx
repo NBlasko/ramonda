@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
-import { Component, Host, state, persist, create, onElement, renderToString, type RamondaNode } from "@ramonda/core";
+import { Component, Host, state, persist, created, onElement, renderToString, type RamondaNode } from "@ramonda/core";
 import { render, fireEvent, cleanup } from "../index";
 
 /**
@@ -17,7 +17,7 @@ class Greeting extends Component<{ name?: string }> {
   @persist rendered = "server";
   @state clicks = 0;
 
-  @create seed() {
+  @created seed() {
     this.rendered = this.rendered === "server" ? "hydrated" : "server";
   }
 

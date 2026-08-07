@@ -11,7 +11,7 @@ import {
   waitFor,
   waitForElementToBeRemoved,
 } from "@testing-library/dom";
-import { mount, state } from "../base/decorators";
+import { mounted, state } from "../base/decorators";
 
 interface Props {
   todo: string;
@@ -36,7 +36,7 @@ class TodoApp extends Component {
   @state todoList = ["Foo", "Bar", "Baz"];
   @state todo = "";
 
-  @mount afterCreate() {
+  @mounted afterCreate() {
     this.todoList = [...this.todoList, "Nik"];
     this.todoList = [...this.todoList, "Todi"];
     this.todoList = [...this.todoList, "Nena"];

@@ -13,13 +13,13 @@ on a method.
 
 ```tsx
 export class Panel extends Component {
-  @create
+  @created
   init() {} // being created
 
-  @mount
+  @mounted
   ready() {} // now on the page
 
-  @destroy
+  @destroyed
   bye() {} // being removed
 }
 ```
@@ -27,7 +27,7 @@ export class Panel extends Component {
 ```demo:LifecycleLog
 ```
 
-## `@create` — being built
+## `@created` — being built
 
 Runs while the component is being created, *before* its element exists. This is where
 you set up from your props and seed your state.
@@ -35,21 +35,21 @@ you set up from your props and seed your state.
 Two things are deliberately off-limits here:
 
 - **There is no element yet.** Don't try to find or measure this component's DOM in
-  `@create` — it isn't on the page. That is what `@mount` is for.
+  `@created` — it isn't on the page. That is what `@mounted` is for.
 - **Keep it to setup.** Read props, set state, compute. Leave subscriptions, focus,
-  and measurements for `@mount`.
+  and measurements for `@mounted`.
 
-## `@mount` — on the page
+## `@mounted` — on the page
 
 Runs once the component's DOM is in the document. This is where you reach the real
 page: focus an input, measure an element, hand a node to a chart library.
 
-Children mount before their parent, so by the time a parent's `@mount` runs, its
+Children mount before their parent, so by the time a parent's `@mounted` runs, its
 children are already on the page.
 
 ## `@updated` — after an update is committed
 
-`@mount` runs once. `@updated` runs after **every commit after that**, with the new
+`@mounted` runs once. `@updated` runs after **every commit after that**, with the new
 DOM already in place — so it is where you read or correct the page once it has
 changed.
 
@@ -83,7 +83,7 @@ deliberate:
   reconstructing what changed, and that is [`@watchProp`](/concepts/props)'s job,
   done *before* the render. The `if` that belongs here asks something else: **is the
   DOM already how I want it?**
-- Cleanup belongs to `@destroy`; a subscription belongs to
+- Cleanup belongs to `@destroyed`; a subscription belongs to
   [your own decorator](/hooks/own-decorators).
 
 So the division is: **reacting to a value → `@watchProp`. Touching the DOM afterwards
@@ -109,14 +109,14 @@ So the pair above is the whole story, and one field comparison is the price of t
 post-commit case.
 
 **Children before parents**, so a parent measuring its own subtree finds it updated.
-It runs after this commit's `@mount`s and subscriptions, and **never on the server** —
+It runs after this commit's `@mounted`s and subscriptions, and **never on the server** —
 there is no layout and no paint there to correct.
 
 Writing state here schedules another render, and that is the point for the
 measure-store-render pattern. Guard it, or it loops (reported as `RMD009` in
 development).
 
-## `@destroy` — being removed
+## `@destroyed` — being removed
 
 Runs when the component is removed. Your state and computed values are still readable,
 so you can clean up based on them. It runs exactly once — even for a component that
@@ -124,16 +124,16 @@ failed while building — so write it to tolerate a half-set-up instance.
 
 ## Server vs. browser: `env`
 
-`@create`, `@mount` and `@destroy` can be limited to one side with `env`:
+`@created`, `@mounted` and `@destroyed` can be limited to one side with `env`:
 
 ```tsx
-@create({ env: "client" })
+@created({ env: "client" })
 startPolling() {} // only in the browser
 
-@create({ env: "server" })
+@created({ env: "server" })
 stampBuildTime() {} // only during a server render
 
-@create
+@created
 init() {} // both — the default
 ```
 
@@ -153,7 +153,7 @@ When a method needs to know which side it is on — rather than skip a side enti
 it is handed `env` as an argument, `"client"` or `"server"`:
 
 ```tsx
-@mount
+@mounted
 setup(env: RenderEnv) {
   if (env === "server") return; // nothing to wire up during a server render
   this.observer = new IntersectionObserver(() => {});
@@ -187,5 +187,5 @@ See [timers](/concepts/timers).
 ## Next
 
 - [Subscriptions](/concepts/subscriptions) — reacting to state, with cleanup.
-- [The host element](/concepts/host) — the element `@mount` is talking about.
+- [The host element](/concepts/host) — the element `@mounted` is talking about.
 - [The decorator table](/reference/decorators) — where each phase runs, and whether a hook gets it.

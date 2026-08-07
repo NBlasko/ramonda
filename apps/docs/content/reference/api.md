@@ -8,7 +8,7 @@ order: 111
 # API
 
 **Casing tells you where a decorator goes.** `PascalCase` is a class decorator —
-`@Host`, `@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mount`,
+`@Host`, `@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mounted`,
 `@watchProp`. Nothing else distinguishes them at a glance, and the two groups are used in
 different places, so the convention carries its weight.
 
@@ -37,7 +37,7 @@ Everything the three packages export. Each entry links to the page that explains
 | | |
 |---|---|
 | `bootstrap(vnode, element)` | Mounts an app. |
-| `unmount(element)` | Tears down everything `bootstrap` mounted, running `@destroy` throughout. Removing the element is **not** a substitute. |
+| `unmount(element)` | Tears down everything `bootstrap` mounted, running `@destroyed` throughout. Removing the element is **not** a substitute. |
 | `h(tag, props, ...children)` | What JSX compiles to. Callable directly for a tag that is a value. [JSX](/concepts/jsx) |
 
 ### Server rendering
@@ -56,6 +56,11 @@ Everything the three packages export. Each entry links to the page that explains
 | `seedRequest(key, value)` | Server-only: fills a per-request slot before the render. |
 | `RequestReadDuringBuild` | Thrown when per-request data is read during a static build — the route cannot be prerendered. |
 
+The types beside them: `RenderToStringOptions` and `ServerRequestInit` are what `renderToString` takes,
+`StaticRender` is what `renderStatic` returns (`{ html }` or `{ blockedBy }`), and the per-request family
+is `RequestContext` with `RequestCookies`, `RequestMode`, plus `RequestKey<T>` and `RequestKeyOptions`
+for a declared slot.
+
 ### Decorators — state
 
 | | |
@@ -69,15 +74,19 @@ Everything the three packages export. Each entry links to the page that explains
 
 | | |
 |---|---|
-| `@create(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
-| `@mount(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
+| `@created(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
+| `@mounted(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
 | `@updated` | Runs after every commit **after** the first, with the new DOM in place. No deps, no previous values, no cleanup. [Lifecycle](/concepts/lifecycle) |
-| `@destroy` | Runs on teardown, while state is still readable. |
+| `@destroyed` | Runs on teardown, while state is still readable. |
 | `createSubscriptionDecorator(name, connect)` | Your own subscription decorator: connect after the commit, and what it returns is the cleanup. [Subscriptions](/concepts/subscriptions) |
 
-`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and `shared` is
+`@created`, `@mounted` and `@destroyed` take `{ env: "client" | "server" | "shared" }`, and `shared` is
 the default. [Which to use](/ssr/env) — `@updated` has no `env`, because a server render commits
 once and so never produces the update it reacts to.
+
+That options bag is `LifecycleOptions`, and the side itself is `RenderEnv` — the argument a lifecycle
+method receives, so a shared method can branch without a `typeof window` check, which is unreliable
+anyway under a server DOM shim.
 
 **Which decorator runs where, works on what, and may repeat:
 [the decorator table](/reference/decorators).**
@@ -115,10 +124,23 @@ once and so never produces the update it reacts to.
 
 ### Types
 
-`VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
-`DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
-`AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
-`SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps` · `HookMeta`
+All 31, grouped by what they belong to. The server and per-request ones are explained under
+[Server rendering](#server-rendering); the rest are the shape of whatever they are named for.
+
+**Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
+
+**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` ·
+`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps`
+
+**Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
+
+**Lifecycle** — `LifecycleOptions` · `RenderEnv`
+
+**Server rendering** — `RenderedPage` · `DocumentOptions` · `RenderToStringOptions` ·
+`ServerRequestInit` · `StaticRender` · `RequestContext` · `RequestCookies` · `RequestKey` ·
+`RequestKeyOptions` · `RequestMode`
+
+**Development** — `DevFlags`
 
 `HookMeta` is the third argument to `this.use()` — what a `use()` says **about** a hook rather than
 what it passes into one. One field today, `label`, which devtools adds to the hook's class name:

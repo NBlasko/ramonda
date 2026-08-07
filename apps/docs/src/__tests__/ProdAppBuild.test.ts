@@ -77,7 +77,7 @@ const ALIASES = [
  * measured. Reachability is.
  */
 const FIXTURE = `
-import { Component, Hook, bootstrap, list, StableProps, state, compute, mount, updated, watchProp, memoizedHandler, configureDev, hydrateRoot } from "@ramonda/core";
+import { Component, Hook, bootstrap, list, StableProps, state, compute, mounted, updated, watchProp, memoizedHandler, configureDev, hydrateRoot } from "@ramonda/core";
 import { Query, Mutation, QueryClient, QueryClientProvider } from "@ramonda/query";
 import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
 
@@ -96,7 +96,7 @@ class App extends Component {
 
   load() { return Promise.resolve([]); }
 
-  @mount start() {}
+  @mounted start() {}
   @updated after() {}
 
   @memoizedHandler

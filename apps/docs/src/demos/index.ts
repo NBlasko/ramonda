@@ -68,7 +68,7 @@ export const demos: Record<string, ComponentClassKind> = {
 export const demoTitles: Record<string, string> = {
   Counter: "State and a handler",
   ComputeDemo: "@compute — derived values, cached",
-  LifecycleLog: "@create, @mount, @destroy — in order",
+  LifecycleLog: "@created, @mounted, @destroyed — in order",
   HostTag: "@Host — the element a component is",
   RefFocus: "Refs — reaching the element",
   WindowSize: "@onWindow — a global listener",

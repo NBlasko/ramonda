@@ -46,7 +46,7 @@ cause is still there it will throw again — fix the cause, then reset.
 
 ## What it catches
 
-Errors thrown **while rendering** the subtree — in `render()`, in `@create`, or in a
+Errors thrown **while rendering** the subtree — in `render()`, in `@created`, or in a
 `@compute` a render read.
 
 It does **not** catch:

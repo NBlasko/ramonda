@@ -18,7 +18,7 @@ import { createRoutes } from "../match";
  *
  *   1. field initializer  -> parseUrl()      (the client's URL)
  *   2. restore from blob  -> the SERVER's route  ← overwrites (1)
- *   3. @create init()     -> parseUrl()      (the client's URL again)
+ *   3. @created init()     -> parseUrl()      (the client's URL again)
  *
  * Without step 3 a client that hydrates at a different URL than the server
  * rendered — a cached page, a CDN serving one document for many paths, a client

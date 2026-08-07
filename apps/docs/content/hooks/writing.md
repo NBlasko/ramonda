@@ -18,7 +18,7 @@ interface CounterProps {
 
 export class Counter extends Hook<CounterProps> {
   // Read a prop straight into state — `this.props` is ready before the field
-  // initializers run, so there is no placeholder to seed and copy over in `@create`.
+  // initializers run, so there is no placeholder to seed and copy over in `@created`.
   @state count = this.props.start;
 
   increment() {

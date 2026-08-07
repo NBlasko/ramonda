@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, create, destroy } from "../../base/decorators";
+import { state, created, destroyed } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
 import { effectLike } from "../../test/effectLike";
@@ -13,11 +13,11 @@ let log: string[] = [];
 class ProducerHook extends Hook<{ label: string }> {
   @state internalCount = 0; // Internal state of Hook A
 
-  @create init() {
+  @created init() {
     log.push(`${this.props.label}:Unit:Init`);
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 }

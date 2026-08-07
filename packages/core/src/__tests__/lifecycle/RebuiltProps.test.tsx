@@ -68,7 +68,7 @@ describe("a rebuilt reference in a props bag", () => {
 
     class Watcher extends Hook<{ label: string }> {
       @watchProp((props) => props.label)
-      onLabel(next: string) {
+      onLabel([next]: [string]) {
         seen.push(next);
       }
     }

@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { Component, mount, state, type RamondaNode, updated } from "@ramonda/core";
+import { Component, mounted, state, type RamondaNode, updated } from "@ramonda/core";
 import { render, act, waitFor } from "../index";
 
 /**
@@ -36,7 +36,7 @@ describe("act", () => {
 
   test("settles a cascade, however deep, in one call", () => {
     // Three components chained so each one's render triggers the next: A's
-    // @mount writes A, whose render feeds B, whose @effect writes C. Under the
+    // @mounted writes A, whose render feeds B, whose @effect writes C. Under the
     // old harness this needed a different number of `await settle()` calls than
     // a simple change did, and knowing WHICH was the test author's problem.
     const seen: number[] = [];
@@ -46,7 +46,7 @@ describe("act", () => {
       @state b = 0;
       @state c = 0;
 
-      @mount start() {
+      @mounted start() {
         this.a = 1;
       }
 

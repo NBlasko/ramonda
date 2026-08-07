@@ -11,7 +11,7 @@ export class RefFocus extends Component {
 
   focusInput() {
     // `.current` is null until the element is in the document — so reach for it
-    // from an event or @mount, never from render().
+    // from an event or @mounted, never from render().
     this.input.current?.focus();
   }
 

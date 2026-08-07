@@ -1,4 +1,4 @@
-import { Hook, create, createContext, destroy } from "@ramonda/core";
+import { Hook, created, createContext, destroyed } from "@ramonda/core";
 import { announceClient, announceClientGone } from "./devtoolsBridge";
 import { QueryClient } from "./QueryClient";
 import type { QueryBehaviour } from "./types";
@@ -105,7 +105,7 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    *
    * `env: "client"` because there is no panel during a server render — and because a
    * long-lived server process would otherwise collect one client per request, since
-   * `@destroy` does not run there.
+   * `@destroyed` does not run there.
    *
    * An EVENT rather than a registration, and this package holds no list.
    *
@@ -117,7 +117,7 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    * Both lines are behind `__DEV__`, so a production build carries neither — and neither a field
    * nor a method here, both of which would ship whatever the guard said.
    */
-  @create({ env: "client" })
+  @created({ env: "client" })
   publishToDevtools(): void {
     if (__DEV__) {
       announceClient(this.ownClient);
@@ -142,7 +142,7 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
     if (__DEV__) announceClient(this.ownClient);
   }
 
-  @destroy
+  @destroyed
   unpublishFromDevtools(): void {
     if (__DEV__) {
       window.removeEventListener("ramonda:query-client-request", this.republish);
@@ -153,7 +153,7 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
 
 /**
  * Reads the client from context, for imperative work: prefetching in a parent's
- * `@mount`, invalidating after a mutation, seeding the cache.
+ * `@mounted`, invalidating after a mutation, seeding the cache.
  *
  * ```ts
  * private queries = this.use(QueryClientAccess);

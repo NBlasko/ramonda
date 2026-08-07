@@ -61,8 +61,8 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * use of it was for. See the changeset for where each case went.
  *
  * **Registration is not open-ended.** Effects run once per commit, from a queue
- * flushed after the DOM work. Anything pushed here during construction, `@create`
- * or `@mount` makes that flush; anything pushed AFTER it does not run until some
+ * flushed after the DOM work. Anything pushed here during construction, `@created`
+ * or `@mounted` makes that flush; anything pushed AFTER it does not run until some
  * later re-render happens to trigger the next one. Measured: an effect attached
  * from a click handler stayed silent, then fired on an unrelated `@state` change.
  * That is why every decorator here registers from `addInitializer`.
@@ -306,7 +306,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
  * an effect fires constantly while looking framework-guarded, and its cleanup tears
  * down whatever it set up each time.
  *
- * **No cleanup contract.** Return nothing. Teardown belongs to `@destroy`, and a
+ * **No cleanup contract.** Return nothing. Teardown belongs to `@destroyed`, and a
  * subscription belongs to `createSubscriptionDecorator`.
  *
  * **No previous props or state**, deliberately. The `if` that would need them —
@@ -322,7 +322,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
  *
  * ## What to know
  *
- * **Not on the first commit** — that is `@mount`, which runs once with the element
+ * **Not on the first commit** — that is `@mounted`, which runs once with the element
  * already in the document. `@updated` is every commit after it.
  *
  * **It runs unconditionally**, so guard the body if the body is expensive. A
@@ -641,8 +641,8 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
     });
   };
 
-  // Dual-callable: @create              -> (value, context)
-  //                @create({ env })     -> vrati dekorator
+  // Dual-callable: @created              -> (value, context)
+  //                @created({ env })     -> vrati dekorator
   function decorator(
     options?: LifecycleOptions,
   ): (value: unknown, context: EnhancedClassMethodDecoratorContext) => void;
@@ -670,35 +670,35 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
  * **For initialisation, not for side effects.** Two properties make that a rule
  * rather than a style preference, and both were measured:
  *
- * 1. **There is no DOM yet.** The host element is created after `@create` and
+ * 1. **There is no DOM yet.** The host element is created after `@created` and
  *    inserted by the caller after that, so a `document.querySelector` here finds
  *    nothing of this component — and during a REPLACEMENT it finds the outgoing
- *    instance instead. `@mount` is the hook that guarantees the element is in the
+ *    instance instead. `@mounted` is the hook that guarantees the element is in the
  *    document.
  * 2. **The instance it replaces is still alive.** On any replacement — a `key`
  *    change, a swapped class, a host tag resolved from props — the new
- *    `@create` runs before the old `@destroy`. That is not reordered: keeping
+ *    `@created` runs before the old `@destroyed`. That is not reordered: keeping
  *    this phase free of outside effects is what makes it harmless. Anything
  *    exclusive taken here — a lock, a subscription keyed by identity — would
  *    briefly overlap itself.
  *
  * And one more, from the other end: if the build FAILS after this runs — a throw
- * in `render()`, or in `@create` itself — `@destroy` still runs, over a
- * component that never finished initialising. So `@destroy` must tolerate a
+ * in `render()`, or in `@created` itself — `@destroyed` still runs, over a
+ * component that never finished initialising. So `@destroyed` must tolerate a
  * half-built instance. That was chosen over never cleaning up such a component,
- * because whatever `@create` took would otherwise leak for the life of the page.
+ * because whatever `@created` took would otherwise leak for the life of the page.
  *
  * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
  * as an argument, for the rare shared init that must branch on where it runs.
  * Declaring the parameter is optional.
  */
-export const create = createLifecycleDecorator("creates", "create");
+export const created = createLifecycleDecorator("creates", "created");
 /**
  * Runs after the DOM this commit builds is in the document. Measure, focus, hand
- * the node to a library — this is where that belongs, not in `@create`.
+ * the node to a library — this is where that belongs, not in `@created`.
  *
- * Within one commit: every child's `@mount` before its parent's, and a
- * component's `@mount` before its effects, so `@onElement` listeners are already
+ * Within one commit: every child's `@mounted` before its parent's, and a
+ * component's `@mounted` before its effects, so `@onElement` listeners are already
  * attached. A component torn down before the commit finishes never mounts at all.
  *
  * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
@@ -706,32 +706,53 @@ export const create = createLifecycleDecorator("creates", "create");
  * on the server without a `typeof window` check. Declaring the parameter is
  * optional.
  */
-export const mount = createLifecycleDecorator("mounts", "mount");
+export const mounted = createLifecycleDecorator("mounts", "mounted");
 /**
  * Runs on teardown, while reactive dependencies are still readable.
  *
  * Runs exactly once, and also for a component whose BUILD failed — see `create`.
  * A throw here is reported and does not stop the rest of the cleanup. Receives the
- * render side (`env: RenderEnv`) as an argument, like `@create`/`@mount`.
+ * render side (`env: RenderEnv`) as an argument, like `@created`/`@mounted`.
  */
-export const destroy = createLifecycleDecorator("destroys", "destroy");
+export const destroyed = createLifecycleDecorator("destroys", "destroyed");
 
 /**
  * Syncs derived state BEFORE the render, when a selected prop changes — without
  * the extra re-render an `@effect` would cause. The selector picks the value (it
  * may reach deep: `p => p.foo[5].bar`) and the decorated method receives the new
- * and old value. It does NOT fire on mount; use `@create` for the initial seed.
+ * and old value. It does NOT fire on mount; use `@created` for the initial seed.
  *
  * ```ts
  * @watchProp((p) => p.userId)
- * reload(next: string, previous: string) { … }
+ * reload(next: [string], previous: [string]) { … }
  * ```
+ *
+ * **Several selectors, one call.** Pass them as separate arguments and the method runs ONCE when any
+ * of them changed, with every value positionally:
+ *
+ * ```ts
+ * @watchProp((p) => p.page, (p) => p.term, (p) => p.sort)
+ * reload(next: [number, string, string], previous: [number, string, string]) { … }
+ * ```
+ *
+ * The values are always a TUPLE, even for one selector, and that is about EVOLUTION rather than
+ * neatness: with a scalar for one and a tuple for many, adding a second selector to a watcher that
+ * already exists silently changes the method's parameter type, and the error a decorator gives for
+ * that is `TS1241 Unable to resolve signature of method decorator`, which names nothing. A tuple that
+ * grows leaves `next[0]` meaning what it meant.
+ *
+ * A selector whose value did not change keeps it in BOTH arrays, so `previous[i] === next[i]` is how
+ * the method tells which one moved.
+ *
+ * Do not reach for a single selector returning an array to get the same effect — comparison is
+ * `Object.is`, so a fresh array is never equal to the last one and the method fires on every props
+ * change with `previous` and `next` holding the same contents. Measured.
  *
  * **The selector needs no annotation**: `props` is typed from the class the decorator is
  * placed on. `This` is only ever mentioned in the decorator CONTEXT and in a conditional
  * type (`PropsOfInstance<This>`), and a conditional is not somewhere TypeScript infers
  * from — so it stays open until the decorator is applied, and the class supplies it. The
- * selector's return type still fixes `V`, so the method is checked as `(V, V) => void`.
+ * selectors' return types still fix the tuple, so the method is checked against it.
  *
  * (Annotating it anyway is harmless when the annotation matches.)
  *
@@ -748,12 +769,27 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  * and never fired when the hook's own prop changed. Fixed by recording which
  * instance each entry belongs to; see `WatchPropEntry.owner`.
  */
-export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V) {
+export function watchProp<
+  This,
+  // A NON-EMPTY tuple, so `@watchProp()` is a compile error rather than a runtime one. A plain
+  // `readonly T[]` accepts zero arguments, which the DEV throw below then had to catch — and a throw is
+  // the worse of the two places to learn it: the type knows at the call site, before anything runs. The
+  // throw stays for the build that has no types.
+  S extends readonly [(props: PropsOfInstance<This>) => unknown, ...((props: PropsOfInstance<This>) => unknown)[]],
+>(...selectors: S) {
   if (__DEV__) {
-    assertSelector(selector, "watchProp");
+    if (selectors.length === 0) {
+      throw new Error(
+        "[watchProp] Give it at least one selector — `@watchProp((p) => p.userId)`. With none there is " +
+          "nothing to watch, so the method could never run.",
+      );
+    }
+    for (const selector of selectors) assertSelector(selector, "watchProp");
   }
 
-  return function <M extends (newValue: V, oldValue: V) => void>(
+  type Values = { [K in keyof S]: ReturnType<S[K]> };
+
+  return function <M extends (next: Values, previous: Values) => void>(
     _value: M,
     context: ClassMethodDecoratorContext<This & { [GLOBAL_RUNTIME]: Runtime } & Record<string, any>, M>,
   ): void {
@@ -764,9 +800,10 @@ export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V
     context.addInitializer(function (this) {
       this[GLOBAL_RUNTIME].watchProps.push({
         id: createId(),
-        selector: selector as (props: unknown) => unknown,
+        selectors: selectors as readonly ((props: unknown) => unknown)[],
         cb: this[contextName].bind(this),
-        lastValue: undefined,
+        // Seeded at mount by `seedWatchProps`, one slot per selector.
+        lastValues: [],
         // The instance the decorator was put on — a component or a hook. The
         // runtime is shared; the props are not.
         owner: this,
@@ -943,6 +980,39 @@ export function Host<C extends (new (...args: any[]) => object) & { readonly __i
             props: props as HostMeta["props"],
           };
 
+    /**
+     * Two `@Host` on ONE class, said in words.
+     *
+     * It already failed — `configurable: false` below means the second `defineProperty` throws — but
+     * with V8's own message: `Cannot redefine property: Symbol(host:meta)`. That names an internal
+     * symbol, gives no advice, and points at a line inside this file rather than at the class. For a
+     * mistake as easy as writing the decorator twice, it was the worst available report.
+     *
+     * **A record AND a throw**, which are not alternatives — the same two doors `@ramonda/form`'s
+     * `refuse` opens. The throw is the developer's channel and ships in every build, because there is no
+     * correct program here: a component is exactly one element, so two answers cannot both be honoured.
+     * The RECORD is the collector's, so an app streaming its diagnostics somewhere sees this alongside
+     * everything else it has to tidy up — a fault that only throws is invisible to that.
+     *
+     * What the tier decides is the THROW, not the code. `RMD032` and `RMD040` report and carry on,
+     * because one declaration quietly wins and the program still runs, wrongly. This one cannot pick a
+     * winner.
+     *
+     * `hasOwn`, not `in`: a SUBCLASS declaring its own `@Host` overrides the base's, which is how a
+     * specialised component changes its element, and it is measured as working. Only two on one class
+     * body are refused.
+     */
+    if (Object.hasOwn(ctor, HOST_META)) {
+      if (__DEV__) {
+        diagnose("RMD045", ctor.name, `<${ctor.name} /> declares more than one @Host.`, { component: ctor.name });
+      }
+      throw new Error(
+        `[Ramonda] <${ctor.name} /> has more than one @Host. A component is exactly one element, so ` +
+          `there is one answer to which — keep the @Host you meant and delete the rest. A SUBCLASS may ` +
+          `declare its own, which overrides the base's; this is two on the same class.`,
+      );
+    }
+
     Object.defineProperty(ctor, HOST_META, {
       value: meta,
       writable: false,
@@ -1074,6 +1144,27 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
       );
     }
 
+    /**
+     * Two `@StableProps` on ONE class: reported, and MERGED rather than refused.
+     *
+     * This decorator names a SET, and it already merges along the class chain — a subclass adds names
+     * rather than shadowing the base's. So `@StableProps("a") @StableProps("b")` has an unambiguous
+     * reading, the union, and there is no answer to pick between. That is what separates it from
+     * `@Host` (RMD045), where two answers to "which element am I?" cannot both be honoured and the only
+     * honest response is to refuse: here carrying on gives exactly what the author asked for, spelled
+     * awkwardly.
+     *
+     * It used to throw, and not on purpose — `configurable: false` below meant the second
+     * `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`, an internal
+     * symbol and no advice.
+     */
+    if (__DEV__ && Object.hasOwn(ctor, STABLE_PROPS)) {
+      diagnose("RMD046", ctor.name, `${ctor.name} declares more than one @StableProps.`, {
+        component: ctor.name,
+        added: keys.join(", "),
+      });
+    }
+
     // Read BEFORE defining: a symbol on a constructor is inherited through the class
     // chain, so this is the parent's list when there is one. Merging means a subclass
     // adds rather than shadows.
@@ -1084,7 +1175,11 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
       value: merged,
       writable: false,
       enumerable: false,
-      configurable: false,
+      // Configurable so a second application on ONE class can merge into it. `writable: false` still
+      // refuses assignment; what this gives up is protection against a deliberate `defineProperty` by
+      // an app, which was never a threat anybody named — and it buys a decorator that behaves the same
+      // way twice on one class as it does across two.
+      configurable: true,
     });
   };
 }

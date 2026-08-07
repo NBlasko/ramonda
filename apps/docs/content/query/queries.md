@@ -157,7 +157,7 @@ render() {
 
 **There is no `throwOnError`**, and that is deliberate rather than missing. Handing a failed
 fetch to an [error boundary](/composition/error-boundaries) replaces the whole subtree, which
-means unmounting: `@destroy` runs, cleanups run, local state goes, focus and scroll position
+means unmounting: `@destroyed` runs, cleanups run, local state goes, focus and scroll position
 go — and a retry has to rebuild all of it. A failed request is not an unexpected situation.
 The network fails routinely, which is why a failure is *state* here and the data you had is
 kept. The two lines above unmount exactly what you chose to unmount, and nothing else.
@@ -230,6 +230,44 @@ render() {
 }
 ```
 
+## Typing the fetcher
+
+`this.use` infers a hook's props from the object you hand it. That works everywhere except one
+place: an **inline callback whose parameter you have not annotated**. `fetch: (ctx) => …` asks
+TypeScript to infer `ctx` from the same object it is currently inferring — `ctx` is built from the
+`key` sitting next to it — so it gives up and hands you `any`:
+
+```tsx expect-error
+// `ctx` is implicitly `any`, so `ctx.singal` (typo) passes.
+this.use(Query, { key: ["user", id], fetch: (ctx) => loadUser(id, ctx.signal) });
+```
+
+Pin the type arguments and everything else follows from them:
+
+```tsx
+private key = ["user", this.props.id] as const;
+
+private user = this.use(Query<User, typeof this.key>, {
+  key: this.key,
+  fetch: (ctx) => loadUser(ctx.key[1], ctx.signal),   // ctx.key[1] is the id, typed
+});
+```
+
+**Pin both, not just the first.** `Query<User>` alone fixes the `any` — but the key parameter then
+falls back to its default, the wide `QueryKey`, so `ctx.key[1]` is `unknown` and the one thing you
+reached into `ctx` for is gone.
+
+A method needs no pin, because it carries its own annotation:
+
+```tsx
+private user = this.use(Query, { key: ["user", this.props.id], fetch: this.loadUser });
+```
+
+This is a TypeScript inference limit rather than a rule of this library, so it applies to any hook
+whose props include a callback typed from a sibling property —
+[`Form<typeof schema>`](/forms#form-typeof-schema-why-the-pin) is the same restriction for the same
+reason.
+
 ## Reaching the cache directly
 
 For imperative work — prefetching in a parent, invalidating after something happened
@@ -239,7 +277,7 @@ outside a mutation — reach the client with `QueryClientAccess`:
 class Page extends Component {
   private queries = this.use(QueryClientAccess);
 
-  @mount
+  @mounted
   warmUp() {
     // Loads what this page needs in ONE place, so the children below find their
     // data already cached instead of each fetching what the one above just learned.

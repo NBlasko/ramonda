@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { Component, Host, mount, renderToString, ServerRedirect } from "@ramonda/core";
+import { Component, Host, mounted, renderToString, ServerRedirect } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -7,7 +7,7 @@ import { createRoutes } from "../match";
 
 /**
  * A route guard on the server. The interesting case the redesign was for: a
- * `@mount` (which runs on the server) decides the visitor is at the wrong URL and
+ * `@mounted` (which runs on the server) decides the visitor is at the wrong URL and
  * navigates. On the client that is an ordinary history change; on the server there
  * is no history to change and no client to re-render for, so the render must instead
  * signal "send this request to /login" — a thrown `ServerRedirect` the transport
@@ -21,7 +21,7 @@ let authed = true;
 @Host("main")
 class Protected extends Component {
   private route = this.use(Navigator);
-  @mount guard() {
+  @mounted guard() {
     if (!authed) this.route.replace("/login");
   }
   render() {
@@ -84,7 +84,7 @@ describe("server-side route-guard redirect", () => {
     @Host("main")
     class DoubleGuard extends Component {
       private route = this.use(Navigator);
-      @mount guard() {
+      @mounted guard() {
         this.route.replace("/first");
         this.route.replace("/second");
       }

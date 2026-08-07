@@ -1,13 +1,13 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, mount, create } from "../../base/decorators";
+import { Host, state, mounted, created } from "../../base/decorators";
 import { AsyncLoad } from "../../base/AsyncLoad";
 import { renderPage, renderToString } from "../../hydration/ssr";
 
 /**
  * A server render waits for the async work its own lifecycle started.
  *
- * `@mount` is where an app fetches — that is what the lifecycle is for, and it
+ * `@mounted` is where an app fetches — that is what the lifecycle is for, and it
  * runs on the server precisely so the data ends up in the HTML. But
  * `renderToString` used to await only microtasks (`flushTaskQueue`), so anything
  * taking a real round trip was still in flight when the markup was serialized.
@@ -17,7 +17,7 @@ import { renderPage, renderToString } from "../../hydration/ssr";
  * every real `import()` and every real `fetch`.
  *
  * The trigger is deliberately not a new API: a lifecycle method that returns a
- * promise has it awaited, on the server only. `async @mount` already returns one.
+ * promise has it awaited, on the server only. `async @mounted` already returns one.
  */
 
 /** A real round trip: settles on a macrotask, not a microtask. */
@@ -30,13 +30,13 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe("the server waits for async @mount", () => {
+describe("the server waits for async @mounted", () => {
   test("a fetch that takes a macrotask lands in the HTML", async () => {
     @Host("div")
     class Profile extends Component {
       @state name = "";
 
-      @mount async load() {
+      @mounted async load() {
         this.name = await afterATick("Ada");
       }
 
@@ -55,7 +55,7 @@ describe("the server waits for async @mount", () => {
     @Host("div")
     class Profile extends Component {
       @state name = "";
-      @mount async load() {
+      @mounted async load() {
         if (this.name) return; // restored from the server
         this.name = await afterATick("Grace");
       }
@@ -67,18 +67,18 @@ describe("the server waits for async @mount", () => {
     const page = await renderPage(<Profile />);
     expect(page.body).toContain("Grace");
     // @state is serialized, which is what makes the guard above work on the
-    // client: a shared @mount runs on BOTH sides, and the blob is the memo.
+    // client: a shared @mounted runs on BOTH sides, and the blob is the memo.
     expect(page.body).toContain("Grace");
     expect(page.body).toContain("data-ramonda-state");
   });
 
   test("work started by the result of earlier work is awaited too", async () => {
     // The reason one pass is not enough: a resolved fetch writes state, which
-    // schedules a render, which builds a component whose own @mount fetches.
+    // schedules a render, which builds a component whose own @mounted fetches.
     @Host("span")
     class Detail extends Component<{ id: string }> {
       @state text = "";
-      @mount async load() {
+      @mounted async load() {
         this.text = await afterATick(`detail-for-${this.props.id}`);
       }
       render() {
@@ -89,7 +89,7 @@ describe("the server waits for async @mount", () => {
     @Host("div")
     class Page extends Component {
       @state id = "";
-      @mount async load() {
+      @mounted async load() {
         this.id = await afterATick("42");
       }
       render() {
@@ -106,7 +106,7 @@ describe("the server waits for async @mount", () => {
     @Host("div")
     class Flaky extends Component {
       @state status = "pending";
-      @mount async load() {
+      @mounted async load() {
         try {
           await Promise.reject(new Error("nope"));
         } catch {
@@ -121,7 +121,7 @@ describe("the server waits for async @mount", () => {
     @Host("div")
     class Fine extends Component {
       @state value = "";
-      @mount async load() {
+      @mounted async load() {
         this.value = await afterATick("ok");
       }
       render() {
@@ -151,8 +151,8 @@ describe("the server waits for async @mount", () => {
   test("a page with no async work is not slowed down", async () => {
     @Host("div")
     class Plain extends Component {
-      @create init() {}
-      @mount ready() {}
+      @created init() {}
+      @mounted ready() {}
       render() {
         return <p>plain</p>;
       }
@@ -168,7 +168,7 @@ describe("the server waits for async @mount", () => {
   });
 
   test("a fetch waterfall fails loudly instead of hanging the request", async () => {
-    // A real waterfall needs each round to create a NEW component: @mount runs
+    // A real waterfall needs each round to create a NEW component: @mounted runs
     // once per instance, so a single component awaiting in a loop is not one.
     // Here every resolved fetch renders the next level down, which mounts and
     // fetches again — the shape the bound exists for. A server cannot know how
@@ -176,7 +176,7 @@ describe("the server waits for async @mount", () => {
     @Host("div")
     class Chain extends Component<{ depth: number }> {
       @state loaded = false;
-      @mount async load() {
+      @mounted async load() {
         this.loaded = await afterATick(true, 1);
       }
       render() {
@@ -204,7 +204,7 @@ describe("the server waits for async @mount", () => {
     @Host("div")
     class Chain extends Component<{ depth: number }> {
       @state loaded = false;
-      @mount async load() {
+      @mounted async load() {
         this.loaded = await afterATick(true, 1);
         mountsSettled++;
       }
