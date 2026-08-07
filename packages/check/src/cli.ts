@@ -90,11 +90,31 @@ if (duplicateDecorators.length > 0) {
         ? "the LOWEST is the one that runs (members initialise top to bottom, so it is applied last)"
         : "the HIGHEST is the one that runs (class decorators apply bottom-up, so it is applied last)";
 
+    /**
+     * The `redundant` half gets a different sentence on purpose.
+     *
+     * "One of them never runs" is true of `@catchError` and false of `@state`: a doubled `@state`
+     * behaves exactly like a single one — measured, one render per write and the right value — so
+     * sending a reader to work out which line is live would send them after a difference that is not
+     * there. Same report, two faults, two pieces of advice.
+     */
+    const said =
+      duplicate.effect === "displaces"
+        ? `there is one answer to what it asks, so ${inEffect}\n    and the rest never run. Keep one and combine what they do.`
+        : `applying it twice changes nothing. The behaviour is identical to one, so this is a\n    ` +
+          `mistaken belief rather than a broken program. Delete the extras.`;
+
+    // The member is named for a `redundant` report, because that count is per member: without it,
+    // "declares @state 2 times" reads like a claim about the class, which is a different fault.
+    const where =
+      duplicate.member === undefined
+        ? `<${duplicate.component}>`
+        : `${duplicate.component}.${duplicate.member} carries`;
+
     console.error(`  ${duplicate.file}:${duplicate.line}:${duplicate.column}`);
     console.error(
-      `    <${duplicate.component}> declares @${duplicate.decorator} ${duplicate.count} times — ` +
-        `there is one answer to what it asks, so ${inEffect}\n` +
-        `    and the rest never run. Keep one and combine what they do.`,
+      `    ${where}${duplicate.member === undefined ? " declares" : ""} @${duplicate.decorator} ` +
+        `${duplicate.count} times — ${said}`,
     );
     console.error("");
   }

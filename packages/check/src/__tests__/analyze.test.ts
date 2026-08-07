@@ -132,6 +132,25 @@ describe("single-use decorators declared twice", () => {
     expect(found().map((d) => `${d.component}.@${d.decorator}x${d.count}`)).toEqual([
       "Twice.@catchError x2".replace(" ", ""),
       "GatedTwice.@ShouldUpdateOnPropsChange x2".replace(" ", ""),
+      "RedundantTwice.@state x2".replace(" ", ""),
+      "RedundantTwice.@compute x2".replace(" ", ""),
+    ]);
+  });
+
+  /**
+   * Two faults share this report and they need different advice.
+   *
+   * `displaces` — one declaration wins and the rest are dead code, so the reader has to be told which
+   * line is live. `redundant` — the second application changes nothing, measured in core: a doubled
+   * `@state` renders once per write with the right value, and `@compute`'s body runs once for two reads.
+   * Saying "one of them never runs" there would send somebody after a difference that does not exist.
+   */
+  test("each report says what the second declaration does", () => {
+    expect(found().map((d) => `${d.decorator}:${d.effect}`)).toEqual([
+      "catchError:displaces",
+      "ShouldUpdateOnPropsChange:displaces",
+      "state:redundant",
+      "compute:redundant",
     ]);
   });
 
@@ -148,6 +167,8 @@ describe("single-use decorators declared twice", () => {
     expect(found().map((d) => `${d.decorator}:${d.kind}`)).toEqual([
       "catchError:member",
       "ShouldUpdateOnPropsChange:class",
+      "state:member",
+      "compute:member",
     ]);
   });
 
@@ -156,6 +177,30 @@ describe("single-use decorators declared twice", () => {
     expect(names).not.toContain("Sub");
     expect(names).not.toContain("Base");
     expect(names).not.toContain("Fine");
+  });
+
+  /**
+   * The regression that mattered: several fields each carrying ONE `@state` is what every component
+   * looks like, and counting the redundant kind per CLASS reported `declares @state 3 times`. It showed
+   * up against this repository's own documentation app, not in a fixture — five on one class there.
+   *
+   * So the redundant kind counts per MEMBER, and the report names the member.
+   */
+  test("one decorator each on several members is silent, and a real duplicate names its member", () => {
+    expect(found().map((d) => d.component)).not.toContain("ManyFields");
+
+    const redundant = found().filter((d) => d.effect === "redundant");
+    expect(redundant.map((d) => `${d.component}.${d.member}@${d.decorator}`)).toEqual([
+      "RedundantTwice.n@state",
+      "RedundantTwice.doubled@compute",
+    ]);
+    // Named only where the count is per member — for `displaces` it is per class, and naming one
+    // method there would point at the wrong thing.
+    expect(
+      found()
+        .filter((d) => d.effect === "displaces")
+        .every((d) => d.member === undefined),
+    ).toBe(true);
   });
 
   test("the analyzer walks the tree under the AUTOMATIC jsx runtime", () => {

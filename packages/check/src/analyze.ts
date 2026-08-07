@@ -88,6 +88,22 @@ export interface DuplicateDecoratorIssue {
    * was not written for.
    */
   kind: "class" | "member";
+  /**
+   * What the second declaration DOES, which decides what advice makes sense.
+   *
+   * `displaces` — one of them wins and the rest never run, so the reader has dead code and needs to
+   * know which line is live. `redundant` — the second application changes nothing at all, so there is
+   * no dead code and no behaviour to hunt for; the fix is simply to delete the extras. Telling somebody
+   * the wrong one of these sends them looking for a difference that is not there.
+   */
+  effect: "displaces" | "redundant";
+  /**
+   * The member the duplicates sit on, for a `redundant` report — `n` in `@state @state n = 1`.
+   *
+   * Absent for `displaces`, where the count is per class and naming one member would be misleading:
+   * two `@catchError` are on two different methods, and the fault is that the class has two answers.
+   */
+  member?: string;
   file: string;
   line: number;
   column: number;
@@ -140,10 +156,29 @@ interface ComponentNode {
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
 
 /**
- * The decorators that answer a question with one answer. Counted per CLASS BODY, so a subclass
- * declaring its own — an override — is not a duplicate.
+ * The decorators that answer a question with one answer, so a second declaration DISPLACES the first
+ * and one of them never runs. Counted per CLASS BODY, so a subclass declaring its own — an override —
+ * is not a duplicate.
  */
-const SINGLE_USE = new Set(["catchError", "Host", "ShouldUpdateOnPropsChange", "StableProps"]);
+const DISPLACING = new Set(["catchError", "Host", "ShouldUpdateOnPropsChange", "StableProps"]);
+
+/**
+ * The decorators where a second application changes NOTHING — a different fault, and worth its own
+ * sentence, because telling somebody "one of them never runs" here would send them looking for a
+ * behaviour difference that does not exist.
+ *
+ * Measured in core rather than assumed: `@state @state n = 1` renders once per write with the right
+ * value, `@compute @compute` runs its body once for two reads, and `@persist` and `@memoizedHandler`
+ * behave identically doubled. So it is redundancy, which is why it reads as a warning rather than a
+ * broken program — the author believed something that is not so, and nothing downstream is wrong.
+ *
+ * `@watchProp` is deliberately NOT here: several on one method is the supported way for one handler to
+ * follow several props, and each application does real work. See `DecoratorReach.test.tsx`, which pins
+ * that it runs once per changed prop.
+ */
+const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoizedHandler"]);
+
+const SINGLE_USE = new Set([...DISPLACING, ...REDUNDANT_TWICE]);
 
 /** The name of a decorator, whether it is bare (`@catchError`) or called (`@Host("div")`). */
 function decoratorName(decorator: ts.Decorator): string | undefined {
@@ -484,24 +519,66 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * else to live and the value is a function only after the call has run.
    */
   function readDuplicateDecorators(cls: ts.ClassDeclaration, owner: string): void {
-    const seen = new Map<string, { count: number; at: ts.Node; kind: "class" | "member" }>();
+    /**
+     * The two classes of fault are counted at two different LEVELS, and getting that wrong is not a
+     * near miss — it is a false positive on ordinary code.
+     *
+     * A `displacing` decorator answers a question the CLASS asks ("who handles an error from below?"),
+     * so two anywhere in the body is the fault. A `redundant` one is about one MEMBER: five fields each
+     * carrying `@state` is what every component looks like, and counting `@state` per class reported
+     * `<Search> declares @state 5 times` — measured, against this repository's own documentation app,
+     * which is how the mistake surfaced.
+     */
+    const perClass = new Map<string, { count: number; at: ts.Node; kind: "class" | "member" }>();
+    const perMember = new Map<string, { count: number; at: ts.Node; member: string }>();
 
-    const count = (node: ts.Node, kind: "class" | "member"): void => {
+    const count = (node: ts.Node, kind: "class" | "member", member?: string): void => {
       for (const decorator of ts.getDecorators(node as ts.HasDecorators) ?? []) {
         const name = decoratorName(decorator);
-        if (name === undefined || !SINGLE_USE.has(name)) continue;
-        const previous = seen.get(name);
-        if (previous) previous.count += 1;
-        else seen.set(name, { count: 1, at: decorator, kind });
+        if (name === undefined) continue;
+
+        if (DISPLACING.has(name)) {
+          const previous = perClass.get(name);
+          if (previous) previous.count += 1;
+          else perClass.set(name, { count: 1, at: decorator, kind });
+          continue;
+        }
+
+        if (REDUNDANT_TWICE.has(name) && member !== undefined) {
+          const key = `${member} ${name}`;
+          const previous = perMember.get(key);
+          if (previous) previous.count += 1;
+          else perMember.set(key, { count: 1, at: decorator, member });
+        }
       }
     };
 
     count(cls, "class");
-    for (const member of cls.members) count(member, "member");
+    for (const member of cls.members) count(member, "member", member.name?.getText());
 
-    for (const [decorator, { count: times, at, kind }] of seen) {
+    for (const [decorator, { count: times, at, kind }] of perClass) {
       if (times < 2) continue;
-      duplicateDecorators.push({ component: owner, decorator, count: times, kind, ...positionOf(at) });
+      duplicateDecorators.push({
+        component: owner,
+        decorator,
+        count: times,
+        kind,
+        effect: "displaces",
+        ...positionOf(at),
+      });
+    }
+
+    for (const [key, { count: times, at, member }] of perMember) {
+      if (times < 2) continue;
+      duplicateDecorators.push({
+        component: owner,
+        decorator: key.split(" ")[1],
+        count: times,
+        kind: "member",
+        effect: "redundant",
+        member,
+        ...positionOf(at),
+      });
     }
   }
 

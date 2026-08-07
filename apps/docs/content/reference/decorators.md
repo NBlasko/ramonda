@@ -86,7 +86,11 @@ Most decorators stack, and the order is defined:
 
 - **`@create` and `@mount`** run in declaration order; **`@destroy`** runs in reverse, so cleanup
   undoes setup in the order it was done.
-- **`@watchProp`** takes one selector each, so several watch different props.
+- **`@watchProp`** takes one selector each, so several watch different props — including several on
+  **one method**, which is how one handler follows more than one prop. It then runs **once per changed
+  prop**, not once per update: move one and it runs once, move two in the same update and it runs twice,
+  each time with that selector's own previous and next value. Useful, since the handler is told which
+  prop moved, but worth knowing before you count on one call. Lower declarations run first.
 - **`@deferHydration`** may appear several times; hydration waits for all of them.
 - **`@catchError`** is single: there is one answer to "who handles an error from below?". Two on one
   class are reported (RMD032), and **the lowest** is the one that runs — members initialise top to

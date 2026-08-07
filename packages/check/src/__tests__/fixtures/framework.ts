@@ -13,3 +13,4 @@ export declare function Host(tag: string, props?: unknown): (ctor: unknown) => v
 export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unknown) => void;
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;
+export declare function compute(value: unknown, context: unknown): void;

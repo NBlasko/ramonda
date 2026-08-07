@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
+import type { RamondaNode } from "../types/vdom";
 import { renderToString } from "../hydration/ssr";
 import {
   Host,
@@ -195,5 +196,64 @@ describe("what a server render actually runs", () => {
      *   occasion to. A server render commits once and never unmounts.
      */
     vi.restoreAllMocks();
+  });
+});
+
+/**
+ * `@watchProp` stacked on ONE method, which is the supported way to have one handler follow several
+ * props — the reference table says "several watch different props" and stops there, so this measures
+ * the part a reader actually needs next: how often the method runs.
+ *
+ * Each application pushes its OWN entry, with its own `lastValue`, both bound to the same method. So it
+ * is one call per CHANGED prop, not one call per update: move one and it runs once, move two in the same
+ * update and it runs twice, each time with that selector's own previous and next value. That is useful
+ * rather than a defect — a handler watching `a` and `b` is told which one moved — but it is not what
+ * "watch several props" sounds like, so it is written down.
+ *
+ * The order is reverse of declaration, because a member decorator's initializers run bottom-up.
+ */
+describe("several @watchProp on one method", () => {
+  test("one call per changed prop, each with its own before and after", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const calls: string[] = [];
+
+    class Child extends Component<{ a: number; b: number }> {
+      @watchProp((props: { a: number; b: number }) => props.a)
+      @watchProp((props: { a: number; b: number }) => props.b)
+      onEither(next: number, previous: number) {
+        calls.push(`${previous}->${next}`);
+      }
+      render(): RamondaNode {
+        return <p>{this.props.a + this.props.b}</p>;
+      }
+    }
+
+    class App extends Component {
+      @state a = 1;
+      @state b = 10;
+      render(): RamondaNode {
+        return <Child a={this.a} b={this.b} />;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      calls.length = 0;
+
+      // One prop moves: one call, from the selector that saw the change.
+      app.instance.a = 2;
+      await app.settle();
+      expect(calls).toEqual(["1->2"]);
+
+      // Both move in ONE update: two calls, not one — and the lower declaration goes first.
+      calls.length = 0;
+      app.instance.a = 3;
+      app.instance.b = 30;
+      await app.settle();
+      expect(calls).toEqual(["10->30", "2->3"]);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
   });
 });
