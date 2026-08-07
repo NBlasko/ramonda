@@ -2,7 +2,7 @@ import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { create, destroy, watchProp } from "./decorators";
 import { diffAndMerge, filterVirtualChild, unmountChildrenNodes } from "../core/DiffAndMerge";
-import { PORTAL_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR, KEY_SYM } from "../helpers/constants";
 import type { EnhancedChildNode, RamondaNode, VNode } from "../types/vdom";
 
 export interface PortalProps {
@@ -143,12 +143,14 @@ export class Portal extends Hook<PortalProps> {
    * Brings `target` into line with `children`, touching only the nodes this
    * portal owns.
    *
-   * Positional against the previous list: child `i` is diffed against the node
-   * built for slot `i` last time, which reuses it in place when the shape agrees
-   * (a `<meta>` staying a `<meta>` just has its attributes updated). A node the
-   * reconciler hands back unchanged is already in `target`; a fresh or replaced
-   * one is detached, so it is appended. Anything the new list no longer accounts
-   * for is unmounted — `@destroy` and all — and removed.
+   * Matched by KEY where a child has one, and by position otherwise — the same
+   * rule the main children diff uses, so a reordered list of keyed children keeps
+   * each node (and its component state) with its key instead of a neighbour taking
+   * its contents. A keyed node the render still asks for is reused wherever it was;
+   * an unkeyed one is matched to the next unclaimed unkeyed node in order. What the
+   * diff hands back unchanged is already in `target`; a fresh or replaced node is
+   * detached, so it is appended and then moved into place. Anything the new list no
+   * longer accounts for is unmounted — `@destroy` and all — and removed.
    */
   private reconcile(): void {
     const owner = this[GLOBAL_RUNTIME].owner;
@@ -168,18 +170,37 @@ export class Portal extends Hook<PortalProps> {
     }
     this.currentTarget = target;
 
+    // Split the previous nodes into what a key can find and what only position can:
+    // a keyed child looks its node up regardless of where it moved, an unkeyed one
+    // takes the next unclaimed unkeyed node.
+    const previous = this.nodes;
+    const byKey = new Map<string, ChildNode>();
+    const unkeyed: ChildNode[] = [];
+    for (const node of previous) {
+      const key = (node as KeyedNode)[KEY_SYM];
+      if (key != null) byKey.set(String(key), node);
+      else unkeyed.push(node);
+    }
+    let unkeyedCursor = 0;
+
     const list: unknown[] = [];
     flattenChildren(raw, list);
-    const previous = this.nodes;
     const next: ChildNode[] = [];
 
-    let slot = 0;
     for (const rawChild of list) {
       const vchild = filterVirtualChild(rawChild);
       if (vchild === undefined) continue;
 
-      const existing = previous[slot];
-      slot++;
+      const key = typeof vchild === "string" ? undefined : vchild.attributes?.key;
+      const keyed = key != null;
+
+      let existing: ChildNode | undefined;
+      if (keyed) {
+        existing = byKey.get(String(key));
+        byKey.delete(String(key));
+      } else {
+        existing = unkeyed[unkeyedCursor++];
+      }
 
       let node: ChildNode;
       if (typeof vchild === "string") {
@@ -203,6 +224,9 @@ export class Portal extends Hook<PortalProps> {
         }
       }
 
+      // Remember the key ON the node, so the next render can find it wherever it
+      // ends up — and clear a stale one if a child that was keyed no longer is.
+      (node as KeyedNode)[KEY_SYM] = keyed ? key : undefined;
       next.push(node);
     }
 
@@ -214,9 +238,21 @@ export class Portal extends Hook<PortalProps> {
     }
     if (stale.length > 0) unmountChildrenNodes(stale);
 
+    // Line the DOM up with `next`. The last node anchors the block where it is; the
+    // rest are moved before it only when out of place, so an unchanged order — the
+    // common render — costs no moves at all.
+    for (let i = next.length - 2; i >= 0; i--) {
+      const node = next[i];
+      const shouldPrecede = next[i + 1];
+      if (node.nextSibling !== shouldPrecede) target.insertBefore(node, shouldPrecede);
+    }
+
     this.nodes = next;
   }
 }
+
+/** A portal node carrying the key it was matched by, so the next render can find it. */
+type KeyedNode = ChildNode & { [KEY_SYM]?: unknown };
 
 /**
  * Flattens `children` into a single run of atoms, so a nested array — `{[a, [b,

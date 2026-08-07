@@ -304,6 +304,43 @@ describe("Portal follows a reactive target", () => {
   });
 });
 
+describe("Portal reconciles keyed children by identity", () => {
+  test("reordering keyed children moves the same nodes, not their contents", async () => {
+    const target = document.createElement("ul");
+    document.body.appendChild(target);
+
+    class Page extends Component {
+      @state order = ["a", "b", "c"];
+      portal = this.use(Portal, (self: Page) => ({
+        children: self.order.map((x) => (
+          <li data-portal-test="1" key={x} id={`k-${x}`}>
+            {x}
+          </li>
+        )),
+        target,
+      }));
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    const rows = () => [...target.querySelectorAll("li")];
+    expect(rows().map((li) => li.id)).toEqual(["k-a", "k-b", "k-c"]);
+    const nodeA = rows()[0];
+
+    instance.order = ["c", "a", "b"];
+    await settle();
+
+    // The DOM order follows the new order …
+    expect(rows().map((li) => li.id)).toEqual(["k-c", "k-a", "k-b"]);
+    // … and 'a' is the SAME node, moved — not a neighbour that took its content.
+    expect(rows()[1]).toBe(nodeA);
+
+    target.remove();
+  });
+});
+
 describe("Portal is a full lifecycle boundary", () => {
   test("a component inside a portal runs @create, @mount and @destroy", async () => {
     const target = document.createElement("section");
