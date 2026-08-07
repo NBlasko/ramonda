@@ -93,6 +93,56 @@ const FORBIDDEN = [
   "currentOrigin",
 ];
 
+/**
+ * The TYPES this package publishes, which `EXPECTED` above cannot see.
+ *
+ * Types are erased, so `Object.keys(api)` returns none of them and the surface test was blind to a
+ * whole half of the API — `HookMeta` was added, published, and documented by nobody noticing, which is
+ * what this closes. `apps/docs/scripts/check-api-coverage.mjs` reads this list and fails if a name here
+ * is missing from the API reference, the same rule `@ramonda/form` has had.
+ *
+ * Sorted, so a name is added in one obvious place rather than wherever the diff is smallest.
+ *
+ * **Enumerate it with the compiler, not a regex.** Two regex attempts disagreed: reading the emitted
+ * `dist/index.d.ts` misses the exports tsup writes without a `type` modifier, and reading `index.ts`
+ * misses everything arriving through `export * from "./base/decorators"` — `LifecycleOptions` comes
+ * that way. `ts.createProgram` with this package's own tsconfig plus `checker.getExportsOfModule`,
+ * resolving each alias through `getAliasedSymbol`, gives the real list.
+ */
+const EXPECTED_TYPES = [
+  "AsyncLoadFailure",
+  "AsyncLoadProps",
+  "ComponentChild",
+  "ComponentClassKind",
+  "ContextOptions",
+  "DevFlags",
+  "Disconnect",
+  "DocumentOptions",
+  "ErrorBoundaryFallbackProps",
+  "HeadOptions",
+  "HookMeta",
+  "Lazy",
+  "LifecycleOptions",
+  "LinkTag",
+  "ListOptions",
+  "MetaTag",
+  "RamondaNode",
+  "RefCallback",
+  "RefTarget",
+  "RenderEnv",
+  "RenderToStringOptions",
+  "RenderedPage",
+  "RequestContext",
+  "RequestCookies",
+  "RequestKey",
+  "RequestKeyOptions",
+  "RequestMode",
+  "ServerRequestInit",
+  "StaticRender",
+  "SubscriptionOwner",
+  "VNode",
+];
+
 describe("public API surface", () => {
   test("exports exactly what it means to", () => {
     const actual = Object.keys(api).sort();
@@ -109,4 +159,90 @@ describe("public API surface", () => {
       expect(api).not.toHaveProperty(name);
     }
   });
+
+  test("every published type is named in EXPECTED_TYPES, once, in order", () => {
+    // The compiler proves the types EXIST — see the import below, which fails to check if one is
+    // renamed or removed. This proves the LIST is tidy, so a name added to `index.ts` and appended
+    // here rather than inserted is caught while the diff still says why.
+    expect(EXPECTED_TYPES).toEqual([...EXPECTED_TYPES].sort());
+    expect(new Set(EXPECTED_TYPES).size).toBe(EXPECTED_TYPES.length);
+  });
 });
+
+/**
+ * Every published type, named once, so `check-types` fails if one is renamed or removed.
+ *
+ * The tuple below is what makes the import count as used, and it pins one more thing on the way: a
+ * generic's ARITY. `ListOptions<unknown>` stops compiling if that parameter is dropped, or if a second
+ * one is added without a default — and arity is as much a part of a published type as its name. The
+ * arguments are the widest each constraint allows, on purpose: nothing here asserts anything about what
+ * may be passed, only that the parameter is there to pass something to.
+ */
+import type {
+  AsyncLoadFailure,
+  AsyncLoadProps,
+  ComponentChild,
+  ComponentClassKind,
+  ContextOptions,
+  DevFlags,
+  Disconnect,
+  DocumentOptions,
+  ErrorBoundaryFallbackProps,
+  HeadOptions,
+  HookMeta,
+  Lazy,
+  LifecycleOptions,
+  LinkTag,
+  ListOptions,
+  MetaTag,
+  RamondaNode,
+  RefCallback,
+  RefTarget,
+  RenderEnv,
+  RenderToStringOptions,
+  RenderedPage,
+  RequestContext,
+  RequestCookies,
+  RequestKey,
+  RequestKeyOptions,
+  RequestMode,
+  ServerRequestInit,
+  StaticRender,
+  SubscriptionOwner,
+  VNode,
+} from "../index";
+
+/** Referenced so the import is not "unused" — the reference IS the assertion. */
+export type __Published = [
+  AsyncLoadFailure,
+  AsyncLoadProps,
+  ComponentChild,
+  ComponentClassKind,
+  ContextOptions,
+  DevFlags,
+  Disconnect,
+  DocumentOptions,
+  ErrorBoundaryFallbackProps,
+  HeadOptions,
+  HookMeta,
+  Lazy,
+  LifecycleOptions,
+  LinkTag,
+  ListOptions<unknown>,
+  MetaTag,
+  RamondaNode,
+  RefCallback<Element>,
+  RefTarget<Element>,
+  RenderEnv,
+  RenderToStringOptions,
+  RenderedPage,
+  RequestContext,
+  RequestCookies,
+  RequestKey<unknown>,
+  RequestKeyOptions,
+  RequestMode,
+  ServerRequestInit,
+  StaticRender,
+  SubscriptionOwner,
+  VNode,
+];

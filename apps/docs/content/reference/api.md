@@ -56,6 +56,11 @@ Everything the three packages export. Each entry links to the page that explains
 | `seedRequest(key, value)` | Server-only: fills a per-request slot before the render. |
 | `RequestReadDuringBuild` | Thrown when per-request data is read during a static build — the route cannot be prerendered. |
 
+The types beside them: `RenderToStringOptions` and `ServerRequestInit` are what `renderToString` takes,
+`StaticRender` is what `renderStatic` returns (`{ html }` or `{ blockedBy }`), and the per-request family
+is `RequestContext` with `RequestCookies`, `RequestMode`, plus `RequestKey<T>` and `RequestKeyOptions`
+for a declared slot.
+
 ### Decorators — state
 
 | | |
@@ -78,6 +83,10 @@ Everything the three packages export. Each entry links to the page that explains
 `@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and `shared` is
 the default. [Which to use](/ssr/env) — `@updated` has no `env`, because a server render commits
 once and so never produces the update it reacts to.
+
+That options bag is `LifecycleOptions`, and the side itself is `RenderEnv` — the argument a lifecycle
+method receives, so a shared method can branch without a `typeof window` check, which is unreliable
+anyway under a server DOM shim.
 
 **Which decorator runs where, works on what, and may repeat:
 [the decorator table](/reference/decorators).**
@@ -115,10 +124,23 @@ once and so never produces the update it reacts to.
 
 ### Types
 
-`VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
-`DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
-`AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
-`SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps` · `HookMeta`
+All 31, grouped by what they belong to. The server and per-request ones are explained under
+[Server rendering](#server-rendering); the rest are the shape of whatever they are named for.
+
+**Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
+
+**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` ·
+`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps`
+
+**Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
+
+**Lifecycle** — `LifecycleOptions` · `RenderEnv`
+
+**Server rendering** — `RenderedPage` · `DocumentOptions` · `RenderToStringOptions` ·
+`ServerRequestInit` · `StaticRender` · `RequestContext` · `RequestCookies` · `RequestKey` ·
+`RequestKeyOptions` · `RequestMode`
+
+**Development** — `DevFlags`
 
 `HookMeta` is the third argument to `this.use()` — what a `use()` says **about** a hook rather than
 what it passes into one. One field today, `label`, which devtools adds to the hook's class name:
