@@ -91,6 +91,18 @@ const cachedFiles = new Map<string, LoadedComponent>();
  */
 const cachedExports = new Map<string, unknown>();
 const cacheOwners = new Map<string, unknown>();
+/**
+ * The minted collision key a MODULE already holds, so a `lazy` rebuilt per render
+ * that collides on the same source reuses it instead of minting a fresh key (and
+ * three strong cache entries) for the same module every time. Bounded by the number
+ * of distinct collided modules, which is finite.
+ */
+const mintedByComponent = new Map<unknown, string>();
+
+/** Test-only: how many entries the module cache holds. Not re-exported from `index`. */
+export function __lazyCacheSize(): number {
+  return cachedFiles.size;
+}
 
 /**
  * A key of its own for a `lazy` PROVEN to load something other than what is cached
@@ -157,8 +169,14 @@ function claim(key: string, lazy: unknown, component: unknown, explicit: boolean
   const owner = cacheOwners.get(key);
   const collides = !explicit && owner !== undefined && owner !== lazy && cachedExports.get(key) !== component;
 
-  const target = collides ? `ramonda-lazy-${++minted}` : key;
+  // On collision, reuse the key this MODULE already minted rather than taking a new
+  // one: a factory rebuilds its `lazy` per render, so without this the same module
+  // reached through many fresh functions would mint a fresh key — and three strong
+  // cache entries — on every render, without bound.
+  let target = key;
   if (collides) {
+    target = mintedByComponent.get(component) ?? `ramonda-lazy-${++minted}`;
+    mintedByComponent.set(component, target);
     ownKeys.set(lazy as object, target);
     if (__DEV__) {
       diagnose(

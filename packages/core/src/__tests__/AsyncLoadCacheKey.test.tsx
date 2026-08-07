@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, Host, state } from "../index";
-import { AsyncLoad } from "../base/AsyncLoad";
+import { AsyncLoad, __lazyCacheSize } from "../base/AsyncLoad";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -75,6 +75,56 @@ describe("a lazy whose source does not name a module", () => {
     // Each one its own. Before this, both said "dashboard".
     expect(app.container.textContent).toContain("dashboard");
     expect(app.container.textContent).toContain("settings");
+  });
+
+  test("a colliding module reached by many rebuilt lazies takes ONE key, not one per render", async () => {
+    /**
+     * A factory rebuilds its `lazy` on every render, so each is a fresh function
+     * with the same source. Loading one MODULE through many of them collided each
+     * time and minted a NEW key — three strong cache entries per render — for the
+     * same module, without bound. It must reuse the key the module already holds.
+     */
+    @Host("i")
+    class Base extends Component {
+      render() {
+        return <span>base</span>;
+      }
+    }
+    @Host("i")
+    class Target extends Component {
+      render() {
+        return <span>target</span>;
+      }
+    }
+    // A source unique to this test, so `Base` claims a clean key rather than
+    // colliding on one a prior test left in the shared cache.
+    const make = (module: unknown) => () => Promise.resolve({ default: module, tag: "t5-leak" });
+
+    @Host("div")
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <AsyncLoad lazy={make(Base)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+            <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+            <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+            <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+          </div>
+        );
+      }
+    }
+
+    const before = __lazyCacheSize();
+    const app = await getDOM(<Page />);
+    await app.settle();
+    await tick();
+    await app.settle();
+    await tick();
+    await app.settle();
+
+    // Base takes the source key (+1); the three Target loads collide and share one
+    // minted key (+1). Growing by three for Target would be the leak.
+    expect(__lazyCacheSize() - before).toBe(2);
   });
 
   test("and it is reported, with the way to get the sharing back", async () => {
