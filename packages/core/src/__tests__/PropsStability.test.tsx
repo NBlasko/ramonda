@@ -371,6 +371,67 @@ describe("RMD022", () => {
     await settle();
     expect(fired).toBe(1);
   });
+
+  /**
+   * Two `@StableProps` on ONE class: merged, reported as `RMD046`, and not refused.
+   *
+   * It used to throw, and not deliberately — `STABLE_PROPS` was written non-configurable, so the second
+   * `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`. An internal symbol
+   * and no advice, for a spelling mistake.
+   *
+   * Merging is the reading that matches the decorator: it names a SET and already merges along the class
+   * chain, so the union is unambiguous and there is no answer to choose between. That is the line against
+   * `@Host` (RMD045), where two element names cannot both be honoured and refusing is the only honest
+   * response. Here carrying on gives exactly what the author asked for, written awkwardly — a warning,
+   * because the result is right.
+   *
+   * The assertion is that the merge WORKS, not merely that nothing threw: `b` is declared by the second
+   * application, and a watcher on it must stay silent while its contents are unchanged.
+   */
+  test("two @StableProps on one class merge, and report RMD046", async () => {
+    let firedA = 0;
+    let firedB = 0;
+
+    @StableProps("a")
+    @StableProps("b")
+    class Watcher extends Hook<{ a: readonly unknown[]; b: readonly unknown[] }> {
+      @watchProp((p: { a: readonly unknown[] }) => p.a)
+      onA() {
+        firedA++;
+      }
+      @watchProp((p: { b: readonly unknown[] }) => p.b)
+      onB() {
+        firedB++;
+      }
+    }
+
+    class Panel extends Component {
+      @state unrelated = 0;
+      w = this.use(Watcher, (self: Panel) => ({
+        a: ["a", self.unrelated > 5],
+        b: ["b", self.unrelated > 5],
+      }));
+      render() {
+        return <div>{String(this.unrelated)}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    instance.unrelated = 1;
+    await settle();
+
+    // BOTH declarations are in effect. Without the merge, `b` would be compared by identity and its
+    // watcher would fire on every render — which is what the throw used to hide.
+    expect(firedA).toBe(0);
+    expect(firedB).toBe(0);
+
+    instance.unrelated = 9;
+    await settle();
+    expect(firedA).toBe(1);
+    expect(firedB).toBe(1);
+
+    expect(logs.join(" ")).toContain("RMD046");
+  });
 });
 
 /**

@@ -951,6 +951,26 @@ diagnostics somewhere.
 A **subclass** declaring its own is not this. That overrides the base's, which is how a specialised
 component changes its element, and it is silent.
 
+## RMD046 — More than one `@StableProps` on one class
+
+```tsx
+@StableProps("a")
+@StableProps("b")     // merged into the union, and reported
+class Watcher extends Hook<{ a: readonly unknown[]; b: readonly unknown[] }> { … }
+```
+
+`@StableProps` names a **set**, and it already merges along the class chain — a subclass adds names
+rather than shadowing the base's. So two on one class has an unambiguous reading, the union, and both
+declarations take effect. Combine them: `@StableProps("a", "b")`.
+
+**A warning rather than a refusal**, which is the difference from
+[`RMD045`](#rmd045-more-than-one-host-on-a-component): there, two element names have no union and
+carrying on would mean picking one silently. Here the result is exactly what you asked for, written
+twice — so nothing is wrong except the spelling.
+
+A **subclass** declaring its own is not this. That adds to the base's list, which is the intended way to
+extend it.
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to

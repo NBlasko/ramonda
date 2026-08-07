@@ -75,7 +75,8 @@ export type DiagnosticCode =
   | "RMD042"
   | "RMD043"
   | "RMD044"
-  | "RMD045";
+  | "RMD045"
+  | "RMD046";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -331,6 +332,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "More than one @Host on a component",
     fix: "A component is exactly one element, so there is one answer to which — keep the `@Host` you meant and delete the rest. A SUBCLASS declaring its own is not this: that overrides the base's, which is how a specialised component changes its element, and it is silent. This is two on the same class. It throws as well as reporting, in every build, because unlike RMD032 and RMD040 there is no way to pick a winner and carry on.",
+  },
+  RMD046: {
+    // warning, not error: the union is what the author asked for, so the result is right and only the
+    // spelling is redundant. RMD045 is the error, because two host tags have no union.
+    severity: "warning",
+    title: "More than one @StableProps on one class",
+    fix: '`@StableProps` names a set and already merges along the class chain, so two on one class is read as the union — the result is what you asked for, written twice. Combine them into one: `@StableProps("a", "b")`. A SUBCLASS declaring its own is not this; that ADDS to the base\'s list, which is the intended way to extend it.',
   },
   RMD031: {
     // error, not warning: the item is dropped, so the list on screen is shorter than `each`.

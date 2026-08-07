@@ -1137,6 +1137,27 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
       );
     }
 
+    /**
+     * Two `@StableProps` on ONE class: reported, and MERGED rather than refused.
+     *
+     * This decorator names a SET, and it already merges along the class chain — a subclass adds names
+     * rather than shadowing the base's. So `@StableProps("a") @StableProps("b")` has an unambiguous
+     * reading, the union, and there is no answer to pick between. That is what separates it from
+     * `@Host` (RMD045), where two answers to "which element am I?" cannot both be honoured and the only
+     * honest response is to refuse: here carrying on gives exactly what the author asked for, spelled
+     * awkwardly.
+     *
+     * It used to throw, and not on purpose — `configurable: false` below meant the second
+     * `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`, an internal
+     * symbol and no advice.
+     */
+    if (__DEV__ && Object.hasOwn(ctor, STABLE_PROPS)) {
+      diagnose("RMD046", ctor.name, `${ctor.name} declares more than one @StableProps.`, {
+        component: ctor.name,
+        added: keys.join(", "),
+      });
+    }
+
     // Read BEFORE defining: a symbol on a constructor is inherited through the class
     // chain, so this is the parent's list when there is one. Merging means a subclass
     // adds rather than shadows.
@@ -1147,7 +1168,11 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
       value: merged,
       writable: false,
       enumerable: false,
-      configurable: false,
+      // Configurable so a second application on ONE class can merge into it. `writable: false` still
+      // refuses assignment; what this gives up is protection against a deliberate `defineProperty` by
+      // an app, which was never a threat anybody named — and it buys a decorator that behaves the same
+      // way twice on one class as it does across two.
+      configurable: true,
     });
   };
 }
