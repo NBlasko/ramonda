@@ -32,6 +32,18 @@ import type { PanelPlugin, PanelRow, PanelSnapshot, RowField } from "./devtoolsP
  * one place.
  */
 export interface InspectableForm {
+  /**
+   * The `label` its owner gave this `use()`, in the third argument — `Form (Sign Up)`.
+   *
+   * Read off the instance under `Symbol.for("ramonda.hook.meta")`, which is a documented key rather
+   * than an import: this package does not depend on core's internals to learn it, and core does not
+   * depend on this package to publish it. The same contract shape as the diagnostics sink.
+   *
+   * NOT a prop, and that is the point of the third argument. A hook's props belong to whoever wrote
+   * the hook, so a framework word reserved in there collides with a real one eventually — and on a
+   * form it collides at once, because a form is full of labels.
+   */
+  readonly label: string | undefined;
   readonly values: unknown;
   readonly formErrors: readonly string[];
   readonly isValid: boolean;
@@ -48,7 +60,7 @@ export interface InspectableForm {
   readonly revision: number;
 }
 
-const forms: { id: number; name: string; form: InspectableForm; key: object }[] = [];
+const forms: { id: number; form: InspectableForm; key: object }[] = [];
 let nextId = 1;
 
 /**
@@ -62,8 +74,7 @@ let nextId = 1;
 window.addEventListener("ramonda:form", (event) => {
   const detail = (event as CustomEvent<{ form: object; key: object; readable: (key: string) => string }>).detail;
   if (!detail) return;
-  const id = nextId++;
-  forms.push({ id, name: `Form ${id}`, form: view(detail.form, detail.readable), key: detail.key });
+  forms.push({ id: nextId++, form: view(detail.form, detail.readable), key: detail.key });
 });
 
 /**
@@ -92,7 +103,15 @@ function view(instance: object, readable: (key: string) => string): InspectableF
     submit: () => void;
   };
 
+  /** The documented key a `use()`'s metadata sits under. Reached by name, imported from nowhere. */
+  const HOOK_META = Symbol.for("ramonda.hook.meta");
+  const labelled = instance as { [HOOK_META]?: { label?: unknown } };
+
   return {
+    get label() {
+      const label = labelled[HOOK_META]?.label;
+      return typeof label === "string" && label.trim() !== "" ? label.trim() : undefined;
+    },
     get values() {
       return form.current;
     },
@@ -130,6 +149,20 @@ window.addEventListener("ramonda:form-gone", (event) => {
   if (at !== -1) forms.splice(at, 1);
 });
 
+/**
+ * `Form (signup)` when the `use()` gave it a label, `Form 3` when it did not — computed on every read.
+ *
+ * The label is ADDED to the name, never substituted for it: a tab of `signup` and `login` no longer
+ * says either of them is a form, and the component tree names hooks the same way, so one reading
+ * serves both. The number is the fallback and says which form mounted third, which is the wrong half
+ * of what a reader wanted — and the metadata argument is the only place the right half can come from,
+ * because a hook cannot see the component that used it.
+ */
+function nameOf(entry: { id: number; form: InspectableForm }): string {
+  const label = entry.form.label;
+  return label === undefined ? `Form ${entry.id}` : `Form (${label})`;
+}
+
 function formsPanel(): PanelPlugin {
   return {
     version: 1,
@@ -139,7 +172,23 @@ function formsPanel(): PanelPlugin {
     snapshot(): PanelSnapshot {
       return {
         empty: "No forms are mounted. This tab fills in when a component uses Form.",
-        groups: forms.map((entry) => ({ rows: rowsFor(entry) })),
+        /**
+         * One group per form, and a label on each ONLY when there is more than one.
+         *
+         * The label is what ties a broken field to the form it belongs to. Without it the rows are
+         * siblings: a summary line, then a row per broken field, then the next form's summary — so
+         * with two forms on a page, `email` under the second one reads as if it belonged to the
+         * first. The panel already draws a group label as a header, which is the frame these rows
+         * were missing.
+         *
+         * Suppressed for a single form for the same reason `@ramonda/query` suppresses its client
+         * label: a page usually has one, and a header over the only group is noise that says
+         * nothing the row beneath it does not.
+         */
+        groups: forms.map((entry) => ({
+          label: forms.length > 1 ? nameOf(entry) : undefined,
+          rows: rowsFor(entry),
+        })),
       };
     },
 
@@ -149,24 +198,24 @@ function formsPanel(): PanelPlugin {
 
       if (actionId === "reset") {
         entry.form.reset();
-        return `reset ${entry.name}`;
+        return `reset ${nameOf(entry)}`;
       }
       // A real submit, validation and `onSubmit` included — which is the point: the panel is asking
       // the app to do what the button does, not simulating it.
       entry.form.submit();
-      return `submitted ${entry.name}`;
+      return `submitted ${nameOf(entry)}`;
     },
   };
 }
 
-function rowsFor(entry: { id: number; name: string; form: InspectableForm }): PanelRow[] {
+function rowsFor(entry: { id: number; form: InspectableForm }): PanelRow[] {
   const form = entry.form;
   const errors = form.fieldErrors();
   const { touched, changed } = form.interaction();
 
   const summary: PanelRow = {
     id: `${entry.id}::form`,
-    title: entry.name,
+    title: nameOf(entry),
     status: form.isSubmitting ? "busy" : form.isValid ? "ok" : "error",
     fields: fieldsFor(form, errors.size, touched.length, changed.length),
     // The form-level messages — a cross-field rule, or whatever `setError(ROOT)` put there. Field

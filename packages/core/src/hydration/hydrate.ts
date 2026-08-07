@@ -17,7 +17,6 @@ import { buildLazyList, isLazyList, type ListEngine, type LazyListNode } from ".
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
-import { ramondaLog } from "../debug/logger";
 import { diagnose } from "../debug/diagnostics";
 import { isThenable } from "../core/serverWork";
 import {
@@ -216,7 +215,10 @@ function hydrateComponent(
       restoreComponentTree(component, JSON.parse(blob));
     } catch (e) {
       if (__DEV__) {
-        ramondaLog("error", `[hydration] failed to parse state blob on <${vnode.name.name}>`, e);
+        diagnose("RMD036", vnode.name.name, `The blob on <${vnode.name.name}> could not be parsed.`, {
+          component: vnode.name.name,
+          reason: e instanceof Error ? e.message : String(e),
+        });
       }
     }
   }

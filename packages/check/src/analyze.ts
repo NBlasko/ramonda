@@ -57,9 +57,17 @@ export interface ArrowFieldIssue {
  *
  * `@catchError` ("who handles an error from below?"), `@Host` ("which element am I?"),
  * `@ShouldUpdateOnPropsChange` ("take these props?") and `@StableProps` are each single. Declared
- * twice, the last one wins and the others never run — silently, and the one being read may be the
- * dead one. The framework reports what it can at runtime (RMD032 for `@catchError`), but only once
- * the component actually mounts; a class behind a condition nobody clicked ships with the fault.
+ * twice, one of them wins and the others never run — silently, and the one being read may be the dead
+ * one. The framework reports what it can at runtime (RMD032 for `@catchError`, RMD040 for
+ * `@ShouldUpdateOnPropsChange`), but only once the class is reached; a class behind a condition nobody
+ * clicked ships with the fault.
+ *
+ * **Which one wins depends on the KIND of decorator, and the two are opposite.** One rule underneath
+ * both: the last declaration APPLIED is the one that stands. A member decorator initialises
+ * top-to-bottom, so the LOWEST is applied last and wins. A class decorator is applied bottom-up, so the
+ * HIGHEST wins. Measured in core, in `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`
+ * — which is why `kind` is on this issue: without it a report cannot name the declaration that is
+ * actually in effect, and naming the wrong one sends a reader to delete the line that works.
  *
  * A SUBCLASS declaring its own is not this. That is an override — the way a role is specialised —
  * so only declarations on one class body are counted.
@@ -71,6 +79,15 @@ export interface DuplicateDecoratorIssue {
   decorator: string;
   /** How many times it appears on this class. */
   count: number;
+  /**
+   * Where the decorator sits, which decides which of the duplicates is in effect — see above.
+   *
+   * Taken from the node it was found on rather than from a table of names, so it stays true when a
+   * decorator changes form (`@ShouldUpdateOnPropsChange` was a member decorator before it was a class
+   * one). A pair split across both kinds cannot arise: a decorator's own type refuses the position it
+   * was not written for.
+   */
+  kind: "class" | "member";
   file: string;
   line: number;
   column: number;
@@ -467,24 +484,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * else to live and the value is a function only after the call has run.
    */
   function readDuplicateDecorators(cls: ts.ClassDeclaration, owner: string): void {
-    const seen = new Map<string, { count: number; at: ts.Node }>();
+    const seen = new Map<string, { count: number; at: ts.Node; kind: "class" | "member" }>();
 
-    const count = (node: ts.Node): void => {
+    const count = (node: ts.Node, kind: "class" | "member"): void => {
       for (const decorator of ts.getDecorators(node as ts.HasDecorators) ?? []) {
         const name = decoratorName(decorator);
         if (name === undefined || !SINGLE_USE.has(name)) continue;
         const previous = seen.get(name);
         if (previous) previous.count += 1;
-        else seen.set(name, { count: 1, at: decorator });
+        else seen.set(name, { count: 1, at: decorator, kind });
       }
     };
 
-    count(cls);
-    for (const member of cls.members) count(member);
+    count(cls, "class");
+    for (const member of cls.members) count(member, "member");
 
-    for (const [decorator, { count: times, at }] of seen) {
+    for (const [decorator, { count: times, at, kind }] of seen) {
       if (times < 2) continue;
-      duplicateDecorators.push({ component: owner, decorator, count: times, ...positionOf(at) });
+      duplicateDecorators.push({ component: owner, decorator, count: times, kind, ...positionOf(at) });
     }
   }
 

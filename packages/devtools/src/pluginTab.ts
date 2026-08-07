@@ -55,6 +55,9 @@ export class PluginTab {
         `<small style="color:var(--rmd-error-text)">${escapeHtml(plugin.label)} could not be read.</small>`,
       );
       // eslint-disable-next-line no-console
+      // Not a diagnostic code: the fault is in a plugin this panel does not own, so the useful
+      // thing is the plugin's id and its error, and there is no advice of ours to attach. This
+      // package raises no codes at all — it is the collector, not a reporter.
       console.error(`[ramonda-devtools] ${plugin.id}.snapshot() threw`, error);
       return;
     }

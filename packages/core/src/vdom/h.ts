@@ -11,8 +11,9 @@ import {
   OWN_CHILDREN,
 } from "../helpers/constants";
 import { isArray } from "../helpers/utils";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 import { currentOrigin } from "../core/origin";
+import { renderingOwner } from "../debug/renderPhase";
 import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
 
 /**
@@ -132,7 +133,15 @@ function normalizeChildren(arr: unknown[]): unknown[] {
         result.push(el);
       } else {
         if (__DEV__) {
-          ramondaLog("error", "Invalid object among JSX children. Dropped from the render.", el);
+          // The component and the kind, so two of these in two components are two reports. Keyed on
+          // the kind alone, `[object Object]` is every plain object anyone ever renders by mistake:
+          // the first would be reported and the rest silently deduped against it.
+          const kind = Object.prototype.toString.call(el);
+          const owner = renderingOwner();
+          diagnose("RMD037", `${owner}:${kind}`, `A ${kind} among the children of ${owner}, dropped from the render.`, {
+            kind,
+            owner,
+          });
         }
         // Replaced by a hole rather than removed, so the slot survives — see the empty
         // list above. What it renders is nothing either way.
@@ -246,7 +255,13 @@ export function __h(
   }
 
   // 2. Classes (components) — each becomes exactly one element.
-  if ((name as ComponentClassKind).__isComponent) {
+  //
+  // The nullish check is load-bearing, not defensive. `<Thing />` where the import failed arrives
+  // here as `undefined`, which is the FIRST case RMD044 names — and reading `.__isComponent` off it
+  // threw a TypeError from inside the JSX factory before the report at the bottom could be reached.
+  // In production, where there is no report at all, that TypeError took the whole render down for a
+  // fault this function is written to survive: the last line renders an empty host instead.
+  if (name !== undefined && name !== null && (name as ComponentClassKind).__isComponent) {
     return createRamonda(name as ComponentClassKind, attributes, parsedChildren);
   }
 
@@ -268,6 +283,9 @@ export function __h(
       return (name as UnsupportedTagFn)(attributes as never) as VNode;
     } catch (e) {
       if (__DEV__) {
+        // No code of its own: RMD011 has already named this mistake one line above, and what
+        // follows is the crash it caused. A second code for the consequence of the first would put
+        // two entries in the reference for one fault.
         console.error(
           "Ramonda Critical: a function in tag position threw while rendering.",
           "\nFunction:",
@@ -286,7 +304,14 @@ export function __h(
   }
   // Nothing matched: not a string, not a component class, not a function.
   if (__DEV__) {
-    console.error("Ramonda Error: unknown element type in h():", name);
+    // `typeof` alone is `"object"` or `"undefined"` for every one of these, which would make the
+    // first bad tag in an application the only one ever reported. The component is what tells two
+    // of them apart — a failed import in one file and a bad map lookup in another.
+    const owner = renderingOwner();
+    diagnose("RMD044", `${owner}:${typeof name}`, `A tag of type ${typeof name} was passed, from ${owner}.`, {
+      kind: typeof name,
+      owner,
+    });
   }
 
   return createRamonda(HOST_TAG, {}, []);

@@ -23,6 +23,21 @@ export const renderPhase: { component: BaseComponent | undefined } = {
   component: undefined,
 };
 
+/**
+ * Who is rendering, for a dedup key that has to name a SOURCE.
+ *
+ * `diagnose` reports once per key and never again, so a key built only from the mistake — the word
+ * `class`, or `typeof name` — is one report for a whole application: fix the first `class=` and the
+ * next twelve are silent. What separates two of them is the component each is in, which only the
+ * render phase knows, and which `reportMappedComponents` already builds its key from.
+ *
+ * `outside a render` is a GROUP, not a wildcard: a module-level `const row = <p class="x" />` really
+ * does share a source with every other hoisted vnode, in that no component is responsible for it.
+ */
+export function renderingOwner(): string {
+  return renderPhase.component?.constructor.name ?? "outside a render";
+}
+
 /** Reports a write to a component's own props, which is always a no-op. */
 export function reportPropWrite(component: BaseComponent, property: string): void {
   const name = component.constructor.name;

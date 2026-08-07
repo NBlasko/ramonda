@@ -135,6 +135,22 @@ describe("single-use decorators declared twice", () => {
     ]);
   });
 
+  /**
+   * The kind is what decides which of the duplicates is in effect, and the two are opposite: a member
+   * decorator initialises top-to-bottom so the lowest wins, a class decorator applies bottom-up so the
+   * highest does. Measured in core (`CatchErrorDecorator.test.tsx`, `PropsGateInheritance.test.tsx`);
+   * carried here so the CLI can name the right declaration instead of guessing one for both.
+   *
+   * Read off the NODE the decorator was found on, not from a table of names — `@ShouldUpdateOnPropsChange`
+   * was a member decorator before it was a class one, and a table would still be saying so.
+   */
+  test("each report says where the decorator sits", () => {
+    expect(found().map((d) => `${d.decorator}:${d.kind}`)).toEqual([
+      "catchError:member",
+      "ShouldUpdateOnPropsChange:class",
+    ]);
+  });
+
   test("a subclass declaring its own is silent, and so is one of each", () => {
     const names = found().map((d) => d.component);
     expect(names).not.toContain("Sub");

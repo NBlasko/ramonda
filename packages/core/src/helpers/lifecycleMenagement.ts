@@ -20,6 +20,12 @@ function runCleanup(what: string, component: BaseComponent<any>, cb: () => void)
   try {
     cb();
   } catch (error) {
+    /**
+     * Not a diagnostic code: this is the app's own cleanup throwing, and the framework has no fix
+     * to offer beyond the sentence already here. It is unconditional on purpose — a teardown that
+     * failed halfway matters in production, where the listener or timer it did not clear is still
+     * armed.
+     */
     console.error(
       `[Ramonda] ${what} threw while <${component.constructor.name} /> was being destroyed. The rest of its cleanup still ran.`,
       error,

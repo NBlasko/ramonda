@@ -2,7 +2,7 @@ import { Hook, create, destroy, mount, onDocument, onWindow, StableProps, state,
 import type { QueryEntry } from "./cacheEntry";
 import { ClientConsumer, requireClient } from "./context";
 import { serializeError, type SerializedError } from "./errors";
-import { warnOnce } from "./diagnostics";
+import { report } from "./diagnostics";
 import { hashKey, sameKeyParts } from "./hashKey";
 import type { QueryClient } from "./QueryClient";
 import type {
@@ -1110,11 +1110,9 @@ function reportIgnoredError(read: number, entry: QueryEntry<unknown> | undefined
   if (entry?.status !== "error") return;
 
   const reason = entry.error instanceof Error ? entry.error.message : String(entry.error);
-  warnOnce(
-    `[RMQ002] The query ${JSON.stringify(entry.key)} failed and nothing reads its failure: ${reason}\n` +
-      `Read \`isError\`, \`error\`, \`status\` or \`result\` so the reader learns something went wrong — a ` +
-      `failed refetch keeps the data it had, so the page may look fine while showing values nobody can refresh. ` +
-      `If the failure means the page cannot be shown at all, return your own markup for it ` +
-      `(\`if (q.isError) return <NotFound />\`) rather than letting an error boundary unmount the subtree.`,
-  );
+  const key = JSON.stringify(entry.key);
+  report("RMQ002", `The query ${key} failed and nothing reads its failure: ${reason}`, `${key}:${reason}`, {
+    key,
+    reason,
+  });
 }

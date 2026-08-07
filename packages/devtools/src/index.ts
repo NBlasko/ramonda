@@ -1,6 +1,6 @@
 import { PANEL_CSS } from "./styles";
 import { bridgeDiagnosticsToPanel, diagnosticsReachUs } from "./diagnostics";
-import { escapeHtml, toServerPath } from "./format";
+import { escapeHtml, safeJson, toServerPath } from "./format";
 import { resolveOriginal } from "./sourceMap";
 import { ValueView } from "./valueView";
 import { ProfileTab } from "./profileTab";
@@ -114,6 +114,9 @@ class RamondaDevTools extends HTMLElement {
      * round trip, run once here rather than per report.
      */
     if (!diagnosticsReachUs()) {
+      // Not a diagnostic code, and this package raises none: it is the collector, not a reporter.
+      // What it has to say is about ITSELF — that the channel it reads was taken — which no code in
+      // any registry describes.
       console.warn(
         "[Ramonda devtools] Something replaced `globalThis.__RAMONDA_DIAGNOSTICS__`, so reports " +
           "from lens and any other package are no longer reaching this panel. Subscribe with " +
@@ -422,7 +425,7 @@ class RamondaDevTools extends HTMLElement {
 
     let dataHtml = "";
     if (data) {
-      const dataString = data instanceof Error ? data.message : JSON.stringify(data, null, 2);
+      const dataString = data instanceof Error ? data.message : safeJson(data);
       dataHtml = `<div class="data-preview">Data: ${escapeHtml(dataString)}</div>`;
     }
 

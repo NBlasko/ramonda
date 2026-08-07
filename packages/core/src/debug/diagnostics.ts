@@ -1,4 +1,28 @@
 import { ramondaLog } from "./logger";
+
+/**
+ * One diagnostic as a collector receives it — the record every reporting package shares,
+ * documented at https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ *
+ * Declared here rather than imported, and that is the whole design: a package that reports
+ * something must be free to have no dependencies, so what is shared is the SHAPE and the name
+ * of the sink, never a module. `@ramonda/devtools` compares these declarations across packages,
+ * which is what keeps the copies identical.
+ */
+declare global {
+  interface RamondaDiagnostic {
+    code: string;
+    scope: string;
+    severity: "debug" | "info" | "warn" | "error";
+    message: string;
+    fix?: string;
+    data?: Record<string, unknown>;
+    time: number;
+    dedupKey?: string;
+  }
+
+  var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;
+}
 /**
  * DEV-only diagnostics: catch code that fights the framework's design, name the
  * problem, and say what to do instead.
@@ -38,7 +62,19 @@ export type DiagnosticCode =
   | "RMD029"
   | "RMD030"
   | "RMD031"
-  | "RMD032";
+  | "RMD032"
+  | "RMD033"
+  | "RMD034"
+  | "RMD035"
+  | "RMD036"
+  | "RMD037"
+  | "RMD038"
+  | "RMD039"
+  | "RMD040"
+  | "RMD041"
+  | "RMD042"
+  | "RMD043"
+  | "RMD044";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -212,11 +248,81 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
   },
   RMD032: {
-    // error, not warning: the last declaration wins, so errors go to a handler the author did not
-    // pick, and the one they were reading goes silent.
+    // error, not warning: one declaration wins, so errors go to a handler the author did not pick,
+    // and the one they were reading goes silent.
     severity: "error",
     title: "More than one @catchError on a component",
-    fix: 'A component has one answer to "who handles an error from below?", and the last @catchError declared is the one that gets it — the others never run, silently. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
+    fix: 'A component has one answer to "who handles an error from below?", so one @catchError gets it and the others never run, silently. **The LOWEST of them is the one that runs**: the last declaration applied is the one that stands, and members initialise top to bottom, so the one written last is applied last — the opposite of RMD040, where a class decorator applies bottom-up. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
+  },
+  /* ── the ten that were messages before they were codes ────────────────────────────────────
+   *
+   * Each of these was a `ramondaLog` call with the advice written inline: a real fault, reported,
+   * but with no stable name to search for, no `fix` a panel could render apart from the message,
+   * and no way for a collector to group two occurrences of one cause. Severities are the ones the
+   * messages already carried — the port is about giving them identity, not about re-judging them.
+   *
+   * They are RMD033 upward because RMD032 was taken by `@catchError` while this was being written,
+   * and a code is never reassigned.
+   */
+  RMD033: {
+    severity: "warning",
+    title: "State that cannot cross to the client",
+    fix: "Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a Map or a Date is lost on the way and the client starts with whatever the field initialises to. Keep the value out of state and derive it on the client — in `@create`, which does not run during hydration, or in a `@compute` — or store a serializable form of it (an id, an ISO string) and rebuild the object where it is used.",
+  },
+  RMD034: {
+    severity: "warning",
+    title: "State written during create or mount is not carried to the client",
+    fix: "`@create` and `@mount` do not run again on the client: hydration adopts the server's DOM and restores state from the blob. So a value computed there is server-only unless it is `@state` (which is serialized) or marked `@persist`. Mark it `@persist` if the client needs the server's answer, or move the work to somewhere that runs on both sides.",
+  },
+  RMD035: {
+    severity: "warning",
+    title: "The client's hook tree does not match the server's",
+    fix: "State is restored by position, so the two sides have to build the same hooks in the same order. A hook created behind a condition — `if (isServer) this.use(…)` — or a `this.use()` inside a branch makes the counts differ, and the state after it lands on the wrong hook or nowhere. Call every `this.use()` unconditionally, at the top of the class.",
+  },
+  RMD036: {
+    severity: "error",
+    title: "The state blob could not be read",
+    fix: "The component starts from its initial values instead of the server's, so the page can differ from what was rendered and RMD007 usually follows. The blob is written into the markup, so this means it was altered on the way: HTML rewritten by a proxy or an extension, a truncated response, or markup that was manually edited. Compare what the server sent with what arrived before looking anywhere else.",
+  },
+  RMD037: {
+    severity: "error",
+    title: "An object among JSX children that is not markup",
+    fix: "It is dropped, so the page renders without it. Almost always a value that was meant to be read from rather than rendered — a whole object where one of its fields belongs (`{user}` instead of `{user.name}`), a Promise that was never awaited, or a `list()` descriptor used as a child rather than returned. Render a string, a number, a vnode, or a list through `list()`.",
+  },
+  RMD038: {
+    severity: "error",
+    title: "A `@watchProp` selector threw",
+    fix: "The selector returns `undefined` so the app keeps running, which means the watcher sees a change that is not one. It almost always reads through something absent, so guard the path as you drill into it — `p.foo?.[5]?.bar`. A selector is called on every props change and must be total: no assertions, no lookups that can fail.",
+  },
+  RMD039: {
+    severity: "warning",
+    title: "`class` where `className` was meant",
+    fix: "Ramonda reads `className`, so `class` is passed through to the element as an unknown attribute and the styling it names never applies. Rename it. This is the one place the JSX deliberately differs from HTML, because `class` is a reserved word in the object literal a JSX factory receives.",
+  },
+  RMD040: {
+    severity: "error",
+    title: "More than one `@ShouldUpdateOnPropsChange` on one class",
+    fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. **The HIGHEST of them is the one that decides**: the last declaration applied is the one that stands, and class decorators apply bottom-up, so the one written furthest from the class is applied last — the opposite of RMD032, where a member decorator initialises top to bottom. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
+  },
+  RMD041: {
+    severity: "warning",
+    title: "A listener with no target",
+    fix: "The handler is never attached, so the event it waits for cannot arrive. The selector matched nothing at the moment the listener was set up, which usually means the element is rendered conditionally or arrives later — attach to the host and let the event bubble, or move the listener to where the element certainly exists.",
+  },
+  RMD042: {
+    severity: "warning",
+    title: "The default host cannot be the direct target of this event",
+    fix: '`<ramonda-host>` is `display: contents`, so it generates no box: events that bubble from children still reach it, but anything tied to a box — pointer position, hover, focus on the host itself — never will. Give the component a real host tag with `@Host("div")` if the event needs one.',
+  },
+  RMD043: {
+    severity: "warning",
+    title: "A `<meta>` with nothing to identify it",
+    fix: "`Head` matches tags it has already written so an update replaces rather than appends, and a `<meta>` is matched by `name`, `property` or `http-equiv`. One with none of them cannot be found again, so it would be added on every update — it is skipped instead. Give it whichever of the three describes it.",
+  },
+  RMD044: {
+    severity: "error",
+    title: "An unknown element type in JSX",
+    fix: "A tag has to be a string, a component class, or — for the one unsupported case — a function. This was none of them, so an empty host is rendered in its place and whatever it was meant to be is missing. It is usually a value used where a tag belongs: `<{Thing} />` rather than `<Thing />`, an object read off a map with the wrong key, or a component that failed to import and arrived as undefined.",
   },
   RMD031: {
     // error, not warning: the item is dropped, so the list on screen is shorter than `each`.
@@ -239,7 +345,69 @@ export function diagnose(code: DiagnosticCode, dedupKey: string, detail?: string
   if (reported.size < MAX_TRACKED) reported.add(id);
   const spec = SPECS[code];
   const message = `[${code}] ${spec.title}${detail ? `\n${detail}` : ""}\n\n→ ${spec.fix}`;
+
+  /**
+   * The record, for a collector that asked for one — a devtools panel, a test, a log shipper.
+   *
+   * The console line above is unchanged and still the default: this adds a consumer rather than
+   * replacing one. `severity` is translated because the protocol's word is `warn` while this
+   * package has always said `warning`, and the vocabulary belongs to the protocol.
+   */
+  globalThis.__RAMONDA_DIAGNOSTICS__?.({
+    code,
+    scope: "ramonda/core",
+    severity: spec.severity === "warning" ? "warn" : "error",
+    message: detail === undefined ? spec.title : `${spec.title}: ${detail}`,
+    fix: spec.fix,
+    data: reportable(data),
+    time: Date.now(),
+    dedupKey: id,
+  });
+
   ramondaLog(spec.severity, message, data);
+}
+
+/**
+ * The part of a diagnostic's `data` a record may carry: values, never live objects.
+ *
+ * `data` here is `unknown` and always has been, because it goes to a console — where an object is
+ * the useful thing, expandable and inspectable. A record is different: a collector keeps a bounded
+ * history, so anything live in one stays alive for as long as that history does. `propsStability`
+ * passes `{ cached, fresh }`, which are the actual prop values — a component, a DOM node and an
+ * array of them are all ordinary things to find there.
+ *
+ * So the console keeps the whole object and the record keeps the primitives, and the filter is here
+ * rather than trusted to call sites: there are thirty-nine of them and `unknown` promises nothing.
+ *
+ * ## Two things it refuses to do, both because reporting must not become the fault
+ *
+ * **It never invokes a getter.** `Object.entries` would, and a getter is arbitrary code: it can throw
+ * — taking the app down from inside the diagnostic that was explaining what was wrong with it — or
+ * write state, which lands mid-render and raises RMD001 attributed to whoever was rendering. Every
+ * call site today passes a fresh literal, so this is unreachable from any of them; it is written this
+ * way because the argument is `unknown` and the next call site is not required to be one of those. A
+ * computed value is not "what the message interpolated" in any case.
+ *
+ * **A `bigint` becomes its digits.** It is a value, so the rules above admit it, and it is the one
+ * primitive `JSON.stringify` throws on — which every collector that ships a record somewhere performs.
+ * A prop can be a `bigint` and `propsStability` passes prop values, so this is reachable. Dropping it
+ * would delete a value the message names; the string is what the console prints for it anyway.
+ */
+function reportable(data: unknown): Record<string, unknown> | undefined {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return undefined;
+
+  const values: Record<string, unknown> = {};
+  for (const key of Object.keys(data)) {
+    const described = Object.getOwnPropertyDescriptor(data, key);
+    if (described === undefined || !("value" in described)) continue;
+
+    const value = described.value;
+    if (value !== null && typeof value === "object") continue;
+    if (typeof value === "function" || typeof value === "symbol") continue;
+    values[key] = typeof value === "bigint" ? String(value) : value;
+  }
+
+  return Object.keys(values).length === 0 ? undefined : values;
 }
 /** Test-only: lets each test observe a diagnostic that a previous one deduped. */
 export function resetDiagnostics(): void {

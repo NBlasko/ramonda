@@ -1,6 +1,6 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { CHILD_HOOKS } from "../core/runtime";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * One node of serialized state: a component's (or hook's) own `@state` + `@persist`
@@ -24,20 +24,17 @@ function componentName(instance: SerializableInstance): string {
 
 function warnIfNotSerializable(name: string, key: string, value: unknown): void {
   if (typeof value === "function") {
-    ramondaLog(
-      "warning",
-      `[hydration] <${name}> state "${key}" is a function and will be lost on hydration. Only JSON-serializable state is transferred.`,
-    );
+    diagnose("RMD033", `${name}.${key}`, `<${name}> state "${key}" is a function.`, { component: name, key });
     return;
   }
   try {
     JSON.stringify(value);
   } catch (e) {
-    ramondaLog(
-      "warning",
-      `[hydration] <${name}> state "${key}" is not JSON-serializable and will be lost on hydration.`,
-      e,
-    );
+    diagnose("RMD033", `${name}.${key}`, `<${name}> state "${key}" is not JSON-serializable.`, {
+      component: name,
+      key,
+      reason: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 

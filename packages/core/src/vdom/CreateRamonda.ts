@@ -1,6 +1,7 @@
 import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM } from "../helpers/constants";
 import { currentOrigin } from "../core/origin";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
+import { renderingOwner } from "../debug/renderPhase";
 import type { ComponentKind, VNode, VNodeComponent, VNodeString } from "../types/vdom";
 
 /**
@@ -9,11 +10,16 @@ import type { ComponentKind, VNode, VNodeComponent, VNodeString } from "../types
  * in the hot path and had to check for `class` on every element, every render,
  * and allocate a fresh attributes object whenever it found one.
  */
-function normalizeClassName(attributes: Record<string, any>): void {
+function normalizeClassName(name: ComponentKind, attributes: Record<string, any>): void {
   if (!("class" in attributes)) return;
 
   if (__DEV__) {
-    ramondaLog("warning", "Ramonda uses `className`, not `class`. Rename it to `className`.");
+    // Keyed by the component and the tag, not by the word `class`: one report per SITE. A key of
+    // `"class"` would report the first of these in an application and none of the rest, for a
+    // mistake people make in every file they convert.
+    const tag = typeof name === "string" ? name : (name.name ?? "a component");
+    const owner = renderingOwner();
+    diagnose("RMD039", `${owner}:${tag}`, `\`class\` was given on <${tag}>, from ${owner}.`, { tag, owner });
   }
 
   if (attributes.className === undefined) attributes.className = attributes.class;
@@ -21,7 +27,7 @@ function normalizeClassName(attributes: Record<string, any>): void {
 }
 
 export function createRamonda(name: ComponentKind, attributes: Record<string, any>, children: unknown[] = []): VNode {
-  normalizeClassName(attributes);
+  normalizeClassName(name, attributes);
 
   if (typeof name === "string") {
     const stringNode: VNodeString = {

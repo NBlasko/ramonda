@@ -47,7 +47,12 @@ describe("the record, as every package declares it", () => {
     [...declaration.matchAll(/"(debug|info|warn|error)"/g)].map(([, name]) => name).sort();
 
   const HERE = "../diagnostics.ts";
-  const REPORTERS = ["../../../lens/src/diagnostics.ts"];
+  const REPORTERS = [
+    "../../../lens/src/diagnostics.ts",
+    "../../../query/src/diagnostics.ts",
+    "../../../form/src/diagnostics.ts",
+    "../../../core/src/debug/diagnostics.ts",
+  ];
 
   it("names the same fields everywhere", () => {
     const collector = fieldsOf(declarationIn(HERE));

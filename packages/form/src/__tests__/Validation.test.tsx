@@ -288,6 +288,8 @@ describe("validation", () => {
 
   test("an `onSubmit` that throws is reported, not swallowed and not rethrown", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const records: RamondaDiagnostic[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
     const { form, unmount } = mount(
       schemaOf(() => []),
       {
@@ -304,7 +306,14 @@ describe("validation", () => {
 
       expect(spy).toHaveBeenCalledWith(expect.stringContaining("RMF003"), expect.any(Error));
       expect(form.isSubmitting).toBe(false);
+
+      // And a collector gets it as a record, from this path rather than from a direct call: the
+      // failure is gone by the time anyone could ask the form about it, so this is the only trace.
+      expect(records.map((record) => record.code)).toEqual(["RMF003"]);
+      expect(records[0]!.severity).toBe("error");
+      expect(records[0]!.data).toEqual({ reason: "network" });
     } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
       spy.mockRestore();
       unmount();
     }

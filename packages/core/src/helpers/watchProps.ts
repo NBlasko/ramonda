@@ -1,6 +1,6 @@
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, HOOK_RUNTIME } from "../core/runtime";
 import type { BaseComponent, WatchPropEntry } from "../types/vdom";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * The props the entry's own owner was given.
@@ -51,11 +51,21 @@ function safeSelect(entry: WatchPropEntry, props: unknown): unknown {
     return entry.selector(props);
   } catch (e) {
     if (__DEV__) {
-      ramondaLog(
-        "error",
-        `[watchProp] The selector in <${ownerName(entry)} /> threw — most likely it reads a value that is not there. Guard the path while you drill into it (e.g. \`p.foo?.[5]?.bar\`). Returning undefined so the app keeps running.`,
-        e,
-      );
+      /**
+       * The Error itself goes in `data`, and it has to: the throw comes from the app's own selector,
+       * so its stack is the line that names the failing path — the one thing `e.message` cannot give
+       * and the first thing anybody reads. The console prints `data` whole.
+       *
+       * It reaches the RECORD as nothing, because `reportable` keeps only primitives: an Error holds
+       * its stack, which holds the scope it was thrown from, and a collector's history would keep
+       * that alive. So `reason` is the text a record can carry and `error` is for the console, which
+       * has held live objects all along.
+       */
+      diagnose("RMD038", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
+        component: ownerName(entry),
+        reason: e instanceof Error ? e.message : String(e),
+        error: e,
+      });
     }
     return undefined;
   }

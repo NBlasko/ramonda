@@ -76,10 +76,25 @@ if (arrowFields.length > 0) {
 if (duplicateDecorators.length > 0) {
   console.error(`\n${TAG} ${duplicateDecorators.length} class(es) declaring a single-use decorator twice:\n`);
   for (const duplicate of duplicateDecorators) {
+    /**
+     * Which declaration is in effect, said per decorator KIND, because the two are opposite.
+     *
+     * The rule is the same for both — the last one APPLIED stands — but a member decorator
+     * initialises top-to-bottom while a class decorator applies bottom-up, so "last applied" is the
+     * lowest declaration in one case and the highest in the other. Measured in core's
+     * `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`. Naming the wrong one is
+     * worse than naming neither: it points at the line that works.
+     */
+    const inEffect =
+      duplicate.kind === "member"
+        ? "the LOWEST is the one that runs (members initialise top to bottom, so it is applied last)"
+        : "the HIGHEST is the one that runs (class decorators apply bottom-up, so it is applied last)";
+
     console.error(`  ${duplicate.file}:${duplicate.line}:${duplicate.column}`);
     console.error(
       `    <${duplicate.component}> declares @${duplicate.decorator} ${duplicate.count} times — ` +
-        `there is one answer to what it asks, so the last wins and the others never run.`,
+        `there is one answer to what it asks, so ${inEffect}\n` +
+        `    and the rest never run. Keep one and combine what they do.`,
     );
     console.error("");
   }

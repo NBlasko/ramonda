@@ -3,6 +3,44 @@ import type { HOOK_RUNTIME, HookRuntime, INTERNAL_HOOKS, Runtime, GLOBAL_RUNTIME
 export type HookProps = Record<string, any> | undefined;
 
 /**
+ * What a `use()` says ABOUT a hook, as opposed to what it passes INTO one.
+ *
+ * The third argument to `this.use()`, and separate from the props for one reason: a hook's props
+ * belong to whoever wrote the hook. A framework that reserved a word in there — `label`, say —
+ * would collide with a real one sooner or later, and on a form it collides immediately, because a
+ * form is full of labels. Nothing here is passed to the hook, which never sees it.
+ *
+ * Development-only and cosmetic. A production build stores none of it.
+ */
+export interface HookMeta {
+  /**
+   * What to call this hook in devtools, added to its class name: `Form (Sign Up)`.
+   *
+   * A hook cannot name itself — `this.constructor.name` is `Form` for every form on the page — so
+   * two `this.use(Form, …)` in one component are two nodes with one name, and a panel listing them
+   * can only number them. This is where the distinguishing name can come from, because a `use()`
+   * call is the one place that knows which of the two it is.
+   *
+   * ```tsx
+   * private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+   * ```
+   *
+   * Added rather than substituted: the class says WHAT the node is, which a label cannot recover,
+   * and the label says WHICH one, which the class cannot give.
+   */
+  label?: string;
+}
+
+/**
+ * Where a `use()`'s metadata lives on the hook instance.
+ *
+ * Registered rather than unique, so a package that wants to read it — `@ramonda/form`'s panel, or
+ * anybody else's — can reach it with `Symbol.for("ramonda.hook.meta")` and no import at all. The
+ * same contract shape as the diagnostics sink: a well-known key, honoured by nothing being imported.
+ */
+export const HOOK_META = Symbol.for("ramonda.hook.meta");
+
+/**
  * The callback form of `this.use(Hook, props)` — re-run on every owner render,
  * which is what keeps a hook's props in step with the owner's data.
  *

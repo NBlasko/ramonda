@@ -272,7 +272,18 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
         this.loadCount = this.loadCount + 1;
       })
       .catch((e) => {
-        console.error(e);
+        /**
+         * Not a diagnostic code, and not behind `__DEV__`.
+         *
+         * A chunk that fails to load is the network's answer or the app's own module error, not a
+         * mistake this framework can offer a fix for — and it matters in production, where a
+         * failed lazy route is exactly the thing somebody needs to see in a log. The failure is
+         * also on the instance as `hasError` and `failure`, for the app to render.
+         *
+         * What it was missing is who it belonged to: a bare `console.error(e)` in a page full of
+         * chunks names nothing.
+         */
+        console.error(`[Ramonda] a lazily loaded component failed to load (${this.cacheKey}):`, e);
         this.loading = false;
         if (this.disposed) return;
         this.failure = e;

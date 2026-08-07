@@ -4,6 +4,7 @@ import { type FieldHost, FieldTree } from "./fieldTree";
 import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
 import { type Issues, NO_ISSUES, validate, withIssue } from "./validate";
+import { report } from "./diagnostics";
 
 const NO_MESSAGES: readonly string[] = [];
 
@@ -776,7 +777,12 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    */
   private report(error: unknown): void {
     if (__DEV__) {
-      console.error("[RMF003] `onSubmit` threw. Handle the failure inside it.", error);
+      report(
+        "RMF003",
+        "`onSubmit` threw. Handle the failure inside it.",
+        { reason: error instanceof Error ? error.message : String(error) },
+        error,
+      );
     }
   }
 

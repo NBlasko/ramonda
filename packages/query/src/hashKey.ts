@@ -1,4 +1,4 @@
-import { warnOnce } from "./diagnostics";
+import { report } from "./diagnostics";
 import type { QueryKey } from "./types";
 
 /**
@@ -95,11 +95,13 @@ function assertStableKey(value: unknown, depth = 0): void {
   const kind = typeof value;
 
   if (kind === "function" || kind === "symbol") {
-    warnOnce(
-      `[RMQ001] A query key contains a ${kind}, which JSON.stringify drops — so two keys holding ` +
-        `different ${kind === "function" ? "functions" : "symbols"} hash IDENTICALLY, share one cache entry, and each ` +
-        `renders the other's data. Keys must be JSON-serializable: put the value you were going to close over in the ` +
-        `key ("user", id) and keep the function in the fetcher.`,
+    report(
+      "RMQ001",
+      `A query key contains a ${kind}, which JSON.stringify drops — so two keys holding different ` +
+        `${kind === "function" ? "functions" : "symbols"} hash IDENTICALLY, share one cache entry, and each renders ` +
+        `the other's data.`,
+      kind,
+      { kind },
     );
     return;
   }
@@ -112,11 +114,13 @@ function assertStableKey(value: unknown, depth = 0): void {
   }
 
   const name = (value as object).constructor?.name ?? "object";
-  warnOnce(
-    `[RMQ001] A query key contains a ${name}, which is not stable to hash. A Date serializes to a timestamp that ` +
-      `differs on the next render, so the entry is never found again and every render refetches; a Map or a class ` +
-      `instance serializes to whichever of its fields happen to be enumerable, which is often nothing at all. Put a ` +
-      `primitive in the key — date.toISOString().slice(0, 10), or the id — and keep the object in the fetcher.`,
+  report(
+    "RMQ001",
+    `A query key contains a ${name}, which is not stable to hash. A Date serializes to a timestamp that differs ` +
+      `on the next render, so the entry is never found again and every render refetches; a Map or a class instance ` +
+      `serializes to whichever of its fields happen to be enumerable, which is often nothing at all.`,
+    name,
+    { container: name },
   );
 }
 

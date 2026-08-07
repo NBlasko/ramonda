@@ -271,6 +271,25 @@ The values are read-only here, and the reason is the schema: a form holds the sc
 which is where a `Date` or a `File` lives, and those do not survive being typed back as JSON. `reset`
 is the honest write.
 
+### Naming a form
+
+With two forms on a page the tab groups each one's rows under its name, so a broken field sits visibly
+inside the form it belongs to. Unnamed, that name is `Form 1`, `Form 2` — the order they mounted in,
+which is rarely what you wanted to know. Name it in the **third argument** to `use()`:
+
+```tsx
+private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+```
+
+The tab and the component tree then call it **`Form (Sign Up)`** — the class says what it is, the label
+says which one, and neither answers for the other.
+
+That third argument is metadata *about* the hook, and it is separate from the props for a reason: a
+hook's props belong to whoever wrote the hook. A framework that reserved `label` in there would collide
+with a real one eventually, and on a form it collides at once, because a form is full of labels. The
+hook never sees this argument. It works for any hook, costs nothing in production, and is read only by
+the tools looking at your app.
+
 ## What a commit cost
 
 The `PROFILE` tab is off until you press **record**, and that is the design rather than a limitation: a
@@ -328,7 +347,7 @@ the message named.
 
 ### Collecting them yourself
 
-An `RML*` diagnostic is a [record](/reference/diagnostics#capturing-them), and this panel is only one
+Every diagnostic is a [record](/reference/diagnostics#capturing-them), and this panel is only one
 consumer of it. To take them somewhere else — a test, a log shipper, your own overlay — subscribe:
 
 ```tsx
@@ -339,7 +358,8 @@ const stop = installDiagnostics((record) => {
 });
 ```
 
-The other prefixes reach the tab through the framework's own log channel and are not on this one yet.
+Core's rows reach this tab through its own log channel rather than through the sink, so subscribing gets
+them once and the tab shows them once.
 
 Subscribe rather than assigning `globalThis.__RAMONDA_DIAGNOSTICS__` yourself: the sink is one
 function, so an assignment replaces whoever was there — usually this panel, which then quietly stops

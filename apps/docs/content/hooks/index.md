@@ -124,6 +124,25 @@ export class UserProfile extends Hook<{ id: string }> {
 The whole chain shares one owner and updates together — when the owner re-renders,
 each hook's props are re-evaluated in turn, down through the nested ones.
 
+## Naming one for devtools
+
+Two of the same hook in one component are two nodes with one name, because a class is shared by
+every instance — `this.constructor.name` is `Resource` for both of the ones above. A **third
+argument** to `use()` says which is which:
+
+```tsx
+private user = this.use(Resource, (self: UserCard) => ({ url: `/api/users/${self.id}` }), {
+  label: "user",
+});
+```
+
+Devtools then calls it `Resource (user)`: the class says what it is, the label says which one. A hook
+with no props takes the placeholder — `this.use(Poll, undefined, { label: "prices" })`.
+
+That argument is metadata **about** the hook, and it is deliberately not a prop. A hook's props belong
+to whoever wrote the hook, so a framework word reserved among them would collide with a real one
+eventually. The hook never sees this argument, and a production build stores none of it.
+
 ## When things fire
 
 - **A hook is created the moment `this.use()` runs** — while the owner itself is

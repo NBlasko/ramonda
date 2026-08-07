@@ -7,7 +7,6 @@ import { trackerContainer, trackDependency } from "../reactivity/tracker";
 import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
-import { ramondaLog } from "../debug/logger";
 import { diagnose } from "../debug/diagnostics";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
@@ -593,11 +592,12 @@ export function ShouldUpdateOnPropsChange<
     // base's, which is an override and silent. Two applications on the SAME class
     // both write here, and the second finds the first — the one case worth
     // reporting, and the one the method form could not see.
+    //
+    // Reported BEFORE the write below, so `hasOwn` is still answering about the previous
+    // declaration. The write is unconditional, which is what makes the one written furthest from the
+    // class the one that decides — measured, because the order is the opposite of how it reads.
     if (__DEV__ && Object.hasOwn(ctor, PROPS_GATE)) {
-      ramondaLog(
-        "error",
-        `<${ctor.name} /> has more than one @ShouldUpdateOnPropsChange. There can only be one answer to "take these props?", so the one written closest to the class wins — remove the others.`,
-      );
+      diagnose("RMD040", ctor.name, `<${ctor.name} /> declares more than one.`, { component: ctor.name });
     }
 
     (ctor as unknown as { [PROPS_GATE]?: unknown })[PROPS_GATE] = decide;
@@ -1172,15 +1172,22 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
             const target = resolveTarget(component);
             if (!target) {
               if (__DEV__) {
-                ramondaLog("warning", `[${decoratorName}] No target found for "${type}" listener.`);
+                diagnose(
+                  "RMD041",
+                  `${component.constructor.name}.${decoratorName}.${type}`,
+                  `@${decoratorName} found no target for its "${type}" listener.`,
+                  { component: component.constructor.name, decorator: decoratorName, event: type },
+                );
               }
               return;
             }
 
             if (__DEV__ && decoratorName === "onElement" && (target as Node).nodeName === HOST_TAG) {
-              ramondaLog(
-                "warning",
-                `[onElement] Host is the default <ramonda-host> (display: contents), which generates no box of its own and so is never the direct target of "${type}". Events that bubble from children still reach it; anything that does not (pointer position, hover, focus on the host itself) will not. Give the component a real host tag via @Host('div').`,
+              diagnose(
+                "RMD042",
+                `${component.constructor.name}.${type}`,
+                `@onElement is listening for "${type}" on the default <ramonda-host>.`,
+                { component: component.constructor.name, event: type },
               );
             }
 
