@@ -1,6 +1,6 @@
 import { created, destroyed, Hook, INSPECT, state, watchProp } from "@ramonda/core";
 
-import { FIELD_TARGET, type FieldHandle, type Watcher } from "./fieldTree";
+import { ASPECT, FIELD_TARGET, type FieldHandle, type Watcher } from "./fieldTree";
 import type { Path } from "./path";
 import type { Bind, FieldApi, FieldNode, Row } from "./types";
 
@@ -8,6 +8,17 @@ import type { Bind, FieldApi, FieldNode, Row } from "./types";
 export interface FieldTarget<T> {
   readonly $: FieldApi<T>;
 }
+
+/**
+ * The element type of an array field, `never` for anything else.
+ *
+ * What it buys is the row: `Field<Contact[]>` answers `rows` as `Row<Contact>[]`, so
+ * `list({ each: f.rows, as: Line })` type-checks against a component taking `Row<Contact>` — with
+ * `Row<unknown>` it did not, and every call site needed a cast. And `append` takes a `Contact` rather
+ * than anything at all. For a leaf field it collapses to `never`, which makes the array members
+ * unusable there, which is correct.
+ */
+type ElementOf<T> = NonNullable<T> extends readonly (infer E)[] ? E : never;
 
 /** The two methods a `Field` needs from the form. Declared here so nothing imports `Form`. */
 interface Watchable {
@@ -120,8 +131,31 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     this.version++;
   }
 
-  /** Called by the form when something this field shows has changed. */
-  bump(): void {
+  /**
+   * What this component has actually READ, as a bitmask of aspects — see `ASPECT`.
+   *
+   * Filled in by the getters below and **never cleared**, which is what makes it sound. Reading a
+   * member for the first time needs a render, and that render came from something already subscribed
+   * or from the component's own state — so a member that is not in here cannot be affecting what is on
+   * screen. `{f.touched && f.error}` is the case worth walking through: while `touched` is false,
+   * `error` is never read and a message landing wakes nobody, which is right, because the output would
+   * be the same. The blur that flips `touched` is a `marks` change, it wakes this, the render reads
+   * `error`, and from then on messages wake it too.
+   *
+   * Clearing it per render would be more precise and would also be a bug: reads happen DURING the
+   * render, and the subscription has to be in place before the next change, not after it.
+   */
+  private reads = 0;
+
+  /**
+   * Called by the form when something changed. Ignored unless this component reads that kind of thing.
+   *
+   * The case it exists for is a list: a component rendering `rows` shows `id`, `index` and `field`, and
+   * none of them move when a value inside a row does. Without this it woke on every keystroke in every
+   * row it held.
+   */
+  bump(aspects: number): void {
+    if ((aspects & this.reads) === 0) return;
     this.version++;
   }
 
@@ -184,22 +218,31 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
    * ---------------------------------------------------------------- */
 
   get value(): T {
+    this.reads |= ASPECT.value;
     return this.live.value as T;
   }
 
+  /**
+   * `marks` as well as `messages`, because a message is HELD BACK until the field has been touched or
+   * edited — see `errorsAt`. A blur changes what this answers without any message having moved.
+   */
   get error(): string | undefined {
+    this.reads |= ASPECT.messages | ASPECT.marks;
     return this.live.error;
   }
 
   get errors(): readonly string[] {
+    this.reads |= ASPECT.messages | ASPECT.marks;
     return this.live.errors;
   }
 
   get touched(): boolean {
+    this.reads |= ASPECT.marks;
     return this.live.touched;
   }
 
   get dirty(): boolean {
+    this.reads |= ASPECT.value;
     return this.live.dirty;
   }
 
@@ -213,7 +256,9 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     return this.live.name;
   }
 
+  /** The value and the messages both: `bind` carries `value` and `aria-invalid`. */
   get bind(): Bind<T> {
+    this.reads |= ASPECT.value | ASPECT.messages | ASPECT.marks;
     return this.live.bind as unknown as Bind<T>;
   }
 
@@ -227,19 +272,29 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
 
   /* ---- array members, for a field holding a list ---- */
 
+  /**
+   * `shape` only, and this is the whole point of aspects.
+   *
+   * How many rows there are changes when one is added or removed, and not when a value inside one
+   * moves — so a component rendering a list sleeps through a keystroke in any of its rows. Each row
+   * watches its own field and wakes on its own.
+   */
   get length(): number {
+    this.reads |= ASPECT.shape;
     return this.live.length;
   }
 
-  get rows(): readonly Row<unknown>[] {
-    return this.live.rows;
+  /** `shape` only, for the reason `length` gives: a row's `id`, `index` and `field` do not move. */
+  get rows(): readonly Row<ElementOf<T>>[] {
+    this.reads |= ASPECT.shape;
+    return this.live.rows as readonly Row<ElementOf<T>>[];
   }
 
-  append(item: unknown): void {
+  append(item: ElementOf<T>): void {
     this.live.append(item);
   }
 
-  insert(index: number, item: unknown): void {
+  insert(index: number, item: ElementOf<T>): void {
     this.live.insert(index, item);
   }
 
@@ -251,8 +306,13 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     this.live.move(from, to);
   }
 
-  /** A child node, for reaching further in from a component watching an object or a row. */
-  at(key: string): FieldNode<unknown> {
-    return this.live.at(key) as FieldNode<unknown>;
+  /**
+   * A child node, for reaching further in from a component watching an object or a row.
+   *
+   * Typed the same way `FieldApi.at` is, so a component watching a row can hand its own children on:
+   * `<TextField of={this.f.at("value")} />`.
+   */
+  at<K extends keyof NonNullable<T> & string>(key: K): FieldNode<NonNullable<T>[K]> {
+    return this.live.at(key) as FieldNode<NonNullable<T>[K]>;
   }
 }

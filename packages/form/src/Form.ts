@@ -1,6 +1,6 @@
 import { created, destroyed, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
 
-import { type FieldHandle, type FieldHost, FieldTree, type Watcher } from "./fieldTree";
+import { ASPECT, EVERY_ASPECT, type FieldHandle, type FieldHost, FieldTree, type Watcher } from "./fieldTree";
 import { childKey, keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
 import { type Issues, NO_ISSUES, validate, withIssue } from "./validate";
@@ -47,10 +47,12 @@ const NO_MESSAGES: readonly string[] = [];
  *
  * ## What re-renders
  *
- * **The component that owns the form**, on every change. One `@state` counter, bumped by everything,
- * and a hook's state belongs to whoever used it — the same thing `Mutation` does with its `version`.
- * So a form written inline in one component re-renders that component per keystroke, which is what
- * anyone would expect and is fine for a page-sized form.
+ * **The component that owns the form**, on every change, and it cannot opt out: `@state` on a hook
+ * holds the owning component's `reBuild` from the moment the signal is built, whatever that component
+ * goes on to read — the same thing `Mutation` does with its `version`. So a form written inline in one
+ * component re-renders that component per keystroke, which is what anyone would expect and is fine for
+ * a page-sized form. For a big one, keep that component THIN: hand the fields to components that watch
+ * them, and the owner's render is a handful of vnodes whose props have not changed.
  *
  * **And, separately, whichever fields moved.** A component that watches ONE field asks for it with
  * `Field`, and then a keystroke reaches that component and no other. That is not only about speed: a
@@ -58,9 +60,11 @@ const NO_MESSAGES: readonly string[] = [];
  * object for the life of the form and so its props never change. See `Field`, which exists for that
  * reason first and the speed second.
  *
- * Measured over 300 rows through `list()`, one keystroke: every row rebuilt and 45 ms of it before
- * per-path subscriptions, one row after. The granularity was always in the list engine — one tracker
- * per item — and one shared counter flattened it.
+ * Measured over 300 rows through `list()`, one keystroke: **45 ms and every row rebuilt** before
+ * per-path subscriptions; **1.9 ms and one row** with them; **0.6 ms** once the component holding the
+ * list watches the array through `Field` too, because then it sleeps through a keystroke inside a row
+ * and the three hundred list items are never diffed. The granularity was always in the list engine —
+ * one tracker per item — and one shared counter flattened it.
  *
  * ## Why the values are not `@state`
  *
@@ -298,8 +302,9 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     for (const path of replaced) this.forgetUnder(path);
     this.bump();
     // Only the fields that actually took a new value. A record arriving over a form the reader has
-    // half filled in typically replaces a handful of fields and leaves the rest alone.
-    for (const path of replaced) this.wakeAt(path);
+    // half filled in typically replaces a handful of fields and leaves the rest alone. Every aspect,
+    // because `forgetUnder` above dropped what was recorded under each of them too.
+    for (const path of replaced) this.wakeAt(path, EVERY_ASPECT);
     void this.revalidate();
   }
 
@@ -380,14 +385,22 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   /**
    * ## Two ways to read a field, and the difference is the SUBSCRIPTION
    *
-   * The four reads below touch `version`, so whoever is rendering when one of them runs re-renders
-   * on any change to the form. That is right for the component that owns the form: it reached into
-   * `form.fields` itself, so it asked about the form.
+   * The four reads below touch `version`, and what that does is NOT what it looks like. A plain
+   * component's render is neither an effect nor a tracker, so reading a signal there records nothing —
+   * measured. What the touch reaches is the two scopes that DO record: a `@compute` that derives from a
+   * field, and a `list()` item, which the list engine builds inside a tracker of its own. So it is what
+   * makes `@compute get canSave() { return this.form.isValid }` re-derive.
    *
-   * It is wrong for a component watching ONE field through `Field`, which has a narrower
-   * subscription of its own — one signal per path. Such a reader goes through the same
-   * `FieldHandle` class over a QUIET host (see `watch`), whose reads are the `*Quietly` methods
-   * here: the same answer, without widening what the reader wakes on.
+   * The component that owns the form re-renders on every change for a different reason, and it cannot
+   * opt out: `@state` on a hook holds the OWNING component's `reBuild` from the moment the signal is
+   * constructed, whatever that component goes on to read.
+   *
+   * The touch is wrong for a component watching ONE field through `Field`, which has a narrower
+   * subscription of its own. Inside a `list()` row it is worse than wrong: the row's tracker would
+   * record `version` and every row would rebuild on every keystroke anywhere in the form, which is
+   * exactly the 45 ms this package used to cost at three hundred rows. Such a reader goes through the
+   * same `FieldHandle` class over a QUIET host (see `watch`), whose reads are the `*Quietly` methods
+   * here: the same answer, recording nothing.
    *
    * The pair exists rather than a flag because the quiet host is what a `Field` is handed, so there
    * is no state to set and unset around a read, and nothing to get wrong on a path that throws.
@@ -407,7 +420,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     // `validateOn: "blur"` already marked before the blur, so the blur validated nothing.
     this.changedKeys.add(pathKey(path));
     this.bump();
-    this.wakeAt(path);
+    // The value, and the marks — an edit is what `errorsAt` reads to decide whether this field's
+    // message may be SHOWN. Not `shape`: writing a value does not change any array's length or order,
+    // which is what lets a component rendering a list of rows sleep through a keystroke inside one.
+    this.wakeAt(path, ASPECT.value | ASPECT.marks);
 
     if (this.shouldValidateOnChange(path)) this.revalidate();
   }
@@ -464,8 +480,9 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
 
     this.touchedKeys.add(key);
     this.bump();
-    // Only this path: `touched` is per field, and so is the message it may now reveal.
-    this.wake(key);
+    // Only this path, and only the marks: `touched` is per field, and so is the message it may now
+    // reveal. No value moved.
+    this.wake(key, ASPECT.marks);
     if (this.trigger === "blur") this.revalidate();
   }
 
@@ -479,8 +496,9 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     this.seenDefaults = writeAt(this.seenDefaults as InferIn<S>, path, back);
     this.forgetUnder(path);
     this.bump();
-    // The value moved and everything recorded under it was dropped, so the subtree hears about it.
-    this.wakeAt(path);
+    // The value moved and everything recorded under it was dropped, so the subtree hears about all of
+    // it. `shape` too: resetting an array field puts back a list of a different length.
+    this.wakeAt(path, EVERY_ASPECT);
     this.revalidate();
   }
 
@@ -536,9 +554,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     // validation, addressed to whatever now sits at those indexes.
     this.forgetUnder(path, { keepSelf: true });
     this.bump();
-    // The whole subtree: every row at or after the change holds a different value now, and the array
-    // around them has a different length.
-    this.wakeAt(path);
+    // The whole subtree, and every aspect of it: the rows at or after the change hold different values,
+    // the array around them has a different length or order — which is the `shape` a list renders from —
+    // and `forgetUnder` above dropped the marks and messages that described the rows that moved.
+    this.wakeAt(path, EVERY_ASPECT);
     this.revalidate();
   }
 
@@ -576,9 +595,10 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     // the wrong rows. The next validation re-addresses them.
     this.forgetUnder(path, { keepSelf: true });
     this.bump();
-    // The whole subtree: every row at or after the change holds a different value now, and the array
-    // around them has a different length.
-    this.wakeAt(path);
+    // The whole subtree, and every aspect of it: the rows at or after the change hold different values,
+    // the array around them has a different length or order — which is the `shape` a list renders from —
+    // and `forgetUnder` above dropped the marks and messages that described the rows that moved.
+    this.wakeAt(path, EVERY_ASPECT);
     this.revalidate();
   }
 
@@ -682,7 +702,9 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     this.issues = withIssue(this.issues, parsed, message);
     this.touchedKeys.add(pathKey(parsed));
     this.bump();
-    this.wake(pathKey(parsed));
+    // A message, and the touch mark that lets it be seen. Set by hand from a server's answer, so no
+    // value moved and no array changed.
+    this.wake(pathKey(parsed), ASPECT.messages | ASPECT.marks);
   }
 
   /* ---------------------------------------------------------------- *
@@ -787,11 +809,11 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     };
   }
 
-  /** Pokes everyone watching one exact path. */
-  private wake(key: string): void {
+  /** Pokes everyone watching one exact path, about the kinds of change named. */
+  private wake(key: string, aspects: number): void {
     const set = this.watchers.get(key);
     if (set === undefined) return;
-    for (const watcher of set) watcher.bump();
+    for (const watcher of set) watcher.bump(aspects);
   }
 
   /**
@@ -806,25 +828,25 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * The descendants are found by string prefix over the watched paths, which is why `unwatch` drops
    * empty entries. It is proportional to how many paths are WATCHED, not to the size of the form.
    */
-  private wakeAt(path: Path): void {
+  private wakeAt(path: Path, aspects: number): void {
     const key = pathKey(path);
-    this.wake(key);
+    this.wake(key, aspects);
 
-    for (let depth = path.length - 1; depth >= 0; depth--) this.wake(pathKey(path.slice(0, depth)));
+    for (let depth = path.length - 1; depth >= 0; depth--) this.wake(pathKey(path.slice(0, depth)), aspects);
 
     const prefix = keyPrefix(path);
     for (const [watched, set] of this.watchers) {
       // `startsWith("")` is true of everything, which is exactly right for the root.
       if (watched !== key && watched.startsWith(prefix)) {
-        for (const watcher of set) watcher.bump();
+        for (const watcher of set) watcher.bump(aspects);
       }
     }
   }
 
-  /** Every watcher, for a change that reaches the whole form: a reset, or the first submit. */
+  /** Every watcher, about everything — for a change that really does reach the whole form. */
   private wakeAll(): void {
     for (const set of this.watchers.values()) {
-      for (const watcher of set) watcher.bump();
+      for (const watcher of set) watcher.bump(EVERY_ASPECT);
     }
   }
 
@@ -845,7 +867,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       if (was === now) continue;
       if (was !== undefined && now !== undefined && sameMessages(was, now)) continue;
 
-      for (const watcher of set) watcher.bump();
+      for (const watcher of set) watcher.bump(ASPECT.messages);
     }
   }
 

@@ -22,13 +22,38 @@ export interface FieldHost {
 }
 
 /**
+ * WHAT changed about a field, as a bitmask.
+ *
+ * A watcher hears only about the kinds of change it actually reads, and the case that makes it worth
+ * having is a list: a component rendering `rows` shows `id`, `index` and `field`, none of which move
+ * when the value inside a row does. Without this it woke on every keystroke in every row it contained,
+ * and at three hundred rows that was the whole remaining cost of an edit.
+ *
+ * A number rather than a set of strings, because a wake happens per keystroke and passing a `Set`
+ * would allocate one each time; the test is a single `&`.
+ */
+export const ASPECT = {
+  /** A value at, under or over this path moved. */
+  value: 1,
+  /** A touch or edit mark changed, which is what decides whether a message is SHOWN. */
+  marks: 2,
+  /** The messages the schema files against this path. */
+  messages: 4,
+  /** An array changed LENGTH or order — what `rows` and `length` answer, and nothing else. */
+  shape: 8,
+} as const;
+
+/** Everything at once, for a reset or a submit — a change that reaches the whole form. */
+export const EVERY_ASPECT = ASPECT.value | ASPECT.marks | ASPECT.messages | ASPECT.shape;
+
+/**
  * Something that wants to hear about one path.
  *
  * `Field` is the only implementation, and what it does with `bump` is increment a `@state` counter
  * that belongs to the component which used it — so the poke wakes exactly that component.
  */
 export interface Watcher {
-  bump(): void;
+  bump(aspects: number): void;
 }
 
 /** Marks a node, so a diagnostic or an inspector can tell one from an ordinary object. */

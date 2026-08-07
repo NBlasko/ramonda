@@ -247,9 +247,45 @@ class Line extends Component<{ item: Row<Contact> }> {
 }
 ```
 
-What still re-renders on every change is the component that OWNS the form, because reaching into
-`form.fields` is asking about the form. Keep that component thin — the fields, the list, the submit
-button — and the work per keystroke is one field's.
+### A watcher hears only about what it reads
+
+`Field` records which members you actually read and ignores anything else. A component rendering a
+list reads `rows` — and a row's `id`, `index` and `field` do not move when a value inside that row
+does, so it **sleeps through a keystroke** in any of its rows. Each row watches its own field and
+wakes on its own.
+
+That is what makes the container worth watching too:
+
+```tsx
+import { Field, type FieldNode, type Row } from "@ramonda/form";
+
+/** One row, watching its own field — the same shape as `TextField` above. */
+declare class Line extends Component<{ item: Row<Contact> }> {}
+
+class Rows extends Component<{ of: FieldNode<Contact[]> }> {
+  f = this.use(Field<Contact[]>, () => ({ of: this.props.of }));
+
+  render() {
+    return <div>{list({ each: this.f.rows, key: (row) => row.id, as: Line })}</div>;
+  }
+}
+```
+
+It wakes when a row is added, removed or moved, and not otherwise. Measured at 300 rows, one
+keystroke: **45 ms and every row rebuilt** with no per-field subscription at all, **1.9 ms and one
+row** once each row watched its own field, **0.6 ms** once the container watched the array as well —
+because then the three hundred list items are never diffed.
+
+`error` is the one that reads two things: a message is held back until the field has been touched, so
+it wakes on a blur as well as on a message. Nothing is lost by not reading a member — the first render
+that does read it subscribes from then on.
+
+### The owner cannot opt out
+
+The component that owns the form re-renders on **every** change, and not because of anything it
+reads: `@state` on a hook holds the owning component's rebuild from the moment it is created. So keep
+that component thin — hand the fields out and let it build a handful of vnodes whose props have not
+changed. The diff stops there.
 
 ## Labels, ids and accessibility
 

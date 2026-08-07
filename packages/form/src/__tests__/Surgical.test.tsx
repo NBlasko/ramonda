@@ -331,3 +331,137 @@ describe("at three hundred rows", () => {
     }
   });
 });
+
+/**
+ * WHAT a watcher hears about, not only where.
+ *
+ * A component rendering a list shows each row's `id`, `index` and `field`, and none of them move when
+ * a value inside a row does — so it has no business waking on a keystroke in one of its rows. Each row
+ * watches its own field and wakes on its own. Without this the container woke on every keystroke in
+ * every row it held, which at three hundred rows was the whole remaining cost of an edit.
+ *
+ * The mechanism is a bitmask: a `Field` records which kinds of thing its component actually read, and
+ * ignores a poke about anything else.
+ */
+describe("a watcher hears only about what it reads", () => {
+  /** The container: watches the ARRAY, renders the rows, reads nothing per value. */
+  class Rows extends Component<{ of: FieldNode<{ v: string }[]> }> {
+    f = this.use(Field<{ v: string }[]>, () => ({ of: this.props.of }));
+
+    render(): RamondaNode {
+      count("rows-container");
+      return <div>{list({ each: this.f.rows, key: (row) => row.id, as: RowField })}</div>;
+    }
+  }
+
+  function mountList(howMany: number) {
+    const rows = Array.from({ length: howMany }, () => ({ v: "filled" }));
+    let form!: Form<typeof schema>;
+    class Page extends Component {
+      private f = this.use(Form<typeof schema>, {
+        schema,
+        defaultValues: { ...EMPTY, a: "ok", rows },
+        onSubmit: () => {},
+      });
+      render(): RamondaNode {
+        count("page");
+        form = this.f;
+        // The owner hands the array node over and reads NOTHING off the form itself, so the only
+        // subscription in the tree is the container's and each row's.
+        return <Rows of={this.f.fields.rows} />;
+      }
+    }
+    const mounted = render((<Page />) as never);
+    return { form, ...mounted };
+  }
+
+  test("a keystroke in a row leaves the container asleep", async () => {
+    renders = {};
+    const { form, unmount } = mountList(50);
+    try {
+      const rows = form.fields.rows.$.rows;
+      renders = {};
+
+      await act(async () => (rows[0].field as FieldNode<{ v: string }>).v.$.set("edited"));
+
+      // The row that changed, and nothing else in the tree.
+      // The container slept, and the row that changed woke.
+      expect(renders["rows-container"] ?? 0).toBe(0);
+      expect(Object.keys(renders).filter((key) => key.startsWith("row:"))).toEqual([`row:${rows[0].id}`]);
+
+      // The OWNER wakes, and it is not because of anything it read: a hook's `@state` holds the
+      // owning component's `reBuild` from the moment it is constructed, so every write to the form's
+      // counter wakes whoever used the hook. What that costs here is one vnode — `<Rows />` — whose
+      // props have not changed, so the diff stops there and the three hundred rows are never touched.
+      expect(renders.page ?? 0).toBeGreaterThan(0);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("but a row appearing or leaving does wake it", async () => {
+    renders = {};
+    const { form, unmount } = mountList(3);
+    try {
+      renders = {};
+      await act(async () => form.fields.rows.$.append({ v: "new" }));
+      expect(renders["rows-container"] ?? 0).toBeGreaterThan(0);
+
+      renders = {};
+      await act(async () => form.fields.rows.$.remove(0));
+      expect(renders["rows-container"] ?? 0).toBeGreaterThan(0);
+
+      renders = {};
+      await act(async () => form.fields.rows.$.move(0, 1));
+      expect(renders["rows-container"] ?? 0).toBeGreaterThan(0);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("the container renders once per structural change, at three hundred rows", async () => {
+    renders = {};
+    const { form, unmount } = mountList(300);
+    try {
+      const rows = form.fields.rows.$.rows;
+      renders = {};
+      const start = performance.now();
+      await act(async () => (rows[0].field as FieldNode<{ v: string }>).v.$.set("edited"));
+      const ms = performance.now() - start;
+
+      expect(renders["rows-container"] ?? 0).toBe(0);
+      // Logged, not asserted — jsdom timings swing by a third. For the record: 45 ms and every row
+      // before per-path subscriptions, ~2–7 ms and one row once they existed but the container still
+      // woke and diffed all three hundred list items, and this once it sleeps through the keystroke.
+      console.log(`[form] 300 rows, keystroke with the container asleep: ${ms.toFixed(1)} ms`);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a blur shows a message the schema had already found", async () => {
+    // `error` reads `marks` as well as `messages`, because a message is held back until the field has
+    // been touched. Nothing about the message moves on a blur — only permission to show it.
+    renders = {};
+    class Page extends Component {
+      private f = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: () => {} });
+      render(): RamondaNode {
+        // Everything this test needs happens through the DOM, which is the point: a blur is a real
+        // event on a real element, not a method call.
+        return <TextField id="a" label="A" of={this.f.fields.a} />;
+      }
+    }
+    const { container, unmount } = render((<Page />) as never);
+    try {
+      expect(container.querySelector("#a-error")?.textContent).toBe("");
+
+      await act(async () => {
+        (container.querySelector("#a") as HTMLInputElement).dispatchEvent(new Event("blur"));
+      });
+
+      expect(container.querySelector("#a-error")?.textContent).toBe("required");
+    } finally {
+      unmount();
+    }
+  });
+});
