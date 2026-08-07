@@ -140,6 +140,30 @@ class Narrowing extends Component {
   }
 }
 
+/**
+ * 6. Pinning ONE type argument fixes the `any` and widens the key, which is the trap.
+ *
+ * `Query<Todo>` leaves the second parameter on its default, `QueryKey` — so `fetch`'s context is
+ * typed (no `any`, unlike section 2) but `key` is the wide array and `key[1]` is `unknown`. The one
+ * thing a reader reaches into `ctx` for is exactly what they lose.
+ *
+ * Section 3 pins both and gets a number. This is here because the difference between them is invisible
+ * until something reads `key`, and `/query/queries#typing-the-fetcher` tells people to pin both on the
+ * strength of it. If inference ever keeps the key narrow with one argument, the `@ts-expect-error`
+ * below fails and that sentence needs revisiting.
+ */
+class PinnedHalfway extends Component {
+  private todo = this.use(Query<Todo>, () => ({
+    key: ["todo", 1] as const,
+    // @ts-expect-error `key[1]` is `unknown` here — `getTodo` wants a number.
+    fetch: ({ signal, key }) => getTodo(key[1], { signal }),
+  }));
+
+  render(): RamondaNode {
+    return <p>{this.todo.status}</p>;
+  }
+}
+
 /** Annotating the contexts by hand is still allowed, and still works. */
 class AnnotatedContext extends Component {
   private add = this.use(Mutation, () => ({
@@ -169,6 +193,7 @@ describe("typing", () => {
             <WithPin id={1} />
             <MutationTypes />
             <Narrowing />
+            <PinnedHalfway />
             <AnnotatedContext />
           </div>
         );

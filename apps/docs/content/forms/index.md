@@ -100,9 +100,10 @@ except one place: an inline callback whose parameter you have not annotated. `on
 => …` asks TypeScript to infer `values` from the same object it is currently inferring, and it
 gives up and hands you `any`.
 
-Writing `Form<typeof schema>` pins the schema first, so everything else follows from it. It is
-the same restriction [`Query`](/query/queries) documents, for the same
-reason.
+Writing `Form<typeof schema>` pins the schema first, so everything else follows from it. It is a
+TypeScript inference limit rather than a rule of this library, so it applies to any hook whose props
+include a callback typed from a sibling property — [`Query`'s
+fetcher](/query/queries#typing-the-fetcher) is the same restriction for the same reason.
 
 ```tsx
 // Pinned: `values` is typed, and a wrong field name is an error.

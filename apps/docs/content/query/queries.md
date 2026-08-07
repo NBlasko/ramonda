@@ -230,6 +230,44 @@ render() {
 }
 ```
 
+## Typing the fetcher
+
+`this.use` infers a hook's props from the object you hand it. That works everywhere except one
+place: an **inline callback whose parameter you have not annotated**. `fetch: (ctx) => …` asks
+TypeScript to infer `ctx` from the same object it is currently inferring — `ctx` is built from the
+`key` sitting next to it — so it gives up and hands you `any`:
+
+```tsx expect-error
+// `ctx` is implicitly `any`, so `ctx.singal` (typo) passes.
+this.use(Query, { key: ["user", id], fetch: (ctx) => loadUser(id, ctx.signal) });
+```
+
+Pin the type arguments and everything else follows from them:
+
+```tsx
+private key = ["user", this.props.id] as const;
+
+private user = this.use(Query<User, typeof this.key>, {
+  key: this.key,
+  fetch: (ctx) => loadUser(ctx.key[1], ctx.signal),   // ctx.key[1] is the id, typed
+});
+```
+
+**Pin both, not just the first.** `Query<User>` alone fixes the `any` — but the key parameter then
+falls back to its default, the wide `QueryKey`, so `ctx.key[1]` is `unknown` and the one thing you
+reached into `ctx` for is gone.
+
+A method needs no pin, because it carries its own annotation:
+
+```tsx
+private user = this.use(Query, { key: ["user", this.props.id], fetch: this.loadUser });
+```
+
+This is a TypeScript inference limit rather than a rule of this library, so it applies to any hook
+whose props include a callback typed from a sibling property —
+[`Form<typeof schema>`](/forms#form-typeof-schema-why-the-pin) is the same restriction for the same
+reason.
+
 ## Reaching the cache directly
 
 For imperative work — prefetching in a parent, invalidating after something happened
