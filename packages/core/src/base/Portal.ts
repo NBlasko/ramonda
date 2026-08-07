@@ -131,18 +131,20 @@ export class Portal extends Hook<PortalProps> {
     // the next portal (adopts run in the same tree order the server placed in) skips
     // this block and finds its own at the front. Keys are stamped from the matching
     // child so a keyed reconcile finds each node instead of building a duplicate.
+    // One marked node per ELEMENT child, in order — NOT one per child. A string
+    // child is an unmarked text node the server never emitted, so counting it would
+    // claim a node too many and eat the next portal's block. Skip it here; the
+    // client rebuilds it in `reconcile`.
     const children = this.childList();
-    if (children.length === 0) return;
-
     const marked = target.querySelectorAll(`[${PORTAL_ATTR}]`);
     const mine: ChildNode[] = [];
-    for (let i = 0; i < children.length && i < marked.length; i++) {
-      const element = marked[i];
+    let m = 0;
+    for (const child of children) {
+      if (typeof child === "string") continue;
+      if (m >= marked.length) break;
+      const element = marked[m++];
       element.removeAttribute(PORTAL_ATTR);
-      const child = children[i];
-      if (typeof child !== "string" && child.attributes?.key != null) {
-        (element as unknown as KeyedNode)[KEY_SYM] = child.attributes.key;
-      }
+      if (child.attributes?.key != null) (element as unknown as KeyedNode)[KEY_SYM] = child.attributes.key;
       mine.push(element as unknown as ChildNode);
     }
 
@@ -216,6 +218,16 @@ export class Portal extends Hook<PortalProps> {
       if (keyed) {
         existing = byKey.get(String(key));
         byKey.delete(String(key));
+      } else if (typeof vchild === "string") {
+        // A text child reuses only a text node. On a hydration seed made of adopted
+        // ELEMENTS there is none at the cursor, so build fresh WITHOUT consuming the
+        // element the following element child owns — otherwise the string strands it
+        // and it is swept as stale.
+        const candidate = unkeyed[unkeyedCursor];
+        if (candidate !== undefined && candidate.nodeType === 3) {
+          existing = candidate;
+          unkeyedCursor++;
+        }
       } else {
         existing = unkeyed[unkeyedCursor++];
       }

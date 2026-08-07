@@ -157,7 +157,8 @@ export const createRuntime = (that: any, context: Context): Runtime => {
     owner: that,
   };
 
-  // No extra retention: `reBuild` already closes over the same object.
+  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
+  // production must not: same object, stripped from the prod build.
   if (__DEV__) runtime.holder = that;
 
   return runtime;

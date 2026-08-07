@@ -182,4 +182,60 @@ describe("Portal hydration", () => {
 
     container.remove();
   });
+
+  test("a string child does not make a portal over-claim a sibling's nodes", async () => {
+    // A string child becomes an UNMARKED text node, so it owns no marked node. If
+    // adopt counts total children rather than element children, a portal with a
+    // string child claims one node too many — the next portal's — and sweeps it.
+    class First extends Component {
+      portal = this.use(Portal, {
+        children: ["prefix", <meta name="a" content="x" />],
+        target: document.head,
+      });
+      render() {
+        return <p>first</p>;
+      }
+    }
+    class Second extends Component {
+      portal = this.use(Portal, {
+        children: <meta name="b" content="x" />,
+        target: document.head,
+      });
+      render() {
+        return <p>second</p>;
+      }
+    }
+
+    @Host("div")
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <First />
+            <Second />
+          </div>
+        );
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+    const serverA = document.head.querySelector('meta[name="a"]');
+    const serverB = document.head.querySelector('meta[name="b"]');
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // Each portal adopted its OWN meta — the string child did not push the first
+    // portal onto the second's node.
+    expect(document.head.querySelector('meta[name="a"]')).toBe(serverA);
+    expect(document.head.querySelector('meta[name="b"]')).toBe(serverB);
+
+    unmountChildrenNodes([container as unknown as never]);
+    container.remove();
+  });
 });

@@ -180,13 +180,14 @@ export class Head extends Hook<HeadOptions> {
   }
 
   /**
-   * Joins the chain under the nearest `Head` above, and leaves itself on the
+   * Joins the tree under the nearest `Head` above, and leaves itself on the
    * context for the ones below.
    *
-   * Taking the slot means the branch that held it is gone — including everything
-   * ITS children published, since they hang off it. A route replacing its sibling
-   * therefore discards the old branch whole, rather than waiting for each of its
-   * children's `@destroy` to run in an order nothing guarantees.
+   * Added to the parent's SET of children, not into a single slot — so a sibling
+   * that publishes after this one does not displace it; both stay and the head is
+   * the merge of the tree. A page SWAP still comes out right without a rule of its
+   * own: the outgoing node removes itself on `@destroy`, and `resolve` runs after
+   * the commit, so it only ever sees the nodes still live.
    *
    * Done in `@create` rather than the constructor because the context a component
    * writes to must be its OWN, and because its children are rendered afterwards —
