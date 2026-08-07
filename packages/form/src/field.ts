@@ -91,7 +91,7 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
    * subscribes its reader to the whole form on the first read, which would undo everything above.
    * Same class, same `bind`, same stable handler identities — a different host.
    */
-  private handle!: FieldHandle;
+  private handle: FieldHandle | undefined;
   private form: Watchable | undefined;
   private watched: Path | undefined;
 
@@ -148,10 +148,18 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     this.watched = undefined;
   }
 
-  /** The handle, plus the read that puts this component's subscription in place. */
+  /**
+   * The handle, plus the read that puts this component's subscription in place.
+   *
+   * Subscribes here too, not only from `@created`, so a component reading its field in a FIELD
+   * INITIALIZER — which runs before the lifecycle queue — gets an answer rather than a crash about
+   * something being undefined. Asking twice for one node costs nothing: the form's set holds this hook
+   * once.
+   */
   private get live(): FieldHandle {
     void this.version;
-    return this.handle;
+    if (this.handle === undefined) this.subscribe(this.props.of);
+    return this.handle as FieldHandle;
   }
 
   /**
