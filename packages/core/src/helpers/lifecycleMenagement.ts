@@ -8,9 +8,9 @@ import { discardPendingUpdates, discardPendingWork } from "../core/commit";
  * Runs one piece of user cleanup, and does not let it take the rest down.
  *
  * Teardown is a sequence of things the app wrote — effect cleanups and
- * `@destroy` bodies — and one throw used to abort all of it: the remaining
+ * `@destroyed` bodies — and one throw used to abort all of it: the remaining
  * cleanups, `clearReactives`, the `isDestroyed` flag, and the caller's
- * `child.remove()`. Measured: a `@destroy` that threw left the element on the
+ * `child.remove()`. Measured: a `@destroyed` that threw left the element on the
  * page, still rendered, with the component half alive.
  *
  * Reported rather than swallowed. A cleanup that throws is a defect worth
@@ -20,6 +20,12 @@ function runCleanup(what: string, component: BaseComponent<any>, cb: () => void)
   try {
     cb();
   } catch (error) {
+    /**
+     * Not a diagnostic code: this is the app's own cleanup throwing, and the framework has no fix
+     * to offer beyond the sentence already here. It is unconditional on purpose — a teardown that
+     * failed halfway matters in production, where the listener or timer it did not clear is still
+     * armed.
+     */
     console.error(
       `[Ramonda] ${what} threw while <${component.constructor.name} /> was being destroyed. The rest of its cleanup still ran.`,
       error,
@@ -36,7 +42,7 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
   // around a failed build — and they are only kept apart by an accident of
   // reachability: a component that failed to build was never inserted, and the
   // other path walks the DOM. A future path reaching an inserted component twice
-  // would run @destroy twice and double-release whatever it releases.
+  // would run @destroyed twice and double-release whatever it releases.
   if (component[COMPONENT_RUNTIME].isDestroyed) return;
 
   const runtime = component[GLOBAL_RUNTIME];
@@ -53,15 +59,16 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
     }
   }
 
-  // One destroy pass cleans up after both @create and @mount.
+  // One destroy pass cleans up after both @created and @mounted.
   // It runs while the reactive dependencies are still alive (before
-  // clearReactives), so user code in @destroy can still read reactive and
+  // clearReactives), so user code in @destroyed can still read reactive and
   // computed values.
   const destroys = runtime.destroys;
   if (destroys) {
     for (let i = destroys.length - 1; i >= 0; i--) {
       const entry = destroys[i];
-      if (entry.env !== "server") runCleanup("a @destroy", component, () => entry.cb(component[COMPONENT_RUNTIME].env));
+      if (entry.env !== "server")
+        runCleanup("a @destroyed", component, () => entry.cb(component[COMPONENT_RUNTIME].env));
     }
   }
 
@@ -72,7 +79,7 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
   }
 
   if (__DEV__) {
-    // Last: effect cleanups (@interval/@timeout) and @destroy have both had
+    // Last: effect cleanups (@interval/@timeout) and @destroyed have both had
     // their chance to clear. Whatever is still ticking was never cleaned up.
     reportLeakedTimers(component);
   }
@@ -85,9 +92,9 @@ export function lifecycleCleanupManagement(component: BaseComponent<any>) {
   // render for a detached subtree. addTaskToQueue refuses on this flag.
   componentRuntime.isDestroyed = true;
 
-  // @mount is deferred to a flush after the DOM work, so a component built and
+  // @mounted is deferred to a flush after the DOM work, so a component built and
   // torn down inside the same commit can still have one pending. The flush
-  // checks this flag and skips it — @mount must never run after @destroy, or the
+  // checks this flag and skips it — @mounted must never run after @destroyed, or the
   // cleanup that already ran cannot undo it. Dropping the entry here also stops
   // the queue holding a dead component alive until the next flush.
   discardPendingWork(component);

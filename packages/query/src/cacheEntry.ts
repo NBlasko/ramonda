@@ -52,7 +52,7 @@ export interface QueryEntry<TData = unknown> {
    * This is how garbage collection works here: a timestamp checked on the way
    * past, not a `setTimeout`. Two measured reasons, pointing the same way.
    *
-   * 1. On the CLIENT, the timer would be created inside `@destroy` (the last
+   * 1. On the CLIENT, the timer would be created inside `@destroyed` (the last
    *    observer unsubscribing is a component being torn down), and core's DEV
    *    timer guard attributes any timer started during a lifecycle to that
    *    component — then reports whatever is still ticking at the END of the same

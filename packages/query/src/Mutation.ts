@@ -1,4 +1,4 @@
-import { Hook, INSPECT, destroy, StableProps, state } from "@ramonda/core";
+import { Hook, INSPECT, destroyed, StableProps, state } from "@ramonda/core";
 import { ClientConsumer, requireClient } from "./context";
 import type { QueryClient } from "./QueryClient";
 import type { QueryKey } from "./types";
@@ -288,7 +288,7 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
     this.controller?.abort();
   }
 
-  @destroy
+  @destroyed
   dispose(): void {
     this.disposed = true;
   }

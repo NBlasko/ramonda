@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { state, create, mount, destroy } from "../base/decorators";
+import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
 import { getDOM } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -12,8 +12,8 @@ import type { RamondaNode } from "../types/vdom";
  *
  * It is a hook, not a tag: a tag would add a host element in place, and the
  * point of a portal is to render NOTHING where it is declared. It drives the
- * same reconcile `bootstrap` does, so a component inside a portal gets `@create`,
- * `@mount`, signals and teardown exactly as anywhere else — but it owns ONLY its
+ * same reconcile `bootstrap` does, so a component inside a portal gets `@created`,
+ * `@mounted`, signals and teardown exactly as anywhere else — but it owns ONLY its
  * own nodes in the target, so two portals into one target coexist and neither
  * touches what was already there.
  *
@@ -342,23 +342,23 @@ describe("Portal reconciles keyed children by identity", () => {
 });
 
 describe("Portal is a full lifecycle boundary", () => {
-  test("a component inside a portal runs @create, @mount and @destroy", async () => {
+  test("a component inside a portal runs @created, @mounted and @destroyed", async () => {
     const target = document.createElement("section");
     document.body.appendChild(target);
 
-    let created = 0;
-    let mounted = 0;
-    let destroyed = 0;
+    let createdCount = 0;
+    let mountedCount = 0;
+    let destroyedCount = 0;
 
     class Inner extends Component {
-      @create onCreate() {
-        created++;
+      @created onCreate() {
+        createdCount++;
       }
-      @mount onMount() {
-        mounted++;
+      @mounted onMount() {
+        mountedCount++;
       }
-      @destroy onDestroy() {
-        destroyed++;
+      @destroyed onDestroy() {
+        destroyedCount++;
       }
       render() {
         return <span id="inner">inner</span>;
@@ -384,14 +384,14 @@ describe("Portal is a full lifecycle boundary", () => {
 
     const { instance, settle } = await getDOM<Page>(<Page />);
 
-    expect(created).toBe(1);
-    expect(mounted).toBe(1);
+    expect(createdCount).toBe(1);
+    expect(mountedCount).toBe(1);
     expect(target.querySelector("#inner")?.textContent).toBe("inner");
 
     instance.show = false;
     await settle();
 
-    expect(destroyed).toBe(1);
+    expect(destroyedCount).toBe(1);
     expect(target.querySelector("#inner")).toBeNull();
 
     target.remove();

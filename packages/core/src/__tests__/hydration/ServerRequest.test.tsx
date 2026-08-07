@@ -1,24 +1,24 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, create } from "../../base/decorators";
+import { Host, state, created } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { requestContext, requestKey } from "../../hydration/requestContext";
 
 /**
  * A per-request server render (`renderToString(vnode, { request })`) makes `requestContext()`
  * return the real values, so a route can render per-user output on the server. Reads must be
- * synchronous (render / @create / before an @mount's first await) — the scope is live only
+ * synchronous (render / @created / before an @mounted's first await) — the scope is live only
  * across the synchronous section, for the same concurrency reason as `renderEnv`.
  */
 
 const currentUser = requestKey<{ name: string } | null>("currentUser");
 
 describe("renderToString with a request", () => {
-  test("a component reads a seeded value in @create", async () => {
+  test("a component reads a seeded value in @created", async () => {
     @Host("main")
     class Greeting extends Component {
       @state name = "";
-      @create init() {
+      @created init() {
         this.name = requestContext().get(currentUser)?.name ?? "guest";
       }
       render() {

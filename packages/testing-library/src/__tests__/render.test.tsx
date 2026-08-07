@@ -3,9 +3,9 @@ import {
   Component,
   Host,
   state,
-  create,
-  mount,
-  destroy,
+  created,
+  mounted,
+  destroyed,
   onElement,
   watchProp,
   createRef,
@@ -16,7 +16,7 @@ import { render, act, fireEvent, screen, cleanup } from "../index";
 class Counter extends Component<{ start?: number }> {
   @state count = 0;
 
-  @create seed() {
+  @created seed() {
     this.count = this.props.start ?? 0;
   }
 
@@ -33,7 +33,7 @@ describe("render", () => {
   test("mounts synchronously — the DOM is ready when it returns", () => {
     const { getByText } = render(<Counter start={2} />);
     // No await. bootstrap builds and mounts, and render's act commits whatever
-    // @create wrote, so there is nothing left pending.
+    // @created wrote, so there is nothing left pending.
     expect(getByText("count: 2")).toBeTruthy();
   });
 
@@ -68,12 +68,12 @@ describe("render", () => {
     expect(getByText("count: 1")).toBeTruthy();
   });
 
-  test("unmount runs @destroy and empties the container", () => {
-    const destroyed: string[] = [];
+  test("unmount runs @destroyed and empties the container", () => {
+    const destroyedOrder: string[] = [];
 
     class Leaky extends Component {
-      @destroy bye() {
-        destroyed.push("bye");
+      @destroyed bye() {
+        destroyedOrder.push("bye");
       }
       render(): RamondaNode {
         return <p>alive</p>;
@@ -85,7 +85,7 @@ describe("render", () => {
 
     unmount();
 
-    expect(destroyed).toEqual(["bye"]);
+    expect(destroyedOrder).toEqual(["bye"]);
     expect(container.childNodes.length).toBe(0);
   });
 
@@ -102,7 +102,7 @@ describe("rerender", () => {
 
     class Card extends Component<{ title: string }> {
       @state hits = 0;
-      @create init() {
+      @created init() {
         creates.push("create");
       }
       render(): RamondaNode {
@@ -133,7 +133,7 @@ describe("rerender", () => {
 
     class Watcher extends Component<{ userId: string }> {
       @watchProp((p: { userId: string }) => p.userId)
-      reload(next: string, previous: string) {
+      reload([next]: [string], [previous]: [string]) {
         seen.push(`${previous}->${next}`);
       }
       render(): RamondaNode {
@@ -184,19 +184,19 @@ describe("options", () => {
 });
 
 describe("lifecycle ordering is preserved through the harness", () => {
-  test("@create, then render, then @mount — and by @mount the element is in the document", () => {
+  test("@created, then render, then @mounted — and by @mounted the element is in the document", () => {
     const order: string[] = [];
     let connectedAtMount: boolean | undefined;
     const element = createRef<HTMLElement>();
 
     @Host("div")
     class Probe extends Component {
-      @create a() {
+      @created a() {
         order.push("create");
       }
-      @mount b() {
+      @mounted b() {
         order.push("mount");
-        // The guarantee @mount exists for. A harness that flushed too early
+        // The guarantee @mounted exists for. A harness that flushed too early
         // would run it while the tree was still detached.
         connectedAtMount = element.current?.isConnected;
       }

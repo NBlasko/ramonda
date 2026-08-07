@@ -45,7 +45,7 @@ A few ideas set Ramonda apart:
   so the JSX maps straight to the DOM you inspect — there is no wrapper, no
   fragment ambiguity, and the parent–child rules the browser enforces are the
   rules you write against.
-- **Decorators, not conventions.** `@state`, `@compute`, `@mount`, `@destroy`,
+- **Decorators, not conventions.** `@state`, `@compute`, `@mounted`, `@destroyed`,
   `@updated`, `@interval`, `@onElement`… behavior is declared on ordinary methods
   and fields.
 - **Signals under the hood.** Reactivity tracks reads, so a `@compute`

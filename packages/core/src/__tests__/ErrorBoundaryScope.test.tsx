@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state, updated, mount, onElement } from "../base/decorators";
+import { Host, state, updated, mounted, onElement } from "../base/decorators";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 
 /**
@@ -9,7 +9,7 @@ import { ErrorBoundary } from "../base/ErrorBoundary";
  *
  * The line worth drawing is not "render vs everything else" — it is **whether the
  * throw happens on a path the framework is running**. A render, an `@updated` and
- * an `@mount` are all framework-driven: the error goes to `errorHandler`, which
+ * an `@mounted` are all framework-driven: the error goes to `errorHandler`, which
  * walks up for a handler. A click is not: the browser calls the listener, so a
  * throw inside it never passes through the framework at all and no boundary can
  * see it. Same for a promise that rejects on its own time.
@@ -76,10 +76,10 @@ describe("what an ErrorBoundary reaches", () => {
     expect(app.container.textContent).toContain("caught: updated boom");
   });
 
-  test("a throw in @mount is caught", async () => {
+  test("a throw in @mounted is caught", async () => {
     @Host("div")
     class Boom extends Component {
-      @mount ready(): never {
+      @mounted ready(): never {
         throw new Error("mount boom");
       }
       render() {

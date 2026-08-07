@@ -42,7 +42,7 @@ in [writing your own decorators](/hooks/own-decorators).
 
 **It re-runs when a signal it READ changes.** Read `owner.channel` inside `connect` and
 switching channels disconnects the old one before opening the new — which is the whole
-reason this is not just "subscribe in `@mount`, unsubscribe in `@destroy`".
+reason this is not just "subscribe in `@mounted`, unsubscribe in `@destroyed`".
 
 ```demo:EffectCleanup
 ```

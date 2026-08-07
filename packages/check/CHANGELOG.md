@@ -1,5 +1,56 @@
 # @ramonda/check
 
+## 0.3.2
+
+### Patch Changes
+
+- a711652: A duplicate decorator report says what the second declaration actually does
+
+  One report, four faults, four pieces of advice — because "one of them never runs" is true of exactly one
+  of them, and naming the wrong one sends a reader after a difference that is not there.
+
+  **`refuses`** — `@Host`. It throws (RMD045): two element names have no union, so there is no live
+  declaration to look for.
+
+  **`displaces`** — `@catchError`, `@ShouldUpdateOnPropsChange`. One wins, the rest are dead code, and the
+  report says WHICH is live.
+
+  **`merges`** — `@StableProps`. Both take effect and the result is the union (RMD046); nothing is lost and
+  only the spelling is redundant.
+
+  **`redundant`** — `@state`, `@compute`, `@persist`, `@memoizedHandler` on one MEMBER twice. Measured in
+  core rather than assumed: a doubled `@state` renders once per write with the right value, and
+  `@compute`'s body runs once for two reads. Nothing is displaced, so the advice is "delete the extras",
+  not "work out which line is live" — that would send somebody after a difference that does not exist.
+
+  Counting the redundant kind per class reported `<Search> declares @state 5 times` against this
+  repository's own documentation app, where five different fields each carry one. It is per member now, and
+  the report names the member: `RedundantTwice.n carries @state 2 times`.
+
+  `@watchProp` is deliberately not in either set: several on one method is the supported way for one
+  handler to follow several props, and each application does real work.
+
+## 0.3.1
+
+### Patch Changes
+
+- 8634bbe: A duplicate single-use decorator names the declaration that is actually in effect
+
+  The report said "the last wins" for every one of the four decorators it watches. That is true for
+  `@catchError`, a MEMBER decorator, and false for `@ShouldUpdateOnPropsChange`, `@Host` and
+  `@StableProps`, which are CLASS decorators — so on three of the four it pointed at the line that works
+  and told you to delete it.
+
+  One rule underneath both: the declaration applied last is the one that stands. A member decorator
+  initialises top to bottom, so the **lowest** is applied last. A class decorator applies bottom-up, so
+  the **highest** is. Measured in `@ramonda/core` — `CatchErrorDecorator.test.tsx` watches which handler
+  receives the error, `PropsGateInheritance.test.tsx` watches which gate is asked — because the two
+  directions are opposite and neither is guessable from reading.
+
+  `DuplicateDecoratorIssue` therefore carries `kind: "class" | "member"`, read off the node the decorator
+  was found on rather than from a table of names: `@ShouldUpdateOnPropsChange` was a member decorator
+  before it was a class one, and a table would still be saying so.
+
 ## 0.3.0
 
 ### Minor Changes

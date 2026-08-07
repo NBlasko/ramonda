@@ -92,6 +92,12 @@ export interface IsrCache {
   serve(path: string): Promise<IsrPage | undefined>;
 }
 
+/**
+ * A plain log line, and this package has no diagnostic prefix of its own for the reason: a rebake
+ * that fails is an operational event — a slow origin, a 500, a timeout — not a mistake in the
+ * caller's code, so there is no fix to write beside it. It belongs in a server log next to the
+ * request it failed, which is where it goes.
+ */
 function defaultOnError(path: string, error: unknown): void {
   /**
    * `%s`, not an interpolated path, because `console.error` treats its FIRST argument as a format

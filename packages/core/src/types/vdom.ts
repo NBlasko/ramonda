@@ -96,7 +96,7 @@ export type LifecycleEnv = "client" | "server" | "shared";
 export interface LifecycleEntry {
   id: number;
   // Receives the concrete render side ("client" | "server") when it fires, so a
-  // @create/@mount/@destroy method can branch on where it is running. A method
+  // @created/@mounted/@destroyed method can branch on where it is running. A method
   // that declares no parameter still satisfies this (fewer params is assignable).
   cb: (env: RenderEnv) => void;
   env: LifecycleEnv;
@@ -104,12 +104,22 @@ export interface LifecycleEntry {
 
 export interface WatchPropEntry {
   id: number;
-  // Picks a (possibly deeply nested) value out of props, e.g. p => p.foo[5].bar.
-  selector: (props: unknown) => unknown;
-  // The decorated method; receives the new and the old selected value.
-  cb: (newValue: unknown, oldValue: unknown) => void;
-  // The selector's last seen value, seeded at mount without firing the callback.
-  lastValue: unknown;
+  /**
+   * The selectors this entry watches, each picking a (possibly deeply nested) value out of props —
+   * `p => p.foo[5].bar`. One application of `@watchProp` makes one entry, however many it was given.
+   *
+   * A LIST rather than one, because "run this when any of these changes" is otherwise unwritable: the
+   * only way to say it was to stack the decorator, which makes a separate entry per selector and
+   * therefore calls the method once per CHANGED prop — twice when two moved in the same update. And
+   * selecting a tuple from a single selector does not work either: comparison is `Object.is`, so a
+   * fresh array is never equal and the method fires on every props change, with `previous` and `next`
+   * holding the same contents. Measured, both.
+   */
+  selectors: readonly ((props: unknown) => unknown)[];
+  /** The decorated method; receives the new and the old values, positionally, one per selector. */
+  cb: (next: readonly unknown[], previous: readonly unknown[]) => void;
+  /** Each selector's last seen value, seeded at mount without firing the callback. */
+  lastValues: unknown[];
   /**
    * WHOSE props this entry watches — the component or the hook the decorator was
    * put on.

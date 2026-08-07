@@ -1,6 +1,6 @@
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, HOOK_RUNTIME } from "../core/runtime";
 import type { BaseComponent, WatchPropEntry } from "../types/vdom";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * The props the entry's own owner was given.
@@ -46,16 +46,26 @@ function ownerName(entry: WatchPropEntry): string {
  * undefined, so one careless selector cannot take the app down. DEV logs the
  * error along with the fix.
  */
-function safeSelect(entry: WatchPropEntry, props: unknown): unknown {
+function safeSelect(entry: WatchPropEntry, selector: (props: unknown) => unknown, props: unknown): unknown {
   try {
-    return entry.selector(props);
+    return selector(props);
   } catch (e) {
     if (__DEV__) {
-      ramondaLog(
-        "error",
-        `[watchProp] The selector in <${ownerName(entry)} /> threw — most likely it reads a value that is not there. Guard the path while you drill into it (e.g. \`p.foo?.[5]?.bar\`). Returning undefined so the app keeps running.`,
-        e,
-      );
+      /**
+       * The Error itself goes in `data`, and it has to: the throw comes from the app's own selector,
+       * so its stack is the line that names the failing path — the one thing `e.message` cannot give
+       * and the first thing anybody reads. The console prints `data` whole.
+       *
+       * It reaches the RECORD as nothing, because `reportable` keeps only primitives: an Error holds
+       * its stack, which holds the scope it was thrown from, and a collector's history would keep
+       * that alive. So `reason` is the text a record can carry and `error` is for the console, which
+       * has held live objects all along.
+       */
+      diagnose("RMD038", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
+        component: ownerName(entry),
+        reason: e instanceof Error ? e.message : String(e),
+        error: e,
+      });
     }
     return undefined;
   }
@@ -71,7 +81,8 @@ export function seedWatchProps(component: BaseComponent<any>) {
   if (!watchProps.length) return;
 
   for (const entry of watchProps) {
-    entry.lastValue = safeSelect(entry, readWatchedProps(entry));
+    const props = readWatchedProps(entry);
+    entry.lastValues = entry.selectors.map((selector) => safeSelect(entry, selector, props));
   }
 }
 
@@ -90,13 +101,43 @@ export function runWatchProps(component: BaseComponent<any>) {
   if (!watchProps.length) return;
 
   for (const entry of watchProps) {
-    const newValue = safeSelect(entry, readWatchedProps(entry));
-    const oldValue = entry.lastValue;
+    const props = readWatchedProps(entry);
+    const next = entry.selectors.map((selector) => safeSelect(entry, selector, props));
+    const previous = entry.lastValues;
 
-    if (!Object.is(newValue, oldValue)) {
-      entry.lastValue = newValue;
-      entry.cb(newValue, oldValue);
+    /**
+     * ONE call when ANY of them moved, not one call per selector.
+     *
+     * `Object.is` per selector, so nothing is compared deeply and the cost is the same as before. The
+     * unchanged ones keep their value in both arrays, which is deliberate: `previous[i] === next[i]`
+     * is how the method tells which selector moved, and that is the question a multi-selector watcher
+     * is usually asking.
+     */
+    let changed = false;
+    for (let i = 0; i < next.length; i++) {
+      if (!Object.is(next[i], previous[i])) {
+        changed = true;
+        break;
+      }
     }
+    if (!changed) continue;
+
+    entry.lastValues = next;
+
+    /**
+     * The callback gets a COPY of `next`, and that is not caution — it is a bug this closes.
+     *
+     * `next` is the array just stored as `lastValues`, and a callback is handed a plain array with
+     * nothing stopping it writing to one: `next.sort()` to compare, a `push`, an assignment. Measured —
+     * a handler setting `next[0] = 999` and shortening it left `lastValues` as `[999]`, so the NEXT
+     * call's `previous` was that garbage. Which is precisely the value the documentation tells people to
+     * read to learn which selector moved.
+     *
+     * `previous` needs no copy: `lastValues` has already been replaced above, so nothing holds it and a
+     * callback that mutates it corrupts something already discarded. One allocation per FIRE, not per
+     * comparison, and a watcher fires rarely by construction.
+     */
+    entry.cb(next.slice(), previous);
   }
 }
 // Not a decorator, despite the name — `@watchProp` lives in base/decorators.ts.

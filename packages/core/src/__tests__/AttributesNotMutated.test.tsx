@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { __h } from "../index";
+import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
  * `h()` does not write on the object it is handed.
@@ -20,6 +21,10 @@ describe("the attributes object a caller passes in", () => {
   const logged: string[] = [];
 
   beforeEach(() => {
+    // The rename warning is a deduplicated diagnostic (RMD039), keyed per owner+tag —
+    // so each test needs a clean dedup set, or a tag another test already reported
+    // stays silent here.
+    resetDiagnostics();
     logged.length = 0;
     vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
       logged.push(args.map(String).join(" "));
@@ -27,7 +32,7 @@ describe("the attributes object a caller passes in", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  const renamedWarnings = () => logged.filter((line) => line.includes("`className`, not `class`"));
+  const renamedWarnings = () => logged.filter((line) => line.includes("RMD039"));
 
   test("is not rewritten by the class → className normalisation", () => {
     const shared = { class: "row", id: "one" };

@@ -11,7 +11,7 @@ order: 101
 const { container, getByText, instance, rerender, unmount } = render(<Card title="a" />);
 ```
 
-Synchronous: `render` builds the tree, runs `@mount`, and commits anything they wrote
+Synchronous: `render` builds the tree, runs `@mounted`, and commits anything they wrote
 — so there is nothing left to await. Queries are bound to `document.body` (the DOM
 Testing Library convention), so content rendered outside the container is still found.
 
@@ -54,7 +54,7 @@ rerender(<Card title="b" />);
 expect(getByText("b:7")).toBeTruthy(); // not "b:0"
 ```
 
-The instance survives, its `@state` survives, `@create` doesn't run again, and
+The instance survives, its `@state` survives, `@created` doesn't run again, and
 `@watchProp` fires — exactly like a real parent re-rendering a child with new props.
 That makes it how you test prop reactivity.
 
@@ -71,7 +71,7 @@ isn't synchronous, so the unwrapped version reads the DOM one tick too early.
 ## Also on the result
 
 `asFragment()` (detached content, for snapshots), `debug(el?)` (prints HTML),
-`unmount()` (runs `@destroy` and every cleanup).
+`unmount()` (runs `@destroyed` and every cleanup).
 
 ## Next
 

@@ -67,9 +67,53 @@ so a component that misuses the same property on every render reports once.
 | `RMD030` | error | State written during `[INSPECT]()` |
 | `RMD031` | error | A list item that is not an element |
 | `RMD032` | error | More than one `@catchError` on a component |
-| `RMD033` | error | A memoized handler was given an argument it cannot key on |
-| `RMD034` | error | Object in state changed in place |
-| `RMD035` | error | Two lazy functions with the same source |
+| `RMD033` | warning | State that cannot cross to the client |
+| `RMD034` | warning | State written during create or mount is not carried to the client |
+| `RMD035` | warning | The client's hook tree does not match the server's |
+| `RMD036` | error | The state blob could not be read |
+| `RMD037` | error | An object among JSX children that is not markup |
+| `RMD038` | error | A `@watchProp` selector threw |
+| `RMD039` | warning | `class` where `className` was meant |
+| `RMD040` | error | More than one `@ShouldUpdateOnPropsChange` on one class |
+| `RMD041` | warning | A listener with no target |
+| `RMD042` | warning | The default host cannot be the direct target of this event |
+| `RMD043` | warning | A `<meta>` with nothing to identify it |
+| `RMD044` | error | An unknown element type in JSX |
+| `RMD045` | error | More than one `@Host` on a component |
+| `RMD046` | warning | More than one `@StableProps` on one class |
+| `RMD047` | error | A memoized handler was given an argument it cannot key on |
+| `RMD048` | error | Object in state changed in place |
+| `RMD049` | error | Two lazy functions with the same source |
+
+### RMD033–RMD042 — the ten that were messages before they were codes
+
+Each of these was a `ramondaLog` call with its advice written inline: a real fault, reported, but with
+no stable name to search for, no `fix` a panel could render apart from the message, and no way for a
+collector to group two occurrences of one cause. They live in `hydration/serialize.ts`,
+`hydration/lint.ts`, `hydration/restore.ts`, `hydration/hydrate.ts`, `vdom/h.ts`,
+`helpers/watchProps.ts`, `vdom/CreateRamonda.ts` and `base/decorators.ts`.
+
+Two things came with the port. Each is now **deduplicated by source** like every other code, where
+before it reported per occurrence — a hydration warning over a component with six unserializable
+fields was six lines and is now one per field. And the severities are the ones the messages already
+carried: the port gave them identity, it did not re-judge them.
+
+What each one means and what to do about it is on the public reference rather than here, because that
+is the page a reader lands on from a message: [ramonda.pages.dev/reference/diagnostics](https://ramonda.pages.dev/reference/diagnostics).
+
+**Four messages in this package deliberately have no code**, and each says so where it is:
+`bootstrap`'s "App crashed" (`index.ts`), a lazily loaded component that failed to arrive
+(`base/AsyncLoad.ts`), a cleanup that threw during destroy (`helpers/lifecycleMenagement.ts`), and the
+crash that follows RMD011 once it has already named the mistake (`vdom/h.ts`).
+
+Every one is somebody else's fault surfaced with context, not a mistake this framework can offer a fix
+for. `bootstrap`'s is the clearest case: the app's own error on its way up, rethrown on the next line,
+so the framework knows nothing about it beyond having been in the call stack. A code promising advice
+that cannot exist is worse than a sentence.
+
+Three more sit outside this package for the same reason — a devtools plugin's own `snapshot()` error
+and the panel's warning that its sink was replaced (`@ramonda/devtools`), and an ISR rebake failure
+(`@ramonda/router`).
 
 ### RMD001 — State written during render()
 
@@ -82,7 +126,7 @@ slot from `State.set`. The check runs *after* `shouldUpdate`, so a write that
 changes nothing — and therefore schedules nothing — is not reported.
 
 Fix: `@compute` for derived values, `@watchProp` to sync from props, or write from
-`@create` / an event handler.
+`@created` / an event handler.
 
 ### RMD002 — Duplicate key among siblings
 
@@ -152,14 +196,14 @@ Two invariants this must not break:
 
 ### RMD006 — Timer still running after unmount
 
-A raw `setInterval` started in `@create`/`@mount` or a subscription keeps running after the
+A raw `setInterval` started in `@created`/`@mounted` or a subscription keeps running after the
 component is gone: it holds the component alive and keeps firing against state
 nobody is showing.
 
 `src/debug/timerGuard.ts` patches `window.setInterval`/`setTimeout`/`clearInterval`
 /`clearTimeout` once, and attributes every timer to the component whose lifecycle
 was running when it was created (`timerOwner`). The check runs from
-`lifecycleCleanupManagement` **after** effect cleanups and `@destroy`, so
+`lifecycleCleanupManagement` **after** effect cleanups and `@destroyed`, so
 `@interval`/`@timeout` — which clear themselves — never report.
 
 `timerOwner` is saved and restored, not just set: `createComponent` nests (a child
@@ -210,13 +254,13 @@ before the node is replaced, so the children after it keep their text and are no
 reported as missing too — one fault, one diagnostic.
 
 **The fix RMD007 prescribes is tested.** `new Date()`/`Math.random()` move to
-`@create` + `@persist` (the client restores the server's value instead of rolling
+`@created` + `@persist` (the client restores the server's value instead of rolling
 a new one). For client-only UI, do NOT branch on the side — that is the bug. Use
 two passes:
 
 ```tsx
 @state isClient = false;
-@mount({ env: "client" }) markClient() { this.isClient = true; }
+@mounted({ env: "client" }) markClient() { this.isClient = true; }
 ```
 
 The hydrating render still sees `false`, so it matches the server; the switch
@@ -240,7 +284,7 @@ the queue.
 `addTaskToQueue` refuses. **The drop is not a dev check — it ships in
 production**; only the report is stripped. `isDestroyed` is deliberately a
 separate flag from `isInitialized`: that one means "not built yet", which
-hydration and `@create` depend on, and conflating "before" with "after" would
+hydration and `@created` depend on, and conflating "before" with "after" would
 break them.
 
 Measured before fixing: the dead component rendered again (1 → 2 renders).
@@ -248,7 +292,7 @@ Effects and intervals do **not** come back to life — `runComponentEffects` onl
 runs effects whose `shouldRebuild` is set, and teardown detaches their deps — so
 the damage was wasted renders and retention, not resurrected listeners.
 
-`@destroy` runs *before* the flag is set, so tearing down your own state there
+`@destroyed` runs *before* the flag is set, so tearing down your own state there
 stays silent.
 
 ### RMD009 — Update loop
@@ -370,7 +414,7 @@ component: *how do I keep a piece with its own state and lifecycle — React's
 is an element?*
 
 **Most of the time the question dissolves: just write the component.** Let
-`render()` return `null`. It keeps `@state`, `@create`, `@watchProp`, `@onWindow`,
+`render()` return `null`. It keeps `@state`, `@created`, `@watchProp`, `@onWindow`,
 and its own re-render boundary, and leaves behind
 `<ramonda-host style="display: contents">` — an element that takes part in **no
 layout at all**.
@@ -387,13 +431,13 @@ means the box does not exist. This covers everywhere except the three parents
 that reject even an inert element — `<table>`, `<select>`, `<svg>`.
 
 **There, the answer is a Hook.** A Hook is precisely "state and lifecycle with no
-element": it has `@state`, `@create`/`@destroy`, `@watchProp`, `@onWindow`, it can
+element": it has `@state`, `@created`/`@destroyed`, `@watchProp`, `@onWindow`, it can
 provide context, and it adds no node for the parser to destroy.
 
 ```tsx
 class RowsHook extends Hook<{ prefix: string }> {
   @state rows: string[] = [];
-  @create load() { this.rows = fetchRows(); }
+  @created load() { this.rows = fetchRows(); }
 }
 
 @Host("div")
@@ -466,7 +510,7 @@ class FancyCell extends BaseCell {
 Both are still exactly one `<td>`; the subclass adds no element. **No constructor
 is needed** — and none should be written. Everything survives `extends`:
 `@Host` (override it by re-declaring), `render()`, plain methods (`super.` works),
-`@state` (inherited and new), hooks (inherited and new), and lifecycle — `@create`
+`@state` (inherited and new), hooks (inherited and new), and lifecycle — `@created`
 runs base-first, then the subclass's.
 
 **A group of cells sharing state** is the one case that is genuinely not a
@@ -591,7 +635,7 @@ take a callback option and ask the owner to change it.
 
 The component is still mounted, but the DOM it lives in is gone from the document.
 Nothing told the framework, so nothing was torn down: its timers still fire, its
-listeners are still attached, its signals still hold it, `@destroy` never ran, and
+listeners are still attached, its signals still hold it, `@destroyed` never ran, and
 every render it does goes into nodes nobody can see.
 
 **Ramonda's own removals cannot cause this.** Every path that removes something
@@ -884,7 +928,7 @@ server emits:   <p>intro<div>a block</div></p>
 browser parses: <p>intro</p><div>a block</div>
 
 RMD007 then says: "<Card /> rendered <div> but the server sent nothing."
-and advises:      "new Date() / Math.random() in render(): move the value into @create"
+and advises:      "new Date() / Math.random() in render(): move the value into @created"
 ```
 
 The server sent it. The parser moved it. A reader following that advice is looking for

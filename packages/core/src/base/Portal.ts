@@ -1,6 +1,6 @@
 import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
-import { create, destroy, watchProp } from "./decorators";
+import { created, destroyed, watchProp } from "./decorators";
 import { diffAndMerge, filterVirtualChild, unmountChildrenNodes } from "../core/DiffAndMerge";
 import { PORTAL_ATTR, KEY_SYM } from "../helpers/constants";
 import type { ComponentChild, EnhancedChildNode, RamondaNode, VNode } from "../types/vdom";
@@ -30,7 +30,7 @@ export interface PortalProps {
  *
  * It drives the same `diffAndMerge` `bootstrap` drives, under the OWNER as the
  * placeholder component — so a component inside a portal inherits the owner's
- * context and render side, and gets `@create`, `@mount`, signals and `@destroy`
+ * context and render side, and gets `@created`, `@mounted`, signals and `@destroyed`
  * like any other subtree. Nothing here re-implements the diff; it reuses it per
  * child, and only owns the placement.
  *
@@ -45,7 +45,7 @@ export interface PortalProps {
  *
  * ## Reactivity — it rides the render cycle, on purpose
  *
- * `@create` (env `shared`, so a server render places the children too) does the
+ * `@created` (env `shared`, so a server render places the children too) does the
  * first reconcile; `@watchProp` on `children` does every later one. Because the
  * props factory is cached on the signals it read, `children` only gets a new
  * identity when something it depends on actually moved — so an unrelated render
@@ -90,7 +90,7 @@ export class Portal extends Hook<PortalProps> {
    */
   private currentTarget: Element | undefined;
 
-  @create({ env: "shared" })
+  @created({ env: "shared" })
   place(): void {
     this.placed = true;
     this.reconcile();
@@ -117,7 +117,7 @@ export class Portal extends Hook<PortalProps> {
    * so the next portal (adopts run in the same tree order the server placed in)
    * finds its own block at the front. See the loop for the detail.
    */
-  @create({ env: "client" })
+  @created({ env: "client" })
   adopt(): void {
     if (this.placed) return;
     this.placed = true;
@@ -157,7 +157,7 @@ export class Portal extends Hook<PortalProps> {
     this.reconcile();
   }
 
-  @destroy
+  @destroyed
   clear(): void {
     if (this.nodes.length === 0) return;
     unmountChildrenNodes(this.nodes as EnhancedChildNode[]);
@@ -175,7 +175,7 @@ export class Portal extends Hook<PortalProps> {
    * an unkeyed one is matched to the next unclaimed unkeyed node in order. What the
    * diff hands back unchanged is already in `target`; a fresh or replaced node is
    * detached, so it is appended and then moved into place. Anything the new list no
-   * longer accounts for is unmounted — `@destroy` and all — and removed.
+   * longer accounts for is unmounted — `@destroyed` and all — and removed.
    */
   private reconcile(): void {
     const owner = this[GLOBAL_RUNTIME].owner;

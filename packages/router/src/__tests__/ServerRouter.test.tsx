@@ -48,17 +48,17 @@ describe("Router on the server", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("does not attach a popstate listener during a server render", async () => {
-    // Bug 1: @create used to run window.addEventListener on the server, because
-    // @create defaults to env "shared". popstate is now an @onWindow effect, and
+    // Bug 1: @created used to run window.addEventListener on the server, because
+    // @created defaults to env "shared". popstate is now an @onWindow effect, and
     // effects never run server-side.
     await renderToString(<App />);
     expect(popstateListeners).toBe(0);
   });
 
   test("a second server render does not throw 'A second Router'", async () => {
-    // Bug 2: liveRouters++ ran on the server (shared @create) but @destroy never
+    // Bug 2: liveRouters++ ran on the server (shared @created) but @destroyed never
     // did (a server render never unmounts), so the counter leaked and the next
-    // render threw. The counter is now @create({ env: "client" }), so the server
+    // render threw. The counter is now @created({ env: "client" }), so the server
     // never touches it.
     const first = await renderToString(<App />);
     expect(first).toContain("<span>home</span>");

@@ -19,7 +19,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
-  test("it is reported as RMD033 as well as thrown, so it can be swept for", async () => {
+  test("it is reported as RMD047 as well as thrown, so it can be swept for", async () => {
     /**
      * The same shape a props write has (RMD004, RMD015): the throw stops the
      * mistake being shipped, and the diagnostic makes it an identifiable thing —
@@ -44,8 +44,8 @@ describe("@memoizedHandler with an un-keyable argument", () => {
       }
     }
 
-    await expect(getDOM(<Panel />)).rejects.toThrow(/\[RMD033\]/);
-    expect(logged.filter((line) => line.includes("RMD033")).length).toBeGreaterThan(0);
+    await expect(getDOM(<Panel />)).rejects.toThrow(/\[RMD047\]/);
+    expect(logged.filter((line) => line.includes("RMD047")).length).toBeGreaterThan(0);
   });
 
   test("development throws, naming the method and the argument", async () => {

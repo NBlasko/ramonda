@@ -160,10 +160,19 @@ article h3 {
   font-size: 1.1rem;
   margin: 1.6em 0 0.5em;
 }
-article p,
-article li {
-  max-width: 70ch;
-}
+/* Prose runs to the same edge as everything beside it.
+ *
+ * It used to stop at 70ch — 672px, measured — while the code blocks, tables and demos next to it ran
+ * the full width of the column, so a word that would have fitted wrapped to the next line and every
+ * paragraph ended short of the block above it. Two measures in one column read as a mistake even when
+ * each is defensible on its own.
+ *
+ * The column is the measure now, and nothing here sets a second one: `.body` caps the page at 1120px,
+ * the sidebar takes 226px and the gap 40px, which leaves about 806px — roughly 84 characters at this
+ * font. That is wider than the classic 65–75 and deliberately so; it is also why no `max-width` in `ch`
+ * appears below. A `ch` on a `<pre>` is measured in the mono font and a `ch` on a `<p>` is not, so the
+ * same number would have produced two different widths and missed the point.
+ */
 article code {
   background: var(--rmd-code-bg);
   padding: 0.15em 0.4em;

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { state, Host, mount, onElement } from "../../base/decorators";
+import { state, Host, mounted, onElement } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -12,8 +12,8 @@ describe("SSR wiring", () => {
     @Host("div")
     class Counter extends Component {
       @state count = 0;
-      // shared @mount → runs on the server, after the initial render.
-      @mount ready() {
+      // shared @mounted → runs on the server, after the initial render.
+      @mounted ready() {
         this.count = 5;
       }
       // client-only effect → must NOT run/attach on the server.
@@ -33,7 +33,7 @@ describe("SSR wiring", () => {
     probe.innerHTML = html;
     const host = probe.firstElementChild!;
 
-    // @mount (shared) ran on the server → count reflected.
+    // @mounted (shared) ran on the server → count reflected.
     expect(host.querySelector("#c")?.textContent).toBe("5");
 
     // Blob embedded on the carrier and holds the server state.
@@ -45,7 +45,7 @@ describe("SSR wiring", () => {
     @Host("div")
     class Counter extends Component {
       @state count = 0;
-      @mount ready() {
+      @mounted ready() {
         this.count = 3;
       }
       @onElement("click")
@@ -68,7 +68,7 @@ describe("SSR wiring", () => {
 
     hydrateRoot(<Counter />, container);
 
-    // Shared @mount is NOT re-run on the client (state came from the blob),
+    // Shared @mounted is NOT re-run on the client (state came from the blob),
     // and the client-only listener is now attached.
     (container.firstElementChild as HTMLElement).dispatchEvent(new MouseEvent("click"));
     await microtask();
@@ -81,7 +81,7 @@ describe("SSR wiring", () => {
     @Host("div")
     class Item extends Component<{ label: string }> {
       @state n = 0;
-      @mount ready() {
+      @mounted ready() {
         this.n = this.props.label.length;
       }
       render() {

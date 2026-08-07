@@ -1,5 +1,260 @@
 # @ramonda/core
 
+## 0.13.0
+
+### Minor Changes
+
+- 78c79ef: `@watchProp` takes several selectors and runs once when any of them changed
+
+  ```tsx
+  @watchProp((p) => p.page, (p) => p.term, (p) => p.sort)
+  reload(next: [number, string, string], previous: [number, string, string]) { … }
+  ```
+
+  **"Run this when any of these props changed" was previously unwritable.** Stacking the decorator makes a
+  separate entry per selector, so the method runs once per CHANGED prop — twice when two moved in the same
+  update. And selecting a tuple from one selector is worse: comparison is `Object.is`, so a fresh array is
+  never equal to the last one, and the method fires on **every** props change with `previous` and `next`
+  holding identical contents. Both measured; both are now covered by tests.
+
+  Comparison stays `Object.is` per selector, so nothing is compared deeply and the cost is unchanged. Only
+  the CALL is coalesced. A selector whose value did not change keeps it in both arrays, so
+  `previous[i] === next[i]` is how the method tells which one moved.
+
+  **Breaking: the values are always a tuple, including for one selector.** `(next: string)` becomes
+  `([next]: [string])` — destructuring in the parameter list leaves every method body untouched.
+
+  That is about evolution rather than neatness. With a scalar for one selector and a tuple for several,
+  adding a second selector to a watcher that already exists silently changes the method's parameter type,
+  and what a decorator reports for that is `TS1241 Unable to resolve signature of method decorator`, which
+  names nothing useful. A tuple that grows leaves `next[0]` meaning what it always meant.
+
+  **Two of this package's own call sites were silently wrong after the change and the compiler accepted
+  both**, which is worth knowing if you have your own: a parameter typed as a deferred conditional
+  (`InferIn<S>` in `@ramonda/form`) or as anything array-shaped (`QueryKey` in `@ramonda/query`, which is
+  `readonly unknown[]`, so a one-tuple is assignable to it) type-checks and then receives the tuple.
+  `@ramonda/form`'s late-defaults suite caught it; the types did not. Audit by shape, not by `tsc`.
+
+- 87a3c8c: The lifecycle decorators are `@created`, `@mounted` and `@destroyed`
+
+  `@create` → `@created`, `@mount` → `@mounted`, `@destroy` → `@destroyed`. `@updated` is unchanged, and it
+  is the reason: it was the only one of the four already naming the moment rather than an action, and one
+  odd name out of four is a rule nobody can state.
+
+  **They report a moment, they do not perform one.** `@mount` reads as an instruction — as though the
+  method does the mounting — when what it means is "the framework will call you once this is mounted".
+  `@mounted` says that. So does `@destroyed`: the method does not destroy anything, it runs while teardown
+  is happening.
+
+  `@watchProp` keeps its name for the same reason it should: it IS an instruction. You are telling the
+  framework to watch a prop.
+
+  **One cost worth knowing before you upgrade.** `created`, `mounted` and `destroyed` are the natural names
+  for a local flag or counter — `let mounted = false` is an idiom — and a local shadows the import, so
+  `@created` silently resolves to your array. Six files in this repository had exactly that, and the
+  compiler reports it as `TS1241 Unable to resolve signature of method decorator`, which does not mention
+  shadowing. If that error appears on a decorator that was fine a moment ago, look for a local with the new
+  name.
+
+### Patch Changes
+
+- 13b2c75: `RMD045` — two `@Host` on one class, said in words and reported to a collector
+
+  It always failed, with V8's own message: `Cannot redefine property: Symbol(host:meta)`. `HOST_META` is
+  written non-configurable, so the second `defineProperty` threw — naming an internal symbol, offering no
+  advice, and pointing inside `decorators.ts` rather than at the class. For a mistake as easy as writing the
+  decorator twice, that was the worst report available.
+
+  It now throws with a sentence that says what to do, and **emits a record as well**. Those are not
+  alternatives: the throw is the developer's channel and ships in every build, while the record is what an
+  app streaming its diagnostics somewhere needs in order to see this alongside everything else it has to
+  tidy up. A fault that only throws is invisible to that.
+
+  What decides whether a fault also throws is whether the program can carry on. `RMD032` and
+  `RMD040` report and continue, because one declaration quietly wins; a component cannot have two elements,
+  so there is no winner to pick here.
+
+  A **subclass** declaring its own `@Host` is not this. It overrides the base's — how a specialised
+  component changes its element — and stays silent.
+
+- 607a5de: `RMD046` — two `@StableProps` on one class merge instead of throwing
+
+  It used to throw, and not on purpose: `STABLE_PROPS` was written non-configurable, so the second
+  `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`. An internal symbol and
+  no advice, for what is a spelling mistake.
+
+  Merging is the reading that matches the decorator. `@StableProps` names a **set**, and it already merges
+  along the class chain — a subclass adds names rather than shadowing the base's — so two on one class has
+  one unambiguous reading, the union, and both declarations now take effect. Combine them into
+  `@StableProps("a", "b")`.
+
+  **A warning rather than a refusal**, which is the line against `RMD045`: two `@Host` element names have no
+  union, so carrying on there would mean silently picking one. Here the result is exactly what was asked
+  for, so only the spelling is redundant.
+
+  The property is `configurable: true` for this, and the trade is smaller than it sounds. `writable: false`
+  still refuses an assignment — the door an app could actually reach — and the symbol is a plain
+  `Symbol("stableProps")`, neither exported nor `Symbol.for`, so nothing outside the package can name it
+  without walking `getOwnPropertySymbols`. What is given up is a deliberate `defineProperty` by code that
+  went looking for it.
+
+## 0.12.0
+
+### Minor Changes
+
+- cf9be97: `use()` takes a third argument: metadata about the hook
+
+  ```tsx
+  private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+  ```
+
+  Devtools then calls that hook **`Form (Sign Up)`** — its class plus its label. The class says what the
+  node is, which a label cannot recover; the label says which one it is, which the class cannot give,
+  because `this.constructor.name` is `Form` for every form on the page and two `this.use(Form, …)` in one
+  component are otherwise two nodes with one name.
+
+  **Why a third argument and not a prop.** A hook's props belong to whoever wrote the hook. A framework
+  that reserved a word in there would collide with a real one eventually — and on a form it collides
+  immediately, since a form is full of labels and `label` reads as the visible text of a field. So this is
+  metadata _about_ the hook rather than input _to_ it, and the hook never sees it. The first attempt at
+  this did reserve the prop, and that is why it was reverted rather than shipped.
+
+  A propless hook takes the placeholder: `this.use(Poll, undefined, { label: "prices" })`. Deliberate — an
+  overload taking metadata in the props position would be ambiguous, because `{ label: "…" }` is a
+  perfectly good props bag for some hook somewhere.
+
+  The shape is published as `HookMeta`. An inline `{ label: "Sign Up" }` needs nothing imported, since the
+  argument is structural — the name is there for a helper that builds one, or a wrapper that passes one
+  along.
+
+  The metadata is parked on the instance under `Symbol.for("ramonda.hook.meta")` and read from there by
+  core's own inspector and by `@ramonda/form`'s panel — a documented key rather than an import, so neither
+  package depends on the other to pass a name along. The same contract shape as the diagnostics sink.
+
+  Development-only. A production build stores none of it, and a label that is blank, is not a string, or
+  only repeats the class is ignored.
+
+  A hook that calls `Object.freeze(this)` keeps working and keeps its class name in the panel. Such a
+  hook works everywhere else in this package, and `Object.defineProperty` on a frozen object throws —
+  from a field initializer, before the component exists, and **only in development**, since production
+  never stores the metadata. A cosmetic label is what gives way.
+
+- ea40a1e: Every `RMD` diagnostic is also a record
+
+  `diagnose` now hands each report to [the collector every reporting package shares](https://ramonda.pages.dev/reference/diagnostics#capturing-them),
+  so a devtools panel, a test or a log shipper can group and filter them by `code` and `severity`
+  instead of parsing a message. The console line and the `ramonda:dev-log` event are unchanged: this
+  adds a consumer rather than replacing one.
+
+  Three details are decided rather than incidental.
+
+  **`warning` becomes `warn` in the record.** This package has always said `warning`, and the protocol's
+  word is `warn`; the vocabulary belongs to the protocol, so the translation happens at the emit point.
+  A collector filtering on severity depends on it being exact.
+
+  **The record carries the dedup key.** `diagnose` reports once per `code:dedupKey`, and that key is now
+  published, so a collector collapses exactly what core collapses rather than guessing.
+
+  **`data` carries values, and anything live is dropped.** That argument is `unknown` and always has
+  been, because it goes to a console — where an object is the useful thing, expandable and inspectable.
+  A record is different: a collector keeps a bounded history, so anything live in one stays alive as long
+  as the history does. `propsStability` passes `{ cached, fresh }`, which are the actual prop values — a
+  component, a DOM node, an array of them are all ordinary things to find there. So the console keeps
+  the whole object and the record keeps the primitives, filtered centrally rather than trusted to
+  thirty-nine call sites.
+
+  **A duplicate the tests caught before it shipped.** In DEV core dynamically imports
+  `@ramonda/devtools`, whose bridge also puts records in the `LOGS` tab — so every core diagnostic
+  rendered twice the moment core started emitting them. Seventeen of core's own cases failed on it: a
+  test reading the dev-log channel found the bridge's payload instead of core's message. The bridge now
+  skips core's scope for the tab and only for the tab, because core already reaches it; a subscriber
+  still receives everything.
+
+  Still on the older channel: the handful of core messages that carry no code — `hydration/*`,
+  `vdom/h`, `watchProps`, `decorators`, `CreateRamonda` — which reach the console and the panel but not
+  the sink, because a record needs a stable code and these have none yet. They are the last ones left.
+
+  Two things a record will not carry, both about `data` holding what an application put in a prop.
+  A **getter is never invoked**: `Object.entries` would, and a getter is arbitrary code — it can throw,
+  out of the diagnostic that was explaining what was wrong with the app, or write state, which lands
+  mid-render and raises `RMD001` against whoever was rendering. It is skipped by descriptor, so it is
+  never read. And a **`bigint` arrives as its digits**: it is the one primitive `JSON.stringify` throws
+  on, which is what every collector shipping a record performs, and a `bigint` prop needs no cooperation
+  from anybody.
+
+- be245b4: Ten messages become diagnostics: `RMD033` to `RMD042`
+
+  They start at `RMD033` and not `RMD032` because `@catchError` took that number while this was being
+  written. A code is never reassigned, so the range moved rather than the other one.
+
+  Each of these was a `ramondaLog` call with its advice written inline — a real fault, reported, but with
+  no stable name to search for, no `fix` a panel could show apart from the message, and no way for a
+  collector to group two occurrences of one cause. They are now codes like every other, which means they
+  reach the record channel as well as the console.
+
+  |          |                                                                               |
+  | -------- | ----------------------------------------------------------------------------- |
+  | `RMD033` | state that cannot cross to the client — a function, a class instance, a `Map` |
+  | `RMD034` | state written during create or mount, which the client never receives         |
+  | `RMD035` | the client's hook tree does not match the server's                            |
+  | `RMD036` | the state blob could not be read                                              |
+  | `RMD037` | an object among JSX children that is not markup                               |
+  | `RMD038` | a `@watchProp` selector threw                                                 |
+  | `RMD039` | `class` where `className` was meant                                           |
+  | `RMD040` | more than one `@ShouldUpdateOnPropsChange` on one class                       |
+  | `RMD041` | a listener with no target                                                     |
+  | `RMD042` | the default host cannot be the direct target of this event                    |
+
+  **They are deduplicated by source now**, where before they reported per occurrence: a component with
+  six unserializable fields printed six lines and now prints one per field, which is what "once per
+  source, not once per occurrence" has always meant everywhere else in this package.
+
+  **The severities are the ones the messages already carried.** The port gives them identity; it does not
+  re-judge them. Two of the ten sit at `error` because the result is wrong — a dropped child, a selector
+  returning a value nobody chose — and the rest warn.
+
+  `RMD040` gained one thing the message it replaces did not have: **the right answer to which declaration
+  is in effect.** Two `@ShouldUpdateOnPropsChange` on one class, and the one that decides is the one
+  written FURTHEST from the class — class decorators apply bottom-up, so the lower declaration writes the
+  rule and the upper one overwrites it. That reads backwards, so it is measured in
+  `PropsGateInheritance.test.tsx` rather than reasoned about, and the `fix` says which one to look at.
+
+  The advice moved out of the message and into each code's `fix`, so a panel renders it apart from what
+  happened, and every one has a section on the reference. `RMD026`, retired in this package's own
+  registry since August, finally has a retired section there too — a reader who hits it in an old build
+  now lands somewhere.
+
+  **One message deliberately keeps no code.** `bootstrap`'s "App crashed" is the app's own error on its
+  way up, rethrown on the very next line so whoever threw it still gets it with its real stack. Every
+  code names a mistake and carries a fix; this one cannot, because the framework knows nothing about the
+  fault beyond having been in the call stack. The reason is now written where the code is.
+
+### Patch Changes
+
+- 6dde55e: `RMD043` and `RMD044`, and a reason written beside every message that keeps no code
+
+  Two more misuses become codes. `RMD043` — a `<meta>` passed to `Head` with no `name`, `property` or
+  `http-equiv`, which cannot be matched again and so would be appended on every update; it is skipped,
+  and now says so with a fix. `RMD044` — a tag that is neither a string, a component class nor a
+  function, which renders an empty host where something was meant to be.
+
+  **A tag that is `undefined` renders that empty host rather than throwing**, which is the fix half of
+  `RMD044` and matters in production, where there is no report at all. `<Thing />` whose import failed
+  arrives at the JSX factory as `undefined` — the first case `RMD044` names — and the factory read
+  `.__isComponent` off it, so it raised a `TypeError` from inside itself and took down the whole render
+  for a fault it is written to survive. One missing element now costs one element.
+
+  More useful than either: **every message that deliberately keeps no code now says why, where it is.**
+  There are four, and each is somebody else's fault surfaced with context rather than a mistake this
+  framework can advise on — `bootstrap`'s "App crashed", a lazily loaded component that never arrived, a
+  cleanup that threw during destroy, and the crash that follows `RMD011` after it has already been
+  named. A code that promises advice it cannot give is worse than a sentence.
+
+  One of those five was genuinely poor and is fixed rather than excused: a failed lazy load logged a bare
+  `console.error(e)`, which in a page full of chunks names nothing. It now names the module it was
+  loading. Still unconditional, because a failed lazy route is exactly what somebody needs to see in a
+  production log, and still not a diagnostic, because the failure is the network's answer.
+
 ## 0.11.0
 
 ### Minor Changes
@@ -122,7 +377,7 @@
   the package's table had none.
 
   Two runtime messages also stopped naming `@effect`, a decorator that no longer exists — the runaway
-  and update-loop errors now point at `@mount`, `@updated` and subscriptions, which is what a reader
+  and update-loop errors now point at `@mounted`, `@updated` and subscriptions, which is what a reader
   can go and look for.
 
 - 4d0fddd: Review pass over the decorator work: three faults found in it
@@ -161,15 +416,15 @@
 
   The deferred path is where it hurts. A `@deferHydration` subtree ADOPTS the server's node and then
   waits, so by the time the promise settles there is an initialized component there, holding restored
-  state and whatever its client `@create` started. Replacing its node left it running with no DOM: no
-  `@destroy`, no effect cleanups, no signal detach — its timers went on firing, its subscriptions
+  state and whatever its client `@created` started. Replacing its node left it running with no DOM: no
+  `@destroyed`, no effect cleanups, no signal detach — its timers went on firing, its subscriptions
   stayed attached, and a later write to a signal it had read would render into nodes nobody can see.
   Silent, because the page looks right: the fresh element is there and the old one is gone.
 
   Both fallbacks now tear down first — the deferred one in place, through a new `unmountNodeInPlace`
   (the node has to still be a child for `replaceChild` to put the fresh one where it was), and the
   synchronous one through the ordinary cleanup, since its component was never adopted onto a node but
-  has already run its client `@create`.
+  has already run its client `@created`.
 
 - de4ecda: The props gate behaves under `extends` like every other decorated method
 
@@ -177,7 +432,7 @@
 
   Overriding the decorated method without re-decorating ran the BASE's body: the decorator kept the
   function it was handed at decoration time instead of looking the method up on the instance, so the
-  subclass's version was dead code that read as live. `@create` and `@watchProp` register
+  subclass's version was dead code that read as live. `@created` and `@watchProp` register
   `this[name].bind(this)` and honour the override; one decorator out of three failing at the pattern the
   docs recommend is worse than any of them failing at it. The gate now dispatches by name too.
 
@@ -625,7 +880,7 @@
   module-level flag has a documented contract — only `createComponent` may read it, and only for a root
   mount — because it is restored before the first `await`, so an element built during the drain that
   follows would read "client" whatever side it is really on. There is a test for exactly that: a
-  `@mount` that fills a list after an await, whose rows appear in the markup and attach nothing. It
+  `@mounted` that fills a list after an await, whose rows appear in the markup and attach nothing. It
   fails if the flag is used instead.
 
 ## 0.7.0
@@ -820,8 +1075,8 @@
   Also: in the browser `requestContext().url` follows the address bar, so it stays correct after a
   client-side navigation instead of freezing at whatever the server rendered.
 
-  Most apps need none of this — reading the request in `@create` and keeping the result in `@state`
-  already travels, because `@create` is skipped on hydration and the state is restored from the page.
+  Most apps need none of this — reading the request in `@created` and keeping the result in `@state`
+  already travels, because `@created` is skipped on hydration and the state is restored from the page.
   `exposeToClient` is for when several components read the same value straight from the context.
 
 - 621eaeb: `@Host`, `@onElement` and `@shouldUpdateOnPropsChange` are now refused on a hook by **TypeScript**,
@@ -842,7 +1097,7 @@
   ```
 
   Everything else in the decorator set works on a hook — measured, not assumed: `@state`, `@persist`,
-  `@compute`, `@memoizedHandler`, `@create`, `@mount`, `@destroy`, `@updated`, `@watchProp`,
+  `@compute`, `@memoizedHandler`, `@created`, `@mounted`, `@destroyed`, `@updated`, `@watchProp`,
   `@deferHydration`, `@onWindow`, `@onDocument`, `@interval`, `@timeout`, and your own subscription
   decorators. A new [decorator table](https://ramonda.pages.dev/reference/decorators) answers all
   three questions at once: where each runs, what it goes on, and whether it may repeat.
@@ -893,7 +1148,7 @@
     so someone reads and acts on data that is not what the app meant to show.
   - **RMD010** — a default host the parent does not allow: the browser rearranges or deletes the
     markup, so the page is not what was written.
-  - **RMD016** — a component updating while detached: `@destroy` never ran, its timers and listeners
+  - **RMD016** — a component updating while detached: `@destroyed` never ran, its timers and listeners
     are still live, and every render goes into nodes nobody can see.
   - **RMD017** — a deferred hydration that never resumed. The page looks finished but that subtree
     never becomes interactive.
@@ -923,7 +1178,7 @@
   cookie, header, or seeded value literally cannot be turned into static HTML, so one visitor's
   data can never end up in another's cached page.
 
-  It catches reads wherever they happen — `render()`, `@create`, and even an async `@mount`
+  It catches reads wherever they happen — `render()`, `@created`, and even an async `@mounted`
   (whose throw is swallowed by the render drain, so the read is _recorded_ on the scope and
   checked afterwards). `url` stays readable throughout (it is the page identity). Sequential by
   design (a build renders one page at a time) — not for serving concurrent requests.
@@ -955,9 +1210,9 @@
 
   The scope is live only across the render's **synchronous** section (the same window and the same
   concurrency guarantee as `renderEnv` — two concurrent requests must not share it across an
-  `await`). So read `requestContext()` **synchronously**: in `render()`, in `@create`, or before an
-  `@mount`'s first `await`. The idiomatic pattern needs nothing more — read the request in `@create`
-  and store it in `@state`; `@create` is skipped on hydration and the `@state` is restored from the
+  `await`). So read `requestContext()` **synchronously**: in `render()`, in `@created`, or before an
+  `@mounted`'s first `await`. The idiomatic pattern needs nothing more — read the request in `@created`
+  and store it in `@state`; `@created` is skipped on hydration and the `@state` is restored from the
   page's state blob, so the client never re-reads the request and there is no separate request blob
   to ship. New types: `RenderToStringOptions`, `ServerRequestInit`.
 
@@ -1126,7 +1381,7 @@
   happened to read that render.
 
   Elsewhere "effects" was the runtime's own vocabulary leaking into prose a reader cannot look up ("after
-  this commit's `@mount`s and effects"); those say _subscriptions_ now.
+  this commit's `@mounted`s and effects"); those say _subscriptions_ now.
 
 - 43c02cb: Two committed failures that `turbo run` cannot see, and a `pnpm check` that would have caught them.
 
@@ -1485,8 +1740,8 @@
   `Head` was the framework's own last user, and the migration made it smaller: as a
   `@watchProp` whose selector returns a serialized form, the comparison is by value for free
   and the `appliedSnapshot` guard field is gone. That guard only existed because effects run
-  child→parent while `@create` runs parent→child, so an effect handed a nested route's title
-  back to its layout on the first commit. A `@watchProp` runs in the same order as `@create`
+  child→parent while `@created` runs parent→child, so an effect handed a nested route's title
+  back to its layout on the first commit. A `@watchProp` runs in the same order as `@created`
   and does not fire on mount, so both halves agree and the deeper `Head` wins.
 
   Also in this release, from the same pass:
@@ -1547,7 +1802,7 @@
 
 - 894b094: New lifecycle decorator: `@updated` — runs after the DOM of an **update** is committed.
 
-  `@mount` runs once, with the element in the document. `@updated` runs after every commit after that, and it is the only way an app can read or correct its own committed DOM: updates are batched through a microtask, so the DOM is not touched yet when the handler that changed state returns — and not every update has a write site of yours to stand in (a parent re-renders you with new props, a context value changes, a hook you use writes its state).
+  `@mounted` runs once, with the element in the document. `@updated` runs after every commit after that, and it is the only way an app can read or correct its own committed DOM: updates are batched through a microtask, so the DOM is not touched yet when the handler that changed state returns — and not every update has a write site of yours to stand in (a parent re-renders you with new props, a context value changes, a hook you use writes its state).
 
   ```tsx
   class Row extends Component<{ selected: boolean }> {
@@ -1564,7 +1819,7 @@
 
   - Nothing is tracked while it runs, so there is no dependency list to get wrong — and no repeat of the trap that makes an effect the wrong tool for this: an effect re-runs when a dependency _changes_, and a dependency that is an array or object rebuilt by a props callback changes on every render.
   - The `if` that would want previous props is reconstructing what changed, which is `@watchProp`'s job. The `if` that belongs here asks "is the DOM already how I want it?" — and only the author can answer that. So: **reacting to a value → `@watchProp`; touching the DOM afterwards → `@updated`**.
-  - Cleanup is `@destroy`'s; a subscription is `createSubscriptionDecorator`'s.
+  - Cleanup is `@destroyed`'s; a subscription is `createSubscriptionDecorator`'s.
 
   It fires unconditionally, so guard an expensive body — a `getBoundingClientRect` forces a layout, which costs orders of magnitude more than the dispatch (~270ns).
 
@@ -1652,7 +1907,7 @@
   a hook (a hook has no parent-driven prop update to gate), instead of silently doing
   nothing.
 
-- 7b530bb: `@create`, `@mount` and `@destroy` now receive the render side as an argument.
+- 7b530bb: `@created`, `@mounted` and `@destroyed` now receive the render side as an argument.
 
   The decorated method is called with `env: RenderEnv` (`"client" | "server"`), read from the
   component's own runtime — so a shared lifecycle method can branch on where it is running (for

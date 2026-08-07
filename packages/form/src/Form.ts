@@ -1,9 +1,10 @@
-import { create, destroy, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
+import { created, destroyed, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
 
 import { type FieldHost, FieldTree } from "./fieldTree";
 import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
 import { type Issues, NO_ISSUES, validate, withIssue } from "./validate";
+import { report } from "./diagnostics";
 
 const NO_MESSAGES: readonly string[] = [];
 
@@ -137,14 +138,14 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * `isValid: false` in the markup, which is the honest answer to "we have not heard back".
    */
   /**
-   * `@create`, and the place the form joins the devtools tab.
+   * `@created`, and the place the form joins the devtools tab.
    *
    * An EVENT rather than a registration, and this package holds no list: `@ramonda/form/devtools`
    * listens when an app has imported it, and nothing happens when it has not. Announcing rather
    * than registering is what keeps the form from importing the module that describes it — which
    * would put that module in the bundle of every application using forms.
    *
-   * It is here rather than in `prime` because `prime` is not only the `@create` — a `reset()`
+   * It is here rather than in `prime` because `prime` is not only the `@created` — a `reset()`
    * calls it again to revalidate, and announcing there listed the same form twice. Here rather
    * than in a field initializer so a form that never mounts never appears, and not on the SERVER
    * at all, where there is no panel and the listener would outlive one request.
@@ -152,7 +153,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * `this` travels as the detail. The listener builds what it needs from it, so nothing that shapes
    * a panel row lives on this class — a method or a field here would ship whatever the guard said.
    */
-  @create
+  @created
   join(env: RenderEnv = "client"): void {
     if (__DEV__ && env === "client") {
       this.announce();
@@ -184,7 +185,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     void outcome.then((resolved) => this.land(runId, resolved.issues));
   }
 
-  @destroy
+  @destroyed
   dispose(): void {
     this.disposed = true;
     if (__DEV__) {
@@ -257,7 +258,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * deciding per field who owns what needs the full walk anyway.
    */
   @watchProp((props) => props.defaultValues)
-  onDefaultsChanged(next: InferIn<S>): void {
+  onDefaultsChanged([next]: [InferIn<S>]): void {
     // Nothing has read the values yet, so `current` has not latched — it will take `next` itself
     // when something does, and merging into values that do not exist would only get in the way.
     if (this.held === undefined) return;
@@ -776,7 +777,12 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    */
   private report(error: unknown): void {
     if (__DEV__) {
-      console.error("[RMF003] `onSubmit` threw. Handle the failure inside it.", error);
+      report(
+        "RMF003",
+        "`onSubmit` threw. Handle the failure inside it.",
+        { reason: error instanceof Error ? error.message : String(error) },
+        error,
+      );
     }
   }
 

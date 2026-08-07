@@ -67,7 +67,7 @@ re-renders for a reason that has nothing to do with it.
 export class Resource<T> extends Hook<{ url: string }> {
   @state data: T | null = null;
 
-  @create
+  @created
   first() {
     void this.load(this.props.url);
   }
@@ -75,14 +75,14 @@ export class Resource<T> extends Hook<{ url: string }> {
   // Runs when `url` changes, before the render — so the "loading" state is on screen in
   // the same pass rather than one frame later.
   @watchProp((props) => props.url)
-  reload(next: string) {
+  reload([next]: [string]) {
     void this.load(next);
   }
 
   private async load(url: string) {
     this.data = null;
     const response = await fetch(url);
-    // `@destroy` is where a real one would cancel; RMD008 reports a write after unmount.
+    // `@destroyed` is where a real one would cancel; RMD008 reports a write after unmount.
     this.data = await response.json();
   }
 }
@@ -124,14 +124,33 @@ export class UserProfile extends Hook<{ id: string }> {
 The whole chain shares one owner and updates together — when the owner re-renders,
 each hook's props are re-evaluated in turn, down through the nested ones.
 
+## Naming one for devtools
+
+Two of the same hook in one component are two nodes with one name, because a class is shared by
+every instance — `this.constructor.name` is `Resource` for both of the ones above. A **third
+argument** to `use()` says which is which:
+
+```tsx
+private user = this.use(Resource, (self: UserCard) => ({ url: `/api/users/${self.id}` }), {
+  label: "user",
+});
+```
+
+Devtools then calls it `Resource (user)`: the class says what it is, the label says which one. A hook
+with no props takes the placeholder — `this.use(Poll, undefined, { label: "prices" })`.
+
+That argument is metadata **about** the hook, and it is deliberately not a prop. A hook's props belong
+to whoever wrote the hook, so a framework word reserved among them would collide with a real one
+eventually. The hook never sees this argument, and a production build stores none of it.
+
 ## When things fire
 
 - **A hook is created the moment `this.use()` runs** — while the owner itself is
-  being built, before the owner's own `@create`. Hooks are built in `this.use()`
+  being built, before the owner's own `@created`. Hooks are built in `this.use()`
   order.
 - **Its lifecycle is part of the owner's, not a separate pass.** A hook has no
-  element, so there's no separate mount for it: its `@create` runs as the owner is
-  built, its `@mount` once the owner's DOM is on the page, its `@destroy` when the
+  element, so there's no separate mount for it: its `@created` runs as the owner is
+  built, its `@mounted` once the owner's DOM is on the page, its `@destroyed` when the
   owner is removed. You can watch the exact interleaving in the
   [lifecycle](/concepts/lifecycle) demo.
 - **On every re-render of the owner**, the hook tree is walked in `use()` order and the new

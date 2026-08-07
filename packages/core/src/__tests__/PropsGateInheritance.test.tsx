@@ -31,7 +31,14 @@ describe("@ShouldUpdateOnPropsChange", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  const duplicateReports = () => logged.filter((line) => line.includes("more than one"));
+  /**
+   * Matched on the CODE, not on a phrase.
+   *
+   * The report is `RMD040` now rather than a bare message, and a filter on prose is a filter that
+   * stops matching when somebody rewords the sentence — silently, since an empty result reads the same
+   * as "nothing was reported". The code is the part that is promised to be stable.
+   */
+  const duplicateReports = () => logged.filter((line) => line.includes("RMD040"));
 
   test("refusing an update keeps the old props on screen", async () => {
     const seen: string[] = [];
@@ -185,9 +192,25 @@ describe("@ShouldUpdateOnPropsChange", () => {
     expect(duplicateReports()).toEqual([]);
   });
 
-  test("applying it twice to ONE class is reported", async () => {
-    @ShouldUpdateOnPropsChange(() => true)
-    @ShouldUpdateOnPropsChange(() => false)
+  /**
+   * Which of the two decides, measured — because it reads backwards and `RMD040`'s advice names it.
+   *
+   * Class decorators are APPLIED bottom-up, and the write is unconditional, so the lower declaration
+   * writes the rule and the upper one overwrites it: the one written FURTHEST from the class is the one
+   * that answers. Asserted here rather than reasoned about in a comment, since the whole value of the
+   * advice is that it points at the declaration that is actually in effect.
+   */
+  test("applying it twice to ONE class is reported, and the furthest one decides", async () => {
+    const asked: string[] = [];
+
+    @ShouldUpdateOnPropsChange(() => {
+      asked.push("furthest");
+      return true;
+    })
+    @ShouldUpdateOnPropsChange(() => {
+      asked.push("closest");
+      return false;
+    })
     @Host("b")
     class Twice extends Component<{ v: number }> {
       render() {
@@ -197,19 +220,24 @@ describe("@ShouldUpdateOnPropsChange", () => {
 
     @Host("div")
     class App extends Component {
+      @state v = 1;
       render() {
         return (
           <div>
-            <Twice v={1} />
+            <Twice v={this.v} />
           </div>
         );
       }
     }
 
-    const app = await getDOM(<App />);
+    const app = await getDOM<App>(<App />);
+    app.instance.v = 2;
     await app.settle();
 
     expect(duplicateReports().length).toBe(1);
+    // Only one was ever consulted, and it is the far one — so the near one's `false` never refuses.
+    expect(asked).toEqual(["furthest"]);
+    expect(app.container.querySelector("i")!.textContent).toBe("2");
   });
 
   test("the order the class decorators are written in does not matter", async () => {

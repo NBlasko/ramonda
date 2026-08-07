@@ -89,7 +89,7 @@ render() {
 }
 ```
 
-Setting something up? Put it in [`@create`](/concepts/lifecycle). Reacting to
+Setting something up? Put it in [`@created`](/concepts/lifecycle). Reacting to
 something? Put it in an event handler.
 
 ## When the page catches up

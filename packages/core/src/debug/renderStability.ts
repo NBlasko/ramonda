@@ -137,7 +137,7 @@ const FIX: Record<Kind, string> = {
   object:
     "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.",
   nondeterministic:
-    "`render()` must be a function of state and props only. Move `new Date()` / `Math.random()` into `@create` and keep the result in `@state` (or `@persist`), so the value is decided once — and so a server render and its hydration agree (RMD007).",
+    "`render()` must be a function of state and props only. Move `new Date()` / `Math.random()` into `@created` and keep the result in `@state` (or `@persist`), so the value is decided once — and so a server render and its hydration agree (RMD007).",
 };
 
 interface Walk {

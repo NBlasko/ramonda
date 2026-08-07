@@ -1,32 +1,32 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Component, Hook, Host, state, create, mount, destroy, unmount } from "../../index";
+import { Component, Hook, Host, state, created, mounted, destroyed, unmount } from "../../index";
 import { queuePostCommit, flushPostCommit } from "../../core/commit";
 import { COMPONENT_RUNTIME } from "../../core/runtime";
 import type { BaseComponent } from "../../types/vdom";
 import { effectLike } from "../../test/effectLike";
 
 /**
- * @mount must mean "my element is in the document".
+ * @mounted must mean "my element is in the document".
  *
  * It did not. `buildComponent` called it at the end of building a component, but
- * the host element is inserted by the CALLER after build returns — so @mount ran
+ * the host element is inserted by the CALLER after build returns — so @mounted ran
  * against a DOM its own element was not part of yet. Measured before the fix: a
- * `document.querySelector` inside @mount found ZERO of its own element on a first
+ * `document.querySelector` inside @mounted found ZERO of its own element on a first
  * mount, and on a replacement found the OUTGOING instance's element instead.
  */
 
-describe("@mount runs after the DOM is committed", () => {
-  test("a component's own element is in the document by @mount", async () => {
+describe("@mounted runs after the DOM is committed", () => {
+  test("a component's own element is in the document by @mounted", async () => {
     let seenAtCreate = -1;
     let seenAtMount = -1;
 
     @Host("div", () => ({ className: "probe" }))
     class Probe extends Component {
-      @create born() {
+      @created born() {
         seenAtCreate = document.querySelectorAll(".probe").length;
       }
-      @mount ready() {
+      @mounted ready() {
         seenAtMount = document.querySelectorAll(".probe").length;
       }
       render() {
@@ -46,18 +46,18 @@ describe("@mount runs after the DOM is committed", () => {
 
     await getDOM(<App />);
 
-    // @create still runs during build, before insertion — that is what @create
-    // is for, and it is why @mount exists as a separate hook.
+    // @created still runs during build, before insertion — that is what @created
+    // is for, and it is why @mounted exists as a separate hook.
     expect(seenAtCreate).toBe(0);
     expect(seenAtMount).toBe(1);
   });
 
-  test("a replacement's @mount sees its own element, not the outgoing one", async () => {
+  test("a replacement's @mounted sees its own element, not the outgoing one", async () => {
     const seen: string[] = [];
 
     @Host("div", () => ({ className: "swap" }))
     class Panel extends Component<{ n: number }> {
-      @mount ready() {
+      @mounted ready() {
         seen.push(
           Array.from(document.querySelectorAll(".swap"))
             .map((e) => e.textContent)
@@ -94,7 +94,7 @@ describe("@mount runs after the DOM is committed", () => {
     const order: string[] = [];
 
     class Child extends Component {
-      @mount ready() {
+      @mounted ready() {
         order.push("child");
       }
       render() {
@@ -102,7 +102,7 @@ describe("@mount runs after the DOM is committed", () => {
       }
     }
     class Parent extends Component {
-      @mount ready() {
+      @mounted ready() {
         order.push("parent");
       }
       render() {
@@ -121,20 +121,20 @@ describe("@mount runs after the DOM is committed", () => {
 
 /**
  * The hazard deferring introduces, and the reason the queue checks `isDestroyed`
- * per entry rather than filtering once up front: between queueing a @mount and
+ * per entry rather than filtering once up front: between queueing a @mounted and
  * flushing it, the component may already be gone. Running it then would fire a
- * lifecycle callback on a dead component AFTER its @destroy had cleaned up — so
+ * lifecycle callback on a dead component AFTER its @destroyed had cleaned up — so
  * the cleanup could not undo whatever the mount did.
  */
 describe("a destroyed component never mounts", () => {
-  test("tearing the tree down from a @mount skips the pending mounts", async () => {
+  test("tearing the tree down from a @mounted skips the pending mounts", async () => {
     const ran: string[] = [];
 
     class Late extends Component {
-      @mount ready() {
+      @mounted ready() {
         ran.push("late");
       }
-      @destroy gone() {
+      @destroyed gone() {
         ran.push("late:destroy");
       }
       render() {
@@ -143,10 +143,10 @@ describe("a destroyed component never mounts", () => {
     }
 
     class Early extends Component<{ container?: HTMLElement }> {
-      @mount ready() {
+      @mounted ready() {
         ran.push("early");
         // Synchronously tears down the whole root, including the sibling whose
-        // @mount is still sitting in the queue behind this one.
+        // @mounted is still sitting in the queue behind this one.
         if (this.props.container) unmount(this.props.container);
       }
       render() {
@@ -173,7 +173,7 @@ describe("a destroyed component never mounts", () => {
     bootstrap(<App container={container} />, container);
 
     expect(ran).toContain("early");
-    // Late was destroyed before its queued @mount could run.
+    // Late was destroyed before its queued @mounted could run.
     expect(ran).not.toContain("late");
     container.remove();
   });
@@ -223,7 +223,7 @@ describe("a destroyed component never mounts", () => {
 
 /**
  * Hooks share their OWNER's runtime (`new hook(runtime, …)` in `useCommon`), so a
- * hook's @create/@mount/@destroy and its effects land in the same arrays the
+ * hook's @created/@mounted/@destroyed and its effects land in the same arrays the
  * component's do. That means the post-commit deferral covers them without
  * knowing they exist — but "should follow" is not "does follow", and the
  * destroyed-component guard keys on the OWNER, which is the part most likely to
@@ -231,8 +231,8 @@ describe("a destroyed component never mounts", () => {
  */
 describe("hooks take part in the same commit", () => {
   /**
-   * The order here is the OWNER's callback before its hook's, for both @create
-   * and @mount — the opposite of the child-before-parent rule for components.
+   * The order here is the OWNER's callback before its hook's, for both @created
+   * and @mounted — the opposite of the child-before-parent rule for components.
    * That falls out of registration order in the shared runtime arrays: the
    * owner's decorator initializers register while the class is constructed,
    * before the field initializer `tracker = this.use(Tracker)` has run.
@@ -241,19 +241,19 @@ describe("hooks take part in the same commit", () => {
    * is drained, never the order entries go into it. Asserted here so the next
    * change to the commit has to notice if it moves.
    */
-  test("a hook's @mount also sees the DOM, in the owner's commit", async () => {
+  test("a hook's @mounted also sees the DOM, in the owner's commit", async () => {
     const order: string[] = [];
     let hookSaw = -1;
 
     class Tracker extends Hook {
-      @create born() {
+      @created born() {
         order.push("hook:create");
       }
-      @mount ready() {
+      @mounted ready() {
         order.push("hook:mount");
         hookSaw = document.querySelectorAll(".tracked").length;
       }
-      @destroy gone() {
+      @destroyed gone() {
         order.push("hook:destroy");
       }
     }
@@ -261,10 +261,10 @@ describe("hooks take part in the same commit", () => {
     @Host("div", () => ({ className: "tracked" }))
     class Owner extends Component {
       tracker = this.use(Tracker);
-      @create born() {
+      @created born() {
         order.push("owner:create");
       }
-      @mount ready() {
+      @mounted ready() {
         order.push("owner:mount");
       }
       render() {
@@ -274,13 +274,13 @@ describe("hooks take part in the same commit", () => {
 
     await getDOM(<Owner />);
 
-    // The point of the test: by @mount time the owner's element is committed,
+    // The point of the test: by @mounted time the owner's element is committed,
     // and a hook sees the same DOM its owner does.
     expect(hookSaw).toBe(1);
     expect(order).toEqual(["owner:create", "hook:create", "owner:mount", "hook:mount"]);
   });
 
-  test("a hook effect still runs after the owner's @mount", async () => {
+  test("a hook effect still runs after the owner's @mounted", async () => {
     const order: string[] = [];
 
     class Watcher extends Hook {
@@ -295,7 +295,7 @@ describe("hooks take part in the same commit", () => {
     @Host("div")
     class Owner extends Component {
       watcher = this.use(Watcher);
-      @mount ready() {
+      @mounted ready() {
         order.push("owner:mount");
       }
       render() {
@@ -307,11 +307,11 @@ describe("hooks take part in the same commit", () => {
     expect(order).toEqual(["owner:mount", "hook:effect"]);
   });
 
-  test("a replaced owner's hook @destroy does not see the replacement", async () => {
+  test("a replaced owner's hook @destroyed does not see the replacement", async () => {
     const seen: string[] = [];
 
     class Reporter extends Hook {
-      @destroy gone() {
+      @destroyed gone() {
         seen.push(
           Array.from(document.querySelectorAll(".swap2"))
             .map((e) => e.textContent)
@@ -347,14 +347,14 @@ describe("hooks take part in the same commit", () => {
     expect(seen).toEqual(["1"]);
   });
 
-  test("a hook's @mount is skipped when its owner is destroyed first", async () => {
+  test("a hook's @mounted is skipped when its owner is destroyed first", async () => {
     const ran: string[] = [];
 
     class Late extends Hook {
-      @mount ready() {
+      @mounted ready() {
         ran.push("hook:mount");
       }
-      @destroy gone() {
+      @destroyed gone() {
         ran.push("hook:destroy");
       }
     }
@@ -367,7 +367,7 @@ describe("hooks take part in the same commit", () => {
     }
 
     class Early extends Component<{ container?: HTMLElement }> {
-      @mount ready() {
+      @mounted ready() {
         ran.push("early:mount");
         if (this.props.container) unmount(this.props.container);
       }

@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, create, destroy } from "../../base/decorators";
+import { state, created, destroyed } from "../../base/decorators";
 import { Hook } from "../../base/Hook";
 import { Component } from "../../base/Component";
 import { effectLike } from "../../test/effectLike";
@@ -13,11 +13,11 @@ let log: string[] = [];
 class AsyncHook extends Hook<{ userId: number; label: string }> {
   @state data: string | null = null;
 
-  @create init() {
+  @created init() {
     log.push(`${this.props.label}:Unit:Init`);
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push(`${this.props.label}:Unit:Cleanup`);
   }
 
@@ -56,11 +56,11 @@ class AsyncChild extends Component<{ userId: number }> {
  * Intermediate parent to test prop updates
  */
 class ParentWrapper extends Component<{ userId: number }> {
-  @create init() {
+  @created init() {
     log.push("Parent:Unit:Init");
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     log.push("Parent:Unit:Cleanup");
   }
 

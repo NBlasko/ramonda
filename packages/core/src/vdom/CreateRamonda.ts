@@ -1,6 +1,7 @@
 import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM } from "../helpers/constants";
 import { currentOrigin } from "../core/origin";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
+import { renderingOwner } from "../debug/renderPhase";
 import type { ComponentKind, VNode, VNodeComponent, VNodeString } from "../types/vdom";
 
 /**
@@ -22,11 +23,16 @@ import type { ComponentKind, VNode, VNodeComponent, VNodeString } from "../types
  * The copy costs an allocation only on the path that is already the wrong
  * spelling; correct attributes are handed straight back.
  */
-function normalizeClassName(attributes: Record<string, any>): Record<string, any> {
+function normalizeClassName(name: ComponentKind, attributes: Record<string, any>): Record<string, any> {
   if (!("class" in attributes)) return attributes;
 
   if (__DEV__) {
-    ramondaLog("warning", "Ramonda uses `className`, not `class`. Rename it to `className`.");
+    // Keyed by the component and the tag, not by the word `class`: one report per SITE. A key of
+    // `"class"` would report the first of these in an application and none of the rest, for a
+    // mistake people make in every file they convert.
+    const tag = typeof name === "string" ? name : (name.name ?? "a component");
+    const owner = renderingOwner();
+    diagnose("RMD039", `${owner}:${tag}`, `\`class\` was given on <${tag}>, from ${owner}.`, { tag, owner });
   }
 
   const { class: fromClass, ...rest } = attributes;
@@ -39,7 +45,7 @@ export function createRamonda(
   rawAttributes: Record<string, any>,
   children: unknown[] = [],
 ): VNode {
-  const attributes = normalizeClassName(rawAttributes);
+  const attributes = normalizeClassName(name, rawAttributes);
 
   if (typeof name === "string") {
     const stringNode: VNodeString = {

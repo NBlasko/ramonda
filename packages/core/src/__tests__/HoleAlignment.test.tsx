@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../base/Component";
 import type { RamondaNode } from "../types/vdom";
-import { create, state } from "../base/decorators";
+import { created, state } from "../base/decorators";
 import { getDOM } from "../test/setup";
 
 /**
@@ -511,7 +511,7 @@ describe("a child that renders nothing", () => {
      * Components, where the stake is highest.
      *
      * An element that loses its node loses focus and scroll. A COMPONENT that loses its node
-     * loses its instance: `@create` runs again, `@state` goes back to its initial value, and
+     * loses its instance: `@created` runs again, `@state` goes back to its initial value, and
      * everything the user did to it is gone. The tests above all use intrinsic elements, so
      * these say it about the case that actually costs something.
      * -------------------------------------------------------------- */
@@ -521,7 +521,7 @@ describe("a child that renders nothing", () => {
 
       class Row extends Component<{ label: string }> {
         @state seen = 0;
-        @create init() {
+        @created init() {
           built.push(this);
         }
         render(): RamondaNode {
@@ -560,7 +560,7 @@ describe("a child that renders nothing", () => {
       app.instance.show = false;
       await app.settle();
 
-      // Nothing was rebuilt: `@create` did not run again for either survivor.
+      // Nothing was rebuilt: `@created` did not run again for either survivor.
       expect(built).toHaveLength(3);
 
       const after = Array.from(app.container.querySelectorAll("p.row"));
@@ -571,11 +571,11 @@ describe("a child that renders nothing", () => {
     });
 
     test("and the same when the conditional component was ABSENT to begin with", async () => {
-      const created: string[] = [];
+      const createdLabels: string[] = [];
 
       class Row extends Component<{ label: string }> {
-        @create init() {
-          created.push(this.props.label);
+        @created init() {
+          createdLabels.push(this.props.label);
         }
         render(): RamondaNode {
           return <p className="row">{this.props.label}</p>;
@@ -596,14 +596,14 @@ describe("a child that renders nothing", () => {
       }
 
       const app = await getDOM<Page>(<Page />);
-      expect(created).toEqual(["a", "b"]);
+      expect(createdLabels).toEqual(["a", "b"]);
       const before = Array.from(app.container.querySelectorAll("p.row"));
 
       app.instance.show = true;
       await app.settle();
 
       // Only the new one is built; `a` and `b` are never touched.
-      expect(created).toEqual(["a", "b", "x"]);
+      expect(createdLabels).toEqual(["a", "b", "x"]);
       const after = Array.from(app.container.querySelectorAll("p.row"));
       expect(after[0]).toBe(before[0]);
       expect(after[2]).toBe(before[1]);
@@ -612,11 +612,11 @@ describe("a child that renders nothing", () => {
 
     test("a conditional among `{this.props.children}` leaves the siblings alone", async () => {
       // Children arrive as the parent's array, one level removed from the JSX that wrote them.
-      const created: string[] = [];
+      const createdLabels: string[] = [];
 
       class Row extends Component<{ label: string }> {
-        @create init() {
-          created.push(this.props.label);
+        @created init() {
+          createdLabels.push(this.props.label);
         }
         render(): RamondaNode {
           return <p className="row">{this.props.label}</p>;
@@ -643,13 +643,13 @@ describe("a child that renders nothing", () => {
       }
 
       const app = await getDOM<Page>(<Page />);
-      expect(created).toEqual(["a", "x", "b"]);
+      expect(createdLabels).toEqual(["a", "x", "b"]);
       const before = Array.from(app.container.querySelectorAll("p.row"));
 
       app.instance.show = false;
       await app.settle();
 
-      expect(created).toEqual(["a", "x", "b"]);
+      expect(createdLabels).toEqual(["a", "x", "b"]);
       const after = Array.from(app.container.querySelectorAll("p.row"));
       expect(after).toEqual([before[0], before[2]]);
       expect(after.map((el) => el.textContent)).toEqual(["a", "b"]);

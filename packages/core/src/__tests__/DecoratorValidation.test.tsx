@@ -5,7 +5,7 @@ import {
   onWindow,
   onElement,
   watchProp,
-  create,
+  created,
   Host,
   state,
   persist,
@@ -157,11 +157,11 @@ describe("decorator argument validation", () => {
     }).toThrow(/\[@watchProp\].*selector function/s);
   });
 
-  test("@create rejects an unknown env", () => {
+  test("@created rejects an unknown env", () => {
     expect(() => {
       class Bad extends Component {
         // @ts-expect-error — runtime guard is the point.
-        @create({ env: "browser" }) init() {}
+        @created({ env: "browser" }) init() {}
         render() {
           return <div />;
         }
@@ -170,13 +170,13 @@ describe("decorator argument validation", () => {
     }).toThrow(/env must be one of "client", "server", "shared".*"browser"/s);
   });
 
-  test("@create accepts each valid env, and the bare form", () => {
+  test("@created accepts each valid env, and the bare form", () => {
     expect(() => {
       class Fine extends Component {
-        @create({ env: "client" }) a() {}
-        @create({ env: "server" }) b() {}
-        @create({ env: "shared" }) c() {}
-        @create d() {}
+        @created({ env: "client" }) a() {}
+        @created({ env: "server" }) b() {}
+        @created({ env: "shared" }) c() {}
+        @created d() {}
         render() {
           return <div />;
         }

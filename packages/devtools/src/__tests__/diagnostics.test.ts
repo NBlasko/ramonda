@@ -273,6 +273,22 @@ describe("the bridge to the panel", () => {
     expect(dispatched.filter((e) => e.type === "ramonda:dev-log")).toHaveLength(0);
   });
 
+  it("does not carry a core diagnostic to the tab, which core reaches on its own", () => {
+    // `@ramonda/core` dispatches `ramonda:dev-log` itself and, in DEV, is what dynamically imports
+    // this package — so without the skip every core diagnostic renders TWICE. Core's own suite
+    // found it the moment core started emitting records: a test reading the dev-log channel got
+    // this bridge's payload instead of core's message, and seventeen cases failed.
+    const seen: RamondaDiagnostic[] = [];
+    installDiagnostics((r) => seen.push(r));
+
+    emit({ code: "RMD001", scope: "ramonda/core", severity: "error" });
+
+    expect(dispatched.filter((e) => e.type === "ramonda:dev-log")).toHaveLength(0);
+    // Skipped for the TAB only: a subscriber still receives it, which is what `installDiagnostics`
+    // is for.
+    expect(seen.map((r) => r.code)).toEqual(["RMD001"]);
+  });
+
   it("replaces its own previous bridge instead of adding a second", () => {
     // The hot-reload case, and the symptom it prevents is every record arriving twice.
     const second = bridgeDiagnosticsToPanel();

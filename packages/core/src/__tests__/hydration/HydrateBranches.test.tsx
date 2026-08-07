@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, create, mount, deferHydration } from "../../base/decorators";
+import { Host, state, created, mounted, deferHydration } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
@@ -8,7 +8,7 @@ import { STATE_ATTR } from "../../helpers/constants";
 
 /**
  * The adopt path's edge branches — the ones the happy-path round-trip tests never
- * reach: a filtered-out root, a corrupt state blob, a client-only `@create`, a
+ * reach: a filtered-out root, a corrupt state blob, a client-only `@created`, a
  * shape that diverges from the server's, several deferrals at once, and a deferral
  * that never resumes.
  */
@@ -83,13 +83,13 @@ describe("state restore", () => {
   });
 });
 
-describe("client-only @create", () => {
+describe("client-only @created", () => {
   test("runs on hydration, having been skipped on the server", async () => {
     let ranOn = "";
 
     @Host("div")
     class Guarded extends Component {
-      @create({ env: "client" }) init() {
+      @created({ env: "client" }) init() {
         ranOn = SIDE;
       }
       render() {
@@ -99,7 +99,7 @@ describe("client-only @create", () => {
 
     SIDE = "server";
     const container = await serverHtmlInto(<Guarded />);
-    // The client @create must NOT have run during the server render.
+    // The client @created must NOT have run during the server render.
     expect(ranOn).toBe("");
 
     SIDE = "client";
@@ -108,29 +108,29 @@ describe("client-only @create", () => {
   });
 });
 
-describe("a SHARED @create and a SHARED @mount part company on hydration", () => {
+describe("a SHARED @created and a SHARED @mounted part company on hydration", () => {
   /**
    * The distinction a route guard rests on, so it is worth a test of its own rather than being
    * inferred from the two halves above.
    *
-   * `@create` is initialisation: the server ran it and what it wrote was serialized into the page,
-   * so running it again would recompute over a value that has already been restored. `@mount`
+   * `@created` is initialisation: the server ran it and what it wrote was serialized into the page,
+   * so running it again would recompute over a value that has already been restored. `@mounted`
    * touches the real DOM, and the DOM the server built was thrown away and rebuilt as the client
    * adopted it — so it has to run again.
    *
    * The consequence for a guard: a cached page, or a CDN serving one file for many paths, can put
-   * markup in front of someone the server never checked. A check in `@mount` fires on that
-   * hydration. A check in a plain `@create` does not. See routing/server.md.
+   * markup in front of someone the server never checked. A check in `@mounted` fires on that
+   * hydration. A check in a plain `@created` does not. See routing/server.md.
    */
-  test("@create is skipped, @mount runs again", async () => {
+  test("@created is skipped, @mounted runs again", async () => {
     const ran: string[] = [];
 
     @Host("div")
     class Both extends Component {
-      @create init() {
+      @created init() {
         ran.push(`create:${SIDE}`);
       }
-      @mount ready() {
+      @mounted ready() {
         ran.push(`mount:${SIDE}`);
       }
       render() {
@@ -313,7 +313,7 @@ describe("deferred hydration that resolves late into a changed page", () => {
     const container = await serverHtmlInto(<Slow />);
     hydrateRoot(<Slow />, container);
 
-    unmount(container); // @destroy → isDestroyed, before the promise settles
+    unmount(container); // @destroyed → isDestroyed, before the promise settles
 
     let threw = false;
     await new Promise((resolve) => setTimeout(resolve, 40)).catch(() => {

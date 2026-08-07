@@ -47,7 +47,7 @@ class Account extends Component {
   private route = this.use(Navigator);
   private session = this.use(SessionConsumer);
 
-  @mount
+  @mounted
   @updated
   guard() {
     if (this.session.status === "out") this.route.replace("/login");
@@ -66,7 +66,7 @@ signed in and publishes the answer, and every page reads it. What matters is tha
 it is instant: no `await`, no request. The next section is why, and it is also why the
 guard carries both decorators.
 
-`@mount` runs on both sides (it's `shared`), which is what makes this work on the very
+`@mounted` runs on both sides (it's `shared`), which is what makes this work on the very
 first load. On the client the `replace` is an ordinary navigation. On the server there
 is no history to change and no client to re-render for, so the render instead **signals
 a redirect**: `renderToString` throws a `ServerRedirect`, and the server answers with a
@@ -89,7 +89,7 @@ class Account extends Component {
   private route = this.use(Navigator);
   private session = this.use(SessionConsumer); // { status: "pending" | "in" | "out" }
 
-  @mount
+  @mounted
   @updated
   guard() {
     // Only a definite "out" is a redirect. "pending" decides nothing yet.
@@ -105,7 +105,7 @@ class Account extends Component {
 ```
 
 **Both decorators, on the one method, and this is the part that is easy to get wrong.**
-`@mount` runs on the first commit and never again. So a guard that only has `@mount` asks
+`@mounted` runs on the first commit and never again. So a guard that only has `@mounted` asks
 its question while the answer is still `pending`, gets "don't know", and is never asked
 again — and when the answer arrives, `render()` correctly refuses to build the page but
 *nothing navigates*. The visitor sits on a blank page, still on the protected URL. It even
@@ -117,7 +117,7 @@ and that is the commit `@updated` fires on. One method, both lifecycles: the fir
 decision and every later one.
 
 That also covers the case that has nothing to do with startup: a session can end while
-someone is sitting on the page — a token expires, they sign out in another tab. `@mount`
+someone is sitting on the page — a token expires, they sign out in another tab. `@mounted`
 alone would never notice.
 
 **Trust the guard alone and the page IS seen.** This is the version to avoid, and no
@@ -126,7 +126,7 @@ account page sits there until the answer comes back:
 
 ```tsx
 // ✗ The account page is on screen for the whole round trip.
-@mount async guard() {
+@mounted async guard() {
   const ok = await fetch("/api/session").then((r) => r.ok);
   if (!ok) this.route.replace("/login");
 }
@@ -147,7 +147,7 @@ answer is "not yet".
 When the answer *is* instant, nothing is painted — the component is built, the redirect is
 applied, and the visitor only ever sees `/login`. The reason is worth knowing: **one
 update is one drain, not one render.** Someone clicks through to `/account`, the account
-page is built and committed, its `@mount` asks for `/login`, and that redirect is picked
+page is built and committed, its `@mounted` asks for `/login`, and that redirect is picked
 up by the same drain before it returns. Both renders happen inside one microtask, and the
 browser paints after microtasks.
 
@@ -158,21 +158,21 @@ redirect lands, so `this.session.user.name` on a signed-out visitor throws inste
 redirecting — and a thrown render is not a redirect, it is a broken page. That is why the
 examples above check `status` rather than trusting the guard.
 
-**Any other `@mount` on the component runs too.** A `fetch("/api/account")` in a second
-`@mount` fires for the visitor you are turning away. Put per-page loading behind the same
+**Any other `@mounted` on the component runs too.** A `fetch("/api/account")` in a second
+`@mounted` fires for the visitor you are turning away. Put per-page loading behind the same
 answer the guard uses, or accept the wasted request and the 401.
 
 ### Hydration is the case that picks the lifecycle
 
-`@mount` is `shared`, and on hydration it **re-runs** on the client. `@create` is
+`@mounted` is `shared`, and on hydration it **re-runs** on the client. `@created` is
 `shared` too, but on hydration it is **skipped** — the server already ran it and the
 state it wrote was restored from the page.
 
 That matters here for the exact reason described above: a cached page, or a CDN serving
 one file for many paths, can put markup in front of someone the server never checked. A
-guard in `@mount` fires on that hydration. A guard in a plain `@create` does not.
+guard in `@mounted` fires on that hydration. A guard in a plain `@created` does not.
 
-So: **guard in `@mount`**. `@create` runs earlier on a client navigation — before
+So: **guard in `@mounted`**. `@created` runs earlier on a client navigation — before
 `render()` rather than after the commit — but it is silent on the one path where the
 browser's answer can differ from the server's.
 
@@ -209,7 +209,7 @@ The earliest guard to fire wins, so one redirect decides where the request goes.
 - The `popstate` listener (a subscription, and subscriptions are client-only — there is
   no history to react to on the server).
 - Client-only setup like the single-`Router` check, keyed to
-  `@create({ env: "client" })`.
+  `@created({ env: "client" })`.
 
 See [client / server / shared](/ssr/env) for how lifecycle picks a side.
 

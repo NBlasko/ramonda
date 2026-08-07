@@ -1,26 +1,26 @@
-import { Component, Host, list, state, create, mount, destroy } from "@ramonda/core";
+import { Component, Host, list, state, created, mounted, destroyed } from "@ramonda/core";
 
 // The order, shown rather than described. Mount the child and watch:
 //
 //   create → render → mount
 //
-// @create runs while the component is being built: there is no element yet, so
-// nothing here can measure or focus anything. @mount runs once the DOM this
+// @created runs while the component is being built: there is no element yet, so
+// nothing here can measure or focus anything. @mounted runs once the DOM this
 // commit built is in the document — that is where DOM work belongs.
 //
-// Unmount it and @destroy runs, while reactive values are still readable.
+// Unmount it and @destroyed runs, while reactive values are still readable.
 @Host("div")
 class Tracked extends Component<{ log: (line: string) => void }> {
-  @create born() {
-    this.props.log(`@create — element in document? ${document.getElementById("tracked") !== null}`);
+  @created born() {
+    this.props.log(`@created — element in document? ${document.getElementById("tracked") !== null}`);
   }
 
-  @mount ready() {
-    this.props.log(`@mount  — element in document? ${document.getElementById("tracked") !== null}`);
+  @mounted ready() {
+    this.props.log(`@mounted  — element in document? ${document.getElementById("tracked") !== null}`);
   }
 
-  @destroy gone() {
-    this.props.log("@destroy");
+  @destroyed gone() {
+    this.props.log("@destroyed");
   }
 
   render() {

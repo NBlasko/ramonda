@@ -71,15 +71,20 @@ afterEach(() => {
   expect(rows()).toEqual([]);
 });
 
-function mount(defaults: Values = BLANK) {
+function mount(defaults: Values = BLANK, label?: string) {
   let form!: Form<typeof schema>;
 
   class SignupForm extends Component {
-    private f = this.use(Form<typeof schema>, () => ({
-      schema,
-      defaultValues: defaults,
-      onSubmit: () => {},
-    }));
+    private f = this.use(
+      Form<typeof schema>,
+      () => ({
+        schema,
+        defaultValues: defaults,
+        onSubmit: () => {},
+      }),
+      // The third argument: what this `use()` says ABOUT the form, never something the form reads.
+      { label },
+    );
 
     render(): RamondaNode {
       form = this.f;
@@ -308,6 +313,95 @@ describe("the Forms panel", () => {
     } finally {
       first.unmount();
       second.unmount();
+    }
+  });
+
+  /**
+   * The fault this closes: a broken field's row sat as a SIBLING of the summary above it, so with
+   * two forms on a page the second form's `email` read as if it belonged to the first. The rows were
+   * grouped in the data all along — the group just had nothing on it to draw.
+   */
+  test("with two forms, each group says which form its rows belong to", async () => {
+    // The first is invalid, so it has field rows under it; the second is valid and is one line.
+    const broken = mount();
+    const valid = mount({ name: "Ada", email: "ada@example.com" });
+    try {
+      await settle();
+      const groups = panel().snapshot().groups;
+
+      // Not the literal numbers: a form's id is minted from a counter that runs for the whole
+      // session, so by this point in the file it is at whatever the earlier cases left it. What
+      // matters is that each group is labelled, the two differ, and each label names the form whose
+      // summary row sits directly beneath it — which is what makes the frame trustworthy rather
+      // than decorative.
+      const labels = groups.map((group) => group.label);
+      expect(labels.every((label) => typeof label === "string" && label.length > 0)).toBe(true);
+      expect(new Set(labels).size).toBe(2);
+      for (const group of groups) {
+        expect(group.rows[0]!.title).toBe(group.label);
+      }
+    } finally {
+      broken.unmount();
+      valid.unmount();
+    }
+  });
+
+  test("a form labelled in its use() metadata is called that, everywhere the panel names it", async () => {
+    // The escape hatch a number cannot be: two forms, and a reader who wants to know which is which.
+    const signup = mount(BLANK, "signup");
+    const login = mount({ name: "Ada", email: "ada@example.com" }, "login");
+    try {
+      await settle();
+      const groups = panel().snapshot().groups;
+
+      // The class and the label, not one instead of the other — the component tree names hooks the
+      // same way, so there is one reading to learn rather than two.
+      expect(groups.map((group) => group.label)).toEqual(["Form (signup)", "Form (login)"]);
+      expect(groups.map((group) => group.rows[0]!.title)).toEqual(["Form (signup)", "Form (login)"]);
+      // And the message an action reports back speaks the same name.
+      expect(panel().run!(groups[0]!.rows[0]!.id, "reset")).toBe("reset Form (signup)");
+    } finally {
+      signup.unmount();
+      login.unmount();
+    }
+  });
+
+  test("the label is read off the instance, not carried on the announce event", async () => {
+    // The event fires once, at mount, and everything else in this tab is read live. Reading the label
+    // the same way is what keeps one frozen field from hiding among current ones — and it is why the
+    // panel reaches for `Symbol.for("ramonda.hook.meta")` rather than expecting a payload.
+    const only = mount(BLANK, "signup");
+    try {
+      await settle();
+      const form = panel().snapshot().groups[0]!.rows[0]!;
+      expect(form.title).toBe("Form (signup)");
+    } finally {
+      only.unmount();
+    }
+  });
+
+  test("no label means the number still answers", async () => {
+    const only = mount();
+    try {
+      await settle();
+      expect(panel().snapshot().groups[0]!.rows[0]!.title).toMatch(/^Form \d+$/);
+    } finally {
+      only.unmount();
+    }
+  });
+
+  test("one form has no label, because a header over the only group says nothing", async () => {
+    const only = mount();
+    try {
+      await settle();
+      const groups = panel().snapshot().groups;
+
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.label).toBeUndefined();
+      // The rows are still there; it is the frame that is absent, not the content.
+      expect(groups[0]!.rows.length).toBeGreaterThan(1);
+    } finally {
+      only.unmount();
     }
   });
 });

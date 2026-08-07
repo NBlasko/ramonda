@@ -46,8 +46,8 @@ cause is still there it will throw again — fix the cause, then reset.
 
 ## What it catches
 
-Anything thrown on a path **the framework is running**: `render()`, `@create`,
-a `@compute` a render read, and the commit phase that follows — `@mount`,
+Anything thrown on a path **the framework is running**: `render()`, `@created`,
+a `@compute` a render read, and the commit phase that follows — `@mounted`,
 `@updated`, a subscription's `connect`. All of those go through the framework, so
 the error can be walked up to the nearest boundary.
 

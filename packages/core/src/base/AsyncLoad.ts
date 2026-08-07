@@ -1,7 +1,7 @@
 import { Component } from "..";
 import type { RamondaNode } from "../types/vdom";
 import { createRamonda } from "../vdom/CreateRamonda";
-import { mount, destroy, state, create, deferHydration, watchProp } from "./decorators";
+import { mounted, destroyed, state, created, deferHydration, watchProp } from "./decorators";
 import { addModulePreload } from "./Head";
 import { diagnose } from "../debug/diagnostics";
 
@@ -162,7 +162,7 @@ function claim(key: string, lazy: unknown, component: unknown, explicit: boolean
     ownKeys.set(lazy as object, target);
     if (__DEV__) {
       diagnose(
-        "RMD035",
+        "RMD049",
         `asyncLoad:${key}`,
         "Two `lazy` functions have the same source and load different modules, so the cache key derived from that source cannot tell them apart.",
       );
@@ -214,7 +214,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * It used to be `private readonly cacheKey = …`, computed at construction — so
    * a component whose `lazy` prop CHANGED kept the first one's key forever. The
    * failure is precise and quiet: `render` reads the cache under the stale key
-   * and serves the OLD module, while nothing refetches because `@mount` already
+   * and serves the OLD module, while nothing refetches because `@mounted` already
    * ran. Measured in a route outlet — the URL changed, the title changed, and the
    * content stayed on the previous page with no request made.
    *
@@ -264,7 +264,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * `lazy()` is already running by the time anything here could execute, so a
    * preload link would be a duplicate request hint for a request in flight.
    */
-  @create({ env: "server" })
+  @created({ env: "server" })
   emitPreloadHints() {
     const preload = this.props.preload;
     if (!preload) return;
@@ -289,7 +289,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
     void this.load();
   }
 
-  @mount afterCreate() {
+  @mounted afterCreate() {
     this.props.onCreate?.();
     // Returned so a server render can await it.
     return this.load();
@@ -417,20 +417,18 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
       })
       .catch((e) => {
         /**
-         * Development only, because production has already been told.
+         * Development only, and named by its `cacheKey` so a page full of chunks says WHICH
+         * one failed rather than logging a bare error.
          *
-         * `errorFallback` is handed `{ error, retry, attempt }`, so the app can
-         * render what it likes, report where it likes and offer the retry. An
-         * unconditional `console.error` beside that is a second channel it cannot
-         * turn off — and a chunk that fails to load is not always an incident: a
-         * deploy rotating its assets, a reader going offline, one dropped request.
-         * Apps handle those, and a red line for each is noise they did not ask for.
-         *
-         * In development the reason is what you need and there is nowhere else it
-         * would go, which is the same split `h.ts` makes for a function in tag
-         * position.
+         * Not in production: the failure is already on the instance as `hasError` and `failure`,
+         * and `errorFallback` is handed `{ error, retry, attempt }` — so the app renders it,
+         * reports it where it likes, and offers the retry. An unconditional `console.error`
+         * beside that is a second channel it cannot turn off, and a chunk that fails to load is
+         * not always an incident: a deploy rotating its assets, a reader going offline, one
+         * dropped request. In development the reason is what you need and there is nowhere else
+         * it would go.
          */
-        if (__DEV__) console.error(e);
+        if (__DEV__) console.error(`[Ramonda] a lazily loaded component failed to load (${this.cacheKey}):`, e);
         this.loading = false;
         if (this.disposed) return;
         this.failure = e;
@@ -453,7 +451,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
     this.load();
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     this.disposed = true;
   }
 

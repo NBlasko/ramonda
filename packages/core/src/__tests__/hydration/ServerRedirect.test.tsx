@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Host, create, mount } from "../../base/decorators";
+import { Host, created, mounted } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { Head } from "../../base/Head";
 import { renderToString, renderPage } from "../../hydration/ssr";
@@ -36,7 +36,7 @@ describe("captureServerRedirect", () => {
     @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
-      @create go() {
+      @created go() {
         this.redirect?.("/login");
       }
       render() {
@@ -49,11 +49,11 @@ describe("captureServerRedirect", () => {
     expect((err as ServerRedirect).url).toBe("/login");
   });
 
-  test("works from a @mount, which fires after the synchronous mount window", async () => {
+  test("works from a @mounted, which fires after the synchronous mount window", async () => {
     @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
-      @mount go() {
+      @mounted go() {
         this.redirect?.("/from-mount");
       }
       render() {
@@ -69,7 +69,7 @@ describe("captureServerRedirect", () => {
     @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
-      @create go() {
+      @created go() {
         this.redirect?.("/first");
         this.redirect?.("/second");
       }
@@ -104,7 +104,7 @@ describe("renderPage on a redirect", () => {
     class Guard extends Component {
       private redirect = captureServerRedirect();
       head = this.use(Head, { title: "Secret", description: "should not leak" });
-      @create go() {
+      @created go() {
         this.redirect?.("/login");
       }
       render() {

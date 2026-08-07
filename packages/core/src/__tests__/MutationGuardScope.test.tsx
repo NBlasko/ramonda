@@ -13,7 +13,7 @@ import { resetDiagnostics } from "../debug/diagnostics";
  *
  * Arrays were reported (RMD005) and objects were not, which was the asymmetry a
  * reader could not see: the docs even said both were caught. Objects are reported
- * now too (RMD034), through a proxy that wraps LAZILY — a `get` returns a guarded
+ * now too (RMD048), through a proxy that wraps LAZILY — a `get` returns a guarded
  * child only when something asks for that child, so the proxy tree follows the
  * path a render actually reads and nowhere else. Reading `user.name` costs two
  * proxies whatever the size of `user`.
@@ -53,7 +53,7 @@ describe("the in-place mutation guard", () => {
     expect(reported("RMD005").length).toBeGreaterThan(0);
   });
 
-  test("an object mutated in place is reported (RMD034)", async () => {
+  test("an object mutated in place is reported (RMD048)", async () => {
     @Host("div")
     class App extends Component {
       @state user = { name: "ada" };
@@ -68,7 +68,7 @@ describe("the in-place mutation guard", () => {
     app.instance.user.name = "grace";
     await app.settle();
 
-    expect(reported("RMD034").length).toBeGreaterThan(0);
+    expect(reported("RMD048").length).toBeGreaterThan(0);
     // Still a no-op, which is what the report is about: the signal never fired.
     expect(app.container.querySelector("p")!.textContent).toBe("ada");
   });
@@ -89,7 +89,7 @@ describe("the in-place mutation guard", () => {
 
     // The path is what makes the message actionable — `user.address.city`, not
     // "an object in state".
-    expect(reported("RMD034").some((line) => line.includes("address.city"))).toBe(true);
+    expect(reported("RMD048").some((line) => line.includes("address.city"))).toBe(true);
   });
 
   test("deleting a key is a change too", async () => {
@@ -105,7 +105,7 @@ describe("the in-place mutation guard", () => {
     await app.settle();
 
     delete app.instance.config.debug;
-    expect(reported("RMD034").length).toBeGreaterThan(0);
+    expect(reported("RMD048").length).toBeGreaterThan(0);
   });
 
   test("replacing works, and rebuilding the path works — which is the advice", async () => {
@@ -135,7 +135,7 @@ describe("the in-place mutation guard", () => {
     await app.settle();
     expect(app.container.querySelector("p")!.textContent).toBe("grace:paris");
 
-    expect(reported("RMD034")).toEqual([]);
+    expect(reported("RMD048")).toEqual([]);
   });
 
   test("identity is stable, so nothing reads as changed for having been guarded", async () => {

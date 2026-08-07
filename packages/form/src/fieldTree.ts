@@ -1,5 +1,6 @@
 import { type Path, type PathSegment, pathKey, pathToString } from "./path";
 import type { FieldNode, Row } from "./types";
+import { REFUSAL, refuse } from "./diagnostics";
 
 /**
  * What a field needs from the form. Declared as an interface so the tree can be built and
@@ -79,9 +80,7 @@ export class FieldTree {
         // node — a spread, a diagnostic, a devtools walk — can make it build children.
         ownKeys: () => [],
         set: () => {
-          throw new TypeError(
-            "[RMF001] A field cannot be assigned to. Use `.$.set(value)`, which records the change where the form can see it.",
-          );
+          throw refuse("RMF001", REFUSAL.RMF001, { path: path.join(".") });
         },
       },
     );
@@ -257,9 +256,7 @@ export class FieldHandle {
     if (Array.isArray(value)) return value;
     if (value === undefined || value === null) return EMPTY;
 
-    throw new TypeError(
-      `[RMF002] \`${this.path || "the root"}\` holds a ${typeof value}, so it has no rows. The list members are for an array field.`,
-    );
+    throw refuse("RMF002", REFUSAL.RMF002(this.path, typeof value), { path: this.path, held: typeof value });
   }
 }
 

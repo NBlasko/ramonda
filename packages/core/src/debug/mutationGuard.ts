@@ -136,7 +136,7 @@ function objectProxy(value: object, context: GuardContext): object {
 
     set(target, key, next, receiver) {
       diagnose(
-        "RMD034",
+        "RMD048",
         `${context.label}:${context.path}.${String(key)}`,
         `\`${context.path}.${String(key)} = …\` changed the object in place, so no signal fired and nothing re-rendered.`,
       );
@@ -145,7 +145,7 @@ function objectProxy(value: object, context: GuardContext): object {
 
     deleteProperty(target, key) {
       diagnose(
-        "RMD034",
+        "RMD048",
         `${context.label}:${context.path}.${String(key)}:delete`,
         `\`delete ${context.path}.${String(key)}\` changed the object in place, so no signal fired and nothing re-rendered.`,
       );

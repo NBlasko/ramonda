@@ -10,11 +10,11 @@ import { PORTAL_ATTR } from "../../helpers/constants";
  * What a hydrated page's `Head` owns.
  *
  * The server writes the title and the meta tags into the HTML. On the client the
- * hook has to ADOPT them — `claim()` puts a tag in `owned`, and `@destroy` removes
+ * hook has to ADOPT them — `claim()` puts a tag in `owned`, and `@destroyed` removes
  * exactly what is owned — or the page leaves them behind when it goes.
  *
  * Adopting happens inside `apply()`, and on a hydrated page `apply()` may never
- * run: `applyOnCreate` is `@create({ env: "shared" })`, hydration runs only the
+ * run: `applyOnCreate` is `@created({ env: "shared" })`, hydration runs only the
  * `env === "client"` creates, and `@watchProp` deliberately does not fire on
  * mount. So the tags the server wrote were nobody's, and removing the component
  * that put them there left them in the document.

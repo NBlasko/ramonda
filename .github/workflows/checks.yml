@@ -111,3 +111,16 @@ jobs:
       # job of its own, would report the missing build rather than the examples.
       - name: Type-check the documentation examples
         run: node scripts/check-examples.mjs
+
+      # Here for the same reason, and it needs the build even more directly: it asks a bundler what
+      # survives importing each package's EMITTED entry. `@ramonda/devtools` once declared
+      # `"sideEffects": false` while registering a custom element, and a bundler deleted the whole
+      # package — 0 bytes — which nothing noticed, because nothing bundles it that way in development.
+      #
+      # Both self-tests first, each planting a fault the check must report: they exit 0 only when it
+      # does, so a check that has gone to sleep fails here rather than passing quietly.
+      - name: Check every package's sideEffects declaration
+        run: |
+          SELFTEST=table node scripts/check-side-effects.mjs
+          SELFTEST=honoured node scripts/check-side-effects.mjs
+          node scripts/check-side-effects.mjs

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { Component, state, destroy, interval, onWindow, type RamondaNode } from "@ramonda/core";
+import { Component, state, destroyed, interval, onWindow, type RamondaNode } from "@ramonda/core";
 import { render, cleanup, act } from "../index";
 
 /**
@@ -66,11 +66,11 @@ describe("cleanup", () => {
     expect(ticks).toBe(before);
   });
 
-  test("runs @destroy for every tree, not just the last one", () => {
+  test("runs @destroyed for every tree, not just the last one", () => {
     const log: string[] = [];
 
     class Tracked extends Component<{ name: string }> {
-      @destroy bye() {
+      @destroyed bye() {
         log.push(this.props.name);
       }
       render(): RamondaNode {
@@ -90,7 +90,7 @@ describe("cleanup", () => {
     let destroys = 0;
 
     class Once extends Component {
-      @destroy bye() {
+      @destroyed bye() {
         destroys++;
       }
       render(): RamondaNode {

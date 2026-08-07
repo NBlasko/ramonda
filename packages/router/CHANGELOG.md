@@ -1,5 +1,20 @@
 # @ramonda/router
 
+## 0.4.1
+
+### Patch Changes
+
+- cb023eb: Follow core's lifecycle decorator rename
+
+  Both packages use the lifecycle decorators in their own source — `@created({ env: "client" })` in the
+  router's navigation counter, `@mounted` and `@destroyed` across the testing library's harness — so both
+  had to be republished with the new names.
+
+  **A published copy of either will not work with the renamed core.** They declare core as a peer with a
+  range wide enough to admit it (`>=0.1.0 <1.0.0`), and that range cannot express "only the versions where
+  these names exist", so npm will happily install the pair and the import fails at load with
+  `create is not exported`. Upgrade the two alongside core rather than one at a time.
+
 ## 0.4.0
 
 ### Minor Changes
@@ -277,7 +292,7 @@
 
 - 7b530bb: Route guards now work on the server's first load.
 
-  A guard that navigates during a server render — e.g. a `@mount` that calls
+  A guard that navigates during a server render — e.g. a `@mounted` that calls
   `nav.replace("/login")` when the visitor is not authenticated — used to be a no-op
   on the server: it wrote to a history that does not exist and the wrong page was sent,
   then the client re-read `window.location` on hydration and snapped back.

@@ -2,14 +2,15 @@ import { describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
+import type { RamondaNode } from "../types/vdom";
 import { renderToString } from "../hydration/ssr";
 import {
   Host,
   compute,
-  create,
-  destroy,
+  created,
+  destroyed,
   interval,
-  mount,
+  mounted,
   onWindow,
   state,
   timeout,
@@ -35,13 +36,13 @@ describe("a hook reaches everything except the three that need an element or a p
 
     class Full extends Hook<{ n?: number }> {
       @state own = 0;
-      @create c() {
+      @created c() {
         fired.push("create");
       }
-      @mount m() {
+      @mounted m() {
         fired.push("mount");
       }
-      @destroy d() {
+      @destroyed d() {
         fired.push("destroy");
       }
       @updated u() {
@@ -53,7 +54,7 @@ describe("a hook reaches everything except the three that need an element or a p
       @compute get doubled() {
         return (this.props.n ?? 0) * 2;
       }
-      @mount read() {
+      @mounted read() {
         fired.push(`compute:${this.doubled}`);
       }
     }
@@ -122,18 +123,18 @@ describe("a hook reaches everything except the three that need an element or a p
 });
 
 describe("what a server render actually runs", () => {
-  test("@create, @mount and @compute fire; the rest have no occasion to", async () => {
+  test("@created, @mounted and @compute fire; the rest have no occasion to", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     fired.length = 0;
 
     class ServerHook extends Hook {
-      @create c() {
+      @created c() {
         fired.push("hook:create");
       }
-      @mount m() {
+      @mounted m() {
         fired.push("hook:mount");
       }
-      @destroy d() {
+      @destroyed d() {
         fired.push("hook:destroy");
       }
       @onWindow("resize") w() {
@@ -148,13 +149,13 @@ describe("what a server render actually runs", () => {
     class Page extends Component {
       @state n = 2;
       h = this.use(ServerHook);
-      @create c() {
+      @created c() {
         fired.push("create");
       }
-      @mount m() {
+      @mounted m() {
         fired.push("mount");
       }
-      @destroy d() {
+      @destroyed d() {
         fired.push("destroy");
       }
       @updated u() {
@@ -191,9 +192,113 @@ describe("what a server render actually runs", () => {
      *
      * - EFFECTS — @onWindow/@onDocument/@onElement, @interval/@timeout, subscriptions — are
      *   client-only by construction. They never attach on the server, whatever their env.
-     * - @destroy and @updated are `shared` and would run on the server; they simply have no
+     * - @destroyed and @updated are `shared` and would run on the server; they simply have no
      *   occasion to. A server render commits once and never unmounts.
      */
     vi.restoreAllMocks();
+  });
+});
+
+/**
+ * Several selectors on ONE `@watchProp`, which is how one handler follows more than one prop.
+ *
+ * It runs ONCE when any of them changed, with every value positionally — not once per changed prop.
+ * The values a selector did not change keep their place in both arrays, so `previous[i] === next[i]`
+ * is how the handler tells which one moved.
+ *
+ * Stacking the decorator instead still works and is NOT the way: each application is its own entry, so
+ * two that both moved in one update call the method twice. Asserted below, because somebody will write
+ * it and the difference is invisible until two props move together.
+ */
+describe("several selectors on one @watchProp", () => {
+  test("one call when any changed, and the unchanged keep their place", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const calls: string[] = [];
+
+    class Child extends Component<{ a: number; b: string; c: boolean }> {
+      @watchProp(
+        (props: { a: number; b: string; c: boolean }) => props.a,
+        (props: { a: number; b: string; c: boolean }) => props.b,
+      )
+      onEither(next: [number, string], previous: [number, string]) {
+        // Which one moved, read the way the docs say to read it.
+        const moved = next.map((value, index) => (Object.is(value, previous[index]) ? "-" : "moved"));
+        calls.push(`${JSON.stringify(next)} ${moved.join(",")}`);
+      }
+      render(): RamondaNode {
+        return <p>{this.props.a}</p>;
+      }
+    }
+
+    class App extends Component {
+      @state a = 1;
+      @state b = "x";
+      @state c = false;
+      render(): RamondaNode {
+        return <Child a={this.a} b={this.b} c={this.c} />;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      calls.length = 0;
+
+      // A prop NO selector reads: silent. This is the case a single tuple-returning selector got wrong.
+      app.instance.c = true;
+      await app.settle();
+      expect(calls).toEqual([]);
+
+      // One selector moves: one call, and the other value is still there and marked unchanged.
+      app.instance.a = 2;
+      await app.settle();
+      expect(calls).toEqual(['[2,"x"] moved,-']);
+
+      // BOTH move in one update: still ONE call, with both marked.
+      calls.length = 0;
+      app.instance.a = 3;
+      app.instance.b = "y";
+      await app.settle();
+      expect(calls).toEqual(['[3,"y"] moved,moved']);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("stacking the decorator is the older shape and calls once per changed prop", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const calls: string[] = [];
+
+    class Child extends Component<{ a: number; b: number }> {
+      @watchProp((props: { a: number; b: number }) => props.a)
+      @watchProp((props: { a: number; b: number }) => props.b)
+      onEither([next]: [number], [previous]: [number]) {
+        calls.push(`${previous}->${next}`);
+      }
+      render(): RamondaNode {
+        return <p>{this.props.a + this.props.b}</p>;
+      }
+    }
+
+    class App extends Component {
+      @state a = 1;
+      @state b = 10;
+      render(): RamondaNode {
+        return <Child a={this.a} b={this.b} />;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      calls.length = 0;
+      // Two entries, so two calls — the reason the multi-selector form exists. Lower goes first.
+      app.instance.a = 3;
+      app.instance.b = 30;
+      await app.settle();
+      expect(calls).toEqual(["10->30", "1->3"]);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
   });
 });

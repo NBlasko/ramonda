@@ -1,8 +1,8 @@
 # @ramonda/check
 
 Three things a running page will not tell you: a context with no provider above it, a class field
-holding a function literal, and a single-use decorator declared twice on one class. All found
-before the app is ever opened.
+holding a function literal, and a single-use decorator declared twice — on one class, or twice on one
+member. All found before the app is ever opened.
 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcheck)](https://www.npmjs.com/package/@ramonda/check)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcheck)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
@@ -118,3 +118,41 @@ LITERAL from a call that returns one, so only the source is checked.
 
 A `static` field is not reported either: it exists once per class, so there is no per-instance cost
 and nothing for binding to have done.
+
+## Single-use decorators declared twice
+
+Four of Ramonda's decorators answer a question that has one answer, and four more do nothing extra when
+applied twice. Both are reported — and with different advice, because what the second declaration DOES
+differs, and pointing a reader at the wrong thing is worse than pointing them at nothing:
+
+| declared twice | what happens | what the report says |
+|---|---|---|
+| `@Host` | **throws** (`RMD045`) — two element names have no union | there is no live line to look for |
+| `@catchError` · `@ShouldUpdateOnPropsChange` | one wins, the rest are dead code (`RMD032`, `RMD040`) | **which** one is live |
+| `@StableProps` | both apply; the result is the union (`RMD046`) | nothing is lost, write it as one call |
+| `@state` · `@compute` · `@persist` · `@memoizedHandler` | nothing at all | delete the extras |
+
+```text
+[ramonda-check] 2 class(es) declaring a single-use decorator twice:
+
+  src/Panel.tsx:12:1
+    <Panel> declares @catchError 2 times — there is one answer to what it asks, so the LOWEST is
+    the one that runs (members initialise top to bottom, so it is applied last)
+    and the rest never run. Keep one and combine what they do.
+
+  src/Panel.tsx:19:3
+    Panel.count carries @state 2 times — applying it twice changes nothing. The behaviour is
+    identical to one, so this is a mistaken belief rather than a broken program. Delete the extras.
+```
+
+**Which declaration is live depends on the KIND of decorator, and the two are opposite.** One rule
+underneath both: the last one APPLIED stands. A member decorator initialises top to bottom, so the
+LOWEST is applied last; a class decorator applies bottom-up, so the HIGHEST is. Both directions are
+measured in `@ramonda/core`'s own suite rather than reasoned about here.
+
+**The count is per class for the first three rows and per MEMBER for the last.** A component with five
+fields each carrying one `@state` is what every component looks like — counting that per class reported
+`declares @state 5 times` against this repository's own documentation app.
+
+A **subclass** declaring its own is never a duplicate. That is an override, which is how a role is
+specialised, so only declarations on one class body are counted.

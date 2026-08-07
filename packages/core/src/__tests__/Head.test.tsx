@@ -261,7 +261,7 @@ describe("Head on the server — the reason it exists", () => {
 
     // Measured, and NOT what an earlier version of this test claimed. The reset
     // in renderPage is not what covers a throw: a failed build runs the tree's
-    // @destroy callbacks, and Head's removes its own tags and restores the
+    // @destroyed callbacks, and Head's removes its own tags and restores the
     // title. So even bare renderToString — which has no reset at all — comes
     // back clean.
     expect(headTags().length).toBe(0);

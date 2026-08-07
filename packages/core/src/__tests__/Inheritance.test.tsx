@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, create } from "../index";
+import { Component, Host, Hook, state, created } from "../index";
 
 /**
  * Extending a component is a first-class pattern: it is how you reuse behaviour
@@ -27,7 +27,7 @@ describe("extending a component (no constructor anywhere)", () => {
     @state count = 0;
     baseHook = this.use(Helper, { tag: "base" });
 
-    @create initBase() {
+    @created initBase() {
       log.push("base");
     }
 
@@ -45,7 +45,7 @@ describe("extending a component (no constructor anywhere)", () => {
     @state extra = 7;
     ownHook = this.use(Helper, { tag: "fancy" });
 
-    @create initFancy() {
+    @created initFancy() {
       log.push("fancy");
     }
 

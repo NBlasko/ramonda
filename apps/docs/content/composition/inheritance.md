@@ -33,7 +33,7 @@ Everything, and you don't write a constructor:
   behaviour" is just extending `Cell`.
 - **`@state` fields** on the parent keep working; the subclass can add more.
 - **Hooks** the parent used are still used.
-- **Lifecycle** runs parent-first, then subclass — the parent's `@create` before the
+- **Lifecycle** runs parent-first, then subclass — the parent's `@created` before the
   child's.
 - **Methods** can be overridden, and `super.method()` calls the original.
 

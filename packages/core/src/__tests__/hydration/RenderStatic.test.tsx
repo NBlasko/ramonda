@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, create, mount } from "../../base/decorators";
+import { Host, state, created, mounted } from "../../base/decorators";
 import { renderStatic } from "../../hydration/ssr";
 import { requestContext, requestKey, seedRequest } from "../../hydration/requestContext";
 
@@ -30,7 +30,7 @@ describe("renderStatic — bakes what is request-independent", () => {
     @Host("main")
     class ReadsUrl extends Component {
       @state path = "";
-      @create init() {
+      @created init() {
         this.path = requestContext().url.pathname;
       }
       render() {
@@ -57,11 +57,11 @@ describe("renderStatic — blocks a route that reads the request", () => {
     expect(result.blockedBy).toBe('cookies.get("session")');
   });
 
-  test("a read in @create blocks", async () => {
+  test("a read in @created blocks", async () => {
     @Host("main")
     class ReadsInCreate extends Component {
       @state name = "";
-      @create init() {
+      @created init() {
         this.name = requestContext().get(currentUser)?.name ?? "";
       }
       render() {
@@ -72,11 +72,11 @@ describe("renderStatic — blocks a route that reads the request", () => {
     expect(result.blockedBy).toBe('get("currentUser")');
   });
 
-  test("a read in an ASYNC @mount blocks too — recorded even when the throw is swallowed", async () => {
+  test("a read in an ASYNC @mounted blocks too — recorded even when the throw is swallowed", async () => {
     @Host("main")
     class ReadsInAsyncMount extends Component {
       @state name = "";
-      @mount async load() {
+      @mounted async load() {
         await Promise.resolve();
         // This throws into the drain's allSettled (swallowed), but the scope records the read.
         this.name = requestContext().get(currentUser)?.name ?? "";

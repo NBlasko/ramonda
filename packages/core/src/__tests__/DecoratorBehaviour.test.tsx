@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, memoizedHandler, persist, create, mount, destroy } from "../index";
+import { Component, Host, state, memoizedHandler, persist, created, mounted, destroyed } from "../index";
 
 /**
  * The decorator surface is the biggest thing this framework exposes, and it read
@@ -169,16 +169,16 @@ describe("decorators", () => {
     const ran: string[] = [];
     @Host("div")
     class C extends Component {
-      @create({ env: "client" }) onlyClient() {
+      @created({ env: "client" }) onlyClient() {
         ran.push("create:client");
       }
-      @create({ env: "server" }) onlyServer() {
+      @created({ env: "server" }) onlyServer() {
         ran.push("create:server");
       }
-      @mount({ env: "client" }) mountedClient() {
+      @mounted({ env: "client" }) mountedClient() {
         ran.push("mount:client");
       }
-      @destroy({ env: "client" }) goneClient() {
+      @destroyed({ env: "client" }) goneClient() {
         ran.push("destroy:client");
       }
       render() {
@@ -187,7 +187,7 @@ describe("decorators", () => {
     }
     const app = await getDOM<C>(<C />);
     await app.settle();
-    // `@create({ env: "server" })` must not run in a browser.
+    // `@created({ env: "server" })` must not run in a browser.
     expect(ran).toEqual(["create:client", "mount:client"]);
 
     app.unmount();
@@ -198,7 +198,7 @@ describe("decorators", () => {
     expect(() => {
       @Host("div")
       class C extends Component {
-        @create({ env: "nowhere" as never }) bad() {}
+        @created({ env: "nowhere" as never }) bad() {}
         render() {
           return <span>x</span>;
         }

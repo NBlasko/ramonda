@@ -22,7 +22,7 @@ export function unmountTracked(tree: MountedTree): void {
   if (!mounted.delete(tree)) return;
 
   // Unmount BEFORE removing the node. Removing it alone leaves every component
-  // in it mounted, so `@destroy` never runs and their timers, listeners and
+  // in it mounted, so `@destroyed` never runs and their timers, listeners and
   // store subscriptions outlive the test — still armed, still able to report
   // into whatever runs next.
   unmountTree(tree.container);

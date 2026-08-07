@@ -4,7 +4,7 @@ import { valueEqual } from "./valueEqual";
 import { checkPropsStability, checkCachedProps } from "../debug/propsStability";
 import { isStrictRender } from "../debug/renderStability";
 import type { HookClassKind } from "../types/commonTypes";
-import type { BaseHook, HookProps } from "../types/HookTypes";
+import { HOOK_META, type BaseHook, type HookMeta, type HookProps } from "../types/HookTypes";
 import type { BaseComponent } from "../types/vdom";
 import { propsPhase } from "../debug/purityGuard";
 import { trackerContainer } from "../reactivity/tracker";
@@ -170,6 +170,7 @@ export function useCommon<T extends BaseHook<any>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
   hook: HookClassKind<T, any>,
   hookProps?: any,
+  meta?: HookMeta,
 ): T {
   let internalHooks = that[INTERNAL_HOOKS];
 
@@ -277,6 +278,31 @@ export function useCommon<T extends BaseHook<any>, P>(
 
   const hookInstance = new hook(runtime, initialProps);
   const hookRuntime = hookInstance[HOOK_RUNTIME];
+
+  /**
+   * The metadata for THIS `use()`, parked on the instance where anything can find it.
+   *
+   * Under a registered symbol, read through `Symbol.for` rather than an import: core's inspector and
+   * `@ramonda/form`'s own panel both want it, and neither should have to depend on the other to get
+   * it. The same shape as the diagnostics sink — a well-known key is the contract, and nothing is
+   * imported to honour it.
+   *
+   * Kept out of the props bag deliberately. A hook's props belong to whoever wrote the hook, so a
+   * framework word reserved in there collides with a real one sooner or later; `label` on a form is
+   * exactly that collision, because a form is full of labels.
+   *
+   * DEV only. Nothing reads it in a production build, so nothing stores it there either.
+   *
+   * **`isExtensible` first, and it is not defensive.** A hook that calls `Object.freeze(this)` in its
+   * constructor works everywhere else in this package — measured — and `defineProperty` on it throws
+   * `Cannot define property …, object is not extensible`, from a field initializer, before the
+   * component exists. That is a cosmetic devtools label taking an application down, and taking it down
+   * ONLY IN DEVELOPMENT, since production never reaches this line. A frozen instance cannot carry the
+   * property by any means, so the label is what gives way: the hook keeps its class name in the panel.
+   */
+  if (__DEV__ && meta !== undefined && Object.isExtensible(hookInstance)) {
+    Object.defineProperty(hookInstance, HOOK_META, { value: meta, enumerable: false, configurable: true });
+  }
 
   // Track child hook instances in use() order — deterministic tree for hydration.
   const owner = that as { [CHILD_HOOKS]?: BaseHook<any>[] };

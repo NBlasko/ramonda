@@ -4,8 +4,8 @@ import {
   createContext,
   state,
   compute,
-  create,
-  destroy,
+  created,
+  destroyed,
   onWindow,
   captureServerRedirect,
 } from "@ramonda/core";
@@ -72,7 +72,7 @@ export { RouteConsumer };
  * write history, and whichever unmounts first removes the listener the other
  * still needs. Cheaper to refuse than to debug.
  *
- * Counted from `@create({ env: "client" })`, so a server render never touches it.
+ * Counted from `@created({ env: "client" })`, so a server render never touches it.
  * That matters: a server render never unmounts, so an increment there would never
  * be undone and the *next* renderToString would throw.
  */
@@ -135,7 +135,7 @@ export class Router extends Hook {
    * on the client it is `undefined`. Captured here, at construction, because that
    * is inside the synchronous server-mount window where the render's redirect slot
    * is reachable — and the captured closure keeps working when a guard fires later
-   * from an async `@mount`. See core's `captureServerRedirect`.
+   * from an async `@mounted`. See core's `captureServerRedirect`.
    */
   private serverRedirect = captureServerRedirect();
 
@@ -185,11 +185,11 @@ export class Router extends Hook {
   }
 
   /**
-   * Client-only on purpose. `@create` defaults to `env: "shared"`, which runs on
+   * Client-only on purpose. `@created` defaults to `env: "shared"`, which runs on
    * the server too — and there is nothing to count there, because a server render
    * never unmounts to decrement it.
    */
-  @create({ env: "client" })
+  @created({ env: "client" })
   init() {
     if (liveRouters > 0) {
       throw new Error(
@@ -200,7 +200,7 @@ export class Router extends Hook {
           "your app. If you wanted a second place to render routes, use another <RouteOutlet> — " +
           "those may be nested freely.\n\n" +
           "If you only have one Router, the previous one was never unmounted: this counter is " +
-          "decremented from @destroy, so a tree whose DOM was thrown away without `unmount(container)` " +
+          "decremented from @destroyed, so a tree whose DOM was thrown away without `unmount(container)` " +
           "leaves it standing forever, and every later mount throws here. In tests, unmount in a " +
           "`finally` so a failed assertion cannot skip it.",
       );
@@ -211,14 +211,14 @@ export class Router extends Hook {
     this.routeState = parseUrl();
   }
 
-  @destroy dispose() {
+  @destroyed dispose() {
     liveRouters--;
   }
 
   /**
    * Back/Forward: the browser changed the URL without us — re-parse it.
    *
-   * `@onWindow` rather than a hand-rolled addEventListener in `@create`: it is
+   * `@onWindow` rather than a hand-rolled addEventListener in `@created`: it is
    * built on an effect, and effects never run on the server, so the listener
    * cannot be attached there. It also removes itself on unmount, so there is no
    * cleanup to forget.

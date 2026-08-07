@@ -4,7 +4,7 @@ import type { BaseComponent } from "../types/vdom";
 /**
  * DEV-only leak detector for timers.
  *
- * A raw `setInterval` started in @create/@mount or a subscription keeps running after the
+ * A raw `setInterval` started in @created/@mounted or a subscription keeps running after the
  * component is gone — it holds the component alive, and it keeps firing against
  * state nobody is showing. There is no way to see it from the outside, so we
  * watch the timers themselves.
@@ -98,7 +98,7 @@ export function installTimerGuard(): void {
 }
 
 /**
- * Reports timers a component left running. Call after @destroy and after effect
+ * Reports timers a component left running. Call after @destroyed and after effect
  * cleanups have had their chance to clear them.
  */
 export function reportLeakedTimers(component: BaseComponent): void {

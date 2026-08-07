@@ -22,7 +22,7 @@ import { getDOM } from "../../test/setup";
  * those, and adopted the server's DOM with them. The first reorder handed it the
  * restored objects, which it had never seen, so it minted fresh ids (`f2`/`f3`
  * against the nodes' `f0`/`f1`), every key missed, and the whole list was
- * rebuilt: state lost, @destroy and @create run again.
+ * rebuilt: state lost, @destroyed and @created run again.
  *
  * `list()` reads `each` during the diff rather than at construction, so it
  * cannot reach the DOM with stale items the way the hook could. The refresh in

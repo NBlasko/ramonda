@@ -1,8 +1,9 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import { getDOM } from "../../test/setup";
 import { state, watchProp } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { Hook } from "../../base/Hook";
+import type { RamondaNode } from "../../types/vdom";
 
 let log: string[] = [];
 
@@ -16,7 +17,7 @@ describe("watchProp", () => {
       @state mirror = -1;
 
       @watchProp((p: { value: number }) => p.value)
-      onValue(next: number, prev: number) {
+      onValue([next]: [number], [prev]: [number]) {
         log.push(`watch:${prev}->${next}`);
         this.mirror = next;
       }
@@ -57,7 +58,7 @@ describe("watchProp", () => {
 
     class Child extends Component<Props> {
       @watchProp((p: Props) => p.data.v)
-      onV(next: number, prev: number) {
+      onV([next]: [number], [prev]: [number]) {
         log.push(`v:${prev}->${next}`);
       }
 
@@ -97,7 +98,7 @@ describe("watchProp", () => {
     class Child extends Component<Props> {
       // Namerno bez optional chaining-a: p.maybe.deep.leaf puca kada maybe ne postoji.
       @watchProp((p: Props) => (p.maybe as { deep: { leaf: number } }).deep.leaf)
-      onLeaf(next: number, prev: number) {
+      onLeaf([next]: [number], [prev]: [number]) {
         log.push(`leaf:${prev}->${next}`);
       }
 
@@ -154,7 +155,7 @@ describe("watchProp", () => {
       @state loaded = "none";
 
       @watchProp((p: LoaderProps) => p.target)
-      onTarget(next: string, previous: string) {
+      onTarget([next]: [string], [previous]: [string]) {
         log.push(`hook:${previous}->${next}`);
         this.loaded = `loaded-${next}`;
       }
@@ -214,7 +215,7 @@ describe("watchProp", () => {
 
     class Leaf extends Hook<LeafProps> {
       @watchProp((p: LeafProps) => p.leaf)
-      onLeaf(next: string, previous: string) {
+      onLeaf([next]: [string], [previous]: [string]) {
         log.push(`leaf:${previous}->${next}`);
       }
     }
@@ -223,7 +224,7 @@ describe("watchProp", () => {
       leaf = this.use(Leaf, (self: Middle) => ({ leaf: `L${self.props.middle * 2}` }));
 
       @watchProp((p: MiddleProps) => p.middle)
-      onMiddle(next: number, previous: number) {
+      onMiddle([next]: [number], [previous]: [number]) {
         log.push(`middle:${previous}->${next}`);
       }
     }
@@ -232,7 +233,7 @@ describe("watchProp", () => {
       middle = this.use(Middle, (self: Outer) => ({ middle: self.props.outer.length }));
 
       @watchProp((p: OuterProps) => p.outer)
-      onOuter(next: string, previous: string) {
+      onOuter([next]: [string], [previous]: [string]) {
         log.push(`outer:${previous}->${next}`);
       }
     }
@@ -279,7 +280,7 @@ describe("watchProp", () => {
 
     class Feed extends Hook<FeedProps> {
       @watchProp((p: FeedProps) => p.url)
-      onUrl(next: string, previous: string) {
+      onUrl([next]: [string], [previous]: [string]) {
         log.push(`${previous}->${next}`);
       }
     }
@@ -322,7 +323,7 @@ describe("watchProp", () => {
 
     class Table extends Hook<TableProps> {
       @watchProp((p: TableProps) => p.filters.page)
-      onPage(next: number, previous: number) {
+      onPage([next]: [number], [previous]: [number]) {
         log.push(`page:${previous}->${next}`);
       }
     }
@@ -368,7 +369,7 @@ describe("watchProp", () => {
       @state hits = 0;
 
       @watchProp((p: { term: string }) => p.term)
-      onTerm(next: string) {
+      onTerm([next]: [string]) {
         log.push(`term:${next}`);
         this.hits = next.length;
       }
@@ -414,7 +415,7 @@ describe("watchProp", () => {
      */
     class Inner extends Hook<{ doubled: number }> {
       @watchProp((p: { doubled: number }) => p.doubled)
-      onDoubled(next: number, previous: number) {
+      onDoubled([next]: [number], [previous]: [number]) {
         log.push(`inner:${previous}->${next}`);
       }
     }
@@ -424,7 +425,7 @@ describe("watchProp", () => {
       inner = this.use(Inner, (self: Outer) => ({ doubled: self.derived * 2 }));
 
       @watchProp((p: { seed: number }) => p.seed)
-      onSeed(next: number) {
+      onSeed([next]: [number]) {
         log.push(`outer:${next}`);
         this.derived = next;
       }
@@ -463,7 +464,7 @@ describe("watchProp", () => {
     // regression here would mean components started reading a hook's bag.
     class Noise extends Hook<{ tick: number }> {
       @watchProp((p: { tick: number }) => p.tick)
-      onTick(next: number) {
+      onTick([next]: [number]) {
         log.push(`hook:${next}`);
       }
     }
@@ -472,7 +473,7 @@ describe("watchProp", () => {
       noise = this.use(Noise, { tick: 0 });
 
       @watchProp((p: { label: string }) => p.label)
-      onLabel(next: string, previous: string) {
+      onLabel([next]: [string], [previous]: [string]) {
         log.push(`component:${previous}->${next}`);
       }
 
@@ -514,7 +515,7 @@ describe("the selector is typed from the class it is on", () => {
 
     class Row extends Component<{ userId: string; other: number }> {
       @watchProp((props) => props.userId)
-      onUser(next: string, previous: string) {
+      onUser([next]: [string], [previous]: [string]) {
         seen.push(`${previous}->${next}`);
       }
 
@@ -542,7 +543,7 @@ describe("the selector is typed from the class it is on", () => {
 
     class Watcher extends Hook<{ target: number }> {
       @watchProp((props) => props.target)
-      onTarget(next: number) {
+      onTarget([next]: [number]) {
         seen.push(next);
       }
     }
@@ -567,7 +568,7 @@ describe("the selector is typed from the class it is on", () => {
       // @ts-expect-error — `usreId` is not a prop, and this used to be `unknown` (so
       // anything compiled) until the selector was typed from the class.
       @watchProp((props) => props.usreId)
-      onUser(next: string) {
+      onUser([next]: [string]) {
         void next;
       }
 
@@ -577,5 +578,156 @@ describe("the selector is typed from the class it is on", () => {
     }
 
     expect(Row).toBeTypeOf("function");
+  });
+});
+
+/**
+ * What a hostile — or merely careless — handler can do to the watcher.
+ *
+ * Everything here was found by attacking the multi-selector form rather than by reading it, and one of
+ * the four was a real defect: the callback used to receive the very array stored as `lastValues`.
+ */
+describe("the multi-selector watcher under attack", () => {
+  test("a handler that mutates what it was given cannot corrupt `previous`", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const calls: string[] = [];
+
+    class Child extends Component<{ a: number; b: number }> {
+      @watchProp(
+        (p: { a: number; b: number }) => p.a,
+        (p: { a: number; b: number }) => p.b,
+      )
+      onEither(next: [number, number], previous: [number, number]) {
+        calls.push(`${JSON.stringify(previous)}->${JSON.stringify(next)}`);
+        // Nothing stops a handler writing to an array it was handed. `next.sort()` to compare, a
+        // `push`, an assignment — all easy, and all used to land in `lastValues`.
+        (next as number[])[0] = 999;
+        (next as number[]).length = 1;
+      }
+      render(): RamondaNode {
+        return <p>{this.props.a}</p>;
+      }
+    }
+    class App extends Component {
+      @state a = 1;
+      @state b = 10;
+      render(): RamondaNode {
+        return <Child a={this.a} b={this.b} />;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      calls.length = 0;
+      app.instance.a = 2;
+      await app.settle();
+      app.instance.b = 20;
+      await app.settle();
+      app.instance.a = 3;
+      await app.settle();
+
+      // Every `previous` is the real one. Before the copy this read [1,10]->[2,10], [999]->[2,20],
+      // [999]->[3,20] — and `previous` is exactly what the docs say to read to learn which moved.
+      expect(calls).toEqual(["[1,10]->[2,10]", "[2,10]->[2,20]", "[2,20]->[3,20]"]);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("one selector throwing does not stop the others", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const seen: unknown[][] = [];
+
+    class Child extends Component<{ a: number; deep?: { v: number } }> {
+      @watchProp(
+        // Reads through something absent, so it throws on every pass and reports RMD038.
+        (p: { deep?: { v: number } }) => (p.deep as { v: number }).v,
+        (p: { a: number }) => p.a,
+      )
+      onEither(next: [number, number]) {
+        seen.push([...next]);
+      }
+      render(): RamondaNode {
+        return <p>{this.props.a}</p>;
+      }
+    }
+    class App extends Component {
+      @state a = 1;
+      render(): RamondaNode {
+        return <Child a={this.a} deep={undefined} />;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      seen.length = 0;
+      app.instance.a = 2;
+      await app.settle();
+
+      // The throwing selector yields `undefined` and keeps its slot; the sound one still reports its
+      // value. A selector is caught per selector, not per entry.
+      expect(seen).toEqual([[undefined, 2]]);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("NaN to NaN is not a change", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    let fired = 0;
+
+    class Child extends Component<{ n: number }> {
+      @watchProp((p: { n: number }) => p.n)
+      onN() {
+        fired++;
+      }
+      render(): RamondaNode {
+        return <p>x</p>;
+      }
+    }
+    class App extends Component {
+      @state n = Number.NaN;
+      @state tick = 0;
+      render(): RamondaNode {
+        return (
+          <div>
+            {this.tick}
+            <Child n={this.n} />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      fired = 0;
+      // A re-render that does not move the watched value, then the same NaN again. `Object.is` is the
+      // comparison precisely so this is silent — `===` would call NaN a change every single time.
+      app.instance.tick = 1;
+      await app.settle();
+      app.instance.n = Number.NaN;
+      await app.settle();
+
+      expect(fired).toBe(0);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("no selectors at all is refused, rather than a watcher that can never run", () => {
+    expect(() => {
+      class Empty extends Component {
+        // @ts-expect-error the signature requires at least one; this is the untyped build.
+        @watchProp()
+        never() {}
+        render(): RamondaNode {
+          return <p>x</p>;
+        }
+      }
+      return Empty;
+    }).toThrow(/at least one selector/);
   });
 });

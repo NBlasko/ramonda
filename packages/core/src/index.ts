@@ -8,6 +8,10 @@ import { installPurityGuard } from "./debug/purityGuard";
 import { installClientRequestScope } from "./hydration/requestContext";
 export { Component } from "./base/Component";
 export { Hook } from "./base/Hook";
+// What a `use()` says ABOUT a hook, in its third argument. Type-only: the shape is structural, so an
+// inline `{ label: "Sign Up" }` needs nothing imported — this is for naming it, in a helper that
+// builds one or a wrapper that passes it along.
+export type { HookMeta } from "./types/HookTypes";
 export { createContext, type ContextOptions } from "./base/Context";
 export { AsyncLoad } from "./base/AsyncLoad";
 export { ErrorBoundary } from "./base/ErrorBoundary";
@@ -67,7 +71,7 @@ export type {
   RamondaNode,
   ComponentChild,
   ComponentClassKind,
-  // The side a lifecycle is running on. `@create`/`@mount`/`@destroy` receive it
+  // The side a lifecycle is running on. `@created`/`@mounted`/`@destroyed` receive it
   // as their argument, so a shared method can branch (e.g. skip a fetch on the
   // server) without a `typeof window` check — unreliable anyway, since SSR runs
   // under a DOM shim where `window` exists.
@@ -182,13 +186,25 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
 
   try {
     mountNode(rootComponent, undefined, element);
-    // The tree is in the document now, which is what @mount is waiting for.
+    // The tree is in the document now, which is what @mounted is waiting for.
     flushPostCommit();
     if (__DEV__) {
       // Nudge the devtools to do an initial pull (no-op unless it's watching).
       notifyComponentUpdate();
     }
   } catch (e) {
+    /**
+     * Deliberately NOT a diagnostic code.
+     *
+     * Every `RMD` code names a mistake and carries a fix: a reader who searches one lands on a
+     * page saying what to do instead. This is not that. It is the app's own error, on its way up —
+     * rethrown on the next line, so whoever threw it still gets it, and a boundary or the console
+     * still reports it with its real stack. A code here would promise advice that cannot exist,
+     * for a fault this framework knows nothing about beyond having been in the call stack.
+     *
+     * It stays on the log channel so a panel that is already open shows the crash next to whatever
+     * was reported just before it, which is usually the more useful half.
+     */
     if (__DEV__) {
       ramondaLog("error", "App crashed", e);
     }
@@ -197,7 +213,7 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
 }
 
 /**
- * Tears down everything `bootstrap` mounted into `element`, running @destroy and
+ * Tears down everything `bootstrap` mounted into `element`, running @destroyed and
  * every cleanup down the tree. The element itself is kept, so it mirrors
  * bootstrap: that one mounts into it, this one empties it.
  *

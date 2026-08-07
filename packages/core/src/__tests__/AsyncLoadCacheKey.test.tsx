@@ -97,7 +97,7 @@ describe("a lazy whose source does not name a module", () => {
     const app = await getDOM(<Page />);
     await app.settle();
 
-    expect(logged.filter((line) => line.includes("RMD035")).length).toBeGreaterThan(0);
+    expect(logged.filter((line) => line.includes("RMD049")).length).toBeGreaterThan(0);
     expect(logged.some((line) => line.includes("cacheKey"))).toBe(true);
   });
 
@@ -152,7 +152,7 @@ describe("a lazy whose source does not name a module", () => {
     }
 
     expect(app.container.querySelectorAll("span").length).toBe(2);
-    expect(logged.filter((line) => line.includes("RMD035"))).toEqual([]);
+    expect(logged.filter((line) => line.includes("RMD049"))).toEqual([]);
   });
 
   test("one arriving LATER is corrected, not left on the cached module", async () => {
@@ -212,7 +212,7 @@ describe("a lazy whose source does not name a module", () => {
 
     expect(app.container.textContent).toContain("alpha");
     expect(app.container.textContent).toContain("beta");
-    expect(logged.filter((line) => line.includes("RMD035")).length).toBeGreaterThan(0);
+    expect(logged.filter((line) => line.includes("RMD049")).length).toBeGreaterThan(0);
   });
 
   test("the same lazy handed to two of them still shares one entry", async () => {

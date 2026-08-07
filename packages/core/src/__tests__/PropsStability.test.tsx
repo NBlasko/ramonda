@@ -6,6 +6,7 @@ import { compute, memoizedHandler, state, watchProp } from "../base/decorators";
 import { StableProps } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
+import { STABLE_PROPS } from "../helpers/constants";
 
 /**
  * RMD022 — a hook's props callback called twice, and the two bags compared.
@@ -370,6 +371,110 @@ describe("RMD022", () => {
     instance.unrelated = 9;
     await settle();
     expect(fired).toBe(1);
+  });
+
+  /**
+   * Two `@StableProps` on ONE class: merged, reported as `RMD046`, and not refused.
+   *
+   * It used to throw, and not deliberately — `STABLE_PROPS` was written non-configurable, so the second
+   * `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`. An internal symbol
+   * and no advice, for a spelling mistake.
+   *
+   * Merging is the reading that matches the decorator: it names a SET and already merges along the class
+   * chain, so the union is unambiguous and there is no answer to choose between. That is the line against
+   * `@Host` (RMD045), where two element names cannot both be honoured and refusing is the only honest
+   * response. Here carrying on gives exactly what the author asked for, written awkwardly — a warning,
+   * because the result is right.
+   *
+   * The assertion is that the merge WORKS, not merely that nothing threw: `b` is declared by the second
+   * application, and a watcher on it must stay silent while its contents are unchanged.
+   */
+  test("two @StableProps on one class merge, and report RMD046", async () => {
+    let firedA = 0;
+    let firedB = 0;
+
+    @StableProps("a")
+    @StableProps("b")
+    class Watcher extends Hook<{ a: readonly unknown[]; b: readonly unknown[] }> {
+      @watchProp((p: { a: readonly unknown[] }) => p.a)
+      onA() {
+        firedA++;
+      }
+      @watchProp((p: { b: readonly unknown[] }) => p.b)
+      onB() {
+        firedB++;
+      }
+    }
+
+    class Panel extends Component {
+      @state unrelated = 0;
+      w = this.use(Watcher, (self: Panel) => ({
+        a: ["a", self.unrelated > 5],
+        b: ["b", self.unrelated > 5],
+      }));
+      render() {
+        return <div>{String(this.unrelated)}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Panel>(<Panel />);
+    instance.unrelated = 1;
+    await settle();
+
+    // BOTH declarations are in effect. Without the merge, `b` would be compared by identity and its
+    // watcher would fire on every render — which is what the throw used to hide.
+    expect(firedA).toBe(0);
+    expect(firedB).toBe(0);
+
+    instance.unrelated = 9;
+    await settle();
+    expect(firedA).toBe(1);
+    expect(firedB).toBe(1);
+
+    expect(logs.join(" ")).toContain("RMD046");
+  });
+
+  /**
+   * What `configurable: true` did and did not give up, and that the merge composes.
+   *
+   * The property had to become configurable so a second application on one class could merge into it.
+   * `writable: false` still refuses an assignment, which is the door an app could actually reach — the
+   * symbol is a plain `Symbol("stableProps")` in `helpers/constants.ts`, neither exported nor
+   * `Symbol.for`, so nothing outside this package can even name it without walking
+   * `getOwnPropertySymbols`.
+   */
+  test("the list still refuses assignment, and merges compose in every direction", async () => {
+    @StableProps("a")
+    class One extends Hook<{ a?: number }> {
+      @state x = 1;
+    }
+
+    expect(() => {
+      (One as unknown as Record<symbol, unknown>)[STABLE_PROPS] = ["hijacked"];
+    }).toThrow(/read only property/);
+
+    // Three on one class, all present. Order is the reverse of declaration because class decorators
+    // apply bottom-up, and it does not matter: this is a set, read for membership.
+    @StableProps("a")
+    @StableProps("b")
+    @StableProps("c")
+    class Three extends Hook<{ a?: number; b?: number; c?: number }> {
+      @state x = 1;
+    }
+    expect([...((Three as unknown as Record<symbol, string[]>)[STABLE_PROPS] ?? [])].sort()).toEqual(["a", "b", "c"]);
+
+    // Twice on one class AND a subclass adding its own — the two kinds of merge compose rather than
+    // one replacing the other.
+    @StableProps("a")
+    @StableProps("b")
+    class Base extends Hook<{ a?: number; b?: number; d?: number }> {
+      @state x = 1;
+    }
+    @StableProps("d")
+    class Sub extends Base {}
+
+    expect([...((Base as unknown as Record<symbol, string[]>)[STABLE_PROPS] ?? [])].sort()).toEqual(["a", "b"]);
+    expect([...((Sub as unknown as Record<symbol, string[]>)[STABLE_PROPS] ?? [])].sort()).toEqual(["a", "b", "d"]);
   });
 });
 

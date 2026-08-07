@@ -12,13 +12,13 @@ some only in the browser, and some only on the server. Every lifecycle decorator
 an `env` to say which:
 
 ```tsx
-@create
+@created
 init() {} // "shared" — both sides (the default)
 
-@create({ env: "client" })
+@created({ env: "client" })
 startPolling() {} // only in the browser
 
-@create({ env: "server" })
+@created({ env: "server" })
 stampBuildTime() {} // only during a server render
 ```
 
@@ -40,7 +40,7 @@ each lifecycle method receives its side as an argument:
 ```tsx
 import { RenderEnv } from "@ramonda/core";
 
-@mount
+@mounted
 async load(env: RenderEnv) {
   if (env === "server") return;            // the client fetches after hydration
   this.data = await fetch(`/api/thing/${this.props.id}`).then((r) => r.json());
@@ -81,7 +81,7 @@ it, because the client never recomputes it.
 ## The rule of thumb
 
 **Anything with a matching teardown should be client-only.** A `window.addEventListener`
-(or a counter you raise in `@create` and lower in `@destroy`) has a setup and a
+(or a counter you raise in `@created` and lower in `@destroyed`) has a setup and a
 cleanup — but a server render never unmounts, so its cleanup never runs. Run those on
 the client. (Both of these were real router bugs, from a lifecycle defaulting to
 `shared` when the work was client-only.)

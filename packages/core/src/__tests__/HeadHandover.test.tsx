@@ -8,8 +8,8 @@ import { PORTAL_ATTR } from "../helpers/constants";
 /**
  * What happens to the head when one page replaces another.
  *
- * Two `Head` instances exist at once during a swap: the incoming page's `@create`
- * runs before the outgoing page's `@destroy`. While each held its own list of
+ * Two `Head` instances exist at once during a swap: the incoming page's `@created`
+ * runs before the outgoing page's `@destroyed`. While each held its own list of
  * elements to remove on the way out, that overlap was a race — the incoming page
  * adopted the element, the outgoing page still had it listed, and its teardown took
  * it out of the document. Ownership decided by two objects independently makes a
@@ -181,7 +181,7 @@ describe("the head when one page replaces another", () => {
     /**
      * Why the recompute is deferred to the commit rather than done per publication.
      *
-     * Every `Head` publishes during its own `@create`, and the head the document
+     * Every `Head` publishes during its own `@created`, and the head the document
      * should have is a function of ALL of them. Applying as each one publishes does
      * the work once per page in the chain and — worse — walks the document through
      * states no commit ever meant to show: the layout's title, then the section's,

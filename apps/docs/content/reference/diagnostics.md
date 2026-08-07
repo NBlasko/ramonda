@@ -44,8 +44,7 @@ A diagnostic is also a **record**, so a devtools panel, a test, or a log collect
 reports instead of parsing prose. A collector installs one function, and a reporting package finds it
 with no dependency on anything:
 
-`RML` reports arrive this way. The other prefixes reach the devtools' `LOGS` tab through the
-framework's own log channel, and join this one as each package moves onto it.
+Every prefix arrives this way — `RMD`, `RML`, `RMQ` and `RMF`.
 
 ```ts
 interface RamondaDiagnostic {
@@ -87,6 +86,9 @@ import { installDiagnostics } from "@ramonda/devtools";
 const stop = installDiagnostics((record) => myCollector.alert(record));
 ```
 
+A subscriber sees every prefix. The panel's `LOGS` tab is the one place that differs: `RMD` rows reach
+it through core's own log channel, so the bridge does not carry them there a second time.
+
 The assignment above is the protocol-level form, for a package that will not take a dependency to
 report a warning. Write it when that is the situation, and chain what was already there:
 
@@ -125,7 +127,7 @@ is no per-request attribution in the record.
 `render()` must be a function of state, not a place that changes it. A write there schedules
 another render from inside the render that caused it.
 
-Move it to [`@create`](/concepts/lifecycle) if it is initialisation, or to an event handler if it
+Move it to [`@created`](/concepts/lifecycle) if it is initialisation, or to an event handler if it
 is a response to something. If it is a value derived from other state, that is
 [`@compute`](/concepts/compute).
 
@@ -163,7 +165,7 @@ is the same array.
 Replace it: `this.items = [...this.items, x]`.
 
 An object changed in place is the same fault and is reported as
-[RMD034](#rmd034-object-in-state-changed-in-place).
+[RMD048](#rmd048-object-in-state-changed-in-place).
 
 ## RMD006 — Timer still running after unmount
 
@@ -186,7 +188,7 @@ render, or a branch on the environment inside `render()`. See
 A fetch that resolved after the user navigated away, most often. The update is **dropped** — in
 production too, not only in development — so it cannot render into a detached tree.
 
-Cancel the work in `@destroy`, or check before writing.
+Cancel the work in `@destroyed`, or check before writing.
 
 ## RMD009 — Update loop
 
@@ -339,7 +341,7 @@ arguments, per instance — so the second render hands back the same function an
 **An object or array built in place**, with the same contents. A child receiving it re-renders every
 time, a [`@compute`](/concepts/compute) reading it recomputes every time, and if it is a
 [list's](/lists) items then every row loses its identity and the whole list is rebuilt — per-item
-state lost, `@destroy` and `@create` run again.
+state lost, `@destroyed` and `@created` run again.
 
 ```tsx
 <Chart config={{ smooth: true }} />    // ✗ rebuilt every render
@@ -347,7 +349,7 @@ state lost, `@destroy` and `@create` run again.
 ```
 
 **A value that does not come from state** — `Math.random()`, `performance.now()`, `new Date()`. Decide
-the value once in `@create` and keep it in `@state`.
+the value once in `@created` and keep it in `@state`.
 
 Only the part of that class which varies **within a tick**, though: the two renders are microseconds
 apart, so a millisecond clock reads the same both times. Measured over 200,000 tries, two consecutive
@@ -404,7 +406,7 @@ differently in each, so the message differs with it:
   a [query key](/query/queries): an entry that changes when somebody else's state moves,
   and never when yours does.
 
-Read it once in `@create` and keep it in `@state` (or `@persist`, so it survives
+Read it once in `@created` and keep it in `@state` (or `@persist`, so it survives
 hydration), take it as a prop, or read it in the event handler that needs it.
 
 ## RMD022 — a hook's props callback built a new value for the same contents
@@ -443,7 +445,7 @@ Three findings, three fixes:
   declaration cannot help here: two closures with the same body are not equal by any
   comparison that is safe to make, so a declared function prop is still reported.
 - **different contents from two calls in one tick** — the callback is not a function of
-  state. Read the value once in `@create` and keep it in `@state`, or read it where it is
+  state. Read the value once in `@created` and keep it in `@state`, or read it where it is
   needed. Nothing can hide this one; what is compared is the contents. **Reported on the
   first occurrence**, with no count in front of it: this is a fault rather than churn, and
   it is the one kind the cache makes worse — a `Math.random()` in the bag is now frozen
@@ -514,7 +516,7 @@ change is ordinary, and reporting that would put a warning on correct code.
 
 If nothing is being rebuilt, the compute is reading something that is not reactive at all — a
 counter, `Date.now()`, a module variable. A `@compute` is the wrong place for that: read it once
-in `@create` and keep it in [`@state`](/concepts/state). (The honest limit: a compute reading
+in `@created` and keep it in [`@state`](/concepts/state). (The honest limit: a compute reading
 *only* something non-reactive is never invalidated, so it is never observed either. Nothing can
 report a value nobody asked for again.)
 
@@ -539,8 +541,8 @@ export const currentUser = requestKey<User | null>("currentUser", { exposeToClie
 Expose only what is safe to publish — a display name, an id, a role. Whatever you expose sits in
 the page's HTML for anyone to read, so a session token or a database record never belongs there.
 
-**Usually you need none of this.** Read the request in `@create` and keep the result in `@state`:
-`@create` is skipped on hydration and the state is restored from the page, so the browser never
+**Usually you need none of this.** Read the request in `@created` and keep the result in `@state`:
+`@created` is skipped on hydration and the state is restored from the page, so the browser never
 re-reads the request at all. Reach for `exposeToClient` when several components read the same
 value straight from `requestContext()`.
 
@@ -569,7 +571,7 @@ and the page shows it.
 
 Make the value reactive and both go away at once — `@state` for something the component owns,
 `@compute` for something derived, a context signal for something shared. If it genuinely cannot be
-(a `Date.now()`, a random id), read it once in `@create` and keep the result in `@state` rather
+(a `Date.now()`, a random id), read it once in `@created` and keep the result in `@state` rather
 than reading it in the callback.
 
 **The comparison is by value.** A callback that returns `{ filter: { q } }` builds a new object
@@ -765,8 +767,14 @@ class Panel extends Component {
 }
 ```
 
-A component has one answer to "who handles an error from below?". The last `@catchError` declared is
-the one that gets it; the others never run, and nothing says so — you read a handler that is dead.
+A component has one answer to "who handles an error from below?", so one of them gets it; the others
+never run, and nothing says so — you read a handler that is dead.
+
+**The one that runs is the LOWEST**, `showFallback` above. One rule covers this and
+[`RMD040`](#rmd040-more-than-one-shouldupdateonpropschange-on-one-class): the declaration applied last
+is the one that stands. `@catchError` is a **member** decorator and members initialise top to bottom,
+so the lowest is applied last. A **class** decorator applies bottom-up, so there it is the highest —
+the same rule, the opposite line.
 
 Keep one, and let it decide. It receives the error, and returning `false` **declines** it, so the
 next component above with a handler takes over:
@@ -782,8 +790,206 @@ next component above with a handler takes over:
 A **subclass** declaring its own is not this. That is an override: the subclass's handler replaces
 the base's, which is how a specialised boundary is written, and it is not reported. This fires only
 for two declarations on the same class.
+## RMD026 — retired
 
-## RMD033 — A memoized handler was given an argument it cannot key on
+Superseded by the full fix for the ambiguity it reported, which removed the case rather than
+describing it.
+
+## RMD033 — State that cannot cross to the client
+
+```tsx
+@state formatter = new Intl.NumberFormat("sr-RS");   // reported
+```
+
+Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a `Map`
+or a `Date` is lost on the way — the client starts with whatever the field initialises to, and the two
+sides disagree from the first render.
+
+Keep the value out of state and derive it on the client: in [`@created`](/concepts/lifecycle), which is
+skipped during hydration, or in a [`@compute`](/concepts/compute). Where the server's own answer is
+needed, store a serializable form of it — an id, an ISO string — and rebuild the object where it is
+used.
+
+## RMD034 — State written during create or mount is not carried to the client
+
+`@created` and `@mounted` do not run again on the client: hydration adopts the server's DOM and restores
+state from the blob. A value computed in either is therefore server-only unless it is `@state`, which
+is serialized, or marked `@persist`.
+
+Mark it `@persist` if the client needs the server's answer. If the work is cheap and deterministic,
+move it somewhere that runs on both sides instead. See [hydration mismatches](/ssr/mismatches).
+
+## RMD035 — The client's hook tree does not match the server's
+
+State is restored by **position**, so both sides have to build the same hooks in the same order. A
+`this.use()` behind a condition — `if (isServer)`, a feature flag, a branch on props — makes the
+counts differ, and the state after it lands on the wrong hook or nowhere at all.
+
+Call every `this.use()` unconditionally, at the top of the class. A hook that should do nothing is
+still a hook that exists; give it options that make it idle rather than skipping it.
+
+## RMD036 — The state blob could not be read
+
+The component starts from its initial values instead of the server's, so the page can differ from what
+was rendered — [`RMD007`](#rmd007-server-and-client-rendered-different-output) usually follows.
+
+The blob is written into the markup, so this means it was altered on the way: HTML rewritten by a
+proxy or a browser extension, a truncated response, or markup edited by hand. Compare what the server
+sent with what arrived before looking anywhere else in the app.
+
+## RMD037 — An object among JSX children that is not markup
+
+```tsx
+<p>{user}</p>          {/* reported, and dropped */}
+<p>{user.name}</p>     {/* the way */}
+```
+
+It is dropped, so the page renders without it. Almost always a value meant to be read from rather than
+rendered: a whole object where one of its fields belongs, a promise nobody awaited, or a `list()`
+descriptor passed as a child instead of returned.
+
+Render a string, a number, a vnode, or a list through [`list()`](/lists).
+
+## RMD038 — A `@watchProp` selector threw
+
+The selector returns `undefined` so the app keeps running, which means the watcher now sees a change
+that is not one.
+
+It almost always reads through something absent, so guard the path as you drill into it —
+`p.foo?.[5]?.bar`. A selector runs on every props change and has to be total: no assertions, no
+lookups that can fail.
+
+The console line carries the error the selector threw, stack included, which is what names the failing
+path. A record carries its message as text instead — see [what a record may hold](#capturing-them).
+
+## RMD039 — `class` where `className` was meant
+
+Ramonda reads `className`, so `class` is passed through as an unknown attribute and the styling it
+names never applies.
+
+This is the one place the JSX deliberately differs from HTML, and the reason is the language: `class`
+is a reserved word in the object a JSX factory receives.
+
+Reported once per component and tag, so converting a codebase gets one report per place rather than one
+for the first `class` and silence for the rest.
+
+## RMD040 — More than one `@ShouldUpdateOnPropsChange` on one class
+
+```tsx expect-error
+@ShouldUpdateOnPropsChange((_self, previous, next) => next.v !== previous.v)   // this one decides
+@ShouldUpdateOnPropsChange(() => false)                                       // never consulted
+@Host("b")
+class Gated extends Component<{ v: number }> { render() { … } }
+```
+
+There can only be one answer to "take these props?", so one of them decides and the others never run —
+a gate that looks present and is not.
+
+**The one that decides is the HIGHEST**, which reads backwards. One rule covers this and
+[`RMD032`](#rmd032-more-than-one-catcherror-on-a-component): the declaration applied last is the one
+that stands. `@ShouldUpdateOnPropsChange` is a **class** decorator and class decorators apply bottom-up,
+so the lower declaration writes the rule and the upper one overwrites it. A **member** decorator
+initialises top to bottom, so there it is the lowest — the same rule, the opposite line.
+
+Remove the extras and combine their conditions into one callback.
+
+A **subclass** declaring its own is not this. That is an override — the ordinary way to specialise the
+rule — and it is silent. This fires only for two applications on the same class.
+
+## RMD041 — A listener with no target
+
+The handler is never attached, so the event it waits for cannot arrive. The selector matched nothing
+at the moment the listener was set up, which usually means the element is rendered conditionally or
+arrives later.
+
+Attach to the host and let the event bubble, or move the listener to where the element certainly
+exists.
+
+## RMD042 — The default host cannot be the direct target of this event
+
+`<ramonda-host>` is `display: contents`, so it generates no box. Events that bubble from children
+still reach it; anything tied to a box — pointer position, hover, focus on the host itself — never
+will.
+
+Give the component a real host tag with `@Host("div")` if the event needs one. See
+[one tag, one element](/why/one-element).
+
+## RMD043 — A `<meta>` with nothing to identify it
+
+```tsx
+// Skipped. Nothing identifies it, so an update could only append a second copy.
+// The cast is what it takes to write this at all — see below.
+skipped = this.use(Head, { meta: [{ content: "A framework." } as never] });
+
+// Written, and matched by its `name` when it changes.
+described = this.use(Head, { meta: [{ name: "description", content: "A framework." }] });
+```
+
+`Head` matches the tags it has already written so that an update replaces them rather than appending,
+and a `<meta>` is matched by `name`, `property` or `http-equiv`. One with none of the three cannot be
+found again, so it would be added on every update — it is skipped instead.
+
+`MetaTag` requires one of the three, so TypeScript refuses the tag that would trip this. It fires for a
+build with no types, or through a cast.
+
+Reported once per set of fields the tag has, rather than once per tag: a `content` that carries the
+page description is a different string on every navigation, and one report for each of them would say
+nothing the first did not.
+
+## RMD044 — An unknown element type in JSX
+
+A tag has to be a string, a component class, or — for the one unsupported case — a function. This was
+none of them, so an empty host renders in its place and whatever it was meant to be is missing.
+
+Usually a value used where a tag belongs: an object read off a map with the wrong key, or a component
+whose import failed and arrived as `undefined`. A function in tag position is a different mistake with
+its own advice — see [`RMD011`](#rmd011-a-function-was-used-as-a-jsx-tag).
+
+The empty host is rendered in every build, so a failed import costs the one element rather than the
+page. Reported once per component, so two of these in two files are two reports.
+
+## RMD045 — More than one `@Host` on a component
+
+```tsx expect-error
+@Host("div")
+@Host("span")     // throws: two answers to "which element am I?"
+class Panel extends Component { render() { … } }
+```
+
+A component is exactly one element, so there is one answer to which. Keep the `@Host` you meant and
+delete the rest.
+
+**It throws as well as reporting**, in every build. Unlike
+[`RMD032`](#rmd032-more-than-one-catcherror-on-a-component) and
+[`RMD040`](#rmd040-more-than-one-shouldupdateonpropschange-on-one-class), where one declaration quietly
+wins and the page still renders, there is no way to pick a winner here and carry on. The record is
+emitted for a collector all the same — a fault that only throws is invisible to anything shipping your
+diagnostics somewhere.
+
+A **subclass** declaring its own is not this. That overrides the base's, which is how a specialised
+component changes its element, and it is silent.
+
+## RMD046 — More than one `@StableProps` on one class
+
+```tsx
+@StableProps("a")
+@StableProps("b")     // merged into the union, and reported
+class Watcher extends Hook<{ a: readonly unknown[]; b: readonly unknown[] }> { … }
+```
+
+`@StableProps` names a **set**, and it already merges along the class chain — a subclass adds names
+rather than shadowing the base's. So two on one class has an unambiguous reading, the union, and both
+declarations take effect. Combine them: `@StableProps("a", "b")`.
+
+**A warning rather than a refusal**, which is the difference from
+[`RMD045`](#rmd045-more-than-one-host-on-a-component): there, two element names have no union and
+carrying on would mean picking one silently. Here the result is exactly what you asked for, written
+twice — so nothing is wrong except the spelling.
+
+A **subclass** declaring its own is not this. That adds to the base's list, which is the intended way to
+extend it.
+
+## RMD047 — A memoized handler was given an argument it cannot key on
 
 ```tsx expect-error
 @memoizedHandler
@@ -812,7 +1018,7 @@ and which handler that was depended on the data, so it could pass every test and
 The code is on the thrown error as well as in the log, the way [RMD004](#rmd004-props-mutated-by-the-receiving-component)
 is, so a codebase can be swept for it.
 
-## RMD034 — Object in state changed in place
+## RMD048 — Object in state changed in place
 
 ```tsx expect-error
 this.user.name = "grace";              // reported: nothing renders
@@ -838,7 +1044,7 @@ receiver.
 
 The array form of the same fault is [RMD005](#rmd005-array-in-state-mutated-in-place).
 
-## RMD035 — Two lazy functions with the same source
+## RMD049 — Two lazy functions with the same source
 
 ```tsx expect-error
 const make = (path: string) => () => import(path);

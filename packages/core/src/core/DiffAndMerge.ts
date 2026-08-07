@@ -71,7 +71,7 @@ export function diffAndMerge(
  * Used by the children diff, where insertion is deliberately left to
  * `reorderChildren` — which runs after the unclaimed nodes have been unmounted.
  * Appending here instead meant a replacement was in the document while the node
- * it replaces was still being torn down, so `@destroy` saw both: measured as
+ * it replaces was still being torn down, so `@destroyed` saw both: measured as
  * `document: 1|2` where React's `componentWillUnmount` sees only `1`.
  *
  * `parent` is taken but not written to: the DEV placement check needs to know
@@ -968,7 +968,7 @@ function findIndexOfSimilarNodes(
 /**
  * Releases the reactive scopes the regions under a record hold.
  *
- * `For` did this from its own `@destroy`: the hook instance WAS the thing being
+ * `For` did this from its own `@destroyed`: the hook instance WAS the thing being
  * unmounted, so the teardown had somewhere to live. A `list()` region has no
  * instance — its state rides on the parent's record — so whoever destroys the
  * record has to release it. Without this, every item that read an ANCESTOR's
@@ -1004,7 +1004,7 @@ export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[]) {
 
   /**
    * Teardown is a commit too, and this one is not reached from a drain: unmounting
-   * a root is called directly, so nothing else would run what the `@destroy`s just
+   * a root is called directly, so nothing else would run what the `@destroyed`s just
    * queued. Cheap when there is nothing — the queue is empty on every teardown that
    * did not touch it.
    */
@@ -1018,7 +1018,7 @@ export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[]) {
  * hydration replacing a subtree it could not adopt. `replaceChild` needs the old
  * node to still be a child, so removing it first is not an option — and skipping
  * the teardown is what used to happen instead, leaving a live component with no
- * DOM: no `@destroy`, no effect cleanups, no signal detach, its timers still
+ * DOM: no `@destroyed`, no effect cleanups, no signal detach, its timers still
  * firing and a later write scheduling a render into nodes nobody can see.
  */
 export function unmountNodeInPlace(node: EnhancedChildNode): void {
@@ -1109,7 +1109,7 @@ function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtual
     // `{on ? <Child /> : <span>gone</span>}`, where Child is @Host("span"),
     // used to claim Child's host for the plain <span>: the node was reused, the
     // component instance was dropped on the floor, and nothing tore it down. No
-    // @destroy, no effect cleanups — its subscriptions, intervals and listeners
+    // @destroyed, no effect cleanups — its subscriptions, intervals and listeners
     // ran for the life of the page. Not even RMD006 fired, because the timer
     // guard lives in the teardown that never happened.
     //
@@ -1181,18 +1181,18 @@ function createComponent(
     return buildComponent(component, vnode, runtime, skipEnv, lintBefore);
   } catch (e) {
     // The build failed, but the component was already CONSTRUCTED and its
-    // @create may already have run and taken something — a subscription, a
+    // @created may already have run and taken something — a subscription, a
     // hand-written listener, an open connection.
     //
     // Nothing else would ever tear it down. Teardown is reached from
     // `unmountChildrenNodes`, which walks the DOM, and this component's host was
     // never inserted anywhere: `render()` threw before there was one, or
-    // `@create` threw before `render()`. So it is unreachable and whatever it
+    // `@created` threw before `render()`. So it is unreachable and whatever it
     // took leaks for the life of the page.
     //
-    // Runs unconditionally, not only when @create completed. @destroy may
+    // Runs unconditionally, not only when @created completed. @destroyed may
     // therefore see a half-initialised component and has to tolerate that —
-    // `runCleanup` already isolates a throwing cleanup so one bad @destroy
+    // `runCleanup` already isolates a throwing cleanup so one bad @destroyed
     // cannot take the rest with it. Leaking less was preferred to the more
     // predictable rule (React's: skip cleanup for a component that never
     // finished mounting).
@@ -1244,7 +1244,7 @@ function buildComponent(
   }
 
   if (__DEV__) {
-    // After the mounts, as before: this lint is about fields @create AND @mount
+    // After the mounts, as before: this lint is about fields @created AND @mounted
     // set, so it has to see both.
     if (lintBefore) {
       queuePostCommit(component, () => lintUnpersistedState(component, lintBefore));
@@ -1253,7 +1253,7 @@ function buildComponent(
 
   // Deferred with the rest, not left inline: this is what attaches @onElement
   // listeners and runs @effect for the first time, and running it inline would
-  // move it ahead of @mount. No-op on the server.
+  // move it ahead of @mounted. No-op on the server.
   queuePostCommit(component, () => runComponentEffects(component));
   return enhancedNode;
 }

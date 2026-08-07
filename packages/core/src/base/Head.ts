@@ -1,8 +1,9 @@
 import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { queueAfterCommit } from "../core/commit";
-import { create, destroy, watchProp } from "./decorators";
+import { created, destroyed, watchProp } from "./decorators";
 import { PORTAL_ATTR } from "../helpers/constants";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * One `<meta>`. **Exactly one** of `name` / `property` / `httpEquiv` identifies
@@ -82,7 +83,7 @@ export interface HeadOptions {
  *
  * That is not a style preference — it is the only thing that survives a page
  * replacing another. Two `Head`s exist at once during a swap, because the incoming
- * page's `@create` runs before the outgoing page's `@destroy`. When each held its
+ * page's `@created` runs before the outgoing page's `@destroyed`. When each held its
  * own list of elements to remove, the incoming page adopted
  * `<meta name="description">`, the outgoing page still had that same element in its
  * list, and its teardown took it out of the document — so a navigation left the
@@ -125,7 +126,7 @@ export interface HeadOptions {
  * alive, both contribute. This is the case a single-slot chain got wrong: it let the
  * later sibling overwrite the earlier and drop a live page's tags. A page SWAP still
  * comes out right without a rule of its own — the outgoing node removes itself on
- * `@destroy`, `resolve` runs after the commit, and it sees only what is still live.
+ * `@destroyed`, `resolve` runs after the commit, and it sees only what is still live.
  *
  * Applying is an **upsert**, keyed by what identifies the tag (`name` / `property`
  * / `httpEquiv` for meta, `rel`+`href` for link), so hydration finds the server's
@@ -153,7 +154,7 @@ export class Head extends Hook<HeadOptions> {
    * than in the reactive half: a `@watchProp` does not fire on mount, and nothing reactive
    * runs during a server render at all.
    */
-  @create({ env: "shared" })
+  @created({ env: "shared" })
   publishOnCreate(): void {
     this.publish();
   }
@@ -165,16 +166,16 @@ export class Head extends Hook<HeadOptions> {
    * Hydrating runs only the `env === "client"` creates, because create and mount
    * already ran on the server and their state was restored. That is right for a
    * component, whose state comes back from the hydration blob. It is wrong for this
-   * hook, because what its `@create` does is not carried in any blob: it puts the
+   * hook, because what its `@created` does is not carried in any blob: it puts the
    * page into the registry, and a page that is not in the registry is a page whose
    * tags nothing will ever update or remove.
    *
    * The hook cannot tell that it was hydrated rather than built, so both run and
    * `publish` refuses the second. A guard field rather than a coincidence of
    * idempotent operations — publishing twice would put the page in the registry
-   * twice, and then one `@destroy` would leave half of it behind.
+   * twice, and then one `@destroyed` would leave half of it behind.
    */
-  @create({ env: "client" })
+  @created({ env: "client" })
   publishOnHydrate(): void {
     this.publish();
   }
@@ -186,10 +187,10 @@ export class Head extends Hook<HeadOptions> {
    * Added to the parent's SET of children, not into a single slot — so a sibling
    * that publishes after this one does not displace it; both stay and the head is
    * the merge of the tree. A page SWAP still comes out right without a rule of its
-   * own: the outgoing node removes itself on `@destroy`, and `resolve` runs after
+   * own: the outgoing node removes itself on `@destroyed`, and `resolve` runs after
    * the commit, so it only ever sees the nodes still live.
    *
-   * Done in `@create` rather than the constructor because the context a component
+   * Done in `@created` rather than the constructor because the context a component
    * writes to must be its OWN, and because its children are rendered afterwards —
    * which is exactly when they need to find this.
    */
@@ -233,15 +234,15 @@ export class Head extends Hook<HeadOptions> {
    *
    * ## Why this is not an `@effect`, which is what it used to be
    *
-   * Order. `@create` runs parent→child, so a route nested in a layout applies last and
+   * Order. `@created` runs parent→child, so a route nested in a layout applies last and
    * wins — the semantics anyone would expect. Effects run the other way (child→parent, so
-   * a parent's `@mount` sees its children mounted), so an effect that re-applied handed the
+   * a parent's `@mounted` sees its children mounted), so an effect that re-applied handed the
    * title straight back to the layout on the first commit. That needed a guard: compare
-   * against the last applied snapshot, and let the first run be a no-op because `@create`
+   * against the last applied snapshot, and let the first run be a no-op because `@created`
    * had already done it in the right order.
    *
-   * A `@watchProp` runs in the build phase, in the same parent→child order as `@create`, and
-   * **does not fire on mount at all** — so the first application belongs to `@create`, later
+   * A `@watchProp` runs in the build phase, in the same parent→child order as `@created`, and
+   * **does not fire on mount at all** — so the first application belongs to `@created`, later
    * ones to this, and the deeper Head wins in both. The guard field went with the effect.
    */
   @watchProp((props) => JSON.stringify([props.title, props.description, props.meta, props.link]))
@@ -259,7 +260,7 @@ export class Head extends Hook<HeadOptions> {
    * ask for goes; what an incoming page has already published stays, whichever of
    * the two lifecycles ran first.
    */
-  @destroy
+  @destroyed
   retract(): void {
     const registry = this.registry;
     const node = this.node;
@@ -303,7 +304,7 @@ export class Head extends Hook<HeadOptions> {
  * tree keeps BOTH. A single-slot chain could only hold one, so the later publisher
  * dropped the earlier's tags while its page was still on screen. A page SWAP still
  * comes out right without a special rule: the outgoing node removes itself from the
- * set on `@destroy`, and `resolve` runs after the commit, so it only ever sees the
+ * set on `@destroyed`, and `resolve` runs after the commit, so it only ever sees the
  * nodes still live.
  */
 interface HeadNode {
@@ -345,7 +346,7 @@ interface HeadRegistry {
   /**
    * The `Head`s with no `Head` above them — usually one, but a page can hold
    * several independent top-level `Head`s at once, and during a swap the incoming
-   * root is here beside the outgoing one until the latter's `@destroy`. Each hangs
+   * root is here beside the outgoing one until the latter's `@destroyed`. Each hangs
    * its subtree off itself through `children`.
    */
   roots: Set<HeadNode>;
@@ -413,9 +414,9 @@ function collectMeta(tags: Map<string, ResolvedTag>, tag: MetaTag): void {
   const selector = metaSelector(tag);
   if (selector === undefined) {
     if (__DEV__) {
-      console.warn(
-        `[Ramonda] A <meta> passed to Head has no name, property or http-equiv, so there is nothing to identify it by and it would be duplicated on every update. Skipped: ${JSON.stringify(tag)}`,
-      );
+      diagnose("RMD043", Object.keys(tag).sort().join(","), `Skipped: ${JSON.stringify(tag)}`, {
+        fields: Object.keys(tag).sort().join(","),
+      });
     }
     return;
   }
@@ -559,7 +560,7 @@ function elementFor(selector: string, tagName: string): Element {
  * Registries with something to recompute, drained once per commit.
  *
  * Marking rather than applying is the point. Every `Head` in a tree publishes
- * during its own `@create`, and the head the document should have is a function of
+ * during its own `@created`, and the head the document should have is a function of
  * all of them — so applying per publication does the work once per page in the
  * chain AND walks the document through states no commit ever meant to show: on a
  * route swap, the incoming page title beside the outgoing page tags, for the

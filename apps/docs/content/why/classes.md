@@ -21,13 +21,13 @@ framework's composition story comes from.
 
 ## Why decorators, not reserved method names
 
-Lifecycle and state are decorators — `@state`, `@create`, `@mount`, `@updated` — rather
+Lifecycle and state are decorators — `@state`, `@created`, `@mounted`, `@updated` — rather
 than special method names you are expected to implement.
 
 The reason is collisions. If "the method named `mount` runs on mount", then `mount` is
 a name you can never use for anything else, on any component, ever — and nothing warns
 you when you shadow it by accident. A decorator attaches the behaviour without claiming
-the name: `@mount ready()` runs on mount, and `ready` is still just a method you named.
+the name: `@mounted ready()` runs on mount, and `ready` is still just a method you named.
 (`render` is the one exception — it is abstract, so the compiler forces exactly one and
 the collision can't happen.)
 

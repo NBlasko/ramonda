@@ -18,7 +18,7 @@ import { PORTAL_ATTR } from "../../helpers/constants";
  * On the CLIENT the portal must ADOPT the server's nodes rather than append a
  * second copy — and it must OWN them, so tearing the page down removes exactly
  * what the server wrote. Neither happens for free: hydration runs only the
- * `env: "client"` creates, so `@create({ env: "shared" })` — which places on a
+ * `env: "client"` creates, so `@created({ env: "shared" })` — which places on a
  * normal build — never fires, and the tag the server wrote would be nobody's.
  */
 function headPortalTags(): Element[] {

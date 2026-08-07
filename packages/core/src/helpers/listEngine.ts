@@ -345,7 +345,7 @@ export class ListEngine<T> {
   /**
    * Unsubscribes every scope. Without it, a signal an item read keeps a live
    * reference to a list entry that no longer exists — `For` called this from its own
-   * `@destroy`; a `list()` region is released by `disposeRegions` in
+   * `@destroyed`; a `list()` region is released by `disposeRegions` in
    * DiffAndMerge, which is the only thing that can reach it.
    */
   dispose(): void {

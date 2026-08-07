@@ -1,6 +1,6 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { CHILD_HOOKS } from "../core/runtime";
-import { ramondaLog } from "../debug/logger";
+import { diagnose } from "../debug/diagnostics";
 import type { SerializedNode } from "./serialize";
 
 interface RestorableInstance {
@@ -39,9 +39,11 @@ function restoreNode(instance: RestorableInstance, node: SerializedNode): void {
   const serializedHooks = node.hooks ?? [];
 
   if (__DEV__ && childHooks.length !== serializedHooks.length) {
-    ramondaLog(
-      "warning",
-      `[hydration] hook count mismatch in <${instanceName(instance)}> (client ${childHooks.length} vs serialized ${serializedHooks.length}); restore may be incomplete.`,
+    diagnose(
+      "RMD035",
+      instanceName(instance),
+      `<${instanceName(instance)}> built ${childHooks.length} hook(s) and the server serialized ${serializedHooks.length}.`,
+      { component: instanceName(instance), client: childHooks.length, server: serializedHooks.length },
     );
   }
 

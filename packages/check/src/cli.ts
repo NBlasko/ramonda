@@ -6,12 +6,14 @@ import { analyzeProject } from "./analyze";
 /**
  * `ramonda-check [tsconfig]`
  *
- * Reads your source and reports two things a running page would not tell you:
+ * Reads your source and reports three things a running page would not tell you:
  *
  * - a context consumer with no provider above it on some path the source can produce — the page
  *   renders, the context quietly falls back to its default, and the numbers are wrong;
  * - a class field holding a function literal, which in Ramonda is a closure per instance for
- *   nothing, since every method is already bound.
+ *   nothing, since every method is already bound;
+ * - a single-use decorator declared twice, which the runtime can only report once the class is
+ *   reached — a class behind a condition nobody clicked ships with the fault.
  *
  * Meant to sit in an app's `build` script: a check nobody runs is a check that does not exist.
  */
@@ -76,10 +78,52 @@ if (arrowFields.length > 0) {
 if (duplicateDecorators.length > 0) {
   console.error(`\n${TAG} ${duplicateDecorators.length} class(es) declaring a single-use decorator twice:\n`);
   for (const duplicate of duplicateDecorators) {
+    /**
+     * Which declaration is in effect, said per decorator KIND, because the two are opposite.
+     *
+     * The rule is the same for both — the last one APPLIED stands — but a member decorator
+     * initialises top-to-bottom while a class decorator applies bottom-up, so "last applied" is the
+     * lowest declaration in one case and the highest in the other. Measured in core's
+     * `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`. Naming the wrong one is
+     * worse than naming neither: it points at the line that works.
+     */
+    const inEffect =
+      duplicate.kind === "member"
+        ? "the LOWEST is the one that runs (members initialise top to bottom, so it is applied last)"
+        : "the HIGHEST is the one that runs (class decorators apply bottom-up, so it is applied last)";
+
+    /**
+     * One sentence per EFFECT, because "one of them never runs" is true of `@catchError` and false of
+     * the other three.
+     *
+     * `@Host` throws, so there is no live line to find. `@StableProps` merges, so nothing was lost.
+     * A doubled `@state` behaves exactly like a single one — measured, one render per write and the
+     * right value. Sending a reader after a difference that is not there is worse than saying less.
+     * One report, four faults, four pieces of advice.
+     */
+    const said =
+      duplicate.effect === "refuses"
+        ? `it THROWS — the class never loads, so there is no live declaration to look for.\n    ` +
+          `Two answers to what it asks have no union. Keep the one you meant.`
+        : duplicate.effect === "displaces"
+          ? `there is one answer to what it asks, so ${inEffect}\n    and the rest never run. Keep one and combine what they do.`
+          : duplicate.effect === "merges"
+            ? `they MERGE — both take effect and the result is the union, so nothing is lost.\n    ` +
+              `Write them as one call.`
+            : `applying it twice changes nothing. The behaviour is identical to one, so this is a\n    ` +
+              `mistaken belief rather than a broken program. Delete the extras.`;
+
+    // The member is named for a `redundant` report, because that count is per member: without it,
+    // "declares @state 2 times" reads like a claim about the class, which is a different fault.
+    const where =
+      duplicate.member === undefined
+        ? `<${duplicate.component}>`
+        : `${duplicate.component}.${duplicate.member} carries`;
+
     console.error(`  ${duplicate.file}:${duplicate.line}:${duplicate.column}`);
     console.error(
-      `    <${duplicate.component}> declares @${duplicate.decorator} ${duplicate.count} times — ` +
-        `there is one answer to what it asks, so the last wins and the others never run.`,
+      `    ${where}${duplicate.member === undefined ? " declares" : ""} @${duplicate.decorator} ` +
+        `${duplicate.count} times — ${said}`,
     );
     console.error("");
   }

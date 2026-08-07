@@ -425,8 +425,8 @@ export class QueryPage extends Component {
             </li>
             <li>
               Nothing here uses <code>@effect</code>. The key change is a <code>@watchProp</code> (before the render, so
-              the request is in flight while the loading state paints), the poll interval is a <code>@create</code> +{" "}
-              <code>@watchProp</code> + <code>@destroy</code> trio, and focus/reconnect are <code>@onWindow</code>.
+              the request is in flight while the loading state paints), the poll interval is a <code>@created</code> +{" "}
+              <code>@watchProp</code> + <code>@destroyed</code> trio, and focus/reconnect are <code>@onWindow</code>.
             </li>
           </ul>
         </section>

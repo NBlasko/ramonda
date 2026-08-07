@@ -1,7 +1,7 @@
 /**
  * Async work a server render must wait for before serializing.
  *
- * `@mount` is where an app fetches — that is what the lifecycle is for, and it
+ * `@mounted` is where an app fetches — that is what the lifecycle is for, and it
  * runs on the server precisely so the data is in the HTML. But `renderToString`
  * used to await only microtasks (`flushTaskQueue`), so anything taking a real
  * round trip — an `import()`, a `fetch` — was still in flight when the markup was

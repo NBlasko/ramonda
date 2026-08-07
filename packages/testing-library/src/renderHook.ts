@@ -38,7 +38,7 @@ export interface RenderHookResult<T, O> {
   current: T;
   /** Replaces the props the hook was given, the way a re-rendering owner would. */
   rerender(props?: O): void;
-  /** Destroys the host component, so the hook's `@destroy` and cleanups run. */
+  /** Destroys the host component, so the hook's `@destroyed` and cleanups run. */
   unmount(): void;
   /** The host component's container, for the rare hook that touches the DOM. */
   container: HTMLElement;

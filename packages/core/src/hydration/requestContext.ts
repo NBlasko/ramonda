@@ -45,8 +45,8 @@ export interface RequestKeyOptions {
    * a role — never a session token, a raw cookie, or a database record. Cookies and headers can
    * never be exposed at all.
    *
-   * You often need none of this: reading the request in `@create` and keeping the result in
-   * `@state` already travels, because `@state` is serialized and `@create` is skipped on
+   * You often need none of this: reading the request in `@created` and keeping the result in
+   * `@state` already travels, because `@state` is serialized and `@created` is skipped on
    * hydration. Expose a key when a value has to be readable from `requestContext()` itself on
    * the client — typically because several components read it directly.
    */
@@ -92,7 +92,7 @@ interface RequestScope {
   values: Map<string, unknown>;
   /**
    * In "build" mode: the first per-request field that was read, or `undefined` if none.
-   * Recorded IN ADDITION to throwing, because a read inside an async `@mount` throws into the
+   * Recorded IN ADDITION to throwing, because a read inside an async `@mounted` throws into the
    * drain's `allSettled` (or `errorHandler`) and is swallowed — the record survives that, so
    * the build can still tell the route read the request. Read by `renderStatic`.
    */
