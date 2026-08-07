@@ -196,6 +196,17 @@ export const STATE_ATTR = "data-ramonda-state";
 export const HEAD_ATTR = "data-ramonda-head";
 
 /**
+ * Marks an element a `Portal` placed in its target.
+ *
+ * Two jobs, both across the server→client boundary. The server renderer collects
+ * a portal's head tags by it — `renderToString` returns only the body, so a tag a
+ * portal put in `document.head` is otherwise lost. And on the client the portal
+ * finds the nodes it must ADOPT by it, rather than appending a second copy of
+ * everything the server already wrote.
+ */
+export const PORTAL_ATTR = "data-ramonda-portal";
+
+/**
  * Attribute on the ROOT element holding the per-request values the server chose to expose to
  * the client — one blob per page, not per component, because a request is one thing.
  *

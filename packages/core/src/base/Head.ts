@@ -90,9 +90,9 @@ export interface HeadOptions {
  * by both went the same way. Two objects deciding ownership independently makes a
  * handover a race; one registry makes it an agreement.
  *
- * The registry is a function of the current entries, so nothing depends on the
+ * The registry is a function of the current tree, so nothing depends on the
  * order the two lifecycles interleave: whichever runs first, the state afterwards
- * is what the remaining entries say it should be.
+ * is what the remaining nodes say it should be.
  *
  * The same shape as the router's store, and for the same reason — see
  * `packages/router/src/store.ts`. Almost every other router keeps its state in
@@ -104,11 +104,11 @@ export interface HeadOptions {
  * `resetHeadRegistry` clears it at the request boundary for the case where one
  * document is reused.
  *
- * ## Resolution — a chain of `Head`s, not of components
+ * ## Resolution — a tree of `Head`s, not of components
  *
- * Each `Head` finds the nearest one ABOVE it and hangs off it, so the registry
- * holds a chain that is resolved outermost-first: a layout sets a default, a route
- * inside it overrides the title, and per tag the deeper one wins.
+ * Each `Head` finds the nearest one ABOVE it and hangs off it, so the registry holds
+ * a tree, resolved outermost-first: a layout sets a default, a route inside it
+ * overrides the title, and per tag the deeper one wins.
  *
  * "Above" is read off the CONTEXT, which is what keeps components that have no
  * `Head` out of it entirely. Component depth would have counted them, and then
@@ -119,11 +119,13 @@ export interface HeadOptions {
  * inherited by every descendant however many wrappers apart they are, and by no
  * sibling: two branches get two objects off the same ancestor.
  *
- * Where two `Head`s DO share a parent, the later one to publish takes the slot and
- * the branch that was there goes with it — including everything its children
- * published. That is a rule rather than a derivation, and it is the one that makes a
- * route replacing its sibling discard the old branch whole instead of waiting for
- * each of its children to be destroyed in an order nothing guarantees.
+ * Where two `Head`s DO share a parent, BOTH stay — they are siblings, and the head is
+ * the merge of the tree per tag: their different tags coexist, and a genuine conflict
+ * (both set the title) goes to the later publisher. A sidebar and a main area, both
+ * alive, both contribute. This is the case a single-slot chain got wrong: it let the
+ * later sibling overwrite the earlier and drop a live page's tags. A page SWAP still
+ * comes out right without a rule of its own — the outgoing node removes itself on
+ * `@destroy`, `resolve` runs after the commit, and it sees only what is still live.
  *
  * Applying is an **upsert**, keyed by what identifies the tag (`name` / `property`
  * / `httpEquiv` for meta, `rel`+`href` for link), so hydration finds the server's
@@ -135,8 +137,8 @@ export interface HeadOptions {
  * and the head follows the value.
  */
 export class Head extends Hook<HeadOptions> {
-  /** This hook's published entry, and the proof it has published — see `publish`. */
-  private entry: HeadEntry | undefined;
+  /** This hook's node in the tree, and the proof it has published — see `publish`. */
+  private node: HeadNode | undefined;
   /**
    * The registry it published INTO, held rather than looked up again.
    *
@@ -191,23 +193,30 @@ export class Head extends Hook<HeadOptions> {
    * which is exactly when they need to find this.
    */
   private publish(): void {
-    if (this.entry !== undefined) return;
+    if (this.node !== undefined) return;
 
     const registry = registryForDocument();
     const context = this[GLOBAL_RUNTIME].context as Record<symbol, unknown>;
-    const parent = context[HEAD_PARENT] as HeadEntry | undefined;
+    const parent = context[HEAD_PARENT] as HeadNode | undefined;
 
-    const entry: HeadEntry = { ...flatten(this.readOptions()), parent, child: undefined };
+    // The raw options, NOT flattened: the node is the state, and the head is a
+    // function of the tree computed each apply. Flattening here would cache a
+    // derived value on the node and make it the thing that can go stale.
+    const node: HeadNode = { options: this.readOptions(), parent, children: new Set() };
 
-    if (parent === undefined) registry.root = entry;
-    else parent.child = entry;
+    // A SET of children, not one slot. Two Heads that share a parent and are both
+    // alive — a sidebar and a main area under one layout — are siblings, and both
+    // belong in the tree. The single-slot chain this replaced let the later one
+    // overwrite the earlier, dropping a live page's tags.
+    if (parent === undefined) registry.roots.add(node);
+    else parent.children.add(node);
 
     // An OWN property, so this component's descendants inherit it and its siblings
     // — which read the same ancestor object — do not.
-    context[HEAD_PARENT] = entry;
+    context[HEAD_PARENT] = node;
 
     this.registry = registry;
-    this.entry = entry;
+    this.node = node;
     scheduleApply(registry);
   }
 
@@ -236,9 +245,9 @@ export class Head extends Hook<HeadOptions> {
    */
   @watchProp((props) => JSON.stringify([props.title, props.description, props.meta, props.link]))
   republishOnChange(): void {
-    if (this.entry === undefined || this.registry === undefined) return;
-    // Flattened here, where the change is, so a recompute is only ever a merge.
-    Object.assign(this.entry, flatten(this.readOptions()));
+    if (this.node === undefined || this.registry === undefined) return;
+    // Just the raw options — resolution flattens the whole tree on apply.
+    this.node.options = this.readOptions();
     scheduleApply(this.registry);
   }
 
@@ -252,26 +261,19 @@ export class Head extends Hook<HeadOptions> {
   @destroy
   retract(): void {
     const registry = this.registry;
-    const entry = this.entry;
-    this.entry = undefined;
+    const node = this.node;
+    this.node = undefined;
     this.registry = undefined;
-    if (entry === undefined || registry === undefined) return;
+    if (node === undefined || registry === undefined) return;
 
-    /**
-     * Only if the slot is still THIS one.
-     *
-     * A page being replaced is destroyed after the page replacing it has published,
-     * so by now the slot may hold the incoming branch — and unlinking then would
-     * take away a head that is live. Comparing the entry rather than trusting the
-     * order is what makes the outcome the same whichever way round they run.
-     */
-    if (entry.parent === undefined) {
-      if (registry.root === entry) registry.root = undefined;
-    } else if (entry.parent.child === entry) {
-      entry.parent.child = undefined;
-    } else {
-      return; // already replaced; the document is the incoming branch's business
-    }
+    // Removing THIS node from its parent's set, and nothing else. No "is the slot
+    // still mine" guard: a page being replaced is destroyed after the page
+    // replacing it has published, but the two are DIFFERENT nodes in the set, so
+    // deleting one never touches the other. The tree makes the handover an
+    // agreement without comparing entries — the chain needed the comparison only
+    // because it had one slot to fight over.
+    if (node.parent === undefined) registry.roots.delete(node);
+    else node.parent.children.delete(node);
 
     scheduleApply(registry);
   }
@@ -288,27 +290,32 @@ export class Head extends Hook<HeadOptions> {
 }
 
 /**
- * One page's contribution, and its place in the chain of `Head`s — not of components.
+ * One `Head`'s node in the tree of `Head`s — not of components.
  *
- * `parent` is the nearest `Head` ABOVE this one, and `child` the one live `Head`
- * below it. A chain rather than a general tree because only one path can be showing
- * at a time: when two `Head`s share a parent, the later one to publish takes the
- * slot, and the branch that was there goes with it. That is what makes a route
- * replacing its sibling discard everything the old branch's children had published,
- * without waiting for their `@destroy` to run in some particular order.
+ * It holds the RAW options, never a flattened form: the tree is the state, and the
+ * document's head is a function of it, recomputed each apply (see `resolve`). Caching
+ * a derived value here is exactly what would let the node go stale.
+ *
+ * `parent` is the nearest `Head` ABOVE this one; `children` are the live `Head`s
+ * directly below it. A general tree, not a chain: two `Head`s that share a parent and
+ * are both alive — a sidebar and a main area under one layout — are siblings, and the
+ * tree keeps BOTH. A single-slot chain could only hold one, so the later publisher
+ * dropped the earlier's tags while its page was still on screen. A page SWAP still
+ * comes out right without a special rule: the outgoing node removes itself from the
+ * set on `@destroy`, and `resolve` runs after the commit, so it only ever sees the
+ * nodes still live.
  */
-interface HeadEntry {
-  /** This entry's own contribution, already flattened — see `flatten`. */
-  title: string | undefined;
-  tags: Map<string, ResolvedTag>;
-  parent: HeadEntry | undefined;
-  child: HeadEntry | undefined;
+interface HeadNode {
+  /** This node's own contribution, raw — flattened only during `resolve`. */
+  options: HeadOptions;
+  parent: HeadNode | undefined;
+  children: Set<HeadNode>;
 }
 
 /**
  * Where a `Head` leaves itself for the `Head`s below it to find.
  *
- * On the CONTEXT, which is what makes the chain a chain of `Head`s rather than of
+ * On the CONTEXT, which is what makes the tree a tree of `Head`s rather than of
  * components: a component's context is `Object.create(parentContext)`, so a
  * descendant inherits whatever an ancestor wrote however many components apart they
  * are — and a wrapper, a guard or a provider in between is invisible, because it
@@ -334,8 +341,13 @@ interface ResolvedTag {
  * it is the ONLY record of which elements belong to Ramonda. No hook holds one.
  */
 interface HeadRegistry {
-  /** The outermost `Head`; the rest hangs off it through `child`. */
-  root: HeadEntry | undefined;
+  /**
+   * The `Head`s with no `Head` above them — usually one, but a page can hold
+   * several independent top-level `Head`s at once, and during a swap the incoming
+   * root is here beside the outgoing one until the latter's `@destroy`. Each hangs
+   * its subtree off itself through `children`.
+   */
+  roots: Set<HeadNode>;
   managed: Map<string, Element>;
   /** What the document's title was before any `Head` published, to go back to. */
   originalTitle: string;
@@ -358,7 +370,7 @@ function registryForDocument(): HeadRegistry {
   let registry = registries.get(document);
   if (registry === undefined) {
     registry = {
-      root: undefined,
+      roots: new Set(),
       managed: new Map(),
       originalTitle: document.title,
       appliedTitle: undefined,
@@ -424,24 +436,21 @@ function collectLink(tags: Map<string, ResolvedTag>, tag: LinkTag): void {
 }
 
 /**
- * Flattens one `Head`'s options into the tags it contributes, ONCE.
+ * Flattens one `Head`'s options into the tags it contributes.
  *
  * Options are the shape an app writes — a `description` shorthand, a list of meta,
  * a list of link. Tags are the shape the document needs: a selector that identifies
  * each one and the attributes it should carry. Deriving that means building
  * selectors and escaping values, and none of it depends on anything outside this
- * entry.
+ * node's options.
  *
- * So it happens when the entry CHANGES, not when the document is recomputed. A
- * layout that set its tags at startup and never touched them again used to re-derive
- * every selector each time any page below it published — the whole chain rebuilt
- * because one link in it moved.
- *
- * Measured on a layout/section/page chain of 5+3+6 tags: **3.16 µs → 0.35 µs** per
- * recompute, an order of magnitude, and the saving grows with the chain because
- * every entry above the one that changed was pure waste.
+ * Called from `resolve`, once per node per apply. An earlier version cached the
+ * result on the node and re-derived only on change; the tree rewrite dropped that
+ * cache on purpose, so the node holds only raw options and the head is always a pure
+ * function of the tree. The cost is re-deriving selectors each apply (measured at the
+ * time as ~3 µs for a 14-tag layout/section/page), traded for one source of truth.
  */
-function flatten(options: HeadOptions): Pick<HeadEntry, "title" | "tags"> {
+function flatten(options: HeadOptions): { title: string | undefined; tags: Map<string, ResolvedTag> } {
   const tags = new Map<string, ResolvedTag>();
 
   if (options.description !== undefined) collectMeta(tags, { name: "description", content: options.description });
@@ -452,25 +461,32 @@ function flatten(options: HeadOptions): Pick<HeadEntry, "title" | "tags"> {
 }
 
 /**
- * The head the chain adds up to — a merge of what each entry already flattened.
+ * The head the tree adds up to — computed WHOLE, from the nodes as they are now.
  *
- * Down the chain, so later wins: the outermost `Head` first, then the one below it,
- * and a route nested in a layout overrides it.
+ * A pre-order walk: each node's own tags first, then its children. So a deeper
+ * `Head` overrides a shallower one, and a later sibling overrides an earlier one —
+ * but only where they name the SAME tag; different tags coexist, which is what lets
+ * a sidebar and a main area both contribute. Roots and children are visited in
+ * publish order (the `Set`s keep insertion order), so "later wins" is deterministic.
  *
- * The MERGE stays per recompute rather than being cached and patched, and that is
- * deliberate. It is what makes the answer a function of the chain as it is now, so
- * no interleaving of publish and retract can leave the document holding a tag
- * nothing asks for. It is also the cheap half: copying entries between maps, with
- * every selector and every attribute already built.
+ * Recomputed every apply rather than cached and patched, and `flatten` runs here per
+ * node rather than being stored on it. That is the point the rewrite turned on: the
+ * answer is a function of the tree as it stands, so no interleaving of publish and
+ * retract can leave the document holding a tag nothing asks for, and no node can hold
+ * a stale derived value. The cost is re-deriving selectors each apply — the cache the
+ * chain kept — which is the trade made for the tree being the single source of truth.
  */
-function resolve(root: HeadEntry | undefined): { title: string | undefined; tags: Map<string, ResolvedTag> } {
+function resolve(roots: Set<HeadNode>): { title: string | undefined; tags: Map<string, ResolvedTag> } {
   let title: string | undefined;
   const tags = new Map<string, ResolvedTag>();
 
-  for (let entry = root; entry !== undefined; entry = entry.child) {
-    if (entry.title !== undefined) title = entry.title;
-    for (const [selector, tag] of entry.tags) tags.set(selector, tag);
-  }
+  const visit = (node: HeadNode): void => {
+    const flat = flatten(node.options);
+    if (flat.title !== undefined) title = flat.title;
+    for (const [selector, tag] of flat.tags) tags.set(selector, tag);
+    for (const child of node.children) visit(child);
+  };
+  for (const root of roots) visit(root);
 
   return { title, tags };
 }
@@ -571,7 +587,7 @@ export function flushHeads(): void {
 }
 
 function applyRegistry(registry: HeadRegistry): void {
-  const { title, tags } = resolve(registry.root);
+  const { title, tags } = resolve(registry.roots);
 
   for (const [selector, spec] of tags) {
     const element = live(registry.managed.get(selector)) ?? elementFor(selector, spec.tagName);

@@ -449,4 +449,60 @@ describe("the head when one page replaces another", () => {
     expect(description()).toBeNull();
     expect(document.title).toBe("before");
   });
+
+  test("two live sibling Heads both contribute — neither drops the other", async () => {
+    /**
+     * The case a CHAIN cannot represent, and the reason for the tree.
+     *
+     * A layout with a sidebar and a main area, each with its own `Head`, both ALIVE
+     * at once. In context terms they are SIBLINGS — both read the layout's `Head` as
+     * their parent, neither is nested under the other. This is not a page swap: no one
+     * is leaving.
+     *
+     * A single-slot chain (`parent.child = entry`) lets the later publisher overwrite
+     * the earlier, so the sidebar's tags are dropped the moment the main area's `Head`
+     * publishes — while the sidebar is still on screen. A tree keeps both children and
+     * merges per tag: different tags coexist, and only a genuine conflict is resolved.
+     */
+    @Host("aside")
+    class Sidebar extends Component {
+      head = this.use(Head, () => ({ meta: [{ name: "sidebar", content: "s" }] }));
+      render() {
+        return <span>side</span>;
+      }
+    }
+
+    @Host("main")
+    class Main extends Component {
+      head = this.use(Head, () => ({ title: "Main", meta: [{ name: "main", content: "m" }] }));
+      render() {
+        return <span>main</span>;
+      }
+    }
+
+    @Host("div")
+    class Layout extends Component {
+      head = this.use(Head, () => ({ title: "Layout", description: "the layout" }));
+      render() {
+        return (
+          <div>
+            <Sidebar />
+            <Main />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Layout>(<Layout />);
+    await app.settle();
+
+    // Both siblings' own tags are present — neither overwrote the other.
+    expect(document.head.querySelector('meta[name="sidebar"]')?.getAttribute("content")).toBe("s");
+    expect(document.head.querySelector('meta[name="main"]')?.getAttribute("content")).toBe("m");
+
+    // The layout's description (no sibling sets one) survives …
+    expect(description()!.getAttribute("content")).toBe("the layout");
+    // … and the deeper title wins over the layout's.
+    expect(document.title).toBe("Main");
+  });
 });

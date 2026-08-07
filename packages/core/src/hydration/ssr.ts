@@ -3,7 +3,7 @@ import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
-import { STATE_ATTR, HEAD_ATTR, REQUEST_ATTR } from "../helpers/constants";
+import { STATE_ATTR, HEAD_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
 import {
@@ -315,8 +315,16 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
  * it is rendered per request or baked — one of them collecting and the other not is
  * how a static build came to ship its pages with no title at all.
  */
+/**
+ * Every framework-managed head element: the ones the `Head` hook writes
+ * (`HEAD_ATTR`) and the ones a `Portal` places (`PORTAL_ATTR`) — the latter being
+ * how `Head` itself puts them there once it is rebuilt on `Portal`. Both, so the
+ * transition needs no flag day.
+ */
+const MANAGED_HEAD = `[${HEAD_ATTR}], [${PORTAL_ATTR}]`;
+
 function collectHead(): { title: string; head: string } {
-  const tags = Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
+  const tags = Array.from(document.head.querySelectorAll(MANAGED_HEAD));
   return {
     title: document.title,
     head: tags.map((tag) => tag.outerHTML).join(""),
@@ -325,7 +333,7 @@ function collectHead(): { title: string; head: string } {
 
 /** Clears the tags a previous `Head` left behind, and the title with them. */
 function resetHead(): void {
-  for (const tag of Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`))) {
+  for (const tag of Array.from(document.head.querySelectorAll(MANAGED_HEAD))) {
     tag.remove();
   }
   document.title = "";

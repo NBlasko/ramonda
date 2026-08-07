@@ -28,6 +28,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `list<T>(options)` | Renders a list, minting identity from the items. [Lists](/lists) |
 | `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
+| `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. Underlies [`Head`](/ssr/head). |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
 | `createContext(default, options?)` | Returns `[Provider, Consumer]`. Options: `label` names the pair in devtools; `optional: true` says the default is a real answer, so a consumer with no provider above it is not reported. [Context](/composition/context) |
@@ -116,7 +117,7 @@ once and so never produces the update it reacts to.
 ### Types
 
 `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `RenderedPage` ·
-`DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `ListOptions` · `AsyncLoadProps` ·
+`DocumentOptions` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `ListOptions` · `AsyncLoadProps` ·
 `AsyncLoadFailure` · `Lazy` · `RefCallback` · `RefTarget` · `ContextOptions` ·
 `SubscriptionOwner` · `Disconnect` · `DevFlags` · `ErrorBoundaryFallbackProps`
 
