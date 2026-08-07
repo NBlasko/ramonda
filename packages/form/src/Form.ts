@@ -1,7 +1,7 @@
 import { created, destroyed, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
 
 import { type FieldHandle, type FieldHost, FieldTree, type Watcher } from "./fieldTree";
-import { keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
+import { childKey, keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
 import { type Issues, NO_ISSUES, validate, withIssue } from "./validate";
 import { report } from "./diagnostics";
@@ -1074,26 +1074,43 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * for such a field, deliberately: its message shows, and it is not "touched", because nobody
    * touched it.
    *
-   * It costs a walk of the whole value tree — measured at 854 µs over 900 leaves — which is paid once
-   * per submit, on an action the reader initiated. What it leaves behind is the more interesting cost:
-   * a `touchedKeys` with one entry per path, which `forgetUnder` then scans on every row insert or
-   * removal (375 µs at that size). Both are on the list to make proportional to the subtree.
+   * It costs a walk of the whole value tree, paid once per submit, on an action the reader initiated:
+   * **261 µs** over 1208 paths — see `markKeys`, which is where that number comes from and what it was
+   * before. What it leaves behind used to be the more interesting cost, a `touchedKeys` with one entry
+   * per path that `forgetUnder` then scanned on every row insert or removal; that is **42 µs** now.
    */
   private touchAll(): void {
-    walk(this.current, ROOT, (path) => this.touchedKeys.add(pathKey(path)));
+    markKeys(this.current, "", 0, this.touchedKeys);
   }
 
   /** Drops the messages and the touch marks at or under a path. */
   private forgetUnder(path: Path, options?: { keepSelf: boolean }): void {
-    const next = new Map(this.issues);
-    for (const key of next.keys()) {
-      if (covers(key, path, options?.keepSelf === true)) next.delete(key);
+    // Rendered ONCE, not once per key. `covers` took a `Path` and so rebuilt this string for every
+    // key it was asked about: after a submit has touched every path, that is a thousand `pathKey`
+    // calls per row inserted or removed, and it was most of the 424 µs this used to cost.
+    const covered = coverage(path, options?.keepSelf === true);
+
+    // Only copied if something is actually dropped. A splice on an array with no messages under it —
+    // the ordinary case for a form nobody has submitted yet — now allocates nothing.
+    let next: Map<string, readonly string[]> | undefined;
+    for (const key of this.issues.keys()) {
+      if (!covered(key)) continue;
+      if (next === undefined) next = new Map(this.issues);
+      next.delete(key);
     }
-    this.issues = next;
+    if (next !== undefined) this.issues = next;
 
     for (const set of [this.touchedKeys, this.changedKeys]) {
-      for (const key of [...set]) {
-        if (covers(key, path, options?.keepSelf === true)) set.delete(key);
+      // Collected before deleting, and the list holds the MATCHES rather than the whole set: copying
+      // every key was the second half of the cost, and after a submit the set is one key per path in
+      // the form.
+      let doomed: string[] | undefined;
+      for (const key of set) {
+        if (!covered(key)) continue;
+        (doomed ??= []).push(key);
+      }
+      if (doomed !== undefined) {
+        for (const key of doomed) set.delete(key);
       }
     }
   }
@@ -1115,29 +1132,52 @@ function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
 }
 
 /**
- * Whether a stored key sits at or under a path.
+ * Whether a stored key sits at or under a path — as a TEST built once, then asked about many keys.
  *
- * Compares the KEY form on both sides rather than parsing the stored key back into
- * segments, because `pathKey` is built to be unambiguous and its string form is not.
+ * Compares the KEY form on both sides rather than parsing a stored key back into segments, because
+ * `pathKey` is built to be unambiguous and its string form is not.
+ *
+ * A closure rather than a three-argument predicate, and that is the whole performance story of
+ * `forgetUnder`: taking the `Path` per call meant rebuilding `pathKey(path)` and `keyPrefix(path)` for
+ * every key examined, which after a submit is one per path in the form.
  */
-function covers(key: string, path: Path, keepSelf: boolean): boolean {
-  if (path.length === 0) return !(keepSelf && key === "");
-  if (key === pathKey(path)) return !keepSelf;
-  return key.startsWith(keyPrefix(path));
+function coverage(path: Path, keepSelf: boolean): (key: string) => boolean {
+  // The root covers everything, and `keyPrefix([])` is the empty string that every key starts with —
+  // so the only question left is whether the root's own entry survives.
+  if (path.length === 0) return keepSelf ? (key) => key !== "" : () => true;
+
+  const self = pathKey(path);
+  const prefix = keyPrefix(path);
+  return keepSelf ? (key) => key.startsWith(prefix) : (key) => key === self || key.startsWith(prefix);
 }
 
-/** Every path the value reaches, leaves and branches alike. */
-function walk(value: unknown, path: Path, visit: (path: Path) => void): void {
-  visit(path);
+/**
+ * Records the KEY of every path the value reaches, leaves and branches alike.
+ *
+ * Keys rather than paths, and each built from its parent's. Measured over 1208 paths, which is a form
+ * of 300 objects: **884 µs** for the shape this replaces — a fresh `[...path, key]` array per node with
+ * `pathKey` run over it — **467 µs** once the key is carried down instead, and **261 µs** with
+ * `Object.keys` in place of `Object.entries`, which was allocating a pair array per node. A submit walks
+ * the whole form, so this is the one place those two allocations were worth removing.
+ *
+ * What is left is a concatenation and a `Set.add` per path, and going below it means a different
+ * structure rather than a tighter loop.
+ *
+ * A `Date` is a leaf. It is an object, and descending into one would mark `getTime` as a field.
+ */
+function markKeys(value: unknown, key: string, depth: number, into: Set<string>): void {
+  into.add(key);
   if (value === null || typeof value !== "object" || value instanceof Date) return;
 
   if (Array.isArray(value)) {
-    value.forEach((item, index) => walk(item, [...path, index], visit));
+    for (let index = 0; index < value.length; index++) {
+      markKeys(value[index], childKey(key, depth, index), depth + 1, into);
+    }
     return;
   }
 
-  for (const [key, child] of Object.entries(value)) {
-    walk(child, [...path, key], visit);
+  for (const name of Object.keys(value)) {
+    markKeys((value as Record<string, unknown>)[name], childKey(key, depth, name), depth + 1, into);
   }
 }
 
