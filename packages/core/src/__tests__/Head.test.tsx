@@ -4,7 +4,7 @@ import { Head, resetHeadRegistry } from "../base/Head";
 import { state } from "../base/decorators";
 import { renderPage, renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
-import { HEAD_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR } from "../helpers/constants";
 import { getDOM } from "../test/setup";
 
 /**
@@ -18,7 +18,7 @@ import { getDOM } from "../test/setup";
  */
 
 function headTags(): Element[] {
-  return Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
+  return Array.from(document.head.querySelectorAll(`[${PORTAL_ATTR}]`));
 }
 
 beforeEach(() => {

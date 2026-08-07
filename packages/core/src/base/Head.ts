@@ -2,7 +2,7 @@ import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { queueAfterCommit } from "../core/commit";
 import { create, destroy, watchProp } from "./decorators";
-import { HEAD_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR } from "../helpers/constants";
 
 /**
  * One `<meta>`. **Exactly one** of `name` / `property` / `httpEquiv` identifies
@@ -525,12 +525,12 @@ function live(element: Element | undefined): Element | undefined {
  * in English. The resolved tag is the whole truth about what the element should
  * carry, so anything else on it is left over.
  *
- * `HEAD_ATTR` is kept, because it is not part of the tag's meaning — it is how the
+ * `PORTAL_ATTR` is kept, because it is not part of the tag's meaning — it is how the
  * server tells its own tags apart from the shell's.
  */
 function dropUnwantedAttributes(element: Element, wanted: Record<string, string>): void {
   for (const name of element.getAttributeNames()) {
-    if (name === HEAD_ATTR || name in wanted) continue;
+    if (name === PORTAL_ATTR || name in wanted) continue;
     element.removeAttribute(name);
   }
 }
@@ -538,12 +538,12 @@ function dropUnwantedAttributes(element: Element, wanted: Record<string, string>
 function elementFor(selector: string, tagName: string): Element {
   const existing = document.head.querySelector(selector);
   if (existing) {
-    existing.setAttribute(HEAD_ATTR, "");
+    existing.setAttribute(PORTAL_ATTR, "");
     return existing;
   }
 
   const created = document.createElement(tagName);
-  created.setAttribute(HEAD_ATTR, "");
+  created.setAttribute(PORTAL_ATTR, "");
   document.head.appendChild(created);
   return created;
 }
@@ -639,7 +639,7 @@ export function addModulePreload(href: string): void {
   if (document.head.querySelector(selector)) return;
 
   const link = document.createElement("link");
-  link.setAttribute(HEAD_ATTR, "");
+  link.setAttribute(PORTAL_ATTR, "");
   link.setAttribute("rel", "modulepreload");
   link.setAttribute("href", href);
   document.head.appendChild(link);

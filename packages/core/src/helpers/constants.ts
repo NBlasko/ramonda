@@ -187,22 +187,15 @@ export const PERSIST_KEYS = Symbol("persistKeys");
 export const STATE_ATTR = "data-ramonda-state";
 
 /**
- * Marks every `<head>` element a `Head` hook manages.
- *
- * Shared by the hook (which writes it) and the server renderer (which collects
- * by it), so a static build can pull one page's head out of the document
- * without guessing which tags were the app's and which the shell's.
- */
-export const HEAD_ATTR = "data-ramonda-head";
-
-/**
- * Marks an element a `Portal` placed in its target.
+ * Marks an element the framework placed in a target — a `Portal`'s children in its
+ * target, and the `Head` hook's tags in `document.head` (which manages them the same
+ * way, keyed by selector). The one thing that tells framework-managed head elements
+ * apart from the shell's own.
  *
  * Two jobs, both across the server→client boundary. The server renderer collects
- * a portal's head tags by it — `renderToString` returns only the body, so a tag a
- * portal put in `document.head` is otherwise lost. And on the client the portal
- * finds the nodes it must ADOPT by it, rather than appending a second copy of
- * everything the server already wrote.
+ * these by it — `renderToString` returns only the body, so a tag placed in
+ * `document.head` is otherwise lost. And on the client they are found and ADOPTED by
+ * it, rather than a second copy being appended over what the server already wrote.
  */
 export const PORTAL_ATTR = "data-ramonda-portal";
 

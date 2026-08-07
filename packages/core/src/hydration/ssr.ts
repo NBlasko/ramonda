@@ -3,7 +3,7 @@ import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
-import { STATE_ATTR, HEAD_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
+import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
 import {
@@ -316,12 +316,12 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
  * how a static build came to ship its pages with no title at all.
  */
 /**
- * Every framework-managed head element: the ones the `Head` hook writes
- * (`HEAD_ATTR`) and the ones a `Portal` places (`PORTAL_ATTR`) — the latter being
- * how `Head` itself puts them there once it is rebuilt on `Portal`. Both, so the
- * transition needs no flag day.
+ * Every framework-managed head element. `Head` and the general `Portal` both mark
+ * what they place with `PORTAL_ATTR`, which is the one thing that tells their tags
+ * apart from the shell's own — so a static build can pull one page's head out of
+ * the document without guessing.
  */
-const MANAGED_HEAD = `[${HEAD_ATTR}], [${PORTAL_ATTR}]`;
+const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
 
 function collectHead(): { title: string; head: string } {
   const tags = Array.from(document.head.querySelectorAll(MANAGED_HEAD));

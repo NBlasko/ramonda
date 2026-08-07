@@ -4,7 +4,7 @@ import { Component } from "../../base/Component";
 import { Host, state } from "../../base/decorators";
 import { Head, resetHeadRegistry } from "../../base/Head";
 import { hydrateRoot } from "../../hydration/hydrate";
-import { HEAD_ATTR } from "../../helpers/constants";
+import { PORTAL_ATTR } from "../../helpers/constants";
 
 /**
  * What a hydrated page's `Head` owns.
@@ -28,11 +28,11 @@ describe("hydration: the Head owns what the server wrote", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     resetHeadRegistry();
-    for (const tag of [...document.head.querySelectorAll(`[${HEAD_ATTR}]`)]) tag.remove();
+    for (const tag of [...document.head.querySelectorAll(`[${PORTAL_ATTR}]`)]) tag.remove();
     document.title = "";
   });
 
-  const headTags = () => [...document.head.querySelectorAll(`[${HEAD_ATTR}]`)];
+  const headTags = () => [...document.head.querySelectorAll(`[${PORTAL_ATTR}]`)];
 
   test("adopts the server's tags, so unmounting removes them", async () => {
     @Host("div")
@@ -63,7 +63,7 @@ describe("hydration: the Head owns what the server wrote", () => {
     meta.setAttribute("name", "description");
     meta.setAttribute("content", "everything we sell");
     document.head.appendChild(meta);
-    for (const tag of headTags()) tag.removeAttribute(HEAD_ATTR);
+    for (const tag of headTags()) tag.removeAttribute(PORTAL_ATTR);
 
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -76,7 +76,7 @@ describe("hydration: the Head owns what the server wrote", () => {
     // The hook adopted the server's meta rather than appending a second copy…
     const descriptions = [...document.head.querySelectorAll('meta[name="description"]')];
     expect(descriptions).toHaveLength(1);
-    expect(descriptions[0].getAttribute(HEAD_ATTR)).not.toBeNull();
+    expect(descriptions[0].getAttribute(PORTAL_ATTR)).not.toBeNull();
 
     // …so tearing the page down takes it with it.
     const { unmountChildrenNodes } = await import("../../core/DiffAndMerge");

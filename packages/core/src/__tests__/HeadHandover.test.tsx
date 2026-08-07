@@ -3,7 +3,7 @@ import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Host, state } from "../base/decorators";
 import { Head, resetHeadRegistry } from "../base/Head";
-import { HEAD_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR } from "../helpers/constants";
 
 /**
  * What happens to the head when one page replaces another.
@@ -24,7 +24,7 @@ describe("the head when one page replaces another", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     resetHeadRegistry();
-    for (const tag of [...document.head.querySelectorAll(`[${HEAD_ATTR}]`)]) tag.remove();
+    for (const tag of [...document.head.querySelectorAll(`[${PORTAL_ATTR}]`)]) tag.remove();
     document.title = "";
   });
 
@@ -359,7 +359,7 @@ describe("the head when one page replaces another", () => {
      * metadata that is not merely stale but was never true of the page showing.
      *
      * The resolved tag is the whole truth about what its element should carry, so
-     * anything else on it is left over. `data-ramonda-head` survives, because it is
+     * anything else on it is left over. `data-ramonda-portal` survives, because it is
      * not part of the tag's meaning.
      */
     @Host("div")
@@ -387,7 +387,7 @@ describe("the head when one page replaces another", () => {
     expect(link().getAttribute("hreflang")).toBeNull();
     expect(link().getAttribute("type")).toBeNull();
     expect(link().getAttribute("href")).toBe("/a");
-    expect(link().hasAttribute(HEAD_ATTR)).toBe(true);
+    expect(link().hasAttribute(PORTAL_ATTR)).toBe(true);
   });
 
   test("a tag something else deleted comes back on the next change", async () => {
