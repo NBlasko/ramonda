@@ -84,6 +84,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD047` | error | A memoized handler was given an argument it cannot key on |
 | `RMD048` | error | Object in state changed in place |
 | `RMD049` | error | Two lazy functions with the same source |
+| `RMD050` | warning | A decorator whose effect this member already has |
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 

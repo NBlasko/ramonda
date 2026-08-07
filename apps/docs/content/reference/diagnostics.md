@@ -1080,6 +1080,31 @@ gives that back, and a route table that builds its lazies from a list is the usu
 
 See [lazy loading](/composition/lazy) for the whole picture.
 
+## RMD050 — A decorator whose effect this member already has
+
+```tsx expect-error
+@state @state count = 0;        // the same one twice
+@state @persist token = "";     // @state already puts a field in the blob
+```
+
+Either the same decorator is on the member twice, or two of them give it the same thing. Delete the one
+that adds nothing.
+
+**A warning, not an error.** The member ends up right either way — a doubled `@state` renders once per
+write with the right value, because the second application installs the same accessor over the first.
+What is wrong is the belief that the second line was doing something.
+
+**Two decorators that do different work on one member are silent, and that is most pairs.** A method that
+is both `@created` and `@updated`, a handler on `@onWindow` and `@onDocument`, an `@interval` beside a
+`@timeout`, a `@watchProp` that is also an `@updated` — each runs twice on purpose, which is the reason
+for writing two.
+
+And the pairs that make no sense at all never reach this code: `@state` with `@compute`, `@compute` with
+`@persist`, `@state` with `@watchProp`, `@memoizedHandler` with `@compute` all **throw**, naming the member
+and what it is, because one of the two is on the wrong kind of member entirely.
+
+Reported once per member, not once per instance — a list of a thousand rows says it once.
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to

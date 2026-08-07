@@ -79,7 +79,8 @@ export type DiagnosticCode =
   | "RMD046"
   | "RMD047"
   | "RMD048"
-  | "RMD049";
+  | "RMD049"
+  | "RMD050";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -369,6 +370,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "Two lazy functions with the same source",
     fix: "`AsyncLoad` identifies a module by the SOURCE of its `lazy`, which works when that source names one: `() => import('./Thing')` says what it loads, so the same import written in two components shares one cache entry — which is what you want. A lazy a FACTORY built names nothing: `const make = (path) => () => import(path)` closes over the path, and a closed-over value is not part of the source, so every module it builds stringifies the same. These two were found to load DIFFERENT modules under one key, so the second has been given a key of its own and now renders what it asked for. What that costs is the shared cache entry — a loading frame the second time, since the module system still dedupes the fetch itself. Pass `cacheKey` to get it back: `<AsyncLoad cacheKey=\"./Dashboard\" lazy={make('./Dashboard')} … />`. A route table that builds its lazies from a list is the usual way to meet this.",
+  },
+  RMD050: {
+    // warning: the member ends up right either way, so nothing downstream is wrong. What is wrong is the
+    // belief that the second decorator was doing something.
+    severity: "warning",
+    title: "A decorator whose effect this member already has",
+    fix: "Either the same decorator is on this member twice, or two decorators give it the same thing — `@state` already puts a field in the hydration blob, so `@persist` beside it adds nothing. Delete the one that adds nothing. This is not about two decorators that do different work on one member: `@created` with `@mounted`, `@onWindow` with `@onDocument`, `@watchProp` with `@updated` all run twice on purpose and are silent.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */
