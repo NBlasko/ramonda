@@ -3,7 +3,7 @@ import { GLOBAL_RUNTIME } from "../core/runtime";
 import { create, destroy, watchProp } from "./decorators";
 import { diffAndMerge, filterVirtualChild, unmountChildrenNodes } from "../core/DiffAndMerge";
 import { PORTAL_ATTR, KEY_SYM } from "../helpers/constants";
-import type { EnhancedChildNode, RamondaNode, VNode } from "../types/vdom";
+import type { ComponentChild, EnhancedChildNode, RamondaNode, VNode } from "../types/vdom";
 
 export interface PortalProps {
   /**
@@ -112,9 +112,10 @@ export class Portal extends Hook<PortalProps> {
    * filled `nodes`, so this finds them present and does nothing: the reconcile
    * that matters has happened, and adopting on top would be a second one.
    *
-   * Single portal per target: the seed is every marked node in the target, so two
-   * portals sharing one would each try to own the other's. `Head` resolves its
-   * whole chain into ONE portal per document, which is the shape this serves.
+   * Several portals may share one target: this takes only its OWN block — the first
+   * `children.length` still-marked nodes — and CLAIMS them by removing the marker,
+   * so the next portal (adopts run in the same tree order the server placed in)
+   * finds its own block at the front. See the loop for the detail.
    */
   @create({ env: "client" })
   adopt(): void {
@@ -123,7 +124,29 @@ export class Portal extends Hook<PortalProps> {
     const target = this.props.target;
     if (!target) return;
 
-    this.nodes = Array.from(target.querySelectorAll(`[${PORTAL_ATTR}]`)) as ChildNode[];
+    // Take only THIS portal's own server nodes — the first `children.length` marked
+    // nodes still unclaimed — not every marked node in the target. Seeding from all
+    // of them let the first portal into a shared target sweep a sibling's tags away
+    // and the sibling rebuild onto what was left. Claimed by removing the marker, so
+    // the next portal (adopts run in the same tree order the server placed in) skips
+    // this block and finds its own at the front. Keys are stamped from the matching
+    // child so a keyed reconcile finds each node instead of building a duplicate.
+    const children = this.childList();
+    if (children.length === 0) return;
+
+    const marked = target.querySelectorAll(`[${PORTAL_ATTR}]`);
+    const mine: ChildNode[] = [];
+    for (let i = 0; i < children.length && i < marked.length; i++) {
+      const element = marked[i];
+      element.removeAttribute(PORTAL_ATTR);
+      const child = children[i];
+      if (typeof child !== "string" && child.attributes?.key != null) {
+        (element as unknown as KeyedNode)[KEY_SYM] = child.attributes.key;
+      }
+      mine.push(element as unknown as ChildNode);
+    }
+
+    this.nodes = mine;
     this.reconcile();
   }
 
@@ -155,7 +178,6 @@ export class Portal extends Hook<PortalProps> {
   private reconcile(): void {
     const owner = this[GLOBAL_RUNTIME].owner;
     const target = this.props.target;
-    const raw = this.props.children;
     if (!target) return;
 
     // The target moved: bring the nodes we already own across before reconciling,
@@ -183,14 +205,10 @@ export class Portal extends Hook<PortalProps> {
     }
     let unkeyedCursor = 0;
 
-    const list: unknown[] = [];
-    flattenChildren(raw, list);
+    const children = this.childList();
     const next: ChildNode[] = [];
 
-    for (const rawChild of list) {
-      const vchild = filterVirtualChild(rawChild);
-      if (vchild === undefined) continue;
-
+    for (const vchild of children) {
       const key = typeof vchild === "string" ? undefined : vchild.attributes?.key;
       const keyed = key != null;
 
@@ -248,6 +266,23 @@ export class Portal extends Hook<PortalProps> {
     }
 
     this.nodes = next;
+  }
+
+  /**
+   * The children as a flat run of real nodes-to-be — arrays flattened, holes
+   * (`null`/`false`/`undefined`) dropped. Shared by `reconcile`, which walks it,
+   * and `adopt`, which needs its length and each child's key.
+   */
+  private childList(): ComponentChild[] {
+    const flat: unknown[] = [];
+    flattenChildren(this.props.children, flat);
+
+    const out: ComponentChild[] = [];
+    for (const raw of flat) {
+      const child = filterVirtualChild(raw);
+      if (child !== undefined) out.push(child);
+    }
+    return out;
   }
 }
 

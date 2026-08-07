@@ -124,4 +124,62 @@ describe("Portal hydration", () => {
     unmountChildrenNodes([container as unknown as never]);
     container.remove();
   });
+
+  test("two portals into one head both survive SSR and hydration", async () => {
+    // Each portal must adopt only ITS OWN server nodes. Seeding from every marked
+    // node in the target made the first portal sweep the second's tags away, and the
+    // second then rebuilt onto what was left — so one of the two was lost.
+    class WithMeta extends Component<{ n: string }> {
+      portal = this.use(Portal, (self: WithMeta) => ({
+        children: <meta name={self.props.n} content="x" />,
+        target: document.head,
+      }));
+      render() {
+        return <p>{this.props.n}</p>;
+      }
+    }
+
+    @Host("div")
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <WithMeta n="a" />
+            <WithMeta n="b" />
+          </div>
+        );
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    expect(page.head).toContain('name="a"');
+    expect(page.head).toContain('name="b"');
+
+    document.head.insertAdjacentHTML("beforeend", page.head);
+    // The exact server nodes, so we can prove each was ADOPTED, not swept and rebuilt.
+    const serverA = document.head.querySelector('meta[name="a"]');
+    const serverB = document.head.querySelector('meta[name="b"]');
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // Both adopted, neither duplicated nor swept.
+    expect(document.head.querySelectorAll('meta[name="a"]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="b"]')).toHaveLength(1);
+    // Each portal adopted ITS OWN server node — the second was not swept by the first
+    // and rebuilt from scratch (which would lose any state and orphan the server node).
+    expect(document.head.querySelector('meta[name="a"]')).toBe(serverA);
+    expect(document.head.querySelector('meta[name="b"]')).toBe(serverB);
+
+    // Both owned: tearing the page down takes both with it.
+    unmountChildrenNodes([container as unknown as never]);
+    expect(document.head.querySelectorAll('meta[name="a"]')).toHaveLength(0);
+    expect(document.head.querySelectorAll('meta[name="b"]')).toHaveLength(0);
+
+    container.remove();
+  });
 });
