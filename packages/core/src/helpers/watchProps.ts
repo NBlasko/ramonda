@@ -123,7 +123,21 @@ export function runWatchProps(component: BaseComponent<any>) {
     if (!changed) continue;
 
     entry.lastValues = next;
-    entry.cb(next, previous);
+
+    /**
+     * The callback gets a COPY of `next`, and that is not caution — it is a bug this closes.
+     *
+     * `next` is the array just stored as `lastValues`, and a callback is handed a plain array with
+     * nothing stopping it writing to one: `next.sort()` to compare, a `push`, an assignment. Measured —
+     * a handler setting `next[0] = 999` and shortening it left `lastValues` as `[999]`, so the NEXT
+     * call's `previous` was that garbage. Which is precisely the value the documentation tells people to
+     * read to learn which selector moved.
+     *
+     * `previous` needs no copy: `lastValues` has already been replaced above, so nothing holds it and a
+     * callback that mutates it corrupts something already discarded. One allocation per FIRE, not per
+     * comparison, and a watcher fires rarely by construction.
+     */
+    entry.cb(next.slice(), previous);
   }
 }
 // Not a decorator, despite the name — `@watchProp` lives in base/decorators.ts.

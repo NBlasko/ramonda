@@ -6,6 +6,7 @@ import { compute, memoizedHandler, state, watchProp } from "../base/decorators";
 import { StableProps } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
+import { STABLE_PROPS } from "../helpers/constants";
 
 /**
  * RMD022 — a hook's props callback called twice, and the two bags compared.
@@ -431,6 +432,49 @@ describe("RMD022", () => {
     expect(firedB).toBe(1);
 
     expect(logs.join(" ")).toContain("RMD046");
+  });
+
+  /**
+   * What `configurable: true` did and did not give up, and that the merge composes.
+   *
+   * The property had to become configurable so a second application on one class could merge into it.
+   * `writable: false` still refuses an assignment, which is the door an app could actually reach — the
+   * symbol is a plain `Symbol("stableProps")` in `helpers/constants.ts`, neither exported nor
+   * `Symbol.for`, so nothing outside this package can even name it without walking
+   * `getOwnPropertySymbols`.
+   */
+  test("the list still refuses assignment, and merges compose in every direction", async () => {
+    @StableProps("a")
+    class One extends Hook<{ a?: number }> {
+      @state x = 1;
+    }
+
+    expect(() => {
+      (One as unknown as Record<symbol, unknown>)[STABLE_PROPS] = ["hijacked"];
+    }).toThrow(/read only property/);
+
+    // Three on one class, all present. Order is the reverse of declaration because class decorators
+    // apply bottom-up, and it does not matter: this is a set, read for membership.
+    @StableProps("a")
+    @StableProps("b")
+    @StableProps("c")
+    class Three extends Hook<{ a?: number; b?: number; c?: number }> {
+      @state x = 1;
+    }
+    expect([...((Three as unknown as Record<symbol, string[]>)[STABLE_PROPS] ?? [])].sort()).toEqual(["a", "b", "c"]);
+
+    // Twice on one class AND a subclass adding its own — the two kinds of merge compose rather than
+    // one replacing the other.
+    @StableProps("a")
+    @StableProps("b")
+    class Base extends Hook<{ a?: number; b?: number; d?: number }> {
+      @state x = 1;
+    }
+    @StableProps("d")
+    class Sub extends Base {}
+
+    expect([...((Base as unknown as Record<symbol, string[]>)[STABLE_PROPS] ?? [])].sort()).toEqual(["a", "b"]);
+    expect([...((Sub as unknown as Record<symbol, string[]>)[STABLE_PROPS] ?? [])].sort()).toEqual(["a", "b", "d"]);
   });
 });
 

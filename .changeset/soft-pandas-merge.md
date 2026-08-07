@@ -17,5 +17,8 @@ one unambiguous reading, the union, and both declarations now take effect. Combi
 union, so carrying on there would mean silently picking one. Here the result is exactly what was asked
 for, so only the spelling is redundant.
 
-The property is `configurable: true` for this. `writable: false` still refuses assignment; what it gives
-up is protection against a deliberate `defineProperty` by an app, which nobody had named as a threat.
+The property is `configurable: true` for this, and the trade is smaller than it sounds. `writable: false`
+still refuses an assignment — the door an app could actually reach — and the symbol is a plain
+`Symbol("stableProps")`, neither exported nor `Symbol.for`, so nothing outside the package can name it
+without walking `getOwnPropertySymbols`. What is given up is a deliberate `defineProperty` by code that
+went looking for it.

@@ -769,7 +769,14 @@ export const destroyed = createLifecycleDecorator("destroys", "destroyed");
  * and never fired when the hook's own prop changed. Fixed by recording which
  * instance each entry belongs to; see `WatchPropEntry.owner`.
  */
-export function watchProp<This, S extends readonly ((props: PropsOfInstance<This>) => unknown)[]>(...selectors: S) {
+export function watchProp<
+  This,
+  // A NON-EMPTY tuple, so `@watchProp()` is a compile error rather than a runtime one. A plain
+  // `readonly T[]` accepts zero arguments, which the DEV throw below then had to catch — and a throw is
+  // the worse of the two places to learn it: the type knows at the call site, before anything runs. The
+  // throw stays for the build that has no types.
+  S extends readonly [(props: PropsOfInstance<This>) => unknown, ...((props: PropsOfInstance<This>) => unknown)[]],
+>(...selectors: S) {
   if (__DEV__) {
     if (selectors.length === 0) {
       throw new Error(
