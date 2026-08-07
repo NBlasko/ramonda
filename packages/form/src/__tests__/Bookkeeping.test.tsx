@@ -204,3 +204,47 @@ describe("what a removed value takes with it", () => {
     }
   });
 });
+
+/**
+ * The shared empty list, and why several forms — or several buttons — cannot reach each other through it.
+ *
+ * `NO_MESSAGES` is one module-level array handed to every field that has nothing to say. Sharing it is
+ * what keeps a render stable: a fresh `[]` per read is a new identity every time, which RMD020 reports
+ * and which would cost a field its element. What makes it safe is that nothing ever writes into it —
+ * asserted here, from the outside, the way an app would reach it.
+ */
+describe("the shared empty message list", () => {
+  test("two forms hand back the same one, and neither can spoil it for the other", async () => {
+    const left = mount({ a: "" });
+    const right = mount({ a: "" });
+    try {
+      const one = left.form.fields.a.$.errors;
+      const two = right.form.fields.a.$.errors;
+
+      expect(one).toEqual([]);
+      expect(one).toBe(two);
+
+      // A caller who pushes into what they were given hears about it, rather than adding a message to
+      // every field in every form on the page.
+      expect(() => (one as string[]).push("mine")).toThrow(TypeError);
+      expect(right.form.fields.a.$.errors).toEqual([]);
+    } finally {
+      left.unmount();
+      right.unmount();
+    }
+  });
+
+  test("a real message is a list of its own", async () => {
+    const { form, unmount } = mount({ a: "" });
+    try {
+      await act(async () => form.submit());
+
+      const errors = form.fields.a.$.errors;
+      expect(errors).toEqual(["required"]);
+      // Not the shared one, so nothing above applies to it.
+      expect(Object.isFrozen(errors)).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+});

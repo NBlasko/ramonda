@@ -4,10 +4,8 @@ import { ASPECT, EVERY_ASPECT, type FieldHandle, type FieldHost, FieldTree, type
 import { FACT, type FormFacts, FormProvider, type FormWatcher } from "./formState";
 import { childKey, keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
-import { type Issues, NO_ISSUES, validate, withIssue } from "./validate";
+import { type Issues, NO_ISSUES, NO_MESSAGES, validate, withIssue } from "./validate";
 import { report } from "./diagnostics";
-
-const NO_MESSAGES: readonly string[] = [];
 
 /**
  * A form: the values, the errors, and the fields as a typed tree.
@@ -191,6 +189,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    */
   @created
   join(env: RenderEnv = "client"): void {
+    this.joined = true;
     if (__DEV__ && env === "client") {
       this.announce();
       // And again whenever the panel asks. `@ramonda/form/devtools` arrives through a dynamic
@@ -223,6 +222,33 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       (error) => this.failed(runId, error),
     );
   }
+
+  /**
+   * The same thing again, on the client only, for a page that arrived as MARKUP.
+   *
+   * `@created` defaults to `env: "shared"`, and a shared create is skipped during hydration — core does
+   * that on purpose, because it already ran on the server, and the comment in `hydrate.ts` says so. The
+   * model behind it is that whatever a create did is captured in the hydration blob. **This form's is
+   * not**: the values, the messages and `validated` are plain fields rather than `@state`, deliberately,
+   * because a form holds whatever the schema's input side is and `@state` means "serialise me".
+   *
+   * So on a hydrated page nothing had ever validated, and `isValid` was false however good the defaults
+   * were. Measured: the server sent `<button disabled={false}>` for a form whose defaults pass, and
+   * hydration turned the button OFF, with nothing able to turn it back on until the reader edited a
+   * field — the exact failure `join` exists to prevent, arriving by the one path nobody had tested.
+   *
+   * The guard is `joined` rather than a count of anything: it says whether the create above ran ON THIS
+   * SIDE. Under a client render it did, and this is a no-op; under hydration it did not, and this is the
+   * only chance to validate and to announce the form to the devtools panel.
+   */
+  @created({ env: "client" })
+  joinAfterHydration(): void {
+    if (this.joined) return;
+    this.join("client");
+  }
+
+  /** Whether `join` ran on this side — see `joinAfterHydration`. */
+  private joined = false;
 
   @destroyed
   dispose(): void {

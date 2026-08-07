@@ -1,4 +1,6 @@
-import { created, createContext, destroyed, Hook, INSPECT, state } from "@ramonda/core";
+import { createContext, destroyed, Hook, INSPECT, state } from "@ramonda/core";
+
+import { NO_MESSAGES } from "./validate";
 
 /**
  * WHICH form-level fact changed, as a bitmask — the same trick `ASPECT` plays for a field.
@@ -127,12 +129,27 @@ export class FormState extends Hook implements FormWatcher {
   }
 
   /**
-   * Registered from `@created` rather than lazily, because the form needs the mask BEFORE it decides
-   * whether to compute anything: a first read that happened after a change would have missed it.
+   * Registered on the first READ, and re-registered whenever the mask grows.
+   *
+   * Not from `@created`, and that is the whole story of one bug: a `@created` defaults to
+   * `env: "shared"`, and core skips a shared create during hydration because it already ran on the
+   * server. So on a page that arrived as markup this hook registered with nobody, silently, and a save
+   * button never heard that validity had flipped. Registering from a read has no such hole — the read
+   * happens in the render, on whichever side is rendering.
+   *
+   * Re-registering as the mask grows is what keeps the form's record of "the answers as last published"
+   * honest: `watchForm` brings it up to date for the facts now being watched, so the first change after
+   * a new fact is read is compared against the truth rather than against a default.
    */
-  @created
-  attach(): void {
-    this.form?.watchForm(this);
+  private synced = -1;
+
+  private facts(): FormFacts | undefined {
+    const form = this.form;
+    if (form !== undefined && this.synced !== this.reads) {
+      this.synced = this.reads;
+      form.watchForm(this);
+    }
+    return form;
   }
 
   @destroyed
@@ -163,33 +180,33 @@ export class FormState extends Hook implements FormWatcher {
   get isValid(): boolean {
     void this.version;
     this.reads |= FACT.valid;
-    return this.form?.isValidQuietly ?? false;
+    return this.facts()?.isValidQuietly ?? false;
   }
 
   /** A comparison of the whole value against the baseline — the form runs it only while it is read. */
   get isDirty(): boolean {
     void this.version;
     this.reads |= FACT.dirty;
-    return this.form?.isDirtyQuietly ?? false;
+    return this.facts()?.isDirtyQuietly ?? false;
   }
 
   get isSubmitting(): boolean {
     void this.version;
     this.reads |= FACT.submitting;
-    return this.form?.isSubmittingQuietly ?? false;
+    return this.facts()?.isSubmittingQuietly ?? false;
   }
 
   get submitCount(): number {
     void this.version;
     this.reads |= FACT.submits;
-    return this.form?.submitCountQuietly ?? 0;
+    return this.facts()?.submitCountQuietly ?? 0;
   }
 
   /** Messages with no field of their own: a schema failure at the root. */
   get formErrors(): readonly string[] {
     void this.version;
     this.reads |= FACT.formErrors;
-    return this.form?.formErrorsQuietly ?? NO_MESSAGES;
+    return this.facts()?.formErrorsQuietly ?? NO_MESSAGES;
   }
 
   /**
@@ -213,5 +230,3 @@ export class FormState extends Hook implements FormWatcher {
     this.form?.reset();
   }
 }
-
-const NO_MESSAGES: readonly string[] = [];
