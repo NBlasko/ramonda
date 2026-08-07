@@ -79,16 +79,29 @@ finer when you need to:
 ## Reacting to a specific prop changing
 
 Sometimes you need to *do* something when one prop changes — refetch when an `id`
-changes, say. `@watchProp` runs a method just before the render, whenever the prop
+changes, say. `@watchProp` runs a method just before the render, whenever a prop
 you name changes:
 
 ```tsx
 @watchProp((props) => props.userId)
-reload(next: string, previous: string) {
+reload([next]: [string], [previous]: [string]) {
   this.data = undefined;
   void this.fetch(next);
 }
 ```
+
+The values arrive as a **tuple**, one entry per selector, which is why the parameters above are
+destructured. Name several selectors and the method runs **once** when any of them changed:
+
+```tsx
+@watchProp((props) => props.page, (props) => props.term)
+reload(next: [number, string], previous: [number, string]) {
+  void this.fetch(next[0], next[1]);
+}
+```
+
+Not once per changed prop — once per update in which at least one moved. A selector whose value did not
+change keeps it in both arrays, so `previous[i] === next[i]` tells you which one moved.
 
 ```demo:WatchPropDemo
 ```

@@ -16,7 +16,7 @@ describe("watchProp", () => {
       @state mirror = -1;
 
       @watchProp((p: { value: number }) => p.value)
-      onValue(next: number, prev: number) {
+      onValue([next]: [number], [prev]: [number]) {
         log.push(`watch:${prev}->${next}`);
         this.mirror = next;
       }
@@ -57,7 +57,7 @@ describe("watchProp", () => {
 
     class Child extends Component<Props> {
       @watchProp((p: Props) => p.data.v)
-      onV(next: number, prev: number) {
+      onV([next]: [number], [prev]: [number]) {
         log.push(`v:${prev}->${next}`);
       }
 
@@ -97,7 +97,7 @@ describe("watchProp", () => {
     class Child extends Component<Props> {
       // Namerno bez optional chaining-a: p.maybe.deep.leaf puca kada maybe ne postoji.
       @watchProp((p: Props) => (p.maybe as { deep: { leaf: number } }).deep.leaf)
-      onLeaf(next: number, prev: number) {
+      onLeaf([next]: [number], [prev]: [number]) {
         log.push(`leaf:${prev}->${next}`);
       }
 
@@ -154,7 +154,7 @@ describe("watchProp", () => {
       @state loaded = "none";
 
       @watchProp((p: LoaderProps) => p.target)
-      onTarget(next: string, previous: string) {
+      onTarget([next]: [string], [previous]: [string]) {
         log.push(`hook:${previous}->${next}`);
         this.loaded = `loaded-${next}`;
       }
@@ -214,7 +214,7 @@ describe("watchProp", () => {
 
     class Leaf extends Hook<LeafProps> {
       @watchProp((p: LeafProps) => p.leaf)
-      onLeaf(next: string, previous: string) {
+      onLeaf([next]: [string], [previous]: [string]) {
         log.push(`leaf:${previous}->${next}`);
       }
     }
@@ -223,7 +223,7 @@ describe("watchProp", () => {
       leaf = this.use(Leaf, (self: Middle) => ({ leaf: `L${self.props.middle * 2}` }));
 
       @watchProp((p: MiddleProps) => p.middle)
-      onMiddle(next: number, previous: number) {
+      onMiddle([next]: [number], [previous]: [number]) {
         log.push(`middle:${previous}->${next}`);
       }
     }
@@ -232,7 +232,7 @@ describe("watchProp", () => {
       middle = this.use(Middle, (self: Outer) => ({ middle: self.props.outer.length }));
 
       @watchProp((p: OuterProps) => p.outer)
-      onOuter(next: string, previous: string) {
+      onOuter([next]: [string], [previous]: [string]) {
         log.push(`outer:${previous}->${next}`);
       }
     }
@@ -279,7 +279,7 @@ describe("watchProp", () => {
 
     class Feed extends Hook<FeedProps> {
       @watchProp((p: FeedProps) => p.url)
-      onUrl(next: string, previous: string) {
+      onUrl([next]: [string], [previous]: [string]) {
         log.push(`${previous}->${next}`);
       }
     }
@@ -322,7 +322,7 @@ describe("watchProp", () => {
 
     class Table extends Hook<TableProps> {
       @watchProp((p: TableProps) => p.filters.page)
-      onPage(next: number, previous: number) {
+      onPage([next]: [number], [previous]: [number]) {
         log.push(`page:${previous}->${next}`);
       }
     }
@@ -368,7 +368,7 @@ describe("watchProp", () => {
       @state hits = 0;
 
       @watchProp((p: { term: string }) => p.term)
-      onTerm(next: string) {
+      onTerm([next]: [string]) {
         log.push(`term:${next}`);
         this.hits = next.length;
       }
@@ -414,7 +414,7 @@ describe("watchProp", () => {
      */
     class Inner extends Hook<{ doubled: number }> {
       @watchProp((p: { doubled: number }) => p.doubled)
-      onDoubled(next: number, previous: number) {
+      onDoubled([next]: [number], [previous]: [number]) {
         log.push(`inner:${previous}->${next}`);
       }
     }
@@ -424,7 +424,7 @@ describe("watchProp", () => {
       inner = this.use(Inner, (self: Outer) => ({ doubled: self.derived * 2 }));
 
       @watchProp((p: { seed: number }) => p.seed)
-      onSeed(next: number) {
+      onSeed([next]: [number]) {
         log.push(`outer:${next}`);
         this.derived = next;
       }
@@ -463,7 +463,7 @@ describe("watchProp", () => {
     // regression here would mean components started reading a hook's bag.
     class Noise extends Hook<{ tick: number }> {
       @watchProp((p: { tick: number }) => p.tick)
-      onTick(next: number) {
+      onTick([next]: [number]) {
         log.push(`hook:${next}`);
       }
     }
@@ -472,7 +472,7 @@ describe("watchProp", () => {
       noise = this.use(Noise, { tick: 0 });
 
       @watchProp((p: { label: string }) => p.label)
-      onLabel(next: string, previous: string) {
+      onLabel([next]: [string], [previous]: [string]) {
         log.push(`component:${previous}->${next}`);
       }
 
@@ -514,7 +514,7 @@ describe("the selector is typed from the class it is on", () => {
 
     class Row extends Component<{ userId: string; other: number }> {
       @watchProp((props) => props.userId)
-      onUser(next: string, previous: string) {
+      onUser([next]: [string], [previous]: [string]) {
         seen.push(`${previous}->${next}`);
       }
 
@@ -542,7 +542,7 @@ describe("the selector is typed from the class it is on", () => {
 
     class Watcher extends Hook<{ target: number }> {
       @watchProp((props) => props.target)
-      onTarget(next: number) {
+      onTarget([next]: [number]) {
         seen.push(next);
       }
     }
@@ -567,7 +567,7 @@ describe("the selector is typed from the class it is on", () => {
       // @ts-expect-error — `usreId` is not a prop, and this used to be `unknown` (so
       // anything compiled) until the selector was typed from the class.
       @watchProp((props) => props.usreId)
-      onUser(next: string) {
+      onUser([next]: [string]) {
         void next;
       }
 

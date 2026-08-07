@@ -75,7 +75,7 @@ export class Resource<T> extends Hook<{ url: string }> {
   // Runs when `url` changes, before the render — so the "loading" state is on screen in
   // the same pass rather than one frame later.
   @watchProp((props) => props.url)
-  reload(next: string) {
+  reload([next]: [string]) {
     void this.load(next);
   }
 

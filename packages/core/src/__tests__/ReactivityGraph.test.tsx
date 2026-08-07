@@ -112,7 +112,7 @@ describe("reactivity graph", () => {
     @Host("div")
     class Child extends Component<{ value: number }> {
       @watchProp((p: { value: number }) => p.value)
-      onValue(next: number) {
+      onValue([next]: [number]) {
         seen.push(next);
       }
       render() {

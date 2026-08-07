@@ -258,7 +258,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * deciding per field who owns what needs the full walk anyway.
    */
   @watchProp((props) => props.defaultValues)
-  onDefaultsChanged(next: InferIn<S>): void {
+  onDefaultsChanged([next]: [InferIn<S>]): void {
     // Nothing has read the values yet, so `current` has not latched — it will take `next` itself
     // when something does, and merging into values that do not exist would only get in the way.
     if (this.held === undefined) return;

@@ -133,7 +133,7 @@ describe("rerender", () => {
 
     class Watcher extends Component<{ userId: string }> {
       @watchProp((p: { userId: string }) => p.userId)
-      reload(next: string, previous: string) {
+      reload([next]: [string], [previous]: [string]) {
         seen.push(`${previous}->${next}`);
       }
       render(): RamondaNode {

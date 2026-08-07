@@ -200,27 +200,79 @@ describe("what a server render actually runs", () => {
 });
 
 /**
- * `@watchProp` stacked on ONE method, which is the supported way to have one handler follow several
- * props — the reference table says "several watch different props" and stops there, so this measures
- * the part a reader actually needs next: how often the method runs.
+ * Several selectors on ONE `@watchProp`, which is how one handler follows more than one prop.
  *
- * Each application pushes its OWN entry, with its own `lastValue`, both bound to the same method. So it
- * is one call per CHANGED prop, not one call per update: move one and it runs once, move two in the same
- * update and it runs twice, each time with that selector's own previous and next value. That is useful
- * rather than a defect — a handler watching `a` and `b` is told which one moved — but it is not what
- * "watch several props" sounds like, so it is written down.
+ * It runs ONCE when any of them changed, with every value positionally — not once per changed prop.
+ * The values a selector did not change keep their place in both arrays, so `previous[i] === next[i]`
+ * is how the handler tells which one moved.
  *
- * The order is reverse of declaration, because a member decorator's initializers run bottom-up.
+ * Stacking the decorator instead still works and is NOT the way: each application is its own entry, so
+ * two that both moved in one update call the method twice. Asserted below, because somebody will write
+ * it and the difference is invisible until two props move together.
  */
-describe("several @watchProp on one method", () => {
-  test("one call per changed prop, each with its own before and after", async () => {
+describe("several selectors on one @watchProp", () => {
+  test("one call when any changed, and the unchanged keep their place", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const calls: string[] = [];
+
+    class Child extends Component<{ a: number; b: string; c: boolean }> {
+      @watchProp(
+        (props: { a: number; b: string; c: boolean }) => props.a,
+        (props: { a: number; b: string; c: boolean }) => props.b,
+      )
+      onEither(next: [number, string], previous: [number, string]) {
+        // Which one moved, read the way the docs say to read it.
+        const moved = next.map((value, index) => (Object.is(value, previous[index]) ? "-" : "moved"));
+        calls.push(`${JSON.stringify(next)} ${moved.join(",")}`);
+      }
+      render(): RamondaNode {
+        return <p>{this.props.a}</p>;
+      }
+    }
+
+    class App extends Component {
+      @state a = 1;
+      @state b = "x";
+      @state c = false;
+      render(): RamondaNode {
+        return <Child a={this.a} b={this.b} c={this.c} />;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    try {
+      calls.length = 0;
+
+      // A prop NO selector reads: silent. This is the case a single tuple-returning selector got wrong.
+      app.instance.c = true;
+      await app.settle();
+      expect(calls).toEqual([]);
+
+      // One selector moves: one call, and the other value is still there and marked unchanged.
+      app.instance.a = 2;
+      await app.settle();
+      expect(calls).toEqual(['[2,"x"] moved,-']);
+
+      // BOTH move in one update: still ONE call, with both marked.
+      calls.length = 0;
+      app.instance.a = 3;
+      app.instance.b = "y";
+      await app.settle();
+      expect(calls).toEqual(['[3,"y"] moved,moved']);
+    } finally {
+      app.unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("stacking the decorator is the older shape and calls once per changed prop", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const calls: string[] = [];
 
     class Child extends Component<{ a: number; b: number }> {
       @watchProp((props: { a: number; b: number }) => props.a)
       @watchProp((props: { a: number; b: number }) => props.b)
-      onEither(next: number, previous: number) {
+      onEither([next]: [number], [previous]: [number]) {
         calls.push(`${previous}->${next}`);
       }
       render(): RamondaNode {
@@ -239,18 +291,11 @@ describe("several @watchProp on one method", () => {
     const app = await getDOM<App>(<App />);
     try {
       calls.length = 0;
-
-      // One prop moves: one call, from the selector that saw the change.
-      app.instance.a = 2;
-      await app.settle();
-      expect(calls).toEqual(["1->2"]);
-
-      // Both move in ONE update: two calls, not one — and the lower declaration goes first.
-      calls.length = 0;
+      // Two entries, so two calls — the reason the multi-selector form exists. Lower goes first.
       app.instance.a = 3;
       app.instance.b = 30;
       await app.settle();
-      expect(calls).toEqual(["10->30", "2->3"]);
+      expect(calls).toEqual(["10->30", "1->3"]);
     } finally {
       app.unmount();
       vi.restoreAllMocks();

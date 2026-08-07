@@ -28,7 +28,7 @@ class HistoryHook extends Hook<{ value: number }> {
   }
 
   @watchProp((props) => props.value)
-  track(next: number) {
+  track([next]: [number]) {
     this.history = [...this.history, next].slice(-5);
   }
 }
@@ -166,7 +166,7 @@ export class DerivedSync extends Component<DerivedSyncProps> {
     this.doubled = this.props.source * 2;
   }
 
-  @watchProp((p) => p.source) onSource(next: number) {
+  @watchProp((p) => p.source) onSource([next]: [number]) {
     this.doubled = next * 2;
   }
 

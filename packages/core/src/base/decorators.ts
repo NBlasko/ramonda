@@ -724,14 +724,35 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  *
  * ```ts
  * @watchProp((p) => p.userId)
- * reload(next: string, previous: string) { … }
+ * reload(next: [string], previous: [string]) { … }
  * ```
+ *
+ * **Several selectors, one call.** Pass them as separate arguments and the method runs ONCE when any
+ * of them changed, with every value positionally:
+ *
+ * ```ts
+ * @watchProp((p) => p.page, (p) => p.term, (p) => p.sort)
+ * reload(next: [number, string, string], previous: [number, string, string]) { … }
+ * ```
+ *
+ * The values are always a TUPLE, even for one selector, and that is about EVOLUTION rather than
+ * neatness: with a scalar for one and a tuple for many, adding a second selector to a watcher that
+ * already exists silently changes the method's parameter type, and the error a decorator gives for
+ * that is `TS1241 Unable to resolve signature of method decorator`, which names nothing. A tuple that
+ * grows leaves `next[0]` meaning what it meant.
+ *
+ * A selector whose value did not change keeps it in BOTH arrays, so `previous[i] === next[i]` is how
+ * the method tells which one moved.
+ *
+ * Do not reach for a single selector returning an array to get the same effect — comparison is
+ * `Object.is`, so a fresh array is never equal to the last one and the method fires on every props
+ * change with `previous` and `next` holding the same contents. Measured.
  *
  * **The selector needs no annotation**: `props` is typed from the class the decorator is
  * placed on. `This` is only ever mentioned in the decorator CONTEXT and in a conditional
  * type (`PropsOfInstance<This>`), and a conditional is not somewhere TypeScript infers
  * from — so it stays open until the decorator is applied, and the class supplies it. The
- * selector's return type still fixes `V`, so the method is checked as `(V, V) => void`.
+ * selectors' return types still fix the tuple, so the method is checked against it.
  *
  * (Annotating it anyway is harmless when the annotation matches.)
  *
@@ -748,12 +769,20 @@ export const destroy = createLifecycleDecorator("destroys", "destroy");
  * and never fired when the hook's own prop changed. Fixed by recording which
  * instance each entry belongs to; see `WatchPropEntry.owner`.
  */
-export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V) {
+export function watchProp<This, S extends readonly ((props: PropsOfInstance<This>) => unknown)[]>(...selectors: S) {
   if (__DEV__) {
-    assertSelector(selector, "watchProp");
+    if (selectors.length === 0) {
+      throw new Error(
+        "[watchProp] Give it at least one selector — `@watchProp((p) => p.userId)`. With none there is " +
+          "nothing to watch, so the method could never run.",
+      );
+    }
+    for (const selector of selectors) assertSelector(selector, "watchProp");
   }
 
-  return function <M extends (newValue: V, oldValue: V) => void>(
+  type Values = { [K in keyof S]: ReturnType<S[K]> };
+
+  return function <M extends (next: Values, previous: Values) => void>(
     _value: M,
     context: ClassMethodDecoratorContext<This & { [GLOBAL_RUNTIME]: Runtime } & Record<string, any>, M>,
   ): void {
@@ -764,9 +793,10 @@ export function watchProp<This, V>(selector: (props: PropsOfInstance<This>) => V
     context.addInitializer(function (this) {
       this[GLOBAL_RUNTIME].watchProps.push({
         id: createId(),
-        selector: selector as (props: unknown) => unknown,
+        selectors: selectors as readonly ((props: unknown) => unknown)[],
         cb: this[contextName].bind(this),
-        lastValue: undefined,
+        // Seeded at mount by `seedWatchProps`, one slot per selector.
+        lastValues: [],
         // The instance the decorator was put on — a component or a hook. The
         // runtime is shared; the props are not.
         owner: this,

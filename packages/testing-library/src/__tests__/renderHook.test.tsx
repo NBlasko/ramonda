@@ -56,7 +56,7 @@ describe("renderHook", () => {
       }
 
       @watchProp((props) => props.start)
-      track(next: number) {
+      track([next]: [number]) {
         seen.push(next);
       }
     }

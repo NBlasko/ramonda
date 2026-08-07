@@ -364,7 +364,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    * in flight instead of scheduling one from inside it.
    */
   @watchProp((props) => props.key)
-  onKeyChanged(next: QueryKey, previous: QueryKey): void {
+  onKeyChanged([next]: [QueryKey], [previous]: [QueryKey]): void {
     if (sameKeyParts(next, previous)) return;
 
     const hash = hashKey(next);
@@ -753,7 +753,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    *   draws its loading state, rather than one commit later.
    */
   @watchProp((props) => props.enabled)
-  onEnabledChanged(enabled: boolean | undefined): void {
+  onEnabledChanged([enabled]: [boolean | undefined]): void {
     if (enabled === false) return;
     void this.fetchIfNeeded(false);
   }
