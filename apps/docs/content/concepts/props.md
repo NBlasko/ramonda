@@ -39,7 +39,7 @@ lets bugs hide: you would assign, read back the old value, and get no hint why.
 
 If you need to change something a prop gave you, there are two honest ways:
 
-- **Make it your own state.** Copy it in `@create`: `@state name = this.props.name`.
+- **Make it your own state.** Copy it in `@created`: `@state name = this.props.name`.
   Now it is yours to change.
 - **Ask the parent.** Take a callback prop and call it — the parent owns the data, so
   the parent changes it.
@@ -106,7 +106,7 @@ change keeps it in both arrays, so `previous[i] === next[i]` tells you which one
 ```demo:WatchPropDemo
 ```
 
-- **It doesn't run on the first render** — only on a later change. Use `@create` for
+- **It doesn't run on the first render** — only on a later change. Use `@created` for
   the initial load.
 - **The selector needs no annotation.** `props` is typed from the class the decorator is
   on, so `props.usreId` is a compile error. (The method's `next` / `previous` do still need
@@ -144,5 +144,5 @@ export class Panel extends Component<{ children?: RamondaNode }> {
 
 ## Next
 
-- [Lifecycle](/concepts/lifecycle) — `@create`, `@mount`, `@destroy`, and their order.
+- [Lifecycle](/concepts/lifecycle) — `@created`, `@mounted`, `@destroyed`, and their order.
 - [The decorator table](/reference/decorators) — `@watchProp` works on a hook; `@ShouldUpdateOnPropsChange` does not.

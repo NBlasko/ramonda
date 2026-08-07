@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { getDOM } from "../../test/setup";
-import { create, destroy, mount, state, updated } from "../../base/decorators";
+import { created, destroyed, mounted, state, updated } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { Hook } from "../../base/Hook";
 import { ErrorBoundary } from "../../base/ErrorBoundary";
@@ -28,11 +28,11 @@ beforeEach(() => {
 });
 
 describe("@updated", () => {
-  test("does not run on the first commit — that is @mount's", async () => {
+  test("does not run on the first commit — that is @mounted's", async () => {
     class Panel extends Component {
       @state count = 0;
 
-      @mount first() {
+      @mounted first() {
         log.push("mount");
       }
 
@@ -167,7 +167,7 @@ describe("@updated", () => {
      * their listeners attached — before anything measures the subtree they are in.
      */
     class Child extends Component {
-      @mount arrived() {
+      @mounted arrived() {
         log.push("child:mount");
       }
       render() {
@@ -262,7 +262,7 @@ describe("@updated", () => {
       @updated afterUpdate() {
         log.push("child:updated");
       }
-      @destroy gone() {
+      @destroyed gone() {
         log.push("child:destroy");
       }
       render() {
@@ -284,7 +284,7 @@ describe("@updated", () => {
     await settle();
 
     // The child's own update was queued by nothing — it was removed, not updated —
-    // and the flush would skip it anyway, the same guarantee @mount has.
+    // and the flush would skip it anyway, the same guarantee @mounted has.
     expect(log).toEqual(["child:destroy"]);
   });
 
@@ -294,7 +294,7 @@ describe("@updated", () => {
 
       // Writes state on the server, so the render really does update during the
       // server drain — the only way a server render reaches the update path.
-      @mount load() {
+      @mounted load() {
         this.count = 1;
       }
 
@@ -358,7 +358,7 @@ describe("@updated", () => {
     // "it still renders and nothing extra happens".
     class Plain extends Component {
       @state count = 0;
-      @create init() {
+      @created init() {
         log.push("create");
       }
       render() {
@@ -376,7 +376,7 @@ describe("@updated", () => {
     expect(log).toEqual(["render:1"]);
   });
 
-  test("an unhandled throw propagates, exactly like a throwing @mount", async () => {
+  test("an unhandled throw propagates, exactly like a throwing @mounted", async () => {
     // One decorator does not get its own error semantics: the throw goes through
     // `errorHandler`, which rethrows when no ErrorBoundary claims it.
     class Broken extends Component {

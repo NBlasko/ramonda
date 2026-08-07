@@ -1,31 +1,31 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, destroy, interval, createContext } from "../index";
+import { Component, Host, state, destroyed, interval, createContext } from "../index";
 import { effectLike } from "../test/effectLike";
 
 const [Provider, Ctx] = createContext({ v: "a" });
 
 /**
  * Teardown is a sequence of things the APP wrote — effect cleanups and
- * `@destroy` bodies — and one throw used to abort all of it: the remaining
+ * `@destroyed` bodies — and one throw used to abort all of it: the remaining
  * cleanups, the signal unsubscribes, the `isDestroyed` flag, and the caller's
- * `child.remove()`. A `@destroy` that threw left the element on the page, still
+ * `child.remove()`. A `@destroyed` that threw left the element on the page, still
  * rendered, with the component half alive.
  */
 describe("unmount cleanup", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
-  test("a throwing @destroy does not take the rest of teardown down", async () => {
+  test("a throwing @destroyed does not take the rest of teardown down", async () => {
     const ran: string[] = [];
     @Host("div")
     class Child extends Component {
       @state n = 0;
-      @destroy first() {
+      @destroyed first() {
         ran.push("first");
         throw new Error("boom");
       }
-      @destroy second() {
+      @destroyed second() {
         ran.push("second");
       }
       render() {
@@ -53,7 +53,7 @@ describe("unmount cleanup", () => {
     expect(app.container.textContent).toBe("");
   });
 
-  test("a throwing effect cleanup does not skip @destroy", async () => {
+  test("a throwing effect cleanup does not skip @destroyed", async () => {
     const ran: string[] = [];
     @Host("div")
     class Child extends Component {
@@ -67,7 +67,7 @@ describe("unmount cleanup", () => {
           throw new Error("cleanup boom");
         };
       }
-      @destroy after() {
+      @destroyed after() {
         ran.push("destroy");
       }
       render() {
@@ -88,7 +88,7 @@ describe("unmount cleanup", () => {
     app.instance.show = false;
     await app.settle();
 
-    // Effect cleanups run before @destroy, so a throw there used to mean the
+    // Effect cleanups run before @destroyed, so a throw there used to mean the
     // component's own teardown never happened at all.
     expect(ran).toContain("destroy");
     expect(app.container.textContent).toBe("");

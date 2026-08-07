@@ -96,7 +96,7 @@ export type LifecycleEnv = "client" | "server" | "shared";
 export interface LifecycleEntry {
   id: number;
   // Receives the concrete render side ("client" | "server") when it fires, so a
-  // @create/@mount/@destroy method can branch on where it is running. A method
+  // @created/@mounted/@destroyed method can branch on where it is running. A method
   // that declares no parameter still satisfies this (fewer params is assignable).
   cb: (env: RenderEnv) => void;
   env: LifecycleEnv;

@@ -57,7 +57,7 @@ simple change, two or three for a cascade, discovered by trying. One too few and
 the test read stale DOM; the fix was to add another and hope.
 
 `act` removes the question. When it returns, every pending render, every
-`@mount` and every effect has run — however deep the cascade went:
+`@mounted` and every effect has run — however deep the cascade went:
 
 ```ts
 act(() => { instance.count = 5; });
@@ -120,7 +120,7 @@ Every bound query (`getByText`, `findByRole`, …), plus:
 | `baseElement` | What the queries are bound to. |
 | `instance` | The root component instance, typed via `render<Counter>(…)`. |
 | `rerender(ui)` | New JSX into the same container, **diffed**. |
-| `unmount()` | Runs `@destroy` and every cleanup. |
+| `unmount()` | Runs `@destroyed` and every cleanup. |
 | `asFragment()` | The container's content, detached — for snapshots. |
 | `debug(el?)` | Prints formatted HTML. |
 
@@ -150,7 +150,7 @@ rerender(<Card title="b" />);
 expect(getByText("b:7")).toBeTruthy();   // not "b:0"
 ```
 
-The instance survives, its `@state` survives, `@create` does not run again and
+The instance survives, its `@state` survives, `@created` does not run again and
 `@watchProp` fires — exactly what happens when a real parent re-renders a child
 with new props. That makes it the way to test prop reactivity.
 

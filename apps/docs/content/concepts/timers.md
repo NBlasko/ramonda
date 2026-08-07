@@ -43,7 +43,7 @@ when the component is removed** — there is nothing to clean up.
 Because remembering to clear it is the part that gets forgotten:
 
 ```tsx
-@mount
+@mounted
 start() {
   setTimeout(() => {
     this.done = true;
@@ -62,7 +62,7 @@ Both are built on [subscriptions](/concepts/subscriptions), so neither runs duri
 render — a prerendered page ships with no timer running, and they start when the
 browser takes over.
 
-That is also why a clock fills in its first value in `@mount({ env: "client" })`, not
+That is also why a clock fills in its first value in `@mounted({ env: "client" })`, not
 in the field itself: a time rendered on the server wouldn't match the browser's, and
 hydration would flag the mismatch. Show something steady first, then fill it in.
 

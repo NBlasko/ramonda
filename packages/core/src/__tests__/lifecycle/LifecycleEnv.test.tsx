@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../../test/setup";
 import { renderToString } from "../../hydration/ssr";
-import { mount, create, destroy } from "../../base/decorators";
+import { mounted, created, destroyed } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import type { RenderEnv } from "../../core/renderEnv";
 
 /**
- * `@create`/`@mount`/`@destroy` receive the concrete render side as their
+ * `@created`/`@mounted`/`@destroyed` receive the concrete render side as their
  * argument, so a shared method can branch (e.g. skip a fetch on the server)
  * without a fragile `typeof window` check — unreliable anyway, since SSR runs
  * under a DOM shim where `window` exists.
@@ -18,13 +18,13 @@ beforeEach(() => {
 });
 
 class Probe extends Component {
-  @create init(env: RenderEnv) {
+  @created init(env: RenderEnv) {
     seen.create = env;
   }
-  @mount up(env: RenderEnv) {
+  @mounted up(env: RenderEnv) {
     seen.mount = env;
   }
-  @destroy down(env: RenderEnv) {
+  @destroyed down(env: RenderEnv) {
     seen.destroy = env;
   }
   render() {
@@ -33,7 +33,7 @@ class Probe extends Component {
 }
 
 describe("lifecycle env argument", () => {
-  test("on the client, @create and @mount receive 'client'", async () => {
+  test("on the client, @created and @mounted receive 'client'", async () => {
     const app = await getDOM<Probe>(<Probe />);
     await app.settle();
 
@@ -41,7 +41,7 @@ describe("lifecycle env argument", () => {
     expect(seen.mount).toBe("client");
   });
 
-  test("@destroy receives 'client' on unmount", async () => {
+  test("@destroyed receives 'client' on unmount", async () => {
     const app = await getDOM<Probe>(<Probe />);
     await app.settle();
     app.unmount();
@@ -49,7 +49,7 @@ describe("lifecycle env argument", () => {
     expect(seen.destroy).toBe("client");
   });
 
-  test("during renderToString, @create and @mount receive 'server'", async () => {
+  test("during renderToString, @created and @mounted receive 'server'", async () => {
     await renderToString(<Probe />);
 
     expect(seen.create).toBe("server");
@@ -61,7 +61,7 @@ describe("lifecycle env argument", () => {
     // that adding the argument didn't break the plain no-arg form.
     let ran = false;
     class NoArg extends Component {
-      @mount up() {
+      @mounted up() {
         ran = true;
       }
       render() {

@@ -127,7 +127,7 @@ is no per-request attribution in the record.
 `render()` must be a function of state, not a place that changes it. A write there schedules
 another render from inside the render that caused it.
 
-Move it to [`@create`](/concepts/lifecycle) if it is initialisation, or to an event handler if it
+Move it to [`@created`](/concepts/lifecycle) if it is initialisation, or to an event handler if it
 is a response to something. If it is a value derived from other state, that is
 [`@compute`](/concepts/compute).
 
@@ -185,7 +185,7 @@ render, or a branch on the environment inside `render()`. See
 A fetch that resolved after the user navigated away, most often. The update is **dropped** — in
 production too, not only in development — so it cannot render into a detached tree.
 
-Cancel the work in `@destroy`, or check before writing.
+Cancel the work in `@destroyed`, or check before writing.
 
 ## RMD009 — Update loop
 
@@ -323,7 +323,7 @@ arguments, per instance — so the second render hands back the same function an
 **An object or array built in place**, with the same contents. A child receiving it re-renders every
 time, a [`@compute`](/concepts/compute) reading it recomputes every time, and if it is a
 [list's](/lists) items then every row loses its identity and the whole list is rebuilt — per-item
-state lost, `@destroy` and `@create` run again.
+state lost, `@destroyed` and `@created` run again.
 
 ```tsx
 <Chart config={{ smooth: true }} />    // ✗ rebuilt every render
@@ -331,7 +331,7 @@ state lost, `@destroy` and `@create` run again.
 ```
 
 **A value that does not come from state** — `Math.random()`, `performance.now()`, `new Date()`. Decide
-the value once in `@create` and keep it in `@state`.
+the value once in `@created` and keep it in `@state`.
 
 Only the part of that class which varies **within a tick**, though: the two renders are microseconds
 apart, so a millisecond clock reads the same both times. Measured over 200,000 tries, two consecutive
@@ -388,7 +388,7 @@ differently in each, so the message differs with it:
   a [query key](/query/queries): an entry that changes when somebody else's state moves,
   and never when yours does.
 
-Read it once in `@create` and keep it in `@state` (or `@persist`, so it survives
+Read it once in `@created` and keep it in `@state` (or `@persist`, so it survives
 hydration), take it as a prop, or read it in the event handler that needs it.
 
 ## RMD022 — a hook's props callback built a new value for the same contents
@@ -427,7 +427,7 @@ Three findings, three fixes:
   declaration cannot help here: two closures with the same body are not equal by any
   comparison that is safe to make, so a declared function prop is still reported.
 - **different contents from two calls in one tick** — the callback is not a function of
-  state. Read the value once in `@create` and keep it in `@state`, or read it where it is
+  state. Read the value once in `@created` and keep it in `@state`, or read it where it is
   needed. Nothing can hide this one; what is compared is the contents. **Reported on the
   first occurrence**, with no count in front of it: this is a fault rather than churn, and
   it is the one kind the cache makes worse — a `Math.random()` in the bag is now frozen
@@ -498,7 +498,7 @@ change is ordinary, and reporting that would put a warning on correct code.
 
 If nothing is being rebuilt, the compute is reading something that is not reactive at all — a
 counter, `Date.now()`, a module variable. A `@compute` is the wrong place for that: read it once
-in `@create` and keep it in [`@state`](/concepts/state). (The honest limit: a compute reading
+in `@created` and keep it in [`@state`](/concepts/state). (The honest limit: a compute reading
 *only* something non-reactive is never invalidated, so it is never observed either. Nothing can
 report a value nobody asked for again.)
 
@@ -523,8 +523,8 @@ export const currentUser = requestKey<User | null>("currentUser", { exposeToClie
 Expose only what is safe to publish — a display name, an id, a role. Whatever you expose sits in
 the page's HTML for anyone to read, so a session token or a database record never belongs there.
 
-**Usually you need none of this.** Read the request in `@create` and keep the result in `@state`:
-`@create` is skipped on hydration and the state is restored from the page, so the browser never
+**Usually you need none of this.** Read the request in `@created` and keep the result in `@state`:
+`@created` is skipped on hydration and the state is restored from the page, so the browser never
 re-reads the request at all. Reach for `exposeToClient` when several components read the same
 value straight from `requestContext()`.
 
@@ -553,7 +553,7 @@ and the page shows it.
 
 Make the value reactive and both go away at once — `@state` for something the component owns,
 `@compute` for something derived, a context signal for something shared. If it genuinely cannot be
-(a `Date.now()`, a random id), read it once in `@create` and keep the result in `@state` rather
+(a `Date.now()`, a random id), read it once in `@created` and keep the result in `@state` rather
 than reading it in the callback.
 
 **The comparison is by value.** A callback that returns `{ filter: { q } }` builds a new object
@@ -787,14 +787,14 @@ Only JSON-serializable state travels in the hydration blob, so a function, a cla
 or a `Date` is lost on the way — the client starts with whatever the field initialises to, and the two
 sides disagree from the first render.
 
-Keep the value out of state and derive it on the client: in [`@create`](/concepts/lifecycle), which is
+Keep the value out of state and derive it on the client: in [`@created`](/concepts/lifecycle), which is
 skipped during hydration, or in a [`@compute`](/concepts/compute). Where the server's own answer is
 needed, store a serializable form of it — an id, an ISO string — and rebuild the object where it is
 used.
 
 ## RMD034 — State written during create or mount is not carried to the client
 
-`@create` and `@mount` do not run again on the client: hydration adopts the server's DOM and restores
+`@created` and `@mounted` do not run again on the client: hydration adopts the server's DOM and restores
 state from the blob. A value computed in either is therefore server-only unless it is `@state`, which
 is serialized, or marked `@persist`.
 

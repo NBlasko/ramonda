@@ -121,7 +121,7 @@ slot from `State.set`. The check runs *after* `shouldUpdate`, so a write that
 changes nothing — and therefore schedules nothing — is not reported.
 
 Fix: `@compute` for derived values, `@watchProp` to sync from props, or write from
-`@create` / an event handler.
+`@created` / an event handler.
 
 ### RMD002 — Duplicate key among siblings
 
@@ -191,14 +191,14 @@ Two invariants this must not break:
 
 ### RMD006 — Timer still running after unmount
 
-A raw `setInterval` started in `@create`/`@mount` or a subscription keeps running after the
+A raw `setInterval` started in `@created`/`@mounted` or a subscription keeps running after the
 component is gone: it holds the component alive and keeps firing against state
 nobody is showing.
 
 `src/debug/timerGuard.ts` patches `window.setInterval`/`setTimeout`/`clearInterval`
 /`clearTimeout` once, and attributes every timer to the component whose lifecycle
 was running when it was created (`timerOwner`). The check runs from
-`lifecycleCleanupManagement` **after** effect cleanups and `@destroy`, so
+`lifecycleCleanupManagement` **after** effect cleanups and `@destroyed`, so
 `@interval`/`@timeout` — which clear themselves — never report.
 
 `timerOwner` is saved and restored, not just set: `createComponent` nests (a child
@@ -249,13 +249,13 @@ before the node is replaced, so the children after it keep their text and are no
 reported as missing too — one fault, one diagnostic.
 
 **The fix RMD007 prescribes is tested.** `new Date()`/`Math.random()` move to
-`@create` + `@persist` (the client restores the server's value instead of rolling
+`@created` + `@persist` (the client restores the server's value instead of rolling
 a new one). For client-only UI, do NOT branch on the side — that is the bug. Use
 two passes:
 
 ```tsx
 @state isClient = false;
-@mount({ env: "client" }) markClient() { this.isClient = true; }
+@mounted({ env: "client" }) markClient() { this.isClient = true; }
 ```
 
 The hydrating render still sees `false`, so it matches the server; the switch
@@ -279,7 +279,7 @@ the queue.
 `addTaskToQueue` refuses. **The drop is not a dev check — it ships in
 production**; only the report is stripped. `isDestroyed` is deliberately a
 separate flag from `isInitialized`: that one means "not built yet", which
-hydration and `@create` depend on, and conflating "before" with "after" would
+hydration and `@created` depend on, and conflating "before" with "after" would
 break them.
 
 Measured before fixing: the dead component rendered again (1 → 2 renders).
@@ -287,7 +287,7 @@ Effects and intervals do **not** come back to life — `runComponentEffects` onl
 runs effects whose `shouldRebuild` is set, and teardown detaches their deps — so
 the damage was wasted renders and retention, not resurrected listeners.
 
-`@destroy` runs *before* the flag is set, so tearing down your own state there
+`@destroyed` runs *before* the flag is set, so tearing down your own state there
 stays silent.
 
 ### RMD009 — Update loop
@@ -409,7 +409,7 @@ component: *how do I keep a piece with its own state and lifecycle — React's
 is an element?*
 
 **Most of the time the question dissolves: just write the component.** Let
-`render()` return `null`. It keeps `@state`, `@create`, `@watchProp`, `@onWindow`,
+`render()` return `null`. It keeps `@state`, `@created`, `@watchProp`, `@onWindow`,
 and its own re-render boundary, and leaves behind
 `<ramonda-host style="display: contents">` — an element that takes part in **no
 layout at all**.
@@ -426,13 +426,13 @@ means the box does not exist. This covers everywhere except the three parents
 that reject even an inert element — `<table>`, `<select>`, `<svg>`.
 
 **There, the answer is a Hook.** A Hook is precisely "state and lifecycle with no
-element": it has `@state`, `@create`/`@destroy`, `@watchProp`, `@onWindow`, it can
+element": it has `@state`, `@created`/`@destroyed`, `@watchProp`, `@onWindow`, it can
 provide context, and it adds no node for the parser to destroy.
 
 ```tsx
 class RowsHook extends Hook<{ prefix: string }> {
   @state rows: string[] = [];
-  @create load() { this.rows = fetchRows(); }
+  @created load() { this.rows = fetchRows(); }
 }
 
 @Host("div")
@@ -505,7 +505,7 @@ class FancyCell extends BaseCell {
 Both are still exactly one `<td>`; the subclass adds no element. **No constructor
 is needed** — and none should be written. Everything survives `extends`:
 `@Host` (override it by re-declaring), `render()`, plain methods (`super.` works),
-`@state` (inherited and new), hooks (inherited and new), and lifecycle — `@create`
+`@state` (inherited and new), hooks (inherited and new), and lifecycle — `@created`
 runs base-first, then the subclass's.
 
 **A group of cells sharing state** is the one case that is genuinely not a
@@ -630,7 +630,7 @@ take a callback option and ask the owner to change it.
 
 The component is still mounted, but the DOM it lives in is gone from the document.
 Nothing told the framework, so nothing was torn down: its timers still fire, its
-listeners are still attached, its signals still hold it, `@destroy` never ran, and
+listeners are still attached, its signals still hold it, `@destroyed` never ran, and
 every render it does goes into nodes nobody can see.
 
 **Ramonda's own removals cannot cause this.** Every path that removes something
@@ -923,7 +923,7 @@ server emits:   <p>intro<div>a block</div></p>
 browser parses: <p>intro</p><div>a block</div>
 
 RMD007 then says: "<Card /> rendered <div> but the server sent nothing."
-and advises:      "new Date() / Math.random() in render(): move the value into @create"
+and advises:      "new Date() / Math.random() in render(): move the value into @created"
 ```
 
 The server sent it. The parser moved it. A reader following that advice is looking for

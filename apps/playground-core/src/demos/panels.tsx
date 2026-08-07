@@ -4,9 +4,9 @@ import {
   state,
   persist,
   compute,
-  create,
-  mount,
-  destroy,
+  created,
+  mounted,
+  destroyed,
   watchProp,
   onWindow,
   onDocument,
@@ -20,10 +20,10 @@ import {
 class HistoryHook extends Hook<{ value: number }> {
   @state history: number[] = [];
 
-  // `@create` seeds the first value, `@watchProp` records every one after it. This was a
+  // `@created` seeds the first value, `@watchProp` records every one after it. This was a
   // single `@effect` before that decorator was removed — and it reads better as two named
   // halves than as one body whose reactivity came from what it happened to read.
-  @create seed() {
+  @created seed() {
     this.history = [this.props.value];
   }
 
@@ -162,7 +162,7 @@ interface DerivedSyncProps {
 export class DerivedSync extends Component<DerivedSyncProps> {
   @state doubled = 0;
 
-  @create seed() {
+  @created seed() {
     this.doubled = this.props.source * 2;
   }
 
@@ -173,7 +173,7 @@ export class DerivedSync extends Component<DerivedSyncProps> {
   render() {
     return (
       <div>
-        <p className="label">@watchProp · @create (seed)</p>
+        <p className="label">@watchProp · @created (seed)</p>
         <p className="muted">
           source prop: <strong>{this.props.source}</strong> → synced doubled: <strong>{this.doubled}</strong>
         </p>
@@ -189,7 +189,7 @@ export class Toast extends Component<{ message: string }> {
     this.visible = false;
   }
 
-  @destroy cleanup() {
+  @destroyed cleanup() {
     console.log("🌸 Toast destroyed — cleanup ran");
   }
   render() {
@@ -202,19 +202,19 @@ export class Toast extends Component<{ message: string }> {
 }
 
 export class LifecycleDemo extends Component {
-  @create init() {
-    console.log("🌸 LifecycleDemo · @create");
+  @created init() {
+    console.log("🌸 LifecycleDemo · @created");
   }
-  @mount ready() {
-    console.log("🌸 LifecycleDemo · @mount");
+  @mounted ready() {
+    console.log("🌸 LifecycleDemo · @mounted");
   }
-  @destroy dispose() {
-    console.log("🌸 LifecycleDemo · @destroy");
+  @destroyed dispose() {
+    console.log("🌸 LifecycleDemo · @destroyed");
   }
   render() {
     return (
       <div>
-        <p className="label">@create · @mount · @destroy (see console; leave the page to fire @destroy)</p>
+        <p className="label">@created · @mounted · @destroyed (see console; leave the page to fire @destroyed)</p>
         <strong>I am alive.</strong>
       </div>
     );

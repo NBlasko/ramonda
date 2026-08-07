@@ -38,7 +38,7 @@ export class ServerRedirect extends Error {
  * Call it once, synchronously, while the tree is being built (a field initializer
  * on a root-level hook is the intended spot): the returned function closes over
  * the render's own `ServerWork`, so it keeps working even when it is finally
- * called from an `async` `@mount` long after the synchronous mount window closed.
+ * called from an `async` `@mounted` long after the synchronous mount window closed.
  *
  * First writer wins — a second redirect request in the same render is ignored, so
  * the earliest guard to fire decides where the request goes.

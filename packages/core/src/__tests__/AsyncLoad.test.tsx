@@ -310,7 +310,7 @@ describe("a changing lazy prop", () => {
    * `cacheKey` used to be a `readonly` field computed at construction, so it kept
    * the FIRST module's key forever. The failure is quiet and precise: `render`
    * reads the cache under the stale key and serves the old module, while nothing
-   * refetches because `@mount` already ran. Measured on the docs site — the URL
+   * refetches because `@mounted` already ran. Measured on the docs site — the URL
    * changed, the title changed, and the content stayed on the previous page with
    * no request made.
    */

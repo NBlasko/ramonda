@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from "vitest";
-import { state, persist, create } from "../../base/decorators";
+import { state, persist, created } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 
@@ -10,7 +10,7 @@ function loggedDuringCreateMount(calls: unknown[][], needle = "during create/mou
 describe("hydration: unpersisted-state lint (DEV, server)", () => {
   test("warns about a plain prop set in create/mount", async () => {
     class Leaky extends Component {
-      @create init() {
+      @created init() {
         (this as unknown as { cache: string }).cache = "computed";
       }
       render() {
@@ -31,7 +31,7 @@ describe("hydration: unpersisted-state lint (DEV, server)", () => {
   test("no warning when the value is @persist", async () => {
     class Safe extends Component {
       @persist cache = "";
-      @create init() {
+      @created init() {
         this.cache = "computed";
       }
       render() {
@@ -50,7 +50,7 @@ describe("hydration: unpersisted-state lint (DEV, server)", () => {
   test("no warning for @state set in create/mount", async () => {
     class OkState extends Component {
       @state n = 0;
-      @create init() {
+      @created init() {
         this.n = 5;
       }
       render() {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Component, Host, bootstrap, createContext, mount, state, unmount, updated } from "@ramonda/core";
+import { Component, Host, bootstrap, createContext, mounted, state, unmount, updated } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes } from "../match";
@@ -52,10 +52,10 @@ let sideEffects = 0;
 @Host("div")
 class Trusting extends Component {
   private route = this.use(Navigator);
-  @mount guard() {
+  @mounted guard() {
     if (!signedIn) this.route.replace("/login");
   }
-  @mount load() {
+  @mounted load() {
     sideEffects++;
   }
   render() {
@@ -68,7 +68,7 @@ class Trusting extends Component {
 @Host("div")
 class Careful extends Component {
   private route = this.use(Navigator);
-  @mount guard() {
+  @mounted guard() {
     if (!signedIn) this.route.replace("/login");
   }
   render() {
@@ -93,7 +93,7 @@ let checkInFlight: Promise<void>;
 @Host("div")
 class AwaitsTheNetwork extends Component {
   private route = this.use(Navigator);
-  @mount async guard() {
+  @mounted async guard() {
     await checkInFlight;
     if (!signedIn) this.route.replace("/login");
   }
@@ -136,7 +136,7 @@ beforeEach(() => {
 });
 
 describe("a guard does not stop the render it guards", () => {
-  test("render() runs, and so does every other @mount on the component", async () => {
+  test("render() runs, and so does every other @mounted on the component", async () => {
     const app = mountAt(<Trusting />);
     try {
       // Both already happened by the time bootstrap returned. This is why `render()` has to be
@@ -178,12 +178,12 @@ describe("when the redirect lands", () => {
   test("a LIVE navigation never shows the protected page at all", async () => {
     /**
      * The case that looks worst on paper: the app is already running, someone clicks through to a
-     * guarded route, and `@mount` cannot possibly run before `render()`. So surely the data is on
+     * guarded route, and `@mounted` cannot possibly run before `render()`. So surely the data is on
      * screen first?
      *
      * No — and the reason is `processTask`, which is one drain, not one build:
      * `do { drainBuilds(); flushPostCommit(); flushUpdated(); } while (taskQueue.length > 0)`.
-     * The guarded component is built, `flushPostCommit` runs its `@mount`, the redirect it asks
+     * The guarded component is built, `flushPostCommit` runs its `@mounted`, the redirect it asks
      * for lands back in the queue, and the `while` picks it up in the SAME call. Both renders and
      * both commits happen inside one microtask, so the protected markup is not merely unpainted —
      * it is never observable from outside at all.
@@ -255,12 +255,12 @@ describe("when the answer arrives after the page is already up", () => {
     }
   }
 
-  /** Guard in @mount only. */
+  /** Guard in @mounted only. */
   @Host("div")
   class OnlyOnMount extends Component {
     private route = this.use(Navigator);
     private session = this.use(SessionConsumer);
-    @mount guard() {
+    @mounted guard() {
       decisions++;
       if (this.session.status === "out") this.route.replace("/login");
     }
@@ -276,7 +276,7 @@ describe("when the answer arrives after the page is already up", () => {
   class OnEveryCommit extends Component {
     private route = this.use(Navigator);
     private session = this.use(SessionConsumer);
-    @mount
+    @mounted
     @updated
     guard() {
       decisions++;
@@ -320,7 +320,7 @@ describe("when the answer arrives after the page is already up", () => {
     decisions = 0;
   });
 
-  test("@mount alone strands the visitor: no page, no redirect", async () => {
+  test("@mounted alone strands the visitor: no page, no redirect", async () => {
     const app = await settleWith(<OnlyOnMount />);
     try {
       expect(app.container.textContent).toBe("checking");
@@ -328,7 +328,7 @@ describe("when the answer arrives after the page is already up", () => {
 
       await app.arrive("out");
 
-      // `render()` did its job — nothing protected was built. But @mount does not run again, so
+      // `render()` did its job — nothing protected was built. But @mounted does not run again, so
       // nothing ever navigated: a blank page, still sitting on the protected URL. This is the
       // failure mode that looks like it works, because the secret is not on screen.
       expect(app.container.textContent).toBe("");
@@ -339,11 +339,11 @@ describe("when the answer arrives after the page is already up", () => {
     }
   });
 
-  test("@mount + @updated decides again, and sends them away", async () => {
+  test("@mounted + @updated decides again, and sends them away", async () => {
     const app = await settleWith(<OnEveryCommit />);
     try {
       expect(app.container.textContent).toBe("checking");
-      expect(decisions).toBe(1); // the @mount run
+      expect(decisions).toBe(1); // the @mounted run
 
       await app.arrive("out");
 

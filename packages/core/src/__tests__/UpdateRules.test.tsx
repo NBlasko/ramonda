@@ -107,8 +107,8 @@ describe("update rules", () => {
       expect(captured.codes).toEqual([]);
     });
 
-    test("a write from @destroy is not reported", async () => {
-      // @destroy runs before the component is marked dead, so tearing down own
+    test("a write from @destroyed is not reported", async () => {
+      // @destroyed runs before the component is marked dead, so tearing down own
       // state there is legitimate and must stay silent.
       @Host("div")
       class SelfCleaning extends Component {

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { create, state, persist } from "../base/decorators";
+import { created, state, persist } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { createContext } from "../base/Context";
@@ -86,7 +86,7 @@ describe("inspector: component + hook state", () => {
     const read: Record<string, unknown> = {};
     class Store extends Hook<{ seed: number }> {
       @state value = this.props.seed;
-      @create look() {
+      @created look() {
         read.seed = this.props.seed;
         // Asked for by name, the way a hook would if it had its own use for the word.
         read.label = (this.props as { label?: unknown }).label;

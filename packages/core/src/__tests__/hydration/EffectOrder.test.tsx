@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, mount, state } from "../../base/decorators";
+import { Host, mounted, state } from "../../base/decorators";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { bootstrap } from "../../index";
@@ -28,7 +28,7 @@ class Child extends Component {
   @effectLike() e() {
     order.push("child:effect");
   }
-  @mount m() {
+  @mounted m() {
     order.push("child:mount");
   }
   render() {
@@ -41,7 +41,7 @@ class Panel extends Component<{ withChild: boolean }> {
   @effectLike() e() {
     order.push("parent:effect");
   }
-  @mount m() {
+  @mounted m() {
     order.push("parent:mount");
   }
   render() {
@@ -137,21 +137,21 @@ describe("effects run children-first on every path", () => {
   });
 
   /**
-   * RESOLVED 2026-07-21 — a shared @mount DOES run on hydration.
+   * RESOLVED 2026-07-21 — a shared @mounted DOES run on hydration.
    *
    * It used to be skipped: hydration queued only `env === "client"`, on the
-   * argument that a shared @mount had already run during the server render. That
-   * argument does not hold. @mount exists to touch the REAL DOM, and the server's
+   * argument that a shared @mounted had already run during the server render. That
+   * argument does not hold. @mounted exists to touch the REAL DOM, and the server's
    * DOM is thrown away — so skipping it on the client meant the work never
    * happened at all on a prerendered page.
    *
    * `AsyncLoad` is the proof, and it is why this was settled rather than left
-   * open: its `@mount` is what calls `load()`, so a prerendered page never
+   * open: its `@mounted` is what calls `load()`, so a prerendered page never
    * fetched its module and sat on the loading fallback forever.
    *
    * Anything that must run on the server only says so with `env: "server"`.
    */
-  test("a shared @mount runs on hydration, like it does on a build", async () => {
+  test("a shared @mounted runs on hydration, like it does on a build", async () => {
     const page = await renderPage(<Panel withChild={false} />);
     order.length = 0;
 

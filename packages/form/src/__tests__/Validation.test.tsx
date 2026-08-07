@@ -5,7 +5,7 @@ import { Form } from "../Form";
 import type { StandardResult, StandardSchemaV1, ValidateOn } from "../types";
 
 /**
- * The form's state machine, driven through a real mount so `@state` and `@destroy` are the
+ * The form's state machine, driven through a real mount so `@state` and `@destroyed` are the
  * ones the framework runs.
  *
  * The schemas are hand-built rather than taken from a validator, which keeps the suite

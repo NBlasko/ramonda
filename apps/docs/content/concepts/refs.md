@@ -33,11 +33,11 @@ export class SearchBox extends Component {
 ## `current` is empty until the element exists
 
 `this.input.current` is `null` until the element is on the page. So reach for it from
-an event handler or from `@mount` — never from `render()`, where the element doesn't
+an event handler or from `@mounted` — never from `render()`, where the element doesn't
 exist yet.
 
 ```tsx
-@mount
+@mounted
 ready() {
   this.input.current?.focus();
 }

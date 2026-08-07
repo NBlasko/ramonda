@@ -7,10 +7,10 @@ import { renderToString } from "../hydration/ssr";
 import {
   Host,
   compute,
-  create,
-  destroy,
+  created,
+  destroyed,
   interval,
-  mount,
+  mounted,
   onWindow,
   state,
   timeout,
@@ -36,13 +36,13 @@ describe("a hook reaches everything except the three that need an element or a p
 
     class Full extends Hook<{ n?: number }> {
       @state own = 0;
-      @create c() {
+      @created c() {
         fired.push("create");
       }
-      @mount m() {
+      @mounted m() {
         fired.push("mount");
       }
-      @destroy d() {
+      @destroyed d() {
         fired.push("destroy");
       }
       @updated u() {
@@ -54,7 +54,7 @@ describe("a hook reaches everything except the three that need an element or a p
       @compute get doubled() {
         return (this.props.n ?? 0) * 2;
       }
-      @mount read() {
+      @mounted read() {
         fired.push(`compute:${this.doubled}`);
       }
     }
@@ -123,18 +123,18 @@ describe("a hook reaches everything except the three that need an element or a p
 });
 
 describe("what a server render actually runs", () => {
-  test("@create, @mount and @compute fire; the rest have no occasion to", async () => {
+  test("@created, @mounted and @compute fire; the rest have no occasion to", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     fired.length = 0;
 
     class ServerHook extends Hook {
-      @create c() {
+      @created c() {
         fired.push("hook:create");
       }
-      @mount m() {
+      @mounted m() {
         fired.push("hook:mount");
       }
-      @destroy d() {
+      @destroyed d() {
         fired.push("hook:destroy");
       }
       @onWindow("resize") w() {
@@ -149,13 +149,13 @@ describe("what a server render actually runs", () => {
     class Page extends Component {
       @state n = 2;
       h = this.use(ServerHook);
-      @create c() {
+      @created c() {
         fired.push("create");
       }
-      @mount m() {
+      @mounted m() {
         fired.push("mount");
       }
-      @destroy d() {
+      @destroyed d() {
         fired.push("destroy");
       }
       @updated u() {
@@ -192,7 +192,7 @@ describe("what a server render actually runs", () => {
      *
      * - EFFECTS — @onWindow/@onDocument/@onElement, @interval/@timeout, subscriptions — are
      *   client-only by construction. They never attach on the server, whatever their env.
-     * - @destroy and @updated are `shared` and would run on the server; they simply have no
+     * - @destroyed and @updated are `shared` and would run on the server; they simply have no
      *   occasion to. A server render commits once and never unmounts.
      */
     vi.restoreAllMocks();

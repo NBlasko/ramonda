@@ -311,7 +311,7 @@ function find(clientIndex: number, hash: string) {
  * Registers a live client and hands back the function that unregisters it.
  *
  * Returning the cleanup rather than exposing an `unregister(client)` is the same shape
- * `createSubscriptionDecorator` uses, so a provider's `@destroy` has one
+ * `createSubscriptionDecorator` uses, so a provider's `@destroyed` has one
  * thing to call and cannot unregister the wrong one.
  */
 /**

@@ -157,7 +157,7 @@ render() {
 
 **There is no `throwOnError`**, and that is deliberate rather than missing. Handing a failed
 fetch to an [error boundary](/composition/error-boundaries) replaces the whole subtree, which
-means unmounting: `@destroy` runs, cleanups run, local state goes, focus and scroll position
+means unmounting: `@destroyed` runs, cleanups run, local state goes, focus and scroll position
 go — and a retry has to rebuild all of it. A failed request is not an unexpected situation.
 The network fails routinely, which is why a failure is *state* here and the data you had is
 kept. The two lines above unmount exactly what you chose to unmount, and nothing else.
@@ -277,7 +277,7 @@ outside a mutation — reach the client with `QueryClientAccess`:
 class Page extends Component {
   private queries = this.use(QueryClientAccess);
 
-  @mount
+  @mounted
   warmUp() {
     // Loads what this page needs in ONE place, so the children below find their
     // data already cached instead of each fetching what the one above just learned.

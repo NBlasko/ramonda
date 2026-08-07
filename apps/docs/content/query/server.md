@@ -35,7 +35,7 @@ class UserCard extends Component<{ id: string }> {
 Two mechanisms the framework already has, and neither is new here.
 
 **Waiting** is [async on the server](/ssr/async): a lifecycle method that returns a
-promise is awaited during a server render. The query's `@mount` returns the fetch, so
+promise is awaited during a server render. The query's `@mounted` returns the fetch, so
 the render waits for it and for whatever that starts, then serializes.
 
 **Travelling** is the [hydration blob](/ssr). Every hook's `@state` is
@@ -104,7 +104,7 @@ The fix is to load what a page needs in one place:
 class TodosPage extends Component {
   private queries = this.use(QueryClientAccess);
 
-  @mount
+  @mounted
   load() {
     // Returned, so the server waits for it. The children below find their data
     // already cached instead of each fetching what the one above just learned.

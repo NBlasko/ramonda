@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { Host, state, destroy, interval } from "../base/decorators";
+import { Host, state, destroyed, interval } from "../base/decorators";
 import { getDOM } from "../test/setup";
 import { effectLike } from "../test/effectLike";
 
@@ -31,7 +31,7 @@ class Panel extends Component {
     log.push("effect");
     return () => log.push("cleanup");
   }
-  @destroy bye() {
+  @destroyed bye() {
     log.push("destroy");
   }
   @interval(5) tick() {
@@ -57,7 +57,7 @@ beforeEach(() => {
 });
 
 describe("a component replaced by a plain element of the same tag", () => {
-  test("runs its effect cleanups and @destroy", async () => {
+  test("runs its effect cleanups and @destroyed", async () => {
     const { instance, settle } = await getDOM<Swapper>(<Swapper />);
     expect(log).toEqual(["effect"]);
 

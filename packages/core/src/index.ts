@@ -69,7 +69,7 @@ export type {
   RamondaNode,
   ComponentChild,
   ComponentClassKind,
-  // The side a lifecycle is running on. `@create`/`@mount`/`@destroy` receive it
+  // The side a lifecycle is running on. `@created`/`@mounted`/`@destroyed` receive it
   // as their argument, so a shared method can branch (e.g. skip a fetch on the
   // server) without a `typeof window` check — unreliable anyway, since SSR runs
   // under a DOM shim where `window` exists.
@@ -184,7 +184,7 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
 
   try {
     mountNode(rootComponent, undefined, element);
-    // The tree is in the document now, which is what @mount is waiting for.
+    // The tree is in the document now, which is what @mounted is waiting for.
     flushPostCommit();
     if (__DEV__) {
       // Nudge the devtools to do an initial pull (no-op unless it's watching).
@@ -211,7 +211,7 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
 }
 
 /**
- * Tears down everything `bootstrap` mounted into `element`, running @destroy and
+ * Tears down everything `bootstrap` mounted into `element`, running @destroyed and
  * every cleanup down the tree. The element itself is kept, so it mirrors
  * bootstrap: that one mounts into it, this one empties it.
  *

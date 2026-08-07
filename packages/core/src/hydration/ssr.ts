@@ -39,7 +39,7 @@ const MAX_SERVER_ROUNDS = 10;
  * Waits for everything the render started, and for everything THAT starts.
  *
  * One pass is not enough: a resolved fetch writes state, which schedules a
- * render, which builds components, whose `@mount`s fetch again. So it alternates
+ * render, which builds components, whose `@mounted`s fetch again. So it alternates
  * — settle the renders already scheduled, take whatever async work they queued,
  * await it, commit — until a round produces nothing new.
  *
@@ -129,8 +129,8 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   // A per-request render (`opts.request`) makes `requestContext()` return real values. Set
   // ONLY for the synchronous section — the same window, and the same concurrency reasoning, as
   // `renderEnv`: two concurrent requests must not share it across an `await`. So the rule is
-  // read `requestContext()` SYNCHRONOUSLY (in render / @create / before the first `await` in an
-  // @mount) — after a yield the scope is already cleared. `renderStatic` passes no `opts` and
+  // read `requestContext()` SYNCHRONOUSLY (in render / @created / before the first `await` in an
+  // @mounted) — after a yield the scope is already cleared. `renderStatic` passes no `opts` and
   // manages its own build-mode scope (kept live across the sequential build), so this leaves it
   // untouched.
   const request = opts?.request;
@@ -149,7 +149,7 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   setServerWorkCollector(work);
   try {
     mountNode(vnode, undefined, container);
-    // Inside the server env, and before the task drain: a server @mount may
+    // Inside the server env, and before the task drain: a server @mounted may
     // write state, and those updates must be drained before serializing — which
     // is exactly what flushTaskQueue below is for.
     flushPostCommit();
@@ -221,12 +221,12 @@ export async function renderStatic(vnode: ComponentChild, url: URL): Promise<Sta
   setRequestScope(scope);
   try {
     const html = await renderToString(vnode);
-    // A read inside an async @mount throws into the drain's allSettled and is swallowed, so the
+    // A read inside an async @mounted throws into the drain's allSettled and is swallowed, so the
     // recorded field — not the throw — is the authority here.
     const blockedBy = getBuildRead(scope);
     return blockedBy !== undefined ? { blockedBy } : { html };
   } catch (e) {
-    // A synchronous read (render / @create / sync @mount) throws straight out.
+    // A synchronous read (render / @created / sync @mounted) throws straight out.
     if (e instanceof RequestReadDuringBuild) return { blockedBy: e.field };
     throw e; // a ServerRedirect or a genuine error is the caller's to handle.
   } finally {
@@ -266,7 +266,7 @@ export interface RenderedPage {
  *   `renderPage` would otherwise ship the first page's description on the second.
  *
  * A render that **throws** needs neither, which was worth measuring rather than
- * assuming: the failed-build teardown runs the tree's `@destroy` callbacks, and
+ * assuming: the failed-build teardown runs the tree's `@destroyed` callbacks, and
  * `Head`'s removes its own tags — so after a thrown render the head is already
  * empty and the title already restored. An earlier version of this comment
  * claimed the before-reset was what covered that case. It is not.

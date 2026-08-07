@@ -21,9 +21,9 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@persist`](/ssr/env) | both | component · hook | yes — one per field |
 | [`@compute`](/concepts/compute) | both | component · hook | yes |
 | [`@memoizedHandler`](/reference/api) | both | component · hook | yes |
-| [`@create`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
-| [`@mount`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
-| [`@destroy`](/concepts/lifecycle) | client in practice¹ | component · hook | yes, reverse order |
+| [`@created`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
+| [`@mounted`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
+| [`@destroyed`](/concepts/lifecycle) | client in practice¹ | component · hook | yes, reverse order |
 | [`@updated`](/concepts/lifecycle) | client in practice¹ | component · hook | yes |
 | [`@watchProp`](/concepts/props) | client in practice¹ | component · hook | yes — one per selector |
 | [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
@@ -39,23 +39,23 @@ Three questions come up about every decorator, and none of them is guessable fro
 ¹ **"client in practice"** means the decorator is not gated to a side — it would run on the
 server — but a server render gives it no occasion to. A server render commits once and never
 unmounts, so there is no update for `@updated` or `@watchProp` to react to and no teardown for
-`@destroy`.
+`@destroyed`.
 
 ² **"client only"** is different, and stronger: these are built on effects, and effects never
 attach during a server render. No `env` option changes that, and none of them has one.
 
 ## Where it runs, in more detail
 
-`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and **`shared`
-is the default** — so an undecorated `@mount` runs on both sides. See
+`@created`, `@mounted` and `@destroyed` take `{ env: "client" | "server" | "shared" }`, and **`shared`
+is the default** — so an undecorated `@mounted` runs on both sides. See
 [client / server / shared](/ssr/env) for choosing.
 
-One consequence catches people out: on **hydration** a `shared` `@create` is *skipped* — the
+One consequence catches people out: on **hydration** a `shared` `@created` is *skipped* — the
 server already ran it and the state it wrote was restored from the page — while a `shared`
-`@mount` *runs again*, because the DOM it touches was rebuilt as the client adopted the markup.
-That is why a [route guard](/routing/server#route-guards-and-redirects) belongs in `@mount`.
+`@mounted` *runs again*, because the DOM it touches was rebuilt as the client adopted the markup.
+That is why a [route guard](/routing/server#route-guards-and-redirects) belongs in `@mounted`.
 
-A server render, measured end to end, runs exactly: `@create`, `@mount`, and any `@compute`
+A server render, measured end to end, runs exactly: `@created`, `@mounted`, and any `@compute`
 something reads. Nothing else fires — not because it is forbidden, but for the reasons in the
 footnotes above.
 
@@ -84,7 +84,7 @@ answers. A component's props come from the parent's JSX and are compared by the 
 
 Most decorators stack, and the order is defined:
 
-- **`@create` and `@mount`** run in declaration order; **`@destroy`** runs in reverse, so cleanup
+- **`@created` and `@mounted`** run in declaration order; **`@destroyed`** runs in reverse, so cleanup
   undoes setup in the order it was done.
 - **`@watchProp`** takes **several selectors** and may itself be repeated. One application with several
   selectors runs the method **once** when any of them changed, with the values as a tuple —

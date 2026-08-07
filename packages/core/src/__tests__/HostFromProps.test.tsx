@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, create, destroy } from "../index";
+import { Component, Host, state, created, destroyed } from "../index";
 
 /**
  * `@Host` may take a callback instead of a fixed tag, so the CALLER picks the
@@ -155,8 +155,8 @@ describe("@Host tag from props", () => {
    * the reason the tag callback should read a prop that rarely changes — an `as`
    * chosen by the caller once, not a value that flips with UI state.
    *
-   * Note the ORDER: the replacement's @create runs BEFORE the old instance's
-   * @destroy. Anything acquired in @create that must not overlap with itself —
+   * Note the ORDER: the replacement's @created runs BEFORE the old instance's
+   * @destroyed. Anything acquired in @created that must not overlap with itself —
    * an exclusive lock, a subscription keyed by identity — sees both alive at
    * once. Locked down here because it is the kind of thing a refactor changes by
    * accident.
@@ -167,10 +167,10 @@ describe("@Host tag from props", () => {
     @Host((p: { as?: string }) => p.as ?? "div")
     class Counter extends Component<{ as?: string }> {
       @state count = 0;
-      @create born() {
+      @created born() {
         log.push("create");
       }
-      @destroy gone() {
+      @destroyed gone() {
         log.push("destroy");
       }
       bump() {

@@ -21,7 +21,7 @@ const MICROTASK_TURNS = 10;
  *
  * Ramonda batches updates through a microtask, so a state write does not touch
  * the DOM until the next tick. `act` closes that gap: after the callback, every
- * pending render, every `@mount` and every effect has run, and the DOM is what a
+ * pending render, every `@mounted` and every effect has run, and the DOM is what a
  * user would see.
  *
  * ```ts

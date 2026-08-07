@@ -95,27 +95,27 @@ decides, so there is nothing to remember and nothing to get silently wrong.
 
 ### Lifecycle
 
-`@create` runs while the component is being built — before its element exists.
-`@mount` runs after the DOM is committed, so by then the element **is** in the
-document: measure it, focus it, hand it to a library. `@destroy` runs on teardown.
+`@created` runs while the component is being built — before its element exists.
+`@mounted` runs after the DOM is committed, so by then the element **is** in the
+document: measure it, focus it, hand it to a library. `@destroyed` runs on teardown.
 
-Within one commit the order is: every child's `@mount` before its parent's, and
-per component `@mount` before its effects — so listeners registered by
-`@onElement` are live by the time `@mount` runs.
+Within one commit the order is: every child's `@mounted` before its parent's, and
+per component `@mounted` before its effects — so listeners registered by
+`@onElement` are live by the time `@mounted` runs.
 
 A component torn down before the commit finishes never mounts at all; its
-`@destroy` still runs.
+`@destroyed` still runs.
 
-**`@create` is for initialisation, not side effects.** Besides having no DOM, it
+**`@created` is for initialisation, not side effects.** Besides having no DOM, it
 runs while the instance it replaces is still alive: on a `key` change or a
-swapped class, the new `@create` fires before the old `@destroy`. That ordering
+swapped class, the new `@created` fires before the old `@destroyed`. That ordering
 is deliberate and stays — keeping the phase free of outside effects is what makes
-it harmless. Take nothing exclusive there; `@mount` is the place.
+it harmless. Take nothing exclusive there; `@mounted` is the place.
 
-`@destroy` runs exactly once, and also for a component whose **build failed** —
-a throw in `render()` or in `@create` itself. So it may see a half-initialised
+`@destroyed` runs exactly once, and also for a component whose **build failed** —
+a throw in `render()` or in `@created` itself. So it may see a half-initialised
 instance and has to tolerate that. The alternative, skipping cleanup for a
-component that never finished, leaks whatever `@create` already took.
+component that never finished, leaks whatever `@created` already took.
 
 **Every method is bound to its instance**, so `onClick={this.handleClick}` works
 with no constructor and no `.bind(this)` — including methods inherited from a
@@ -199,7 +199,7 @@ Use `as` for a component per item, `render: (item, index) => …` for plain mark
 
 | decorator | when |
 | --- | --- |
-| `@create` / `@mount` / `@destroy` | lifecycle; `{ env: "client" \| "server" \| "shared" }` |
+| `@created` / `@mounted` / `@destroyed` | lifecycle; `{ env: "client" \| "server" \| "shared" }` |
 | `@updated` | after every commit but the first; the DOM is the one you are looking at |
 | `@watchProp(selector)` | syncs derived state *before* the render when a prop changes |
 | `@onWindow` / `@onDocument` / `@onElement` | listeners, removed on unmount; typed from the event name |

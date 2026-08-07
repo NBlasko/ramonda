@@ -94,7 +94,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD001: {
     severity: "error",
     title: "State written during render()",
-    fix: "render() must be pure — it reads state, it does not write it. A write here schedules another render from inside a render, which double-renders at best and loops forever at worst. Derive with @compute, sync from props with @watchProp, or write from @create / an event handler.",
+    fix: "render() must be pure — it reads state, it does not write it. A write here schedules another render from inside a render, which double-renders at best and loops forever at worst. Derive with @compute, sync from props with @watchProp, or write from @created / an event handler.",
   },
   RMD002: {
     severity: "error",
@@ -122,17 +122,17 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD006: {
     severity: "error",
     title: "Timer still running after unmount",
-    fix: "Use @interval / @timeout, which start on mount and clear themselves on unmount. If you need a raw timer, keep its id in a class property and clear it from @destroy — a returned closure cannot do this, which is exactly why cleanup lives on a property.",
+    fix: "Use @interval / @timeout, which start on mount and clear themselves on unmount. If you need a raw timer, keep its id in a class property and clear it from @destroyed — a returned closure cannot do this, which is exactly why cleanup lives on a property.",
   },
   RMD007: {
     severity: "error",
     title: "Server and client rendered different output",
-    fix: "Hydration adopts the server DOM, so render() must produce the same result on both sides — where they disagree the server markup is overwritten and the page flickers. `new Date()` / `Math.random()` in render(): move the value into @create and mark it @persist, so the client restores the server's value instead of recomputing a new one. `typeof window` (or localStorage / window size) in render(): don't branch on the side — render the server's markup on both, then switch after hydration with `@state isClient = false` plus `@mount({ env: 'client' }) markClient() { this.isClient = true }`. The hydrating render still sees false, so it matches; the client re-renders a tick later.",
+    fix: "Hydration adopts the server DOM, so render() must produce the same result on both sides — where they disagree the server markup is overwritten and the page flickers. `new Date()` / `Math.random()` in render(): move the value into @created and mark it @persist, so the client restores the server's value instead of recomputing a new one. `typeof window` (or localStorage / window size) in render(): don't branch on the side — render the server's markup on both, then switch after hydration with `@state isClient = false` plus `@mounted({ env: 'client' }) markClient() { this.isClient = true }`. The hydrating render still sees false, so it matches; the client re-renders a tick later.",
   },
   RMD008: {
     severity: "warning",
     title: "State changed after the component was unmounted",
-    fix: "The component is gone, so the update is dropped and the render it asked for never happens. Something outlived it: almost always an await that resolves late (a fetch, a timer, a subscription callback) and writes state on the way back. Cancel it from @destroy — keep an AbortController or the subscription handle in a class property and tear it down there. @interval / @timeout and a subscription decorator's cleanup already do this for you.",
+    fix: "The component is gone, so the update is dropped and the render it asked for never happens. Something outlived it: almost always an await that resolves late (a fetch, a timer, a subscription callback) and writes state on the way back. Cancel it from @destroyed — keep an AbortController or the subscription handle in a class property and tear it down there. @interval / @timeout and a subscription decorator's cleanup already do this for you.",
   },
   RMD009: {
     severity: "error",
@@ -148,7 +148,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD011: {
     severity: "error",
     title: "A function was used as a JSX tag",
-    fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @create/@destroy, @watchProp and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
+    fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @created/@destroyed, @watchProp and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
   },
   RMD014: {
     severity: "error",
@@ -164,7 +164,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // error, not warning: cleanup never runs and every render goes into nodes nobody can see.
     severity: "error",
     title: "A component updated while its element is not in the document",
-    fix: "Something removed this component's DOM without telling the framework, so it is still mounted: its timers still fire, its listeners are still attached, its signals still hold it, and every render it does goes into nodes nobody can see. @destroy never ran. Ramonda's own removals are safe — a conditional render, a key change, a dropped list item all unmount properly — so this comes from outside: a `ref` handed to a library that clears or replaces the node, an app embedded in a page whose host removed the mount point, or a hand-written innerHTML. Call `unmount(container)` before the DOM goes away; removing the element is not a substitute. If the tree is detached ON PURPOSE and will be inserted later, this is expected and the update still runs.",
+    fix: "Something removed this component's DOM without telling the framework, so it is still mounted: its timers still fire, its listeners are still attached, its signals still hold it, and every render it does goes into nodes nobody can see. @destroyed never ran. Ramonda's own removals are safe — a conditional render, a key change, a dropped list item all unmount properly — so this comes from outside: a `ref` handed to a library that clears or replaces the node, an app embedded in a page whose host removed the mount point, or a hand-written innerHTML. Call `unmount(container)` before the DOM goes away; removing the element is not a substitute. If the tree is detached ON PURPOSE and will be inserted later, this is expected and the update still runs.",
   },
   RMD017: {
     // error, not warning: the page looks finished but that subtree never becomes interactive.
@@ -191,12 +191,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // error, not warning: in a @compute the value freezes, so the reader is shown a number that stopped moving.
     severity: "error",
     title: "A clock or a random number was read during render() or a @compute",
-    fix: "Both have to be a function of their inputs. In render() a value read from outside makes the output depend on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute it is quieter and worse: the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. Read it once in @create and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it.",
+    fix: "Both have to be a function of their inputs. In render() a value read from outside makes the output depend on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute it is quieter and worse: the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. Read it once in @created and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it.",
   },
   RMD022: {
     severity: "warning",
     title: "A hook's props callback built a new value for the same contents",
-    fix: 'Every prop is a signal, so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects — every time the callback runs. This is reported only when the value was rebuilt on four consecutive runs WITHOUT ever moving, so a prop that genuinely changes each time is not it, and neither is a callback that runs once and is then cached. For an array or an object, hold it somewhere that HAS an identity — a @compute (@compute get key() { return ["user", this.props.id] }), a field, a module constant — so the bag receives the same value instead of a fresh one, and the identity follows what it was derived from rather than a comparison. If you own the hook, @StableProps("key") declares the prop a value and settles it for every call site at once. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @create and keep it in @state; that one is reported the first time it happens.',
+    fix: 'Every prop is a signal, so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects — every time the callback runs. This is reported only when the value was rebuilt on four consecutive runs WITHOUT ever moving, so a prop that genuinely changes each time is not it, and neither is a callback that runs once and is then cached. For an array or an object, hold it somewhere that HAS an identity — a @compute (@compute get key() { return ["user", this.props.id] }), a field, a module constant — so the bag receives the same value instead of a fresh one, and the identity follows what it was derived from rather than a comparison. If you own the hook, @StableProps("key") declares the prop a value and settles it for every call site at once. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @created and keep it in @state; that one is reported the first time it happens.',
   },
   RMD023: {
     // error, not warning: items are matched by position, so state lands on the wrong row.
@@ -229,18 +229,18 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // what renders is not what the state says. Nothing is merely slower here.
     severity: "error",
     title: "A props callback reads a value that is not reactive",
-    fix: "A hook's props callback is cached on the signals it reads, so a render where none of them moved does not call it again. This prop came out different anyway, which means the value reaching it never passes through a signal — most often a plain field standing in for state (`items = []` rather than `@state items = []`), or a module-level variable something mutates. It used to work by accident: the write scheduled nothing, and the next render for any other reason happened to rebuild the bag. Make the value reactive and both problems go away at once — `@state` for something the component owns, `@compute` for something derived, a context signal for something shared. If it genuinely cannot be reactive (a `Date.now()`, a random id), read it once in `@create` and keep the result in `@state` instead of reading it in the callback.",
+    fix: "A hook's props callback is cached on the signals it reads, so a render where none of them moved does not call it again. This prop came out different anyway, which means the value reaching it never passes through a signal — most often a plain field standing in for state (`items = []` rather than `@state items = []`), or a module-level variable something mutates. It used to work by accident: the write scheduled nothing, and the next render for any other reason happened to rebuild the bag. Make the value reactive and both problems go away at once — `@state` for something the component owns, `@compute` for something derived, a context signal for something shared. If it genuinely cannot be reactive (a `Date.now()`, a random id), read it once in `@created` and keep the result in `@state` instead of reading it in the callback.",
   },
   RMD025: {
     // error, not warning: the reader gets nothing where the server had a value.
     severity: "error",
     title: "Per-request data read in the browser",
-    fix: '`requestContext()` reads the real request on the SERVER. In the browser only what the server explicitly exposed is available, so this read returned nothing — and if the server rendered a value here, the two sides now disagree and hydration will replace the node. Cookies and headers are never exposed (they are the server\'s, and an httpOnly cookie is invisible to JS anyway). To carry a value to the client, opt its key in — `requestKey("currentUser", { exposeToClient: true })` — and expose only what is safe to publish: a display name, an id, a role, never a session token. Better still, read the request in `@create` and keep the result in `@state`: `@create` is skipped on hydration and the state is restored from the page, so the browser never re-reads the request at all.',
+    fix: '`requestContext()` reads the real request on the SERVER. In the browser only what the server explicitly exposed is available, so this read returned nothing — and if the server rendered a value here, the two sides now disagree and hydration will replace the node. Cookies and headers are never exposed (they are the server\'s, and an httpOnly cookie is invisible to JS anyway). To carry a value to the client, opt its key in — `requestKey("currentUser", { exposeToClient: true })` — and expose only what is safe to publish: a display name, an id, a role, never a session token. Better still, read the request in `@created` and keep the result in `@state`: `@created` is skipped on hydration and the state is restored from the page, so the browser never re-reads the request at all.',
   },
   RMD024: {
     severity: "warning",
     title: "A @compute recomputes without its answer changing",
-    fix: "A @compute is invalidated by the signals it READ, so if it recomputes on every pass while producing an equal value, something it reads is being replaced every time — most often an array or object literal rebuilt in a hook's props bag, or a value derived from one. Declare that prop with @StableProps if you own the hook, and hold the value somewhere stable if you do not — a @compute of its own, a field, a module constant. If nothing is being rebuilt, the compute is reading something that is not reactive at all — a counter, Date.now(), a module variable — and a @compute is the wrong place for that: read it once in @create and keep it in @state.",
+    fix: "A @compute is invalidated by the signals it READ, so if it recomputes on every pass while producing an equal value, something it reads is being replaced every time — most often an array or object literal rebuilt in a hook's props bag, or a value derived from one. Declare that prop with @StableProps if you own the hook, and hold the value somewhere stable if you do not — a @compute of its own, a field, a module constant. If nothing is being rebuilt, the compute is reading something that is not reactive at all — a counter, Date.now(), a module variable — and a @compute is the wrong place for that: read it once in @created and keep it in @state.",
   },
   RMD013: {
     severity: "error",
@@ -267,12 +267,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD033: {
     severity: "warning",
     title: "State that cannot cross to the client",
-    fix: "Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a Map or a Date is lost on the way and the client starts with whatever the field initialises to. Keep the value out of state and derive it on the client — in `@create`, which does not run during hydration, or in a `@compute` — or store a serializable form of it (an id, an ISO string) and rebuild the object where it is used.",
+    fix: "Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a Map or a Date is lost on the way and the client starts with whatever the field initialises to. Keep the value out of state and derive it on the client — in `@created`, which does not run during hydration, or in a `@compute` — or store a serializable form of it (an id, an ISO string) and rebuild the object where it is used.",
   },
   RMD034: {
     severity: "warning",
     title: "State written during create or mount is not carried to the client",
-    fix: "`@create` and `@mount` do not run again on the client: hydration adopts the server's DOM and restores state from the blob. So a value computed there is server-only unless it is `@state` (which is serialized) or marked `@persist`. Mark it `@persist` if the client needs the server's answer, or move the work to somewhere that runs on both sides.",
+    fix: "`@created` and `@mounted` do not run again on the client: hydration adopts the server's DOM and restores state from the blob. So a value computed there is server-only unless it is `@state` (which is serialized) or marked `@persist`. Mark it `@persist` if the client needs the server's answer, or move the work to somewhere that runs on both sides.",
   },
   RMD035: {
     severity: "warning",

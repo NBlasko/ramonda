@@ -41,8 +41,8 @@ export function flushSync(): void {
  *
  * This is what makes a `rerender(<Card title="b" />)` mean the same thing it
  * means anywhere else: the component instance survives, its `@state` survives,
- * `@create` does not run again, and `@watchProp` fires. Measured on a `<Card>`
- * with `hits = 7`: `a:0` → `b:7`, same DOM node, same instance, one `@create`.
+ * `@created` does not run again, and `@watchProp` fires. Measured on a `<Card>`
+ * with `hits = 7`: `a:0` → `b:7`, same DOM node, same instance, one `@created`.
  *
  * `bootstrap` cannot do this — it appends, so calling it twice gives two trees.
  *

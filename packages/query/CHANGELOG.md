@@ -83,7 +83,7 @@
   Registering a panel used to leave a method and a field on the class, and neither can be tree-shaken:
   esbuild cannot prove a method is never reached dynamically, and a declared field is emitted on every
   instance. So every form in a production app carried ~500 bytes of dead code and a per-instance slot,
-  and its `@destroy` called a cleanup that could not exist.
+  and its `@destroyed` called a cleanup that could not exist.
 
   The description and the cleanup now live in the module that owns the panel — a free function and a
   `WeakMap` keyed by instance — leaving one `if (__DEV__)` line at each end of the class. `@ramonda/form`'s
@@ -95,7 +95,7 @@
 
   A devtools tab arrives through a dynamic import, so it loads after the app has mounted — and
   anything that announced itself during that mount announced to nobody. `QueryClientProvider`
-  announces from `@create`, which runs during hydration, and its provider sits at the root and never
+  announces from `@created`, which runs during hydration, and its provider sits at the root and never
   mounts again: the QUERY tab was empty for the life of the page. `Form` had the same fault and only
   looked fine because a form usually mounts on a later route.
 
@@ -337,7 +337,7 @@
   happened to read that render.
 
   Elsewhere "effects" was the runtime's own vocabulary leaking into prose a reader cannot look up ("after
-  this commit's `@mount`s and effects"); those say _subscriptions_ now.
+  this commit's `@mounted`s and effects"); those say _subscriptions_ now.
 
 - 681b7e5: RMQ002's reporter no longer reaches the production build.
 
@@ -347,10 +347,10 @@
   now, referenced only inside `if (__DEV__)`, which a bundler drops whole. That is how every other
   diagnostic in this repo is written, and now there is a reason written down for why.
 
-  The worse half was its DEV-only `@mount`. A lifecycle decorator registers from an initializer, so in
+  The worse half was its DEV-only `@mounted`. A lifecycle decorator registers from an initializer, so in
   production **every `Query` instance** allocated an id, bound the empty method, pushed an entry onto the
   runtime's mounts, and the flush then called it — per instance, for a method that did nothing. The
-  restored-error case reports from the top of `load` instead, an `@mount` that exists in every build, and
+  restored-error case reports from the top of `load` instead, an `@mounted` that exists in every build, and
   it is unaffected by being earlier: a refetch moves `fetchStatus`, not `status`, so a restored failure is
   still there to see.
 
@@ -494,7 +494,7 @@
 
   The option other libraries have rethrows a failure so an error boundary catches it. It is not
   built here, and the reason is what a boundary DOES: it replaces the subtree, which means
-  unmounting — `@destroy`, cleanups, local state, focus, scroll position — and a retry then has
+  unmounting — `@destroyed`, cleanups, local state, focus, scroll position — and a retry then has
   to rebuild all of it. A failed fetch is not an unexpected situation; the network fails
   routinely, which is why `Query` models a failure as state and keeps the data it had. Handing
   that to a boundary punishes the reader for somebody else's timeout.
@@ -511,7 +511,7 @@
   Two details worth recording. The check reads the ATTACHED entry rather than
   `peek(this.props.key)`, because peeking hashes the key and this runs after every render — the
   first version undid the identity fast path (723 ns → 31 ns) and the test that holds it failed
-  immediately. And it runs from `@updated` _and_ `@mount`: an error restored from a server render
+  immediately. And it runs from `@updated` _and_ `@mounted`: an error restored from a server render
   is already on screen at the first paint, with no second render for `@updated` to follow.
 
   Also: `/query/queries` gains the pattern for a failure that means the page cannot be shown —
@@ -778,8 +778,8 @@
   development build.
 
   **Providers register, clients do not.** A client belongs to a provider and there can be
-  several, so registration happens in the provider's `@create` (client only — a server render
-  has no panel, and `@destroy` never runs there) and is undone in `@destroy`. A torn-down tree
+  several, so registration happens in the provider's `@created` (client only — a server render
+  has no panel, and `@destroyed` never runs there) and is undone in `@destroyed`. A torn-down tree
   therefore takes its cache out of the list, so the panel cannot hold one alive or show one
   that no longer exists.
 
@@ -790,10 +790,10 @@
   rendering something deleted — and a row whose entry was collected between being drawn and
   being clicked is looked up fresh, so an action on it does nothing instead of throwing.
 
-  One finding recorded in the code: `@create` ignores what it returns. A teardown returned from
+  One finding recorded in the code: `@created` ignores what it returns. A teardown returned from
   it is silently dropped — that contract belongs to `@effect` and `createSubscriptionDecorator` —
-  so the registry grew by one per test until the two halves were written out as `@create` plus
-  `@destroy`.
+  so the registry grew by one per test until the two halves were written out as `@created` plus
+  `@destroyed`.
 
 - 465918f: New package: `@ramonda/query` — cached, deduplicated, race-free async state.
 
@@ -884,8 +884,8 @@
   `Head` was the framework's own last user, and the migration made it smaller: as a
   `@watchProp` whose selector returns a serialized form, the comparison is by value for free
   and the `appliedSnapshot` guard field is gone. That guard only existed because effects run
-  child→parent while `@create` runs parent→child, so an effect handed a nested route's title
-  back to its layout on the first commit. A `@watchProp` runs in the same order as `@create`
+  child→parent while `@created` runs parent→child, so an effect handed a nested route's title
+  back to its layout on the first commit. A `@watchProp` runs in the same order as `@created`
   and does not fire on mount, so both halves agree and the deeper `Head` wins.
 
   Also in this release, from the same pass:

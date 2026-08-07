@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, Hook, Host, create, destroy, state, watchProp } from "@ramonda/core";
+import { Component, Hook, Host, created, destroyed, state, watchProp } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, renderHook, act } from "../index";
 
@@ -10,7 +10,7 @@ interface CounterOptions {
 class CounterHook extends Hook<CounterOptions> {
   @state count = 0;
 
-  @create seed() {
+  @created seed() {
     this.count = this.props.start;
   }
 
@@ -49,9 +49,9 @@ describe("renderHook", () => {
     const seen: number[] = [];
 
     class Watching extends Hook<CounterOptions> {
-      // `@create` for the first value and `@watchProp` for every one after it — a watchProp
+      // `@created` for the first value and `@watchProp` for every one after it — a watchProp
       // does not fire on mount. This was one `@effect` before that decorator was removed.
-      @create seed() {
+      @created seed() {
         seen.push(this.props.start);
       }
 
@@ -71,11 +71,11 @@ describe("renderHook", () => {
     expect(seen).toEqual([1, 2]);
   });
 
-  test("unmount runs the hook's @destroy", () => {
+  test("unmount runs the hook's @destroyed", () => {
     const log: string[] = [];
 
     class Owned extends Hook {
-      @destroy bye() {
+      @destroyed bye() {
         log.push("destroyed");
       }
     }

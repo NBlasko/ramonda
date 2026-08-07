@@ -105,7 +105,7 @@
   Registering a panel used to leave a method and a field on the class, and neither can be tree-shaken:
   esbuild cannot prove a method is never reached dynamically, and a declared field is emitted on every
   instance. So every form in a production app carried ~500 bytes of dead code and a per-instance slot,
-  and its `@destroy` called a cleanup that could not exist.
+  and its `@destroyed` called a cleanup that could not exist.
 
   The description and the cleanup now live in the module that owns the panel — a free function and a
   `WeakMap` keyed by instance — leaving one `if (__DEV__)` line at each end of the class. `@ramonda/form`'s
@@ -117,7 +117,7 @@
 
   A devtools tab arrives through a dynamic import, so it loads after the app has mounted — and
   anything that announced itself during that mount announced to nobody. `QueryClientProvider`
-  announces from `@create`, which runs during hydration, and its provider sits at the root and never
+  announces from `@created`, which runs during hydration, and its provider sits at the root and never
   mounts again: the QUERY tab was empty for the life of the page. `Form` had the same fault and only
   looked fine because a form usually mounts on a later route.
 

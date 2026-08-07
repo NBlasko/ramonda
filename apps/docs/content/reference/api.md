@@ -8,7 +8,7 @@ order: 111
 # API
 
 **Casing tells you where a decorator goes.** `PascalCase` is a class decorator —
-`@Host`, `@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mount`,
+`@Host`, `@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mounted`,
 `@watchProp`. Nothing else distinguishes them at a glance, and the two groups are used in
 different places, so the convention carries its weight.
 
@@ -37,7 +37,7 @@ Everything the three packages export. Each entry links to the page that explains
 | | |
 |---|---|
 | `bootstrap(vnode, element)` | Mounts an app. |
-| `unmount(element)` | Tears down everything `bootstrap` mounted, running `@destroy` throughout. Removing the element is **not** a substitute. |
+| `unmount(element)` | Tears down everything `bootstrap` mounted, running `@destroyed` throughout. Removing the element is **not** a substitute. |
 | `h(tag, props, ...children)` | What JSX compiles to. Callable directly for a tag that is a value. [JSX](/concepts/jsx) |
 
 ### Server rendering
@@ -74,13 +74,13 @@ for a declared slot.
 
 | | |
 |---|---|
-| `@create(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
-| `@mount(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
+| `@created(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
+| `@mounted(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
 | `@updated` | Runs after every commit **after** the first, with the new DOM in place. No deps, no previous values, no cleanup. [Lifecycle](/concepts/lifecycle) |
-| `@destroy` | Runs on teardown, while state is still readable. |
+| `@destroyed` | Runs on teardown, while state is still readable. |
 | `createSubscriptionDecorator(name, connect)` | Your own subscription decorator: connect after the commit, and what it returns is the cleanup. [Subscriptions](/concepts/subscriptions) |
 
-`@create`, `@mount` and `@destroy` take `{ env: "client" | "server" | "shared" }`, and `shared` is
+`@created`, `@mounted` and `@destroyed` take `{ env: "client" | "server" | "shared" }`, and `shared` is
 the default. [Which to use](/ssr/env) — `@updated` has no `env`, because a server render commits
 once and so never produces the update it reacts to.
 

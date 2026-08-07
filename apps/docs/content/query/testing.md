@@ -14,7 +14,7 @@ is the only thing worth learning.
 ## `act` for work already scheduled, `waitFor` for a round trip
 
 [`act`](/testing/act) commits everything **already scheduled**: pending renders,
-`@mount`s, subscriptions. With an async callback it also gives the continuations a few
+`@mounted`s, subscriptions. With an async callback it also gives the continuations a few
 microtask turns and commits after each — so a fetcher that resolves from memory (a
 cache hit, a stub returning `Promise.resolve(…)`) is fully settled by the time it
 returns.

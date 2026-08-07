@@ -1,27 +1,27 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Component, Host, create, destroy, ErrorBoundary } from "../../index";
+import { Component, Host, created, destroyed, ErrorBoundary } from "../../index";
 import { lifecycleCleanupManagement } from "../../helpers/lifecycleMenagement";
 
 /**
  * A component whose BUILD fails is still torn down.
  *
  * It was not. Teardown is reached from `unmountChildrenNodes`, which walks the
- * DOM — and a component that threw in `@create` or `render()` never had its host
+ * DOM — and a component that threw in `@created` or `render()` never had its host
  * inserted anywhere, so nothing could reach it. `errorHandler` is handed the
  * PLACEHOLDER (the parent), not the component that failed, so the failed instance
  * was simply abandoned.
  *
- * Measured before the fix, with `@create` acquiring something:
+ * Measured before the fix, with `@created` acquiring something:
  *
- *   render() throws after @create   ->  log: create           (no destroy)
- *   @create itself throws           ->  log: create           (no destroy)
- *   @mount throws, removed normally ->  log: create,mount,destroy   (already fine)
+ *   render() throws after @created   ->  log: create           (no destroy)
+ *   @created itself throws           ->  log: create           (no destroy)
+ *   @mounted throws, removed normally ->  log: create,mount,destroy   (already fine)
  *
  * The narrow-but-real cost: `@interval` / `@timeout` / `@onWindow` do NOT leak,
  * because they are built on effects and effects run after the commit — a build
  * that throws never reaches them. What leaks is anything taken by hand in
- * `@create`: a subscription, a raw listener, an open connection, an
+ * `@created`: a subscription, a raw listener, an open connection, an
  * AbortController nobody aborts.
  */
 
@@ -32,16 +32,16 @@ afterEach(() => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("teardown when the build fails", () => {
-  test("render() throwing after @create still runs @destroy", async () => {
+  test("render() throwing after @created still runs @destroyed", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const log: string[] = [];
 
     @Host("div")
     class Broken extends Component {
-      @create born() {
+      @created born() {
         log.push("create"); // stands in for acquiring a resource
       }
-      @destroy gone() {
+      @destroyed gone() {
         log.push("destroy");
       }
       render(): never {
@@ -67,17 +67,17 @@ describe("teardown when the build fails", () => {
     expect(log).toEqual(["create", "destroy"]);
   });
 
-  test("@create throwing still runs @destroy", async () => {
+  test("@created throwing still runs @destroyed", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const log: string[] = [];
 
     @Host("div")
     class Broken extends Component {
-      @create born() {
+      @created born() {
         log.push("create");
         throw new Error("create boom");
       }
-      @destroy gone() {
+      @destroyed gone() {
         log.push("destroy");
       }
       render() {
@@ -100,9 +100,9 @@ describe("teardown when the build fails", () => {
     await getDOM(<App />);
     await settle();
 
-    // @destroy runs over a half-initialised component on purpose: leaking less
+    // @destroyed runs over a half-initialised component on purpose: leaking less
     // was preferred to the more predictable "never finished mounting, so no
-    // cleanup" rule. @destroy has to tolerate it.
+    // cleanup" rule. @destroyed has to tolerate it.
     expect(log).toEqual(["create", "destroy"]);
   });
 
@@ -146,12 +146,12 @@ describe("teardown when the build fails", () => {
    * So the invariant is stated against the function itself. It fails without the
    * guard, which the previous version did not.
    */
-  test("running teardown twice runs @destroy once", async () => {
+  test("running teardown twice runs @destroyed once", async () => {
     let destroys = 0;
 
     @Host("div")
     class Counted extends Component {
-      @destroy gone() {
+      @destroyed gone() {
         destroys++;
       }
       render() {
@@ -175,10 +175,10 @@ describe("teardown when the build fails", () => {
 
     @Host("div")
     class Fine extends Component {
-      @create born() {
+      @created born() {
         log.push("fine:create");
       }
-      @destroy gone() {
+      @destroyed gone() {
         log.push("fine:destroy");
       }
       render() {

@@ -137,7 +137,7 @@ describe("a form under the strict render", () => {
 
   test("the doubled call does not double what the form does with it", () => {
     // The callback runs twice per render here, so anything the form did per CALL rather than per
-    // render would show up as two of it. `prime()` is a `@create`, and the values are latched on
+    // render would show up as two of it. `prime()` is a `@created`, and the values are latched on
     // their first read.
     let validations = 0;
     const counting: StandardSchemaV1<Values, Values> = {

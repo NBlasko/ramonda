@@ -718,8 +718,8 @@ editor (served at client.js:8692)`. Resolving through the sourcemap needs a fetc
   development build.
 
   **Providers register, clients do not.** A client belongs to a provider and there can be
-  several, so registration happens in the provider's `@create` (client only — a server render
-  has no panel, and `@destroy` never runs there) and is undone in `@destroy`. A torn-down tree
+  several, so registration happens in the provider's `@created` (client only — a server render
+  has no panel, and `@destroyed` never runs there) and is undone in `@destroyed`. A torn-down tree
   therefore takes its cache out of the list, so the panel cannot hold one alive or show one
   that no longer exists.
 
@@ -730,10 +730,10 @@ editor (served at client.js:8692)`. Resolving through the sourcemap needs a fetc
   rendering something deleted — and a row whose entry was collected between being drawn and
   being clicked is looked up fresh, so an action on it does nothing instead of throwing.
 
-  One finding recorded in the code: `@create` ignores what it returns. A teardown returned from
+  One finding recorded in the code: `@created` ignores what it returns. A teardown returned from
   it is silently dropped — that contract belongs to `@effect` and `createSubscriptionDecorator` —
-  so the registry grew by one per test until the two halves were written out as `@create` plus
-  `@destroy`.
+  so the registry grew by one per test until the two halves were written out as `@created` plus
+  `@destroyed`.
 
 ## 0.0.2
 

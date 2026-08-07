@@ -61,8 +61,8 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * use of it was for. See the changeset for where each case went.
  *
  * **Registration is not open-ended.** Effects run once per commit, from a queue
- * flushed after the DOM work. Anything pushed here during construction, `@create`
- * or `@mount` makes that flush; anything pushed AFTER it does not run until some
+ * flushed after the DOM work. Anything pushed here during construction, `@created`
+ * or `@mounted` makes that flush; anything pushed AFTER it does not run until some
  * later re-render happens to trigger the next one. Measured: an effect attached
  * from a click handler stayed silent, then fired on an unrelated `@state` change.
  * That is why every decorator here registers from `addInitializer`.
@@ -306,7 +306,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
  * an effect fires constantly while looking framework-guarded, and its cleanup tears
  * down whatever it set up each time.
  *
- * **No cleanup contract.** Return nothing. Teardown belongs to `@destroy`, and a
+ * **No cleanup contract.** Return nothing. Teardown belongs to `@destroyed`, and a
  * subscription belongs to `createSubscriptionDecorator`.
  *
  * **No previous props or state**, deliberately. The `if` that would need them —
@@ -322,7 +322,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
  *
  * ## What to know
  *
- * **Not on the first commit** — that is `@mount`, which runs once with the element
+ * **Not on the first commit** — that is `@mounted`, which runs once with the element
  * already in the document. `@updated` is every commit after it.
  *
  * **It runs unconditionally**, so guard the body if the body is expensive. A
@@ -641,8 +641,8 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
     });
   };
 
-  // Dual-callable: @create              -> (value, context)
-  //                @create({ env })     -> vrati dekorator
+  // Dual-callable: @created              -> (value, context)
+  //                @created({ env })     -> vrati dekorator
   function decorator(
     options?: LifecycleOptions,
   ): (value: unknown, context: EnhancedClassMethodDecoratorContext) => void;
@@ -670,35 +670,35 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
  * **For initialisation, not for side effects.** Two properties make that a rule
  * rather than a style preference, and both were measured:
  *
- * 1. **There is no DOM yet.** The host element is created after `@create` and
+ * 1. **There is no DOM yet.** The host element is created after `@created` and
  *    inserted by the caller after that, so a `document.querySelector` here finds
  *    nothing of this component — and during a REPLACEMENT it finds the outgoing
- *    instance instead. `@mount` is the hook that guarantees the element is in the
+ *    instance instead. `@mounted` is the hook that guarantees the element is in the
  *    document.
  * 2. **The instance it replaces is still alive.** On any replacement — a `key`
  *    change, a swapped class, a host tag resolved from props — the new
- *    `@create` runs before the old `@destroy`. That is not reordered: keeping
+ *    `@created` runs before the old `@destroyed`. That is not reordered: keeping
  *    this phase free of outside effects is what makes it harmless. Anything
  *    exclusive taken here — a lock, a subscription keyed by identity — would
  *    briefly overlap itself.
  *
  * And one more, from the other end: if the build FAILS after this runs — a throw
- * in `render()`, or in `@create` itself — `@destroy` still runs, over a
- * component that never finished initialising. So `@destroy` must tolerate a
+ * in `render()`, or in `@created` itself — `@destroyed` still runs, over a
+ * component that never finished initialising. So `@destroyed` must tolerate a
  * half-built instance. That was chosen over never cleaning up such a component,
- * because whatever `@create` took would otherwise leak for the life of the page.
+ * because whatever `@created` took would otherwise leak for the life of the page.
  *
  * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
  * as an argument, for the rare shared init that must branch on where it runs.
  * Declaring the parameter is optional.
  */
-export const create = createLifecycleDecorator("creates", "create");
+export const created = createLifecycleDecorator("creates", "created");
 /**
  * Runs after the DOM this commit builds is in the document. Measure, focus, hand
- * the node to a library — this is where that belongs, not in `@create`.
+ * the node to a library — this is where that belongs, not in `@created`.
  *
- * Within one commit: every child's `@mount` before its parent's, and a
- * component's `@mount` before its effects, so `@onElement` listeners are already
+ * Within one commit: every child's `@mounted` before its parent's, and a
+ * component's `@mounted` before its effects, so `@onElement` listeners are already
  * attached. A component torn down before the commit finishes never mounts at all.
  *
  * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
@@ -706,21 +706,21 @@ export const create = createLifecycleDecorator("creates", "create");
  * on the server without a `typeof window` check. Declaring the parameter is
  * optional.
  */
-export const mount = createLifecycleDecorator("mounts", "mount");
+export const mounted = createLifecycleDecorator("mounts", "mounted");
 /**
  * Runs on teardown, while reactive dependencies are still readable.
  *
  * Runs exactly once, and also for a component whose BUILD failed — see `create`.
  * A throw here is reported and does not stop the rest of the cleanup. Receives the
- * render side (`env: RenderEnv`) as an argument, like `@create`/`@mount`.
+ * render side (`env: RenderEnv`) as an argument, like `@created`/`@mounted`.
  */
-export const destroy = createLifecycleDecorator("destroys", "destroy");
+export const destroyed = createLifecycleDecorator("destroys", "destroyed");
 
 /**
  * Syncs derived state BEFORE the render, when a selected prop changes — without
  * the extra re-render an `@effect` would cause. The selector picks the value (it
  * may reach deep: `p => p.foo[5].bar`) and the decorated method receives the new
- * and old value. It does NOT fire on mount; use `@create` for the initial seed.
+ * and old value. It does NOT fire on mount; use `@created` for the initial seed.
  *
  * ```ts
  * @watchProp((p) => p.userId)

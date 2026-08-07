@@ -85,7 +85,7 @@ describe("list scope cleanup", () => {
     expect(listenerCount(signal)).toBe(2);
 
     // And the list leaving the page lets go of the rest. `For` released these
-    // from its own `@destroy`; a `list()` region has no hook to hang that on, so
+    // from its own `@destroyed`; a `list()` region has no hook to hang that on, so
     // the region's own teardown has to do it.
     app.instance.show = false;
     await app.settle();

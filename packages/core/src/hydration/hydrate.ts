@@ -228,7 +228,7 @@ function hydrateComponent(
     if (create.env === "client") create.cb(componentRuntime.env);
   }
 
-  // Re-evaluate every hook's options — AFTER the restore and AFTER @create.
+  // Re-evaluate every hook's options — AFTER the restore and AFTER @created.
   //
   // `useCommon` calls the options callback IMMEDIATELY, during construction — so
   // a hook's options were captured from the component's field initializers,
@@ -243,17 +243,17 @@ function hydrateComponent(
   // server's DOM with them. The first reorder then handed it the restored
   // objects, which it had never seen, so it minted fresh ids (`f2`, `f3` against
   // the nodes' `f0`, `f1`), every key missed, and the entire list was rebuilt —
-  // per-item state lost, @destroy and @create run again.
+  // per-item state lost, @destroyed and @created run again.
   //
   // `RouterHydration.test.tsx` documented the same root cause from the other
   // end: RouteProvider's options were captured before the restore, which is why
   // `Router.init()` has to re-read the URL.
   //
-  // It also fixes the POSITION of this block. Refreshing before @create made
-  // that router test fail: `init()` is an @create that corrects the restored
+  // It also fixes the POSITION of this block. Refreshing before @created made
+  // that router test fail: `init()` is an @created that corrects the restored
   // route back to the client's URL, so hooks refreshed before it would publish
   // the SERVER's route and hold it until the next render. Hooks have to see the
-  // final state — after the blob, and after any @create that corrects it.
+  // final state — after the blob, and after any @created that corrects it.
   if (component[INTERNAL_HOOKS]) {
     for (const update of component[INTERNAL_HOOKS]) update();
   }
@@ -261,7 +261,7 @@ function hydrateComponent(
   seedWatchProps(component);
 
   // The component may not be able to hydrate yet — see the `@deferHydration`
-  // decorator. Asked AFTER the restore, the client @create and the hook refresh,
+  // decorator. Asked AFTER the restore, the client @created and the hook refresh,
   // so it decides with its final state; and BEFORE the render below, which is
   // the step that would produce output disagreeing with the server's markup.
   const deferred = collectDeferrals(runtime.deferHydrations);
@@ -290,7 +290,7 @@ function hydrateComponent(
   if (existingHostNode.nodeName !== rendered.name) {
     // Same fallback as the deferred path above, and the same obligation. This
     // component was never adopted onto a node, so there is nothing to unmount —
-    // but its client `@create` has already run, and whatever that started is
+    // but its client `@created` has already run, and whatever that started is
     // only reachable through the teardown.
     lifecycleCleanupManagement(component);
     return hydrationFallback(vnode, placeholder, existingHostNode, parent);
@@ -306,19 +306,19 @@ function hydrateComponent(
   adoptHost(component, existingHostNode, vnode);
   componentRuntime.isInitialized = true;
 
-  // Deferred like the client build path, so @mount means one thing everywhere.
+  // Deferred like the client build path, so @mounted means one thing everywhere.
   // The server's DOM is already in the document here, so this is about keeping a
   // single rule rather than fixing a hydration-specific bug.
   // `env !== "server"`, matching the build path — NOT `=== "client"`, which is
-  // what this was and which silently dropped every default (`"shared"`) @mount
+  // what this was and which silently dropped every default (`"shared"`) @mounted
   // on a hydrated page.
   //
-  // The argument for skipping them was that a shared @mount already ran during
-  // the server render. But @mount exists to touch the REAL DOM, and the server's
+  // The argument for skipping them was that a shared @mounted already ran during
+  // the server render. But @mounted exists to touch the REAL DOM, and the server's
   // DOM is thrown away — so skipping it on the client means the work simply
   // never happens for any prerendered page.
   //
-  // `AsyncLoad` is the proof. Its `@mount afterCreate()` is what calls `load()`,
+  // `AsyncLoad` is the proof. Its `@mounted afterCreate()` is what calls `load()`,
   // so with this filter a prerendered page never fetched its module: measured
   // `loading: false`, the load never started, and the page sat on its loading
   // fallback forever with the server's real content already destroyed beneath it.
@@ -538,8 +538,8 @@ function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void 
     //
     // Torn down FIRST, and in place. By now this component has been adopted onto
     // the server's node: it is initialized, holds restored state and whatever
-    // its client `@create` started. `replaceChild` takes only the node, so
-    // without this the component went on living with no DOM — `@destroy` never
+    // its client `@created` started. `replaceChild` takes only the node, so
+    // without this the component went on living with no DOM — `@destroyed` never
     // ran, effect cleanups never ran, its signals stayed attached, its timers
     // went on firing, and a later write would render into nodes nobody can see.
     // In place rather than through `unmountChildrenNodes`, because the node has

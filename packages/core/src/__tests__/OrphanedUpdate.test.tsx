@@ -6,7 +6,7 @@ import { resetDiagnostics } from "../debug/diagnostics";
 /**
  * RMD016 — a component still mounted inside DOM that is no longer in the
  * document. It keeps rendering, its timers keep firing, its listeners stay
- * attached, and `@destroy` never runs.
+ * attached, and `@destroyed` never runs.
  *
  * This is NOT reachable from inside a pure Ramonda app: every path that removes
  * something goes through the diff, which unmounts. It is a boundary problem —

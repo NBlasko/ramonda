@@ -1,4 +1,4 @@
-import { Component, Host, createSubscriptionDecorator, mount, state, updated } from "@ramonda/core";
+import { Component, Host, createSubscriptionDecorator, mounted, state, updated } from "@ramonda/core";
 
 // An external store, standing in for Zustand or anything else that hands back an
 // unsubscribe function.
@@ -65,11 +65,11 @@ export class StoreSubscription extends Component {
   // before the child below is mounted or destroyed, so a count read there is always
   // one commit stale (it showed 1 while unmounted and 0 after remounting).
   //
-  // @mount for the first count, @updated for every one after it: @updated runs once
+  // @mounted for the first count, @updated for every one after it: @updated runs once
   // the commit is done, which is when the subscription has actually been made or
   // dropped. Writing state from it is safe here because the value converges — the
   // same count is not a change, so it schedules nothing.
-  @mount
+  @mounted
   countOnMount() {
     this.listeners = likes.listenerCount;
   }

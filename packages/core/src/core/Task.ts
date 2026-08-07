@@ -80,7 +80,7 @@ export async function flushTaskQueue(maxTicks = 50): Promise<void> {
  * was to add another and hope.
  *
  * "Settled" is both queues empty, not one. A render can queue @mounts, and an
- * @mount can write state that queues another render, so this alternates until
+ * @mounted can write state that queues another render, so this alternates until
  * neither has anything left.
  *
  * Bounded for the same reason every loop here is bounded: an update cycle must
@@ -95,7 +95,7 @@ export function drainSync(maxRounds = 50): void {
 
   throw new Error(
     `[Ramonda] flushSync gave up after ${maxRounds} rounds: rendering kept scheduling more work without settling. ` +
-      `Usually a @mount, an @updated or a subscription (@onElement, @interval, …) writing state ` +
+      `Usually a @mounted, an @updated or a subscription (@onElement, @interval, …) writing state ` +
       `that its own render reads back. ` +
       `In a development build the cause is reported by name (RMD009).`,
   );
@@ -155,7 +155,7 @@ function updateBuild(component: BaseComponent<any>) {
   diffAndMerge(rendered, component, componentRuntime.enhancedNode);
 
   // `@updated` — the post-commit door, and only on this path: the first commit
-  // belongs to @mount, so neither the build path nor hydration queues these.
+  // belongs to @mounted, so neither the build path nor hydration queues these.
   //
   // Queued only when the component has any, so a component without `@updated`
   // pays one length check rather than an entry in the flush (measured at ~267 ns

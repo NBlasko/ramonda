@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, create, watchProp } from "../index";
+import { Component, Host, Hook, state, created, watchProp } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -44,12 +44,12 @@ describe("state and lifecycle without markup", () => {
   test("a component may render nothing and still be a full component", async () => {
     // The everyday answer. The default host is display:contents, so the element
     // exists but takes part in no layout — the wrapper is not a cost.
-    let created = 0;
+    let createdCount = 0;
     let tracked = 0;
 
     class Analytics extends Component<{ page: string }> {
-      @create init() {
-        created++;
+      @created init() {
+        createdCount++;
       }
 
       @watchProp((props) => props.page)
@@ -81,8 +81,8 @@ describe("state and lifecycle without markup", () => {
     const host = app.container.querySelector("ramonda-host")!;
     expect(host.childNodes.length).toBe(0);
     expect(host.getAttribute("style")).toBe("display: contents;");
-    expect(created).toBe(1);
-    // `@watchProp` does not fire on mount — `@create` is the initial pass — so nothing
+    expect(createdCount).toBe(1);
+    // `@watchProp` does not fire on mount — `@created` is the initial pass — so nothing
     // has been tracked yet.
     expect(tracked).toBe(0);
 
@@ -101,7 +101,7 @@ describe("state and lifecycle without markup", () => {
     class RowsHook extends Hook<{ prefix: string }> {
       @state rows: string[] = [];
 
-      @create load() {
+      @created load() {
         this.rows = ["a", "b"];
       }
 
@@ -136,7 +136,7 @@ describe("state and lifecycle without markup", () => {
     const app = await getDOM<TableApp>(<TableApp />);
     await app.settle();
 
-    // @create on the hook ran, and its state drove the render.
+    // @created on the hook ran, and its state drove the render.
     expect(app.container.querySelectorAll("tbody > tr").length).toBe(2);
 
     // A write to hook state re-renders the owner.

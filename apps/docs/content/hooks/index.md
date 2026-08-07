@@ -67,7 +67,7 @@ re-renders for a reason that has nothing to do with it.
 export class Resource<T> extends Hook<{ url: string }> {
   @state data: T | null = null;
 
-  @create
+  @created
   first() {
     void this.load(this.props.url);
   }
@@ -82,7 +82,7 @@ export class Resource<T> extends Hook<{ url: string }> {
   private async load(url: string) {
     this.data = null;
     const response = await fetch(url);
-    // `@destroy` is where a real one would cancel; RMD008 reports a write after unmount.
+    // `@destroyed` is where a real one would cancel; RMD008 reports a write after unmount.
     this.data = await response.json();
   }
 }
@@ -146,11 +146,11 @@ eventually. The hook never sees this argument, and a production build stores non
 ## When things fire
 
 - **A hook is created the moment `this.use()` runs** — while the owner itself is
-  being built, before the owner's own `@create`. Hooks are built in `this.use()`
+  being built, before the owner's own `@created`. Hooks are built in `this.use()`
   order.
 - **Its lifecycle is part of the owner's, not a separate pass.** A hook has no
-  element, so there's no separate mount for it: its `@create` runs as the owner is
-  built, its `@mount` once the owner's DOM is on the page, its `@destroy` when the
+  element, so there's no separate mount for it: its `@created` runs as the owner is
+  built, its `@mounted` once the owner's DOM is on the page, its `@destroyed` when the
   owner is removed. You can watch the exact interleaving in the
   [lifecycle](/concepts/lifecycle) demo.
 - **On every re-render of the owner**, the hook tree is walked in `use()` order and the new

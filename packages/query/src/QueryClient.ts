@@ -232,7 +232,7 @@ export class QueryClient {
    *
    * The returned promise settles when the data (or the failure) has been applied,
    * and it never rejects: a failed query is a state to render, not an exception
-   * for whoever happened to trigger it. A component's `@mount` can therefore
+   * for whoever happened to trigger it. A component's `@mounted` can therefore
    * return it, which is what a server render awaits before serializing.
    */
   fetch<TData>(key: QueryKey, fetcher: QueryFetcher<TData>, options?: QueryBehaviour): Promise<void> {

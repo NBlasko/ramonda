@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { state, create, destroy } from "../../base/decorators";
+import { state, created, destroyed } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { KEY_SYM } from "../../helpers/constants";
 
@@ -30,10 +30,10 @@ describe("Key Reconciliation", () => {
     const log: string[] = [];
 
     class Item extends Component<{ id: number }> {
-      @create init() {
+      @created init() {
         log.push(`mount:${this.props.id}`);
       }
-      @destroy dispose() {
+      @destroyed dispose() {
         log.push(`unmount:${this.props.id}`);
       }
       render() {
@@ -68,10 +68,10 @@ describe("Key Reconciliation", () => {
     const log: string[] = [];
 
     class Item extends Component<{ id: number }> {
-      @create init() {
+      @created init() {
         log.push(`mount:${this.props.id}`);
       }
-      @destroy dispose() {
+      @destroyed dispose() {
         log.push(`unmount:${this.props.id}`);
       }
       render() {
@@ -112,7 +112,7 @@ describe("Key Reconciliation", () => {
     class Item extends Component<{ id: string }> {
       readonly uid = Math.random().toString(36).slice(2);
 
-      @create init() {
+      @created init() {
         instanceIds[this.props.id] = this.uid;
       }
 
@@ -151,10 +151,10 @@ describe("Key Reconciliation", () => {
     const log: string[] = [];
 
     class Item extends Component<{ id: number }> {
-      @create init() {
+      @created init() {
         log.push(`mount:${this.props.id}`);
       }
-      @destroy dispose() {
+      @destroyed dispose() {
         log.push(`unmount:${this.props.id}`);
       }
       render() {

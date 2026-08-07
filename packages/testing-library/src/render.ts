@@ -72,12 +72,12 @@ export interface RenderResult<T = unknown> extends BoundFunctions<typeof default
   /**
    * Renders new JSX into the same container, DIFFING against what is there.
    *
-   * The instance survives, its `@state` survives, `@create` does not run again
+   * The instance survives, its `@state` survives, `@created` does not run again
    * and `@watchProp` fires — the same thing that happens when a real parent
    * re-renders a child with new props. This is how to test prop reactivity.
    */
   rerender(ui: VNode): void;
-  /** Tears the tree down, running `@destroy` and every cleanup. */
+  /** Tears the tree down, running `@destroyed` and every cleanup. */
   unmount(): void;
   /** The container's current content, detached — useful for snapshots. */
   asFragment(): DocumentFragment;
@@ -99,7 +99,7 @@ export interface RenderResult<T = unknown> extends BoundFunctions<typeof default
  * ```
  *
  * Synchronous, and it stays that way: `bootstrap` builds the tree and runs
- * `@mount` before it returns, and the `act` below commits anything those wrote.
+ * `@mounted` before it returns, and the `act` below commits anything those wrote.
  * There is nothing left to await, so a test does not have to guess how many
  * ticks a cascade needed — which is exactly what the harness this replaces got
  * wrong.

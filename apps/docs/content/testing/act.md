@@ -14,7 +14,7 @@ act(() => {
 expect(getByText("5")).toBeTruthy();
 ```
 
-When it returns, every render, `@mount` and effect the callback caused has run —
+When it returns, every render, `@mounted` and effect the callback caused has run —
 however deep the cascade went.
 
 ## Why it exists
