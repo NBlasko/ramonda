@@ -1,6 +1,7 @@
 import { created, destroyed, Hook, INSPECT, type RenderEnv, state, watchProp } from "@ramonda/core";
 
 import { ASPECT, EVERY_ASPECT, type FieldHandle, type FieldHost, FieldTree, type Watcher } from "./fieldTree";
+import { FACT, type FormFacts, FormProvider, type FormWatcher } from "./formState";
 import { childKey, keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
 import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
 import { type Issues, NO_ISSUES, validate, withIssue } from "./validate";
@@ -73,7 +74,7 @@ const NO_MESSAGES: readonly string[] = [];
  * put a warning in front of anyone whose form holds one. They are a plain field, read
  * during the render the counter scheduled, exactly as `Mutation` holds `lastData`.
  */
-export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> implements FieldHost {
+export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> implements FieldHost, FormFacts {
   /**
    * Bumped on every change, and read first by every getter below.
    *
@@ -140,6 +141,20 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * identity changed between renders (it really is removed and re-added on the element).
    */
   private readonly quietTree = new FieldTree(this.quietHost());
+
+  /**
+   * Publishes this form to every descendant, so a `FormState` needs no props.
+   *
+   * A provider mounted from INSIDE the hook, which puts the channel on the owning component's context —
+   * the same thing `Router` does with its route state, and the only route available, because
+   * `GLOBAL_RUNTIME` is internal to `@ramonda/core` and this package cannot reach `owner.context` by
+   * hand. Two forms nested shadow correctly: contexts are prototype-chained per component.
+   *
+   * A field initializer rather than `@created`, so the channel is there before any child is built.
+   * `protected` because that is the accurate visibility — a subclassed form should reach its own
+   * provider — and because `private` on a hook's member still leaves it in the published API.
+   */
+  protected published = this.use(FormProvider, () => ({ form: this as FormFacts }));
 
   /**
    * Validates once, before the first render, so `isValid` means something on a page nobody has
@@ -353,6 +368,28 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     return this.errorsAt(ROOT);
   }
 
+  /* ---- the same five, without touching `version` — for `FormState`, see `Form.read` ---- */
+
+  get formErrorsQuietly(): readonly string[] {
+    return this.errorsAtQuietly(ROOT);
+  }
+
+  get isValidQuietly(): boolean {
+    return this.validated && this.issues.size === 0;
+  }
+
+  get isDirtyQuietly(): boolean {
+    return this.dirtyAtQuietly(ROOT);
+  }
+
+  get isSubmittingQuietly(): boolean {
+    return this.submitting;
+  }
+
+  get submitCountQuietly(): number {
+    return this.submits;
+  }
+
   /**
    * Whether the last validation found nothing.
    *
@@ -361,7 +398,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    */
   get isValid(): boolean {
     void this.version;
-    return this.validated && this.issues.size === 0;
+    return this.isValidQuietly;
   }
 
   get isDirty(): boolean {
@@ -370,12 +407,12 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
 
   get isSubmitting(): boolean {
     void this.version;
-    return this.submitting;
+    return this.isSubmittingQuietly;
   }
 
   get submitCount(): number {
     void this.version;
-    return this.submits;
+    return this.submitCountQuietly;
   }
 
   /* ---------------------------------------------------------------- *
@@ -735,6 +772,127 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   private bump(): void {
     if (this.disposed) return;
     this.version++;
+    // Here rather than at each call site: every change in the form goes through this, and a form-level
+    // fact can move on any of them — a validation landing flips `isValid`, a keystroke flips `isDirty`.
+    this.publish();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Form-level subscriptions — what a submit button watches.
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Components watching the FORM rather than a field: a save button, a summary of the root errors.
+   *
+   * Separate from `watchers` because the question is different. A field watcher is told that something
+   * at its path changed and believes it; a form watcher must not be, because the facts it reads are
+   * ANSWERS — `isValid` is `false` before a keystroke and `false` after it, and waking a button for
+   * that is exactly what a form-wide counter did wrong. So this side compares the answer to the last
+   * one it published and wakes only on a real move.
+   */
+  private readonly formWatchers = new Set<FormWatcher>();
+
+  /**
+   * The answers as last published, so `publish` can tell a change from an event.
+   *
+   * Deliberately not initialised from the form: at construction nothing has been validated and nobody
+   * is watching, and the first `publish` with a watcher present fills it in. `undefined` for the
+   * messages means "never published", which is not the same as "published as empty".
+   */
+  private published_: {
+    valid: boolean;
+    dirty: boolean;
+    submitting: boolean;
+    submits: number;
+    formErrors: readonly string[];
+  } = {
+    valid: false,
+    dirty: false,
+    submitting: false,
+    submits: 0,
+    formErrors: NO_MESSAGES,
+  };
+
+  watchForm(watcher: FormWatcher): void {
+    this.formWatchers.add(watcher);
+    // Its mask may name facts nothing has published yet, and the next `publish` compares against what
+    // is here — so bring the record up to date now, or the first change would look like no change.
+    this.record(this.wanted());
+  }
+
+  unwatchForm(watcher: FormWatcher): void {
+    this.formWatchers.delete(watcher);
+  }
+
+  /** The union of what every form watcher reads — so an unwatched fact is never computed. */
+  private wanted(): number {
+    let mask = 0;
+    for (const watcher of this.formWatchers) mask |= watcher.reads;
+    return mask;
+  }
+
+  /** Brings the record up to date without waking anyone. */
+  private record(mask: number): void {
+    const at = this.published_;
+    if (mask & FACT.valid) at.valid = this.isValidQuietly;
+    if (mask & FACT.dirty) at.dirty = this.isDirtyQuietly;
+    if (mask & FACT.submitting) at.submitting = this.isSubmittingQuietly;
+    if (mask & FACT.submits) at.submits = this.submitCountQuietly;
+    if (mask & FACT.formErrors) at.formErrors = this.formErrorsQuietly;
+  }
+
+  /**
+   * Wakes the form watchers whose answer MOVED, and nobody else.
+   *
+   * Called from `bump`, which is the one place every change goes through. Costs a handful of
+   * comparisons, and only for facts somebody reads: `isDirty` is a walk of the whole value against the
+   * baseline — 11.5 µs over 900 leaves — so a form nobody asks about that never pays it.
+   */
+  private publish(): void {
+    if (this.formWatchers.size === 0) return;
+
+    const mask = this.wanted();
+    const at = this.published_;
+    let moved = 0;
+
+    if (mask & FACT.valid) {
+      const now = this.isValidQuietly;
+      if (now !== at.valid) {
+        at.valid = now;
+        moved |= FACT.valid;
+      }
+    }
+    if (mask & FACT.dirty) {
+      const now = this.isDirtyQuietly;
+      if (now !== at.dirty) {
+        at.dirty = now;
+        moved |= FACT.dirty;
+      }
+    }
+    if (mask & FACT.submitting) {
+      const now = this.isSubmittingQuietly;
+      if (now !== at.submitting) {
+        at.submitting = now;
+        moved |= FACT.submitting;
+      }
+    }
+    if (mask & FACT.submits) {
+      const now = this.submitCountQuietly;
+      if (now !== at.submits) {
+        at.submits = now;
+        moved |= FACT.submits;
+      }
+    }
+    if (mask & FACT.formErrors) {
+      const now = this.formErrorsQuietly;
+      if (!sameMessages(at.formErrors, now)) {
+        at.formErrors = now;
+        moved |= FACT.formErrors;
+      }
+    }
+
+    if (moved === 0) return;
+    for (const watcher of this.formWatchers) watcher.bump(moved);
   }
 
   /* ---------------------------------------------------------------- *

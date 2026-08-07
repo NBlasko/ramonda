@@ -12,11 +12,12 @@ import * as api from "../index";
  * The docs' `check-api-coverage.mjs` reads this list too, so a new export has to be
  * acknowledged twice — once as API, once as documentation.
  *
- * `Form` and `Field` are the VALUES — the form, and the hook a component watching one field uses.
+ * `Form`, `Field` and `FormState` are the VALUES — the form, the hook a component watching one field
+ * uses, and the hook a component watching the FORM uses.
  * Everything else is a type, so `Object.keys` cannot see it: those names are listed below and checked
  * by the compiler instead, which is the only thing that can check them.
  */
-const EXPECTED = ["Field", "Form"];
+const EXPECTED = ["Field", "Form", "FormState"];
 
 /**
  * The types the package publishes.

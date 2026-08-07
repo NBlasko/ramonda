@@ -287,6 +287,81 @@ reads: `@state` on a hook holds the owning component's rebuild from the moment i
 that component thin — hand the fields out and let it build a handful of vnodes whose props have not
 changed. The diff stops there.
 
+## A button that watches the form
+
+`isValid`, `isSubmitting` and `submitCount` belong to the form rather than to any field, and reading
+one in the owner's render is what ties the owner to every keystroke. `FormState` is the hook for them,
+and it takes **no props** — the form publishes itself on the context, so this works at any depth,
+through layouts that know nothing about forms:
+
+```tsx
+import { FormState } from "@ramonda/form";
+
+class SaveButton extends Component {
+  private form = this.use(FormState);
+
+  render() {
+    return (
+      <button disabled={!this.form.isValid || this.form.isSubmitting}>
+        {this.form.isSubmitting ? "Saving…" : "Save"}
+      </button>
+    );
+  }
+}
+```
+
+**It wakes on an answer that MOVED, not on an event.** A form that was invalid before a keystroke and
+invalid after it has not changed its answer, so the button sleeps through the typing and wakes the
+moment validity flips or a submit starts or ends. `isDirty` is the expensive one — a comparison of the
+whole value against the baseline — and the form computes it only while something reads it.
+
+Two forms nested behave the way you would want without saying anything: the button watches the nearest
+form above it.
+
+With no form above it at all, every fact reads as its default and core reports
+[`RMD003`](/reference/diagnostics) when the component mounts.
+
+## The recipe for a big form
+
+Put together, the three pieces mean the owner of the form reads **nothing** — and then its render can
+be cached:
+
+```tsx
+/** The two from above: one watches an array, the other watches the form. */
+declare class Rows extends Component<{ of: FieldNode<Contact[]> }> {}
+declare class SaveButton extends Component {}
+
+class Page extends Component {
+  private form = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit });
+
+  @compute get body() {
+    return (
+      <form onSubmit={this.form.submit}>
+        <Rows of={this.form.fields.contacts} />
+        <SaveButton />
+      </form>
+    );
+  }
+
+  render() {
+    return this.body;
+  }
+}
+```
+
+`this.form.fields.contacts` is navigation through a proxy, not a read, so the `@compute` depends on
+nothing and is **built once for the life of the form**. The owner is still woken on every change — it
+cannot opt out — but it hands the diff back the same tree, and the diff stops immediately.
+
+Measured at 300 rows, one keystroke: **45 ms** with no per-field subscription, **1.9 ms** with each row
+watching its own field, **0.65 ms** with the container watching the array, **0.48 ms** with the body
+cached. The last step is small here because the owner's render is two vnodes; it is worth much more when
+a render builds a lot inline — 4.35 ms against 0.19 ms for one building 300 children.
+
+A `@compute` body pays off only while it reads nothing that moves. Any field read inside it — a
+`disabled={!this.form.isValid}` written there instead of in a button — puts the form's counter in its
+dependencies, and it is rebuilt on every keystroke again.
+
 ## Labels, ids and accessibility
 
 `bind` supplies `name`, which is what a form posts under and what a `<label for>` cannot use.
