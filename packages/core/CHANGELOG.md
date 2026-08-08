@@ -1,5 +1,208 @@
 # @ramonda/core
 
+## 0.14.0
+
+### Minor Changes
+
+- 062f39f: Two lazies built by one factory no longer share a cache entry — RMD035
+
+  `AsyncLoad` identifies a module by the SOURCE of its `lazy`, which works when that source names one:
+  `() => import("./Thing")` says what it loads, so the same import written in two components shares one
+  cache entry — which is what you want. A lazy a FACTORY built names nothing —
+  `const make = (path) => () => import(path)` closes over the path, and a closed-over value is not part
+  of the source, so every module the factory produces stringifies the same. The first loaded and
+  cached; the second never asked for its own and rendered the first one's module. Nothing failed,
+  nothing was logged, and which module you got depended on which rendered first.
+
+  Which of the two you have written cannot be read from the text of the function: the source a bundler
+  leaves behind is its own business, and a rule looking for a literal specifier would read one
+  bundler's output correctly and another's backwards. So nothing is guessed. When a second `lazy` meets
+  a key that is already taken, its module is loaded and COMPARED — the module system serves a genuine
+  duplicate from its own registry, so the ordinary case pays one resolved promise and confirms the
+  sharing. A module that turns out to be a different one is given a key of its own, and renders what it
+  asked for.
+
+  What that costs is the shared cache entry: a loading frame the second time, since the fetch is still
+  deduped. `cacheKey` gives it back, and RMD035 says so.
+
+- af4138f: An object changed in place is now reported — RMD034
+
+  `this.items.push(x)` has always been caught. `this.user.name = "x"` was the identical fault and was
+  silent: a signal fires when it is ASSIGNED a new value, so writing into the value it already holds
+  changes nothing it can compare, nothing re-renders, and the page goes on showing what it showed
+  before. The asymmetry was invisible, and the docs made it worse by saying both were caught.
+
+  The guard wraps **lazily**, along the path a render reads: a `get` returns a guarded child only when
+  something asks for that child, so reading `user.name` costs two proxies whatever the size of `user`,
+  and a component that never touches `user.address` never wraps it. Nested changes are reported by
+  their path — `user.address.city` rather than "an object in state" — and the message points at the
+  replacement, including the `@ramonda/lens` form.
+
+  A `Date`, a `Map` and a class instance are left alone: their methods need the real receiver, and
+  wrapping them would break working code for a report nobody asked for. So is anything reached through
+  a **frozen** property — a proxy may not hand back something other than the real value for a property
+  that is non-writable and non-configurable, and `Object.freeze` makes every own property exactly that.
+  Nothing is lost by it: a frozen property cannot be assigned, so there is no in-place change under it
+  left to report. Development only, as ever.
+
+  Measured on a dev update of 3000 rows reading two levels of object state plus an array element:
+  49.1 ms → 57.1 ms, **+16%**. The first version cost 30% and was wrong: a proxy escapes into user code
+  the moment anything copies (`[...this.rows]` spreads guarded children), and wrapping an escaped proxy
+  again gives an identity nothing has seen — a no-op render moved 200 of 200 list nodes. Guard proxies
+  are now recognised and handed back as they are, which is what both the correctness and the other half
+  of the cost came from.
+
+### Patch Changes
+
+- 55917be: A failed lazy import is quiet in production
+
+  `AsyncLoad` wrote the error to the console on every failure, in every build. The app had already been
+  told, in the framework's own way — `errorFallback` is handed `{ error, retry, attempt }`, so it can
+  render what it likes, report where it likes and offer the retry — so the console line was a second
+  channel it could not turn off.
+
+  A chunk that fails to load is not always an incident. A deploy rotating its assets, a reader going
+  offline, one dropped request: apps handle those, and a red line for each is noise they did not ask
+  for. Development keeps it, because there the reason is what you need and there is nowhere else it
+  would go — the same split `h.ts` makes for a function in tag position.
+
+- 68288cd: RMD005 says what it covers, and the docs stop claiming it covers objects
+
+  `concepts/state.md` told readers that "changing an array or object in place is caught and reported as
+  `RMD005`". Objects are not caught. `this.user.name = "x"` is the same silent no-op the array report
+  exists for — the signal never fires, the render keeps showing the old value, and nothing says a word.
+
+  An array can be watched because the mutation goes through a method — `push`, `splice`, `sort` — and
+  a property assignment on an object has no such seam without wrapping every object the state hands
+  out. So the asymmetry is a consequence of the shape of the thing, not an oversight, and what it costs
+  a reader is the belief that the check is the boundary of what goes wrong.
+
+  The rule is the boundary: replace, do not change in place. That is now what all three places say — the
+  concept page, the diagnostic's own fix text, and the reference section — and
+  `MutationGuardScope.test.tsx` pins both halves, so the day an object guard is added the test fails and
+  sends whoever added it to the sentences that have to change with it.
+
+- 715b23c: Three from the review backlog: a dropped element ref, a mutated attributes object, and a README that described removed behaviour
+
+  **An element went on holding a `ref` the JSX had stopped giving it.** `ref` is not a DOM attribute, so
+  it is never among the previous attributes read back off the node, and the attach loop only walks the
+  keys present in the next ones — a disappearing `ref` was invisible to both. The element kept a strong
+  reference to the handle, and `current` stayed aimed at an element the JSX no longer connected it to.
+  A component's ref has behaved correctly since it was unified across create, update and adopt; this is
+  the same rule on the element side. The deliberate re-assertion is untouched, so two elements sharing
+  one ref still fall back to the first when the second goes away.
+
+  **`class` → `className` was rewriting the caller's object.** JSX builds a fresh props object per
+  element so the compiler never showed it, but `__h` is public and callable, and the `children` copy
+  three lines away exists for exactly this reason — measured, when one attributes bag used for two
+  elements ended up with only the last one's children. Deleting `class` also swallowed the rename
+  warning for every later use of that object, though the source still said `class`. It copies now, and
+  only on the path that is already the wrong spelling.
+
+  **The README sold an opt-out that no longer exists.** An underscore-prefixed method "deliberately left
+  unbound", with a performance table and a paragraph on the trade — for behaviour removed on
+  2026-07-29, because a `naming-convention` lint rule set to `leadingUnderscore: "require"` silently
+  produced `this`-loss. A reader would have avoided the prefix to keep `this`, or reached for it to save
+  the binding, and both conclusions were wrong. The section now says why there is no opt-out, carries
+  the measurements that are current, and names the `@unbound` decorator a future one would be.
+  `ReadmeBinding.test.ts` pins it: prose is the one thing types, lint and tests all pass over.
+
+- 6dcc359: Dead documentation pointers removed
+
+  Eighteen references in fourteen files pointed at documents that do not exist: `BUGS.md` (the most
+  common), `TODO.md`, `docs/AsyncLoad.md`, `docs/async-ssr-proposal.md` and `apps/docs/PLAN.md`. Every
+  comment that carried one already explains itself — the pointer was an extra, not the load-bearing
+  part — so they are gone rather than replaced.
+
+  The README's Documentation section listed three of those files as if they were there. It now points
+  at [ramonda.pages.dev](https://ramonda.pages.dev), which exists, and at `DIAGNOSTICS.md`, which is in
+  the package. The paragraph that said the documentation site "is planned in apps/docs/PLAN.md" now
+  says where it is.
+
+- 0024599: An `ErrorBoundary` covers more than the docs said, and a context subscription is described as it works
+
+  **The boundary.** The page said an `@updated`, or a subscription's `connect`, that throws is
+  "reported, not caught here". Both are caught: `flushUpdated` and `flushPostCommit` route through the
+  same `errorHandler` a render does. The line is not "render versus the rest" — it is **whether the
+  framework was the one calling**. A render, a `@create`, a `@compute`, an `@mount`, an `@updated` all
+  run on the framework's own path, so the error can be walked up to a boundary. A click cannot: the
+  browser calls the listener directly, so the throw never passes through the framework at all. A page
+  that believed its boundary stopped at the render would write a `try/catch` it does not need — or
+  trust a narrower boundary than it has.
+
+  **Context.** Three things follow from per-key tracking and none of them is guessable, so they are
+  written down now: the tie is made on the first read and lasts until the component goes (a branch you
+  stop taking does not unsubscribe); a key is compared, not explored, so changing something inside a
+  key's value tells nobody; and a consumer looks for its provider once, when it is created.
+
+  Both are pinned by tests, because prose is the one thing types, lint and tests all pass over.
+
+- dcb330b: Four things the docs left for a reader to discover
+
+  **A `@compute` recomputes when you READ it**, not when the change happens. A `@state` write marks it
+  stale and goes on. So a compute nothing reads costs nothing — a value behind a closed panel is not
+  recalculated while the panel is closed — and the work lands in whoever asks for it rather than in the
+  write.
+
+  **Refusing a props update drops it whole.** `@ShouldUpdateOnPropsChange` returning `false` does not
+  take the props either, so a later render caused by the component's own state still shows the props it
+  last accepted, until the parent sends an update the rule agrees to. That is the trade, and it is why
+  this is an escape hatch rather than an optimisation to reach for.
+
+  **What a runaway does in production.** Two counters — `MAX_BUILDS_PER_DRAIN` and
+  `MAX_WORK_PER_FLUSH`, 100 000 each — are the only errors the framework raises in a production build
+  that can take a page down, and both are deliberate: a tab that stops responding is the worse outcome.
+  Now written down, with what each counts and what the message names.
+
+  **Two lazies that look the same.** `AsyncLoad`'s cache key defaults to the SOURCE of the `lazy`
+  function, so a factory — `const make = (path) => () => import(path)` — gives every module it builds
+  the same key. The first loads; the second never asks for its own and renders the first one's module.
+  Nothing fails and nothing is logged. Documented on the lazy page with the `cacheKey` that fixes it,
+  next to the route-table case where people meet it.
+
+- fd71f00: A hydrated page's `Head` owns the tags the server wrote
+
+  The server puts the title and the meta tags in the HTML, and on the client the hook has to ADOPT
+  them: `claim()` is what puts a tag into `owned`, and `@destroy` removes exactly what is owned.
+  Adopting happens inside `apply()` — and on a hydrated page `apply()` never ran.
+
+  `applyOnCreate` is `@create({ env: "shared" })`, hydration runs only the `env === "client"` creates
+  (create and mount already ran on the server, and their state was restored), and `@watchProp`
+  deliberately does not fire on mount. So nothing claimed them: the tags belonged to nobody, and a page
+  that unmounted with nothing replacing it left them in the document. In an app that navigates the next
+  page's `Head` claims them on its way past, which is why this stayed invisible.
+
+  A client-only `@create` now applies as well. On the hydration path it is the only one that runs; on a
+  client-built page it runs a second time and costs nothing, because `claim` adopts a tag it already
+  owns only once, `upsert` writes the same values back, and the previous title is captured only while
+  it is unset. The hook has no way to tell "hydrated" from "built", so one extra call is the cheapest
+  correct answer.
+
+- 2bac783: A memoized handler no longer takes the page down over one argument
+
+  `@memoizedHandler` builds its cache key from the arguments, and only a string, a number or a boolean
+  can be part of one — an object cannot be compared by value, and keying on its identity would miss
+  every time. So an object argument is a mistake. It was a mistake that THREW, outside any `__DEV__`
+  guard and from inside a render, so one handler receiving an object took the whole page down in
+  production. Nothing else in the framework answers a runtime mistake that way: a list item that is not
+  an element is skipped so the list keeps rendering, a function in tag position is called rather than
+  crashing the page, a corrupt hydration blob is ignored so the page still renders.
+
+  Development still throws — the handler would be rebuilt on every render, so everything it is passed
+  to would re-render with it, silently, for the life of the page — and the message now names the
+  component, the method, and which argument it was: `#3 (object)`, `#1 (null)`. It also says what to
+  pass instead: the primitive the object stands for, `row.id` rather than `row`.
+
+  It is also **RMD033** now, reported through the diagnostics channel as well as thrown, the way a props
+  write is (RMD004, RMD015). A throw with no code is invisible to anything collecting them: the code is
+  what makes this one identifiable — greppable in a codebase, one entry in the stream the devtools
+  panel carries — so a whole class of fault can be swept up rather than recognised sentence by
+  sentence.
+
+  Production builds the handler and moves on without caching that call. The page keeps working; the
+  cost is the identity churn memoization exists to prevent, which is a slower page rather than a broken
+  one.
+
 ## 0.13.0
 
 ### Minor Changes
