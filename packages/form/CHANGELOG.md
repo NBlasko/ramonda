@@ -1,5 +1,284 @@
 # @ramonda/form
 
+## 0.6.0
+
+### Minor Changes
+
+- bf0092e: `FormState` — a component that watches the form rather than a field
+
+  ```tsx
+  class SaveButton extends Component {
+    private form = this.use(FormState);
+
+    render() {
+      return (
+        <button disabled={!this.form.isValid || this.form.isSubmitting}>
+          {this.form.isSubmitting ? "Saving…" : "Save"}
+        </button>
+      );
+    }
+  }
+  ```
+
+  **No props, at any depth.** The form publishes itself on the context — a provider mounted from inside
+  the hook, which is how `Router` carries its route state, and the only route available since
+  `GLOBAL_RUNTIME` is internal to `@ramonda/core`. Two forms nested behave the way you would want without
+  saying anything, because contexts are prototype-chained per component: a button watches the nearest form
+  above it. With no form above at all, every fact reads as its default and core reports RMD003 when the
+  component mounts, so this package writes no diagnostic of its own.
+
+  **It wakes on an answer that MOVED, not on an event.** A form invalid before a keystroke and invalid
+  after it has not changed its answer, so the button sleeps through the typing and wakes the moment
+  validity flips or a submit starts or ends. The form keeps the facts as last published and compares —
+  which is precisely what a form-wide counter cannot do. `isDirty` is the expensive one, a comparison of
+  the whole value against the baseline, and it is computed only while something reads it; that is
+  asserted.
+
+  `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `formErrors` · `submit(event?)` · `reset()`.
+  `submit` is here so a button outside the `<form>` element can submit it without a handler passed down.
+
+  ### Which completes the recipe for a big form
+
+  With the fields watched by their own components and the form-level facts by this one, the owner reads
+  **nothing** — so its render can be a `@compute` that is built once for the life of the form:
+
+  ```tsx
+  @compute get body() {
+    return (
+      <form onSubmit={this.form.submit}>
+        <Rows of={this.form.fields.contacts} />
+        <SaveButton />
+      </form>
+    );
+  }
+
+  render() {
+    return this.body;
+  }
+  ```
+
+  Reaching `this.form.fields.contacts` is navigation through a proxy, not a read, so the compute depends
+  on nothing. The owner is still woken on every change — `@state` on a hook holds its rebuild and it
+  cannot opt out — but it hands the diff back the same tree and the diff stops there.
+
+  Measured at 300 rows, one keystroke: **45 ms** with no per-field subscription, **1.9 ms** with each row
+  watching its own field, **0.65 ms** with the container watching the array, **0.48 ms** with the body
+  cached. The last step is small only because that owner's render is two vnodes — for a render building
+  300 children inline it is 4.35 ms against 0.19 ms.
+
+- ea07a10: Four defects, each one measured before and after
+
+  **A validation that rejects no longer wedges the form.** Standard Schema says `validate` answers with
+  a result or a promise of one; it does not say the promise resolves, and an async rule doing real
+  work — a uniqueness lookup against a server — rejects the moment the network does. Nothing gave that
+  promise a rejection handler, so it surfaced as an unhandled rejection, and `isSubmitting` was never
+  released: one failed lookup disabled the submit button for the life of the page. It is now reported
+  as **`RMF004`**, the messages already held are kept, `isValid` goes false — "we asked and did not
+  hear back" is not "nothing failed" — and the button comes back.
+
+  **A date field no longer loses a day.** `bind` formatted with `toISOString()`, which is UTC: 01:00
+  on the 7th in Belgrade showed as the 6th, and picking that same shown day wrote the 6th back, so the
+  reader's date moved by being looked at. Both directions are local now, and the time a value already
+  held is carried across a change of day — a date input cannot express one, so throwing it away moved
+  an appointment to midnight. Asserted at two times of day, which is what catches the fault on both
+  sides of Greenwich; verified in UTC, +5:30, +14 and −11.
+
+  **An emptied number input is still a number input.** `fromControl` writes `""` for a cleared number
+  field on purpose, so a schema can report on it instead of `NaN` poisoning arithmetic — but `bind`
+  read the control's kind off the value's runtime type, so `type: "number"` vanished with the first
+  backspace, the element reverted to text, and every later read wrote a string. The field never became
+  numeric again: the spinner gone, and on a phone the numeric keyboard gone mid-entry. A present value
+  decides the control and is remembered; an absent one keeps what the field was. The same fix covers a
+  cleared date.
+
+  **`reset(record)` no longer reports a dirty form.** `reset` moves the baseline to the values it is
+  handed — "nothing in a form that was just reset is the user's" — but `dirty` compared against
+  `defaultValues`, so the most ordinary flow there is, fetch the record then `form.reset(record)`,
+  marked every field as edited: the unsaved-changes guard fired on the way out and Save came up
+  enabled. One baseline now answers every "has the user changed this".
+
+  And a `Date` is compared by the moment it names. A defaults factory writing `when: new Date(iso)`
+  builds a fresh object per run, which used to replace the field, drop the messages under it and
+  re-run the whole schema on every render of the owner, for a value that had not moved.
+
+- df0240e: `Field` — a field in its own component, which until now could not work
+
+  ```tsx
+  @Host("label", (self: TextField) => ({
+    className: self.f.error ? "field field--invalid" : "field",
+  }))
+  class TextField extends Component<{ of: FieldNode<string>; label: string }> {
+    f = this.use(Field<string>, () => ({ of: this.props.of }));
+
+    render() {
+      return [
+        <span className="field__label">{this.props.label}</span>,
+        <input {...this.f.bind} />,
+        this.f.error,
+      ];
+    }
+  }
+
+  <TextField of={f.email} label="E-mail" />;
+  ```
+
+  **It is a correctness fix before it is anything else.** A component handed a field node and reading
+  it directly re-rendered NEVER, and said nothing about it: a field node is one cached object for the
+  life of the form — deliberately, because a fresh one per access means a fresh `bind.onInput` per
+  access and RMD020 reports that — so the component's props never changed and the diff skipped it. Its
+  message never appeared, and a write from anywhere else never reached its input. Both measured. So
+  every styled input, every shared field component and every row of a list needs this hook.
+
+  **And it makes an edit surgical.** The subscription is per path, so a keystroke wakes the fields that
+  changed and no others: its own path, its ancestors — an aggregate moves when a leaf below it does —
+  and its descendants, for a whole record landing above. Messages wake only the fields whose messages
+  moved, so a cross-field rule stays correct, because the schema still re-answers the whole form.
+
+  Measured over 300 rows through `list()`, one keystroke: **every row rebuilt, 45 ms** before; **one
+  row** after. The granularity was always in the list engine — one tracker per item — and the form's
+  single shared counter flattened it.
+
+  `Field` answers everything a node's `$` does, so a component written against `FieldApi<T>` has
+  nothing new to learn. Name the type at the `use` — `Field<string>` — because `FieldNode<T>` is a
+  conditional type and `T` cannot be recovered from it by inference; the same pin `Query<Todo>` takes.
+
+  A form written inline in one component is unchanged: reaching into `form.fields` is asking about the
+  form, and that subscription still wakes the owner on everything.
+
+  Two smaller things fall out of it. `rows` hands back the same row object for a row that has not moved,
+  instead of rebuilding every one whenever the array's contents change — a fresh object is a changed
+  `item` prop, which is what re-rendered all three hundred. And its cache compares row ids by content:
+  `rowIds` returns the array it keeps and tops up in place, so comparing the reference was comparing a
+  list against itself.
+
+- 722a6b4: A watcher hears only about WHAT it reads, not merely where
+
+  `Field` records which of its members a component actually read, and a poke about anything else is
+  ignored. The case it exists for is a list: a component rendering `rows` shows each row's `id`, `index`
+  and `field`, and none of them move when a value inside a row does — so it now **sleeps through a
+  keystroke** in any of its rows, and each row wakes on its own.
+
+  Which makes the container worth watching too:
+
+  ```tsx
+  class Rows extends Component<{ of: FieldNode<Contact[]> }> {
+    f = this.use(Field<Contact[]>, () => ({ of: this.props.of }));
+
+    render() {
+      return (
+        <div>{list({ each: this.f.rows, key: (row) => row.id, as: Line })}</div>
+      );
+    }
+  }
+  ```
+
+  Measured at 300 rows, one keystroke: **45 ms and every row rebuilt** with no per-field subscription,
+  **1.9 ms and one row** once each row watched its own field, **0.6 ms** with the container watching the
+  array as well — because then the three hundred list items are never diffed.
+
+  Four kinds of change, as a bitmask rather than a set of strings, since a wake happens per keystroke and
+  the test is a single `&`: a value moved, a touch or edit mark changed, the messages changed, or an
+  array changed length or order. `error` reads two of them — a message is held back until the field has
+  been touched, so a blur reveals one without any message having moved, and that is asserted.
+
+  The mask is never cleared, and that is what makes it sound rather than sloppy: reading a member for the
+  first time takes a render, and that render came from something already subscribed or from the
+  component's own state — so a member not in the mask cannot be affecting what is on screen.
+
+  Two corrections that came out of measuring it:
+
+  **`rows` and the array members are typed from the element now.** `Field<Contact[]>` answers
+  `Row<Contact>[]`, so `list({ each: f.rows, as: Line })` type-checks against a component taking
+  `Row<Contact>`; it was `Row<unknown>` and every call site needed a cast. `append` and `insert` take a
+  `Contact`, and `at(key)` answers the child's own type.
+
+  **And the docs were wrong about why the owner re-renders.** It is not "because it read `form.fields`" —
+  `@state` on a hook holds the owning component's rebuild from the moment the signal is built, whatever
+  that component goes on to read, so the owner wakes on every change and cannot opt out. What the read of
+  `version` inside the form actually reaches is a `@compute` deriving from a field and a `list()` item,
+  which are the two scopes that record a dependency.
+
+### Patch Changes
+
+- b34759e: Hydration: a form that arrived as markup had never validated
+
+  `@created` defaults to `env: "shared"`, and core **skips a shared create during hydration** — on
+  purpose, because it already ran on the server. The model behind that is sound: whatever the create did
+  is captured in the hydration blob. A form's values, messages and `validated` are plain fields rather
+  than `@state`, deliberately, because a form holds whatever the schema's input side is — so none of it
+  survives to the client, and nothing had ever validated there.
+
+  Measured: a form whose defaults PASS sent `<button disabled={false}>` from the server, and hydration
+  turned the button off, with nothing able to turn it back on until the reader edited a field. The exact
+  failure the priming validation exists to prevent, arriving by the one path nothing had tested.
+
+  Fixed with a client-only `@created` that primes if the shared one did not run on this side, which also
+  restores the devtools announcement for a hydrated form.
+
+  **`FormState` had the same hole**, and this is why it now registers on its first READ rather than from
+  `@created`: a read happens in the render, on whichever side is rendering, so there is nothing to skip.
+  It re-registers whenever the set of facts it watches grows, which keeps the form's record of "the
+  answers as last published" comparing against the truth rather than a default.
+
+  The SSR cost of watching is written down rather than left to be discovered: every watched component
+  ships `{"version":0}` in the blob, because the subscription is a `@state` counter and `@state` means
+  "serialize me". Always zero on the server, and restoring zero is a no-op — around 17 KB of markup at
+  300 rows that buys nothing. The fix belongs in core, where a `@state` still holding its initial value
+  could be left out of the blob entirely.
+
+  And `NO_MESSAGES` is one frozen value in `validate.ts` now, beside `NO_ISSUES`, instead of a copy per
+  module. Sharing it is what keeps a render stable — a fresh `[]` per read is a new identity, which is
+  what RMD020 reports — and freezing it means a caller who pushes into what they were given hears about
+  it instead of adding a message to every field on the page.
+
+- 6a18554: The field tree lets go of rows the array no longer has, and `announce` is private
+
+  A field node is created once and handed back for the life of the form, deliberately: a fresh one per
+  access is a fresh `bind.onInput` per access, which RMD020 reports and which really does re-attach the
+  listener on every render. But "for the life of the form" was also true of a row that had been
+  **removed** — so a form that once showed ten thousand rows went on holding a node and a handle for every
+  one of them, each handle carrying two bound closures and a row cache.
+
+  Measured on a form grown to 5000 rows of two fields: **15002 nodes and 10001 handles** retained, and
+  still retained after the array shrank back. Now a shrink drops the nodes and handles for the rows past
+  the new length, in both trees — 200 rows shrunk to 3 goes from 402 nodes to 8.
+
+  Safe because the rows are gone: a caller still holding the node for row 6000 of a three-row array is
+  holding a row that does not exist, and the next row to appear at that index is a different row that
+  should get a different node. Asserted from both sides — the rows that survive a removal keep the exact
+  identity they had, and a row appearing where a removed one sat is not the old node.
+
+  The heap figure is deliberately absent: `global.gc` is not exposed in this harness, so a before-and-after
+  of `heapUsed` measures when the collector happened to run. The object counts are what is measurable, and
+  they are what the test asserts.
+
+  `Form.announce` is `private` now, which is what it always meant — methods are bound whether or not
+  TypeScript can see them, so it still works as the listener it is registered as, and a hook method that is
+  not `private` is public API somebody could have called to dispatch a form announcement of their own.
+
+- 6a8c2e8: The two bookkeeping walks, measured and made cheaper
+
+  Neither is on a keystroke, which is why they were not what `Field` addressed — but both are paid on
+  ordinary interactions, and both were spending most of their time rebuilding strings.
+
+  **`forgetUnder`, which every array operation runs through: 424 µs → 42 µs** over a form of 1208
+  recorded paths. The coverage test took a `Path` and so rebuilt `pathKey(path)` and `keyPrefix(path)`
+  for _every key it was asked about_; it is now built once per call. The issues map is copied only if
+  something is actually dropped, and the touch sets no longer copy every key to delete a few.
+
+  **`touchAll`, once per submit: 884 µs → 261 µs** over 1208 paths. It built a fresh `[...path, key]`
+  array per node and ran `pathKey` over it; the key is now carried down from the parent, and
+  `Object.keys` replaces `Object.entries`, which was allocating a pair array per node. What is left is a
+  concatenation and a `Set.add` per path.
+
+  `childKey` sits beside `pathKey` in `path.ts` so the two spellings of one key format cannot drift, and
+  a test asserts they agree — including for an index, a property name containing the characters the
+  readable form uses, and the empty-string property name that shares the root's key.
+
+  Also covered for the first time: `forgetUnder` over the ROOT, which is a form whose whole value is an
+  array. Its own mark must survive an operation on itself while every mark beneath it goes, and nothing
+  had ever asked.
+
 ## 0.5.1
 
 ### Patch Changes

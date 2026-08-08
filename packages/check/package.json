@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/check",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Static checks for a Ramonda app — proves a context consumer has a provider above it, and finds class fields holding a function literal, before the page is ever opened.",
   "license": "MIT",
   "author": "Nikola Blagojević",
