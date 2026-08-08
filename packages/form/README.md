@@ -64,8 +64,10 @@ so do zod, valibot and arktype. The cross-field rule above lands on `confirm` ra
 the root, because `ctx.ref` reads a sibling from within the field's own context.
 
 **A field path is property access, not a string.** `fields.address.street` is checked by
-TypeScript natively — no recursive `Path<T>`, no depth limit, and no slow language server,
-which is the tax React Hook Form pays for `register("address.street")`.
+TypeScript natively: renaming `street` in the schema breaks the render rather than quietly
+reading `undefined`, and the compiler does it with the machinery it already has — no recursive
+type walking a string apart, so no depth limit and no language server slowing down as a schema
+grows.
 
 **The field API lives behind `$`.** Navigation owns the property names, so the API cannot
 have any of its own. A flat API was written first and `value` collided with an ordinary

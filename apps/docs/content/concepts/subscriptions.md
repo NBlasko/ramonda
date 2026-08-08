@@ -60,8 +60,8 @@ none of them need a cleanup from you:
 
 ## Not everything outside is a subscription
 
-Three other things get asked of an effect in other frameworks, and each has its own name
-here — which is the point, because the name says when it runs:
+Three other things are reached for at the same moment, and each has a name of its own —
+which is the point, because the name says when it runs:
 
 **After the render, every time** — measuring an element, scrolling something into view:
 [`@updated`](/concepts/lifecycle). It runs once the commit is done, so the DOM is the one
@@ -74,16 +74,18 @@ screen in the same pass rather than one frame later.
 **Deriving a value** — [`@compute`](/concepts/compute). If the answer is a value, return
 it; nothing needs to run and nothing needs to be cleaned up.
 
-## There is no `useEffect`
+## One name per purpose
 
-Nothing here corresponds to it, and that is the design. An effect is defined by its
-dependencies rather than by its purpose, so one decorator would have to be all four of the
-things above — and which one it was would depend on what its body happened to read that
-render. Two of them writing what the other reads then re-trigger each other, which is the one
-way to hang a page that no diagnostic can explain in a sentence.
+Each of the four says what it is FOR, and that is what lets the framework know when to run
+it, in what order, and what to say when it goes wrong.
 
-Naming the purpose instead means the framework knows when to run each thing, in what order,
-and what to say when it goes wrong. Reaching for an effect? The name is on the left:
+The alternative is one mechanism keyed on what a body happens to READ, and it costs both of
+those. Which of the four things it was doing would change from render to render with the
+reads, so there is no order to guarantee and nothing specific to report. And two such bodies,
+each writing what the other reads, re-trigger each other — the one way to hang a page that no
+diagnostic can explain in a sentence.
+
+Looking for one of these? The name is on the left:
 
 | what you want | here |
 | --- | --- |

@@ -20,9 +20,9 @@ import {
 class HistoryHook extends Hook<{ value: number }> {
   @state history: number[] = [];
 
-  // `@created` seeds the first value, `@watchProp` records every one after it. This was a
-  // single `@effect` before that decorator was removed — and it reads better as two named
-  // halves than as one body whose reactivity came from what it happened to read.
+  // `@created` seeds the first value, `@watchProp` records every one after it. Two named halves
+  // rather than one body whose reactivity would come from what it happened to read: each says when
+  // it runs, and neither can start doing the other's job because a read moved.
   @created seed() {
     this.history = [this.props.value];
   }

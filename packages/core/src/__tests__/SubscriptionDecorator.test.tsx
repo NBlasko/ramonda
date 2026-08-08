@@ -254,10 +254,9 @@ describe("createSubscriptionDecorator", () => {
 /**
  * A one-off subscription, without declaring a reusable decorator.
  *
- * This used to be `@effect`'s job, and `@effect` is gone: every case it served has a named
- * answer now, and having two ways to say the same thing is what made circular updates easy
- * to write. For a subscription the answer is the factory — declared locally when it is used
- * once, which is what this pins.
+ * The factory is the answer for a subscription however many times it is used — declared beside
+ * the component when that is once, which is what this pins. One way to say it, and the cleanup
+ * is what the body returns rather than something a caller may forget.
  *
  * The reactive half is the part worth keeping: `connect` READS `owner.channel`, so switching
  * channels tears the old subscription down before making the new one.

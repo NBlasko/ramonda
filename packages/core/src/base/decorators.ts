@@ -57,9 +57,9 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * body with no contract about what it returns.
  *
  * `createSubscriptionDecorator` is the public door onto it — same machinery, with the
- * cleanup made the point rather than an option. There used to be a second door, `@effect`,
- * which handed the raw body straight through; it was removed in favour of naming what each
- * use of it was for. See the changeset for where each case went.
+ * cleanup made the point rather than an option, and it is the only one: a door that handed the
+ * raw body straight through would let a subscription be written with nothing to tear it down,
+ * and would put every use of it under one name whatever it was for.
  *
  * **Registration is not open-ended.** Effects run once per commit, from a queue
  * flushed after the DOM work. Anything pushed here during construction, `@created`
