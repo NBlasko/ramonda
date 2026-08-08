@@ -30,6 +30,17 @@ export interface Runtime {
    * above the hook that happened to read it.
    */
   holder?: object;
+  /**
+   * The component this runtime belongs to — always the COMPONENT, never a hook,
+   * because a hook shares its owner's runtime rather than making its own (this is
+   * only ever set from `Component`'s constructor). It is the same object
+   * `reBuild` already closes over, so holding it here adds no retention.
+   *
+   * A hook needs it to reach its owner as the `placeholderComponent` a reconcile
+   * runs under — for the context, render side and depth a portaled subtree
+   * inherits. `holder` cannot serve this: it is DEV-only.
+   */
+  owner?: BaseComponent;
   effects: Effect[];
   /**
    * `@updated` methods, bound. Run after the DOM of an UPDATE is committed —
@@ -140,9 +151,14 @@ export const createRuntime = (that: any, context: Context): Runtime => {
     destroys: [],
     watchProps: [],
     deferHydrations: [],
+    // `that` is the component — `createRuntime` is only ever called from
+    // `Component`'s constructor. No extra retention: `reBuild` already closes
+    // over the same object.
+    owner: that,
   };
 
-  // No extra retention: `reBuild` already closes over the same object.
+  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
+  // production must not: same object, stripped from the prod build.
   if (__DEV__) runtime.holder = that;
 
   return runtime;

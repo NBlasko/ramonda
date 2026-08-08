@@ -149,9 +149,14 @@ export function discardPendingUpdates(component: BaseComponent): void {
  * For the synchronous drain a test harness needs: a @mounted can write state, and
  * that state schedules a render whose own @mounts land back here. "Settled" has
  * to mean both queues are empty, not just one. See `drainSync` in Task.ts.
+ *
+ * `pendingCommitWork` counts too: a `Head`/`Portal` recompute queued after the
+ * last `flushPostCommit` — with no `@mounted` behind it — is post-commit work
+ * nothing else will drain, so a drain that ignored it would report itself settled
+ * and strand the head update until an unrelated later commit.
  */
 export function hasPendingPostCommit(): boolean {
-  return pending.length > 0;
+  return pending.length > 0 || pendingCommitWork.size > 0;
 }
 
 /**
@@ -168,6 +173,60 @@ export function hasPendingPostCommit(): boolean {
  * because an earlier callback in this same flush can destroy a component whose
  * mount is still pending behind it.
  */
+/**
+ * Work that belongs to the COMMIT rather than to any one component: it runs once,
+ * after every `@mounted` in this flush, however many components asked for it.
+ *
+ * `pending` above cannot express that. Every entry there is tied to a component, is
+ * skipped if that component was destroyed, and runs once per entry — right for a
+ * lifecycle callback, wrong for something the whole tree contributes to and that
+ * must be computed from the finished result. `Head` is the case: each one publishes
+ * during its own `@created`, and the head the document should have is a function of
+ * all of them together, so recomputing per publication both does the work N times
+ * and puts the document through states no commit ever meant to show.
+ *
+ * A `Set` of the work itself, so ten publications in one commit are one recompute.
+ */
+const pendingCommitWork = new Set<() => void>();
+
+export function queueAfterCommit(work: () => void): void {
+  pendingCommitWork.add(work);
+}
+
+/**
+ * Runs the commit-level work now.
+ *
+ * Exported because not every teardown goes through a drain: unmounting a root is
+ * called directly, and the work queued by the `@destroyed`s it runs would otherwise
+ * sit until something else happened to commit.
+ */
+export function flushAfterCommit(): void {
+  if (pendingCommitWork.size === 0) return;
+
+  // Snapshotted and cleared first, so work that queues more belongs to the next
+  // pass rather than extending this one.
+  const work = Array.from(pendingCommitWork);
+  pendingCommitWork.clear();
+
+  for (const run of work) {
+    try {
+      run();
+    } catch (e) {
+      /**
+       * Isolated the way a `@mounted` is, and for the same reason: one piece of
+       * commit-level work must not stop the rest.
+       *
+       * It does not go to `errorHandler`, because there is no component to hand it
+       * to — that is what makes this work commit-level rather than a lifecycle
+       * callback. And it is not rethrown: this runs from the `finally` below, where
+       * a throw would REPLACE whatever error the commit was already unwinding with,
+       * and losing a component's real failure to a metadata one is the worse trade.
+       */
+      if (__DEV__) console.error("[Ramonda] Post-commit work failed:", e);
+    }
+  }
+}
+
 export function flushPostCommit(): void {
   if (flushing) return;
   flushing = true;
@@ -209,6 +268,17 @@ export function flushPostCommit(): void {
       }
     }
   } finally {
+    /**
+     * After every mount, because that is what "the DOM this commit builds is in
+     * place" means — and commit-level work is entitled to read the finished result.
+     *
+     * In the `finally` rather than after the loop: a `@mounted` with no
+     * `ErrorBoundary` above it rethrows, and leaving this in the try meant one
+     * throwing component deferred the whole commit's work to whenever something
+     * next happened to commit. The page would go on with the head of the commit
+     * before it, and nothing would say so.
+     */
+    flushAfterCommit();
     flushing = false;
   }
 }

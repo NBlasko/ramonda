@@ -49,6 +49,31 @@ Reading `this.ctx.theme` ties this component to `theme`: change the theme and it
 re-renders, but change only `accent` and it doesn't. Each key is tracked on its own,
 and you get that for free.
 
+Three things follow from how that works, and none of them is guessable:
+
+**The tie is made once and lasts until the component goes.** The first read of a key
+subscribes to it; a later render that does not read it does not unsubscribe. So a
+component that read `theme.accent` down a branch it no longer takes still re-renders
+when `accent` changes — the render finds nothing different and the DOM is untouched,
+but the work happens. It is not the render-tracked model, where not reading is not
+subscribing.
+
+**A key is compared, not explored.** Change `theme.accent` and consumers of `accent`
+wake up; change something *inside* the value a key holds — `config.limits.max = 5` —
+and nobody hears it, exactly as with [state](/concepts/state). Replace the value:
+
+```tsx
+this.limits = { ...this.limits, max: 5 };   // ✓ the key changed
+```
+
+If part of a value changes on its own schedule, give it its own key, or derive it with
+a [`@compute`](/concepts/compute).
+
+**A consumer looks for its provider once, when it is created.** A provider that mounts
+*above* an existing consumer afterwards is not picked up — the consumer already
+answered the question of where its values come from. Mount the provider above the
+subtree from the start; if the value is what changes, change the value.
+
 ## The default is a real fallback
 
 The object you pass to `createContext` fills in any key a provider doesn't supply —

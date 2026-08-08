@@ -14,12 +14,12 @@ import { join } from "node:path";
  *
  * Why it exists at all: TC39 decorators are not parseable JavaScript in any
  * engine, so a build that fails to strip them emits a file that dies on load
- * with `SyntaxError`. That shipped once (BUGS.md), and nothing checked it.
+ * with `SyntaxError`. That shipped once, and nothing checked it.
  *
  * **The pipeline that produced that bug no longer reproduces it.** Re-measured
  * on the pinned toolchain: building `apps/playground-core` with Vite 7.3.1 and
  * `esbuild.jsxInject` REMOVED — the documented trigger — still emits output that
- * parses. So the historical table in BUGS.md describes versions that have since
+ * parses. So the historical table below describes versions that have since
  * moved. That makes a test against the SYMPTOM, rather than against the
  * pipeline, the only honest way to keep the guard covered.
  */

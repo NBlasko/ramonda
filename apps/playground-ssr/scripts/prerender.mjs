@@ -61,7 +61,7 @@ let blocked = 0;
 for (const path of paths) {
   // Point the DOM at this path first, so the router matches it.
   await installDom(`${origin}${path}`);
-  const { html, blockedBy } = await prerender(path);
+  const { html, title, head, blockedBy } = await prerender(path);
 
   if (blockedBy !== undefined) {
     console.error(`  ✗ ${path} — reads the request (${blockedBy}); cannot be prerendered.`);
@@ -71,7 +71,18 @@ for (const path of paths) {
 
   const file = path === "/" ? join(OUT, "index.html") : join(OUT, path, "index.html");
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, template.replace("<!--ssr-->", html));
+  // A baked page is the whole of what a crawler that runs no JavaScript sees, so the
+  // title and the meta have to be IN the file rather than applied on hydration.
+  //
+  // Function replacements, never string ones: a `$&`/`$$`/`` $` `` in html, title or
+  // head is a special pattern to `replace` and would corrupt the file. And the title
+  // is ESCAPED — raw text from `document.title` would otherwise break out of `<title>`.
+  let page = template.replace("<!--ssr-->", () => html);
+  if (title) page = page.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(title)}</title>`);
+  await writeFile(
+    file,
+    page.replace("<!--head-->", () => head ?? ""),
+  );
   console.log(`  ✓ ${path} → ${file.replace(root + "/", "")}`);
 }
 
@@ -80,3 +91,8 @@ if (blocked > 0) {
   process.exit(1);
 }
 console.log(`\nPrerendered ${paths.length} route(s) into dist/static.`);
+
+/** Escapes text for HTML element content — enough for a `<title>`'s text node. */
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}

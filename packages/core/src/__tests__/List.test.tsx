@@ -561,7 +561,7 @@ describe("server rendering and hydration", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    // The bug that cost a whole list on every prerendered page — see BUGS.md,
+    // The bug that cost a whole list on every prerendered page:
     // "Hook options were never refreshed after a state restore". `list()` takes
     // its options from the render, so it cannot go stale that way at all.
     expect(texts(element)).toEqual(["c:0", "b:0", "a:5"]);

@@ -24,6 +24,8 @@ export { list } from "./base/list";
 export type { ListOptions } from "./types/list";
 export { Head } from "./base/Head";
 export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";
+export { Portal } from "./base/Portal";
+export type { PortalProps } from "./base/Portal";
 
 // Server rendering and hydration. Exported now that there is a server that uses
 // them (apps/playground-ssr); until then the tests reached them by path.

@@ -164,6 +164,9 @@ is the same array.
 
 Replace it: `this.items = [...this.items, x]`.
 
+An object changed in place is the same fault and is reported as
+[RMD048](#rmd048-object-in-state-changed-in-place).
+
 ## RMD006 — Timer still running after unmount
 
 A `setInterval` or `setTimeout` outlived its component, so it will fire into something that no
@@ -195,6 +198,21 @@ is the usual cause; a write inside `render()` is the other.
 The guard **stops** it rather than only reporting it, because a synchronous loop freezes the tab.
 Production has a blunter version of the same stop that throws — a frozen tab is a worse outcome
 than an error, and leaves nothing to debug.
+
+### What a runaway does in production
+
+Two counters, and they are the only errors the framework raises in a production build that can take a
+page down. Both are deliberate: the alternative is a tab that stops responding.
+
+| | what it counts | when it throws |
+| --- | --- | --- |
+| `MAX_BUILDS_PER_DRAIN` | components rebuilt in one drain | 100 000 |
+| `MAX_WORK_PER_FLUSH` | `@mount` callbacks in one flush | 100 000 |
+
+The message names the last component in the loop, which is where to look first, though the cause may
+be any component it updates. Neither is reachable by an app that settles: a hundred thousand builds
+in a single tick is a loop, not a busy page. In development this code is reported by name long before
+either counter is approached.
 
 Note that a *single* effect writing what it reads does **not** loop: the framework detaches a
 signal an effect mutated itself. See [Subscriptions](/concepts/subscriptions).
@@ -970,6 +988,97 @@ twice — so nothing is wrong except the spelling.
 
 A **subclass** declaring its own is not this. That adds to the base's list, which is the intended way to
 extend it.
+
+## RMD047 — A memoized handler was given an argument it cannot key on
+
+```tsx expect-error
+@memoizedHandler
+pick(row: Row) {          // reported: a Row cannot be part of a cache key
+  return () => this.select(row.id);
+}
+```
+
+```tsx
+@memoizedHandler
+pick(id: string) {        // the way: key on the primitive, read the rest inside
+  return () => this.select(id);
+}
+```
+
+`@memoizedHandler` caches by the ARGUMENTS, and a cache key can hold a string, a number or a
+boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its
+identity would miss every time — a fresh object per render would fill the map and hand back a new
+handler on every pass, which is the churn the decorator exists to prevent.
+
+**Development throws**, so the mistake is not shipped. **Production builds the handler and moves on
+without caching that call**: the page keeps working and only the memoisation is lost. It used to
+throw there too, from inside a render, so one handler receiving an object took the whole page down —
+and which handler that was depended on the data, so it could pass every test and fail for one user.
+
+The code is on the thrown error as well as in the log, the way [RMD004](#rmd004-props-mutated-by-the-receiving-component)
+is, so a codebase can be swept for it.
+
+## RMD048 — Object in state changed in place
+
+```tsx expect-error
+this.user.name = "grace";              // reported: nothing renders
+this.user.address.city = "paris";      // reported as `user.address.city`
+```
+
+```tsx
+this.user = { ...this.user, name: "grace" };
+this.user = { ...this.user, address: { ...this.user.address, city: "paris" } };
+```
+
+A signal fires when it is **assigned** a new value, not when the value it holds changes inside. So a
+write into the object the signal already has changes nothing it can compare, nothing re-renders, and
+the page goes on showing what it showed before.
+
+The check wraps lazily: a read returns a guarded child only when something asks for that child, so it
+follows the path a render actually touches. Reading `user.name` costs two proxies whatever the size
+of `user`, and a `Date`, a `Map` or a class instance is left alone — their methods need the real
+receiver.
+
+[`@ramonda/lens`](/lens) is the shorter way to rebuild a path:
+`this.user = focusOn(this.user).get("address").get("city").set(city)`.
+
+The array form of the same fault is [RMD005](#rmd005-array-in-state-mutated-in-place).
+
+## RMD049 — Two lazy functions with the same source
+
+```tsx expect-error
+const make = (path: string) => () => import(path);
+
+<AsyncLoad lazy={make("./Dashboard")} onLoading={<i />} errorFallback={<i />} />
+<AsyncLoad lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
+```
+
+```tsx
+<AsyncLoad cacheKey="./Dashboard" lazy={make("./Dashboard")} onLoading={<i />} errorFallback={<i />} />
+<AsyncLoad cacheKey="./Settings" lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
+```
+
+`AsyncLoad` identifies a module by the **source** of its `lazy`, which works when that source names
+one. `() => import("./Thing")` says what it loads, so the same import written in two components is
+two different functions with one meaning — and they share a cache entry, which is what you want.
+
+A lazy a factory built names nothing: the path it closed over is not part of the source, so every
+module the factory produces stringifies the same. Left alone, the first would load and cache and the
+second would render the **first one's module** — nothing failing, nothing logged, and which module
+you got depending on which rendered first.
+
+Which of the two you have written cannot be read from the text of the function — the source a
+bundler leaves behind is its own business, and a rule looking for a literal specifier would read one
+bundler's output correctly and another's backwards. So nothing is guessed: when a second `lazy`
+meets a key that is already taken, its module is loaded and **compared**. The module system serves a
+genuine duplicate from its own registry, so the ordinary case pays one resolved promise and confirms
+the sharing.
+
+A module that turns out to be a different one is given a key of its own. It then renders what it
+asked for; what it loses is the shared cache entry — a loading frame the second time. `cacheKey`
+gives that back, and a route table that builds its lazies from a list is the usual way to meet this.
+
+See [lazy loading](/composition/lazy) for the whole picture.
 
 # Forms — `RMF`
 

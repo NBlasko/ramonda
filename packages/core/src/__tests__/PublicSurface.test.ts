@@ -30,6 +30,7 @@ const EXPECTED = [
   "createRef",
   "Ref",
   "Head",
+  "Portal",
   // entry points
   "bootstrap",
   "unmount",

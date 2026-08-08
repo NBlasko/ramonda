@@ -57,6 +57,35 @@ On a prerendered page the server can even render a lazy component straight into 
 HTML, and a `preload` hint lets its chunk download in parallel with the main bundle.
 Those details live with [server rendering](/ssr).
 
+## Two lazies that look the same
+
+The loaded module is cached, and the cache key defaults to the SOURCE of the `lazy`
+function — right for the usual `() => import("./Thing")`, because two different
+imports read differently. A factory breaks that:
+
+```tsx expect-error
+const make = (path: string) => () => import(path);
+
+<AsyncLoad lazy={make("./Dashboard")} onLoading={<i />} errorFallback={<i />} />
+<AsyncLoad lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
+```
+
+Both functions stringify to `() => import(path)` — the value each closed over is not
+part of the source — so they share one cache entry. The first module loads and the
+second never even asks for its own: it reads the entry the first one filled and
+renders `Dashboard` where `Settings` was written. Nothing fails, and nothing is
+logged.
+
+Give them their own identity when the lazy is built rather than written:
+
+```tsx
+<AsyncLoad cacheKey="./Dashboard" lazy={make("./Dashboard")} onLoading={<i />} errorFallback={<i />} />
+<AsyncLoad cacheKey="./Settings" lazy={make("./Settings")} onLoading={<i />} errorFallback={<i />} />
+```
+
+The same applies to a route table that builds its lazies from a list — which is the
+common way to meet this.
+
 ## Next
 
 - [Examples](/examples) — every feature as a running component.

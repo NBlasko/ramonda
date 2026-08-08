@@ -365,6 +365,20 @@ div[data-ramonda="Counter"] {
 }
 .code-block pre {
   margin: 0;
+  /**
+   * Room for the copy button, which is absolutely positioned over this corner.
+   *
+   * It sits at `top: 8px` and stands 23.5px tall (0.72rem at line-height 1, plus
+   * 5px of padding each side and a 1px border), so it reaches 31.5px down — while
+   * the first line of code used to start at the 16px the padding gives every side.
+   * A first line long enough to reach the corner ran underneath it and was hidden
+   * by the button's own background, which is exactly when you are hovering to
+   * click it.
+   *
+   * Derived from the button rather than guessed, so the two move together: 8 + 23.5
+   * rounded up, plus a couple of px so the line is not touching it.
+   */
+  padding-top: 34px;
 }
 .copy-btn {
   position: absolute;

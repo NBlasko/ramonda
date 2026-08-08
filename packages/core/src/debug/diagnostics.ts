@@ -76,7 +76,10 @@ export type DiagnosticCode =
   | "RMD043"
   | "RMD044"
   | "RMD045"
-  | "RMD046";
+  | "RMD046"
+  | "RMD047"
+  | "RMD048"
+  | "RMD049";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -345,6 +348,27 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A list item that is not an element",
     fix: "A list writes each row's key onto the vnode it gets back, and the diff matches rows on that key — so one item has to become exactly one element. A string or a number is not one: wrap it, `render: (name) => <li>{name}</li>`. A nested `list()` is not one either, and it is the common case: a list of pages, each holding a list of rows. Nesting goes through a COMPONENT rather than a bare descriptor — `render: (page) => <PageView item={page} />`, or `as: PageView` — because the component's host element is what wraps the inner rows and carries the key. The item is skipped rather than rendered, so the page is missing a row wherever this fires.",
+  },
+  RMD047: {
+    // error, not warning: development stops at it, and in production the handler is rebuilt on every
+    // render — so everything it is passed to re-renders with it, for the life of the page.
+    severity: "error",
+    title: "A memoized handler was given an argument it cannot key on",
+    fix: "@memoizedHandler caches by the ARGUMENTS, and a cache key can hold a string, a number or a boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its identity would miss every time — a fresh object per render would fill the map and hand back a new handler on every pass, which is the churn the decorator exists to prevent. Pass the primitive the object stands for — `row.id` rather than `row` — and read the rest inside the handler. Development throws so the mistake is not shipped; production builds the handler and moves on WITHOUT caching that call, so the page keeps working and only the memoisation is lost.",
+  },
+  RMD048: {
+    // error, not warning: the value the reader sees is not the value the app set. Nothing renders,
+    // and the page goes on showing what it showed before.
+    severity: "error",
+    title: "Object in state changed in place",
+    fix: "A signal fires when it is ASSIGNED a new value, not when the value it holds changes inside — so `this.user.name = 'x'` writes into the object the signal already has, nothing compares as different, and nothing re-renders. Replace it instead: `this.user = { ...this.user, name: 'x' }`, and for something nested, rebuild the path: `this.user = { ...this.user, address: { ...this.user.address, city } }`. @ramonda/lens does exactly that with less typing: `this.user = focusOn(this.user).get('address').get('city').set(city)`. Reassigning the same object after changing it does not help either — the signal compares references and sees no change.",
+  },
+  RMD049: {
+    // error, not warning: without a key of its own, one lazy rendered another's module — the page
+    // showed the wrong thing and said nothing.
+    severity: "error",
+    title: "Two lazy functions with the same source",
+    fix: "`AsyncLoad` identifies a module by the SOURCE of its `lazy`, which works when that source names one: `() => import('./Thing')` says what it loads, so the same import written in two components shares one cache entry — which is what you want. A lazy a FACTORY built names nothing: `const make = (path) => () => import(path)` closes over the path, and a closed-over value is not part of the source, so every module it builds stringifies the same. These two were found to load DIFFERENT modules under one key, so the second has been given a key of its own and now renders what it asked for. What that costs is the shared cache entry — a loading frame the second time, since the module system still dedupes the fetch itself. Pass `cacheKey` to get it back: `<AsyncLoad cacheKey=\"./Dashboard\" lazy={make('./Dashboard')} … />`. A route table that builds its lazies from a list is the usual way to meet this.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

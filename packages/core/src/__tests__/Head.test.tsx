@@ -1,10 +1,10 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { Head } from "../base/Head";
+import { Head, resetHeadRegistry } from "../base/Head";
 import { state } from "../base/decorators";
 import { renderPage, renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
-import { HEAD_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR } from "../helpers/constants";
 import { getDOM } from "../test/setup";
 
 /**
@@ -18,10 +18,13 @@ import { getDOM } from "../test/setup";
  */
 
 function headTags(): Element[] {
-  return Array.from(document.head.querySelectorAll(`[${HEAD_ATTR}]`));
+  return Array.from(document.head.querySelectorAll(`[${PORTAL_ATTR}]`));
 }
 
 beforeEach(() => {
+  // The registry lives as long as the document, which is right for a page and
+  // wrong for a file of tests that share one.
+  resetHeadRegistry();
   for (const tag of headTags()) tag.remove();
   document.title = "";
 });
@@ -193,6 +196,24 @@ describe("Head on the client", () => {
     // Without a name/property/http-equiv there is no way to find the tag again,
     // so every update would append another one.
     expect(headTags().length).toBe(0);
+  });
+
+  test('a meta with an identity but no content does not emit content="undefined"', async () => {
+    class Page extends Component {
+      // @ts-expect-error — `content` is required by the type; this is the runtime
+      // guard for a JS caller that omits it.
+      head = this.use(Head, { meta: [{ name: "robots" }] });
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    await getDOM(<Page />);
+
+    const robots = document.head.querySelector('meta[name="robots"]');
+    expect(robots).not.toBeNull();
+    // `content` stringified from undefined would ship `content="undefined"`.
+    expect(robots?.hasAttribute("content")).toBe(false);
   });
 });
 

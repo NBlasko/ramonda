@@ -35,7 +35,7 @@ import {
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { hostTagMatches } from "../helpers/hostTag";
-import { queuePostCommit } from "./commit";
+import { queuePostCommit, flushAfterCommit } from "./commit";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { checkHostPlacement } from "../debug/hostPlacement";
 import { checkNesting } from "../debug/domNesting";
@@ -134,7 +134,7 @@ function executeChangesOnStringNode(
     // `childNodes` is a live NodeList and unmounting calls `.remove()` — snapshot
     // it first, otherwise the list shrinks mid-iteration and skips children.
     const EnhancedChildNodes = Array.from(enhancedNode.childNodes as unknown as EnhancedChildNode[]);
-    unmountChildrenNodes(EnhancedChildNodes);
+    unmountChildrenNodes(EnhancedChildNodes, false);
     // Everything under this element is gone, so any list record describes nodes
     // that no longer exist. Left behind, it would be read as truth next render —
     // and its regions would keep their items subscribed to whatever they read.
@@ -147,7 +147,7 @@ function executeChangesOnStringNode(
 
   // Unmount before reordering: stale nodes still in the DOM would make
   // correctly-placed nodes look misplaced and cause pointless moves.
-  unmountChildrenNodes(cloneChildren);
+  unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
 
   return enhancedNode;
@@ -714,7 +714,7 @@ function collectRegionNodes(region: ListRegion, out: (EnhancedChildNode | DONE)[
  * one row near the front made every node between the insertion point and the end
  * look misplaced, and each got its own `insertBefore`. Measured at 10000 items:
  * 38.9s for an insert at index 0, 20.5s at the middle — while the mapper and the
- * diff walk together cost ~80ms. See BUGS.md.
+ * diff walk together cost ~80ms.
  *
  * Instead: take the longest run of nodes that are already in relative order and
  * leave them alone; move only the rest. One insertion then costs exactly one
@@ -994,13 +994,28 @@ function releaseListRecord(node: EnhancedChildNode): void {
   node[CHILD_RECORD] = undefined;
 }
 
-export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[]) {
+export function unmountChildrenNodes(children: (EnhancedChildNode | DONE)[], flushCommitWork = true) {
   for (const child of children) {
     if (child === DONE) continue;
 
     unmountNodeInPlace(child);
     child.remove();
   }
+
+  /**
+   * Teardown is a commit too, and a STANDALONE one — unmounting a root, or a test
+   * harness clearing a container — is not reached from a drain, so nothing else
+   * would run the commit-level work (a `Head`/`Portal` recompute) the `@destroyed`s
+   * just queued. Cheap when there is nothing: the queue is empty on every teardown
+   * that did not touch it.
+   *
+   * But when this runs INSIDE a larger commit — the children diff dropping stale
+   * nodes, a `Portal` clearing its own — the enclosing `flushPostCommit` drains that
+   * work once, at the end. Flushing here as well would run it mid-diff against a
+   * half-built tree, and again after, defeating the once-per-commit batching `Head`
+   * is built on. So those callers pass `false`.
+   */
+  if (flushCommitWork) flushAfterCommit();
 }
 
 /**

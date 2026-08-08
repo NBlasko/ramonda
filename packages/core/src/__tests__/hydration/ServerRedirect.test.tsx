@@ -4,7 +4,7 @@ import { Component } from "../../base/Component";
 import { Head } from "../../base/Head";
 import { renderToString, renderPage } from "../../hydration/ssr";
 import { ServerRedirect, captureServerRedirect } from "../../hydration/serverRedirect";
-import { HEAD_ATTR } from "../../helpers/constants";
+import { PORTAL_ATTR } from "../../helpers/constants";
 
 /**
  * The redirect primitive the router builds on, tested here at the core level
@@ -117,7 +117,7 @@ describe("renderPage on a redirect", () => {
 
     // The finally in renderPage clears the head even on the redirect path, so the
     // next request cannot inherit this one's title/description.
-    expect(document.head.querySelectorAll(`[${HEAD_ATTR}]`).length).toBe(0);
+    expect(document.head.querySelectorAll(`[${PORTAL_ATTR}]`).length).toBe(0);
     expect(document.title).toBe("");
   });
 });

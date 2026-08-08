@@ -70,7 +70,11 @@ finer when you need to:
 
 - To **skip** the re-render for some prop changes, gate it with
   [`@ShouldUpdateOnPropsChange`](/reference/api) — a rare tool, for a prop that is
-  rebuilt every parent render but rarely matters.
+  rebuilt every parent render but rarely matters. Refusing an update **drops it
+  whole**: the props are not taken either, so a later render caused by this
+  component's own state still shows the props it last accepted, until the parent
+  sends an update the rule agrees to. That is the trade, and it is why this is an
+  escape hatch rather than an optimisation to reach for.
 - To **react to one specific prop** — recompute a total, refetch when an `id`
   changes — read it inside a [`@compute`](/concepts/compute), a `@watchProp` (below),
   or an [a subscription](/concepts/subscriptions); those *do* track the individual props they

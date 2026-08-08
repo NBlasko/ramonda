@@ -1,10 +1,14 @@
-import { renderToString, renderStatic, ServerRedirect, type StaticRender, type ServerRequestInit } from "@ramonda/core";
+import { renderPage, renderStatic, ServerRedirect, type StaticRender, type ServerRequestInit } from "@ramonda/core";
 import { defineServer, routePlan } from "@ramonda/router/server";
 import { App, routes } from "./App";
 
 /** One request render: a page to send, or a redirect the server answers with. */
 export interface RenderResult {
   html?: string;
+  /** The `<title>` this page's `Head` chain resolved to. */
+  title?: string;
+  /** Its `<meta>` / `<link>`, serialized and ready to drop into the template's head. */
+  head?: string;
   redirect?: { url: string; status: number };
 }
 
@@ -39,7 +43,11 @@ export function plan() {
  */
 export async function render(request?: ServerRequestInit): Promise<RenderResult> {
   try {
-    return { html: await renderToString(<App />, request ? { request } : undefined) };
+    // `renderPage`, not `renderToString`: the head is only collected by the former, and
+    // a page whose title and description never reach the HTML is invisible to exactly
+    // the crawlers server rendering exists for.
+    const { body, title, head } = await renderPage(<App />, request ? { request } : undefined);
+    return { html: body, title, head };
   } catch (err) {
     if (err instanceof ServerRedirect) {
       return { redirect: { url: err.url, status: err.status } };

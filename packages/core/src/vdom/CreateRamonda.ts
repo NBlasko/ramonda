@@ -10,8 +10,21 @@ import type { ComponentKind, VNode, VNodeComponent, VNodeString } from "../types
  * in the hot path and had to check for `class` on every element, every render,
  * and allocate a fresh attributes object whenever it found one.
  */
-function normalizeClassName(name: ComponentKind, attributes: Record<string, any>): void {
-  if (!("class" in attributes)) return;
+/**
+ * `class` → `className`, on a COPY.
+ *
+ * The same rule as the children copy below, and for the same measured reason:
+ * writing on the caller's object meant one attributes bag used for two elements
+ * came back rewritten. JSX builds a fresh object per element so the compiler never
+ * shows it, but `__h` is public and callable. Deleting `class` also swallowed the
+ * warning for every later use of that object — the warning is about the SOURCE,
+ * and the source still says `class`.
+ *
+ * The copy costs an allocation only on the path that is already the wrong
+ * spelling; correct attributes are handed straight back.
+ */
+function normalizeClassName(name: ComponentKind, attributes: Record<string, any>): Record<string, any> {
+  if (!("class" in attributes)) return attributes;
 
   if (__DEV__) {
     // Keyed by the component and the tag, not by the word `class`: one report per SITE. A key of
@@ -22,12 +35,17 @@ function normalizeClassName(name: ComponentKind, attributes: Record<string, any>
     diagnose("RMD039", `${owner}:${tag}`, `\`class\` was given on <${tag}>, from ${owner}.`, { tag, owner });
   }
 
-  if (attributes.className === undefined) attributes.className = attributes.class;
-  delete attributes.class;
+  const { class: fromClass, ...rest } = attributes;
+  if (rest.className === undefined) rest.className = fromClass;
+  return rest;
 }
 
-export function createRamonda(name: ComponentKind, attributes: Record<string, any>, children: unknown[] = []): VNode {
-  normalizeClassName(name, attributes);
+export function createRamonda(
+  name: ComponentKind,
+  rawAttributes: Record<string, any>,
+  children: unknown[] = [],
+): VNode {
+  const attributes = normalizeClassName(name, rawAttributes);
 
   if (typeof name === "string") {
     const stringNode: VNodeString = {

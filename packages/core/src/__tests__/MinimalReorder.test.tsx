@@ -10,7 +10,7 @@ import { Component, Host, list, state } from "../index";
  * single insertion near the front made every node after it look misplaced and
  * each got its own `insertBefore`. At 10000 items that measured 38.9s. These
  * lists are small enough to stay fast either way; what they lock is the COUNT.
- * See BUGS.md — "Inserting one item near the front of a long list".
+ * The fault it stands for: inserting one item near the front of a long list.
  */
 
 interface Row {

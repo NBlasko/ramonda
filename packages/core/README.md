@@ -121,23 +121,29 @@ component that never finished, leaks whatever `@created` already took.
 with no constructor and no `.bind(this)` — including methods inherited from a
 base class.
 
-The one exception is an **underscore-prefixed method**, which is deliberately
-left unbound. Binding is not free and scales with how many methods a class has —
-per instance, construction alone against construction plus binding everything:
+There is no opt-out, and there used to be: a method whose name began with `_` was
+left unbound, as "internal by convention". That was removed, because the
+convention is not this framework's to claim. typescript-eslint's
+`naming-convention` rule is commonly set to `leadingUnderscore: "require"` for
+private members, so a project with that rule wrote `private _apply()` and got a
+method that silently did not bind — `onClick={this._apply}` then lost `this`,
+with no error and no diagnostic. A lint rule chosen for unrelated reasons broke
+the framework's central promise about methods.
 
-| methods | no binding | with binding |
-| --- | --- | --- |
-| 4 | 0.018 µs | 0.195 µs |
-| 8 | 0.026 µs | 0.480 µs |
-| 16 | 0.023 µs | 2.066 µs |
+It also bought very little. Per instance, binding every method against binding
+all but a third of them:
 
-A 16-method component in a 1000-row list spends about 2ms on binding alone. So
-`_helper()` is the way to say "this never travels as a callback, don't pay for
-it". Ramonda reserves no `_` names of its own; the prefix is yours to use.
+| methods | construct | bind all | bind all but N | saved | per 1000 instances |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 22 ns | 146 ns | 105 ns | 41 ns | 0.04 ms |
+| 5 | 29 ns | 253 ns | 243 ns | 10 ns | 0.01 ms |
+| 8 | 32 ns | 352 ns | 268 ns | 84 ns | 0.08 ms |
+| 12 | 29 ns | 565 ns | 353 ns | 212 ns | 0.21 ms |
 
-The trade: a `_` method detached from its instance loses `this`, and it fails
-where it is *called* rather than where it was named. If a method is ever passed
-as a callback, do not prefix it.
+A fifth of a millisecond across a thousand rows, at twelve methods, in exchange
+for a silent `this`-loss. If an opt-out is ever wanted back it will be an explicit
+`@unbound` decorator: it says what it does where it does it, and no lint rule can
+trigger it by accident.
 
 ### State
 
@@ -238,18 +244,18 @@ place), `RMD007` (server/client divergence), and so on. Every one is wrapped in
 
 ## Documentation
 
-- `docs/AsyncLoad.md` — lazy components, failure handling, retry
-- `BUGS.md` — every bug found, how it was proven, and what was rejected
-- `TODO.md` — what is next and what was measured
+- [ramonda.pages.dev](https://ramonda.pages.dev) — the documentation site: getting started, every
+  feature with running examples, the API and diagnostics references
+- [`DIAGNOSTICS.md`](./DIAGNOSTICS.md) — every `RMD` code, what raises it and what to do about it
 
 ## Development
 
 ```bash
-pnpm test          # 360 tests
+pnpm test
 pnpm build
 ```
 
 
-The full documentation site — get started, tutorial, every feature explained with running
-examples, diagnostics reference, REPL — is planned in [`apps/docs/PLAN.md`](../../apps/docs/PLAN.md).
-This README stays the package-level entry point; it is not a substitute for that.
+The full documentation site — get started, every feature explained with running examples, the API
+and diagnostics references — lives at [ramonda.pages.dev](https://ramonda.pages.dev). This README
+stays the package-level entry point; it is not a substitute for that.

@@ -46,16 +46,21 @@ cause is still there it will throw again — fix the cause, then reset.
 
 ## What it catches
 
-Errors thrown **while rendering** the subtree — in `render()`, in `@created`, or in a
-`@compute` a render read.
+Anything thrown on a path **the framework is running**: `render()`, `@created`,
+a `@compute` a render read, and the commit phase that follows — `@mounted`,
+`@updated`, a subscription's `connect`. All of those go through the framework, so
+the error can be walked up to the nearest boundary.
 
 It does **not** catch:
 
-- **Event handlers.** A click that throws isn't part of a render — use `try/catch`.
-- **Async work.** A rejected promise settles outside the render — catch it and put
-  the failure in state.
-- **Errors after the page updates.** An `@updated` or a subscription's `connect` that throws is reported, not caught
-  here.
+- **Event handlers.** The browser calls a listener directly, so a throw inside one
+  never passes through the framework and no boundary can see it. Use `try/catch`,
+  or put the failure in state.
+- **Async work.** A rejected promise settles on its own time, with no render around
+  it — catch it and put the failure in state.
+
+The line is not "render versus the rest". It is whether the framework was the one
+calling.
 
 ## For loading failures
 

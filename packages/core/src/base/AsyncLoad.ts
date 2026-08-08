@@ -3,6 +3,7 @@ import type { RamondaNode } from "../types/vdom";
 import { createRamonda } from "../vdom/CreateRamonda";
 import { mounted, destroyed, state, created, deferHydration, watchProp } from "./decorators";
 import { addModulePreload } from "./Head";
+import { diagnose } from "../debug/diagnostics";
 
 export type Lazy = () => Promise<any>;
 
@@ -80,6 +81,118 @@ export interface AsyncLoadProps {
  */
 const cachedFiles = new Map<string, LoadedComponent>();
 
+/**
+ * What each cache entry actually resolved to, and which `lazy` put it there.
+ *
+ * `cachedFiles` holds the RENDERABLE — a class already wrapped into a callable —
+ * so it cannot be compared with what a second `lazy` resolves. The raw export is
+ * kept beside it for exactly that comparison, and the owner is what says a
+ * comparison is worth making at all.
+ */
+const cachedExports = new Map<string, unknown>();
+const cacheOwners = new Map<string, unknown>();
+/**
+ * The minted collision key a MODULE already holds, so a `lazy` rebuilt per render
+ * that collides on the same source reuses it instead of minting a fresh key (and
+ * three strong cache entries) for the same module every time. Bounded by the number
+ * of distinct collided modules, which is finite.
+ */
+const mintedByComponent = new Map<unknown, string>();
+
+/** Test-only: how many entries the module cache holds. Not re-exported from `index`. */
+export function __lazyCacheSize(): number {
+  return cachedFiles.size;
+}
+
+/**
+ * A key of its own for a `lazy` PROVEN to load something other than what is cached
+ * under its derived key — see `verifyAgainstCache`.
+ *
+ * Keyed by the function and weak, so a lazy built per render is collected with
+ * everything it closed over rather than held here for the life of the page.
+ */
+const ownKeys = new WeakMap<object, string>();
+/** Functions already compared against the entry they hit — checked once, not per mount. */
+const compared = new WeakSet<object>();
+let minted = 0;
+
+/**
+ * The cache key for a set of props.
+ *
+ * Derived from the SOURCE of `lazy`, which is right whenever that source names the
+ * module it loads: `() => import("./Thing")` written in two components is two
+ * different function objects with one meaning, and they SHOULD share what they
+ * load. It is also what makes the key survive JSX rebuilding its arrow on every
+ * render.
+ *
+ * `ownKeys` is the exception, and it is only ever filled in by observation — see
+ * `verifyAgainstCache`. Nothing here guesses from the text of the function.
+ *
+ * A module function rather than only a getter because `@watchProp` watches this
+ * too: watching a key computed one way while reading one computed another is how a
+ * component reloads when nothing changed, or holds still when everything did.
+ */
+function cacheKeyFor(props: AsyncLoadProps): string {
+  const explicit = props.cacheKey;
+  if (explicit !== undefined) return explicit;
+  return ownKeys.get(props.lazy) ?? props.lazy.toString();
+}
+
+/**
+ * The one callable shape the cache holds, whatever the module exported.
+ *
+ * A class is wrapped so `render` has a single thing to call. This is
+ * `createTemplate` inlined — it was the helper's last real use, and one arrow here
+ * is cheaper than a public API for it.
+ */
+function toRenderable(component: any): LoadedComponent {
+  return component.__isComponent
+    ? (loadedProps?: unknown) => createRamonda(component, (loadedProps ?? {}) as Record<string, unknown>)
+    : component;
+}
+
+/**
+ * Files a loaded module under a key that belongs to it, and reports if that meant
+ * taking a new one.
+ *
+ * `key` already has an entry, filled by a DIFFERENT `lazy`, holding a DIFFERENT
+ * module: two functions with one source that load different things, proven rather
+ * than guessed. Whichever finished second used to overwrite the first, and then
+ * both rendered whatever the last write left — so the two `<AsyncLoad>`s showed the
+ * same module and it was a race which one.
+ *
+ * The newcomer takes a key of its own instead. `explicit` is the app's own claim
+ * about identity, so it is believed: two entries deliberately given one `cacheKey`
+ * are meant to share it.
+ */
+function claim(key: string, lazy: unknown, component: unknown, explicit: boolean): string {
+  const owner = cacheOwners.get(key);
+  const collides = !explicit && owner !== undefined && owner !== lazy && cachedExports.get(key) !== component;
+
+  // On collision, reuse the key this MODULE already minted rather than taking a new
+  // one: a factory rebuilds its `lazy` per render, so without this the same module
+  // reached through many fresh functions would mint a fresh key — and three strong
+  // cache entries — on every render, without bound.
+  let target = key;
+  if (collides) {
+    target = mintedByComponent.get(component) ?? `ramonda-lazy-${++minted}`;
+    mintedByComponent.set(component, target);
+    ownKeys.set(lazy as object, target);
+    if (__DEV__) {
+      diagnose(
+        "RMD049",
+        `asyncLoad:${key}`,
+        "Two `lazy` functions have the same source and load different modules, so the cache key derived from that source cannot tell them apart.",
+      );
+    }
+  }
+
+  cachedFiles.set(target, toRenderable(component));
+  cachedExports.set(target, component);
+  cacheOwners.set(target, lazy);
+  return target;
+}
+
 type LoadedComponent = ((loadedProps?: unknown) => RamondaNode) | undefined;
 
 /**
@@ -126,8 +239,9 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * Only ever right with a fixed `lazy`, which is how it was always used until a
    * router pointed one at a different module per route.
    */
+  /** See `cacheKeyFor` — the same answer this component's `@watchProp` watches. */
   private get cacheKey(): string {
-    return this.props.cacheKey ?? this.props.lazy.toString();
+    return cacheKeyFor(this.props);
   }
   /**
    * Only a re-render trigger. Whether the module is available is decided by the
@@ -145,7 +259,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * An increment always differs from what was restored, so the render that
    * finally reads the cache actually happens.
    */
-  @state loadCount = cachedFiles.has(this.props.cacheKey ?? this.props.lazy.toString()) ? 1 : 0;
+  @state loadCount = cachedFiles.has(this.cacheKey) ? 1 : 0;
   @state hasError = false;
   /** Bumped by `retry`, so the fallback can tell a first failure from a fifth. */
   @state attempt = 0;
@@ -185,7 +299,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
    * route change already reads the right cache key instead of showing the old
    * module for one frame.
    */
-  @watchProp((props) => props.cacheKey ?? props.lazy.toString())
+  @watchProp((props) => cacheKeyFor(props))
   onSourceChanged() {
     this.loading = false;
     this.hasError = false;
@@ -195,7 +309,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
 
   @mounted afterCreate() {
     this.props.onCreate?.();
-    // Returned so a server render can await it — see docs/async-ssr-proposal.md.
+    // Returned so a server render can await it.
     return this.load();
   }
 
@@ -221,6 +335,59 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
     return this.load();
   }
 
+  /**
+   * Checks that the module already cached under this key is the one THIS `lazy`
+   * loads — and if it is not, gives this one a key of its own.
+   *
+   * The key is derived from the source of `lazy`, which identifies the module
+   * whenever the source names it. `const make = (path) => () => import(path)`
+   * does not: the specifier is a closed-over value the source never shows, so
+   * every module the factory builds stringifies the same. The first loaded and
+   * cached; the second found a hit and rendered THE FIRST ONE'S MODULE. Nothing
+   * failed, nothing was logged, and which module you got depended on which
+   * rendered first.
+   *
+   * Which of the two it is cannot be told from the text of the function — the
+   * source a bundler leaves behind is its own business, and a rule guessing at
+   * `import("…")` would read one bundler's output correctly and another's
+   * backwards. So nothing is guessed: the module is loaded and COMPARED. The
+   * module system serves a genuine duplicate from its registry, so the common
+   * case pays one resolved promise and confirms the sharing, which is what makes
+   * this affordable enough to do in production too — where rendering the wrong
+   * module is not a development detail.
+   *
+   * What the broken case now costs is one frame of the wrong module before the
+   * right one replaces it, in exchange for the right one arriving at all.
+   *
+   * Once per FUNCTION, not once per mount: a second `<AsyncLoad>` given the same
+   * proven-different lazy reads its key straight off `ownKeys`.
+   */
+  private verifyAgainstCache(): void {
+    const lazy = this.props.lazy;
+    // An explicit `cacheKey` is the app's own claim about identity — believed, not
+    // second-guessed. Same for the function that filled the entry in the first place.
+    if (this.props.cacheKey !== undefined || compared.has(lazy)) return;
+
+    const key = this.cacheKey;
+    const owner = cacheOwners.get(key);
+    if (owner === undefined || owner === lazy) return;
+
+    compared.add(lazy);
+    void lazy()
+      .then((res) => {
+        const component = res[this.props.namedExport ?? "default"];
+        // The same module: the source named it after all, and sharing is right.
+        if (component === cachedExports.get(key) || typeof component !== "function") return;
+
+        claim(key, lazy, component, false);
+        if (this.disposed) return;
+        this.loadCount = this.loadCount + 1;
+      })
+      // The cached module renders; a failure to confirm it is not a reason to
+      // replace a working page with an error fallback.
+      .catch(() => {});
+  }
+
   private load(): Promise<unknown> {
     if (this.loading) return Promise.resolve();
 
@@ -229,6 +396,7 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
     // loading fallback forever.
     if (cachedFiles.has(this.cacheKey)) {
       this.loadCount = this.loadCount + 1;
+      this.verifyAgainstCache();
       return Promise.resolve();
     }
 
@@ -256,34 +424,29 @@ export class AsyncLoad extends Component<AsyncLoadProps> {
           );
         }
 
-        // A class is wrapped into the one callable shape the cache holds, so
-        // `render` has a single thing to call whatever the module exported.
-        // This is `createTemplate` inlined — it was the helper's last real use,
-        // and one arrow here is cheaper than a public API for it.
-        const loadedComponent: LoadedComponent = component.__isComponent
-          ? (loadedProps?: unknown) => createRamonda(component, (loadedProps ?? {}) as Record<string, unknown>)
-          : component;
-
-        // Cache even if this component is gone: the next one to ask for the
-        // same module should not have to fetch it again.
-        cachedFiles.set(this.cacheKey, loadedComponent);
+        // Cached even if this component is gone: the next one to ask for the same
+        // module should not have to fetch it again. `claim` is what keeps a second
+        // module from landing on the first one's key — see it and verifyAgainstCache
+        // for the two ways that is met.
+        claim(this.cacheKey, this.props.lazy, component, this.props.cacheKey !== undefined);
         this.loading = false;
         if (this.disposed) return;
         this.loadCount = this.loadCount + 1;
       })
       .catch((e) => {
         /**
-         * Not a diagnostic code, and not behind `__DEV__`.
+         * Development only, and named by its `cacheKey` so a page full of chunks says WHICH
+         * one failed rather than logging a bare error.
          *
-         * A chunk that fails to load is the network's answer or the app's own module error, not a
-         * mistake this framework can offer a fix for — and it matters in production, where a
-         * failed lazy route is exactly the thing somebody needs to see in a log. The failure is
-         * also on the instance as `hasError` and `failure`, for the app to render.
-         *
-         * What it was missing is who it belonged to: a bare `console.error(e)` in a page full of
-         * chunks names nothing.
+         * Not in production: the failure is already on the instance as `hasError` and `failure`,
+         * and `errorFallback` is handed `{ error, retry, attempt }` — so the app renders it,
+         * reports it where it likes, and offers the retry. An unconditional `console.error`
+         * beside that is a second channel it cannot turn off, and a chunk that fails to load is
+         * not always an incident: a deploy rotating its assets, a reader going offline, one
+         * dropped request. In development the reason is what you need and there is nowhere else
+         * it would go.
          */
-        console.error(`[Ramonda] a lazily loaded component failed to load (${this.cacheKey}):`, e);
+        if (__DEV__) console.error(`[Ramonda] a lazily loaded component failed to load (${this.cacheKey}):`, e);
         this.loading = false;
         if (this.disposed) return;
         this.failure = e;
