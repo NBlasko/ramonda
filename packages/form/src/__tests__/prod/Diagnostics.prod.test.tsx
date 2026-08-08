@@ -82,6 +82,62 @@ describe("production build", () => {
     }
   });
 
+  test("a rejected validation is silent but still RECOVERS — RMF004 is a diagnostic", async () => {
+    /**
+     * The half that must not be behind the flag.
+     *
+     * `RMF004` reports through `if (__DEV__)`, so nothing of ours reaches the console here. What
+     * releases the submit does not: `settle()` sits outside the guard, and if it ever moved inside one
+     * a failed uniqueness lookup would disable the submit button for the life of the page **in
+     * production only**, while development looked fine. That is the shape of bug this file exists for.
+     */
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onSubmit = vi.fn();
+    let reject!: (reason: unknown) => void;
+
+    const rejecting: StandardSchemaV1<Values, Values> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: () =>
+          new Promise<never>((_resolve, no) => {
+            reject = no;
+          }),
+      },
+    };
+
+    let form!: Form<typeof rejecting>;
+    class Page extends Component {
+      private f = this.use(Form<typeof rejecting>, {
+        schema: rejecting,
+        defaultValues: { email: "", tags: ["a"] },
+        onSubmit,
+      });
+      render() {
+        form = this.f;
+        return null;
+      }
+    }
+    const { unmount } = render((<Page />) as never);
+
+    try {
+      form.submit();
+      expect(form.isSubmitting).toBe(true);
+
+      reject(new Error("the lookup died"));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      expect(errors).not.toHaveBeenCalled();
+      expect(form.isSubmitting).toBe(false);
+      expect(onSubmit).not.toHaveBeenCalled();
+      // And nothing is claimed about values the schema never answered for.
+      expect(form.isValid).toBe(false);
+    } finally {
+      errors.mockRestore();
+      unmount();
+    }
+  });
+
   test("assigning to a field still throws — RMF001 is a guard, not a diagnostic", () => {
     const { form, unmount } = mount();
     try {
