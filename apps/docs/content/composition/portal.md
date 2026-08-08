@@ -94,6 +94,13 @@ tags are in the served HTML and are not duplicated on hydration. That is exactly
 [`Head`](/ssr/head) puts a page's `<title>` and `<meta>` into the document — it is a portal
 into the head with the tags kept unique by their identity.
 
+**This covers `document.head`.** A portal into a target elsewhere — a modal root in the
+body, say — renders on the **client only**: that target is not part of the server render, so
+its content is not in the served HTML and appears after hydration. A stateful **component**
+inside a portal is rebuilt on the client rather than restored from the server, for the same
+reason. Portalling plain markup into `document.head` is the fully server-rendered path;
+anything richer is client-side today.
+
 ## Next
 
 - [Head and metadata](/ssr/head) — the portal you will reach for most.
