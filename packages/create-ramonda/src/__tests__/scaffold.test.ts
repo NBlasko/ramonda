@@ -183,6 +183,44 @@ describe("third-party versions", () => {
   });
 });
 
+describe("the types a Vite project needs", () => {
+  test("the SPA declares vite/client, so its css import and import.meta.env type-check", () => {
+    /**
+     * Both were reported on a project nobody had touched yet:
+     *
+     *   src/main.tsx  Cannot find module './style.css'
+     *   src/main.tsx  Property 'env' does not exist on type 'ImportMeta'
+     *
+     * The code was right — Vite injects both — only the TYPES were missing, and the scaffolder
+     * generates the `import.meta.env.DEV` guard itself, so it shipped a project that did not
+     * type-check out of the box. Verified against a real scaffold: `tsc --noEmit` fails with the
+     * second error without this file and passes with it.
+     *
+     * It is one `/// <reference types="vite/client" />`, where `npm create vite` puts it too.
+     */
+    const { read } = make("spa", []);
+    const declaration = read("src/vite-env.d.ts");
+
+    expect(declaration).toContain('/// <reference types="vite/client" />');
+  });
+
+  test("the SPA has vite to resolve those types against", () => {
+    // A reference to a package that is not a dependency is a worse error than the one it fixes.
+    const { pkg } = make("spa", []);
+    expect(pkg.devDependencies.vite).toBeDefined();
+  });
+
+  test("SSR does not need it — esbuild, its own __DEV__, no css", () => {
+    /**
+     * The templates differ on purpose, so the check is that the SSR one still declares the
+     * global it actually uses rather than acquiring a reference it does not.
+     */
+    const { read, dir } = make("ssr", []);
+    expect(read("global.d.ts")).toContain("declare const __DEV__: boolean");
+    expect(existsSync(join(dir, "src", "vite-env.d.ts"))).toBe(false);
+  });
+});
+
 describe("pnpm can run the build scripts it needs", () => {
   test("a pnpm-workspace.yaml allows esbuild, in both spellings", () => {
     for (const mode of ["ssr", "spa"] as const) {
