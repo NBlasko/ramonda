@@ -31,3 +31,8 @@ expression rather than an identifier, so it did not resolve — which marked the
 under a form, a query or any hook written with its type argument named had quietly stopped being
 judged. The pin is unwrapped now, and a fixture holds the shape: with it, the missing provider is
 reported; without it, the report is silence.
+
+And every issue type `AnalyzeResult` carries is nameable now. `DuplicateDecoratorIssue` and
+`UnwatchedFieldIssue` were not exported, so a script written against `analyzeProject` — which the
+reference tells people to write — could type a variable holding a context issue but not one holding a
+duplicate decorator.
