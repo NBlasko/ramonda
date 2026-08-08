@@ -40,6 +40,11 @@ not the shell around it. As a hook, `Head` composes the way the tree does: a lay
 can set a default title, and a route inside it can override it, and the deeper one
 wins.
 
+And two `Head`s that are **both live at once** — a sidebar with its own `<meta>` and the
+route with its title — both contribute: different tags coexist, and only a genuine
+conflict (both set the title) is resolved, in favour of the deeper one. `Head` writes into
+one `<head>` the way many [portals](/composition/portal) share one target.
+
 ## What you can set
 
 | | |
