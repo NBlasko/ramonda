@@ -103,9 +103,9 @@ const { getByText } = render(<App />, { hydrate: html });
 ```
 
 Pass the markup as a string and the harness owns the container, which means
-automatic cleanup covers it. `hydrate: true` is the React-compatible form: it
-adopts whatever is already in a `container` you supplied, and that container is
-then yours to remove.
+automatic cleanup covers it. `hydrate: true` is the other form: it adopts
+whatever is already in a `container` you supplied, and that container is then
+yours to remove.
 
 Prefer the string form. Hydration tests are where a leaked tree hurts most —
 whatever the server rendered stays live, and the next test hydrates on top of it.
@@ -126,8 +126,8 @@ Every bound query (`getByText`, `findByRole`, …), plus:
 
 ### `instance` — driving a component directly
 
-In React the only honest way into a component is an event. In Ramonda state is a
-field on an instance, so a test can be explicit about what changed:
+State is a field on an instance, so a test can be explicit about what changed
+rather than reproducing the gesture that would have changed it:
 
 ```tsx
 const { instance, getByText } = render<Counter>(<Counter />);
@@ -233,5 +233,4 @@ exactly three things: `flushSync`, `rerenderRoot` and `getComponentInstance`.
 Core's main entry is guarded by tests whose whole job is to keep the internals
 out of what an application can import. A harness genuinely needs three of them —
 so rather than widen the app-facing API permanently to make a test utility
-possible, there is a second, narrow door, pinned by its own tripwire. Same shape
-as `react-dom/test-utils`.
+possible, there is a second, narrow door, pinned by its own tripwire.

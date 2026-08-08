@@ -24,7 +24,7 @@ function createTodo(title: string): Promise<string> {
 
 /**
  * Optimistic: the item is on screen before the request answers. What this returns is the
- * ROLLBACK — the same "return the cleanup" contract `@effect` and
+ * ROLLBACK — the same "return the cleanup" contract
  * `createSubscriptionDecorator` use — and it runs only if the mutation fails.
  *
  * A module function, so its identity never changes. Declared inline it would be a fresh closure

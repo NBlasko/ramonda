@@ -17,7 +17,7 @@ import { effectLike } from "../../test/effectLike";
  * was torn down in the same commit.
  *
  * What it deliberately does NOT have is dependency tracking, previous values, and a
- * cleanup contract — so most of what could be tested about an `@effect` does not
+ * cleanup contract — so most of what could be tested about an effect does not
  * apply, which is the point of the decorator.
  */
 

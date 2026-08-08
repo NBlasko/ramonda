@@ -36,7 +36,7 @@ describe("act", () => {
 
   test("settles a cascade, however deep, in one call", () => {
     // Three components chained so each one's render triggers the next: A's
-    // @mounted writes A, whose render feeds B, whose @effect writes C. Under the
+    // @mounted writes A, whose render feeds B, whose effect writes C. Under the
     // old harness this needed a different number of `await settle()` calls than
     // a simple change did, and knowing WHICH was the test author's problem.
     const seen: number[] = [];

@@ -233,8 +233,10 @@ Every field is reached by property access and its API sits behind `$`:
 | `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
 | `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
 | `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what `list({ key })` uses. |
+| `Field` | A **hook**, for a component that watches ONE field — `this.use(Field<string>, () => ({ of: this.props.of }))`. Answers everything `FieldApi` and `LeafApi` do, plus the list members. **Required** for a field in its own component: a field node is one cached object for the form's life, so without this the component's props never change and it never re-renders. Also what makes an edit wake one field rather than the form. [A field in its own component](/forms/fields#a-field-in-its-own-component) |
+| `FormState` | A **hook**, for a component that watches the FORM rather than a field — `this.use(FormState)`, no props. `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `formErrors` · `submit(event?)` · `reset()`. Wakes only when a fact it reads actually MOVED, so a save button sleeps through typing that does not change the answer. The form publishes itself on the context, so it works at any depth. [A button that watches the form](/forms/fields#a-button-that-watches-the-form) |
 
-Types: `FieldNode` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
+Types: `FieldNode` · `FieldTarget` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
 `Bind` · `CommonBind` · `TextBind` · `NumberBind` · `CheckboxBind` · `DateBind` · `Collision` ·
 `InferIn` · `InferOut` · `StandardSchemaV1` · `StandardResult` · `StandardIssue`
 

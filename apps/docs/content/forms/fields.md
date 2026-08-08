@@ -154,6 +154,214 @@ is what catches it in JavaScript and in a file the checker is not covering. A fi
 over a path rather than a place values live, so an assignment would land nowhere and the next read
 would hand back the old value.
 
+## A field in its own component
+
+A design system does not want `{...f.email.$.bind}` written at every call site — it wants a
+`<TextField>` that carries the label, the message and the class that turns red. A component that
+takes a field needs one thing from the form, and `Field` is it:
+
+```tsx
+import { Field, type FieldNode } from "@ramonda/form";
+
+@Host("label", (self: TextField) => ({ className: self.f.error ? "field field--invalid" : "field" }))
+class TextField extends Component<{ of: FieldNode<string>; label: string }> {
+  f = this.use(Field<string>, () => ({ of: this.props.of }));
+
+  render() {
+    return [<span className="field__label">{this.props.label}</span>, <input {...this.f.bind} />, this.f.error];
+  }
+}
+```
+
+And the call site hands over one prop, typed by the schema:
+
+```tsx
+<TextField of={f.email} label="E-mail" />
+<TextField of={f.address.street} label="Street" />
+```
+
+**`Field` is required, not an optimisation.** Without it such a component never re-renders: a field
+node is one cached object for the life of the form — deliberately, so `bind.onInput` keeps its
+identity — so the component's props never change and the diff skips it. Its message would never
+appear, and a write from anywhere else would never reach its input.
+
+`Field` answers everything a node's `$` does — `value`, `error`, `errors`, `touched`, `dirty`, `name`,
+`bind`, `set`, `reset`, and the list members for an array field — so a component written against
+`FieldApi<T>` needs nothing new to learn. Name the type at the `use`: `FieldNode<T>` is a conditional
+type, so `T` cannot be recovered from it by inference, and `Field<string>` is the same pin
+`Query<Todo>` takes.
+
+### The host element is the wrapper you were going to write
+
+`@Host("label", …)` makes the component's own element the field's wrapper, so there is no extra node
+in the DOM. The markup that comes out is what you would have written by hand:
+
+```html
+<label class="field">
+  <span class="field__label">E-mail</span>
+  <input name="email" value="">
+</label>
+```
+
+That is where the class, the label and the message belong anyway, and the host props callback runs on
+every render, so the class follows the message without any work.
+
+### Defaults and variants come from the class
+
+There is no `defaultProps`, and none is needed — a getter with a fallback is one, and a subclass
+specialises it:
+
+```tsx
+class TextField extends Component<{ of: FieldNode<string>; label?: string }> {
+  protected get labelText(): string {
+    return this.props.label ?? "Field";
+  }
+}
+
+class EmailField extends TextField {
+  protected override get labelText(): string {
+    return this.props.label ?? "E-mail";
+  }
+}
+```
+
+`@Host` is read off the class through the static chain, so a subclass inherits the wrapper and may
+declare its own to restyle it.
+
+### One keystroke, one field
+
+Because the subscription is per path, an edit wakes the fields that changed and no others. Measured
+over 300 rows through `list()`, one keystroke: **every row rebuilt, 45 ms**, before this existed;
+**one row** after. Inside a list the node arrives already — `list({ as })` hands each row its own —
+so a row component is the same shape:
+
+```tsx
+import { Field, type Row } from "@ramonda/form";
+
+class Line extends Component<{ item: Row<Contact> }> {
+  f = this.use(Field<string>, () => ({ of: this.props.item.field.value }));
+
+  render() {
+    return <input {...this.f.bind} />;
+  }
+}
+```
+
+### A watcher hears only about what it reads
+
+`Field` records which members you actually read and ignores anything else. A component rendering a
+list reads `rows` — and a row's `id`, `index` and `field` do not move when a value inside that row
+does, so it **sleeps through a keystroke** in any of its rows. Each row watches its own field and
+wakes on its own.
+
+That is what makes the container worth watching too:
+
+```tsx
+import { Field, type FieldNode, type Row } from "@ramonda/form";
+
+/** One row, watching its own field — the same shape as `TextField` above. */
+declare class Line extends Component<{ item: Row<Contact> }> {}
+
+class Rows extends Component<{ of: FieldNode<Contact[]> }> {
+  f = this.use(Field<Contact[]>, () => ({ of: this.props.of }));
+
+  render() {
+    return <div>{list({ each: this.f.rows, key: (row) => row.id, as: Line })}</div>;
+  }
+}
+```
+
+It wakes when a row is added, removed or moved, and not otherwise. Measured at 300 rows, one
+keystroke: **45 ms and every row rebuilt** with no per-field subscription at all, **1.9 ms and one
+row** once each row watched its own field, **0.6 ms** once the container watched the array as well —
+because then the three hundred list items are never diffed.
+
+`error` is the one that reads two things: a message is held back until the field has been touched, so
+it wakes on a blur as well as on a message. Nothing is lost by not reading a member — the first render
+that does read it subscribes from then on.
+
+### The owner cannot opt out
+
+The component that owns the form re-renders on **every** change, and not because of anything it
+reads: `@state` on a hook holds the owning component's rebuild from the moment it is created. So keep
+that component thin — hand the fields out and let it build a handful of vnodes whose props have not
+changed. The diff stops there.
+
+## A button that watches the form
+
+`isValid`, `isSubmitting` and `submitCount` belong to the form rather than to any field, and reading
+one in the owner's render is what ties the owner to every keystroke. `FormState` is the hook for them,
+and it takes **no props** — the form publishes itself on the context, so this works at any depth,
+through layouts that know nothing about forms:
+
+```tsx
+import { FormState } from "@ramonda/form";
+
+class SaveButton extends Component {
+  private form = this.use(FormState);
+
+  render() {
+    return (
+      <button disabled={!this.form.isValid || this.form.isSubmitting}>
+        {this.form.isSubmitting ? "Saving…" : "Save"}
+      </button>
+    );
+  }
+}
+```
+
+**It wakes on an answer that MOVED, not on an event.** A form that was invalid before a keystroke and
+invalid after it has not changed its answer, so the button sleeps through the typing and wakes the
+moment validity flips or a submit starts or ends. `isDirty` is the expensive one — a comparison of the
+whole value against the baseline — and the form computes it only while something reads it.
+
+Two forms nested behave the way you would want without saying anything: the button watches the nearest
+form above it.
+
+With no form above it at all, every fact reads as its default and core reports
+[`RMD003`](/reference/diagnostics) when the component mounts.
+
+## The recipe for a big form
+
+Put together, the three pieces mean the owner of the form reads **nothing** — and then its render can
+be cached:
+
+```tsx
+/** The two from above: one watches an array, the other watches the form. */
+declare class Rows extends Component<{ of: FieldNode<Contact[]> }> {}
+declare class SaveButton extends Component {}
+
+class Page extends Component {
+  private form = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit });
+
+  @compute get body() {
+    return (
+      <form onSubmit={this.form.submit}>
+        <Rows of={this.form.fields.contacts} />
+        <SaveButton />
+      </form>
+    );
+  }
+
+  render() {
+    return this.body;
+  }
+}
+```
+
+`this.form.fields.contacts` is navigation through a proxy, not a read, so the `@compute` depends on
+nothing and is **built once for the life of the form**. The owner is still woken on every change — it
+cannot opt out — but it hands the diff back the same tree, and the diff stops immediately.
+
+Measured at 300 rows, one keystroke: **45 ms** with no per-field subscription, **1.9 ms** with each row
+watching its own field, **0.65 ms** with the container watching the array, **0.48 ms** with the body
+cached. The last step is small here because the owner's render is two vnodes; it is worth much more when
+a render builds a lot inline — 4.35 ms against 0.19 ms for one building 300 children.
+
+A `@compute` body pays off only while it reads nothing that moves. Any field read inside it — a
+`disabled={!this.form.isValid}` written there instead of in a button — puts the form's counter in its
+dependencies, and it is rebuilt on every keystroke again.
+
 ## Labels, ids and accessibility
 
 `bind` supplies `name`, which is what a form posts under and what a `<label for>` cannot use.

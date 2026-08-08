@@ -36,7 +36,7 @@
  *
  * ## Can a long-running app exhaust it? No — measured
  *
- * A realistic component (a `@compute`, an `@effect`, a handler) consumes **3.00
+ * A realistic component (a `@compute`, a subscription, a handler) consumes **3.00
  * ids**, measured over a 500-row keyed list. At a brutal sustained 10 000
  * component creations per second — 30 040 ids/sec — reaching
  * `Number.MAX_SAFE_INTEGER` takes about **9 500 years**.

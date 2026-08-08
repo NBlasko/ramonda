@@ -232,14 +232,14 @@ export class Head extends Hook<HeadOptions> {
    * string does. So this runs exactly when the options moved, and never for a render that
    * changed something else. No snapshot field to keep, and no comparison of its own.
    *
-   * ## Why this is not an `@effect`, which is what it used to be
+   * ## Why the re-apply is a `@watchProp` rather than an effect
    *
    * Order. `@created` runs parent→child, so a route nested in a layout applies last and
    * wins — the semantics anyone would expect. Effects run the other way (child→parent, so
-   * a parent's `@mounted` sees its children mounted), so an effect that re-applied handed the
-   * title straight back to the layout on the first commit. That needed a guard: compare
+   * a parent's `@mounted` sees its children mounted), so re-applying from one hands the
+   * title straight back to the layout on the first commit. That needs a guard: compare
    * against the last applied snapshot, and let the first run be a no-op because `@created`
-   * had already done it in the right order.
+   * has already done it in the right order.
    *
    * A `@watchProp` runs in the build phase, in the same parent→child order as `@created`, and
    * **does not fire on mount at all** — so the first application belongs to `@created`, later

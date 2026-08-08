@@ -16,7 +16,7 @@ import { diagnose } from "../debug/diagnostics";
  * component has no such prop, or worse, a different value with the same name — and
  * a hook whose own prop changed never fired at all. The decorator's whole purpose
  * on a hook (sync derived state before the render, without the extra pass an
- * `@effect` costs) was unreachable.
+ * an effect costs) was unreachable.
  *
  * Read live rather than captured: `rawProps` is REPLACED on every update
  * (`useCommon`'s update function assigns a new bag, and the build path assigns the

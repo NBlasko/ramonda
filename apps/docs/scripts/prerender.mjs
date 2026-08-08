@@ -123,9 +123,8 @@ console.log(`[docs] ${"(not found)".padEnd(24)} → dist/404.html  ${Buffer.byte
 /**
  * Redirects for pages that have moved, as a Cloudflare Pages `_redirects` file.
  *
- * `/concepts/effects` became `/concepts/subscriptions` when `@effect` was removed, and the
- * old URL started returning 404 on the deployed site the moment that shipped — measured,
- * not assumed. A renamed page is a broken link for everyone who saved the old one, and for
+ * `/concepts/effects` became `/concepts/subscriptions`, and the old URL started returning 404
+ * on the deployed site the moment the rename shipped — measured, not assumed. A renamed page is a broken link for everyone who saved the old one, and for
  * every search index that has it.
  *
  * A file rather than a route: the host answers with a 301 before the app is ever loaded, so

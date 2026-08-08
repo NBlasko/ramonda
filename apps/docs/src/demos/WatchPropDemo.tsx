@@ -5,7 +5,7 @@ import { Component, Host, list, state, watchProp, memoizedHandler } from "@ramon
 const USERS = ["ada", "grace", "alan"];
 
 // @watchProp reacts to one prop changing, BEFORE the render — so derived state is
-// already correct when render() runs, with no second pass. An @effect would work
+// already correct when render() runs, with no second pass. An effect would work
 // too, but it runs after the commit and its write causes another render.
 //
 // Type it by annotating the SELECTOR's parameter. That fills in both the props

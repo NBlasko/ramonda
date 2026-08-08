@@ -224,7 +224,7 @@ describe("Query", () => {
   });
 
   test("an unrelated re-render does not refetch", async () => {
-    // The trap this locks down: driving the subscription from an @effect that
+    // The trap this locks down: driving the subscription from an effect that
     // reads `props.key` re-runs on every owner render, because the key is a fresh
     // array literal each time — so an unrelated state change would abort the
     // request in flight and start another.
@@ -448,7 +448,7 @@ describe("Query", () => {
       expect(fetcher).not.toHaveBeenCalled();
       expect(container.querySelector("#out")!.textContent).toBe("pending");
 
-      // Flipping it fetches. This works through an @effect that reads only
+      // Flipping it fetches. This works through an effect that reads only
       // `enabled` — safe because a boolean signal compares by value, unlike the
       // key array.
       await act(async () => {

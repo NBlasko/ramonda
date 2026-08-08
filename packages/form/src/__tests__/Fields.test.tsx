@@ -58,6 +58,12 @@ function host(initial: unknown) {
       items.splice(start, remove, ...insert);
       values = writeAt(values, path, items);
     },
+    // The tree is exercised here WITHOUT the per-field subscriptions — the fake host watches nothing,
+    // which is what keeps these assertions about the tree. `Field` has its own suite.
+    watch: () => {
+      throw new Error("this suite does not watch fields");
+    },
+    unwatch: () => {},
     move: (path: Path, from: number, to: number) => {
       const value = readAt(values, path);
       const items = Array.isArray(value) ? [...value] : [];
@@ -71,6 +77,7 @@ interface Shape {
   email: string;
   agree: boolean;
   age: number;
+  when: Date;
   address: { street: string; city: string };
   contacts: { kind: string; value: string }[];
 }
@@ -84,6 +91,9 @@ const SEED: Shape = {
   email: "a@b.c",
   agree: false,
   age: 30,
+  // Built from local parts on purpose — see the date tests, where the whole question is which
+  // calendar day the reader is shown.
+  when: new Date(2026, 7, 7, 1, 0, 0),
   address: { street: "Knez Mihailova", city: "Beograd" },
   contacts: [{ kind: "email", value: "x@y.z" }],
 };
@@ -210,6 +220,100 @@ describe("the field tree", () => {
     handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "" }));
 
     expect((h.values as Shape).age).toBe("");
+  });
+
+  /**
+   * A date control shows the day the reader is in, not the day UTC is in.
+   *
+   * `toISOString().slice(0, 10)` is the obvious way to write this and is wrong for most of the
+   * world: 01:00 on the 7th in Belgrade is 23:00 on the 6th in UTC, so the control showed the 6th —
+   * and picking that same shown day wrote the 6th back. The reader's date moved a day by being
+   * looked at.
+   *
+   * **Two times, and that is deliberate.** One assertion cannot fail in every zone: an early hour
+   * only crosses the UTC boundary where the offset is positive, a late hour only where it is
+   * negative. Together they catch the fault whichever side of Greenwich the runner sits on, and both
+   * pass once the formatting is local. In UTC exactly there is nothing to catch, and both pass either
+   * way — which is honest, because there is no bug there.
+   */
+  test("a date control shows the reader's calendar day, in any timezone", () => {
+    const early = tree({ ...SEED, when: new Date(2026, 7, 7, 1, 0, 0) });
+    expect(early.fields.when.$.bind).toMatchObject({ type: "date", value: "2026-08-07" });
+
+    const late = tree({ ...SEED, when: new Date(2026, 7, 7, 23, 0, 0) });
+    expect(late.fields.when.$.bind).toMatchObject({ type: "date", value: "2026-08-07" });
+  });
+
+  test("picking the day the control already showed changes nothing", () => {
+    // The round trip is where the drift became data loss: read the shown value, hand it straight
+    // back as the control does, and the value must not move.
+    for (const hour of [1, 23]) {
+      const { h, fields } = tree({ ...SEED, when: new Date(2026, 7, 7, hour, 30, 0) });
+      const shown = fields.when.$.bind.value as string;
+
+      handler(fields.when.$.bind, "onInput")(inputEvent("date", { value: shown }));
+
+      const after = (h.values as Shape).when;
+      expect(after).toBeInstanceOf(Date);
+      expect([after.getFullYear(), after.getMonth(), after.getDate()]).toEqual([2026, 7, 7]);
+      // The time it already held is carried across: a date input cannot express one, so throwing it
+      // away would silently move an appointment to midnight.
+      expect([after.getHours(), after.getMinutes()]).toEqual([hour, 30]);
+    }
+  });
+
+  test("picking a different day moves to that day, and only that day", () => {
+    const { h, fields } = tree({ ...SEED, when: new Date(2026, 7, 7, 9, 15, 0) });
+
+    handler(fields.when.$.bind, "onInput")(inputEvent("date", { value: "2026-12-31" }));
+
+    const after = (h.values as Shape).when;
+    expect([after.getFullYear(), after.getMonth(), after.getDate()]).toEqual([2026, 11, 31]);
+    expect([after.getHours(), after.getMinutes()]).toEqual([9, 15]);
+  });
+
+  /**
+   * An emptied number input is still a number input.
+   *
+   * `bind` reads the control's kind off the value's runtime type, and `fromControl` writes `""` for
+   * an emptied number field — deliberately, so a schema can report on it instead of `NaN` poisoning
+   * arithmetic. The two together lost the control: `""` is a string, so `type: "number"` disappeared
+   * from the attributes, the element reverted to text, and every later `fromControl` read it as text
+   * and wrote a string. The field never became numeric again — the spinner gone, and on a phone the
+   * numeric keyboard gone mid-entry.
+   */
+  test("a number field that the reader clears is still a number field", () => {
+    const { h, fields } = tree(SEED);
+    expect(fields.age.$.bind).toMatchObject({ type: "number", value: 30 });
+
+    handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "" }));
+    expect((h.values as Shape).age).toBe("");
+
+    expect(fields.age.$.bind).toMatchObject({ type: "number", value: "" });
+
+    // And typing into it again produces a NUMBER, because the control it reads from is still one.
+    handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "7" }));
+    expect((h.values as Shape).age).toBe(7);
+  });
+
+  test("a cleared date field keeps its control too", () => {
+    const { fields } = tree(SEED);
+    expect(fields.when.$.bind).toMatchObject({ type: "date" });
+
+    // A date input that the reader clears hands back `""`, which no `Date` branch would match.
+    handler(fields.when.$.bind, "onInput")(inputEvent("date", { value: "" }));
+    expect(fields.when.$.bind).toMatchObject({ type: "date", value: "" });
+  });
+
+  test("a text field stays a text field, and never claims a type it was not given", () => {
+    // The memory above must not leak into an ordinary string: an empty text field is not a number
+    // input waiting to be filled.
+    const { h, fields } = tree(SEED);
+
+    handler(fields.email.$.bind, "onInput")(inputEvent("text", { value: "" }));
+
+    expect((h.values as Shape).email).toBe("");
+    expect(Object.hasOwn(fields.email.$.bind, "type")).toBe(false);
   });
 
   test("blur marks the field touched and nothing else", () => {

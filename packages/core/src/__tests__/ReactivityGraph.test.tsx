@@ -18,7 +18,7 @@ describe("reactivity graph", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
-  test("an @effect re-runs when a @compute it reads changes", async () => {
+  test("an effect re-runs when a @compute it reads changes", async () => {
     const seen: number[] = [];
 
     @Host("div")
@@ -212,7 +212,7 @@ describe("reactivity graph", () => {
     expect(app.container.textContent).toBe("y3");
   });
 
-  test("an @effect drops a dependency it stopped reading", async () => {
+  test("an effect drops a dependency it stopped reading", async () => {
     const seen: string[] = [];
 
     @Host("div")

@@ -105,6 +105,9 @@ export interface Collision<
  * And it takes the handle away. `const email = form.fields.email.$` reads `email.value`
  * and `email.error` with no prefix at all, and a shared field component takes a
  * `FieldApi<string>` — neither is possible when the node and the API are one object.
+ *
+ * A shared component gets that shape from `Field`, which answers everything below and owns the
+ * subscription that makes such a component re-render at all.
  */
 export interface FieldApi<T> {
   /** The value as HELD — the input side, so a number input reads a string here. */

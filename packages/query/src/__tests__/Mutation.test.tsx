@@ -199,7 +199,7 @@ describe("Mutation", () => {
         mutate: async (_title: string): Promise<Todo> => {
           throw new Error("rejected");
         },
-        // The same "return the cleanup" contract as @effect: what comes back is the
+        // The same "return the cleanup" contract as `createSubscriptionDecorator`: what comes back is the
         // rollback, and the framework calls it if the write fails.
         onMutate: (title: string, { client: c }: MutationContext) => {
           const previous = c.peek<string[]>(["todos"])?.data;

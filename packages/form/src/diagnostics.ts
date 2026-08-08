@@ -33,7 +33,7 @@ type Spec =
   | { readonly severity: "error"; readonly fix: string }
   | { readonly severity: "debug" | "info" | "warn"; readonly fix?: string };
 
-export type FormCode = "RMF001" | "RMF002" | "RMF003";
+export type FormCode = "RMF001" | "RMF002" | "RMF003" | "RMF004";
 
 /**
  * Behind the flag, so a published build carries none of this text.
@@ -66,6 +66,15 @@ const SPECS: Record<FormCode, Spec> = __DEV__
           "The form calls `onSubmit` from a DOM submit event, where nobody is waiting on the promise it " +
           "returns — so a failure there is the app's to handle. Catch it inside the handler and turn it " +
           "into a message, a retry or a redirect.",
+      },
+      RMF004: {
+        severity: "error",
+        fix:
+          "Standard Schema says `validate` answers with a result or a promise of one — it does not say " +
+          "the promise resolves, and an async rule doing real work rejects whenever that work does. The " +
+          "form keeps the messages it already had and reports `isValid: false`, because it asked and did " +
+          "not hear back. Catch the failure inside the rule and turn it into an issue, so the reader is " +
+          "told what happened instead of facing a form that will not answer.",
       },
     }
   : ({} as Record<FormCode, Spec>);

@@ -50,7 +50,7 @@ describe("renderHook", () => {
 
     class Watching extends Hook<CounterOptions> {
       // `@created` for the first value and `@watchProp` for every one after it — a watchProp
-      // does not fire on mount. This was one `@effect` before that decorator was removed.
+      // does not fire on mount, which is what makes the pair the whole story.
       @created seed() {
         seen.push(this.props.start);
       }

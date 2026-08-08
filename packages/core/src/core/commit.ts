@@ -27,7 +27,7 @@ interface PendingMount {
  *   still mounts before its parent.
  * - **Per component: mounts, then lint, then effects** — the order they ran in
  *   before. Effects are deferred too rather than left inline; otherwise they
- *   would overtake @mounted, and an @effect that reads a field @mounted sets would
+ *   would overtake @mounted, and an effect that reads a field @mounted sets would
  *   start seeing it unset.
  *
  * Only the timing moved. Nothing changed order relative to anything else.

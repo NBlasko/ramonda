@@ -132,3 +132,39 @@ export function pathKey(path: Path): string {
 export function keyPrefix(path: Path): string {
   return path.length === 0 ? "" : `${pathKey(path)}${SEPARATOR}`;
 }
+
+/**
+ * A child's key, built from its parent's — the same string `pathKey` would produce for its path.
+ *
+ * For a walk of the whole value, which is what a submit does. Building the path array per node and
+ * running `pathKey` over it costs an allocation and a join each time. Kept here beside `pathKey` so the
+ * two spellings of one format cannot drift — see `markKeys` in `Form.ts` for what the difference is
+ * worth.
+ *
+ * `parentDepth` is what makes it exact rather than nearly. The root's key is the empty string, and so
+ * is the key of a path whose only segment is an empty-string property name — `pathKey([])` and
+ * `pathKey([""])` are both `""` — so a parent key alone cannot say which of the two it is, and the
+ * child would come out unseparated. The depth answers it.
+ */
+export function childKey(parentKey: string, parentDepth: number, segment: PathSegment): string {
+  const own = typeof segment === "number" ? `#${segment}` : segment;
+  return parentDepth === 0 ? own : `${parentKey}${SEPARATOR}${own}`;
+}
+
+/**
+ * The row number a key sits under, for a key somewhere beneath `prefix` — `undefined` if it is not
+ * under an index at all.
+ *
+ * `rows #12 v` answers 12, and so does `rows #12`. For dropping what an array no longer has: a form that
+ * once showed ten thousand rows kept a cached node and handle for every one of them.
+ */
+export function indexUnder(key: string, prefix: string): number | undefined {
+  if (!key.startsWith(prefix)) return undefined;
+
+  const end = key.indexOf(SEPARATOR, prefix.length);
+  const segment = end === -1 ? key.slice(prefix.length) : key.slice(prefix.length, end);
+  if (!segment.startsWith("#")) return undefined;
+
+  const index = Number(segment.slice(1));
+  return Number.isInteger(index) && index >= 0 ? index : undefined;
+}

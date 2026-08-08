@@ -1259,7 +1259,7 @@ function buildComponent(
   }
 
   // Deferred with the rest, not left inline: this is what attaches @onElement
-  // listeners and runs @effect for the first time, and running it inline would
+  // listeners and runs effects for the first time, and running it inline would
   // move it ahead of @mounted. No-op on the server.
   queuePostCommit(component, () => runComponentEffects(component));
   return enhancedNode;

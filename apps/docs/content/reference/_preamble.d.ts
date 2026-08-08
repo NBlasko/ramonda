@@ -12,5 +12,7 @@ declare global {
   }
   const f: any;
   const register: (...args: any[]) => any;
+  /** The reader's own lookup, for the async-validation examples. */
+  const taken: (value: string) => Promise<boolean>;
   const sessionKey: RequestKey<unknown>;
 }

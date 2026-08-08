@@ -733,9 +733,8 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /**
    * Starts the fetch that flipping `enabled` unblocks.
    *
-   * This was an `@effect` reading `this.props.enabled` (that decorator is gone now), and
-   * `@watchProp` is better at
-   * the same job in every way that can be measured:
+   * `@watchProp` rather than a body that reacts to whatever it read, and the difference is
+   * measurable in three ways:
    *
    * - **It fires only on a change**, so the "is this the first run?" guard is gone.
    *   The effect ran once on the first commit whether or not anything had flipped,

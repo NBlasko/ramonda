@@ -25,6 +25,22 @@ export interface Validation<Out> {
 export const NO_ISSUES: Issues = new Map();
 
 /**
+ * One shared empty list, for every field that has nothing to say — which is most of them, most of the
+ * time.
+ *
+ * **Safe to share for the same reason `NO_ISSUES` is**: nothing writes into it. Every message list is
+ * built fresh by `collect` or copied by `withIssue`, so this one is only ever HANDED BACK. Frozen as
+ * well, because unlike `NO_ISSUES` it leaves the package — `field.$.errors` and `form.formErrors` are
+ * public — and a caller who pushes into what they were given should hear about it rather than corrupt
+ * what every other field is reading.
+ *
+ * And sharing is not only safe, it is the point. A fresh `[]` per read is a new identity every render,
+ * which is what RMD020 reports and what would cost a field its element — the same reason `EMPTY` exists
+ * in `fieldTree.ts` for a list with no rows.
+ */
+export const NO_MESSAGES: readonly string[] = Object.freeze([]);
+
+/**
  * Runs a schema and files every message under the field it belongs to.
  *
  * Synchronous when the schema is: Standard Schema lets `validate` return either a result

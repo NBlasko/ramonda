@@ -22,12 +22,22 @@ import type { StandardResult, StandardSchemaV1 } from "../types";
 interface Values {
   name: string;
   email: string;
+  when: Date;
   address: { street: string; city: string };
   tags: string[];
   contacts: { kind: string; value: string }[];
 }
 
-const EMPTY: Values = { name: "", email: "", address: { street: "", city: "" }, tags: [], contacts: [] };
+const WHEN = new Date(2026, 7, 7, 9, 15, 0);
+
+const EMPTY: Values = {
+  name: "",
+  email: "",
+  when: WHEN,
+  address: { street: "", city: "" },
+  tags: [],
+  contacts: [],
+};
 
 /** Reports on an empty `name`, so a message can be watched as the defaults move under it. */
 const schema: StandardSchemaV1<Values, Values> = {
@@ -185,6 +195,41 @@ describe("defaults that arrive late", () => {
       // The very same object: nothing was rebuilt, so nothing downstream sees a change either.
       expect(form.values).toBe(values);
       expect(page.renders).toBe(page.baseline);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a rebuilt Date that means the same moment changes nothing either", () => {
+    /**
+     * The comparison recurses through arrays and plain objects and hands everything else to
+     * `Object.is`, which is what keeps a `File` one comparison rather than a walk of its internals.
+     * But two `Date`s for one moment are not `Object.is`-equal, and a defaults factory writing
+     * `when: new Date(iso)` builds a fresh one every run — so the field was replaced, the messages
+     * under it dropped, and the whole schema re-run, on every render of the owner, for a value that
+     * had not moved.
+     *
+     * A `Date` is compared by the moment it names. Nothing else changes: an object with a
+     * `getTime` method is not a `Date` and still compares by identity.
+     */
+    const { form, page, arrive, unmount } = mount({ ...EMPTY, name: "Ada" });
+    try {
+      const values = form.values;
+      arrive({ ...EMPTY, name: "Ada", when: new Date(WHEN.getTime()) });
+
+      expect(form.values).toBe(values);
+      expect(page.renders).toBe(page.baseline);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a Date that names a different moment does arrive", () => {
+    const { form, arrive, unmount } = mount();
+    try {
+      arrive({ ...EMPTY, when: new Date(2027, 0, 1, 0, 0, 0) });
+
+      expect(form.values.when.getFullYear()).toBe(2027);
     } finally {
       unmount();
     }
@@ -364,8 +409,7 @@ describe("what the form says about itself afterwards", () => {
     try {
       arrive({ ...EMPTY, name: "Ada" });
 
-      // `dirtyAt` compares against `props.defaultValues`, which is the new record — and the field
-      // holds exactly it.
+      // The baseline moved to the new record with the values, and the field holds exactly it.
       expect(form.fields.name.$.dirty).toBe(false);
       expect(form.isDirty).toBe(false);
     } finally {
@@ -434,6 +478,52 @@ describe("what the form says about itself afterwards", () => {
       arrive({ ...EMPTY, name: "Ada" });
 
       expect(form.values.name).toBe("Ada");
+    } finally {
+      unmount();
+    }
+  });
+
+  /**
+   * `reset(record)` is not an edit, so nothing is dirty afterwards.
+   *
+   * The class already holds the answer: `reset` moves the baseline to the values it was given —
+   * "nothing in a form that was just reset is the user's" — which is what lets a later default in.
+   * But `dirtyAt` was comparing against `props.defaultValues` instead, so the two disagreed, and the
+   * most ordinary flow there is — fetch the record, `form.reset(record)` — reported a dirty form that
+   * nobody had touched. The unsaved-changes guard fires on leaving, and Save comes up enabled.
+   *
+   * One baseline, read by everything that asks "has the user changed this".
+   */
+  test("a form that was just reset to a record is not dirty", () => {
+    const { form, unmount } = mount();
+    try {
+      form.reset({ ...EMPTY, name: "from the server", email: "ada@example.com" });
+
+      expect(form.isDirty).toBe(false);
+      expect(form.fields.name.$.dirty).toBe(false);
+      expect(form.fields.email.$.dirty).toBe(false);
+
+      // And it becomes dirty the moment somebody does type.
+      form.fields.name.$.set("typed by user");
+      expect(form.fields.name.$.dirty).toBe(true);
+      expect(form.isDirty).toBe(true);
+
+      // Back to the record it was reset to, not to the original defaults.
+      form.fields.name.$.set("from the server");
+      expect(form.fields.name.$.dirty).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a bare `reset()` measures against the defaults, as it always did", () => {
+    const { form, unmount } = mount();
+    try {
+      form.fields.name.$.set("typed by user");
+      expect(form.isDirty).toBe(true);
+
+      form.reset();
+      expect(form.isDirty).toBe(false);
     } finally {
       unmount();
     }

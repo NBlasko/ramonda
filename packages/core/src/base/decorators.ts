@@ -8,6 +8,7 @@ import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { claimMember } from "../debug/claimMember";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
@@ -56,9 +57,9 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * body with no contract about what it returns.
  *
  * `createSubscriptionDecorator` is the public door onto it — same machinery, with the
- * cleanup made the point rather than an option. There used to be a second door, `@effect`,
- * which handed the raw body straight through; it was removed in favour of naming what each
- * use of it was for. See the changeset for where each case went.
+ * cleanup made the point rather than an option, and it is the only one: a door that handed the
+ * raw body straight through would let a subscription be written with nothing to tear it down,
+ * and would put every use of it under one name whatever it was for.
  *
  * **Registration is not open-ended.** Effects run once per commit, from a queue
  * flushed after the DOM work. Anything pushed here during construction, `@created`
@@ -252,6 +253,16 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
     if (!self[STATE_KEYS]) self[STATE_KEYS] = new Set();
     self[STATE_KEYS].add(contextName);
 
+    // Two capabilities, because `@state` gives a field both: a signal, and a place in the hydration
+    // blob. Claiming the second is what lets `@persist` beside it be recognised as adding nothing.
+    if (__DEV__) {
+      claimMember(this, contextName, "state", "state");
+      // Both, because `@persist` beside this has to find `serialized` taken whichever of the two is
+      // written lower. `claimMember` caps at one report per member, so a doubled `@state` still says it
+      // once rather than once per capability.
+      claimMember(this, contextName, "state", "serialized");
+    }
+
     Object.defineProperty(this, contextName, {
       get() {
         return state.get();
@@ -297,7 +308,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
  * a restored scroll offset) shows one frame of the wrong layout. This runs in the
  * same task, before paint.
  *
- * ## It is not `@effect`, and the difference is the point
+ * ## It is not an effect, and the difference is the point
  *
  * **No dependencies.** Nothing is tracked while it runs, so there is no dependency
  * list to get wrong — and no repeat of the trap that makes an effect the wrong
@@ -718,7 +729,7 @@ export const destroyed = createLifecycleDecorator("destroys", "destroyed");
 
 /**
  * Syncs derived state BEFORE the render, when a selected prop changes — without
- * the extra re-render an `@effect` would cause. The selector picks the value (it
+ * the extra re-render an effect would cause. The selector picks the value (it
  * may reach deep: `p => p.foo[5].bar`) and the decorated method receives the new
  * and old value. It does NOT fire on mount; use `@created` for the initial seed.
  *
@@ -875,6 +886,8 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
   const originalMethod = target;
 
   context.addInitializer(function (this: any) {
+    if (__DEV__) claimMember(this, String(context.name), "memoizedHandler", "memoized");
+
     let instanceMap = memoMap.get(this);
 
     if (!instanceMap) {
@@ -977,6 +990,10 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
     const self = this as unknown as { [PERSIST_KEYS]?: Set<string> };
     if (!self[PERSIST_KEYS]) self[PERSIST_KEYS] = new Set();
     self[PERSIST_KEYS].add(contextName);
+
+    // The same capability `@state` claims, which is the whole point: on a field that is already
+    // `@state`, this adds nothing.
+    if (__DEV__) claimMember(this, contextName, "persist", "serialized");
   });
 }
 
@@ -1467,6 +1484,8 @@ export function compute<T, R>(
     const instance = this as { [GLOBAL_RUNTIME]: Runtime };
     const runtime = instance[GLOBAL_RUNTIME];
     const internalId = createId();
+
+    if (__DEV__) claimMember(this, String(context.name), "compute", "computed");
 
     const cache = {
       value: null as R | null,

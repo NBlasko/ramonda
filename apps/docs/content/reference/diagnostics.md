@@ -1080,6 +1080,31 @@ gives that back, and a route table that builds its lazies from a list is the usu
 
 See [lazy loading](/composition/lazy) for the whole picture.
 
+## RMD050 — A decorator whose effect this member already has
+
+```tsx expect-error
+@state @state count = 0;        // the same one twice
+@state @persist token = "";     // @state already puts a field in the blob
+```
+
+Either the same decorator is on the member twice, or two of them give it the same thing. Delete the one
+that adds nothing.
+
+**A warning, not an error.** The member ends up right either way — a doubled `@state` renders once per
+write with the right value, because the second application installs the same accessor over the first.
+What is wrong is the belief that the second line was doing something.
+
+**Two decorators that do different work on one member are silent, and that is most pairs.** A method that
+is both `@created` and `@updated`, a handler on `@onWindow` and `@onDocument`, an `@interval` beside a
+`@timeout`, a `@watchProp` that is also an `@updated` — each runs twice on purpose, which is the reason
+for writing two.
+
+And the pairs that make no sense at all never reach this code: `@state` with `@compute`, `@compute` with
+`@persist`, `@state` with `@watchProp`, `@memoizedHandler` with `@compute` all **throw**, naming the member
+and what it is, because one of the two is on the wrong kind of member entirely.
+
+Reported once per member, not once per instance — a list of a thousand rows says it once.
+
 # Forms — `RMF`
 
 ## RMF001 — a field was assigned to
@@ -1125,6 +1150,38 @@ async save(values: Signup) {
     this.form.setError("email", "we could not reach the server");
   }
 }
+```
+
+## RMF004 — the schema's validation rejected
+
+Standard Schema says `validate` answers with a result or a promise of one. It does not say the
+promise resolves, and an async rule doing real work rejects whenever that work does — a uniqueness
+lookup against a server comes back as a rejected promise the moment the network fails. Every
+validator propagates it.
+
+The form keeps the messages it already had, because blanking them would claim the values had been
+re-answered, and reports `isValid: false` — "we asked and did not hear back" is not "nothing
+failed". A submit whose validation rejected does not call `onSubmit`, and releases `isSubmitting`
+so the button is usable again.
+
+Catch the failure inside the rule and turn it into an issue, so the reader is told what happened
+instead of facing a form that will not answer:
+
+```ts
+import { object, string } from "bguard";
+import type { ExceptionContext } from "bguard/core";
+
+const schema = object({
+  email: string().customAsync(async (received: string, ctx: ExceptionContext) => {
+    try {
+      if (await taken(received)) ctx.addIssue("unused", received, "u:taken");
+    } catch {
+      // The lookup failed, which is not the same as the address being taken. Saying so is what
+      // keeps the form answerable.
+      ctx.addIssue("a reachable server", received, "u:unreachable");
+    }
+  }),
+});
 ```
 
 # Query — `RMQ`

@@ -1,4 +1,4 @@
-import { type Path, type PathSegment, pathKey, pathToString } from "./path";
+import { indexUnder, keyPrefix, type Path, type PathSegment, pathKey, pathToString } from "./path";
 import type { FieldNode, Row } from "./types";
 import { REFUSAL, refuse } from "./diagnostics";
 
@@ -17,10 +17,56 @@ export interface FieldHost {
   rowIds(path: Path): readonly string[];
   splice(path: Path, start: number, remove: number, insert: readonly unknown[]): void;
   move(path: Path, from: number, to: number): void;
+  watch(path: Path, watcher: Watcher): FieldHandle;
+  unwatch(path: Path, watcher: Watcher): void;
+}
+
+/**
+ * WHAT changed about a field, as a bitmask.
+ *
+ * A watcher hears only about the kinds of change it actually reads, and the case that makes it worth
+ * having is a list: a component rendering `rows` shows `id`, `index` and `field`, none of which move
+ * when the value inside a row does. Without this it woke on every keystroke in every row it contained,
+ * and at three hundred rows that was the whole remaining cost of an edit.
+ *
+ * A number rather than a set of strings, because a wake happens per keystroke and passing a `Set`
+ * would allocate one each time; the test is a single `&`.
+ */
+export const ASPECT = {
+  /** A value at, under or over this path moved. */
+  value: 1,
+  /** A touch or edit mark changed, which is what decides whether a message is SHOWN. */
+  marks: 2,
+  /** The messages the schema files against this path. */
+  messages: 4,
+  /** An array changed LENGTH or order — what `rows` and `length` answer, and nothing else. */
+  shape: 8,
+} as const;
+
+/** Everything at once, for a reset or a submit — a change that reaches the whole form. */
+export const EVERY_ASPECT = ASPECT.value | ASPECT.marks | ASPECT.messages | ASPECT.shape;
+
+/**
+ * Something that wants to hear about one path.
+ *
+ * `Field` is the only implementation, and what it does with `bump` is increment a `@state` counter
+ * that belongs to the component which used it — so the poke wakes exactly that component.
+ */
+export interface Watcher {
+  bump(aspects: number): void;
 }
 
 /** Marks a node, so a diagnostic or an inspector can tell one from an ordinary object. */
 export const IS_FIELD_NODE = Symbol.for("ramonda.form.node");
+
+/**
+ * What a node answers to `Field`: the form behind it, and where in it this node sits.
+ *
+ * A node is a proxy over a path and holds neither, so this is the one way across. Not
+ * `Symbol.for` — this is internal to the package, and a registered symbol is reachable by name
+ * from anywhere, which would make the form's host part of its public surface by accident.
+ */
+export const FIELD_TARGET = Symbol("ramonda.form.target");
 
 /**
  * String keys a node answers itself rather than treating as a child.
@@ -70,6 +116,8 @@ export class FieldTree {
         get: (_target, property) => {
           if (property === "$") return this.handle(path);
           if (property === IS_FIELD_NODE) return true;
+          // The one way from a node back to the form it belongs to — see `Field`.
+          if (property === FIELD_TARGET) return { host: this.host, path };
           // Every other symbol, and the string names something else reaches for.
           if (typeof property === "symbol" || NOT_A_CHILD.has(property)) return undefined;
 
@@ -87,6 +135,32 @@ export class FieldTree {
 
     this.nodes.set(key, created);
     return created;
+  }
+
+  /**
+   * Drops what an array no longer has: the cached node and handle for every row at or past `from`.
+   *
+   * A node is created once and kept forever, which is what keeps `bind.onInput` one function per field
+   * (see above) — but "forever" was also true of a row that had been removed. Measured on a form grown
+   * to 5000 rows of two fields and then shrunk: **15002 nodes and 10001 handles** still held, one per
+   * index the array had ever reached, and each handle carries two bound closures and a row cache.
+   *
+   * Safe to drop exactly because the rows are gone: a caller still holding the node for row 6000 of an
+   * array with 3 rows is holding a row that does not exist, and the next one to appear at that index is
+   * a different row and should get a different node. Nothing that survives the shrink loses its
+   * identity — only indexes past the new length are touched.
+   */
+  forgetFrom(path: Path, from: number): void {
+    const prefix = keyPrefix(path);
+
+    for (const key of this.nodes.keys()) {
+      const index = indexUnder(key, prefix);
+      if (index !== undefined && index >= from) this.nodes.delete(key);
+    }
+    for (const key of this.handles.keys()) {
+      const index = indexUnder(key, prefix);
+      if (index !== undefined && index >= from) this.handles.delete(key);
+    }
   }
 
   private handle(path: Path): FieldHandle {
@@ -184,12 +258,46 @@ export class FieldHandle {
       "aria-invalid": invalid,
     };
 
-    if (typeof value === "boolean") return { ...common, type: "checkbox", checked: value };
-    if (typeof value === "number") return { ...common, type: "number", value };
-    if (value instanceof Date) return { ...common, type: "date", value: toDateInput(value) };
-
-    return { ...common, value: value === null || value === undefined ? "" : String(value) };
+    switch (this.controlFor(value)) {
+      case "checkbox":
+        return { ...common, type: "checkbox", checked: value === true };
+      case "number":
+        // `""` for an emptied field, which is what `fromControl` wrote and what the schema reports on.
+        return { ...common, type: "number", value: typeof value === "number" ? value : "" };
+      case "date":
+        return { ...common, type: "date", value: value instanceof Date ? toDateInput(value) : "" };
+      default:
+        return { ...common, value: value === null || value === undefined ? "" : String(value) };
+    }
   }
+
+  /**
+   * Which control this value belongs in — remembered, because an EMPTY value does not say.
+   *
+   * `fromControl` writes `""` for an emptied number field on purpose, so a schema can report
+   * "expected a number" instead of `NaN` poisoning arithmetic. But `""` is a string, so reading the
+   * kind off the runtime type alone lost the control the moment the reader pressed backspace:
+   * `type: "number"` vanished from the attributes, the element reverted to text, and from then on
+   * `fromControl` saw a text input and wrote strings. The field never became numeric again — the
+   * spinner gone, and on a phone the numeric keyboard gone mid-entry.
+   *
+   * So a present value decides AND is remembered, and an absent one reuses what the field already
+   * was. The handle is one object per path for the life of the form, which is what makes that memory
+   * the field's rather than a render's. It is derived from values on both sides of a hydration, so
+   * the server and the client reach the same answer.
+   *
+   * An ordinary string still answers `text` — the memory only fills a gap, it never invents a kind
+   * a value never had.
+   */
+  private controlFor(value: unknown): Control {
+    if (value === "" || value === null || value === undefined) return this.control ?? "text";
+
+    const kind = controlOf(value);
+    this.control = kind;
+    return kind;
+  }
+
+  private control: Control | undefined;
 
   /* ---- array members. The types keep these off a leaf; these throw if reached anyway. ---- */
 
@@ -209,23 +317,50 @@ export class FieldHandle {
     const items = this.list();
     const ids = this.host.rowIds(this.at_);
 
-    if (this.rowsCache && this.rowsItems === items && this.rowsIds === ids) return this.rowsCache;
+    if (this.rowsCache !== undefined && this.rowsItems === items && sameIds(this.rowsIds, ids)) return this.rowsCache;
 
-    const rows = items.map((_item, index) => ({
-      id: ids[index] as string,
-      index,
-      field: this.tree.node([...this.at_, index]) as FieldNode<unknown>,
-    }));
+    const rows = items.map((_item, index) => {
+      const id = ids[index] as string;
+      const kept = this.rowById.get(id);
+      // **One row object per row, for as long as the row is where it was.** `list({ as })` hands this
+      // object to a component as its `item` prop, so a fresh one is a changed prop — and a fresh one
+      // for every row is what made an edit in row 1 re-render all fifty. Nothing in it has changed
+      // for the others: the id is theirs, the index is the same, and the field node is one cached
+      // object per path already.
+      //
+      // A row whose INDEX moved does get a new object, and should: it is showing a different
+      // position, and `list()`'s `render(item, index)` contract says so too.
+      if (kept !== undefined && kept.index === index) return kept;
+
+      const built: Row<unknown> = {
+        id,
+        index,
+        field: this.tree.node([...this.at_, index]) as FieldNode<unknown>,
+      };
+      this.rowById.set(id, built);
+      return built;
+    });
+
+    // Rows that are gone stop being remembered, or the map grows for the life of the form.
+    if (this.rowById.size > rows.length) {
+      const alive = new Set(rows.map((row) => row.id));
+      for (const id of [...this.rowById.keys()]) {
+        if (!alive.has(id)) this.rowById.delete(id);
+      }
+    }
 
     this.rowsCache = rows;
     this.rowsItems = items;
-    this.rowsIds = ids;
+    // COPIED, because `rowIds` hands back the array it keeps and tops up in place — so holding the
+    // reference would compare a list against itself and the cache would never notice a new row.
+    this.rowsIds = [...ids];
     return rows;
   }
 
   private rowsCache: readonly Row<unknown>[] | undefined;
   private rowsItems: readonly unknown[] | undefined;
   private rowsIds: readonly string[] | undefined;
+  private readonly rowById = new Map<string, Row<unknown>>();
 
   append(item: unknown): void {
     this.host.splice(this.at_, this.list().length, 0, [item]);
@@ -263,6 +398,23 @@ export class FieldHandle {
 /** One array for "no rows", so a render over an absent list does not build one (RMD020). */
 const EMPTY: readonly never[] = [];
 
+/** Whether two id lists are the same, by content — see why `rows` copies them. */
+function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolean {
+  if (a === undefined || a.length !== b.length) return false;
+  return a.every((id, index) => id === b[index]);
+}
+
+/** The kinds of control `bind` knows how to describe. `text` is the one that needs no `type`. */
+type Control = "checkbox" | "number" | "date" | "text";
+
+/** The control a PRESENT value belongs in. An absent one says nothing — see `controlFor`. */
+function controlOf(value: unknown): Control {
+  if (typeof value === "boolean") return "checkbox";
+  if (typeof value === "number") return "number";
+  if (value instanceof Date) return "date";
+  return "text";
+}
+
 /**
  * What the control produced.
  *
@@ -278,14 +430,50 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
   if (element.type === "checkbox") return element.checked;
   if (element.type === "number") return element.value === "" ? "" : Number(element.value);
   if (element.type === "date" && current instanceof Date) {
-    const parsed = new Date(element.value);
-    return Number.isNaN(parsed.getTime()) ? element.value : parsed;
+    return fromDateInput(element.value, current) ?? element.value;
   }
 
   return element.value;
 }
 
-/** `yyyy-mm-dd`, which is the only thing `<input type="date">` accepts. */
+/**
+ * `yyyy-mm-dd` for the day the READER is in, which is not always the day UTC is in.
+ *
+ * `toISOString().slice(0, 10)` is the obvious way to write this and it is wrong for most of the
+ * world: 01:00 on the 7th in Belgrade is 23:00 on the 6th in UTC, so the control showed the 6th and
+ * picking that same shown day wrote the 6th back — the reader's date moved by being looked at, and
+ * the wrong day was submitted. `<input type="date">` has no timezone; it shows a calendar day, and
+ * the calendar day a local `Date` means is its local one.
+ */
 function toDateInput(value: Date): string {
-  return Number.isNaN(value.getTime()) ? "" : (value.toISOString().slice(0, 10) as string);
+  if (Number.isNaN(value.getTime())) return "";
+
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+/**
+ * The day the reader picked, as a local `Date`, keeping the time the value already held.
+ *
+ * `new Date("2026-08-07")` parses as UTC midnight — the same drift as above, in reverse. Built from
+ * the parts instead, which is unambiguously local.
+ *
+ * **The time comes across.** A date input cannot express one, so a value that carried 09:15 would
+ * silently move to midnight, and an appointment would lose its hour to a change of day. `setFullYear`
+ * takes all three parts at once, so there is no intermediate date to overflow through.
+ *
+ * `undefined` for anything that is not a day — an empty control, or a half-typed one — and the caller
+ * keeps the raw text, which is a value a schema can report on.
+ */
+function fromDateInput(text: string, current: Date): Date | undefined {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (parts === null) return undefined;
+
+  const [year, month, day] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])];
+  // An invalid held value has no time worth carrying, so the picked day starts at local midnight.
+  if (Number.isNaN(current.getTime())) return new Date(year, month, day);
+
+  const next = new Date(current.getTime());
+  next.setFullYear(year, month, day);
+  return Number.isNaN(next.getTime()) ? undefined : next;
 }
