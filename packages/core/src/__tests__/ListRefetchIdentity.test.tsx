@@ -344,3 +344,47 @@ describe("a field that only restates the position does not decide identity", () 
     expect(app.container.querySelector("li")).toBe(second);
   });
 });
+
+describe("an id that happens to look like a position", () => {
+  test("editing the first row of an id-as-index list keeps it", async () => {
+    // `items.map((x, i) => ({ id: i, … }))` is an ordinary way to build rows, and
+    // it makes `id` equal its own index for every row. A rule that DISCARDED such
+    // a field — added so a form row's `index` could not outvote its `id` — threw
+    // away the only identity these rows have: editing the first row rebuilt it
+    // and lost what its component was holding.
+    //
+    // So a positional-looking match is worth less than a distinct one rather than
+    // nothing. The form row is decided by its `id`, and a row whose id is all it
+    // has still has it.
+    interface Indexed {
+      id: number;
+      t: string;
+    }
+
+    @Host("div")
+    class Rows extends Component {
+      @state rows: Indexed[] = [
+        { id: 0, t: "a" },
+        { id: 1, t: "b" },
+        { id: 2, t: "c" },
+      ];
+      render() {
+        return <ul>{list(this.rows, (r: Indexed) => <li>{r.t}</li>)}</ul>;
+      }
+    }
+
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    const before = [...app.container.querySelectorAll("li")];
+
+    app.instance.rows = [
+      { id: 0, t: "A" },
+      { id: 1, t: "b" },
+      { id: 2, t: "c" },
+    ];
+    await app.settle();
+
+    expect(texts(app.container)).toBe("A,b,c");
+    sameRows(app.container, before);
+  });
+});

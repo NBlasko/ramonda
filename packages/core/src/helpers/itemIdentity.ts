@@ -256,9 +256,12 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
  * equal its index by coincidence costs a little precision and cannot make a
  * false pair.
  */
+const DISTINCT = 2;
+const POSITIONAL = 1;
+
 function overlap(a: unknown, b: unknown, aAt: number, bAt: number, common: Set<string>): number {
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
-    return Object.is(a, b) ? 1 : 0;
+    return Object.is(a, b) ? DISTINCT : 0;
   }
 
   const left = a as Record<string, unknown>;
@@ -267,10 +270,19 @@ function overlap(a: unknown, b: unknown, aAt: number, bAt: number, common: Set<s
   for (const key of Object.keys(left)) {
     const value = left[key];
     if (value !== null && typeof value === "object") continue;
-    if (value === aAt && right[key] === bAt) continue;
     // Shared by several rows, so it does not tell them apart. See `common`.
     if (common.has(`${key}\u0000${String(value)}`)) continue;
-    if (Object.is(value, right[key])) score++;
+    if (!Object.is(value, right[key])) continue;
+
+    // A match on a field that equals its own index on both sides is worth LESS,
+    // not nothing. Both readings are real: `{ id, index, field }` has a field
+    // that only restates the position, and `items.map((x, i) => ({ id: i }))`
+    // has an identity that happens to look like one. Discarding it fixed the
+    // first and broke the second — measured: editing the first row of an
+    // id-as-index list rebuilt it and lost what its component held. Weighted, the
+    // form row is decided by its `id` (a full match beats a positional one) and
+    // the id-as-index row still has its half point when nothing else is left.
+    score += value === aAt && right[key] === bAt ? POSITIONAL : DISTINCT;
   }
   return score;
 }
