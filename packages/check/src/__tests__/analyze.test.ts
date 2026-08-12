@@ -70,6 +70,36 @@ describe("it can see the app at all", () => {
 });
 
 /**
+ * A component is a DECLARATION, not a name.
+ *
+ * This repository's own documentation app declares `class Page` seventy-five times, one per page,
+ * and every one of them was the same node: one set of providers, one set of consumers, one set of
+ * children. 146 component and hook classes were reported as 72.
+ *
+ * The fixture is that fault at its smallest — two classes called `Page`, one mounting the provider
+ * and one not, both rendering the same consumer. Merged, the provider from the first covers the
+ * second and the broken path is SILENT.
+ */
+describe("two components with one name are two components", () => {
+  test("counts both, and finds the path that has no provider", () => {
+    const { issues, counts } = run("same-name");
+    // Reader, both Pages, App.
+    expect(counts.components).toBe(4);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Reader");
+    // Both classes are called `Page`, so the path reads the same either way — the DATA is what
+    // separates them, and only the branch through the provider-less one is reported.
+    expect(issues[0].path).toEqual(["App", "Page", "Reader"]);
+  });
+
+  test("an import alias reaches the class it renames", () => {
+    // `<Themed />` is `Page` under another name. Resolving a tag by name never found it at all,
+    // which is the other half of the same fault: a missed edge is a walk that stops early.
+    expect(run("same-name").issues[0].path[1]).toBe("Page");
+  });
+});
+
+/**
  * Which classes are components.
  *
  * The membership test decided this by reading one heritage clause and saying yes to a class

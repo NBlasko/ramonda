@@ -171,6 +171,19 @@ interface ContextFact {
 }
 
 interface ComponentNode {
+  /**
+   * The DECLARATION SITE, which is what a component is identified by.
+   *
+   * It was the class name, and a name is not an identity: this repository's own documentation app
+   * declares `class Page` seventy-five times, one per page, and a name-keyed map made them one node
+   * sharing one set of providers, consumers and children. Measured: 146 component and hook classes
+   * reported as 72.
+   *
+   * Everything that names a component — a JSX tag, `list({ as })`, a route table, `bootstrap` — is
+   * resolved to its symbol and looked up here, so a tag also has to be in scope to match, which a
+   * name lookup never checked.
+   */
+  id: string;
   name: string;
   file: string;
   line: number;
@@ -178,10 +191,10 @@ interface ComponentNode {
   provides: Set<string>;
   /** context id → where it is consumed. */
   consumes: Map<string, { line: number; column: number }>;
-  /** Component names this one can render. */
-  renders: Set<string>;
-  /** Hooks (or components) this one mounts with `this.use(...)`, by name. */
-  uses: Set<string>;
+  /** Components this one can render. */
+  renders: Set<ComponentNode>;
+  /** Hooks (or components) this one mounts with `this.use(...)`. */
+  uses: Set<ComponentNode>;
   /**
    * Set when the class does something the analyzer cannot follow (a provider chosen at runtime).
    * Everything below such a node is left alone — it might be providing anything.
@@ -277,17 +290,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const consumerSymbols = new Map<ts.Symbol, ContextFact>();
   const contexts = new Map<string, ContextFact>();
 
-  /** Symbol of a `createRoutes(...)` binding → the component names in its table. */
-  const routeTables = new Map<ts.Symbol, Set<string>>();
+  /**
+   * Symbol of a `createRoutes(...)` binding → the tag names in its table, as NODES.
+   *
+   * The nodes rather than their text, because a view is resolved to a component by symbol and the
+   * table is read in pass 1, before every class is known.
+   */
+  const routeTables = new Map<ts.Symbol, ts.Node[]>();
 
-  const components = new Map<string, ComponentNode>();
+  /** Every component and hook class, by the symbol of its declaration — see `ComponentNode.id`. */
+  const components = new Map<ts.Symbol, ComponentNode>();
   const arrowFields: ArrowFieldIssue[] = [];
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
-  const classSymbolToName = new Map<ts.Symbol, string>();
-  const roots = new Set<string>();
-  /** Where a hook was used, so a context it carries is reported at the use site. */
-  const useSites = new Map<string, { line: number; column: number }>();
+  const roots = new Set<ComponentNode>();
 
   const sources = program.getSourceFiles().filter((f) => !f.isDeclarationFile && !f.fileName.includes("node_modules"));
 
@@ -305,12 +321,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   for (const file of sources) {
     ts.forEachChild(file, function visit(node) {
       if (ts.isClassDeclaration(node) && node.name) {
-        const node2 = components.get(node.name.text);
-        if (node2) {
-          readClassBody(node, node2);
-          readArrowFields(node, node2.name);
-          readDuplicateDecorators(node, node2.name);
-          readUnwatchedFields(node, node2.name);
+        const symbol = checker.getSymbolAtLocation(node.name);
+        const self = symbol && components.get(symbol);
+        if (self) {
+          readClassBody(node, self);
+          readArrowFields(node, self.name);
+          readDuplicateDecorators(node, self.name);
+          readUnwatchedFields(node, self.name);
         }
       }
       collectRoot(node);
@@ -368,10 +385,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const symbol = node.name && ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
     if (!symbol) return;
 
-    const views = new Set<string>();
+    const views: ts.Node[] = [];
     ts.forEachChild(node.initializer, function scan(n) {
-      const tag = jsxTagName(n);
-      if (tag) views.add(tag);
+      const opening = openingOf(n);
+      if (opening && jsxTagName(n)) views.push(opening.tagName);
       ts.forEachChild(n, scan);
     });
     routeTables.set(symbol, views);
@@ -380,8 +397,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   function collectClass(node: ts.Node): void {
     if (!ts.isClassDeclaration(node) || !node.name) return;
     if (!extendsComponentOrHook(node, checker)) return;
+    const symbol = checker.getSymbolAtLocation(node.name);
+    if (!symbol || components.has(symbol)) return;
     const pos = positionOf(node);
-    components.set(node.name.text, {
+    components.set(symbol, {
+      id: `${pos.file}:${pos.line}:${pos.column}#${node.name.text}`,
       name: node.name.text,
       file: pos.file,
       line: pos.line,
@@ -393,8 +413,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       opaque: false,
       usesChildren: node.getText().includes("children"),
     });
-    const symbol = checker.getSymbolAtLocation(node.name);
-    if (symbol) classSymbolToName.set(symbol, node.name.text);
   }
 
   /** `bootstrap(<App />, el)` / `hydrateRoot(<App />, el)` — where a tree starts. */
@@ -402,8 +420,16 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isCallExpression(node)) return;
     const name = calleeName(node);
     if (!name || !CORE_ROOTS.has(name)) return;
-    const tag = node.arguments[0] ? jsxTagName(node.arguments[0]) : undefined;
-    if (tag) roots.add(tag);
+    const opening = node.arguments[0] ? openingOf(node.arguments[0]) : undefined;
+    const target = opening && componentAt(opening.tagName);
+    if (target) roots.add(target);
+  }
+
+  /** The component a name in value position refers to, resolved through an import alias. */
+  function componentAt(node: ts.Node): ComponentNode | undefined {
+    if (!ts.isIdentifier(node)) return undefined;
+    const symbol = resolve(node);
+    return symbol && components.get(symbol);
   }
 
   function readClassBody(cls: ts.ClassDeclaration, self: ComponentNode): void {
@@ -425,17 +451,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           }
           // A hook can carry a context for its owner — `this.use(Router)` is how the router
           // publishes its own. Whatever that hook provides or consumes, the owner does too.
-          const usedClass = classSymbolToName.get(symbol);
-          if (usedClass && !provided && !consumed) {
-            self.uses.add(usedClass);
-            if (!useSites.has(usedClass)) useSites.set(usedClass, positionOf(node));
-          }
+          const usedClass = components.get(symbol);
+          if (usedClass && !provided && !consumed) self.uses.add(usedClass);
         }
       }
 
       // list({ as: Row }) — items render where the list sits, so the owner is this component.
       if (ts.isCallExpression(node) && calleeName(node) === "list") {
-        for (const name of componentsInListOptions(node)) self.renders.add(name);
+        for (const target of componentsInListOptions(node)) self.renders.add(target);
       }
 
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
@@ -444,8 +467,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
         const views = routeViewsOf(node);
         if (views.length > 0) {
-          const outlet = components.get("RouteOutlet");
-          for (const name of views) (outlet ?? self).renders.add(name);
+          const outlet = componentAt(node.tagName) ?? self;
+          for (const view of views) outlet.renders.add(view);
         }
       }
 
@@ -454,26 +477,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
     // JSX ownership needs its own walk, because children of a COMPONENT element belong to that
     // component, not to the class whose render() wrote them.
-    ts.forEachChild(cls, (n) => walkJsx(n, self.name));
+    ts.forEachChild(cls, (n) => walkJsx(n, self));
   }
 
   /**
    * Attributes and children of `<C>` belong to C (it decides where and whether to render them);
    * everything else belongs to the enclosing component.
    */
-  function walkJsx(node: ts.Node, owner: string): void {
-    const tag = jsxTagName(node);
-    if (tag) {
-      const ownerNode = components.get(owner);
-      if (ownerNode) ownerNode.renders.add(tag);
-
-      const nested = components.has(tag) ? tag : owner;
-      // Only descend into a component's children if it can actually mount them.
-      const child = components.get(tag);
-      const inner = child && !child.usesChildren ? owner : nested;
+  function walkJsx(node: ts.Node, owner: ComponentNode): void {
+    if (jsxTagName(node)) {
       const element = ts.isJsxElement(node) ? node : undefined;
-      if (element) for (const c of element.children) walkJsx(c, inner);
       const opening = element ? element.openingElement : (node as ts.JsxSelfClosingElement);
+      const child = componentAt(opening.tagName);
+      if (child) owner.renders.add(child);
+
+      const nested = child ?? owner;
+      // Only descend into a component's children if it can actually mount them.
+      const inner = child && !child.usesChildren ? owner : nested;
+      if (element) for (const c of element.children) walkJsx(c, inner);
       for (const attr of opening.attributes.properties) walkJsx(attr, nested);
       return;
     }
@@ -489,9 +510,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     for (let pass = 0; pass < 10; pass++) {
       let changed = false;
       for (const node of components.values()) {
-        for (const usedName of node.uses) {
-          const used = components.get(usedName);
-          if (!used) continue;
+        for (const used of node.uses) {
           if (used.opaque && !node.opaque) {
             node.opaque = true;
             changed = true;
@@ -526,23 +545,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
     return issues;
 
-    function visit(name: string, provided: Set<string>, path: string[], onPath: Set<string>): void {
-      if (onPath.has(name)) return; // a cycle: it adds no new ancestry
-      const node = components.get(name);
-      if (!node) return;
+    function visit(node: ComponentNode, provided: Set<string>, path: string[], onPath: Set<ComponentNode>): void {
+      if (onPath.has(node)) return; // a cycle: it adds no new ancestry
 
       const here = new Set(provided);
       for (const id of node.provides) here.add(id);
-      const nextPath = [...path, name];
+      const nextPath = [...path, node.name];
 
       for (const [contextId, where] of node.consumes) {
         if (here.has(contextId)) continue;
-        const key = `${contextId}@${name}`;
+        const key = `${contextId}@${node.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
         issues.push({
           context: contexts.get(contextId)?.label ?? "context",
-          consumer: name,
+          consumer: node.name,
           file: node.file,
           line: where.line,
           column: where.column,
@@ -553,7 +570,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       // An opaque class may provide anything, so stop judging below it.
       if (node.opaque) return;
 
-      const nextOnPath = new Set(onPath).add(name);
+      const nextOnPath = new Set(onPath).add(node);
       for (const child of node.renders) visit(child, here, nextPath, nextOnPath);
     }
   }
@@ -571,19 +588,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return checker.getSymbolAtLocation(element.name);
   }
 
-  function componentsInListOptions(call: ts.CallExpression): string[] {
+  function componentsInListOptions(call: ts.CallExpression): ComponentNode[] {
     const options = call.arguments[0];
     if (!options || !ts.isObjectLiteralExpression(options)) return [];
-    const found: string[] = [];
+    const found: ComponentNode[] = [];
     for (const prop of options.properties) {
       if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
       if (prop.name.text !== "as") continue;
-      if (ts.isIdentifier(prop.initializer)) found.push(prop.initializer.text);
+      const target = componentAt(prop.initializer);
+      if (target) found.push(target);
     }
     return found;
   }
 
-  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): string[] {
+  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): ComponentNode[] {
     if (opening.tagName.getText() !== "RouteOutlet") return [];
     for (const attr of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attr) || attr.name.getText() !== "routes") continue;
@@ -592,7 +610,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!ts.isIdentifier(value.expression)) continue;
       const symbol = resolve(value.expression);
       const views = symbol ? routeTables.get(symbol) : undefined;
-      if (views) return [...views];
+      if (views) return views.map((v) => componentAt(v)).filter((v): v is ComponentNode => v !== undefined);
     }
     return [];
   }
@@ -848,15 +866,20 @@ function bindingName(pattern: ts.ArrayBindingPattern, index: number): string | u
   return element.name.text;
 }
 
-/** The component name of a JSX tag, if this node is a JSX element at all. */
-function jsxTagName(node: ts.Node): string | undefined {
-  const opening = ts.isJsxElement(node)
+/** The opening element of a JSX node, whichever of the three shapes it is written in. */
+function openingOf(node: ts.Node): ts.JsxOpeningLikeElement | undefined {
+  return ts.isJsxElement(node)
     ? node.openingElement
     : ts.isJsxSelfClosingElement(node)
       ? node
       : ts.isJsxOpeningElement(node)
         ? node
         : undefined;
+}
+
+/** The component name of a JSX tag, if this node is a JSX element at all. */
+function jsxTagName(node: ts.Node): string | undefined {
+  const opening = openingOf(node);
   if (!opening) return undefined;
   const name = opening.tagName.getText();
   // Lowercase is an intrinsic element (`div`), which owns nothing.
