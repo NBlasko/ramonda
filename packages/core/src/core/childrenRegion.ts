@@ -35,6 +35,23 @@ export function isCloseAnchor(node: Node): boolean {
 }
 
 /**
+ * The id an anchor carries, for pairing an opening one with ITS closing one.
+ *
+ * Matching "the next close anchor" instead is not enough. A comment that merely
+ * reads like an opening anchor — a shell is entitled to one — would then pair
+ * with the close belonging to a real block further down, and everything between
+ * them, including that block's own opening anchor, would be read as one block.
+ * Measured: a stray `<!--r999-->` in front of the shell's `<meta>` swallowed it
+ * into a portal's collected markup and deleted it from the head.
+ */
+export function anchorId(node: Node): string | undefined {
+  if (node.nodeType !== 8) return undefined;
+  const data = (node as Comment).data;
+  const at = data.startsWith("/") ? 1 : 0;
+  return /^\/?r\d+$/.test(data) ? data.slice(at) : undefined;
+}
+
+/**
  * A contiguous run of children that something OTHER than an element's render
  * owns, reconciled by the real reconciler.
  *

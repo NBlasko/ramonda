@@ -31,13 +31,16 @@ function headPortalBlocks(): Comment[] {
   return [...document.head.childNodes].filter(isOpenAnchor) as Comment[];
 }
 
-/** Everything a portal left in the head, so one test cannot leak into the next. */
+/**
+ * Everything a portal left in the head, so one test cannot leak into the next.
+ *
+ * Every anchor comment, matched or not — this is cleanup, and an unmatched one is
+ * leftovers rather than a block to respect. `collectHead` is the one that has to
+ * tell them apart, and does; see the test at the bottom for why.
+ */
 function clearPortalBlocks(): void {
-  let depth = 0;
   for (const node of [...document.head.childNodes]) {
-    if (isOpenAnchor(node)) depth++;
-    if (depth > 0) node.remove();
-    if (isCloseAnchor(node)) depth--;
+    if (isOpenAnchor(node) || isCloseAnchor(node)) node.remove();
   }
 }
 
@@ -362,5 +365,46 @@ describe("Portal hydration restores components", () => {
 
     unmountChildrenNodes([container as unknown as never]);
     container.remove();
+  });
+});
+
+describe("a comment that only looks like an anchor", () => {
+  test("does not swallow the shell's head, or hide a real block", async () => {
+    // A portal's block is delimited by comments, and a shell is entitled to have
+    // one that reads the same way. Two ways of pairing them were wrong, and both
+    // were measured rather than imagined:
+    //
+    // Counting a running depth — an open that never closes swallowed everything
+    // after it, so `resetHead` DELETED the shell's own tags.
+    //
+    // Pairing with "the next close" — the stray comment took a real block's
+    // closing anchor, so the block in between was collected as part of it. And
+    // giving up at the first unmatched open hid every real block after it.
+    //
+    // So an anchor is matched to ITS close, by id, and an unmatched one is
+    // ignored while the scan carries on.
+    document.head.insertAdjacentHTML("beforeend", '<!--r999--><meta name="shell" content="stays">');
+
+    class Page extends Component {
+      portal = this.use(Portal, {
+        children: <meta name="mine" content="x" />,
+        target: document.head,
+      });
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+
+    // The shell's tag is untouched, and never claimed as part of a block …
+    expect(document.head.innerHTML).toContain('name="shell"');
+    expect(page.head).not.toContain('name="shell"');
+    // … while the portal's real block is still found and collected.
+    expect(page.head).toContain('name="mine"');
+
+    for (const node of [...document.head.childNodes]) {
+      if (node.nodeType === 8 || (node as Element).getAttribute?.("name") === "shell") node.remove();
+    }
   });
 });

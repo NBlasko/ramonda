@@ -4,7 +4,7 @@ import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
 import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
-import { isOpenAnchor, isCloseAnchor } from "../core/childrenRegion";
+import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
@@ -353,13 +353,11 @@ const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
  * them), and outside a block, the elements `Head` marked.
  */
 function collectHead(): { title: string; head: string } {
+  const inBlock = blockNodes(document.head);
   let head = "";
-  let depth = 0;
 
   for (let node = document.head.firstChild; node !== null; node = node.nextSibling) {
-    if (isOpenAnchor(node)) depth++;
-
-    if (depth > 0) {
+    if (inBlock.has(node)) {
       // Inside a portal's block, where a component may be sitting on any node —
       // `stampBlobs` only ever walked the body container, so a portalled
       // component reached the client with no state to restore.
@@ -368,11 +366,56 @@ function collectHead(): { title: string; head: string } {
     } else if (node.nodeType === 1 && (node as Element).matches(MANAGED_HEAD)) {
       head += (node as Element).outerHTML;
     }
-
-    if (isCloseAnchor(node)) depth--;
   }
 
   return { title: document.title, head };
+}
+
+/**
+ * The nodes belonging to a portal's block, anchors included.
+ *
+ * Paired in a first pass rather than counted with a running depth, because a
+ * depth that goes up and never comes down swallows the rest of the head. An
+ * OPENING anchor with no closing one is not a block — it is a comment that
+ * happens to read like ours, and a shell is entitled to have one. Counted
+ * instead, `resetHead` deleted every tag after it: measured with a stray
+ * `<!--r999-->` in front of the shell's own `<meta>`, which vanished.
+ *
+ * So an unmatched anchor is ignored, and what is between a real pair is the
+ * block. Nesting is not a case here — a region's block holds elements and text,
+ * and a region inside a region belongs to a different target.
+ */
+function blockNodes(head: Node): Set<Node> {
+  const nodes: Node[] = [];
+  for (let node = head.firstChild; node !== null; node = node.nextSibling) nodes.push(node);
+
+  const inBlock = new Set<Node>();
+
+  for (let at = 0; at < nodes.length; at++) {
+    if (!isOpenAnchor(nodes[at])) continue;
+    const id = anchorId(nodes[at]);
+
+    // ITS close, by id. Scanning for "the next close" instead let a comment that
+    // merely reads like an anchor pair with a real block's close, swallowing the
+    // block in between; and giving up at the first unmatched open let that same
+    // comment hide every real block after it. Neither is hypothetical — both were
+    // measured with a stray `<!--r999-->` in front of the shell's own `<meta>`.
+    let end = -1;
+    for (let scan = at + 1; scan < nodes.length; scan++) {
+      if (isCloseAnchor(nodes[scan]) && anchorId(nodes[scan]) === id) {
+        end = scan;
+        break;
+      }
+    }
+    // No close of its own: not a block, and the scan carries on past it so a real
+    // one further down is still found.
+    if (end === -1) continue;
+
+    for (let inside = at; inside <= end; inside++) inBlock.add(nodes[inside]);
+    at = end;
+  }
+
+  return inBlock;
 }
 
 /**
@@ -401,12 +444,8 @@ function resetHead(): void {
   // A portal's block, anchors and all. Nothing tears a server render's tree down
   // on the way out, so its regions never dispose themselves — without this a
   // long-lived server process accumulates one block per portal per request.
-  let depth = 0;
-  for (const node of Array.from(document.head.childNodes)) {
-    if (isOpenAnchor(node)) depth++;
-    if (depth > 0) node.remove();
-    if (isCloseAnchor(node)) depth--;
-  }
+  // Only COMPLETE blocks: see `blockNodes` for what an unmatched anchor cost.
+  for (const node of blockNodes(document.head)) (node as ChildNode).remove();
   document.title = "";
   // The registry goes with the tags: it holds the elements just removed and the
   // title to go back to, both of which belong to the request that is ending.
