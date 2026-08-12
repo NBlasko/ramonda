@@ -3,12 +3,24 @@
 "@ramonda/core": patch
 ---
 
-A lens write keeps the row's identity.
+A lens write keeps hidden symbols across an edit, and `set` takes an option.
 
 `list()` recognises a row by the object it holds. Every immutable update replaces that object, so the row was torn down and built again — taking whatever its component was holding with it: a half-typed input, an open menu, a scroll position.
 
-Anything looking at the result afterwards has to GUESS which new object is which old row. A lens write does not have to: at the moment it replaces a value it is holding both versions, so the answer is known. It now carries the marker across, and a `focusOn(rows).at(0).merge({ done: true })` keeps that row's component exactly as it was.
+Anything looking at the result afterwards has to GUESS which new object is which old row. A lens write does not have to: at the moment it replaces a value it is holding both versions, so the answer is known. It now carries the value's non-enumerable symbols onto the copy, and `focusOn(rows).at(0).merge({ done: true })` keeps that row's component exactly as it was.
 
-The marker comes from the global symbol registry (`Symbol.for("ramonda.row")`), so lens still depends on nothing — with core present the two agree, and without it there is never a marker to carry.
+`set` is the exception. It is handed a value rather than deriving one, so `set(edited)` and `set(aDifferentRow)` are the same call, and carrying would give a different row the open editor of the row it replaced. It keeps nothing unless told:
 
-`1.33 KB → 1.46 KB` gzipped.
+```ts
+focusOn(rows).at(0).set(other);                            // a different row
+focusOn(rows).at(0).set(rebuilt, { keepSymbols: true });   // the same row, rebuilt
+focusOn(rows).at(0).set(rebuilt, { keepSymbols: [MINE] }); // only this one
+```
+
+The lens knows nothing about what the symbols mean — `keepSymbols` is generic, and `merge`, `update` and a write aimed deeper all keep automatically because they derive. Core exports `SAME_ROW` as the ready-made option, so an app never has to name the symbol behind it:
+
+```ts
+this.rows = focusOn(this.rows).at(0).set(fromTheForm, SAME_ROW);
+```
+
+`1.33 KB → 1.50 KB` gzipped.
