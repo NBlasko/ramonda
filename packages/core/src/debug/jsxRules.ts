@@ -58,13 +58,13 @@ export function reportFunctionTag(name: string): void {
  * was built — which is what keeps this from firing on every component that forwards
  * children.
  */
-export function reportMappedComponents(names: string[]): void {
+export function reportUnkeyedArrayChildren(names: string[]): void {
   const owner = renderPhase.component?.constructor.name ?? "A render";
   const shown = [...new Set(names)].join(", ");
   diagnose(
     "RMD023",
     `${owner}:${shown}`,
-    `<${owner} /> built <${shown} /> children from an array, with no \`key\` on them — a \`.map()\`, a \`filter\`, or an array literal.\n` +
-      `Their identity is their POSITION, so inserting or removing anywhere but the end moves every component after it: the state and the DOM stay with the position, not with the item.`,
+    `<${owner} /> built ${shown} from an array — a \`.map()\`, a \`filter\`, an array literal — with no \`key\` on them.\n` +
+      `Their identity is their POSITION, so inserting or removing anywhere but the end moves every row after it: the state and the DOM stay with the position rather than with the item.`,
   );
 }

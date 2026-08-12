@@ -14,7 +14,7 @@ import { isArray } from "../helpers/utils";
 import { diagnose } from "../debug/diagnostics";
 import { currentOrigin } from "../core/origin";
 import { renderingOwner } from "../debug/renderPhase";
-import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
+import { reportFunctionTag, reportUnkeyedArrayChildren } from "../debug/jsxRules";
 
 /**
  * Normalizes one element's children — and, unlike a plain flatten, **keeps a
@@ -39,26 +39,42 @@ import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
  * regions recursively (`reconcileEntries`), so there is no depth limit.
  */
 /**
- * Collects the unkeyed component children of an expression-built array and reports them
- * together — one diagnostic per component kind rather than one per row.
+ * Reports the children of an expression-built array that carry no key, together —
+ * one diagnostic per kind rather than one per row.
  *
- * A single child is skipped: `{cond && <Row />}` and `{[<Row />]}` have no siblings to be
- * reordered against, so position identity cannot go wrong. One keyed child anywhere means
- * the app is managing identity, and the framework does not second-guess that.
+ * ## Why this changed
+ *
+ * It used to say "do not do this, use `list()`", and only for COMPONENTS, on the
+ * reasoning that plain markup survives being matched by position because the diff
+ * patches the text. That is true of the text and false of everything else on the
+ * element: an `<input>` in a plain `<li>` holds a caret, a selection and whatever
+ * the user typed, and those follow the node.
+ *
+ * A `.map()` is a perfectly good way to render a list, and the thing it needs is
+ * the thing every framework asks for here — a key. So this asks for one, for any
+ * element, and mentions `list()` as the faster shape rather than the required one.
+ *
+ * A single child is skipped: `{cond && <Row />}` and `{[<Row />]}` have no siblings
+ * to be reordered against, so position identity cannot go wrong.
  */
-function checkMappedComponents(children: unknown[]): void {
+function checkUnkeyedArrayChildren(children: unknown[]): void {
   if (children.length < 2) return;
 
   const names: string[] = [];
   for (const child of children) {
     if (child === null || typeof child !== "object") continue;
     const vnode = child as { type?: unknown; name?: unknown; attributes?: { key?: unknown } };
-    if (vnode.type !== COMPONENT_TYPE) continue;
+    // Only real elements. A nested array or a `list()` is its own region and is
+    // matched as one child, so a key on it would be answering a question nobody
+    // asked here.
+    if (vnode.type !== COMPONENT_TYPE && vnode.type !== TEXT_TYPE) continue;
+    // One keyed child means the app is managing identity, and this does not
+    // second-guess that.
     if (vnode.attributes?.key !== undefined) return;
-    if (typeof vnode.name === "function") names.push((vnode.name as { name: string }).name);
+    names.push(typeof vnode.name === "function" ? `<${(vnode.name as { name: string }).name} />` : `<${String(vnode.name)}>`);
   }
 
-  if (names.length > 0) reportMappedComponents(names);
+  if (names.length > 0) reportUnkeyedArrayChildren(names);
 }
 
 /**
@@ -80,7 +96,7 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
       // Built by an expression rather than by JSX or by `{this.props.children}` being
       // passed down. Only unkeyed components are reported, and only from here, because
       // structure is the only thing that can see this at all — see RMD023.
-      if (__DEV__ && !(OWN_CHILDREN in el)) checkMappedComponents(inner);
+      if (__DEV__ && !(OWN_CHILDREN in el)) checkUnkeyedArrayChildren(inner);
 
       // An empty list still HOLDS ITS PLACE. Dropping it shortens the array, which moves
       // the slot of every sibling after it — and the slot is the identity the diff matches

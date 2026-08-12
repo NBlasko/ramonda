@@ -455,45 +455,32 @@ Three findings, three fixes:
 A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
 answer when several are unstable together.
 
-## RMD023 — components built from an array, with no keys
+## RMD023 — Children built from an array need a key
+
+You rendered an array straight into children — a `.map()`, a `filter`, an array literal —
+and its rows carry no `key`. That is supported, and it is what every framework asks for
+here: give each row a key from your data.
 
 ```tsx
-{this.items.map((item) => <Row item={item} />)}   // reported
+{this.items.map((item) => <Row key={item.id} item={item} />)}
 ```
 
-A mapped array is a **supported** shape — it becomes its own region with its own key
-space, so it cannot reach past itself and claim a sibling. What is not handled is
-identity: a region's rows are matched by POSITION unless they carry keys. Insert or
-remove anywhere but the end and every row after it takes the previous row's place. For
-plain markup that is invisible, because the diff patches the text and the result is
-correct. For a **component** it is state landing on the wrong item — the `@state` that
-was row 2's is now row 3's, and the DOM goes with it: focus, scroll position, an open
-menu, a half-typed input.
+Not the array index. The index **is** the position, so keying by it changes nothing.
 
-So the report is narrow, and deliberately so. It needs all of: built by an expression,
-more than one child, no `key` on any of them, and at least one component among them.
-`{items.map((i) => <li>{i}</li>)}` is not reported. `{this.props.children}` is not
-reported — that array is the framework's own.
+Without a key the rows are matched by position, so inserting or removing anywhere but the
+end hands every row below it the previous row's state and DOM — a half-typed input, an open
+menu, a scroll position, all one row off, while the page still looks right.
 
-Two fixes:
+**What is at stake is only the inside of the array.** Rows built this way cannot be confused
+with the siblings around them: every array in JSX becomes its own group with its own key
+space, so an element toggling in or out beside the array never reaches into it, and the
+array never reaches out. A missing key costs you which row *inside* the array is which.
 
-```tsx
-list(this.items, (item) => <Row item={item} />)              // identity from the items themselves
-{this.items.map((i) => <Row key={i.id} item={i} />)}   // or take it over yourself
-```
+[`list()`](/lists) is the same thing without the eager build — the descriptor is rebuilt on
+a render and the rows are not — and a key is good practice there too.
 
-[`list()`](/lists) is the better one for a second reason: it is lazy. The descriptor is
-built in `render()` and the items by the diff, so a 500-row table's render is 0.04% of
-its commit — and `each` accepts `null` and `undefined`, so there is no `?? []` to rebuild
-every render.
-
-**Why this is a structural check and not part of the double render.** [RMD020](#rmd020-render-produced-a-different-value-the-second-time)
-compares two renders, and it cannot see this at all: the mapper is handed to
-`Array.prototype.map` and never stored anywhere the comparison can reach, and its output
-is a run of freshly built vnodes — which is what all JSX looks like. The shape is the
-only evidence, and it is conclusive: JSX passes children as separate arguments, so a
-nested array among them was built by an expression.
-
+It does not fire for a single child, which has no sibling to be reordered against, nor when
+any child carries a key, which means you are managing identity yourself.
 ## RMD024 — a `@compute` recomputes without its answer changing
 
 Four recomputes in a row, each producing a value equal to the last. The cache is doing

@@ -57,7 +57,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD020` | warning | `render()` produced a different value the second time |
 | `RMD021` | error | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
 | `RMD022` | warning | A hook's props callback built a new value for the same contents |
-| `RMD023` | error | Components built from an array, with no keys |
+| `RMD023` | warning | Children built from an array need a key |
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
 | `RMD025` | error | Per-request data read in the browser |
 | `RMD027` | error | A props callback reads a value that is not reactive |
@@ -554,7 +554,7 @@ a plain object — an object key would stringify to `"[object Object]"` and ever
 item would collide into one.
 
 **What it does not fix.** A `Card` cannot force its caller to use `list()`.
-`list()` makes the correct call the shorter one; RMD023 is the net for whoever
+`list()` makes the lazy call the shorter one; RMD023 asks for the key for whoever
 maps anyway. The distinction that settled this: **a wrong key is an accident,
 using `.map()` is a decision** — you can teach a decision, you cannot defend
 against an accident.
@@ -806,25 +806,35 @@ objects, so comparing them by identity would report the fix as the fault. Conten
 DIFFER between the two calls are still reported: a wrapper cannot launder
 non-determinism.
 
-### RMD023 — components built from an array, with no keys
+### RMD023 — children built from an array need a key
 
-Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the
-mapper goes to `Array.prototype.map` and is never stored, and the output is a run of fresh
-vnodes, which is what all JSX is. The evidence is the SHAPE: JSX passes children as
-separate arguments, so a nested array among them was built by an expression.
+Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the mapper
+goes to `Array.prototype.map` and is never stored, and the output is a run of fresh vnodes,
+which is what all JSX is. The evidence is the SHAPE: JSX passes children as separate
+arguments, so a nested array among them was built by an expression.
 
 `normalizeChildren` brands every array it builds with `OWN_CHILDREN` (DEV only), which is
 what makes `{this.props.children}` — the framework's own array, one level down —
 distinguishable from a mapped one. Without that brand it fired on every component that
 forwards children.
 
-**Narrow on purpose, and the bound is what makes it usable.** Reporting every raw array would
-fire on child groups, which are supported and common — `SlotKeys.test.tsx` carries the note about
-that shape being legitimate. What this reports is only what is genuinely unhandled: unkeyed
-COMPONENT rows, of which there are at least two. Plain
-markup is patched in place and correct; a component's row moving takes its state and its
-DOM with it. One keyed child anywhere means the app is managing identity and the framework
-does not second-guess it.
+**It asks for a key rather than forbidding the shape.** It used to say "use `list()`
+instead", and only for COMPONENTS, on the reasoning that plain markup survives being matched
+by position because the diff patches the text. That is true of the text and false of
+everything else on the element: an `<input>` inside a plain `<li>` holds a caret, a
+selection and whatever the user typed, and those follow the NODE. So any element counts now.
+
+**What is at stake is only the inside of the array.** Rows built this way cannot be confused
+with the siblings around them — every array in JSX becomes its own group with its own key
+space, so a sibling toggling in or out never reaches inside and the array never reaches out.
+Measured with components of the same type on both sides of a `.map()`, no keys anywhere: the
+siblings are never created or destroyed by anything happening in the array. What a missing
+key costs is which row INSIDE the array is which.
+
+**The bounds.** At least two children, because a single one has no sibling to be reordered
+against. One keyed child anywhere means the app is managing identity and this does not
+second-guess it. Nested arrays and `list()` descriptors are skipped: each is matched as one
+child, so a key on it answers a question nobody asked.
 
 ### RMD024 — a @compute recomputes without its answer changing
 
