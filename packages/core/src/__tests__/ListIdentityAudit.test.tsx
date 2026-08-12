@@ -105,7 +105,7 @@ class App extends Component {
     { id: 4, title: "d", done: false },
   ];
   render() {
-    return <ul>{list(this.rows, RowView)}</ul>;
+    return <ul>{list(this.rows, (item) => <RowView item={item} />)}</ul>;
   }
 }
 
@@ -273,7 +273,7 @@ describe("two dimensions", () => {
       { id: 2, name: "r2", done: false, cells: [{ id: 21, label: "c", done: false }, { id: 22, label: "d", done: false }] },
     ];
     render() {
-      return <tbody>{list(this.rows, (row: GridRow) => <tr>{list(row.cells, CellView)}</tr>)}</tbody>;
+      return <tbody>{list(this.rows, (row: GridRow) => <tr>{list(row.cells, (item) => <CellView item={item} />)}</tr>)}</tbody>;
     }
   }
 

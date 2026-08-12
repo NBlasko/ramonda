@@ -75,7 +75,7 @@ class App extends Component {
     { id: 3, t: "c", done: false },
   ];
   render() {
-    return <ul>{list(this.rows, RowView)}</ul>;
+    return <ul>{list(this.rows, (item) => <RowView item={item} />)}</ul>;
   }
 }
 

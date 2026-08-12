@@ -85,7 +85,7 @@ export class TablePage extends Component {
           </thead>
           {/* `as` means no per-item function at all — the list builds
               <TableRow item={row} /> itself. */}
-          <tbody>{list(this.rows, TableRow)}</tbody>
+          <tbody>{list(this.rows, (item) => <TableRow item={item} />)}</tbody>
         </table>
 
         <TwoLists />

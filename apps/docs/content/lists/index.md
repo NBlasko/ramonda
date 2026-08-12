@@ -11,7 +11,7 @@ To draw a list from an array — rows of tasks, a set of cards — use `list()`:
 
 ```tsx
 render() {
-  return <ul>{list(this.tasks, TaskRow)}</ul>;
+  return <ul>{list(this.tasks, (item) => <TaskRow item={item} />)}</ul>;
 }
 ```
 
@@ -40,10 +40,10 @@ A component is one element, but a list drops several siblings into the parent �
 sit anywhere an expression can:
 
 ```tsx
-{this.open ? list(this.results, ResultRow) : null}
+{this.open ? list(this.results, (item) => <ResultRow item={item} />) : null}
 
-<ul>{list(this.todo, TaskRow)}</ul>
-<ul>{list(this.done, TaskRow)}</ul>
+<ul>{list(this.todo, (item) => <TaskRow item={item} />)}</ul>
+<ul>{list(this.done, (item) => <TaskRow item={item} />)}</ul>
 ```
 
 `each` is read when the list is built, so it is always the current array. **It accepts

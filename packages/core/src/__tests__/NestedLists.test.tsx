@@ -73,7 +73,7 @@ class TablePage extends Component {
           <button onClick={this.prependRow}>prepend</button>
         </div>
         <table className="grid-table">
-          <tbody>{list(this.rows, TableRow)}</tbody>
+          <tbody>{list(this.rows, (item) => <TableRow item={item} />)}</tbody>
         </table>
         <TwoLists />
         <MatrixGrid />

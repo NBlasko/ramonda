@@ -478,7 +478,7 @@ reported — that array is the framework's own.
 Two fixes:
 
 ```tsx
-list(this.items, Row)              // identity from the items themselves
+list(this.items, (item) => <Row item={item} />)              // identity from the items themselves
 {this.items.map((i) => <Row key={i.id} item={i} />)}   // or take it over yourself
 ```
 
@@ -741,10 +741,10 @@ this one during a describe.
 
 ```tsx expect-error
 // reported: a nested list() is a descriptor, not an element
-list(pages, (page: Post[]) => list(page, PostRow));
+list(pages, (page: Post[]) => list(page, (item) => <PostRow item={item} />));
 
 // the way: a component, whose host element wraps the inner rows
-list(pages, PostPage);
+list(pages, (item) => <PostPage item={item} />);
 ```
 
 One item becomes exactly one element. The list writes the row's key onto it and the diff matches

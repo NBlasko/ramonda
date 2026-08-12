@@ -68,7 +68,7 @@ export class ListDemo extends Component {
           </button>
           <span className="demo-note">click a few counters, then reverse — each count moves with its task</span>
         </p>
-        <ul className="demo-list">{list(this.tasks, TaskRow)}</ul>
+        <ul className="demo-list">{list(this.tasks, (item) => <TaskRow item={item} />)}</ul>
       </div>
     );
   }

@@ -65,7 +65,7 @@ class TextField extends Component<{ of: FieldNode<string>; label: string; id: st
   }
 }
 
-/** One row of a list, reached through `list({ as })`, where the item carries the node. */
+/** One row of a list, where the item carries the node. */
 class RowField extends Component<{ item: Row<{ v: string }> }> {
   f = this.use(Field<string>, () => ({
     of: (this.props.item.field as FieldNode<{ v: string }>).v,
@@ -186,7 +186,7 @@ describe("rows through list()", () => {
       render(): RamondaNode {
         count("page");
         form = this.f;
-        return <div>{list(this.f.fields.rows.$.rows, RowField)}</div>;
+        return <div>{list(this.f.fields.rows.$.rows, (item) => <RowField item={item} />)}</div>;
       }
     }
     const mounted = render((<Page />) as never);
@@ -288,7 +288,7 @@ describe("at three hundred rows", () => {
       });
       render(): RamondaNode {
         form = this.f;
-        return <div>{list(this.f.fields.rows.$.rows, as)}</div>;
+        return <div>{list(this.f.fields.rows.$.rows, (row) => { const R = as; return <R item={row} />; })}</div>;
       }
     }
     const mounted = render((<Page />) as never);
@@ -350,7 +350,7 @@ describe("a watcher hears only about what it reads", () => {
 
     render(): RamondaNode {
       count("rows-container");
-      return <div>{list(this.f.rows, RowField)}</div>;
+      return <div>{list(this.f.rows, (item) => <RowField item={item} />)}</div>;
     }
   }
 

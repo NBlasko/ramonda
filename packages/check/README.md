@@ -49,7 +49,7 @@ contexts provided so far:
 
 - **JSX**, including children — `<Shell><Reader /></Shell>` puts `Reader` under `Shell`, because
   `Shell` decides where its children mount, so a provider on `Shell` covers them.
-- **`list(each, Row)`** — `Row` renders where the list sits.
+- **`list(each, (item) => <Row item={item} />)`** — `Row` renders where the list sits.
 - **Route tables** — the views in `createRoutes` hang under the `<RouteOutlet>` that renders them.
 - **Contexts a hook carries** — `this.use(Router)` provides the route context because `Router`
   itself does. Hooks built out of hooks resolve too.

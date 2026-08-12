@@ -42,7 +42,7 @@ name:
 @Host("tr")
 class Row extends Component<{ item: RowData }> {
   render() {
-    return list(this.props.item.cells, CellView);
+    return list(this.props.item.cells, (item) => <CellView item={item} />);
   }
 }
 
@@ -53,7 +53,7 @@ export class Grid extends Component<{ rows: RowData[] }> {
   }
 
   render() {
-    return <tbody>{list(this.rows, Row)}</tbody>;
+    return <tbody>{list(this.rows, (item) => <Row item={item} />)}</tbody>;
   }
 }
 ```

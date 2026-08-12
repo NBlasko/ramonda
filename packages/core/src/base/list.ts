@@ -1,5 +1,5 @@
 import { IS_LIST } from "../helpers/constants";
-import type { ListNode, VNode, ComponentClassKind } from "../types/vdom";
+import type { ListNode, VNode } from "../types/vdom";
 
 /**
  * The array a list draws from.
@@ -14,49 +14,57 @@ export type Each<T> = readonly T[] | null | undefined;
 /**
  * Builds the vnode for one item.
  *
- * `index` is the item's CURRENT position: declare the parameter and a row that
- * moves is rebuilt, so the number it shows always matches where the row is. That
- * costs a mapper call per moved row, which is why declaring the parameter is what
- * asks for it — `(item) => …` skips untouched rows through a reorder, and is the
- * one to write when the position is not on screen.
+ * **One parameter, and there is no second.** A position used to be offered here,
+ * and it was a trap in two directions: a row that shows its index has to be
+ * rebuilt whenever it moves, which costs a mapper call per moved row; and an
+ * index is the one thing that must never become a row's identity, because it
+ * follows the POSITION rather than the row. Nothing here hands one out, so
+ * neither mistake is available.
  *
- * It is read from the parameter LIST, so a mapper that hides its arity —
- * `(item, index = 0)`, `(...args)` — opts out of the check and can show a stale
- * position after a reorder.
+ * Give the vnode a `key` when the rows are replaced by fresh objects — see
+ * `list`.
  */
-export type ItemRender<T> = (item: T, index: number) => VNode;
-
-/** A component that takes the item as its `item` prop. */
-export type ItemComponent<T> = ComponentClassKind<{ item: T }>;
+export type ItemRender<T> = (item: T) => VNode;
 
 /**
  * A list, as a plain function call in an expression slot.
  *
  * ```tsx
  * <ul>
- *   {list(this.todo, TaskRow)}
- *   {this.open ? list(this.results, (r) => <li>{r.title}</li>) : null}
+ *   {list(this.todo, (task) => <TaskRow key={task.id} item={task} />)}
+ *   {this.open ? list(this.results, (r) => <li key={r.id}>{r.title}</li>) : null}
  * </ul>
  * ```
  *
- * ## Two arguments, and why there is no options bag
+ * ## Two arguments, and always a function
  *
- * There used to be one — `{ each, as, render, key }` — and every field but the
- * first has since stopped existing. `key` went when identity started being
- * carried on the item, so a refetch keeps its rows without one; `as` and `render`
- * were always mutually exclusive, and a bag whose fields exclude each other is a
- * shape that can be written wrong. Two positional arguments cannot: the items,
- * and the one way to turn an item into markup.
+ * There used to be an options bag — `{ each, as, render, key }` — and every field
+ * but the first has since stopped existing. Two positional arguments cannot be
+ * written wrong: the items, and the one way to turn an item into markup.
  *
- * The second argument is a COMPONENT or a FUNCTION, and nothing has to say which.
- * A class has a construct signature and no call signature, an arrow has the
- * reverse, so the two overloads below are mutually exclusive with no union and no
- * `never` fields. At runtime the class is recognised by `__isComponent`, checked
- * BEFORE the arity read that decides whether a mapper watches its index — a
- * constructor's parameter count means nothing here.
+ * The second is ALWAYS a function, never a component class. A shorthand that took
+ * the component directly used to exist and reads well, but it leaves nowhere to
+ * put a key — the element is built by the component, not by you — so it quietly
+ * became the one shape that could not say which row is which. One form, and it is
+ * the one that can express everything.
  *
- * `RMD014` went with the bag: "both given" and "neither given" are no longer
- * expressible, which is better than reporting them.
+ * ## Which row is which
+ *
+ * Three answers, tried in this order, and the first two are exact.
+ *
+ * **The object.** While a row is the same object it is the same row. Nothing is
+ * declared and nothing can be got wrong. This covers every update that keeps its
+ * references — `filter`, a spread that touches one row, a lens write.
+ *
+ * **Your key.** The moment an object is NEW — a refetch, a `JSON.parse`, a `for`
+ * and `push` inside a `@compute` — the object cannot answer, because nothing here
+ * has seen it before. A `key` on the vnode is what still can, and it is left
+ * exactly as written: this fills one in only when there is none.
+ *
+ * **A guess.** With no key and a new object, the incoming array is aligned against
+ * the one on screen by what the rows still have in common. It is right for the
+ * shapes data takes, and it is a guess — which is why a key beats it, and why a
+ * row with nothing to tell it apart is reported (RMD051).
  *
  * ## It does not bend the one-tag-one-element rule
  *
@@ -97,9 +105,7 @@ export type ItemComponent<T> = ComponentClassKind<{ item: T }>;
  * and a caller's list arriving through `{this.props.children}` both claimed slot
  * 0 of the same element and fought over one region. See `regionOwner`.
  */
-export function list<T>(each: Each<T>, as: ItemComponent<T>): ListNode;
-export function list<T>(each: Each<T>, render: ItemRender<T>): ListNode;
-export function list<T>(each: Each<T>, builder: ItemComponent<T> | ItemRender<T>): ListNode {
+export function list<T>(each: Each<T>, render: ItemRender<T>): ListNode {
   // `owner: undefined` is the signal that this is a descriptor rather than a
   // built list — `normalizeChildren` stamps the position, and the diff builds
   // the items.
@@ -107,7 +113,7 @@ export function list<T>(each: Each<T>, builder: ItemComponent<T> | ItemRender<T>
     [IS_LIST]: true,
     owner: undefined,
     each,
-    builder,
+    builder: render,
   } as unknown as ListNode;
 }
 

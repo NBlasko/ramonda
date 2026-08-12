@@ -43,7 +43,7 @@ class TableApp extends Component {
   render() {
     return (
       <table>
-        <tbody>{list(this.rows, TableRow)}</tbody>
+        <tbody>{list(this.rows, (item) => <TableRow item={item} />)}</tbody>
       </table>
     );
   }

@@ -60,7 +60,7 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
       render() {
-        return <ul>{list(this.tasks, Row)}</ul>;
+        return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
       }
     }
 
@@ -90,7 +90,7 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [];
       render() {
-        return <ul>{list(this.tasks, Row)}</ul>;
+        return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
       }
     }
 
@@ -104,7 +104,7 @@ describe("identity — the whole reason For exists, kept", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list(this.tasks, Row)}</ul>;
+      return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
     }
   }
 
@@ -154,7 +154,7 @@ describe("identity — the whole reason For exists, kept", () => {
     class Twice extends Component {
       @state tasks: Task[] = [tag, tag];
       render() {
-        return <ul>{list(this.tasks, Row)}</ul>;
+        return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
       }
     }
 
@@ -226,7 +226,7 @@ describe("identity — the whole reason For exists, kept", () => {
         // Cast: this is exactly what the types reject, and the point is what the
         // RUNTIME does with it — a JavaScript app has no such guard.
         private page(rows: Task[]): VNode {
-          return list(rows, Row) as unknown as VNode;
+          return list(rows, (item) => <Row item={item} />) as unknown as VNode;
         }
       }
 
@@ -284,8 +284,8 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <div>
-            <ul id="todo">{list(this.todo, Row)}</ul>
-            <ul id="done">{list(this.done, Row)}</ul>
+            <ul id="todo">{list(this.todo, (item) => <Row item={item} />)}</ul>
+            <ul id="done">{list(this.done, (item) => <Row item={item} />)}</ul>
           </div>
         );
       }
@@ -316,7 +316,7 @@ describe("the case list() was written for", () => {
         return (
           <ul>
             <li id="head">HEAD</li>
-            {list(this.tasks, Row)}
+            {list(this.tasks, (item) => <Row item={item} />)}
             <li id="foot">FOOT</li>
           </ul>
         );
@@ -349,8 +349,8 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <ul>
-            {this.showFirst ? list(this.a, Row) : null}
-            {list(this.b, Row)}
+            {this.showFirst ? list(this.a, (item) => <Row item={item} />) : null}
+            {list(this.b, (item) => <Row item={item} />)}
           </ul>
         );
       }
@@ -399,7 +399,7 @@ describe("nesting and composition", () => {
         { name: "g2", items: [{ title: "c" }] },
       ];
       render() {
-        return <ul>{list(this.groups, GroupRow)}</ul>;
+        return <ul>{list(this.groups, (item) => <GroupRow item={item} />)}</ul>;
       }
     }
 
@@ -420,8 +420,8 @@ describe("nesting and composition", () => {
       render() {
         return (
           <div>
-            <ul id="left">{list(this.left, Row)}</ul>
-            <ul id="right">{list(this.right, Row)}</ul>
+            <ul id="left">{list(this.left, (item) => <Row item={item} />)}</ul>
+            <ul id="right">{list(this.right, (item) => <Row item={item} />)}</ul>
           </div>
         );
       }
@@ -480,7 +480,7 @@ describe("server rendering and hydration", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list(this.tasks, Row)}</ul>;
+      return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
     }
   }
 
@@ -565,7 +565,7 @@ describe("a two-dimensional list", () => {
     render() {
       return (
         <tbody>
-          {list(this.rows, (row: GridRow) => <tr>{list(row.cells, CellView)}</tr>)}
+          {list(this.rows, (row: GridRow) => <tr>{list(row.cells, (item) => <CellView item={item} />)}</tr>)}
         </tbody>
       );
     }
@@ -675,7 +675,7 @@ describe("a two-dimensional list", () => {
       render() {
         return (
           <tbody>
-            {list(this.rows, (cells: Cell[]) => <tr>{list(cells, CellView)}</tr>)}
+            {list(this.rows, (cells: Cell[]) => <tr>{list(cells, (item) => <CellView item={item} />)}</tr>)}
           </tbody>
         );
       }
@@ -749,7 +749,7 @@ describe("two dimensions without keys", () => {
 
     render() {
       // A list returned STRAIGHT from render(), with no element around it.
-      return list(this.cells, Cell2View);
+      return list(this.cells, (item) => <Cell2View item={item} />);
     }
   }
 
@@ -760,7 +760,7 @@ describe("two dimensions without keys", () => {
       { name: "r2", cells: [{ label: "c" }] },
     ];
     render() {
-      return <tbody>{list(this.rows, OwningRow)}</tbody>;
+      return <tbody>{list(this.rows, (item) => <OwningRow item={item} />)}</tbody>;
     }
   }
 
@@ -843,7 +843,7 @@ describe("the cost of the key-free 2D shape", () => {
   class OwningRow3 extends Component<{ item: Row3 }> {
     @state cells: Cell3[] = this.props.item.cells;
     render() {
-      return list(this.cells, Cell3View);
+      return list(this.cells, (item) => <Cell3View item={item} />);
     }
   }
 
@@ -851,7 +851,7 @@ describe("the cost of the key-free 2D shape", () => {
   @Host("tr")
   class PropsRow3 extends Component<{ item: Row3 }> {
     render() {
-      return list(this.props.item.cells, Cell3View);
+      return list(this.props.item.cells, (item) => <Cell3View item={item} />);
     }
   }
 
@@ -862,7 +862,7 @@ describe("the cost of the key-free 2D shape", () => {
       render() {
         return (
           <tbody>
-            {list(this.rows, RowComp as typeof OwningRow3)}
+            {list(this.rows, (row) => { const R = RowComp as typeof OwningRow3; return <R item={row} />; })}
           </tbody>
         );
       }
@@ -931,7 +931,7 @@ describe("what NO key costs in two dimensions", () => {
     render() {
       return (
         <tbody>
-          {list(this.rows, (row: Row4) => <tr>{list(row.cells, Cell4View)}</tr>)}
+          {list(this.rows, (row: Row4) => <tr>{list(row.cells, (item) => <Cell4View item={item} />)}</tr>)}
         </tbody>
       );
     }
@@ -1020,5 +1020,121 @@ describe("what NO key costs in two dimensions", () => {
       ["c:3", "d:4"],
       ["a:1", "b:2"],
     ]);
+  });
+});
+
+describe("your key, and what happens when two rows share one", () => {
+  interface Priced {
+    id: number;
+    name: string;
+  }
+
+  function reported(): { codes: string[]; stop(): void } {
+    const codes: string[] = [];
+    const handler = (event: Event) => {
+      const message = (event as CustomEvent).detail?.message as string;
+      const code = message?.match(/^\[(RMD\d+)\]/)?.[1];
+      if (code) codes.push(code);
+    };
+    window.addEventListener("ramonda:dev-log", handler);
+    return { codes, stop: () => window.removeEventListener("ramonda:dev-log", handler) };
+  }
+
+  test("a key you write survives — the list does not overwrite it", async () => {
+    // The whole point of writing one. This used to be assigned over with the
+    // list's own minted id, so a key was accepted and then ignored.
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [
+        { id: 7, name: "a" },
+        { id: 9, name: "b" },
+      ];
+      render() {
+        return <ul>{list(this.rows, (r: Priced) => <li key={r.id}>{r.name}</li>)}</ul>;
+      }
+    }
+
+    const { container } = await getDOM(<Board />);
+    const keys = [...container.querySelectorAll("li")].map(
+      (li) => (li as unknown as { [k: symbol]: unknown })[Symbol.for("ramonda.key")],
+    );
+    // The DOM carries what was written, not a generated id.
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(keys.length).toBe(2);
+  });
+
+  test("a key answers when the objects are all new", async () => {
+    // A refetch: nothing shares a reference with what is on screen, so the object
+    // cannot say which row is which. The key can, and it is exact.
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [
+        { id: 7, name: "a" },
+        { id: 9, name: "b" },
+      ];
+      render() {
+        return <ul>{list(this.rows, (r: Priced) => <li key={r.id}>{r.name}</li>)}</ul>;
+      }
+    }
+
+    const app = await getDOM<Board>(<Board />);
+    await app.settle();
+    const before = [...app.container.querySelectorAll("li")];
+
+    app.instance.rows = [
+      { id: 9, name: "b" },
+      { id: 7, name: "A!" },
+    ];
+    await app.settle();
+
+    const after = [...app.container.querySelectorAll("li")];
+    expect(after.map((li) => li.textContent)).toEqual(["b", "A!"]);
+    // Both rows moved rather than being rebuilt: 9 is the node 9 had, 7 is 7's.
+    expect(after[0]).toBe(before[1]);
+    expect(after[1]).toBe(before[0]);
+  });
+
+  test("two rows under one key are reported", async () => {
+    // Identity used to be minted, so a collision could not be written. It is
+    // yours now, and a field that is not unique is a mistake worth saying out
+    // loud — the DOM match is what it drives.
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [
+        { id: 7, name: "a" },
+        { id: 7, name: "b" },
+      ];
+      render() {
+        return <ul>{list(this.rows, (r: Priced) => <li key={r.id}>{r.name}</li>)}</ul>;
+      }
+    }
+
+    const seen = reported();
+    await getDOM<Board>(<Board />);
+    seen.stop();
+
+    expect(seen.codes).toContain("RMD002");
+  });
+
+  test("the same OBJECT twice is not a collision", async () => {
+    // One object rendered twice is a legitimate list, and its two rows carry the
+    // same key because the key is derived from the object. The rows are told
+    // apart by which occurrence they are, exactly as they always were.
+    const shared: Priced = { id: 7, name: "tag" };
+
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [shared, shared];
+      render() {
+        return <ul>{list(this.rows, (r: Priced) => <li>{r.name}</li>)}</ul>;
+      }
+    }
+
+    const seen = reported();
+    const { container } = await getDOM(<Board />);
+    seen.stop();
+
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(seen.codes).not.toContain("RMD002");
   });
 });

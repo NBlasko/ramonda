@@ -1,12 +1,11 @@
-import { createRamonda } from "../vdom/CreateRamonda";
-import type { VNode, ComponentClassKind, ListNode } from "../types/vdom";
+import type { VNode, ListNode } from "../types/vdom";
 import { IS_LIST, attach, detach } from "../helpers/constants";
 import { trackerContainer } from "../reactivity/tracker";
 import type { State } from "../reactivity/State";
 import { diagnose } from "../debug/diagnostics";
 import { identityOf, stampIdentity, carryIdentity } from "./itemIdentity";
 import { createId } from "./createId";
-import type { Each, ItemComponent, ItemRender } from "../base/list";
+import type { Each, ItemRender } from "../base/list";
 
 /** Listener ids must be unique across every signal, not just within one list. */
 let scopeSequence = 0;
@@ -95,36 +94,13 @@ export class ListEngine<T> {
   private anyDirty = false;
   /** Set by `buildItem` so the caller can store the scope it just refreshed. */
   private lastScope: ItemScope<T> | undefined;
+  /** Whether last pass's rows carried keys of their own. See `keyed`. */
+  private wasKeyed = false;
 
   build(descriptor: ListDescriptor<T>, host: ListHost, owner: unknown): ListNode {
     const each = descriptor.each;
-    const builder = descriptor.builder;
-    // A class has this static; an arrow does not. Asked BEFORE the arity read
-    // below, because a constructor's parameter count says nothing about whether
-    // an item watches its position.
-    const asComponent = isItemComponent(builder) ? builder : undefined;
-    const render = asComponent === undefined ? (builder as ItemRender<T>) : undefined;
+    const render = descriptor.builder;
 
-    /**
-     * Whether a moved item has to be rebuilt — decided by the mapper's ARITY.
-     *
-     * The index is the one input to `render` that is not the item and not a
-     * signal, so nothing else can notice it went stale. Rebuilding every moved
-     * item unconditionally would be correct and would also hand a 10000-row list
-     * that never mentions the index the full cost of the one that does: a
-     * prepend would go from one mapper call to ten thousand.
-     *
-     * A function's `length` says how many parameters it declares, so
-     * `(item) => …` cannot observe its position and `(item, index) => …` can.
-     * The reuse then costs nothing where it is safe, and the rebuild happens
-     * exactly where it is needed. `as` takes no index at all, hence `render` only.
-     *
-     * The known gap is a mapper whose arity under-reports: `(item, index = 0)`
-     * and `(...args)` both report fewer parameters than they use, and would keep
-     * the stale index. Neither is a way anyone writes a list item, and the
-     * alternative is paying for the check on every list forever.
-     */
-    const usesIndex = render !== undefined && render.length >= 2;
 
     if (!each) return this.wrap(owner, []);
 
@@ -155,6 +131,17 @@ export class ListEngine<T> {
      * alternative was destroying and rebuilding every row.
      */
     let aligned = false;
+
+    /**
+     * Whether any row carried a key of its own this pass.
+     *
+     * Remembered for the NEXT pass, because it decides whether the guessing is
+     * worth starting: a keyed list answers "which row is this" from the key, so
+     * aligning the two arrays would be work whose result is never read.
+     */
+    let keyed = false;
+    /** The keys rows wrote for themselves this pass, for the collision check. */
+    let yours: Set<unknown> | undefined;
 
     const seen = new Map<T, number>();
     const next = new Map<T, string[]>();
@@ -188,7 +175,7 @@ export class ListEngine<T> {
       // that already exists, handed over as a fresh object by a refetch. Align
       // the two arrays once, and then the identity is on the item to be read.
       // Only the first occurrence: a second one is a second row and mints its own.
-      if (id === undefined && occurrence === 0) {
+      if (id === undefined && occurrence === 0 && !this.wasKeyed) {
         if (!aligned && before !== undefined) {
           carryIdentity(before, each, host.name);
           aligned = true;
@@ -219,14 +206,14 @@ export class ListEngine<T> {
       // object, and it has not moved out from under a mapper that reads the
       // position: reuse last render's vnode untouched. `clean` tells the diff it
       // may skip the subtree entirely.
-      if (existing && existing.item === item && !existing.dirty && (!usesIndex || existing.index === i)) {
+      if (existing && existing.item === item && !existing.dirty) {
         out.push(existing.vnode);
         clean.push(true);
         this.claimScope(nextScopes, scopeKey, existing);
         continue;
       }
 
-      const vnode = this.buildItem(item, i, existing, asComponent, render, host);
+      const vnode = this.buildItem(item, i, existing, render, host);
 
       // Guards production too: skipping a null keeps the list intact instead of
       // crashing on `.attributes` below.
@@ -235,7 +222,7 @@ export class ListEngine<T> {
           diagnose(
             "RMD013",
             `${host.name}:empty`,
-            `${asComponent ? "The `as` component" : "The render callback"} produced nothing for item ${i}.`,
+            `The render callback produced nothing for item ${i}.`,
           );
         }
         continue;
@@ -251,19 +238,54 @@ export class ListEngine<T> {
           diagnose(
             "RMD031",
             `${host.name}:not-an-element`,
-            `${asComponent ? "The `as` component" : "The render callback"} returned ${describe(vnode)} for item ${i}.`,
+            `The render callback returned ${describe(vnode)} for item ${i}.`,
           );
         }
         continue;
       }
 
-      vnode.attributes.key = key;
+      // YOUR key wins, and this only fills in when there is none.
+      //
+      // That order is the whole rule. While the row is the same OBJECT it is
+      // recognised without either — the scope was found by the item itself, up
+      // there. A key matters exactly when the object is new (a refetch, a `for`
+      // and `push` in a `@compute`), and then it is the one thing that still
+      // says which row this is. Overwriting it, which is what this used to do,
+      // threw away the only reliable answer and left the guessing below to
+      // reconstruct it.
+      //
+      // With no key the minted id goes on instead, so a list that declares
+      // nothing behaves exactly as it did.
+      if (vnode.attributes.key == null) {
+        vnode.attributes.key = key;
+      } else {
+        keyed = true;
+        if (__DEV__) {
+          // Two rows answering the same key. Free to notice — the rows are being
+          // walked anyway — and worth saying loudly, because the field you chose
+          // is not unique and the DOM match it drives will hand one row's node to
+          // another. The row itself is not lost: its scope was found by the OBJECT
+          // above, and the fallback below still has something to say. See RMD002.
+          const already = (yours ??= new Set()).size;
+          yours.add(vnode.attributes.key);
+          if (yours.size === already) {
+            diagnose(
+              "RMD002",
+              `${host.name}:${String(vnode.attributes.key)}`,
+              `Two rows rendered by ${host.name} carry the key "${String(vnode.attributes.key)}".`,
+              { owner: host.name, key: String(vnode.attributes.key) },
+            );
+          }
+        }
+      }
+
       out.push(vnode);
       clean.push(false);
       this.claimScope(nextScopes, scopeKey, this.lastScope!);
     }
 
     this.ids = next;
+    this.wasKeyed = keyed;
 
     // Scopes for items that left: unsubscribe, or their signals keep a live
     // reference to a list entry that no longer exists.
@@ -311,8 +333,7 @@ export class ListEngine<T> {
     item: T,
     index: number,
     existing: ItemScope<T> | undefined,
-    asComponent: ItemComponent<T> | undefined,
-    render: ItemRender<T> | undefined,
+    render: ItemRender<T>,
     host: ListHost,
   ): VNode | null | undefined {
 
@@ -338,12 +359,7 @@ export class ListEngine<T> {
 
     let vnode: VNode | null | undefined;
     try {
-      // `as` builds <Component item={item} />; `render` is the flexible fallback.
-      vnode = asComponent
-        ? createRamonda(asComponent as unknown as ComponentClassKind, {
-            item,
-          })
-        : render?.(item, index);
+      vnode = render(item);
     } finally {
       // Restored rather than nulled: a list may be built from inside a @compute,
       // and that tracker still has reads to collect after this returns.
@@ -397,7 +413,7 @@ export class ListEngine<T> {
 /** What `list()` puts on the descriptor: the items, and the one way to build one. */
 export interface ListDescriptor<T> {
   readonly each: Each<T>;
-  readonly builder: ItemComponent<T> | ItemRender<T>;
+  readonly builder: ItemRender<T>;
 }
 
 /** A descriptor `list()` produced, before its items have been built. */
@@ -406,16 +422,6 @@ export interface LazyListNode<T = unknown> extends ListDescriptor<T> {
   owner: unknown;
 }
 
-/**
- * Whether the second argument to `list()` is a component rather than a mapper.
- *
- * `Component` carries this static and every subclass inherits it, so the check
- * is one property read and it cannot be satisfied by accident — an arrow has no
- * statics, and a plain function that happened to be passed here has none either.
- */
-function isItemComponent<T>(builder: ItemComponent<T> | ItemRender<T>): builder is ItemComponent<T> {
-  return (builder as { __isComponent?: true }).__isComponent === true;
-}
 
 /**
  * Distinguishes a `list()` descriptor from a `ListNode` whose items are built.

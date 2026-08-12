@@ -94,7 +94,7 @@ without a `key`, that edited row counts as a new entity, so its component state 
 When a row owns state you care about, add a `key`:
 
 ```tsx
-list(this.posts, PostRow);
+list(this.posts, (item) => <PostRow item={item} />);
 ```
 
 `focusOn` and `key` belong together whenever list items own state.

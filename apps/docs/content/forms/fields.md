@@ -232,7 +232,7 @@ declare its own to restyle it.
 
 Because the subscription is per path, an edit wakes the fields that changed and no others. Measured
 over 300 rows through `list()`, one keystroke: **every row rebuilt, 45 ms**, before this existed;
-**one row** after. Inside a list the node arrives already — `list(rows, Row)` hands each row its own —
+**one row** after. Inside a list the node arrives already — `list(rows, (item) => <Row item={item} />)` hands each row its own —
 so a row component is the same shape:
 
 ```tsx
@@ -266,7 +266,7 @@ class Rows extends Component<{ of: FieldNode<Contact[]> }> {
   f = this.use(Field<Contact[]>, () => ({ of: this.props.of }));
 
   render() {
-    return <div>{list(this.f.rows, Line)}</div>;
+    return <div>{list(this.f.rows, (item) => <Line item={item} />)}</div>;
   }
 }
 ```

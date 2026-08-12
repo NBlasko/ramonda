@@ -14,7 +14,7 @@ so the framework can tell them apart and so can the types.
 ## A component — the item has a life of its own
 
 ```tsx
-list(this.tasks, TaskRow);
+list(this.tasks, (item) => <TaskRow item={item} />);
 ```
 
 Ramonda builds `<TaskRow item={task} />` for each item; the component reads it from

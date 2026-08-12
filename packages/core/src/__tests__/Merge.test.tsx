@@ -168,7 +168,7 @@ describe("merge carries identity where inference cannot", () => {
         Object.freeze({ id: 2, title: "b", done: false }),
       ];
       render() {
-        return <ul>{list(this.items, RowView)}</ul>;
+        return <ul>{list(this.items, (item) => <RowView item={item} />)}</ul>;
       }
     }
 

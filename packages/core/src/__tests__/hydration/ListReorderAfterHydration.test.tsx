@@ -60,7 +60,7 @@ class Row extends Component<{ item: Task }> {
 class Board extends Component {
   @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
   render() {
-    return <ul>{list(this.tasks, Row)}</ul>;
+    return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
   }
 }
 

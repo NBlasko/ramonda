@@ -19,7 +19,7 @@ import { InfiniteQuery } from "@ramonda/query";
 // list goes through a component — its host element is what wraps the rows.
 class PostPageView extends Component<{ item: PostPage }> {
   render() {
-    return list(this.props.item.items, PostRow);
+    return list(this.props.item.items, (item) => <PostRow item={item} />);
   }
 }
 
@@ -35,7 +35,7 @@ class Feed extends Component<{ tag: string }> {
     if (this.feed.isPending) return <p>Loading…</p>;
     return (
       <div>
-        {list(this.feed.pages, PostPageView)}
+        {list(this.feed.pages, (item) => <PostPageView item={item} />)}
         <button
           type="button"
           onClick={this.feed.fetchNextPage}

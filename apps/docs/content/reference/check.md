@@ -64,7 +64,7 @@ of contexts provided so far. It follows:
 - **JSX** in your components — including children: `<Shell><Reader /></Shell>` puts `Reader` under
   `Shell`, because `Shell` is what decides where its children mount. A provider on `Shell` covers
   them.
-- **[`list()`](/lists)** — `list(each, Row)` renders `Row` where the list sits.
+- **[`list()`](/lists)** — `list(each, (item) => <Row item={item} />)` renders `Row` where the list sits.
 - **[Route tables](/routing)** — the views in `createRoutes` hang under the `<RouteOutlet>` that
   renders them, which is also what publishes the matched params.
 - **Contexts a hook carries** — `this.use(Router)` provides the route context because `Router`

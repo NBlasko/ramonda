@@ -59,23 +59,39 @@ export class DataTable extends Component<DataTableProps> {
         <thead>
           <tr>{list(this.props.columns, headerCell)}</tr>
         </thead>
-        <tbody>{list(this.items, DataTableRow)}</tbody>
+        <tbody>{list(this.items, (item) => <DataTableRow item={item} />)}</tbody>
       </table>
     );
   }
 }
 
+/** A cell with the heading it carries — `null` for the first, which IS the heading. */
+interface LabelledCell {
+  cell: Cell;
+  label: string | null;
+}
+
 /** One `<tr>`: the first cell names the row, the rest carry their column's heading. */
 @Host("tr")
 class DataTableRow extends Component<{ item: Row }> {
-  render(): RamondaNode {
-    return list(this.props.item.cells, this.cell);
+  /**
+   * The position is resolved HERE, where the data is, rather than in the row
+   * mapper — which takes the item and nothing else on purpose. A mapper handed
+   * its position has to be re-run whenever a row moves, and the position is the
+   * one thing that must never become a row's identity.
+   */
+  @compute
+  private get cells(): LabelledCell[] {
+    const { cells, labels } = this.props.item;
+    return cells.map((cell, index) => ({ cell, label: index === 0 ? null : (labels[index] ?? "") }));
   }
 
-  private cell(cell: Cell, index: number): VNode {
-    // The first column IS the heading, so it gets none of its own.
-    const attrs = index === 0 ? null : { "data-label": this.props.item.labels[index] ?? "" };
-    return __h("td", attrs, ...spread(cell));
+  render(): RamondaNode {
+    return list(this.cells, this.cell);
+  }
+
+  private cell(at: LabelledCell): VNode {
+    return __h("td", at.label === null ? null : { "data-label": at.label }, ...spread(at.cell));
   }
 }
 
