@@ -201,25 +201,28 @@ turn on.
 
 ## What about `.map()`?
 
-**Use `list()` for anything built from an array.** One rule, and it is the one worth
-learning: `.map()` has no identity, so the diff matches rows by position. Reorder, or
-remove from the middle, and every row after the change takes the previous row's place —
-component state and DOM go with it. Focus, scroll position, an open menu, a half-typed
-input, all one row off. The page *looks* right.
+`.map()` renders a list perfectly well, and it is not discouraged. What it needs is a
+key on every row ([`RMD023`](/reference/diagnostics) asks for one), because a `.map()`
+has no identity of its own — without a key the rows are matched by position, so a
+reorder or a removal from the middle hands every row below it the previous row's state
+and DOM.
 
-You will still meet `.map()` in code, so it is worth knowing exactly when it bites:
+Plain markup looks like it gets away with that, because the diff patches the text and the
+result reads correctly. It does not: an `<input>` inside that `<li>` holds a caret, a
+selection and whatever the user typed, and those follow the **node** rather than the text.
 
-- **Plain markup** — `{items.map((i) => <li>{i}</li>)}` — survives, because the diff
-  patches the text and the result is correct. The framework does not report it.
-- **Components** — `{items.map((i) => <Row item={i} />)}` — does not, and that one *is*
-  reported ([`RMD023`](/reference/diagnostics)).
+One thing a missing key does *not* cost you is the boundary. Rows built from an array
+cannot be confused with the siblings around them, keyed or not — every array in JSX
+becomes its own group with its own key space, so an element toggling in or out beside the
+array never reaches into it, and the array never reaches out.
 
-So `.map()` is not always wrong. It is just never *better*: `list()` is correct in both
-cases, and on top of that it is lazy — the descriptor is built in `render()` and the rows
-by the diff, so a 500-row table's render is 0.04% of its commit. And `each` accepts
-`null` and `undefined`, so there is no `?? []` rebuilt every render.
+**What `list()` adds is laziness.** It does not iterate where you write it, so a list
+whose array did not change costs nothing at all — a 500-row table's render is 0.04% of its
+commit. It also gives each row its own reactive scope, so a signal one row reads
+invalidates that row and no other, and it identifies rows by the item itself, so a key is
+something you reach for rather than something you must remember.
 
-Knowing one rule beats knowing when the exception applies.
+Either is a fine choice. `list()` is the one that scales.
 
 ```tsx
 // A fixed set of tabs is a list too.

@@ -88,10 +88,10 @@ private message(text: string): RamondaNode {
 <ul>{list(f.password.$.errors, this.message)}</ul>
 ```
 
-`list()` rather than `.map()`, even for markup this plain. A mapped array of `<li>`s is not
-reported — the diff matches plain elements by position and gets away with it — but `list()` is
-what gives each message an identity of its own, and a list written one way everywhere is one less
-thing to think about. See [rendering lists](/lists).
+`list()` rather than `.map()`, even for markup this plain. Either works, and a `.map()` here
+would ask for a key ([`RMD023`](/reference/diagnostics)) — messages have no id to give it. A
+list identifies each message by itself, so there is nothing to invent. See
+[rendering lists](/lists).
 
 An issue whose path is empty belongs to no field. Those arrive as `formErrors`:
 
