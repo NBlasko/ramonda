@@ -1,4 +1,5 @@
 import { valueEqual } from "./valueEqual";
+import { diagnose } from "../debug/diagnostics";
 
 /**
  * The identity an item carries WITH it, so a replaced object can still be the
@@ -95,7 +96,7 @@ export function stampIdentity(item: unknown, id: string): void {
  * every cell inside it lost its state. Removing it changed nothing about
  * pagination, which was never carried by the anchors.
  */
-export function carryIdentity(before: readonly unknown[], next: readonly unknown[]): void {
+export function carryIdentity(before: readonly unknown[], next: readonly unknown[], owner = "list"): void {
   if (before.length === 0 || next.length === 0) return;
 
   /** For each index in `next`, the index in `before` it was paired with. */
@@ -210,7 +211,10 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
           best = b;
         }
       }
-      if (best === -1) continue;
+      if (best === -1) {
+        if (__DEV__) reportUnidentifiable(next[n], common, owner);
+        continue;
+      }
       pairedTo[n] = best;
       claimed[best] = 1;
     }
@@ -261,6 +265,34 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
  * equal its index by coincidence costs a little precision and cannot make a
  * false pair.
  */
+/**
+ * Reports a row that could not have been identified by ANY candidate — as opposed
+ * to one that simply is not here yet.
+ *
+ * The distinction is the whole reason this can be said at all. A new row in a
+ * paginated table is unpaired too, and reporting that would put a warning on
+ * correct code — which is how a diagnostic becomes noise people scroll past. So
+ * this asks about the ROW rather than the outcome: does it carry a single field
+ * that could ever have paired it? A row of nothing but nested data, or one whose
+ * every field is a flag its neighbours share, cannot be told from its siblings by
+ * anything, and no amount of new data will change that.
+ */
+function reportUnidentifiable(item: unknown, common: Set<string>, owner: string): void {
+  if (item === null || typeof item !== "object") return;
+
+  for (const [key, value] of Object.entries(item as Record<string, unknown>)) {
+    // Nested values are compared by `valueEqual`, never counted as evidence.
+    if (value !== null && typeof value === "object") continue;
+    // Shared with a sibling, so it identifies neither of them.
+    if (common.has(`${key}\u0000${String(value)}`)) continue;
+    return;
+  }
+
+  diagnose("RMD051", owner, `A row rendered by ${owner} has no field that tells it apart from its siblings.`, {
+    owner,
+  });
+}
+
 const DISTINCT = 2;
 const POSITIONAL = 1;
 

@@ -1364,3 +1364,27 @@ to drop first: `focusOn(state).get("home").remove()`.
 `RML010` and `RML011` **throw** in development and are a silent no-op in production, so neither is
 control flow to rely on — do not wrap either in a `try` expecting to catch something in a shipped
 build.
+
+## RMD051 — A list row cannot be told apart from its siblings
+
+A list identifies a row by what sets it apart from the others, which is what lets a row
+replaced by fresh objects — a refetch, a `JSON.parse` — be recognised as the row it replaces
+and updated rather than destroyed and rebuilt. This row carries nothing that could do that:
+every field it has is either nested (compared, but never counted as evidence) or a value its
+siblings share.
+
+```ts
+[{ tags: ["a"] }, { tags: ["b"] }]                              // nothing but nested data
+[{ done: false, kind: "task" }, { done: false, kind: "task" }]  // only shared flags
+```
+
+So the row is rebuilt whenever the array is replaced, and a half-typed input or an open menu
+on it goes with it. Give the row a field of its own — an id is the usual answer — or say which
+row is which where the data arrives, rather than on every list that renders it:
+
+```ts
+this.rows = merge(this.rows, incoming, (row) => row.id);
+```
+
+It does **not** fire for a row that is simply new. Page 2 of a table is unpaired too, and
+warning about that would put a report on correct code. See [lists](/lists).

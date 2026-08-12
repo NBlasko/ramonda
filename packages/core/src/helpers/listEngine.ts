@@ -190,7 +190,7 @@ export class ListEngine<T> {
       // Only the first occurrence: a second one is a second row and mints its own.
       if (id === undefined && occurrence === 0) {
         if (!aligned && before !== undefined) {
-          carryIdentity(before, each);
+          carryIdentity(before, each, host.name);
           aligned = true;
         }
         id = identityOf(item);

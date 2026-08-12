@@ -240,6 +240,7 @@ export type __Published = [
   ErrorBoundaryFallbackProps,
   HeadOptions,
   HookMeta,
+  Identity,
   ItemComponent<unknown>,
   ItemRender<unknown>,
   Lazy,

@@ -84,6 +84,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD048` | error | Object in state changed in place |
 | `RMD049` | error | Two lazy functions with the same source |
 | `RMD050` | warning | A decorator whose effect this member already has |
+| `RMD051` | warning | A list row cannot be told apart from its siblings |
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 
@@ -983,6 +984,39 @@ row and keeps rendering, which is recoverable; a throw takes the whole tree down
 
 `describe()` names the value in the writer's words: "a nested `list()`" rather than "an object",
 because the object literal somebody would then go looking for is not what happened.
+
+### RMD051 — A list row cannot be told apart from its siblings
+
+A list identifies a row by what sets it apart from the others. That is what lets a row
+replaced by fresh objects — a refetch, a `JSON.parse`, anything round-tripped through the
+network — be recognised as the row it replaces and updated, rather than destroyed and built
+again with whatever its component was holding.
+
+This row carries nothing that could do that. Every field it has is either nested (compared,
+but never counted as evidence) or a value its siblings share:
+
+```ts
+// nothing but nested data — no field to tell one from another
+[{ tags: ["a"] }, { tags: ["b"] }]
+
+// every field is a flag they all carry
+[{ done: false, kind: "task" }, { done: false, kind: "task" }]
+```
+
+So the row is rebuilt whenever the array is replaced, and a half-typed input, an open menu
+or a scroll position on it goes with it.
+
+Give the row a field that is its own — an id is the usual answer. Or, when only your app
+knows which row is which, say so where the data arrives rather than on every list that
+renders it:
+
+```ts
+this.rows = merge(this.rows, incoming, (row) => row.id);
+```
+
+**This does not fire for a row that is simply new.** A new row in a paginated table is
+unpaired too, and reporting that would put a warning on correct code. The question asked is
+about the ROW — could anything ever have identified it — not about whether it was matched.
 
 ## Retired codes
 

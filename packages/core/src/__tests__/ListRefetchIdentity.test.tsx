@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, Host, list, merge, state } from "../index";
 import { mounted } from "../base/decorators";
 
 /**
@@ -386,5 +386,99 @@ describe("an id that happens to look like a position", () => {
 
     expect(texts(app.container)).toBe("A,b,c");
     sameRows(app.container, before);
+  });
+});
+
+describe("RMD051 — a row nothing can tell apart", () => {
+  function codes(): string[] {
+    const seen: string[] = [];
+    const handler = (event: Event) => {
+      const message = (event as CustomEvent).detail?.message as string;
+      const code = message?.match(/^\[(RMD\d+)\]/)?.[1];
+      if (code) seen.push(code);
+    };
+    window.addEventListener("ramonda:dev-log", handler);
+    return Object.assign(seen, { stop: () => window.removeEventListener("ramonda:dev-log", handler) });
+  }
+
+  test("is reported when a row carries nothing of its own", async () => {
+    interface Bag {
+      tags: string[];
+    }
+
+    @Host("div")
+    class App extends Component {
+      @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
+      render() {
+        return <ul>{list(this.bags, (b: Bag) => <li>{b.tags.join(",")}</li>)}</ul>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    const seen = codes() as string[] & { stop(): void };
+    // A refetch: the row that changed cannot be matched to the row it replaces,
+    // because a nested field is compared and never counted.
+    app.instance.bags = [{ tags: ["a", "x"] }, { tags: ["b"] }];
+    await app.settle();
+    seen.stop();
+
+    expect(seen).toContain("RMD051");
+  });
+
+  test("is NOT reported for a row that is simply new", async () => {
+    // Page 2 of a table. Every row is unpaired, and every one of them could have
+    // been identified — there was nothing here to identify it AS. Reporting this
+    // would put a warning on correct code, which is how a diagnostic becomes
+    // noise people scroll past.
+    @Host("div")
+    class App extends Component {
+      @state rows: Row[] = [
+        { id: 1, t: "a", done: false },
+        { id: 2, t: "b", done: false },
+      ];
+      render() {
+        return <ul>{list(this.rows, (r: Row) => <li>{r.t}</li>)}</ul>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    const seen = codes() as string[] & { stop(): void };
+    app.instance.rows = [
+      { id: 9, t: "x", done: false },
+      { id: 10, t: "y", done: false },
+    ];
+    await app.settle();
+    seen.stop();
+
+    expect(seen).not.toContain("RMD051");
+  });
+
+  test("is silenced by giving the rows an identity through merge", async () => {
+    interface Bag {
+      tags: string[];
+    }
+
+    @Host("div")
+    class App extends Component {
+      @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
+      render() {
+        return <ul>{list(this.bags, (b: Bag) => <li>{b.tags.join(",")}</li>)}</ul>;
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    const seen = codes() as string[] & { stop(): void };
+    app.instance.bags = merge(app.instance.bags, [{ tags: ["a", "x"] }, { tags: ["b"] }], (b) => (b as Bag).tags[0]);
+    await app.settle();
+    seen.stop();
+
+    // Identity was carried before the list ever looked, so nothing was unpaired.
+    expect(seen).not.toContain("RMD051");
   });
 });
