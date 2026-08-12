@@ -1,6 +1,6 @@
 ---
 title: Rendering lists
-description: Draw a list from an array with list() — no keys to write, and none to get wrong.
+description: Draw a list from an array with list() — lazy, and identified by the item itself.
 section: Rendering lists
 order: 40
 ---
@@ -22,16 +22,36 @@ Two arguments: the array, and the one way to turn an item into markup — a comp
 (it receives the item as its `item` prop) or a function. Click a few counters, then
 reverse the list — each count stays with its task.
 
-## No keys to write
+## Which row is which
 
-If you've used another framework, you may expect to pass a `key` for each item.
-Ramonda doesn't ask for one, on purpose.
+A list has to answer one question whenever the array changes: which row on screen is
+which row in the new array. Get it wrong and a row's state lands on its neighbour — a
+half-typed input, an open menu, a scroll position, all one row off, while the page
+still looks right.
 
-The trouble with a key is that a wrong one doesn't error — it quietly moves state to
-the wrong row (a key made from the array index follows the *position*, not the item).
-So `list()` takes identity from the items themselves — an object is identified by
-itself, a value like a string by its value — and there is nothing for you to write or
-get wrong.
+There are three answers, tried in this order, and the first two are exact.
+
+**The object.** While a row is the same object it is the same row. Nothing is declared
+and nothing can be got wrong. This covers every update that keeps its references —
+`filter`, a spread that touches one row, a [lens](/lens) write. A repeated primitive is
+told apart by which occurrence it is, so `["a", "a", "b"]` is three stable rows.
+
+**Your key.** The moment an object is *new* — data from a refetch, a `JSON.parse`, an
+array built fresh in a `@compute` — the object cannot answer, because nothing here has
+seen it before. A `key` is what still can:
+
+```tsx
+list(this.users, (user) => <UserRow key={user.id} item={user} />);
+```
+
+Write it from your data, never from the array index — the index *is* the position, so
+keying by it says "this is the second row", which is exactly what stops being true when
+rows move. Two rows under one key are reported ([`RMD002`](/reference/diagnostics)).
+
+**A guess.** With no key and a new object, the incoming array is aligned against the one
+on screen by what the rows still have in common. It is right for the shapes data takes —
+see [refetched data](#refetched-data-and-objects-that-are-re-created) — and it is a
+guess, which is why a key beats it.
 
 ## It does not iterate where you write it
 
@@ -229,4 +249,4 @@ value every render, and identity is minted from the items.
 
 ## Next
 
-- [A component or a function](/lists/as-and-render) — two ways to turn an item into markup.
+- [The row callback](/lists/row-callback) — how an item becomes markup, and where the key goes.

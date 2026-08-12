@@ -40,17 +40,19 @@ cost every row its `list()` key.
 ```tsx
 <ul>
   {list(f.tags.$.rows, (row) => (
-      <li>
-        <input {...row.field.$.bind} />
-        {row.field.$.error ? <em>{row.field.$.error}</em> : null}
-      </li>
-    ))}
+    <li key={row.id}>
+      <input {...row.field.$.bind} />
+      {row.field.$.error ? <em>{row.field.$.error}</em> : null}
+    </li>
+  ))}
 </ul>
 ```
 
-`key: (row) => row.id` is the whole point. The id is generated when the row appears and stays
-with it through every insert and remove, so the reconciler keeps that row's element — and with
-it, whatever the browser was holding: the caret position, the selection, an open datalist.
+`key={row.id}` is the whole point. A row object is rebuilt whenever its position changes, so
+the object alone cannot say which row is which after an insert or a remove — the id can. It is
+generated when the row appears and stays with it, so the reconciler keeps that row's element,
+and with it whatever the browser was holding: the caret position, the selection, an open
+datalist.
 
 `row.field` is a field node like any other, so everything from [Fields](/forms/fields) applies:
 `$.value`, `$.error`, `$.bind`, and further property access when the row is an object.

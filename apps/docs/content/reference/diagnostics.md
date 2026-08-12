@@ -734,13 +734,13 @@ list(pages, (page: Post[]) => list(page, (item) => <PostRow item={item} />));
 list(pages, (item) => <PostPage item={item} />);
 ```
 
-One item becomes exactly one element. The list writes the row's key onto it and the diff matches
-rows on that key, so a string, a number, an array or a nested `list()` has nowhere to carry its
-identity — the item is **skipped**, and the page renders one row short.
+One item becomes exactly one element. The element is what carries the row's key and what the
+diff matches rows on, so a string, a number, an array or a nested `list()` has nowhere to carry
+its identity — the item is **skipped**, and the page renders one row short.
 
-For plain values, wrap them: `render: (name) => <li>{name}</li>`. For a nested list — a list of
-pages, each holding rows — go through a component, as [nested lists](/lists/nested) shows. The
-component's host element is what wraps the inner rows.
+For plain values, wrap them: `list(names, (name) => <li>{name}</li>)`. For a nested list — a
+list of pages, each holding rows — put a component between them, as
+[nested lists](/lists/nested) shows. The component's host element is what wraps the inner rows.
 
 TypeScript rejects all of this at the call site; this fires when the build has no types.
 
