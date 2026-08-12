@@ -22,6 +22,9 @@ const EXPECTED = [
   "Component",
   "Hook",
   "list",
+  // Structural sharing at the data boundary, and the one place an app can say
+  // which row is which when inference cannot.
+  "merge",
   "ShouldUpdateOnPropsChange",
   "StableProps",
   "AsyncLoad",
@@ -127,6 +130,7 @@ const EXPECTED_TYPES = [
   "ErrorBoundaryFallbackProps",
   "HeadOptions",
   "HookMeta",
+  "Identity",
   "ItemComponent",
   "ItemRender",
   "Lazy",
@@ -198,6 +202,7 @@ import type {
   ErrorBoundaryFallbackProps,
   HeadOptions,
   HookMeta,
+  Identity,
   ItemComponent,
   ItemRender,
   Lazy,

@@ -27,11 +27,18 @@ import { valueEqual } from "./valueEqual";
  * rows, one id. Non-enumerable, a copy is born with none and is aligned like any
  * other new object.
  *
- * ## What cannot carry one
+ * ## A frozen item keeps its identity too
  *
- * A frozen or sealed item, and a primitive. Both are left alone — identity falls
- * back to what it already was (reference for an object, value or occurrence for a
- * primitive), which is exactly today's behaviour rather than a new failure.
+ * `Object.defineProperty` throws on a frozen or sealed object, and for a while
+ * that meant those rows had no identity at all — measured, a refetch of frozen
+ * rows rebuilt every one of them, changed or not. Freezing your data is a
+ * reasonable thing to do and it should not cost you that.
+ *
+ * So the write falls back to a WeakMap keyed on the item. It is the same identity
+ * by every other measure — invisible to serialization, to `Object.keys`, to
+ * spread — and weak keys mean an item that goes out of scope takes its entry with
+ * it. Only a PRIMITIVE has nowhere to put one, and a primitive does not need one:
+ * its value, or which occurrence it is, is already its identity.
  */
 export const ITEM_ID = Symbol("ramondaItemId");
 
@@ -39,12 +46,17 @@ interface Identified {
   [ITEM_ID]?: string;
 }
 
+/** For items that cannot be written to. Weak, so an item that goes takes its entry. */
+const frozenIds = new WeakMap<object, string>();
+
 export function identityOf(item: unknown): string | undefined {
   if (item === null || typeof item !== "object") return undefined;
-  return (item as Identified)[ITEM_ID];
+  // The property first: it is where all but the frozen ones keep it, and a miss
+  // is the only thing that pays for the second lookup.
+  return (item as Identified)[ITEM_ID] ?? frozenIds.get(item as object);
 }
 
-/** Writes an identity onto an item, or does nothing if it cannot hold one. */
+/** Writes an identity onto an item. A primitive has nowhere to put one, and needs none. */
 export function stampIdentity(item: unknown, id: string): void {
   if (item === null || typeof item !== "object") return;
   try {
@@ -55,15 +67,8 @@ export function stampIdentity(item: unknown, id: string): void {
       writable: true,
     });
   } catch {
-    // Frozen or sealed. The item keeps the identity it would have had before any
-    // of this existed — matching by reference — so nothing breaks, it only stops
-    // improving.
-    //
-    // TODO: report it in DEV. Freezing the rows of a list costs them their
-    // identity across a refetch, silently, and someone doing it is unlikely to
-    // have connected the two. It is a diagnostic (an RMD code and a line in the
-    // reference), not a behaviour change, so it belongs in its own pass rather
-    // than smuggled in with the identity work.
+    // Frozen or sealed. Somewhere else, then — see the note at the top.
+    frozenIds.set(item as object, id);
   }
 }
 

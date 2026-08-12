@@ -25,6 +25,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `Component<P>` | The base class. Extend it and implement [`render()`](/concepts/components). |
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
 | `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
+| `merge(previous, next, identity?)` | Keeps the previous value where the new one equals it, so a refetch is not a change. With `identity`, rows are paired across a reorder or a resize and a changed row keeps its identity. [Lists](/lists#refetched-data-and-objects-that-are-re-created) |
 | `list<T>(each, builder)` | Renders a list, minting identity from the items. `builder` is a component or a function. [Lists](/lists) |
 | `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
@@ -131,7 +132,7 @@ All 32, grouped by what they belong to. The server and per-request ones are expl
 
 **Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
 
-**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` ·
+**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` · `Identity` ·
 `AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`

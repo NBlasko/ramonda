@@ -111,12 +111,39 @@ rather than how many fields match.
 
 **A copy.** `{ ...row }` gives you a new row, not a second claim on an old one.
 Identity is a non-enumerable symbol, so a spread, a `JSON.stringify` and every
-equality check you write are all blind to it.
+equality check you write are all blind to it. (`Object.freeze` is fine — a frozen
+row keeps its identity too, just somewhere the freeze cannot reach.)
 
-**A frozen row.** `Object.freeze` leaves nothing to write identity onto, so those
-rows fall back to matching by reference.
+**A row with nothing to identify it.** `{ tags: [...] }` and nothing else: there is
+no field to pair it on, so a change to one of them rebuilds that row. This is the
+case `merge` is for.
 
-There is no `key` option to reach for. There is nothing to write.
+## When you know better than the inference
+
+`list()` reads your rows and decides. For the shapes data takes that is right — but
+it *is* inference, and it has no way to be told otherwise. `merge` is that way, and
+it sits where the data arrives rather than on the list:
+
+```tsx
+this.rows = merge(this.rows, await api.getRows(), (row) => row.id);
+```
+
+Said once, at the boundary — not on every list that renders those rows.
+
+With an identity, rows are paired by what you named. An unchanged row comes back as
+the **same object** wherever it moved to, and a changed one comes back carrying its
+predecessor's identity, so the row updates in place instead of being rebuilt.
+
+Without one, `merge` still earns its place: it hands back the previous value
+wherever the new one equals it, so a refetch that changed nothing is not a change
+at all and nothing re-renders.
+
+```tsx
+this.rows = merge(this.rows, await api.getRows());
+```
+
+[`@ramonda/query`](/query) does this for you on every fetch — there is nothing to
+turn on.
 
 ## What about `.map()`?
 
