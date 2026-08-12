@@ -379,7 +379,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   function collectClass(node: ts.Node): void {
     if (!ts.isClassDeclaration(node) || !node.name) return;
-    if (!extendsComponentOrHook(node)) return;
+    if (!extendsComponentOrHook(node, checker)) return;
     const pos = positionOf(node);
     components.set(node.name.text, {
       name: node.name.text,
@@ -863,17 +863,56 @@ function jsxTagName(node: ts.Node): string | undefined {
   return /^[A-Z]/.test(name) ? name : undefined;
 }
 
-function extendsComponentOrHook(cls: ts.ClassDeclaration): boolean {
+/** The `extends X` clause's expression, if the class has one at all. A class has at most one. */
+function baseExpression(cls: ts.ClassLikeDeclaration): ts.Expression | undefined {
   for (const clause of cls.heritageClauses ?? []) {
     if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
-    for (const type of clause.types) {
-      const name = type.expression.getText();
-      if (name === "Component" || name === "Hook" || name.endsWith(".Component") || name.endsWith(".Hook")) {
-        return true;
-      }
-      // A subclass of a subclass still is one; resolved by name in the component map later.
+    return clause.types[0]?.expression;
+  }
+  return undefined;
+}
+
+/**
+ * The class a heritage expression names, through an import alias.
+ *
+ * Symbols only. A type would answer more shapes — a mixin's return type above all — and it would
+ * bring back the 618 ms checker, `lib` and every `@types` package with it. What symbols cannot
+ * follow is out of scope by decision, not by accident.
+ */
+function baseClass(base: ts.Expression, checker: ts.TypeChecker): ts.ClassLikeDeclaration | undefined {
+  if (!ts.isIdentifier(base) && !ts.isPropertyAccessExpression(base)) return undefined;
+  let symbol = checker.getSymbolAtLocation(base);
+  if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  return symbol?.declarations?.find((d): d is ts.ClassLikeDeclaration => ts.isClassLike(d));
+}
+
+/**
+ * Whether some class in this one's heritage chain is Ramonda's `Component` or `Hook`.
+ *
+ * This used to read one clause and return `true` for a class extending ANYTHING, on the reasoning
+ * that a subclass of a subclass still is one. It is — and so was `class MyError extends Error`.
+ * Measured on the `heritage` fixture: of five classes, all five counted as components.
+ *
+ * Nearly harmless while the only cost was `counts.components`, which is printed to the user as a
+ * fact — the docs app's number was inflated. Not harmless for anything computed from the graph:
+ * "a component nobody renders" would call every `extends Error` dead code.
+ *
+ * The fix walks the chain rather than tightening the name check. Accepting only a literal
+ * `extends Component` would drop `Deep extends Base`, which is a real component and today passes
+ * only by the accident of that blanket `true`.
+ */
+function extendsComponentOrHook(cls: ts.ClassDeclaration, checker: ts.TypeChecker): boolean {
+  const seen = new Set<ts.ClassLikeDeclaration>();
+  let current: ts.ClassLikeDeclaration | undefined = cls;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const base = baseExpression(current);
+    if (!base) return false;
+    const name = base.getText();
+    if (name === "Component" || name === "Hook" || name.endsWith(".Component") || name.endsWith(".Hook")) {
       return true;
     }
+    current = baseClass(base, checker);
   }
   return false;
 }

@@ -63,7 +63,37 @@ describe("it can see the app at all", () => {
     const { counts } = run("ok");
     expect(counts.contexts).toBe(1);
     expect(counts.roots).toBe(1);
-    expect(counts.components).toBeGreaterThanOrEqual(3);
+    // Exactly the three classes in the fixture. It was `toBeGreaterThanOrEqual` while any class
+    // extending anything counted, which is a bound a wrong number also satisfies.
+    expect(counts.components).toBe(3);
+  });
+});
+
+/**
+ * Which classes are components.
+ *
+ * The membership test decided this by reading one heritage clause and saying yes to a class
+ * extending ANYTHING. Every rule the composition graph is meant to carry reads this set — "a
+ * component no root renders" would report `class MyError extends Error` as dead code — so it is
+ * the first thing to be right about.
+ */
+describe("a class is a component only if its heritage chain reaches one", () => {
+  test("counts the two components and neither of the plain classes", () => {
+    // Base and Deep and App. Not MyError, not Plain, not Widget, not the mixin's Panel.
+    expect(run("heritage").counts.components).toBe(3);
+  });
+
+  test("a subclass of a component is still a component, so the walk goes through it", () => {
+    /**
+     * The half that a tighter name check would break. `Deep extends Base extends Component`
+     * consumes Theme with no provider above it, and that report exists only if `Deep` is in the
+     * set at all — silence here means the fix went too far in the other direction.
+     */
+    const { issues } = run("heritage");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Deep");
+    expect(issues[0].context).toBe("Theme");
+    expect(issues[0].path).toEqual(["App", "Deep"]);
   });
 });
 
