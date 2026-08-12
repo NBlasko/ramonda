@@ -1,10 +1,8 @@
 import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { created, destroyed, watchProp } from "./decorators";
-import { filterVirtualChild } from "../core/DiffAndMerge";
-import { ChildrenRegion } from "../core/childrenRegion";
-import { PORTAL_ATTR, KEY_SYM, ORIGIN_SYM } from "../helpers/constants";
-import type { ComponentChild, RamondaNode } from "../types/vdom";
+import { ChildrenRegion, isOpenAnchor } from "../core/childrenRegion";
+import type { RamondaNode } from "../types/vdom";
 
 export interface PortalProps {
   /**
@@ -39,10 +37,15 @@ export interface PortalProps {
  *
  * The children diff (`applyDiffOnChildren` / `reorderChildren`) works over ALL of
  * a parent's children, so it cannot be pointed at a shared `document.head`
- * without adopting the shell's tags and every other portal's. Instead this keeps
- * its own ordered list of the nodes it built and reconciles only those. Two
- * portals into one target therefore coexist, and neither touches what was there
- * before them — which is the property `Head` needs and the registry used to fake.
+ * without adopting the shell's tags and every other portal's. So a portal owns a
+ * `ChildrenRegion` instead: a contiguous BLOCK inside the target, with a record
+ * of its own and anchor comments delimiting it. Two portals into one target
+ * therefore coexist, and neither touches what was there before them — which is
+ * the property `Head` needs and the registry used to fake.
+ *
+ * Everything else follows from the region being reconciled by the real
+ * reconciler: `list()` works here, a component restores its server state on
+ * hydration, and a keyed reorder costs the moves it has to and no more.
  *
  * ## Reactivity — it rides the render cycle, on purpose
  *
@@ -111,16 +114,19 @@ export class Portal extends Hook<PortalProps> {
    * main walk never visits: nothing would adopt them, so the first client update
    * would build a second copy of everything the server already wrote.
    *
-   * So this seeds `nodes` from the tags the server left in the target — found by
-   * `PORTAL_ATTR`, which `renderPage` emitted — and reconciles against them, which
-   * reuses each in place. On a NORMAL client build the `shared` create already
-   * filled `nodes`, so this finds them present and does nothing: the reconcile
-   * that matters has happened, and adopting on top would be a second one.
+   * So this finds the block the server wrote — delimited by the region's anchor
+   * COMMENTS, which `renderPage` emits around it — and hands it to the region's
+   * hydration, which is the ordinary `hydrateLevel` walk. That is what makes a
+   * portalled COMPONENT restore rather than rebuild: only `hydrateComponent`
+   * reads the state blob off a host and adopts it as the instance's own.
    *
-   * Several portals may share one target: this takes only its OWN block — the first
-   * `children.length` still-marked nodes — and CLAIMS them by removing the marker,
-   * so the next portal (adopts run in the same tree order the server placed in)
-   * finds its own block at the front. See the loop for the detail.
+   * On a NORMAL client build the `shared` create already placed the block, so
+   * `placed` is set and this does nothing.
+   *
+   * Several portals may share one target. Each takes the first UNCLAIMED block —
+   * adopts run in the same tree order the server placed in, so the first portal
+   * to ask gets the first block — and claiming it is the region taking ownership
+   * of those anchors, which puts them out of the next portal's reach.
    */
   @created({ env: "client" })
   adopt(): void {
@@ -129,40 +135,17 @@ export class Portal extends Hook<PortalProps> {
     const target = this.props.target;
     if (!target) return;
 
-    // Take only THIS portal's own server nodes — the first `children.length` marked
-    // nodes still unclaimed — not every marked node in the target. Seeding from all
-    // of them let the first portal into a shared target sweep a sibling's tags away
-    // and the sibling rebuild onto what was left. Claimed by removing the marker, so
-    // the next portal (adopts run in the same tree order the server placed in) skips
-    // this block and finds its own at the front. Keys are stamped from the matching
-    // child so a keyed reconcile finds each node instead of building a duplicate.
-    // One marked node per ELEMENT child, in order — NOT one per child. A string
-    // child is an unmarked text node the server never emitted, so counting it would
-    // claim a node too many and eat the next portal's block. Skip it here; the
-    // client rebuilds it in `reconcile`.
-    const children = this.childList();
-    const marked = target.querySelectorAll(`[${PORTAL_ATTR}]`);
-    const mine: ChildNode[] = [];
-    let m = 0;
-    for (const child of children) {
-      if (typeof child === "string") continue;
-      if (m >= marked.length) break;
-      const element = marked[m++];
-      element.removeAttribute(PORTAL_ATTR);
-      if (child.attributes?.key != null) (element as unknown as KeyedNode)[KEY_SYM] = child.attributes.key;
-      // Whose render built it. A node parsed from server markup carries no
-      // origin, and the reconciler refuses to match a vnode against a node
-      // somebody else built — so without this the reconcile rebuilds every tag
-      // it just adopted and leaves the server's beside it. `hydrateNode` stamps
-      // it for the same reason on the main walk, which this is the portal's twin
-      // of; the value has to be the CHILD's, not the owner's, because that is
-      // what the vnode about to be matched carries.
-      (element as unknown as OriginNode)[ORIGIN_SYM] = (child as unknown as OriginNode)[ORIGIN_SYM];
-      mine.push(element as unknown as ChildNode);
+    const open = firstUnclaimedBlock(target);
+    // No block: the server rendered nothing here (or this page was never server
+    // rendered at all). Building is then exactly right, and it is what `place`
+    // would have done.
+    if (open === undefined) {
+      this.reconcile();
+      return;
     }
 
-    this.region.seed(mine, target);
-    this.reconcile();
+    claimed.add(open);
+    this.region.hydrate(this.props.children, target, open);
   }
 
   @watchProp((props: PortalProps) => props.children)
@@ -199,56 +182,26 @@ export class Portal extends Hook<PortalProps> {
     const target = this.props.target;
     if (!target) return;
 
-    // Which nodes the block already held, so only the ones this pass BUILT get
-    // marked below. Reasserting the marker on every node instead is wrong in a
-    // way that only shows up with two portals in one target: `adopt` claims a
-    // server node by REMOVING its marker, so re-adding it puts the node back in
-    // the pool and the next portal to adopt takes it. Measured — the second
-    // portal adopted the first's <meta> and both rendered the same tag.
-    const held = this.region.nodes.length === 0 ? undefined : new Set(this.region.nodes);
-
     this.region.reconcile(this.props.children, target);
-
-    // Marked so the server renderer collects it and the client finds it to adopt.
-    // Elements only; text has no attributes.
-    for (const node of this.region.nodes) {
-      if (node.nodeType === 1 && held?.has(node) !== true) (node as Element).setAttribute(PORTAL_ATTR, "");
-    }
-  }
-
-  /**
-   * The children as a flat run of real nodes-to-be — arrays flattened, holes
-   * dropped. Only `adopt` needs it now, for how many server nodes are its own and
-   * what key each carries; `reconcile` hands the children over untouched, so the
-   * region normalizes them exactly as a render would.
-   */
-  private childList(): ComponentChild[] {
-    const flat: unknown[] = [];
-    flattenChildren(this.props.children, flat);
-
-    const out: ComponentChild[] = [];
-    for (const raw of flat) {
-      const child = filterVirtualChild(raw);
-      if (child !== undefined) out.push(child);
-    }
-    return out;
   }
 }
 
-/** A portal node carrying the key it was matched by, so the next render can find it. */
-type KeyedNode = ChildNode & { [KEY_SYM]?: unknown };
-
-/** Either side of the match: the vnode knows its origin, the adopted node is told it. */
-type OriginNode = { [ORIGIN_SYM]?: number };
-
 /**
- * Flattens `children` into a single run of atoms, so a nested array — `{[a, [b,
- * c]]}` — is counted as the atoms it contains.
+ * Server blocks already taken by a portal on this page.
+ *
+ * A `WeakSet` on the anchor NODE rather than a counter or an attribute: a counter
+ * would have to be reset per page and would be wrong the moment a portal mounts
+ * later, and an attribute is what this whole change exists to stop relying on.
+ * The entry dies with the node.
  */
-function flattenChildren(raw: unknown, out: unknown[]): void {
-  if (Array.isArray(raw)) {
-    for (const child of raw) flattenChildren(child, out);
-  } else {
-    out.push(raw);
+const claimed = new WeakSet<Comment>();
+
+/** The first block in `target` that no portal has adopted yet. */
+function firstUnclaimedBlock(target: Element): Comment | undefined {
+  for (let node = target.firstChild; node !== null; node = node.nextSibling) {
+    if (!isOpenAnchor(node)) continue;
+    const anchor = node as Comment;
+    if (!claimed.has(anchor)) return anchor;
   }
+  return undefined;
 }

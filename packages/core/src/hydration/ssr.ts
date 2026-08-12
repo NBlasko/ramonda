@@ -4,6 +4,7 @@ import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
 import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
+import { isOpenAnchor, isCloseAnchor } from "../core/childrenRegion";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
 import {
@@ -323,18 +324,64 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
  */
 const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
 
+/**
+ * Two mechanisms, because the two owners are genuinely different.
+ *
+ * `Head` builds its tags ITSELF — it never hands them to the reconciler — so an
+ * attribute it writes stays written, and `PORTAL_ATTR` is the right marker for
+ * it. A `Portal` does hand its block to the reconciler, and there an attribute
+ * cannot survive: the attribute diff treats a node's current attributes as the
+ * previous set and removes what the next vnode lacks, so the first re-render of
+ * anything in the block erased the marker and the tag silently left the page.
+ * A portal's block is delimited by its region's anchor COMMENTS instead, which
+ * nothing in the attribute pass can reach.
+ *
+ * So this walks the head once, in document order, and takes: everything between
+ * a pair of anchors (the anchors included, because the client hydrates against
+ * them), and outside a block, the elements `Head` marked.
+ */
 function collectHead(): { title: string; head: string } {
-  const tags = Array.from(document.head.querySelectorAll(MANAGED_HEAD));
-  return {
-    title: document.title,
-    head: tags.map((tag) => tag.outerHTML).join(""),
-  };
+  let head = "";
+  let depth = 0;
+
+  for (let node = document.head.firstChild; node !== null; node = node.nextSibling) {
+    if (isOpenAnchor(node)) depth++;
+
+    if (depth > 0) {
+      // Inside a portal's block, where a component may be sitting on any node —
+      // `stampBlobs` only ever walked the body container, so a portalled
+      // component reached the client with no state to restore.
+      stampBlobs(node);
+      head += serializeNode(node);
+    } else if (node.nodeType === 1 && (node as Element).matches(MANAGED_HEAD)) {
+      head += (node as Element).outerHTML;
+    }
+
+    if (isCloseAnchor(node)) depth--;
+  }
+
+  return { title: document.title, head };
 }
 
-/** Clears the tags a previous `Head` left behind, and the title with them. */
+function serializeNode(node: Node): string {
+  if (node.nodeType === 1) return (node as Element).outerHTML;
+  if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`;
+  return (node as Text).data ?? "";
+}
+
+/** Clears the tags a previous `Head` left behind, the portal blocks, and the title. */
 function resetHead(): void {
   for (const tag of Array.from(document.head.querySelectorAll(MANAGED_HEAD))) {
     tag.remove();
+  }
+  // A portal's block, anchors and all. Nothing tears a server render's tree down
+  // on the way out, so its regions never dispose themselves — without this a
+  // long-lived server process accumulates one block per portal per request.
+  let depth = 0;
+  for (const node of Array.from(document.head.childNodes)) {
+    if (isOpenAnchor(node)) depth++;
+    if (depth > 0) node.remove();
+    if (isCloseAnchor(node)) depth--;
   }
   document.title = "";
   // The registry goes with the tags: it holds the elements just removed and the

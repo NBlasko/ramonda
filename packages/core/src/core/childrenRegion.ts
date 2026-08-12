@@ -9,9 +9,30 @@ import {
 } from "./DiffAndMerge";
 import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
+import { hydrateLevel, type HydrationWalk } from "../hydration/hydrate";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
 import type { DONE } from "../helpers/constants";
+
+/**
+ * The comments that delimit a region's block in the DOM, and in the markup a
+ * server render emits.
+ *
+ * The id is for a person reading the DOM; nothing matches on it. What is matched
+ * is the SHAPE — `r…` opens, `/r…` closes — because a hydrating client's regions
+ * mint their own ids and could never agree with the server's.
+ */
+export const openAnchor = (id: number): string => `r${id}`;
+export const closeAnchor = (id: number): string => `/r${id}`;
+
+/** A comment node, and one that opens a region block. */
+export function isOpenAnchor(node: Node): boolean {
+  return node.nodeType === 8 && /^r\d+$/.test((node as Comment).data);
+}
+
+export function isCloseAnchor(node: Node): boolean {
+  return node.nodeType === 8 && /^\/r\d+$/.test((node as Comment).data);
+}
 
 /**
  * A contiguous run of children that something OTHER than an element's render
@@ -35,17 +56,26 @@ import type { DONE } from "../helpers/constants";
  * consumer; the rule it establishes is that wherever a hook consumes renderable
  * children, `list()` works there.
  *
- * ## The anchor
+ * ## The anchors
  *
- * One comment node, appended to the parent, marking the END of the block.
- * Insertions go before it, so a fresh node lands inside this region rather than
- * past every other portal's nodes at the end of the target.
+ * A pair of comment nodes delimiting the block — `<!--r7-->` before it and
+ * `<!--/r7-->` after. Insertions go before the closing one, so a fresh node lands
+ * inside this region rather than past every other portal's nodes at the end of
+ * the target.
  *
- * A trailing anchor rather than "insert before the node after my last one",
- * because of the EMPTY block: a region whose children render to nothing owns no
- * nodes and would have no position left to come back to. It is also what
- * survives serialization, which is how a hydrating client finds its own block in
- * a shared target.
+ * Anchors rather than "insert before the node after my last one", because of the
+ * EMPTY block: a region whose children render to nothing owns no nodes and would
+ * have no position left to come back to.
+ *
+ * And COMMENTS rather than an attribute on the nodes, which is what a portal used
+ * to mark its own tags with. An attribute on a node the reconciler owns cannot
+ * survive: the attribute diff reads a node's current attributes as the previous
+ * set and removes whatever the next vnode does not have, so the first re-render
+ * of anything in the block erased the marker and the server dropped the tag from
+ * the page. Measured on a portalled component that writes state in a server
+ * `@created`: the head came back empty. A comment is not an attribute, so nothing
+ * in the attribute pass can reach it — and it serializes, which is how a
+ * hydrating client finds its own block in a shared target.
  *
  * ## Identity
  *
@@ -67,7 +97,8 @@ export class ChildrenRegion {
    * costs nothing where a walk over a shared parent's children would.
    */
   private order: ChildNode[] = [];
-  private anchor: Comment | undefined;
+  private open: Comment | undefined;
+  private close: Comment | undefined;
   private parent: ChildNode | undefined;
   /** The last children given, so a self-refresh has something to reconcile. */
   private children: unknown;
@@ -106,7 +137,7 @@ export class ChildrenRegion {
 
     const ordered: ChildNode[] = [];
     flattenEntries(result.entries, ordered);
-    reorderChildren(parent, ordered, this.anchor!, this.order);
+    reorderChildren(parent, ordered, this.close!, this.order);
     this.order = ordered;
   }
 
@@ -116,29 +147,48 @@ export class ChildrenRegion {
   }
 
   /**
-   * Starts the region off owning nodes it did not build — the ones a server
-   * render left in the target.
+   * Adopts the block a server render left behind, starting at `open`.
    *
-   * The record is the nodes themselves: entries are DOM nodes or regions, and a
-   * plain node is a valid entry. That is enough for the reconcile that follows to
-   * CLAIM them rather than build beside them — an adopted node carries no
-   * `SLOT_SYM`, which the diff already reads as "positional matching is all there
-   * is", and a key stamped by the caller is found the same way as any other.
+   * This is the ordinary hydration walk — `hydrateLevel`, the same one an
+   * element's children go through — pointed at a run of siblings instead of at
+   * everything under a parent. That is the whole reason it exists: a portalled
+   * COMPONENT is only restored if `hydrateComponent` runs on it, reading the
+   * state blob off its host and adopting it as the instance's own. Reusing the
+   * element and reconciling against it is not the same thing — the node carries
+   * no `_componentInstance`, so the diff builds a fresh component, the server's
+   * `@created` never happened on this side, and its state is gone.
    *
-   * The anchor goes immediately after the last seeded node, not at the end of the
-   * parent: several regions may share a target, and appending would put this
-   * one's anchor past the next one's nodes.
+   * The server's own anchors are REUSED rather than replaced. Their ids belong to
+   * the server's regions and will not match this one's, but an id is only ever
+   * read by a person looking at the DOM — nothing matches on it, and reusing the
+   * nodes means the adoption moves nothing at all.
    */
-  seed(nodes: ChildNode[], parent: ChildNode): void {
-    if (this.disposed || this.anchor !== undefined) return;
-    this.order = nodes.slice();
-    this.record = this.order as unknown as RecordEntry[];
+  hydrate(children: unknown, parent: ChildNode, open: Comment): void {
+    if (this.disposed || this.open !== undefined) return;
+    this.children = children;
     this.parent = parent;
+    this.open = open;
 
-    this.anchor = document.createComment(`r${this.id}`);
-    const last = nodes[nodes.length - 1];
-    if (last !== undefined && last.parentNode === parent) parent.insertBefore(this.anchor, last.nextSibling);
-    else parent.appendChild(this.anchor);
+    const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
+    const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
+    this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
+
+    const ordered: ChildNode[] = [];
+    flattenEntries(this.record, ordered);
+    this.order = ordered;
+
+    // Where the walk stopped IS the closing anchor, when the server wrote as many
+    // nodes as this render wants. It is not when the client renders more children
+    // than the server did: those were built and inserted before the anchor, and
+    // the walk stopped on it all the same. Either way the anchor is the node the
+    // walk ran into, so the only case left is a block the server never closed.
+    const stop = walk.cursor;
+    if (stop !== null && isCloseAnchor(stop)) {
+      this.close = stop as unknown as Comment;
+      return;
+    }
+    this.close = document.createComment(closeAnchor(this.id));
+    parent.insertBefore(this.close, stop);
   }
 
   /**
@@ -154,8 +204,10 @@ export class ChildrenRegion {
     disposeRegions(this.record);
     this.record = [];
     this.order = [];
-    this.anchor?.remove();
-    this.anchor = undefined;
+    this.open?.remove();
+    this.close?.remove();
+    this.open = undefined;
+    this.close = undefined;
     this.parent = undefined;
   }
 
@@ -166,16 +218,19 @@ export class ChildrenRegion {
    * rather than a second copy being built beside a stale one.
    */
   private place(parent: ChildNode): void {
-    if (this.anchor === undefined) {
-      this.anchor = document.createComment(`r${this.id}`);
-      parent.appendChild(this.anchor);
+    if (this.close === undefined) {
+      this.open = document.createComment(openAnchor(this.id));
+      this.close = document.createComment(closeAnchor(this.id));
+      parent.appendChild(this.open);
+      parent.appendChild(this.close);
       this.parent = parent;
       return;
     }
     if (this.parent === parent) return;
 
-    parent.appendChild(this.anchor);
-    for (const node of this.order) parent.insertBefore(node, this.anchor);
+    parent.appendChild(this.open!);
+    for (const node of this.order) parent.appendChild(node);
+    parent.appendChild(this.close);
     this.parent = parent;
   }
 

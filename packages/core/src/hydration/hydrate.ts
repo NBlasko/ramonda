@@ -13,7 +13,7 @@ import {
   listHostFor,
   unmountNodeInPlace,
 } from "../core/DiffAndMerge";
-import { buildLazyList, isLazyList, type ListEngine, type LazyListNode } from "../helpers/listEngine";
+import { buildLazyList, isLazyList, type ListEngine, type LazyListNode, type ListHost } from "../helpers/listEngine";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
@@ -386,7 +386,7 @@ function hydrateChildren(
 }
 
 /** The position the walk has reached, shared across nesting levels. */
-interface HydrationWalk {
+export interface HydrationWalk {
   cursor: EnhancedChildNode | null;
   count: number;
 }
@@ -399,12 +399,20 @@ interface HydrationWalk {
  * like any other children, so nesting changes what is RECORDED, not the order
  * things are visited in. Getting this wrong crashed — `hydrateNode` was handed a
  * list where it expected a vnode.
+ *
+ * Exported because the walk is not only an element's: a `ChildrenRegion` adopts a
+ * RUN of siblings inside a target it shares, and it has to be this walk, not
+ * something adjacent to it. Reusing a server element and reconciling against it
+ * looks like adoption and is not — a component is only restored when
+ * `hydrateComponent` runs on its host and reads the blob.
  */
-function hydrateLevel(
+export function hydrateLevel(
   children: unknown[],
   placeholder: MaybeComponent,
   parent: Node,
   walk: HydrationWalk,
+  /** See `reconcileEntries` — a region's items report to the region, not a render. */
+  listHost?: ListHost,
 ): { entries: RecordEntry[]; hasList: boolean } {
   const entries: RecordEntry[] = [];
   let hasList = false;
@@ -423,12 +431,16 @@ function hydrateLevel(
       let engine: ListEngine<unknown> | undefined;
 
       if (isLazyList(rawVchild)) {
-        const materialized = buildLazyList(rawVchild as unknown as LazyListNode, undefined, listHostFor(placeholder));
+        const materialized = buildLazyList(
+          rawVchild as unknown as LazyListNode,
+          undefined,
+          listHost ?? listHostFor(placeholder),
+        );
         listNode = materialized.node as typeof rawVchild;
         engine = materialized.engine;
       }
 
-      const inner = hydrateLevel(listNode.vnodes, placeholder, parent, walk);
+      const inner = hydrateLevel(listNode.vnodes, placeholder, parent, walk, listHost);
       entries.push({
         owner: listNode.owner,
         entries: inner.entries,
