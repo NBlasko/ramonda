@@ -109,12 +109,62 @@ export function list<T>(each: Each<T>, render: ItemRender<T>): ListNode {
   // `owner: undefined` is the signal that this is a descriptor rather than a
   // built list — `normalizeChildren` stamps the position, and the diff builds
   // the items.
-  return {
+  const descriptor = {
     [IS_LIST]: true,
     owner: undefined,
     each,
     builder: render,
-  } as unknown as ListNode;
+  };
+
+  if (__DEV__) guardAgainstArrayUse(descriptor);
+
+  return descriptor as unknown as ListNode;
+}
+
+/**
+ * Says what this is, to whoever reached for it as an array.
+ *
+ * `list(items, (item) => …)` reads exactly like `items.map((item) => …)`, and the
+ * one thing that differs is the thing you cannot see: it does not iterate here.
+ * Nothing has run when it returns. What comes back is a DESCRIPTION, and the
+ * mapper is called by the diff, once it is holding the region the rows live in —
+ * which is the whole reason a list whose array did not change costs nothing.
+ *
+ * Anyone who expects an array meets `undefined`, `is not a function` and `is not
+ * iterable`, none of which say what happened. TypeScript refuses all three, so
+ * reaching here means the types were bypassed — a `any`, a cast, plain JavaScript
+ * — and that is exactly when a message is worth having.
+ *
+ * DEV only: these are three property definitions per `list()` call, which is not
+ * something to pay for in a shipped build to explain a mistake the types already
+ * refuse.
+ */
+function guardAgainstArrayUse(descriptor: object): void {
+  const explain = (reached: string): never => {
+    throw new TypeError(
+      `\`list()\` returns a description of a list, not an array, so \`${reached}\` has nothing to work with.\n` +
+        `Nothing has run yet: the callback is called by the framework when it renders the list, which is what makes a list whose array did not change cost nothing.\n` +
+        `Render it — \`<ul>{list(items, (item) => …)}</ul>\` — or, if what you want is an array of values rather than a rendered list, use \`items.map(…)\`.`,
+    );
+  };
+
+  const asFunction = (name: string) => ({
+    value: () => explain(`.${name}()`),
+    enumerable: false,
+    configurable: true,
+  });
+
+  Object.defineProperties(descriptor, {
+    length: { get: () => explain(".length"), enumerable: false, configurable: true },
+    map: asFunction("map"),
+    forEach: asFunction("forEach"),
+    filter: asFunction("filter"),
+    [Symbol.iterator]: {
+      value: () => explain("spreading it"),
+      enumerable: false,
+      configurable: true,
+    },
+  });
 }
 
 export type { LazyListNode } from "../helpers/listEngine";

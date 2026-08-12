@@ -1138,3 +1138,49 @@ describe("your key, and what happens when two rows share one", () => {
     expect(seen.codes).not.toContain("RMD002");
   });
 });
+
+describe("what list() returns, and what it does not", () => {
+  test("nothing has run when it returns", () => {
+    // The one thing that separates it from `.map()`, and the one thing you cannot
+    // see: the callback is called by the framework when it renders the list, not
+    // here. That is what makes a list whose array did not change cost nothing.
+    let calls = 0;
+    list([{ t: "a" }, { t: "b" }], (item: { t: string }) => {
+      calls++;
+      return <li>{item.t}</li>;
+    });
+
+    expect(calls).toBe(0);
+  });
+
+  test("reaching for it as an array says so", () => {
+    // TypeScript refuses all of these, so getting here means the types were
+    // bypassed — an `any`, a cast, plain JavaScript. `undefined`, `is not a
+    // function` and `is not iterable` say nothing about what happened.
+    const rows = list([{ t: "a" }], (item: { t: string }) => <li>{item.t}</li>) as unknown as {
+      length: number;
+      map: () => unknown;
+      forEach: () => unknown;
+    };
+
+    expect(() => rows.length).toThrow(/description of a list, not an array/);
+    expect(() => rows.map()).toThrow(/\.map\(\)/);
+    expect(() => rows.forEach()).toThrow(/\.forEach\(\)/);
+    expect(() => [...(rows as unknown as Iterable<unknown>)]).toThrow(/spreading it/);
+    // And it points at the two things that ARE right.
+    expect(() => rows.length).toThrow(/items\.map/);
+  });
+
+  test("it is still an ordinary child, rendered where it sits", async () => {
+    @Host("div")
+    class Board extends Component {
+      @state rows = [{ t: "a" }, { t: "b" }];
+      render() {
+        return <ul>{list(this.rows, (r: { t: string }) => <li>{r.t}</li>)}</ul>;
+      }
+    }
+
+    const { container } = await getDOM(<Board />);
+    expect([...container.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["a", "b"]);
+  });
+});

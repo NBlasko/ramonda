@@ -33,6 +33,40 @@ So `list()` takes identity from the items themselves — an object is identified
 itself, a value like a string by its value — and there is nothing for you to write or
 get wrong.
 
+## It does not iterate where you write it
+
+This is the one thing that separates `list()` from a `.map()`, and it is the one
+thing you cannot see:
+
+```tsx
+list(this.tasks, (task) => <li>{task.title}</li>)
+```
+
+**Nothing has run when that line finishes.** The callback has not been called once.
+What comes back is a *description* — the array, and the way to turn one item into
+markup — and the framework calls your callback later, while it is reconciling the
+place the rows live in.
+
+That is what pays for itself. When the array has not changed, the framework already
+knows nothing about the list can differ, so **the callback is never called at all**
+and not one row is touched. A `.map()` cannot do that: by the time anything can ask
+whether the work was needed, every row has already been built.
+
+It follows that the description is not a list of things you can look at:
+
+```tsx
+const rows = list(this.tasks, (task) => <li>{task.title}</li>);
+
+rows.length      // no
+rows.map(...)    // no
+[...rows]        // no
+```
+
+TypeScript refuses all three, and development throws with an explanation if the types
+were bypassed. **If what you want is an array of values rather than a rendered list,
+that is `.map()`** — and `.map()` is a perfectly good way to render one too, as long
+as you give the rows a key.
+
 ## It's a function, not a `<List>` tag
 
 A component is one element, but a list drops several siblings into the parent — so
