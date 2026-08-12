@@ -38,6 +38,25 @@ class Inline extends Component {
   }
 }
 
+/**
+ * A helper inside a helper. The inner one owns its tag: walking the outer body whole gave that
+ * tag two owners, `inner -> Legend` and `outer -> Legend`, from the same line, with the outer one
+ * never writing it — and `outer -> inner` was no edge at all, because a call was read only in a
+ * component's body.
+ */
+function outer(): unknown {
+  function inner(): unknown {
+    return <Legend />;
+  }
+  return <div>{inner()}</div>;
+}
+
+class Nested extends Component {
+  render() {
+    return <div>{outer()}</div>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
@@ -45,6 +64,7 @@ class App extends Component {
         <Covered />
         <Bare />
         <Inline />
+        <Nested />
       </div>
     );
   }

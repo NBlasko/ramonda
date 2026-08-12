@@ -573,7 +573,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   // ── Pass 2.5: what each helper renders, and who calls it ────────────────────────────────────
   for (const helper of helpers.values()) {
     const declaration = helperBodies.get(helper);
-    if (declaration) ts.forEachChild(declaration, (n) => walkJsx(n, helper, helper));
+    if (!declaration) continue;
+    ts.forEachChild(declaration, (n) => walkJsx(n, helper, helper));
+    ts.forEachChild(declaration, function visit(node) {
+      collectCall(node, helper);
+      if (helperAt(node) !== undefined) return;
+      ts.forEachChild(node, visit);
+    });
   }
 
   resolveHookContexts();
@@ -693,6 +699,36 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     } else {
       unresolvedEdge(id, "bootstrap", node, whyUnresolved(opening?.tagName, `${name}'s first argument`));
     }
+  }
+
+  /**
+   * A call to a function that returns JSX: whatever it writes mounts wherever the call sits.
+   *
+   * Read in a HELPER's body as well as a component's. It was a component's only, so a helper
+   * calling a helper produced no edge at all — and the double attribution below was what
+   * accidentally covered for it.
+   */
+  function collectCall(node: ts.Node, self: ComponentNode): void {
+    if (!ts.isCallExpression(node) || readElsewhere(node)) return;
+    const callee =
+      ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression) ? node.expression : undefined;
+    const symbol = callee ? resolve(callee) : undefined;
+    const called = symbol ? helpers.get(symbol) : undefined;
+    if (called && called !== self) mount(self, called, "call", node, new Map(), "calls");
+  }
+
+  /** The helper this node declares, if it declares one — the three shapes `collectHelper` reads. */
+  function helperAt(node: ts.Node): ComponentNode | undefined {
+    let named: ts.Identifier | undefined;
+    if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) {
+      named = node.name && ts.isIdentifier(node.name) ? node.name : undefined;
+    } else if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)) {
+      const value = node.initializer;
+      if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) named = node.name;
+    }
+    if (!named) return undefined;
+    const symbol = checker.getSymbolAtLocation(named);
+    return symbol ? helpers.get(symbol) : undefined;
   }
 
   /**
@@ -1009,16 +1045,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         }
       }
 
-      // A call to a function that returns JSX: whatever it writes mounts here.
-      if (ts.isCallExpression(node) && !readElsewhere(node)) {
-        const callee =
-          ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression)
-            ? node.expression
-            : undefined;
-        const symbol = callee ? resolve(callee) : undefined;
-        const helper = symbol ? helpers.get(symbol) : undefined;
-        if (helper) mount(self, helper, "call", node, new Map(), "calls");
-      }
+      collectCall(node, self);
 
       // list({ as: Row }) — items render where the list sits, so the owner is this component.
       if (ts.isCallExpression(node) && calleeName(node) === "list") {
@@ -1062,6 +1089,15 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function walkJsx(node: ts.Node, owner: ComponentNode, self: ComponentNode): void {
     if (readElsewhere(node)) return;
+    /**
+     * A function declared inside this one is a helper of its own, and its tags are ITS edges.
+     *
+     * Walking a helper's body whole gave the inner function's tag two owners — `inner -> Other`
+     * and `outer -> Other`, from the same line, with `outer` never writing it. Define the inner
+     * one and never call it and the outer still claimed to render it.
+     */
+    const nested = helperAt(node);
+    if (nested && nested !== self) return;
     if (jsxTagName(node)) {
       const element = ts.isJsxElement(node) ? node : undefined;
       const opening = element ? element.openingElement : (node as ts.JsxSelfClosingElement);

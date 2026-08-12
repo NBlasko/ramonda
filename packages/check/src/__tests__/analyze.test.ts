@@ -694,8 +694,9 @@ describe("a function that returns JSX", () => {
     const helpers = run("helpers")
       .graph.nodes.filter((n) => n.kind === "helper")
       .map((n) => n.name);
-    // A declared function in another file, and a const holding an arrow.
-    expect(helpers.sort()).toEqual(["header", "row"]);
+    // A declared function in another file, a const holding an arrow, and a pair nested one in the
+    // other.
+    expect(helpers.sort()).toEqual(["header", "inner", "outer", "row"]);
   });
 
   test("owns the tags it writes, and whoever calls it reaches them", () => {
@@ -718,6 +719,21 @@ describe("a function that returns JSX", () => {
     expect(issues[0].path).toEqual(["App", "Bare", "row", "Cell"]);
   });
 
+  /**
+   * A function inside a function owns its own tags.
+   *
+   * Walking a helper's body whole gave the inner one's tag TWO owners, from the same line, with
+   * the outer never writing it — and `outer -> inner` was no edge at all, because a call was read
+   * only inside a component's body. The false render edge is what accidentally covered for the
+   * missing call edge; with `inner` defined and never called, `outer` still claimed to render.
+   */
+  test("a helper inside a helper keeps its own tags, and the call between them is an edge", () => {
+    const edges = edgesOf("helpers");
+    expect(edges).toContain("app.tsx#inner -> app.tsx#Legend (renders/tag)");
+    expect(edges).toContain("app.tsx#outer -> app.tsx#inner (calls/call)");
+    expect(edges).not.toContain("app.tsx#outer -> app.tsx#Legend (renders/tag)");
+  });
+
   test("a route table and a root argument are not helpers", () => {
     // Both are read where they are written. Counted twice, one mount would have two owners.
     const helpers = (name: string) => run(name).graph.nodes.filter((n) => n.kind === "helper");
@@ -728,7 +744,7 @@ describe("a function that returns JSX", () => {
       helpers("helpers")
         .map((n) => n.name)
         .sort(),
-    ).toEqual(["header", "row"]);
+    ).toEqual(["header", "inner", "outer", "row"]);
   });
 
   /**
