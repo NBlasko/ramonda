@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { analyzeProject } from "./analyze";
 
 /**
@@ -18,8 +18,13 @@ import { analyzeProject } from "./analyze";
  *   which nothing at runtime can report, because the form cannot see who is rendering.
  *
  * Meant to sit in an app's `build` script: a check nobody runs is a check that does not exist.
+ *
+ * `--graph <file>` also writes the composition graph the checks are computed from — which
+ * components exist and which one can mount which, including the edges nothing could resolve.
  */
-const arg = process.argv[2];
+const argv = process.argv.slice(2);
+const graphAt = argv.includes("--graph") ? argv[argv.indexOf("--graph") + 1] : undefined;
+const arg = argv.find((a) => !a.startsWith("--") && a !== graphAt);
 const tsconfig = resolve(arg ?? "tsconfig.json");
 const TAG = "[ramonda-check]";
 
@@ -27,10 +32,27 @@ if (!existsSync(tsconfig)) {
   console.error(`${TAG} no tsconfig at ${tsconfig}. Pass one: ramonda-check <path>`);
   process.exit(2);
 }
+if (argv.includes("--graph") && !graphAt) {
+  console.error(`${TAG} --graph wants a file to write: ramonda-check <tsconfig> --graph graph.json`);
+  process.exit(2);
+}
 
-const { issues, arrowFields, duplicateDecorators, unwatchedFields, counts, notes } = analyzeProject(tsconfig);
+const { issues, arrowFields, duplicateDecorators, unwatchedFields, counts, graph, notes } = analyzeProject(tsconfig);
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
+
+if (graphAt) {
+  const target = resolve(graphAt);
+  mkdirSync(dirname(target), { recursive: true });
+  // Two spaces and a trailing newline: this is a file people will read in a review, and a diff
+  // between two commits is the reason it exists at all.
+  writeFileSync(target, `${JSON.stringify(graph, null, 2)}\n`);
+  const holes = graph.edges.filter((e) => e.kind === "unresolved").length;
+  console.log(
+    `${TAG} graph written to ${graphAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
+      (holes > 0 ? `, ${holes} of them unresolved` : ""),
+  );
+}
 
 if (
   issues.length === 0 &&

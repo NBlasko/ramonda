@@ -7,6 +7,21 @@ const here = dirname(fileURLToPath(import.meta.url));
 const run = (name: string) => analyzeProject(join(here, "fixtures", name, "tsconfig.json"));
 
 /**
+ * The graph's edges as `from -> to (kind/via)`, sorted, with the fixture's directory stripped off
+ * the front of every id.
+ *
+ * Strings and not a snapshot: a snapshot rots silently — it is rewritten by whoever runs the suite
+ * with `-u` and nobody reads the diff — and this is the artifact other rules will be computed from.
+ */
+const edgesOf = (name: string): string[] => {
+  const prefix = `@ramonda/check/src/__tests__/fixtures/${name}/`;
+  const short = (id: string | undefined) => (id ?? "?").replace(prefix, "");
+  return run(name)
+    .graph.edges.map((e) => `${short(e.from)} -> ${short(e.to)} (${e.kind}/${e.via})`)
+    .sort();
+};
+
+/**
  * The property that matters most is the SILENCE: a build gate that cries wolf is one people
  * disable. So the passing cases are as much the point as the failing ones.
  */
@@ -344,5 +359,94 @@ describe("a form field read by a component that does not watch it", () => {
     expect(broken?.member).toBe("bind");
     expect(broken?.line).toBeGreaterThan(0);
     expect(broken?.file.endsWith("app.tsx")).toBe(true);
+  });
+});
+
+/**
+ * The composition graph.
+ *
+ * The issues above are ONE reading of it, and it is a projection of the same pass rather than a
+ * second walk, so the two cannot drift apart. What it holds is facts — nodes and edges, including
+ * the edges that resolved to nothing — and never conclusions: no issues in it, and no paths, since
+ * the graph is small while the set of paths through it is not.
+ */
+describe("the composition graph", () => {
+  test("every edge of an ordinary app, with how it was written", () => {
+    expect(edgesOf("ok")).toEqual([
+      "app.tsx#App -> app.tsx#Shell (renders/tag)",
+      "app.tsx#App -> app.tsx#ThemeProvider (provides/use)",
+      "app.tsx#Reader -> app.tsx#ThemeProvider (consumes/use)",
+      "app.tsx#Shell -> app.tsx#Reader (renders/tag)",
+      "app.tsx#bootstrap -> app.tsx#App (renders/bootstrap)",
+    ]);
+  });
+
+  /**
+   * `kind` is what a walk reads and `via` is only how it was written. The pair is what lets a new
+   * way of naming a component arrive as a `via` value that no reader has to know about.
+   */
+  test("a consumer passed as children is an edge from the wrapper, marked as children", () => {
+    // <Shell><Reader /></Shell> — Reader mounts under Shell, and the tag is written in App's body.
+    expect(edgesOf("children")).toContain("app.tsx#Shell -> app.tsx#Reader (renders/children)");
+    expect(edgesOf("children")).toContain("app.tsx#App -> app.tsx#Shell (renders/tag)");
+  });
+
+  test("two classes with one name are two nodes, and an alias reaches the one it renames", () => {
+    expect(edgesOf("same-name")).toEqual([
+      "app.tsx#App -> plain.tsx#Page (renders/tag)",
+      "app.tsx#App -> themed.tsx#Page (renders/tag)",
+      "app.tsx#bootstrap -> app.tsx#App (renders/bootstrap)",
+      "plain.tsx#Page -> reader.tsx#Reader (renders/tag)",
+      "reader.tsx#Reader -> context.ts#ThemeProvider (consumes/use)",
+      "themed.tsx#Page -> context.ts#ThemeProvider (provides/use)",
+      "themed.tsx#Page -> reader.tsx#Reader (renders/tag)",
+    ]);
+  });
+
+  /**
+   * What it could NOT resolve is recorded, with the reason and the place.
+   *
+   * Leaving it out would make the graph a map with unmarked blanks, which is worse than no map
+   * because it is trusted. Every rule computed from this reads the same holes.
+   */
+  test("a component held in a variable is a recorded hole, not a missing edge", () => {
+    const graph = run("holes").graph;
+    const hole = graph.edges.find((e) => e.kind === "unresolved");
+    expect(hole?.via).toBe("tag");
+    expect(hole?.to).toBeUndefined();
+    expect(hole?.why).toContain("`Alias`");
+    expect(hole?.why).toContain("not to a component class");
+    // And the place is on the edge, so a rule can name it without going back to the source.
+    expect(hole?.at).toMatch(/app\.tsx:21:12$/);
+  });
+
+  test("the envelope says what the graph is and what it was read from", () => {
+    const graph = run("ok").graph;
+    expect(graph.schema).toBe(1);
+    // It has a root, so it can be judged whole. A package has none and emits a fragment instead.
+    expect(graph.scope).toBe("app");
+    expect(graph.package.name).toBe("@ramonda/check");
+    expect(graph.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  test("the same sources produce the same bytes", () => {
+    // Nodes and edges are sorted for exactly this: a diff between two commits is the change, not
+    // the order the walk happened to visit things in.
+    expect(JSON.stringify(run("ok").graph)).toEqual(JSON.stringify(run("ok").graph));
+  });
+
+  test("a hook is a node of its own, and using one is an edge", () => {
+    // A hook mounts no children, so it is not a component — but it can carry a context for its
+    // owner, which is why it is in the graph rather than folded into whoever used it.
+    expect(edgesOf("holes")).toContain("app.tsx#App -> app.tsx#Counter (uses/use)");
+    expect(run("holes").graph.nodes.find((n) => n.name === "Counter")?.kind).toBe("hook");
+  });
+
+  test("a context node carries the pair's names, so a message can say what to mount", () => {
+    const context = run("ok").graph.nodes.find((n) => n.kind === "context");
+    expect(context?.label).toBe("Theme");
+    expect(context?.provider).toBe("ThemeProvider");
+    expect(context?.consumer).toBe("ThemeConsumer");
+    expect(context?.optional).toBe(false);
   });
 });

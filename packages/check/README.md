@@ -197,3 +197,48 @@ reported either. `path` and `name` are not reads: they are fixed for the life of
 **This one cannot be a runtime diagnostic at all**, which is why it is here. The form would have to
 know who is rendering, and it cannot — nothing in the running page distinguishes "the owner is
 reading its own field" from "a child is reading a field it will never hear about again".
+
+## The graph
+
+Every check above is one reading of the same thing: **which components exist, and which one can
+mount which.** `--graph` writes it out.
+
+```bash
+$ ramonda-check tsconfig.json --graph .ramonda/graph.json
+[ramonda-check] graph written to .ramonda/graph.json — 155 nodes, 64 edges, 3 of them unresolved
+```
+
+It holds facts, not conclusions — nodes and edges, each edge with the place it was written:
+
+```json
+{
+  "from": "@ramonda/docs/src/DocPage.tsx#DocPage",
+  "to": "@ramonda/core/src/base/AsyncLoad.ts#AsyncLoad",
+  "kind": "renders",
+  "via": "tag",
+  "at": "@ramonda/docs/src/DocPage.tsx:69:7"
+}
+```
+
+`kind` is what a walk reads — `renders`, `provides`, `consumes`, `uses`. `via` is how it was
+written — a JSX tag, children of a wrapper, `list({ as })`, a route table, `bootstrap`. A component
+is identified by its **declaration**, `<package>/<file>#<Name>`, because a name is not an identity:
+one app in this repository declares `class Page` seventy-five times.
+
+An edge that resolved to nothing is `"kind": "unresolved"`, and carries the reason:
+
+```json
+{
+  "from": "playground-core/src/pages/FormPage.tsx#FormPage",
+  "kind": "unresolved",
+  "via": "use",
+  "at": "playground-core/src/pages/FormPage.tsx:43:18",
+  "why": "`Form` is declared in @ramonda/form/dist/index.d.ts, which this run does not read"
+}
+```
+
+A blank left off the map is worse than no map, because it is trusted.
+
+The file is a **format**, versioned by `schema`, and it is written for tools rather than for people
+to depend on: read it, do not build against it. `analyzeProject` returns the same structure as
+`result.graph`.

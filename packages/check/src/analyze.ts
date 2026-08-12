@@ -1,5 +1,7 @@
-import { dirname } from "node:path";
+import { createHash } from "node:crypto";
+import { dirname, relative, sep } from "node:path";
 import ts from "typescript";
+import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 
 /**
  * Proves, before the app is ever opened, that every context consumer has a matching provider
@@ -154,12 +156,24 @@ export interface AnalyzeResult {
   /** Form fields read by a component that does not watch them — see `UnwatchedFieldIssue`. */
   unwatchedFields: UnwatchedFieldIssue[];
   counts: { components: number; contexts: number; roots: number };
+  /**
+   * What can mount what — see `ComponentGraph`.
+   *
+   * The issues above are one reading of it. It carries the facts they are computed from, including
+   * the edges that could not be resolved, so a rule added later needs no second walk of the source.
+   */
+  graph: ComponentGraph;
   /** What the analyzer could not resolve, so a reader knows where it stayed silent. */
   notes: string[];
 }
 
 interface ContextFact {
   id: string;
+  /** The node id this context has in the graph — `src/theme.ts#ThemeProvider`. */
+  graphId: string;
+  at: Where;
+  provider?: string;
+  consumer?: string;
   label: string;
   /**
    * `createContext(…, { optional: true })` — the author declared the default a real answer, so
@@ -168,6 +182,12 @@ interface ContextFact {
    * is worse than no check at all.
    */
   optional: boolean;
+}
+
+/** A place where something names a component, and what it resolved to — `undefined` is a hole. */
+interface Reference {
+  target: ComponentNode | undefined;
+  site: ts.Node;
 }
 
 interface ComponentNode {
@@ -184,6 +204,8 @@ interface ComponentNode {
    * name lookup never checked.
    */
   id: string;
+  /** Which of the two base classes the chain reaches — a hook mounts no children of its own. */
+  kind: "component" | "hook";
   name: string;
   file: string;
   line: number;
@@ -304,6 +326,75 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const roots = new Set<ComponentNode>();
+  /** One per `bootstrap`/`hydrateRoot` call, which is where a tree starts. */
+  const rootNodes: GraphNode[] = [];
+  const rootsPerFile = new Map<string, number>();
+  /** Every edge as it is found, including the ones that resolve to nothing. */
+  const edges: GraphEdge[] = [];
+
+  const projectRoot = dirname(tsconfigPath);
+
+  /**
+   * `@ramonda/core/src/base/AsyncLoad.ts` — the OWNING package and the path inside it.
+   *
+   * Not a path relative to the project, which for a monorepo app compiling its dependencies from
+   * source reads `../../packages/core/…`: the same class would be written differently by every app
+   * that mounts it, and a fragment emitted by the package itself could never line up with it. The
+   * owning package is the one thing about a file that does not depend on who is looking.
+   */
+  const packageAt = new Map<string, { name: string; root: string } | undefined>();
+  const owner = (from: string): { name: string; root: string } | undefined => {
+    let dir = from;
+    const climbed: string[] = [];
+    for (;;) {
+      if (packageAt.has(dir)) {
+        const found = packageAt.get(dir);
+        for (const step of climbed) packageAt.set(step, found);
+        return found;
+      }
+      const up = dirname(dir);
+      // The package ROOT is cached, not just its name: caching the name against every directory
+      // climbed through and then measuring from THAT directory produced
+      // `@ramonda/docs/DataTable.test.tsx` for a file three levels down.
+      const found = ts.sys.fileExists(`${dir}/package.json`)
+        ? { name: packageOf(dir).name, root: dir }
+        : up === dir
+          ? undefined
+          : undefined;
+      if (found || up === dir) {
+        packageAt.set(dir, found);
+        for (const step of climbed) packageAt.set(step, found);
+        return found;
+      }
+      climbed.push(dir);
+      dir = up;
+    }
+  };
+  const pathOf = (file: string): string => {
+    const found = owner(dirname(file));
+    // No package.json anywhere above: fall back to the project, which is what a fixture has.
+    const base = found?.root ?? projectRoot;
+    const inside = relative(base, file).split(sep).join("/");
+    return found ? `${found.name}/${inside}` : inside;
+  };
+  const whereOf = (node: ts.Node): Where => {
+    const pos = positionOf(node);
+    return `${pathOf(pos.file)}:${pos.line}:${pos.column}`;
+  };
+  /** `src/pages/settings.tsx#Page`, with a `$n` suffix when one file declares the name twice. */
+  const takenIds = new Map<string, number>();
+  const idFor = (file: string, name: string): string => {
+    const base = `${pathOf(file)}#${name}`;
+    const seen = takenIds.get(base) ?? 0;
+    takenIds.set(base, seen + 1);
+    return seen === 0 ? base : `${base}$${seen + 1}`;
+  };
+  const edge = (from: string, to: string, kind: GraphEdge["kind"], via: GraphEdge["via"], site: ts.Node): void => {
+    edges.push({ from, to, kind, via, at: whereOf(site) });
+  };
+  const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
+    edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
+  };
 
   const sources = program.getSourceFiles().filter((f) => !f.isDeclarationFile && !f.fileName.includes("node_modules"));
 
@@ -348,6 +439,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       contexts: contexts.size,
       roots: roots.size,
     },
+    graph: buildGraph(),
     notes,
   };
 
@@ -363,8 +455,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const pos = positionOf(node);
     const id = `${pos.file}:${pos.line}`;
     const label = labelOf(node.initializer) ?? bindingName(node.name, 1) ?? bindingName(node.name, 0) ?? "context";
+    const providerName = bindingName(node.name, 0);
     const fact: ContextFact = {
       id,
+      // The PROVIDER's binding name, because that is what an app mounts and what a message names.
+      graphId: idFor(pos.file, providerName ?? label),
+      at: whereOf(node),
+      provider: providerName,
+      consumer: bindingName(node.name, 1),
       label,
       optional: flagOf(node.initializer, "optional"),
     };
@@ -396,12 +494,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   function collectClass(node: ts.Node): void {
     if (!ts.isClassDeclaration(node) || !node.name) return;
-    if (!extendsComponentOrHook(node, checker)) return;
+    const kind = componentKind(node, checker);
+    if (!kind) return;
     const symbol = checker.getSymbolAtLocation(node.name);
     if (!symbol || components.has(symbol)) return;
     const pos = positionOf(node);
     components.set(symbol, {
-      id: `${pos.file}:${pos.line}:${pos.column}#${node.name.text}`,
+      id: idFor(pos.file, node.name.text),
+      kind,
       name: node.name.text,
       file: pos.file,
       line: pos.line,
@@ -420,9 +520,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isCallExpression(node)) return;
     const name = calleeName(node);
     if (!name || !CORE_ROOTS.has(name)) return;
+    const pos = positionOf(node);
+    // Numbered within its file rather than by line, for the same reason a component's id carries no
+    // line: moving a call down a file would otherwise rename the node and a graph diff would report
+    // a root that did not change.
+    const file = pathOf(pos.file);
+    const ordinal = (rootsPerFile.get(file) ?? 0) + 1;
+    rootsPerFile.set(file, ordinal);
+    const id = `${file}#${name}${ordinal > 1 ? `$${ordinal}` : ""}`;
+    rootNodes.push({ id, kind: "root", at: whereOf(node) });
+
     const opening = node.arguments[0] ? openingOf(node.arguments[0]) : undefined;
     const target = opening && componentAt(opening.tagName);
-    if (target) roots.add(target);
+    if (target) {
+      roots.add(target);
+      edge(id, target.id, "renders", "bootstrap", node);
+    } else {
+      unresolvedEdge(id, "bootstrap", node, whyUnresolved(opening?.tagName, `${name}'s first argument`));
+    }
   }
 
   /** The component a name in value position refers to, resolved through an import alias. */
@@ -430,6 +545,27 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isIdentifier(node)) return undefined;
     const symbol = resolve(node);
     return symbol && components.get(symbol);
+  }
+
+  /**
+   * Why a name did not reach a component, said precisely enough to act on.
+   *
+   * The distinction that matters is between "nothing declares this" and "it is declared in a
+   * package this run does not read" — the second is what a manifest exists to close, and telling
+   * a reader to go looking for a missing class when the class is in `node_modules` sends them
+   * nowhere.
+   */
+  function whyUnresolved(node: ts.Node | undefined, what: string): string {
+    if (!node) return `${what} is not a component element`;
+    const text = node.getText();
+    if (!ts.isIdentifier(node)) return `\`${text}\` is not a plain name, so nothing can say what it mounts`;
+    const declaration = resolve(node)?.declarations?.[0];
+    if (!declaration) return `\`${text}\` does not resolve to a declaration`;
+    const file = declaration.getSourceFile();
+    if (file.isDeclarationFile || file.fileName.includes("node_modules")) {
+      return `\`${text}\` is declared in ${pathOf(file.fileName)}, which this run does not read`;
+    }
+    return `\`${text}\` resolves to ${ts.SyntaxKind[declaration.kind]}, not to a component class`;
   }
 
   function readClassBody(cls: ts.ClassDeclaration, self: ComponentNode): void {
@@ -441,24 +577,56 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const symbol = named !== undefined && ts.isIdentifier(named) ? resolve(named) : undefined;
         if (!symbol) {
           // A hook picked at runtime: it might be any provider, so nothing below can be judged.
-          if (arg) self.opaque = true;
+          if (arg) {
+            self.opaque = true;
+            unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"));
+          }
         } else {
           const provided = providerSymbols.get(symbol);
-          if (provided) self.provides.add(provided.id);
+          if (provided) {
+            self.provides.add(provided.id);
+            edge(self.id, provided.graphId, "provides", "use", node);
+          }
           const consumed = consumerSymbols.get(symbol);
+          if (consumed) edge(self.id, consumed.graphId, "consumes", "use", node);
+          // The WALK skips an optional context — its default is a real answer — but the graph
+          // records the fact either way. A rule that wants to say "nobody provides this at all"
+          // reads the edge; the provider check reads `consumes`.
           if (consumed && !consumed.optional && !self.consumes.has(consumed.id)) {
             self.consumes.set(consumed.id, positionOf(node));
           }
           // A hook can carry a context for its owner — `this.use(Router)` is how the router
           // publishes its own. Whatever that hook provides or consumes, the owner does too.
           const usedClass = components.get(symbol);
-          if (usedClass && !provided && !consumed) self.uses.add(usedClass);
+          if (usedClass && !provided && !consumed) {
+            self.uses.add(usedClass);
+            edge(self.id, usedClass.id, "uses", "use", node);
+          }
+          /**
+           * The name resolved to a DECLARATION but not to anything this run knows — which is what
+           * a hook imported from a package installed rather than compiled looks like. It was
+           * silent: no edge, no hole, and a context that hook publishes invisible.
+           *
+           * `apps/playground-core` is the live case. It has no `paths` entry for `@ramonda/form`,
+           * so `this.use(Form<typeof schema>)` reaches `packages/form/dist/index.d.ts` and the
+           * package's whole composition drops out. This is the edge a manifest exists to close.
+           */
+          if (!usedClass && !provided && !consumed && named) {
+            unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"));
+          }
         }
       }
 
       // list({ as: Row }) — items render where the list sits, so the owner is this component.
       if (ts.isCallExpression(node) && calleeName(node) === "list") {
-        for (const target of componentsInListOptions(node)) self.renders.add(target);
+        for (const { target, site } of componentsInListOptions(node)) {
+          if (target) {
+            self.renders.add(target);
+            edge(self.id, target.id, "renders", "as", site);
+          } else {
+            unresolvedEdge(self.id, "as", site, whyUnresolved(site, "the list's `as`"));
+          }
+        }
       }
 
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
@@ -468,7 +636,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const views = routeViewsOf(node);
         if (views.length > 0) {
           const outlet = componentAt(node.tagName) ?? self;
-          for (const view of views) outlet.renders.add(view);
+          for (const { target, site } of views) {
+            if (target) {
+              outlet.renders.add(target);
+              edge(outlet.id, target.id, "renders", "route", site);
+            } else {
+              unresolvedEdge(outlet.id, "route", site, whyUnresolved(site, "the route's view"));
+            }
+          }
         }
       }
 
@@ -477,28 +652,36 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
     // JSX ownership needs its own walk, because children of a COMPONENT element belong to that
     // component, not to the class whose render() wrote them.
-    ts.forEachChild(cls, (n) => walkJsx(n, self));
+    ts.forEachChild(cls, (n) => walkJsx(n, self, self));
   }
 
   /**
    * Attributes and children of `<C>` belong to C (it decides where and whether to render them);
    * everything else belongs to the enclosing component.
    */
-  function walkJsx(node: ts.Node, owner: ComponentNode): void {
+  function walkJsx(node: ts.Node, owner: ComponentNode, self: ComponentNode): void {
     if (jsxTagName(node)) {
       const element = ts.isJsxElement(node) ? node : undefined;
       const opening = element ? element.openingElement : (node as ts.JsxSelfClosingElement);
       const child = componentAt(opening.tagName);
-      if (child) owner.renders.add(child);
+      // The tag is written in `self`'s body; when the OWNER is somebody else, it is written as
+      // that component's children, which is a different fact and a different message.
+      const via = owner === self ? "tag" : "children";
+      if (child) {
+        owner.renders.add(child);
+        edge(owner.id, child.id, "renders", via, opening);
+      } else {
+        unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"));
+      }
 
       const nested = child ?? owner;
       // Only descend into a component's children if it can actually mount them.
       const inner = child && !child.usesChildren ? owner : nested;
-      if (element) for (const c of element.children) walkJsx(c, inner);
-      for (const attr of opening.attributes.properties) walkJsx(attr, nested);
+      if (element) for (const c of element.children) walkJsx(c, inner, self);
+      for (const attr of opening.attributes.properties) walkJsx(attr, nested, self);
       return;
     }
-    ts.forEachChild(node, (n) => walkJsx(n, owner));
+    ts.forEachChild(node, (n) => walkJsx(n, owner, self));
   }
 
   /**
@@ -588,20 +771,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return checker.getSymbolAtLocation(element.name);
   }
 
-  function componentsInListOptions(call: ts.CallExpression): ComponentNode[] {
+  /** Each site keeps its own node, so an `as` that names nothing is a recorded hole. */
+  function componentsInListOptions(call: ts.CallExpression): Reference[] {
     const options = call.arguments[0];
     if (!options || !ts.isObjectLiteralExpression(options)) return [];
-    const found: ComponentNode[] = [];
+    const found: Reference[] = [];
     for (const prop of options.properties) {
       if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
       if (prop.name.text !== "as") continue;
-      const target = componentAt(prop.initializer);
-      if (target) found.push(target);
+      found.push({ target: componentAt(prop.initializer), site: prop.initializer });
     }
     return found;
   }
 
-  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): ComponentNode[] {
+  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): Reference[] {
     if (opening.tagName.getText() !== "RouteOutlet") return [];
     for (const attr of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attr) || attr.name.getText() !== "routes") continue;
@@ -610,9 +793,67 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!ts.isIdentifier(value.expression)) continue;
       const symbol = resolve(value.expression);
       const views = symbol ? routeTables.get(symbol) : undefined;
-      if (views) return views.map((v) => componentAt(v)).filter((v): v is ComponentNode => v !== undefined);
+      if (views) return views.map((site) => ({ target: componentAt(site), site }));
     }
     return [];
+  }
+
+  // ── the graph ───────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Everything collected above, as the published format.
+   *
+   * A projection rather than a second walk: the issues and the graph are two readings of one pass,
+   * so they cannot drift apart.
+   */
+  function buildGraph(): ComponentGraph {
+    const nodes: GraphNode[] = [];
+    for (const node of components.values()) {
+      nodes.push({
+        id: node.id,
+        kind: node.kind,
+        name: node.name,
+        at: `${pathOf(node.file)}:${node.line}:${node.column}`,
+      });
+    }
+    for (const fact of contexts.values()) {
+      nodes.push({
+        id: fact.graphId,
+        kind: "context",
+        name: fact.provider,
+        at: fact.at,
+        label: fact.label,
+        provider: fact.provider,
+        consumer: fact.consumer,
+        optional: fact.optional,
+      });
+    }
+    nodes.push(...rootNodes);
+
+    const hash = createHash("sha256");
+    for (const file of [...sources].sort((a, b) => a.fileName.localeCompare(b.fileName))) {
+      hash.update(pathOf(file.fileName));
+      hash.update(file.text);
+    }
+
+    return {
+      schema: 1,
+      // A library has no root, so "unreachable" and "no provider above" cannot be decided in it at
+      // all — its graph is a fragment for an app to splice in, not a verdict.
+      scope: rootNodes.length > 0 ? "app" : "library",
+      // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
+      // no package.json of its own belongs to the package above it, and saying otherwise would give
+      // the graph two names for one thing.
+      package: (() => {
+        const found = owner(projectRoot);
+        return found ? { name: found.name, version: packageOf(found.root).version } : packageOf(projectRoot);
+      })(),
+      hash: `sha256:${hash.digest("hex")}`,
+      nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
+      // Sorted so two runs over the same sources produce the same bytes, and a diff between two
+      // commits is the change rather than the traversal order.
+      edges: edges.sort((a, b) => `${a.from}${a.at}${a.to ?? ""}`.localeCompare(`${b.from}${b.at}${b.to ?? ""}`)),
+    };
   }
 
   /**
@@ -924,20 +1165,39 @@ function baseClass(base: ts.Expression, checker: ts.TypeChecker): ts.ClassLikeDe
  * `extends Component` would drop `Deep extends Base`, which is a real component and today passes
  * only by the accident of that blanket `true`.
  */
-function extendsComponentOrHook(cls: ts.ClassDeclaration, checker: ts.TypeChecker): boolean {
+function componentKind(cls: ts.ClassDeclaration, checker: ts.TypeChecker): "component" | "hook" | undefined {
   const seen = new Set<ts.ClassLikeDeclaration>();
   let current: ts.ClassLikeDeclaration | undefined = cls;
   while (current && !seen.has(current)) {
     seen.add(current);
     const base = baseExpression(current);
-    if (!base) return false;
+    if (!base) return undefined;
     const name = base.getText();
-    if (name === "Component" || name === "Hook" || name.endsWith(".Component") || name.endsWith(".Hook")) {
-      return true;
-    }
+    if (name === "Hook" || name.endsWith(".Hook")) return "hook";
+    if (name === "Component" || name.endsWith(".Component")) return "component";
     current = baseClass(base, checker);
   }
-  return false;
+  return undefined;
+}
+
+/**
+ * The name and version of the package the tsconfig sits in.
+ *
+ * They belong to the graph because two versions of one package can be installed at once: the node
+ * ids collide while the graphs differ, so a fragment that does not say which version it describes
+ * is a map that cannot be told from another map.
+ */
+function packageOf(dir: string): { name: string; version: string } {
+  try {
+    const raw = ts.sys.readFile(`${dir}/package.json`);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { name?: string; version?: string };
+      if (parsed.name) return { name: parsed.name, version: parsed.version ?? "0.0.0" };
+    }
+  } catch {
+    // A malformed package.json is `tsc`'s news to break, not this tool's.
+  }
+  return { name: dir.split(/[/\\]/).pop() ?? "app", version: "0.0.0" };
 }
 
 function createProgram(tsconfigPath: string): {

@@ -9,3 +9,6 @@ export type {
   DuplicateDecoratorIssue,
   UnwatchedFieldIssue,
 } from "./analyze";
+// The composition graph the issues are computed from. A FORMAT rather than an API: it is versioned
+// by `schema` and there is no second consumer yet, so nothing here is documented for one.
+export type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
