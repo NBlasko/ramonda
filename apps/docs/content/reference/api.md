@@ -29,6 +29,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
+| `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
 | `createContext(default, options?)` | Returns `[Provider, Consumer]`. Options: `label` names the pair in devtools; `optional: true` says the default is a real answer, so a consumer with no provider above it is not reported. [Context](/composition/context) |
@@ -130,7 +131,7 @@ All 32, grouped by what they belong to. The server and per-request ones are expl
 
 **Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
 
-**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `ListOptions` ·
+**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `ListOptions` ·
 `AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`

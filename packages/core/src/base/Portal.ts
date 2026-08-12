@@ -2,6 +2,8 @@ import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { created, destroyed, watchProp } from "./decorators";
 import { ChildrenRegion, isOpenAnchor } from "../core/childrenRegion";
+import { isPortalTarget, resolvePortalTarget, type PortalTarget } from "./portalTarget";
+import { COMPONENT_RUNTIME } from "../core/runtime";
 import type { RamondaNode } from "../types/vdom";
 
 export interface PortalProps {
@@ -11,8 +13,16 @@ export interface PortalProps {
    * caller builds it: `this.use(Portal, () => ({ children: <title>{t}</title>, target }))`.
    */
   children: RamondaNode;
-  /** The element the children are rendered INTO, rather than where the hook sits. */
-  target: Element;
+  /**
+   * Where the children are rendered, rather than where the hook sits.
+   *
+   * An `Element` when you have the node — a target inside your own render, which
+   * is also how "inline" is done. A `portalTarget("name")` token for a container
+   * OUTSIDE the app's root, which is the only form that can exist on the server:
+   * the shell is assembled after the render, so there is no element to point at
+   * while the tree is being built. See `portalTarget`.
+   */
+  target: Element | PortalTarget;
 }
 
 /**
@@ -94,6 +104,36 @@ export class Portal extends Hook<PortalProps> {
    */
   private placed = false;
 
+  /**
+   * The last token this resolved, and what it resolved to.
+   *
+   * Cached because resolving a token on the client is a document query and, when
+   * nothing has emitted the container, an append — repeating that on every
+   * reconcile would search the document for a node it already holds, and a
+   * container removed from under it would be replaced by a second one rather
+   * than reported.
+   */
+  private resolvedFrom: PortalTarget | undefined;
+  private resolvedTo: Element | undefined;
+
+  /** The real element to render into, whichever form `target` took. */
+  private get element(): Element | undefined {
+    const target = this.props.target;
+    if (!target) return undefined;
+    if (!isPortalTarget(target)) return target;
+
+    if (this.resolvedFrom === target && this.resolvedTo !== undefined) return this.resolvedTo;
+
+    // The side this render is for, read off the OWNER rather than a module flag,
+    // for the reason `executeChangesOnStringNode` reads it there: the flag is
+    // restored before the first await, so a render drained later would answer
+    // "client" whichever side it is really on.
+    const onServer = this[GLOBAL_RUNTIME].owner?.[COMPONENT_RUNTIME]?.env === "server";
+    this.resolvedFrom = target;
+    this.resolvedTo = resolvePortalTarget(target, onServer);
+    return this.resolvedTo;
+  }
+
   private get region(): ChildrenRegion {
     return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal"));
   }
@@ -132,7 +172,7 @@ export class Portal extends Hook<PortalProps> {
   adopt(): void {
     if (this.placed) return;
     this.placed = true;
-    const target = this.props.target;
+    const target = this.element;
     if (!target) return;
 
     const open = firstUnclaimedBlock(target);
@@ -179,7 +219,7 @@ export class Portal extends Hook<PortalProps> {
    * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const target = this.props.target;
+    const target = this.element;
     if (!target) return;
 
     this.region.reconcile(this.props.children, target);

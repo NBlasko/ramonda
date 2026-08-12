@@ -70,14 +70,20 @@ There is no `disabled`/inline flag: to keep the content in place, point `target`
 element in your own render. A `target` that only becomes available after mount is placed
 then, not lost.
 
-## Keyed children reorder without losing state
+## `list()` works here
 
-Give portalled children a `key`, and reordering keeps each node — and the component state
-on it — with its key, rather than a neighbour taking its contents:
+A portal's children go through the real reconciler, so a list is a list — minted identity,
+per-item scopes, the whole-list skip. Nothing about it is special because it is portalled:
 
 ```tsx
-children: this.order.map((id) => <Row key={id} item={this.byId[id]} />);
+this.use(Portal, () => ({
+  children: list({ each: this.rows, as: Row }),
+  target: modals,
+}));
 ```
+
+Reordering moves each row's node, with the component state on it, rather than a neighbour
+taking its contents. There is no key to write — see [lists](/lists).
 
 ## Events follow the DOM, not where you wrote it
 
@@ -94,12 +100,40 @@ tags are in the served HTML and are not duplicated on hydration. That is exactly
 [`Head`](/ssr/head) puts a page's `<title>` and `<meta>` into the document — it is a portal
 into the head with the tags kept unique by their identity.
 
-**This covers `document.head`.** A portal into a target elsewhere — a modal root in the
-body, say — renders on the **client only**: that target is not part of the server render, so
-its content is not in the served HTML and appears after hydration. A stateful **component**
-inside a portal is rebuilt on the client rather than restored from the server, for the same
-reason. Portalling plain markup into `document.head` is the fully server-rendered path;
-anything richer is client-side today.
+A **component** inside a portal is hydrated like any other: its host is adopted and its
+server state restored, not rebuilt from its initial values.
+
+### A target outside the app: name it
+
+`document.head` works because the server's document has one. Every other container — a modal
+root in the body — does not exist during a server render: your shell is assembled *after* the
+render returns, so there is no element to point at. Name it instead:
+
+```tsx
+import { portalTarget } from "@ramonda/core";
+
+const modals = portalTarget("modals");
+
+this.use(Portal, () => ({ children: <Dialog />, target: modals }));
+```
+
+The server collects that target's content and hands it back on `page.portals`, keyed by the
+name. [`renderDocument`](/ssr/render) emits a container per entry, after the app root — so
+a modal is outside the stacking context it is trying to escape. A hand-rolled shell places
+them itself:
+
+```tsx
+const page = await renderPage(<App />);
+
+`<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals ?? ""}</div>`;
+```
+
+On the client the name resolves to that container, and the block inside it is adopted rather
+than built again. With no server render at all — a client-only app — the container is created
+on demand, so a portal is not a feature that only works on server-rendered pages.
+
+A target **inside** your own render stays an ordinary element: you have the node, and that is
+the "inline" case above.
 
 ## Next
 

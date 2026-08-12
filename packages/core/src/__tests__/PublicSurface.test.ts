@@ -31,6 +31,10 @@ const EXPECTED = [
   "Ref",
   "Head",
   "Portal",
+  // A portal target outside the app's root: the token, and the attribute a
+  // hand-rolled shell needs in order to emit the container itself.
+  "portalTarget",
+  "PORTAL_TARGET_ATTR",
   // entry points
   "bootstrap",
   "unmount",

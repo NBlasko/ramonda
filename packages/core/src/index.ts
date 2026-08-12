@@ -26,6 +26,8 @@ export { Head } from "./base/Head";
 export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";
 export { Portal } from "./base/Portal";
 export type { PortalProps } from "./base/Portal";
+export { portalTarget, PORTAL_TARGET_ATTR } from "./base/portalTarget";
+export type { PortalTarget } from "./base/portalTarget";
 
 // Server rendering and hydration. Exported now that there is a server that uses
 // them (apps/playground-ssr); until then the tests reached them by path.

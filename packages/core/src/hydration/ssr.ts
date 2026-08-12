@@ -5,6 +5,7 @@ import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
 import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { isOpenAnchor, isCloseAnchor } from "../core/childrenRegion";
+import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
 import {
@@ -249,6 +250,7 @@ export async function renderStatic(vnode: ComponentChild, url: URL): Promise<Sta
   } finally {
     setRequestScope(undefined);
     resetHead();
+    resetPortalTargets();
   }
 }
 
@@ -260,6 +262,15 @@ export interface RenderedPage {
   title: string;
   /** Serialized `<meta>` / `<link>` tags, ready to drop into a `<head>`. */
   head: string;
+  /**
+   * What each NAMED portal target collected, by name — the blocks belonging in a
+   * container outside the app's root.
+   *
+   * Separate from `head` because they land somewhere else and the document
+   * builder has to know which is which. `renderDocument` emits a container per
+   * entry; a hand-rolled shell places them itself.
+   */
+  portals: Record<string, string>;
 }
 
 /**
@@ -291,6 +302,7 @@ export interface RenderedPage {
  */
 export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
   resetHead();
+  resetPortalTargets();
 
   try {
     // Forwarded, so a per-request render can use this instead of `renderToString` —
@@ -298,7 +310,7 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
     // to get it.
     const body = await renderToString(vnode, opts);
 
-    return { body, ...collectHead() };
+    return { body, ...collectHead(), portals: collectPortals() };
   } finally {
     // Cleared once the markup is safely captured — and in a `finally` so a render
     // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
@@ -361,6 +373,18 @@ function collectHead(): { title: string; head: string } {
   }
 
   return { title: document.title, head };
+}
+
+/**
+ * The named targets' blocks, with their state blobs written first.
+ *
+ * `stampBlobs` walked only the body container, so a component a portal placed
+ * anywhere else reached the client with no state to restore and was rebuilt from
+ * its initial values. Same reason `collectHead` stamps inside a head block.
+ */
+function collectPortals(): Record<string, string> {
+  for (const container of portalTargetContainers()) stampBlobs(container);
+  return collectPortalTargets();
 }
 
 function serializeNode(node: Node): string {
