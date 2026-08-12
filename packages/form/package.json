@@ -3,7 +3,7 @@
   "version": "0.6.0",
   "description": "Forms for Ramonda: typed field paths, Standard Schema validation, and rows that keep their identity.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
@@ -45,9 +45,12 @@
   "files": [
     "dist"
   ],
+  "ramonda": {
+    "graph": "./dist/graph.json"
+  },
   "sideEffects": false,
   "scripts": {
-    "build": "tsup && ramonda-check-bundle dist",
+    "build": "tsup && ramonda-check tsconfig.json --graph dist/graph.json && ramonda-check-bundle dist",
     "dev": "tsup --watch",
     "test": "vitest run --coverage && pnpm test:prod",
     "test:watch": "vitest",
@@ -57,6 +60,7 @@
     "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod"
   },
   "devDependencies": {
+    "@ramonda/check": "workspace:^",
     "@ramonda/shared": "workspace:^",
     "@ramonda/testing-library": "workspace:^",
     "@types/node": "^26.1.2",

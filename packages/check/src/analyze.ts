@@ -269,6 +269,21 @@ interface ComponentNode {
 
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
 
+/**
+ * A test, as the PROJECT sees it — the path is relative to the directory holding the tsconfig.
+ *
+ * Relative and not absolute, because a project can live inside another project's test tree: this
+ * package's own fixtures sit under `src/__tests__/fixtures/`, and each is analysed through its own
+ * tsconfig, where nothing is a test.
+ *
+ * A graph describes what a project SHIPS. A test's `bootstrap` is not the app's root — measured,
+ * `@ramonda/form` came out as an app because its tests mount one — and a class written to be
+ * checked is not a component the package publishes: with tests in, core's fragment carried
+ * `LazyThing` from a fixture directory, and query counted 109 components against a real 12.
+ */
+const isTest = (relativePath: string): boolean =>
+  /(^|\/)(__tests__|tests?)\//.test(relativePath) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(relativePath);
+
 /** How deep a slot may sit inside a prop, on both sides. Six is far past anything measured. */
 const SLOT_DEPTH = 6;
 
@@ -491,7 +506,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
   };
 
-  const sources = program.getSourceFiles().filter((f) => !f.isDeclarationFile && !f.fileName.includes("node_modules"));
+  const sources = program
+    .getSourceFiles()
+    .filter(
+      (f) =>
+        !f.isDeclarationFile &&
+        !f.fileName.includes("node_modules") &&
+        !isTest(relative(projectRoot, f.fileName).split(sep).join("/")),
+    );
 
   // ── Pass 1: the context pairs, the route tables, and every component class by symbol ────────
   for (const file of sources) {
@@ -1465,7 +1487,25 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     // no package.json of its own belongs to the package above it, and saying otherwise would give
     // the graph two names for one thing.
     const home = owner(projectRoot);
-    const scope = rootNodes.length > 0 ? "app" : "library";
+    /**
+     * A root that names a component, not merely a call to `bootstrap`.
+     *
+     * `@ramonda/testing-library` calls `bootstrap` on a vnode it was handed — that is its whole
+     * job — and a call whose argument nothing can name starts no tree. Counting it made every
+     * package that maps testing-library in its tsconfig come out as an app.
+     */
+    const scope = roots.size > 0 ? "app" : "library";
+    const ownedBy = home ? `${home.name}/` : undefined;
+    /**
+     * A library describes ITSELF.
+     *
+     * These packages compile their dependencies from source, so an unpruned fragment for
+     * `@ramonda/router` carried `@ramonda/core`'s classes as well — the same nodes core's own
+     * fragment declares, under the same ids. An app splices one fragment per package and gets each
+     * one once; an edge that points into another package still resolves, because the id is the
+     * same on both sides.
+     */
+    const owned = (id: string): boolean => scope === "app" || ownedBy === undefined || id.startsWith(ownedBy);
 
     return {
       schema: 1,
@@ -1475,10 +1515,12 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       package: home ? { name: home.name, version: packageOf(home.root).version } : packageOf(projectRoot),
       hash: `sha256:${hash.digest("hex")}`,
       ...(scope === "library" && home ? describedFile(home.root) : {}),
-      nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
+      nodes: nodes.filter((n) => owned(n.id)).sort((a, b) => a.id.localeCompare(b.id)),
       // Sorted so two runs over the same sources produce the same bytes, and a diff between two
       // commits is the change rather than the traversal order.
-      edges: edges.sort((a, b) => `${a.from}${a.at}${a.to ?? ""}`.localeCompare(`${b.from}${b.at}${b.to ?? ""}`)),
+      edges: edges
+        .filter((e) => owned(e.from))
+        .sort((a, b) => `${a.from}${a.at}${a.to ?? ""}`.localeCompare(`${b.from}${b.at}${b.to ?? ""}`)),
     };
   }
 

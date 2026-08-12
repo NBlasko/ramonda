@@ -316,6 +316,13 @@ a package rebuilt without regenerating its graph is reported and left out:
 
 Emit it AFTER the declarations are written, or it fingerprints a file from the previous build.
 
+**A graph describes what a project ships**, so test files are left out: `__tests__/`, `test/`,
+`tests/`, `*.test.*` and `*.spec.*`, judged relative to the directory holding the tsconfig. A test's
+`bootstrap` is not the app's root, and a class written to be checked is not one the package
+publishes. A library's fragment is also pruned to its own package — an app splices one fragment per
+package, and an edge pointing into another one still resolves, because the id is the same on both
+sides.
+
 A fragment also carries the package's version, because two versions of one package can be installed
 at once: the node ids collide while the graphs differ.
 
