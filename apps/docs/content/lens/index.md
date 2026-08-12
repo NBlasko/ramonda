@@ -88,16 +88,45 @@ const withPost = focusOn(updated).get("posts").push(newPost);
 
 ## It pairs with `list()`
 
-An immutable edit gives the edited item a **new object**. In a [`list()`](/lists)
-without a `key`, that edited row counts as a new entity, so its component state resets
-(every other row is untouched — [state is never wrong, only reset](/lists/nested)).
-When a row owns state you care about, add a `key`:
+An immutable edit gives the edited row a **new object**, and a
+[`list()`](/lists) recognises a row by the object it holds. So without help, the
+row you just edited looks like a row it has never seen: it is torn down and built
+again, and whatever its component was holding — a half-typed input, an open menu —
+goes with it.
+
+A lens write does not need that help. At the moment it replaces a value it is
+holding both versions, so it knows which row this is and says so. Edit a row and it
+keeps its element and its component:
 
 ```tsx
-list(this.posts, (item) => <PostRow item={item} />);
+this.posts = focusOn(this.posts).where((p) => p.id === id).merge({ title });
 ```
 
-`focusOn` and `key` belong together whenever list items own state.
+### Editing a row, and replacing one
+
+The three that DERIVE the new row from the old one say "this row, changed", and the
+row keeps everything it had:
+
+```tsx
+focusOn(this.posts).at(0).merge({ title: "New" });              // edit some fields
+focusOn(this.posts).at(0).update((p) => ({ ...p, seen: true })); // edit from the old value
+focusOn(this.posts).at(0).get("title").set("New");               // edit one field
+```
+
+`set` aimed at the array element itself is the one that cannot say which you meant:
+
+```tsx
+focusOn(this.posts).at(0).set(edited);        // "here is that row, updated"
+focusOn(this.posts).at(0).set(otherPost);     // "put a different post here"
+```
+
+Both are the same call, and a lens has no way to tell them apart, so it treats the
+new value as the row it replaced — which is right for the first and wrong for the
+second, where a different post inherits the old one's open editor.
+
+**So reach for `merge` or `update` when you are editing a row**, and keep `set` on
+an array element for what it says plainly: putting something else there. For a
+property inside a row, `set` is unambiguous and is the right tool.
 
 ## Small, and usable on its own
 
