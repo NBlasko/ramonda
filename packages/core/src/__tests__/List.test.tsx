@@ -1003,7 +1003,7 @@ describe("the cost of the key-free 2D shape", () => {
   });
 });
 
-describe("what NO key actually costs in two dimensions", () => {
+describe("what NO key costs in two dimensions", () => {
   interface Cell4 {
     label: string;
   }
@@ -1078,7 +1078,7 @@ describe("what NO key actually costs in two dimensions", () => {
     ]);
   });
 
-  test("editing one row resets that row only", async () => {
+  test("editing one row moves its cells rather than resetting them", async () => {
     const { container, instance, settle } = await marked();
     const before = [...container.querySelectorAll("td")];
 
@@ -1086,32 +1086,45 @@ describe("what NO key actually costs in two dimensions", () => {
     instance.rows = [{ ...first, cells: [...first.cells].reverse() }, instance.rows[1]];
     await settle();
 
-    // The edited row rebuilt — cells in the right order, state reset. The other
-    // row did not notice, and its two nodes are the same objects.
+    // The edited row is a REPLACED object, and its identity is carried across —
+    // so the row is the row it was, and its cells (the same objects, reversed)
+    // travel with their state rather than being reset. The other row did not
+    // notice, and its two nodes are the same objects.
+    //
+    // This used to read `["b:0", "a:0"]`: the replaced row object matched
+    // nothing, the row was rebuilt, and rebuilding it cascaded into its cells.
+    // Nothing about the data said those cells should start again.
     expect(grid4(container)).toEqual([
-      ["b:0", "a:0"],
+      ["b:2", "a:1"],
       ["c:3", "d:4"],
     ]);
-    expect([...container.querySelectorAll("td")].filter((td) => before.includes(td)).length).toBe(2);
+    // All four, not two. The untouched row never noticed, and the edited row's
+    // cells were reordered rather than rebuilt — so not one node was replaced.
+    expect([...container.querySelectorAll("td")].filter((td) => before.includes(td)).length).toBe(4);
   });
 
-  test("state is never WRONG — only reset", async () => {
+  test("state is never WRONG — it follows the item", async () => {
     const { container, instance, settle } = await marked();
 
-    // The worst case: every row object replaced AND the rows reversed.
+    // The worst case: every row object replaced AND the rows reversed. Nothing
+    // here shares a reference with what is on screen.
     instance.rows = [...instance.rows].reverse().map((row) => ({ ...row }));
     await settle();
 
-    // The order is correct and every cell is at 0. What must never appear is
-    // `["c:1","d:2"]` — the first row's state on the second row's items.
+    // Every cell's state arrived with its own content. What must never appear is
+    // `["a:3","b:4"]` — the second row's state on the first row's items.
     //
-    // That is the difference from React's unkeyed lists, which match by INDEX:
-    // there the state stays at its position and lands on whatever item moved
-    // into it, which is silently wrong. Here identity is the item object, so a
-    // replaced object rebuilds rather than inheriting.
+    // That is the difference from an unkeyed list matched by INDEX: there the
+    // state stays at its position and lands on whatever moved into it, which is
+    // silently wrong. Here identity is carried on the item, so a replaced object
+    // is still the row it replaced — and a row that is genuinely new gets
+    // nothing, because there is no row for it to have been.
+    //
+    // This used to read all zeroes. State was never wrong then either, but it was
+    // always LOST, and a refetch is the ordinary way an app gets its data.
     expect(grid4(container)).toEqual([
-      ["c:0", "d:0"],
-      ["a:0", "b:0"],
+      ["c:3", "d:4"],
+      ["a:1", "b:2"],
     ]);
   });
 });

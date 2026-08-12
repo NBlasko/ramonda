@@ -65,18 +65,57 @@ are, so each gets its own stable row. You don't need (and shouldn't add) a key f
 exactly the collision `list()` exists to avoid. (If you genuinely need to tell two
 apart, they aren't really interchangeable values — model them as objects with an id.)
 
-## When you *do* want a key
+## Refetched data, and objects that are re-created
 
-There is one case `list()` can't see: objects **re-created** as fresh instances that
-mean the same thing — data that was refetched, or round-tripped through JSON. Then
-give it a `key`:
+Data from outside is the hard case. A refetch, a `JSON.parse`, anything
+round-tripped through the network hands you **fresh objects meaning the same
+rows** — nothing shares a reference with what is on screen. Matching by reference
+finds none of them.
+
+`list()` handles this for you. When it meets an array whose objects it has not
+seen, it aligns the new array against the one it is showing and carries each row's
+identity across. So a refetch **updates** its rows instead of destroying and
+rebuilding them:
 
 ```tsx
-list({ each: this.users, key: (user) => user.id, as: UserRow });
+this.users = await api.getUsers();   // every object is new
 ```
 
-Only then. Here collisions *are* checked (`RMD013`), because it is the one place a
-mistake is possible again.
+A row whose `name` changed keeps its DOM node, its component instance, and
+whatever that component was holding — a half-typed input, an open menu, a scroll
+position. Nothing to write, nothing to get wrong.
+
+### How the alignment works
+
+Rows that are **equal by content** are matched first — those are the anchors.
+Whatever sits between two anchors in the old array is then paired with whatever
+sits between the same two anchors in the new one, by how much the two still have
+in common. That is what carries a row that *changed*: its unchanged neighbours
+place it.
+
+No field is special. An `id` counts for exactly as much as a `title`, because a
+framework cannot know which of your fields is an identity — you may well build one
+array from another and repeat an id, and a rule that trusted `id` would quietly
+merge two rows.
+
+### What is deliberately not carried
+
+**A list replaced with different data.** Two arrays with no row in common have no
+anchors, so nothing is paired and every row is genuinely new — page 2 of a table
+never inherits page 1's rows. This is the failure that makes position-based
+matching unsafe, and it is decided by evidence rather than by a ratio.
+
+**A refetch in which every single row changed.** No anchors again, so the rows are
+rebuilt. Nothing in the data distinguishes that from a replacement.
+
+**A copy.** `{ ...row }` gives you a new row, not a second claim on an old one.
+Identity is a non-enumerable symbol, so a spread, a `JSON.stringify` and every
+equality check you write are all blind to it.
+
+**A frozen row.** `Object.freeze` leaves nothing to write identity onto, so those
+rows fall back to matching by reference.
+
+You do not need `key` for any of this.
 
 ## What about `.map()`?
 

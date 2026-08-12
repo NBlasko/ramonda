@@ -221,8 +221,12 @@ describe("list() inside a hook's children", () => {
     expect(rowB.textContent).toBe("on");
     // Only the row that read it was rebuilt — the other kept its scope.
     expect(mapperCalls).toBe(1);
-    // And nothing was re-created: both rows are the nodes they were.
-    expect(Array.from(target.querySelectorAll("li"))).toEqual([rowA, rowB]);
+    // And nothing was re-created: both rows are the nodes they were. Compared
+    // one by one, because `toEqual` on DOM nodes compares them STRUCTURALLY and
+    // a rebuilt row would satisfy it.
+    const rows = Array.from(target.querySelectorAll("li"));
+    expect(rows[0]).toBe(rowA);
+    expect(rows[1]).toBe(rowB);
   });
 
   test("two portals into one target keep their own rows", async () => {
