@@ -550,6 +550,13 @@ describe("a component handed over as a prop", () => {
     expect(site?.binds?.filter((b) => b.slot === "view")).toHaveLength(2);
   });
 
+  test("two constants that name each other do not run the stack out", () => {
+    // A runtime error and ordinary syntax. Following one into the other with the depth unchanged
+    // recursed until the stack gave out, so the run died with a trace instead of reporting.
+    expect(() => run("slots")).not.toThrow();
+    expect(run("slots").graph.nodes.some((n) => n.name === "Looping")).toBe(true);
+  });
+
   test("a tag naming a prop is a hole with the prop on it, in both spellings", () => {
     // `const View = this.props.view; <View />` and `<this.props.view />`.
     const holes = run("slots").graph.edges.filter((e) => e.via === "slot");
@@ -594,9 +601,10 @@ describe("a package's fragment", () => {
     expect(graph.package).toEqual({ name: "@acme/ui", version: "2.1.0" });
 
     const exported = graph.nodes.filter((n) => n.exported).map((n) => n.name);
-    expect(exported).toEqual(["DataGrid"]);
+    expect(exported.sort()).toEqual(["DataGrid", "SelfServing"]);
     // And the internals are in it anyway — that is the difference between a fragment and a summary.
     expect(graph.nodes.map((n) => n.name)).toContain("PagedBody");
+    expect(graph.nodes.map((n) => n.name)).toContain("QueryOwner");
   });
 
   test("it fingerprints the file a consumer can actually see", () => {
@@ -623,6 +631,22 @@ describe("a package's fragment", () => {
     expect(issues[0].path).toEqual(["App", "Bare", "DataGrid", "PagedBody"]);
     // And it names the file inside the package, which is where the fault is.
     expect(issues[0].file).toBe("@acme/ui/src/index.tsx");
+  });
+
+  /**
+   * A hook is how a component publishes a context for its own subtree, and the fragment records
+   * that as `uses` — the propagation is a RULE, not a fact, so it has to be run over the spliced
+   * nodes as well.
+   *
+   * It was not: the package's own run judged `SelfServing` clean and an app that spliced it in
+   * reported the consumer underneath as having no provider. The same code, two verdicts, and the
+   * wrong one is the one that fails a build.
+   */
+  test("a package component that provides its own context through a hook is silent", () => {
+    const { issues } = run("fragment");
+    // `<SelfServing />` is mounted with nothing above it, and needs nothing above it.
+    expect(issues.map((i) => i.consumer)).not.toContain("SelfBody");
+    expect(issues).toHaveLength(1);
   });
 
   test("the same component under the provider the package needs is silent", () => {
@@ -699,6 +723,23 @@ describe("a function that returns JSX", () => {
     const helpers = (name: string) => run(name).graph.nodes.filter((n) => n.kind === "helper");
     expect(helpers("ok")).toEqual([]);
     expect(helpers("children")).toEqual([]);
+    // `const table = createRoutes(…)` in the helpers fixture is read by `collectRouteTable`.
+    expect(
+      helpers("helpers")
+        .map((n) => n.name)
+        .sort(),
+    ).toEqual(["header", "row"]);
+  });
+
+  /**
+   * A route table is read elsewhere only when it is BOUND.
+   *
+   * `collectRouteTable` reads `const routes = createRoutes(…)` and nothing else, so a table built
+   * inline is read by nobody — and skipping it dropped an edge the previous version produced,
+   * which is silence, the one failure this tool exists to avoid.
+   */
+  test("a route table built inline belongs to the component that wrote it", () => {
+    expect(edgesOf("helpers")).toContain("app.tsx#Inline -> app.tsx#Legend (renders/tag)");
   });
 });
 

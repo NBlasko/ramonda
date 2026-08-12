@@ -235,12 +235,10 @@ interface ComponentNode {
   provides: Set<string>;
   /** context id → where it is consumed. */
   consumes: Map<string, { line: number; column: number }>;
-  /** Components this one can render. */
-  renders: Set<ComponentNode>;
   /**
    * One entry per SITE that mounts something, with whatever that site binds to a slot.
    *
-   * The walk reads this rather than `renders`, because a binding belongs to a call and not to a
+   * One entry per site and not a set of targets, because a binding belongs to a call and not to a
    * class: `<Slot view={Reader} />` in one place and `<Slot view={Writer} />` in another are two
    * different arrangements, and collapsing them onto `Slot` would make each reachable from the
    * other — the merge a name-keyed map used to make.
@@ -516,7 +514,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     binds: Map<string, ComponentNode[]> = new Map(),
     kind: GraphEdge["kind"] = "renders",
   ): void => {
-    owner.renders.add(target);
     owner.mounts.push({ target, binds });
     edge(owner.id, target.id, kind, via, site, binds);
   };
@@ -661,7 +658,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       column: pos.column,
       provides: new Set(),
       consumes: new Map(),
-      renders: new Set(),
       mounts: [],
       slotHoles: [],
       slots: slotsOf(node),
@@ -738,7 +734,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       column: pos.column,
       provides: new Set(),
       consumes: new Map(),
-      renders: new Set(),
       mounts: [],
       slotHoles: [],
       slots: [],
@@ -765,11 +760,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return found;
   }
 
-  /** A route table and a root argument are edges already, read where they are written. */
+  /**
+   * Whether this call's JSX is an edge somewhere else already, so reading it here would give one
+   * mount two owners.
+   *
+   * A root argument always is: `collectRoot` reads every `bootstrap` call wherever it sits. A route
+   * table only is when it is BOUND — `collectRouteTable` reads `const routes = createRoutes(…)` and
+   * nothing else — so a table built inline is read by nobody, and skipping it lost the edge that
+   * `main` produced from the component that wrote it.
+   */
   function readElsewhere(node: ts.Node): boolean {
     if (!ts.isCallExpression(node)) return false;
     const callee = calleeName(node);
-    return callee === "createRoutes" || (callee !== undefined && CORE_ROOTS.has(callee));
+    if (callee !== undefined && CORE_ROOTS.has(callee)) return true;
+    if (callee !== "createRoutes") return false;
+    const bound = node.parent;
+    if (!bound || !ts.isVariableDeclaration(bound) || !ts.isIdentifier(bound.name)) return false;
+    const symbol = checker.getSymbolAtLocation(bound.name);
+    return symbol !== undefined && routeTables.has(symbol);
   }
 
   /** The component a name in value position refers to, resolved through an import alias. */
@@ -825,7 +833,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           column: at.column,
           provides: new Set(),
           consumes: new Map(),
-          renders: new Set(),
           mounts: [],
           slotHoles: [],
           slots: node.slots ?? [],
@@ -866,7 +873,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           if (already2) already2.push(to);
           else binds.set(bound.slot, [to]);
         }
-        from.renders.add(target);
         from.mounts.push({ target, binds });
       } else if (each.kind === "provides" && each.to) {
         from.provides.add(each.to);
@@ -1126,9 +1132,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * Run to a fixpoint so a hook built out of hooks resolves too.
    */
   function resolveHookContexts(): void {
+    /**
+     * Every node that can hold a `uses` edge, not just the ones read from THIS project's source.
+     *
+     * A component spliced in from a package's fragment carries hooks like any other, and a hook is
+     * how a component publishes a context for its own subtree. Iterating `components` alone left
+     * those unpropagated: the package's own run judged `DataGrid` clean, and an app that installed
+     * it reported the consumer under it as having no provider — the same code, two verdicts, and
+     * the wrong one is the one that fails a build.
+     */
+    const carriers = [...components.values(), ...splicedNodes, ...helpers.values()];
     for (let pass = 0; pass < 10; pass++) {
       let changed = false;
-      for (const node of components.values()) {
+      for (const node of carriers) {
         for (const used of node.uses) {
           if (used.opaque && !node.opaque) {
             node.opaque = true;
@@ -1403,9 +1419,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       }
       // One hop through a module constant, which is where RMD020 pushes anything built the same
       // way on every render — `spec={SPEC}` rather than the literal in the JSX.
+      // `depth + 1`, like every other branch: two constants that name each other are a runtime
+      // error and ordinary syntax, and following them with the depth unchanged recursed until the
+      // stack gave out — a build step that dies with a trace instead of a diagnostic, taking every
+      // other check in the run with it.
       const behind = initializerBehind(expression);
       if (behind && behind !== expression) {
-        dig(behind, path, depth);
+        dig(behind, path, depth + 1);
         return;
       }
       if (ts.isObjectLiteralExpression(expression)) {

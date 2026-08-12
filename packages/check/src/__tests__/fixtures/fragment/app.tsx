@@ -1,5 +1,5 @@
 import { Component, bootstrap } from "../framework";
-import { DataGrid, QueryProvider } from "@acme/ui";
+import { DataGrid, QueryProvider, SelfServing } from "@acme/ui";
 
 /** Mounts the package's component with nothing above it. */
 class Bare extends Component {
@@ -22,6 +22,8 @@ class App extends Component {
       <div>
         <Covered />
         <Bare />
+        {/* Nothing above this provides Query, and nothing has to: it provides its own. */}
+        <SelfServing />
       </div>
     );
   }

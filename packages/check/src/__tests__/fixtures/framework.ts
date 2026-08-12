@@ -21,6 +21,7 @@ export interface RamondaNode {
   name: ComponentClassKind;
 }
 export declare function createContext<T>(d: T, o?: { label?: string }): [unknown, unknown];
+export declare function createRoutes(table: unknown): unknown;
 export declare function bootstrap(vnode: unknown, el: unknown): void;
 export declare function list(options: { each: unknown[]; as?: unknown }): unknown;
 export declare function catchError(value: unknown, context: unknown): void;

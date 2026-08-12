@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap, createRoutes } from "../framework";
 import { row, ThemeProvider } from "./rows";
 
 /** The same thing again, as a const holding an arrow. */
@@ -28,12 +28,23 @@ class Covered extends Component {
   }
 }
 
+/** BOUND, so `collectRouteTable` reads it — and reading it again here would give one mount two owners. */
+const table = createRoutes({ "/": <Legend /> });
+
+/** INLINE, so nothing else reads it: the tag belongs to the component that wrote it. */
+class Inline extends Component {
+  render() {
+    return <div>{createRoutes({ "/": <Legend /> })}</div>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
       <div>
         <Covered />
         <Bare />
+        <Inline />
       </div>
     );
   }

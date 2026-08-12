@@ -5,17 +5,17 @@
     "name": "@acme/ui",
     "version": "2.1.0"
   },
-  "hash": "sha256:8ec0957c2ce7db319840cc5c8ea21a3a26052a4a77c7a2eba827d3980e3e254c",
+  "hash": "sha256:52301008d1e4009f12fa3aa7a1b96347e5d1bf756845f9c34bfb618f4ccc5bfb",
   "describes": {
     "file": "published/index.d.ts",
-    "hash": "sha256:e531e2944001a667b57449ffa7d6fa0587bc4ff887b823341c80caec87f92ec3"
+    "hash": "sha256:2be328b123e0c8857c9c18e62f1eb7997bcec4811848919142bd764809ca02af"
   },
   "nodes": [
     {
       "id": "@acme/ui/src/index.tsx#DataGrid",
       "kind": "component",
       "name": "DataGrid",
-      "at": "@acme/ui/src/index.tsx:19:1",
+      "at": "@acme/ui/src/index.tsx:45:1",
       "exported": true
     },
     {
@@ -23,6 +23,12 @@
       "kind": "component",
       "name": "PagedBody",
       "at": "@acme/ui/src/index.tsx:12:1"
+    },
+    {
+      "id": "@acme/ui/src/index.tsx#QueryOwner",
+      "kind": "hook",
+      "name": "QueryOwner",
+      "at": "@acme/ui/src/index.tsx:20:1"
     },
     {
       "id": "@acme/ui/src/index.tsx#QueryProvider",
@@ -33,6 +39,19 @@
       "provider": "QueryProvider",
       "consumer": "QueryConsumer",
       "optional": false
+    },
+    {
+      "id": "@acme/ui/src/index.tsx#SelfBody",
+      "kind": "component",
+      "name": "SelfBody",
+      "at": "@acme/ui/src/index.tsx:24:1"
+    },
+    {
+      "id": "@acme/ui/src/index.tsx#SelfServing",
+      "kind": "component",
+      "name": "SelfServing",
+      "at": "@acme/ui/src/index.tsx:38:1",
+      "exported": true
     }
   ],
   "edges": [
@@ -41,7 +60,7 @@
       "to": "@acme/ui/src/index.tsx#PagedBody",
       "kind": "renders",
       "via": "tag",
-      "at": "@acme/ui/src/index.tsx:21:12"
+      "at": "@acme/ui/src/index.tsx:47:12"
     },
     {
       "from": "@acme/ui/src/index.tsx#PagedBody",
@@ -49,6 +68,34 @@
       "kind": "consumes",
       "via": "use",
       "at": "@acme/ui/src/index.tsx:13:7"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#QueryOwner",
+      "to": "@acme/ui/src/index.tsx#QueryProvider",
+      "kind": "provides",
+      "via": "use",
+      "at": "@acme/ui/src/index.tsx:21:7"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#SelfBody",
+      "to": "@acme/ui/src/index.tsx#QueryProvider",
+      "kind": "consumes",
+      "via": "use",
+      "at": "@acme/ui/src/index.tsx:25:7"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#SelfServing",
+      "to": "@acme/ui/src/index.tsx#QueryOwner",
+      "kind": "uses",
+      "via": "use",
+      "at": "@acme/ui/src/index.tsx:39:11"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#SelfServing",
+      "to": "@acme/ui/src/index.tsx#SelfBody",
+      "kind": "renders",
+      "via": "tag",
+      "at": "@acme/ui/src/index.tsx:41:12"
     }
   ]
 }

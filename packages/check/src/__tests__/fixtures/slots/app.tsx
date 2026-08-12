@@ -66,6 +66,21 @@ class Either extends Component {
   }
 }
 
+/**
+ * Two constants that name each other: a runtime error, and ordinary syntax.
+ *
+ * Following one into the other with the depth unchanged recursed until the stack gave out, so the
+ * whole run died with a trace instead of reporting anything.
+ */
+const LOOP_A = LOOP_B;
+const LOOP_B = LOOP_A;
+
+class Looping extends Component {
+  render() {
+    return <Slot view={LOOP_A} spec={SPEC} />;
+  }
+}
+
 class App extends Component {
   p = this.use(ThemeProvider);
   render() {
