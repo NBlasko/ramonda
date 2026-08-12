@@ -169,13 +169,37 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
    * five still overlaps in four; a row that was never here overlaps in none, and
    * zero overlap is never a pair.
    */
+  /**
+   * Field values that occur more than once in the outgoing array.
+   *
+   * A field only says WHICH row this is if its value sets that row apart. `done:
+   * false` on every row of a to-do list says nothing about which row it is, and
+   * counting it is how page 2 of a table came to inherit page 1's rows: every row
+   * shared the flag, so every pair scored a point and the first candidate won.
+   * Measured — the half-typed draft moved to a different entity.
+   */
+  const common = new Set<string>();
+  {
+    const seen = new Map<string, number>();
+    for (const item of before) {
+      if (item === null || typeof item !== "object") continue;
+      for (const [key, value] of Object.entries(item as Record<string, unknown>)) {
+        if (value !== null && typeof value === "object") continue;
+        const at = `${key}\u0000${String(value)}`;
+        const count = (seen.get(at) ?? 0) + 1;
+        seen.set(at, count);
+        if (count > 1) common.add(at);
+      }
+    }
+  }
+
   const pairRun = (nextFrom: number, nextTo: number, beforeFrom: number, beforeTo: number) => {
     for (let n = nextFrom; n < nextTo; n++) {
       let best = -1;
       let bestScore = 0;
       for (let b = beforeFrom; b < beforeTo; b++) {
         if (claimed[b] === 1) continue;
-        const score = overlap(before[b], next[n], b, n);
+        const score = overlap(before[b], next[n], b, n, common);
         if (score > bestScore) {
           bestScore = score;
           best = b;
@@ -232,7 +256,7 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
  * equal its index by coincidence costs a little precision and cannot make a
  * false pair.
  */
-function overlap(a: unknown, b: unknown, aAt: number, bAt: number): number {
+function overlap(a: unknown, b: unknown, aAt: number, bAt: number, common: Set<string>): number {
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
     return Object.is(a, b) ? 1 : 0;
   }
@@ -244,6 +268,8 @@ function overlap(a: unknown, b: unknown, aAt: number, bAt: number): number {
     const value = left[key];
     if (value !== null && typeof value === "object") continue;
     if (value === aAt && right[key] === bAt) continue;
+    // Shared by several rows, so it does not tell them apart. See `common`.
+    if (common.has(`${key}\u0000${String(value)}`)) continue;
     if (Object.is(value, right[key])) score++;
   }
   return score;

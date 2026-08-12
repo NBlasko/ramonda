@@ -91,19 +91,23 @@ sits between the same two anchors in the new one, by how much the two still have
 in common. That is what carries a row that *changed*: its unchanged neighbours
 place it, and what it still shares with them decides which one it is.
 
-No field is special. An `id` counts for exactly as much as a `title`, because a
-framework cannot know which of your fields is an identity — you may well build one
-array from another and repeat an id, and a rule that trusted `id` would quietly
-merge two rows. The one exception cuts the other way: a field that merely restates
-the row's position (an `index`) is ignored, because position is not identity and
-counting it would let it outvote a field that is.
+No field is special by NAME. An `id` counts for exactly as much as a `title`,
+because a framework cannot know which of your fields is an identity — you may well
+build one array from another and repeat an id, and a rule that trusted `id` would
+quietly merge two rows.
+
+What does count is how much a field distinguishes. A value several rows share
+identifies none of them and is ignored, and so is a field that merely restates the
+row's position (an `index`), because position is not identity.
 
 ### What is deliberately not carried
 
 **A list replaced with different data.** A pair is only made when two rows still
-have a field in common, so page 2 of a table shares nothing with page 1 and
-inherits none of it. That is the guard, and it is per row — not a ratio, not a
-threshold.
+agree on a field that tells rows APART. A `done: false` shared by every row says
+nothing about which row it is, so it does not count — which is why page 2 of a
+table inherits nothing from page 1, even though both pages are full of the same
+flags. The guard is per row, and it is about how much a field distinguishes
+rather than how many fields match.
 
 **A copy.** `{ ...row }` gives you a new row, not a second claim on an old one.
 Identity is a non-enumerable symbol, so a spread, a `JSON.stringify` and every

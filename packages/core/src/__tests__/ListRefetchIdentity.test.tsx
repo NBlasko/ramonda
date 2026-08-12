@@ -28,6 +28,16 @@ import { mounted } from "../base/decorators";
 interface Row {
   id: number;
   t: string;
+  /**
+   * A flag every row shares — and the reason this is here.
+   *
+   * Without it these tests could not see the hole they now cover: a pair used to
+   * be made whenever two rows still agreed on ANY field, and rows of real data
+   * agree on their flags and enums all the time (`done`, `status`, `type`). A
+   * fixture whose rows shared nothing passed while page 2 of a real table was
+   * quietly inheriting page 1's rows.
+   */
+  done: boolean;
 }
 
 let mapperCalls = 0;
@@ -60,9 +70,9 @@ class RowView extends Component<{ item: Row }> {
 @Host("div")
 class App extends Component {
   @state rows: Row[] = [
-    { id: 1, t: "a" },
-    { id: 2, t: "b" },
-    { id: 3, t: "c" },
+    { id: 1, t: "a", done: false },
+    { id: 2, t: "b", done: false },
+    { id: 3, t: "c", done: false },
   ];
   render() {
     return <ul>{list(this.rows, RowView)}</ul>;
@@ -72,9 +82,9 @@ class App extends Component {
 @Host("div")
 class Plain extends Component {
   @state rows: Row[] = [
-    { id: 1, t: "a" },
-    { id: 2, t: "b" },
-    { id: 3, t: "c" },
+    { id: 1, t: "a", done: false },
+    { id: 2, t: "b", done: false },
+    { id: 3, t: "c", done: false },
   ];
   render() {
     return (
@@ -114,9 +124,9 @@ describe("a refetch keeps each row's identity", () => {
     const before = [...app.container.querySelectorAll("li")];
 
     app.instance.rows = [
-      { id: 1, t: "a" },
-      { id: 2, t: "b" },
-      { id: 3, t: "c" },
+      { id: 1, t: "a", done: false },
+      { id: 2, t: "b", done: false },
+      { id: 3, t: "c", done: false },
     ];
     await app.settle();
 
@@ -133,9 +143,9 @@ describe("a refetch keeps each row's identity", () => {
     const before = [...app.container.querySelectorAll("li")];
 
     app.instance.rows = [
-      { id: 1, t: "a" },
-      { id: 2, t: "B!" },
-      { id: 3, t: "c" },
+      { id: 1, t: "a", done: false },
+      { id: 2, t: "B!", done: false },
+      { id: 3, t: "c", done: false },
     ];
     await app.settle();
 
@@ -150,9 +160,9 @@ describe("a refetch keeps each row's identity", () => {
     const [a, b, c] = [...app.container.querySelectorAll("li")];
 
     app.instance.rows = [
-      { id: 3, t: "c" },
-      { id: 1, t: "a" },
-      { id: 2, t: "b" },
+      { id: 3, t: "c", done: false },
+      { id: 1, t: "a", done: false },
+      { id: 2, t: "b", done: false },
     ];
     await app.settle();
 
@@ -171,9 +181,9 @@ describe("a refetch keeps each row's identity", () => {
 
     rowMounts = 0;
     app.instance.rows = [
-      { id: 1, t: "a" },
-      { id: 2, t: "b" },
-      { id: 3, t: "c" },
+      { id: 1, t: "a", done: false },
+      { id: 2, t: "b", done: false },
+      { id: 3, t: "c", done: false },
     ];
     await app.settle();
 
@@ -188,8 +198,8 @@ describe("a refetch keeps each row's identity", () => {
     const before = [...app.container.querySelectorAll("li")];
 
     app.instance.rows = [
-      { id: 7, t: "x" },
-      { id: 8, t: "y" },
+      { id: 7, t: "x", done: false },
+      { id: 8, t: "y", done: false },
     ];
     await app.settle();
 
@@ -207,7 +217,7 @@ describe("a refetch keeps each row's identity", () => {
     await app.settle();
 
     mapperCalls = 0;
-    app.instance.rows = [app.instance.rows[0], { id: 2, t: "B" }, app.instance.rows[2]];
+    app.instance.rows = [app.instance.rows[0], { id: 2, t: "B", done: false }, app.instance.rows[2]];
     await app.settle();
 
     expect(mapperCalls).toBe(1);
@@ -230,9 +240,9 @@ describe("what identity is NOT carried across", () => {
     rowMounts = 0;
 
     app.instance.rows = [
-      { id: 9, t: "x" },
-      { id: 10, t: "y" },
-      { id: 11, t: "z" },
+      { id: 9, t: "x", done: false },
+      { id: 10, t: "y", done: false },
+      { id: 11, t: "z", done: false },
     ];
     await app.settle();
 
@@ -251,10 +261,10 @@ describe("what identity is NOT carried across", () => {
     rowMounts = 0;
 
     app.instance.rows = [
-      { id: 0, t: "new" },
-      { id: 1, t: "a" },
-      { id: 2, t: "b" },
-      { id: 3, t: "c" },
+      { id: 0, t: "new", done: false },
+      { id: 1, t: "a", done: false },
+      { id: 2, t: "b", done: false },
+      { id: 3, t: "c", done: false },
     ];
     await app.settle();
 
@@ -286,7 +296,7 @@ describe("what identity is NOT carried across", () => {
     const app = await getDOM<Plain>(<Plain />);
     await app.settle();
 
-    app.instance.rows = [Object.freeze({ id: 1, t: "frozen" }) as Row];
+    app.instance.rows = [Object.freeze({ id: 1, t: "frozen", done: false }) as Row];
     await app.settle();
 
     expect(texts(app.container)).toBe("frozen");
