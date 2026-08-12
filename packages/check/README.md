@@ -274,6 +274,51 @@ though a node carries a component class inside it, a mapped type is not read, an
 function that returns a component: answering those means asking for a TYPE, and this resolver is on
 symbols.
 
+## A package's own graph
+
+An installed package is a `.d.ts` and nothing else, and this reads source — so its components, its
+hooks and the contexts they need used to vanish at the package boundary, silently. A package closes
+that by publishing its own graph, and saying where it is:
+
+```json
+{ "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+```
+
+Emit it in the package's build, after the declarations are written:
+
+```bash
+ramonda-check tsconfig.json --graph dist/graph.json
+```
+
+A package has no root, so its graph comes out with `"scope": "library"` — nothing in it can be
+judged, because "unreachable" and "no provider above" are questions only whoever mounts it can
+answer. What it carries is a **fragment**: its surface, marked `"exported": true`, and its
+internals as well. That is the difference from a summary. A summary would say *DataGrid requires
+Query* and the app would have to trust it; a fragment is spliced in and walked, so the report names
+the real path:
+
+```
+  @acme/ui/src/index.tsx:13:7
+    <PagedBody> consumes "Query" — nothing provides it on this path:
+    App → Bare → DataGrid → PagedBody
+```
+
+`PagedBody` is a class the app cannot import and has never heard of.
+
+**A stale fragment is refused, not trusted.** The fragment fingerprints the declaration file a
+consumer actually sees — the source hash is no use to somebody who has `dist` and nothing else — so
+a package rebuilt without regenerating its graph is reported and left out:
+
+```
+[ramonda-check] @acme/ui's graph describes a dist/index.d.ts that is no longer the installed one —
+                the package was rebuilt without regenerating its graph
+```
+
+Emit it AFTER the declarations are written, or it fingerprints a file from the previous build.
+
+A fragment also carries the package's version, because two versions of one package can be installed
+at once: the node ids collide while the graphs differ.
+
 The file is a **format**, versioned by `schema`, and it is written for tools rather than for people
 to depend on: read it, do not build against it. `analyzeProject` returns the same structure as
 `result.graph`.

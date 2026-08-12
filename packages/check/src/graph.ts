@@ -36,6 +36,15 @@ export interface GraphNode {
   /** `createContext(…, { optional: true })` — no provider above it is a legitimate arrangement. */
   optional?: boolean;
   /**
+   * Whether an app can name this — only an exported class can be mounted from outside.
+   *
+   * Carried in a library's fragment, where it is the difference between the surface and the
+   * internals. The internals are in the fragment too, and deliberately: a report that names the
+   * real path THROUGH a package — `App > DataGrid > PagedBody` — is worth more than one that says
+   * `DataGrid requires Query`.
+   */
+  exported?: boolean;
+  /**
    * Prop paths this component's type declares as taking a component — `view`,
    * `spec.columns[].cell`.
    *
@@ -92,6 +101,29 @@ export interface ComponentGraph {
    * refused rather than trusted. A map with unmarked blanks is worse than no map.
    */
   hash: string;
+  /**
+   * The declaration file an app actually imports, and its hash — a library's fragment only.
+   *
+   * The source hash above cannot be checked by a consumer, which has `dist` and nothing else. So
+   * the fragment also fingerprints what the consumer CAN see: rebuild the package without
+   * regenerating its graph and the app refuses the fragment instead of trusting a map of code that
+   * is gone.
+   */
+  describes?: { file: string; hash: string };
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+/**
+ * How an app finds a package's fragment: the `ramonda.graph` field of its `package.json`.
+ *
+ * A field rather than a fixed path in `dist`, because an `exports` map already differs from
+ * package to package — one place both a tool and a person read.
+ *
+ * ```json
+ * { "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+ * ```
+ */
+export interface PackageGraphField {
+  ramonda?: { graph?: string };
 }

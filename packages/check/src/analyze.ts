@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { dirname, relative, sep } from "node:path";
 import ts from "typescript";
+import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 
 /**
@@ -190,6 +191,14 @@ interface Reference {
   site: ts.Node;
 }
 
+/** What a package's fragment contributed, looked up by the name an app imports. */
+interface SplicedPackage {
+  /** Exported components and hooks, by name — the only ones an app can mount. */
+  components: Map<string, ComponentNode>;
+  /** Exported context bindings, by the name of either half of the pair. */
+  contexts: Map<string, { fact: ContextFact; half: "provides" | "consumes" }>;
+}
+
 /** One place that mounts a component, and what that place hands to the component's slots. */
 interface MountSite {
   target: ComponentNode;
@@ -235,9 +244,18 @@ interface ComponentNode {
    * A tag naming a prop — `<this.props.view />` — which nothing can resolve from the class alone.
    * The caller decides, so it is filled from the bindings the walk arrives with.
    */
-  slotHoles: { slot: string; site: ts.Node }[];
+  slotHoles: { slot: string }[];
   /** Prop paths this component's own type declares as taking a component. */
   slots: string[];
+  /**
+   * Whether the class carries an `export` modifier — what a library's surface is.
+   *
+   * The modifier and not the package's entry point: a class re-exported by a barrel with
+   * `export { X } from "./x"` reads as internal here, which understates the surface rather than
+   * overstating it. Understating costs a report an app could have had; overstating would invite one
+   * to mount something the package never published.
+   */
+  exported: boolean;
   /** Hooks (or components) this one mounts with `this.use(...)`. */
   uses: Set<ComponentNode>;
   /**
@@ -373,6 +391,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const roots = new Set<ComponentNode>();
+  /** Package root → what its fragment contributed, or `null` for one that has none. */
+  const splicedPackages = new Map<string, SplicedPackage | null>();
+  /** Components and hooks a fragment brought in, which have no declaration to walk. */
+  const splicedNodes: ComponentNode[] = [];
   /** One per `bootstrap`/`hydrateRoot` call, which is where a tree starts. */
   const rootNodes: GraphNode[] = [];
   /** Where each root's tree starts, for the walk. */
@@ -585,6 +607,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       mounts: [],
       slotHoles: [],
       slots: slotsOf(node),
+      exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0,
       uses: new Set(),
       opaque: false,
       usesChildren: node.getText().includes("children"),
@@ -622,7 +645,145 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   function componentAt(node: ts.Node): ComponentNode | undefined {
     if (!ts.isIdentifier(node)) return undefined;
     const symbol = resolve(node);
-    return symbol && components.get(symbol);
+    if (!symbol) return undefined;
+    return components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name);
+  }
+
+  /**
+   * The fragment of the package a symbol was declared in, spliced in on first sight.
+   *
+   * A package compiled from source contributes its own classes and needs none of this. A package
+   * INSTALLED contributes a `.d.ts` and nothing else — `analyze` drops declaration files, which is
+   * why a package's composition used to vanish at its boundary. That is the hole a fragment closes.
+   */
+  function splicedFor(symbol: ts.Symbol): SplicedPackage | undefined {
+    const file = symbol.declarations?.[0]?.getSourceFile();
+    if (!file) return undefined;
+    if (!file.isDeclarationFile && !file.fileName.includes("node_modules")) return undefined;
+    const root = packageRootOf(file.fileName);
+    return root === undefined ? undefined : splice(root);
+  }
+
+  function splice(root: string): SplicedPackage | undefined {
+    const already = splicedPackages.get(root);
+    if (already !== undefined) return already ?? undefined;
+
+    const name = packageOf(root).name;
+    const { fragment, refused } = loadFragment(root, name);
+    if (refused) notes.push(refused);
+    if (!fragment) {
+      splicedPackages.set(root, null);
+      return undefined;
+    }
+
+    const here: SplicedPackage = { components: new Map(), contexts: new Map() };
+    const byId = new Map<string, ComponentNode>();
+
+    for (const node of fragment.graph.nodes) {
+      if (node.kind === "component" || node.kind === "hook") {
+        const at = splitWhere(node.at);
+        const made: ComponentNode = {
+          id: node.id,
+          kind: node.kind,
+          name: node.name ?? node.id,
+          // The path INSIDE the package, which is what the fragment carries. The source is not
+          // installed, so this names a place rather than opening one — and it is still the only
+          // honest thing to print: the fault is in that file, in that package.
+          file: at.file,
+          line: at.line,
+          column: at.column,
+          provides: new Set(),
+          consumes: new Map(),
+          renders: new Set(),
+          mounts: [],
+          slotHoles: [],
+          slots: node.slots ?? [],
+          exported: node.exported === true,
+          uses: new Set(),
+          opaque: false,
+          usesChildren: true,
+        };
+        byId.set(node.id, made);
+        splicedNodes.push(made);
+        if (made.exported) here.components.set(made.name, made);
+      } else if (node.kind === "context") {
+        const fact: ContextFact = {
+          id: node.id,
+          graphId: node.id,
+          at: node.at,
+          provider: node.provider,
+          consumer: node.consumer,
+          label: node.label ?? node.name ?? "context",
+          optional: node.optional === true,
+        };
+        contexts.set(fact.id, fact);
+        if (node.provider) here.contexts.set(node.provider, { fact, half: "provides" });
+        if (node.consumer) here.contexts.set(node.consumer, { fact, half: "consumes" });
+      }
+    }
+
+    for (const each of fragment.graph.edges) {
+      const from = byId.get(each.from);
+      if (!from) continue;
+      const target = each.to === undefined ? undefined : byId.get(each.to);
+      if (each.kind === "renders" && target) {
+        const binds = new Map<string, ComponentNode[]>();
+        for (const bound of each.binds ?? []) {
+          const to = byId.get(bound.to);
+          if (!to) continue;
+          const already2 = binds.get(bound.slot);
+          if (already2) already2.push(to);
+          else binds.set(bound.slot, [to]);
+        }
+        from.renders.add(target);
+        from.mounts.push({ target, binds });
+      } else if (each.kind === "provides" && each.to) {
+        from.provides.add(each.to);
+      } else if (each.kind === "consumes" && each.to) {
+        const at = splitWhere(each.at);
+        if (!from.consumes.has(each.to)) from.consumes.set(each.to, { line: at.line, column: at.column });
+      } else if (each.kind === "uses" && target) {
+        from.uses.add(target);
+      } else if (each.kind === "unresolved" && each.via === "slot" && each.slot) {
+        from.slotHoles.push({ slot: each.slot });
+      }
+      // Every edge of the fragment is carried into the app's graph as written, so a report can name
+      // the real path THROUGH the package rather than stopping at its surface.
+      edges.push(each);
+    }
+
+    // A context a fragment declares OPTIONAL is one the walk must not report, and the walk reads
+    // `consumes` — which the loop above fills regardless. Drop those, as the local pass does.
+    for (const node of byId.values()) {
+      for (const contextId of [...node.consumes.keys()]) {
+        if (contexts.get(contextId)?.optional) node.consumes.delete(contextId);
+      }
+    }
+
+    splicedPackages.set(root, here);
+    return here;
+  }
+
+  /**
+   * The declaration file this package publishes, fingerprinted at the moment the graph is written.
+   *
+   * A consumer has `dist` and not the source, so the source hash above is not a check it can make.
+   * This is: rebuild the package and forget to regenerate its graph, and every app refuses the
+   * fragment rather than trusting a map of code that is gone.
+   */
+  function describedFile(packageRoot: string): { describes: { file: string; hash: string } } | undefined {
+    const entry = declarationEntryOf(packageRoot);
+    if (!entry) return undefined;
+    const hash = fingerprint(entry);
+    if (!hash) return undefined;
+    return { describes: { file: relative(packageRoot, entry).split(sep).join("/"), hash } };
+  }
+
+  /** `@acme/ui/src/Grid.tsx:10:3` back into its three parts. */
+  function splitWhere(where: string): { file: string; line: number; column: number } {
+    const match = /^(.*):(\d+):(\d+)$/.exec(where);
+    if (!match) return { file: where, line: 1, column: 1 };
+    return { file: match[1], line: Number(match[2]), column: Number(match[3]) };
   }
 
   /**
@@ -690,7 +851,23 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
            * package's whole composition drops out. This is the edge a manifest exists to close.
            */
           if (!usedClass && !provided && !consumed && named) {
-            unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"));
+            // The package may ship a fragment, in which case its hooks and contexts are known
+            // after all — this is exactly the boundary a fragment exists to cross.
+            const across = splicedFor(symbol);
+            const context = across?.contexts.get(symbol.name);
+            const hook = across?.components.get(symbol.name);
+            if (context) {
+              if (context.half === "provides") self.provides.add(context.fact.id);
+              else if (!context.fact.optional && !self.consumes.has(context.fact.id)) {
+                self.consumes.set(context.fact.id, positionOf(node));
+              }
+              edge(self.id, context.fact.graphId, context.half, "use", node);
+            } else if (hook) {
+              self.uses.add(hook);
+              edge(self.id, hook.id, "uses", "use", node);
+            } else {
+              unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"));
+            }
           }
         }
       }
@@ -757,7 +934,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
          */
         const slot = slotPathOf(opening.tagName);
         if (slot) {
-          self.slotHoles.push({ slot, site: opening });
+          self.slotHoles.push({ slot });
           edges.push({
             from: self.id,
             kind: "unresolved",
@@ -1250,6 +1427,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         kind: node.kind,
         name: node.name,
         at: `${pathOf(node.file)}:${node.line}:${node.column}`,
+        ...(node.exported ? { exported: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
       });
     }
@@ -1265,6 +1443,16 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         optional: fact.optional,
       });
     }
+    for (const node of splicedNodes) {
+      nodes.push({
+        id: node.id,
+        kind: node.kind,
+        name: node.name,
+        at: `${node.file}:${node.line}:${node.column}`,
+        ...(node.exported ? { exported: true } : {}),
+        ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+      });
+    }
     nodes.push(...rootNodes);
 
     const hash = createHash("sha256");
@@ -1273,19 +1461,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       hash.update(file.text);
     }
 
+    // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
+    // no package.json of its own belongs to the package above it, and saying otherwise would give
+    // the graph two names for one thing.
+    const home = owner(projectRoot);
+    const scope = rootNodes.length > 0 ? "app" : "library";
+
     return {
       schema: 1,
       // A library has no root, so "unreachable" and "no provider above" cannot be decided in it at
       // all — its graph is a fragment for an app to splice in, not a verdict.
-      scope: rootNodes.length > 0 ? "app" : "library",
-      // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
-      // no package.json of its own belongs to the package above it, and saying otherwise would give
-      // the graph two names for one thing.
-      package: (() => {
-        const found = owner(projectRoot);
-        return found ? { name: found.name, version: packageOf(found.root).version } : packageOf(projectRoot);
-      })(),
+      scope,
+      package: home ? { name: home.name, version: packageOf(home.root).version } : packageOf(projectRoot),
       hash: `sha256:${hash.digest("hex")}`,
+      ...(scope === "library" && home ? describedFile(home.root) : {}),
       nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
       // Sorted so two runs over the same sources produce the same bytes, and a diff between two
       // commits is the change rather than the traversal order.

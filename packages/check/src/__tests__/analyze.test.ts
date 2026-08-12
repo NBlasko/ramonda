@@ -572,3 +572,83 @@ describe("a component handed over as a prop", () => {
     expect(issues[0].path).toEqual(["Shell", "Bare", "Slot", "Reader"]);
   });
 });
+
+/**
+ * A package that is installed rather than compiled.
+ *
+ * `analyze` drops declaration files, so a package the app imports from `node_modules` used to
+ * contribute nothing at all — its components, its hooks and the contexts they need vanished at the
+ * package boundary, silently. That is measurable in this repository today:
+ * `apps/playground-core` has no `paths` entry for `@ramonda/form`, so `this.use(Form<…>)` reaches a
+ * `.d.ts` and the whole package drops out.
+ *
+ * A package closes it by publishing its own graph — a FRAGMENT, carrying its internals and not just
+ * its surface, so the app's report names the real path through it.
+ */
+describe("a package's fragment", () => {
+  test("a library emits a fragment: no roots, and its surface marked", () => {
+    const graph = run("vendor-ui").graph;
+    // No `bootstrap`, so nothing here can be judged: "unreachable" and "no provider above" are
+    // questions only whoever mounts it can answer.
+    expect(graph.scope).toBe("library");
+    expect(graph.package).toEqual({ name: "@acme/ui", version: "2.1.0" });
+
+    const exported = graph.nodes.filter((n) => n.exported).map((n) => n.name);
+    expect(exported).toEqual(["DataGrid"]);
+    // And the internals are in it anyway — that is the difference between a fragment and a summary.
+    expect(graph.nodes.map((n) => n.name)).toContain("PagedBody");
+  });
+
+  test("it fingerprints the file a consumer can actually see", () => {
+    // The source hash is no use to an app, which has the published files and nothing else. The
+    // fixture calls that directory `published` rather than `dist`, because `dist` is in this
+    // repository's `.gitignore` and test data that only exists on one machine is not test data.
+    const graph = run("vendor-ui").graph;
+    expect(graph.describes?.file).toBe("published/index.d.ts");
+    expect(graph.describes?.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  /**
+   * The whole point: a report that names the path THROUGH the package.
+   *
+   * `App > Bare > DataGrid > PagedBody`, where `PagedBody` is a class the app has never heard of
+   * and cannot import. A summary saying "DataGrid requires Query" would have to be trusted and
+   * would name no line.
+   */
+  test("an app splices it in and judges what the package mounts", () => {
+    const { issues } = run("fragment");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("PagedBody");
+    expect(issues[0].context).toBe("Query");
+    expect(issues[0].path).toEqual(["App", "Bare", "DataGrid", "PagedBody"]);
+    // And it names the file inside the package, which is where the fault is.
+    expect(issues[0].file).toBe("@acme/ui/src/index.tsx");
+  });
+
+  test("the same component under the provider the package needs is silent", () => {
+    // `Covered` mounts `QueryProvider` — the pair the package exports — and `Bare` does not. One
+    // arrangement is broken and the other is not, and only the broken one is reported.
+    expect(run("fragment").issues.map((i) => i.path[1])).toEqual(["Bare"]);
+  });
+
+  test("the package's own nodes and edges are in the app's graph", () => {
+    const graph = run("fragment").graph;
+    expect(graph.nodes.map((n) => n.id)).toContain("@acme/ui/src/index.tsx#PagedBody");
+    expect(graph.edges.some((e) => e.from === "@acme/ui/src/index.tsx#DataGrid")).toBe(true);
+  });
+
+  /**
+   * A stale fragment is the failure this whole design calls worse than no map: one that is trusted.
+   *
+   * The fixture is a package rebuilt without regenerating its graph — the fingerprint no longer
+   * matches the installed `dist`. It is refused, said out loud, and nothing of it is spliced.
+   */
+  test("a fragment that does not describe the installed package is refused", () => {
+    const { notes, counts, issues } = run("fragment-stale");
+    expect(notes.join(" ")).toContain("rebuilt without regenerating its graph");
+    // The app's own three classes, and nothing from the package.
+    expect(counts.components).toBe(3);
+    // And no verdict invented from a map of code that is gone.
+    expect(issues).toEqual([]);
+  });
+});
