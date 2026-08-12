@@ -25,8 +25,9 @@ Everything the three packages export. Each entry links to the page that explains
 | `Component<P>` | The base class. Extend it and implement [`render()`](/concepts/components). |
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
 | `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
+| `SAME_ROW` | The option for a lens `set` that replaces a row with the same row rebuilt, so it keeps its element and its component. [Lens](/lens#editing-a-row-and-replacing-one) |
 | `merge(previous, next, identity?)` | Keeps the previous value where the new one equals it, so a refetch is not a change. With `identity`, rows are paired across a reorder or a resize and a changed row keeps its identity. [Lists](/lists#refetched-data-and-objects-that-are-re-created) |
-| `list<T>(each, builder)` | Renders a list, minting identity from the items. `builder` is a component or a function. [Lists](/lists) |
+| `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |
 | `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
@@ -282,7 +283,7 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 
 | | |
 |---|---|
-| `.set(value)` | Replaces the focused value. An equal value copies nothing. Creates an absent key. |
+| `.set(value, opts?)` | Replaces the focused value. An equal value copies nothing. Creates an absent key. `opts.keepSymbols` carries hidden symbols off the old value — `true`, or exactly the ones listed. |
 | `.update(fn)` | Replaces it with `fn(current)`. |
 | `.merge(partial)` | Copies the focused object and assigns over it. Does not create a missing object. |
 | `.remove()` | Drops the property or element from its container. |
@@ -297,7 +298,7 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 | `.value()` | The first focused value, or `undefined`. |
 | `.values()` | Every focused value. |
 
-Types: `Focus` · `FocusCommon` · `FocusArray` · `ElementOf`
+Types: `Focus` · `FocusCommon` · `FocusArray` · `ElementOf` · `KeepSymbols`
 
 ---
 

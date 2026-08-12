@@ -25,6 +25,9 @@ const EXPECTED = [
   // Structural sharing at the data boundary, and the one place an app can say
   // which row is which when inference cannot.
   "merge",
+  // The ready-made option for a lens `set` that replaces a row with the same
+  // row rebuilt — so an app never has to name the symbol behind it.
+  "SAME_ROW",
   "ShouldUpdateOnPropsChange",
   "StableProps",
   "AsyncLoad",

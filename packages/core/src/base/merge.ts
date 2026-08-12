@@ -1,4 +1,4 @@
-import { identityOf, stampIdentity } from "../helpers/itemIdentity";
+import { ITEM_ID, identityOf, stampIdentity } from "../helpers/itemIdentity";
 
 /**
  * Keeps the previous value where the new one is equal to it, so an answer that did not change
@@ -208,3 +208,26 @@ function mergeArray(
 
   return allSame ? previous : merged;
 }
+
+/**
+ * Hands `@ramonda/lens` the one thing it needs to keep a row's identity across a
+ * `set`, without either package importing the other.
+ *
+ * A lens carries hidden data across an EDIT on its own — `merge`, `update`, a
+ * write aimed deeper — because an edit is a continuation of the value. A `set`
+ * is handed a value instead of deriving one, so it cannot know whether the new
+ * value is the same row or a different one, and it keeps nothing unless told.
+ *
+ * Told is this:
+ *
+ * ```ts
+ * import { focusOn } from "@ramonda/lens";
+ * import { SAME_ROW } from "@ramonda/core";
+ *
+ * this.rows = focusOn(this.rows).at(0).set(rebuiltRow, SAME_ROW);
+ * ```
+ *
+ * Ready-made rather than left to the caller, because the alternative is an app
+ * writing out a symbol it should never have to name.
+ */
+export const SAME_ROW: { keepSymbols: readonly symbol[] } = { keepSymbols: [ITEM_ID] };

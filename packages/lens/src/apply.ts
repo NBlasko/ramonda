@@ -13,6 +13,8 @@ import { formatPath, type Step } from "./steps";
  */
 interface Walk {
   readonly steps: readonly Step[];
+  /** What a write landing on the focused value keeps from it. See `keepSymbols`. */
+  readonly keep: KeepSymbols;
   /**
    * The index at which `terminal` takes over.
    *
@@ -41,7 +43,20 @@ function reportUnsafeKey(steps: readonly Step[], at: number, key: string): void 
   report("RML009", `${path} targets "${key}", so nothing was changed.`, { path, key });
 }
 
-import { carryRow } from "./rowIdentity";
+import { keepSymbols, type KeepSymbols } from "./keepSymbols";
+
+/**
+ * What this hop keeps, which depends on whether the write lands HERE.
+ *
+ * A write aimed deeper rebuilds this value as a copy of itself — an edit, so
+ * everything hidden on it carries. A write aimed at this value replaces it, and
+ * then it is the operation that decides: `merge` and `update` derive the new
+ * value from the old and keep, `set` is handed one and keeps only what it was
+ * asked to. See `keepSymbols`.
+ */
+function keptAt(w: Walk, i: number): KeepSymbols {
+  return i + 1 === w.stopAt ? w.keep : true;
+}
 
 export function walk(node: unknown, w: Walk, i: number): unknown {
   if (i === w.stopAt) return w.terminal(node, w.steps[i]);
@@ -93,10 +108,7 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
       const previous = container[step.key];
       const next = walk(previous, w, i + 1);
       if (Object.is(previous, next)) return node;
-      // A list recognises a row by the object, and this just replaced one. The
-      // answer is known here — both versions are in hand — so it is carried
-      // rather than guessed at afterwards. See `carryRow`.
-      carryRow(previous, next);
+      keepSymbols(previous, next, keptAt(w, i));
 
       const copy = shallowClone(container);
       copy[step.key] = next;
@@ -126,7 +138,7 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
       const previous = node[index];
       const next = walk(previous, w, i + 1);
       if (Object.is(previous, next)) return node;
-      carryRow(previous, next);
+      keepSymbols(previous, next, keptAt(w, i));
 
       const copy = node.slice();
       copy[index] = next;
@@ -153,7 +165,7 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
 
         const next = walk(item, w, i + 1);
         if (Object.is(item, next)) continue;
-        carryRow(item, next);
+        keepSymbols(item, next, keptAt(w, i));
         if (copy === undefined) copy = node.slice();
         copy[k] = next;
       }
@@ -172,8 +184,13 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
 }
 
 /** Builds the walk for every operation that replaces the focused value. */
-export function replace(root: unknown, steps: readonly Step[], transform: (value: unknown) => unknown): unknown {
-  return walk(root, { steps, stopAt: steps.length, terminal: transform }, 0);
+export function replace(
+  root: unknown,
+  steps: readonly Step[],
+  transform: (value: unknown) => unknown,
+  keep: KeepSymbols = true,
+): unknown {
+  return walk(root, { steps, stopAt: steps.length, terminal: transform, keep }, 0);
 }
 
 /**
@@ -187,6 +204,8 @@ export function removeAt(root: unknown, steps: readonly Step[]): unknown {
   return walk(
     root,
     {
+      // `remove` drops the value; there is nothing continuing it to keep for.
+      keep: false,
       steps,
       stopAt: steps.length - 1,
       terminal: (node, lastStep) => removeFrom(node, lastStep, steps),

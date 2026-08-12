@@ -22,7 +22,8 @@ export type { RefCallback, RefTarget } from "./base/Ref";
 export type { AsyncLoadProps, AsyncLoadFailure, Lazy } from "./base/AsyncLoad";
 export { list } from "./base/list";
 export type { Each, ItemRender } from "./base/list";
-export { merge } from "./base/merge";
+export { merge, SAME_ROW } from "./base/merge";
+
 export type { Identity } from "./base/merge";
 export { Head } from "./base/Head";
 export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";

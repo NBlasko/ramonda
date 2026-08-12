@@ -120,9 +120,22 @@ focusOn(this.posts).at(0).set(edited);        // "here is that row, updated"
 focusOn(this.posts).at(0).set(otherPost);     // "put a different post here"
 ```
 
-Both are the same call, and a lens has no way to tell them apart, so it treats the
-new value as the row it replaced — which is right for the first and wrong for the
-second, where a different post inherits the old one's open editor.
+Both are the same call. A lens is *handed* the value instead of deriving it, so it
+cannot tell a corrected row from a different one — and giving a different post the
+open editor of the post it replaced is the worse of the two mistakes. **So `set`
+treats the value as something else, and the row is rebuilt.**
+
+When you know it is the same row, say so:
+
+```tsx
+import { SAME_ROW } from "@ramonda/core";
+
+focusOn(this.posts).at(0).set(fromTheForm, SAME_ROW);
+```
+
+Nothing about the new object has to resemble the old one — every field can differ,
+the id included — because you said which row it is rather than leaving it to be
+worked out.
 
 **So reach for `merge` or `update` when you are editing a row**, and keep `set` on
 an array element for what it says plainly: putting something else there. For a

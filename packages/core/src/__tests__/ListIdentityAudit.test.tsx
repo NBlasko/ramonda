@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, Host, list, SAME_ROW, state } from "../index";
 import { created, destroyed, Host as HostDec } from "../base/decorators";
 
 /**
@@ -359,5 +359,73 @@ describe("two dimensions", () => {
       { id: 90, name: "x", done: false, cells: [{ id: 91, label: "z", done: false }] },
     ]);
     expect(r).toMatchObject({ kept: 0, total: 1, creates: 1, destroys: 4, stateOn: undefined });
+  });
+});
+
+/**
+ * `SAME_ROW` — the option a lens `set` takes when the value handed to it is the
+ * same row rebuilt.
+ *
+ * A lens `set` is handed a value rather than deriving one, so it cannot tell a
+ * corrected row from a different row and keeps nothing by default. `SAME_ROW`
+ * is the caller saying which one it is. It lives here because it is the SYMBOL
+ * that matters, and this file is where what the symbol buys you is measured.
+ *
+ * `@ramonda/lens` is not a dependency of this package and must not become one,
+ * so what a lens does with the option — copy the descriptors it names from the
+ * old value onto the new — is done inline. If that mechanism and this constant
+ * ever disagree, the lens tests catch the other half.
+ */
+describe("SAME_ROW, the option a lens set takes", () => {
+  function asLensWould(previous: object, next: object): object {
+    for (const key of SAME_ROW.keepSymbols) {
+      const descriptor = Object.getOwnPropertyDescriptor(previous, key);
+      if (descriptor !== undefined) Object.defineProperty(next, key, descriptor);
+    }
+    return next;
+  }
+
+  test("a row replaced WITHOUT it is a new entity, and loses what it held", async () => {
+    const r = await operate((rows) => rows.map((row) => (row.id === 2 ? { id: 2, title: "b", done: true } : row)));
+
+    // Nothing in the replacement says it continues the old row, and the values
+    // are close enough that the inference pairs them anyway — which is the
+    // common case working. The point of the next test is not needing that luck.
+    expect(r).toMatchObject({ total: 4, stateOn: "b" });
+  });
+
+  test("a row rebuilt from scratch keeps its state when the mark comes with it", async () => {
+    const r = await operate((rows) =>
+      rows.map((row) =>
+        row.id === 2 ? (asLensWould(row, { id: 77, title: "renamed", done: true }) as Row) : row,
+      ),
+    );
+
+    // Every field changed, including the id — nothing about this object could be
+    // inferred to be row 2. It kept its component anyway, because the mark said so.
+    expect(r).toMatchObject({ kept: 4, total: 4, creates: 0, destroys: 0, stateOn: "renamed" });
+  });
+
+  test("the same rebuild without the mark is treated as a different row", async () => {
+    const r = await operate((rows) =>
+      rows.map((row) => (row.id === 2 ? ({ id: 77, title: "renamed", done: true } as Row) : row)),
+    );
+
+    // The other half of the contract: without it, the state does NOT follow.
+    expect(r.stateOn).toBeUndefined();
+    expect(r).toMatchObject({ total: 4, creates: 1, destroys: 1 });
+  });
+
+  test("what it names stays hidden — it survives a spread and never reaches JSON", async () => {
+    const original = { id: 1, title: "a", done: false };
+    const rebuilt = asLensWould(original, { id: 1, title: "a", done: false });
+
+    // The mark has to be on the object before there is anything to carry, and a
+    // fresh object has none. Rendering the list is what stamps it.
+    await operate((rows) => rows);
+
+    expect(Object.keys(rebuilt)).toEqual(["id", "title", "done"]);
+    expect(JSON.stringify(rebuilt)).toBe('{"id":1,"title":"a","done":false}');
+    expect(SAME_ROW.keepSymbols).toHaveLength(1);
   });
 });

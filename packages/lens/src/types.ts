@@ -1,3 +1,5 @@
+import type { KeepSymbols } from "./keepSymbols";
+
 /** The element type of an array, and `never` for anything that is not one. */
 export type ElementOf<T> = T extends readonly (infer E)[] ? E : never;
 
@@ -29,8 +31,21 @@ export interface FocusCommon<Root, Current> {
    * A value that is already `Object.is`-equal to the current one produces NO
    * copies at all and returns the original root, identity intact — so a
    * consumer comparing with `===` sees nothing changed, because nothing did.
+   *
+   * **Hidden data on the old value is NOT carried over.** `set` is handed a
+   * value rather than deriving one, so it cannot know whether the new value
+   * continues the old — and treating a replacement as a continuation is how a
+   * different thing inherits what was attached to the one it replaced. `merge`
+   * and `update` derive, so they carry; say it here when you know:
+   *
+   * ```ts
+   * focusOn(rows).at(0).set(other)                          // a different row
+   * focusOn(rows).at(0).set(rebuilt, { keepSymbols: true }) // the same row, rebuilt
+   * ```
+   *
+   * See `KeepSymbols`.
    */
-  set(value: Current): Root;
+  set(value: Current, options?: { keepSymbols?: KeepSymbols }): Root;
 
   /** Replaces the focused value with the result of `updater`. */
   update(updater: (value: Current) => Current): Root;
