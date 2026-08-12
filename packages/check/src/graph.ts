@@ -24,7 +24,13 @@ export interface GraphNode {
    * A name declared twice in one file takes a `$2` suffix.
    */
   id: string;
-  kind: "component" | "hook" | "context" | "root";
+  /**
+   * `helper` is a function that returns JSX, written outside any component class.
+   *
+   * Not a component — nothing mounts it and it has no context of its own — but the tags in its
+   * body are edges and they belong somewhere. Whoever CALLS it reaches them.
+   */
+  kind: "component" | "hook" | "context" | "root" | "helper";
   /** The class or binding name. A root has none — it is a call, not a declaration. */
   name?: string;
   at: Where;
@@ -66,8 +72,8 @@ export interface GraphEdge {
   from: string;
   /** Absent on an `unresolved` edge, which is the whole point of that kind. */
   to?: string;
-  kind: "renders" | "provides" | "consumes" | "uses" | "unresolved";
-  via: "tag" | "children" | "as" | "route" | "lazy" | "slot" | "bootstrap" | "use";
+  kind: "renders" | "provides" | "consumes" | "uses" | "calls" | "unresolved";
+  via: "tag" | "children" | "as" | "route" | "lazy" | "slot" | "bootstrap" | "use" | "call";
   at: Where;
   /** Why nothing could be named, on an `unresolved` edge. */
   why?: string;

@@ -220,8 +220,14 @@ interface ComponentNode {
    * name lookup never checked.
    */
   id: string;
-  /** Which of the two base classes the chain reaches — a hook mounts no children of its own. */
-  kind: "component" | "hook";
+  /**
+   * Which of the two base classes the chain reaches, or `helper` for a function that returns JSX.
+   *
+   * A helper is not a component — nothing mounts it, it has no props and no context of its own —
+   * but the tags in its body are edges, and they belong somewhere. They belong to it, and every
+   * component that CALLS it reaches them.
+   */
+  kind: "component" | "hook" | "helper";
   name: string;
   file: string;
   line: number;
@@ -410,6 +416,17 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const splicedPackages = new Map<string, SplicedPackage | null>();
   /** Components and hooks a fragment brought in, which have no declaration to walk. */
   const splicedNodes: ComponentNode[] = [];
+  /**
+   * Functions that return JSX, written outside any component class.
+   *
+   * `function Row(item) { return <li><Cell /></li> }` mounts `Cell` wherever it is called, and
+   * nothing attributed those tags to anything before: JSX outside a component class was read only
+   * inside a route table or a `bootstrap` argument, and everything else was invisible rather than
+   * a hole. Kept out of `components`, because a helper is not one and the printed count says so.
+   */
+  const helpers = new Map<ts.Symbol, ComponentNode>();
+  /** The body to walk for each helper, kept so pass 2.5 does not look it up again. */
+  const helperBodies = new Map<ComponentNode, ts.Node>();
   /** One per `bootstrap`/`hydrateRoot` call, which is where a tree starts. */
   const rootNodes: GraphNode[] = [];
   /** Where each root's tree starts, for the walk. */
@@ -497,10 +514,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     via: GraphEdge["via"],
     site: ts.Node,
     binds: Map<string, ComponentNode[]> = new Map(),
+    kind: GraphEdge["kind"] = "renders",
   ): void => {
     owner.renders.add(target);
     owner.mounts.push({ target, binds });
-    edge(owner.id, target.id, "renders", via, site, binds);
+    edge(owner.id, target.id, kind, via, site, binds);
   };
   const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
     edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
@@ -525,6 +543,18 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     });
   }
 
+  // ── Pass 1.5: functions that return JSX, which are edges nothing owned before ────────────────
+  for (const file of sources) {
+    let insideComponent = 0;
+    ts.forEachChild(file, function visit(node) {
+      const entering = ts.isClassDeclaration(node) && componentKind(node, checker) !== undefined;
+      if (entering) insideComponent += 1;
+      collectHelper(node, insideComponent > 0);
+      ts.forEachChild(node, visit);
+      if (entering) insideComponent -= 1;
+    });
+  }
+
   // ── Pass 2: what each component provides, consumes and renders ──────────────────────────────
   for (const file of sources) {
     ts.forEachChild(file, function visit(node) {
@@ -541,6 +571,12 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       collectRoot(node);
       ts.forEachChild(node, visit);
     });
+  }
+
+  // ── Pass 2.5: what each helper renders, and who calls it ────────────────────────────────────
+  for (const helper of helpers.values()) {
+    const declaration = helperBodies.get(helper);
+    if (declaration) ts.forEachChild(declaration, (n) => walkJsx(n, helper, helper));
   }
 
   resolveHookContexts();
@@ -661,6 +697,79 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     } else {
       unresolvedEdge(id, "bootstrap", node, whyUnresolved(opening?.tagName, `${name}'s first argument`));
     }
+  }
+
+  /**
+   * A function that returns JSX, written outside any component class.
+   *
+   * Three shapes, which are the three people write: a declared function, a const holding an arrow
+   * or a function expression, and a method of a class that is not a component. JSX handed to
+   * `createRoutes` or to `bootstrap` is not one of these — a route table and a root are read where
+   * they are, and reading them twice would give one mount two owners.
+   */
+  function collectHelper(node: ts.Node, insideComponent: boolean): void {
+    if (insideComponent) return;
+
+    let named: ts.Identifier | undefined;
+    let source: ts.Node | undefined;
+    if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) {
+      source = node.body;
+      named = node.name && ts.isIdentifier(node.name) ? node.name : undefined;
+    } else if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)) {
+      const value = node.initializer;
+      if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) {
+        source = value.body;
+        named = node.name;
+      }
+    }
+    if (!source || !named) return;
+    if (!rendersSomething(source)) return;
+
+    const name = named.text;
+    const symbol = checker.getSymbolAtLocation(named);
+    if (!symbol || helpers.has(symbol)) return;
+    const pos = positionOf(node);
+    const made: ComponentNode = {
+      id: idFor(pos.file, name),
+      kind: "helper",
+      name,
+      file: pos.file,
+      line: pos.line,
+      column: pos.column,
+      provides: new Set(),
+      consumes: new Map(),
+      renders: new Set(),
+      mounts: [],
+      slotHoles: [],
+      slots: [],
+      exported: false,
+      uses: new Set(),
+      opaque: false,
+      usesChildren: false,
+    };
+    helpers.set(symbol, made);
+    helperBodies.set(made, source);
+  }
+
+  /** Whether a body writes a component tag of its own, ignoring the two that are read elsewhere. */
+  function rendersSomething(body: ts.Node): boolean {
+    let found = false;
+    (function scan(node: ts.Node) {
+      if (found || readElsewhere(node)) return;
+      if (jsxTagName(node)) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(node, scan);
+    })(body);
+    return found;
+  }
+
+  /** A route table and a root argument are edges already, read where they are written. */
+  function readElsewhere(node: ts.Node): boolean {
+    if (!ts.isCallExpression(node)) return false;
+    const callee = calleeName(node);
+    return callee === "createRoutes" || (callee !== undefined && CORE_ROOTS.has(callee));
   }
 
   /** The component a name in value position refers to, resolved through an import alias. */
@@ -894,6 +1003,17 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         }
       }
 
+      // A call to a function that returns JSX: whatever it writes mounts here.
+      if (ts.isCallExpression(node) && !readElsewhere(node)) {
+        const callee =
+          ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression)
+            ? node.expression
+            : undefined;
+        const symbol = callee ? resolve(callee) : undefined;
+        const helper = symbol ? helpers.get(symbol) : undefined;
+        if (helper) mount(self, helper, "call", node, new Map(), "calls");
+      }
+
       // list({ as: Row }) — items render where the list sits, so the owner is this component.
       if (ts.isCallExpression(node) && calleeName(node) === "list") {
         for (const { target, site } of componentsInListOptions(node)) {
@@ -935,6 +1055,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * everything else belongs to the enclosing component.
    */
   function walkJsx(node: ts.Node, owner: ComponentNode, self: ComponentNode): void {
+    if (readElsewhere(node)) return;
     if (jsxTagName(node)) {
       const element = ts.isJsxElement(node) ? node : undefined;
       const opening = element ? element.openingElement : (node as ts.JsxSelfClosingElement);
@@ -1463,6 +1584,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         provider: fact.provider,
         consumer: fact.consumer,
         optional: fact.optional,
+      });
+    }
+    for (const node of helpers.values()) {
+      nodes.push({
+        id: node.id,
+        kind: "helper",
+        name: node.name,
+        at: `${pathOf(node.file)}:${node.line}:${node.column}`,
       });
     }
     for (const node of splicedNodes) {

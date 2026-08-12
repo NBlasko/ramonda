@@ -652,3 +652,68 @@ describe("a package's fragment", () => {
     expect(issues).toEqual([]);
   });
 });
+
+/**
+ * JSX written outside a component class.
+ *
+ * `function row() { return <Cell /> }` mounts `Cell` wherever it is called, and nothing owned that
+ * tag before: JSX outside a class was read only inside a route table or a `bootstrap` argument, and
+ * everything else was invisible rather than a hole — so a consumer reached only through a helper
+ * was never judged at all.
+ *
+ * Nothing needs following to fix it. The tag is written in the helper, so the edge is read where it
+ * is; only the OWNER was in question, and the answer is the helper, with a `calls` edge from each
+ * component that reaches it.
+ */
+describe("a function that returns JSX", () => {
+  test("is a node of its own, in either spelling", () => {
+    const helpers = run("helpers")
+      .graph.nodes.filter((n) => n.kind === "helper")
+      .map((n) => n.name);
+    // A declared function in another file, and a const holding an arrow.
+    expect(helpers.sort()).toEqual(["header", "row"]);
+  });
+
+  test("owns the tags it writes, and whoever calls it reaches them", () => {
+    const edges = edgesOf("helpers");
+    expect(edges).toContain("rows.tsx#row -> rows.tsx#Cell (renders/tag)");
+    expect(edges).toContain("app.tsx#Bare -> rows.tsx#row (calls/call)");
+    expect(edges).toContain("app.tsx#Covered -> rows.tsx#row (calls/call)");
+  });
+
+  /**
+   * The fault this exists for. `Cell` consumes a context, and it is reached ONLY through a helper
+   * in another file — the shape the analyzer is documented as unable to see. It is judged per path
+   * like anything else: broken under `Bare`, fine under `Covered`, and the helper is named in the
+   * path because that is where the tag is written.
+   */
+  test("a consumer reached only through a helper is judged", () => {
+    const { issues } = run("helpers");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Cell");
+    expect(issues[0].path).toEqual(["App", "Bare", "row", "Cell"]);
+  });
+
+  test("a route table and a root argument are not helpers", () => {
+    // Both are read where they are written. Counted twice, one mount would have two owners.
+    const helpers = (name: string) => run(name).graph.nodes.filter((n) => n.kind === "helper");
+    expect(helpers("ok")).toEqual([]);
+    expect(helpers("children")).toEqual([]);
+  });
+});
+
+/**
+ * A graph describes what a project SHIPS.
+ *
+ * Test files are left out — `__tests__/`, `test/`, `tests/`, `*.test.*`, `*.spec.*` — judged
+ * relative to the directory holding the tsconfig, because a project can live inside another
+ * project's test tree. Which is exactly where these fixtures are: each is analysed through its own
+ * tsconfig, where nothing is a test.
+ */
+describe("what a graph covers", () => {
+  test("this package's own fixtures are not read as tests", () => {
+    // The proof that the rule is relative. Read absolutely, every fixture here sits under
+    // `src/__tests__/` and would be empty.
+    expect(run("ok").counts.components).toBe(3);
+  });
+});

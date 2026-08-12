@@ -220,7 +220,7 @@ It holds facts, not conclusions — nodes and edges, each edge with the place it
 }
 ```
 
-`kind` is what a walk reads — `renders`, `provides`, `consumes`, `uses`. `via` is how it was
+`kind` is what a walk reads — `renders`, `provides`, `consumes`, `uses`, `calls`. `via` is how it was
 written — a JSX tag, children of a wrapper, `list({ as })`, a route table, `AsyncLoad`'s `lazy`,
 `bootstrap`. A component
 is identified by its **declaration**, `<package>/<file>#<Name>`, because a name is not an identity:
@@ -239,6 +239,13 @@ An edge that resolved to nothing is `"kind": "unresolved"`, and carries the reas
 ```
 
 A blank left off the map is worse than no map, because it is trusted.
+
+**JSX written outside a component class** is an edge too. `function row() { return <Cell /> }` mounts
+`Cell` wherever it is called, so the function is a node of its own — `"kind": "helper"` — owning the
+tags it writes, with a `calls` edge from every component that reaches it. Nothing has to be followed
+to work that out: the tag is written in the helper, so the edge is read where it is. A route table
+and a `bootstrap` argument are not helpers; they are read where they are written, and counting them
+twice would give one mount two owners.
 
 **A lazily loaded component is an edge like any other.** `lazy={() => import("./page")}` names a
 module with a string literal, `namedExport` names the class, and both are read: the loader may sit
