@@ -133,13 +133,22 @@ export class ListEngine<T> {
     let aligned = false;
 
     /**
-     * Whether any row carried a key of its own this pass.
+     * How many rows carried a key of their own, out of how many there were.
      *
-     * Remembered for the NEXT pass, because it decides whether the guessing is
-     * worth starting: a keyed list answers "which row is this" from the key, so
-     * aligning the two arrays would be work whose result is never read.
+     * Remembered for the NEXT pass, where it decides whether aligning the two
+     * arrays is worth starting: a list whose every row answers "which row is
+     * this" from a key would never read the result.
+     *
+     * **Every row, not any row.** Counting "any" made a list where only some rows
+     * are keyed WORSE than one with none: the alignment was skipped for all of
+     * them, so the unkeyed rows had nothing left to be recognised by. Measured on
+     * three rows with a key on the first — one row survived a refetch instead of
+     * three, and the marked row was lost. A list that is only partly keyed is
+     * unusual and is exactly the shape a half-finished migration leaves behind,
+     * which is when it must not silently get worse.
      */
-    let keyed = false;
+    let rows = 0;
+    let keyedRows = 0;
     /** The keys rows wrote for themselves this pass, for the collision check. */
     let yours: Set<unknown> | undefined;
 
@@ -207,6 +216,8 @@ export class ListEngine<T> {
       // position: reuse last render's vnode untouched. `clean` tells the diff it
       // may skip the subtree entirely.
       if (existing && existing.item === item && !existing.dirty) {
+        rows++;
+        if (existing.vnode.attributes?.key != null) keyedRows++;
         out.push(existing.vnode);
         clean.push(true);
         this.claimScope(nextScopes, scopeKey, existing);
@@ -256,10 +267,11 @@ export class ListEngine<T> {
       //
       // With no key the minted id goes on instead, so a list that declares
       // nothing behaves exactly as it did.
+      rows++;
       if (vnode.attributes.key == null) {
         vnode.attributes.key = key;
       } else {
-        keyed = true;
+        keyedRows++;
         if (__DEV__) {
           // Two rows answering the same key. Free to notice — the rows are being
           // walked anyway — and worth saying loudly, because the field you chose
@@ -285,7 +297,8 @@ export class ListEngine<T> {
     }
 
     this.ids = next;
-    this.wasKeyed = keyed;
+    // Every row, or none of it counts — see the note on `keyedRows`.
+    this.wasKeyed = rows > 0 && keyedRows === rows;
 
     // Scopes for items that left: unsubscribe, or their signals keep a live
     // reference to a list entry that no longer exists.

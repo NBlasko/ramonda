@@ -1184,3 +1184,66 @@ describe("what list() returns, and what it does not", () => {
     expect([...container.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["a", "b"]);
   });
 });
+
+describe("a list that is only partly keyed", () => {
+  interface Row5 {
+    id: number;
+    label: string;
+  }
+
+  /** Refetches with one row changed, and reports what survived. */
+  async function refetch(row: (r: Row5) => VNode) {
+    @Host("div")
+    class Board extends Component {
+      @state rows: Row5[] = [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+        { id: 3, label: "c" },
+      ];
+      render() {
+        return <ul>{list(this.rows, row)}</ul>;
+      }
+    }
+
+    const app = await getDOM<Board>(<Board />);
+    await app.settle();
+    const before = [...app.container.querySelectorAll("li")];
+
+    // Every object is new — the shape a refetch takes.
+    app.instance.rows = [
+      { id: 1, label: "a" },
+      { id: 2, label: "B!" },
+      { id: 3, label: "c" },
+    ];
+    await app.settle();
+
+    const after = [...app.container.querySelectorAll("li")];
+    return after.filter((node) => before.includes(node)).length;
+  }
+
+  test("keeps its rows, like a fully keyed and a fully unkeyed one", async () => {
+    // Skipping the array alignment for a list that "has keys" made this shape
+    // WORSE than having none: the alignment was skipped for every row, so the
+    // rows without a key had nothing left to be recognised by. Measured before
+    // the fix — one row of three survived, and the marked row was lost.
+    //
+    // A half-keyed list is what a migration leaves behind halfway through, which
+    // is exactly when it must not quietly get worse than where it started.
+    const keyed = await refetch((r: Row5) => <Row item={{ title: r.label }} key={r.id} />);
+    const unkeyed = await refetch((r: Row5) => <Row item={{ title: r.label }} />);
+    const partly = await refetch((r: Row5) =>
+      r.id === 1 ? <Row item={{ title: r.label }} key={r.id} /> : <Row item={{ title: r.label }} />,
+    );
+
+    expect(keyed).toBe(3);
+    expect(unkeyed).toBe(3);
+    expect(partly).toBe(3);
+  });
+
+  test("a key of 0 is a key", async () => {
+    // `0` is falsy, and the check that decides whether to fill one in has to be
+    // about presence rather than truth.
+    const kept = await refetch((r: Row5) => <Row item={{ title: r.label }} key={r.id - 1} />);
+    expect(kept).toBe(3);
+  });
+});
