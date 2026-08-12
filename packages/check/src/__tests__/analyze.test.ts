@@ -450,3 +450,57 @@ describe("the composition graph", () => {
     expect(context?.optional).toBe(false);
   });
 });
+
+/**
+ * A component in another chunk, reached through `AsyncLoad`'s loader.
+ *
+ * This is the biggest edge kind an app has and it is not a tag: the documentation site in this
+ * repository reaches 75 of its 76 lazily loaded components through one attribute, so a graph
+ * without it describes a fraction of what the app mounts.
+ *
+ * Nothing is guessed. The module is a string LITERAL, which is exactly what a bundler needs to
+ * split a chunk — so a loader this cannot read is one no bundler could split either — and
+ * `namedExport` is a literal saying which export to take.
+ */
+describe("a component loaded from another chunk", () => {
+  const lazyEdges = () => edgesOf("lazy").filter((e) => e.endsWith("(renders/lazy)"));
+
+  test("the three shapes a real app writes", () => {
+    expect(lazyEdges()).toEqual(
+      [
+        // Written in the JSX.
+        "app.tsx#Inline -> pages/two.ts#Page (renders/lazy)",
+        // Behind control flow: a loader that fails first and succeeds later still reaches its
+        // module, which is `may reach` — the semantics the whole walk is on.
+        "app.tsx#Flaky -> pages/one.ts#Page (renders/lazy)",
+        // One hop to a static field, which is where RMD020 pushes the loader.
+        "app.tsx#Panel -> pages/one.ts#Page (renders/lazy)",
+        // A literal registry indexed by a runtime key: the union of its values.
+        "app.tsx#Table -> pages/one.ts#Page (renders/lazy)",
+        "app.tsx#Table -> pages/two.ts#Page (renders/lazy)",
+      ].sort(),
+    );
+  });
+
+  test("a registry edge points at the registry, which is where a reader would change it", () => {
+    const fromRegistry = run("lazy").graph.edges.find((e) => e.via === "lazy" && e.at.includes("loaders.ts"));
+    expect(fromRegistry?.at).toMatch(/loaders\.ts:\d+:\d+$/);
+  });
+
+  test("two loaders and one class name are two nodes", () => {
+    // `pages/one.ts` and `pages/two.ts` both export `class Page`, which is what every route-split
+    // app looks like. Merged they would be one node and every page would reach every other.
+    const targets = run("lazy").graph.edges.filter((e) => e.via === "lazy" && e.to);
+    expect(new Set(targets.map((e) => e.to)).size).toBe(2);
+  });
+
+  test("a specifier built at runtime is a hole, and says so", () => {
+    const holes = run("lazy").graph.edges.filter((e) => e.kind === "unresolved" && e.via === "lazy");
+    expect(holes.map((h) => h.why)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('no `import("…")` with a literal specifier'),
+        expect.stringContaining("exports no component under the name this asks for"),
+      ]),
+    );
+  });
+});

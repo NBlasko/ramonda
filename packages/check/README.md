@@ -221,7 +221,8 @@ It holds facts, not conclusions — nodes and edges, each edge with the place it
 ```
 
 `kind` is what a walk reads — `renders`, `provides`, `consumes`, `uses`. `via` is how it was
-written — a JSX tag, children of a wrapper, `list({ as })`, a route table, `bootstrap`. A component
+written — a JSX tag, children of a wrapper, `list({ as })`, a route table, `AsyncLoad`'s `lazy`,
+`bootstrap`. A component
 is identified by its **declaration**, `<package>/<file>#<Name>`, because a name is not an identity:
 one app in this repository declares `class Page` seventy-five times.
 
@@ -238,6 +239,13 @@ An edge that resolved to nothing is `"kind": "unresolved"`, and carries the reas
 ```
 
 A blank left off the map is worse than no map, because it is trusted.
+
+**A lazily loaded component is an edge like any other.** `lazy={() => import("./page")}` names a
+module with a string literal, `namedExport` names the class, and both are read: the loader may sit
+in the JSX, one hop away in a static field — which is where `RMD020` pushes it — or in a literal
+registry indexed at runtime, which contributes the union of its values. What cannot be read is a
+specifier built at runtime, and a bundler cannot split that either, so it was never going to be a
+chunk. In the documentation site 76 of 140 edges arrive this way.
 
 The file is a **format**, versioned by `schema`, and it is written for tools rather than for people
 to depend on: read it, do not build against it. `analyzeProject` returns the same structure as

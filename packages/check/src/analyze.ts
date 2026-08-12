@@ -674,6 +674,26 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"));
       }
 
+      /**
+       * `<AsyncLoad lazy={…} />` — the loaded component mounts under the OWNER, not under
+       * `AsyncLoad`.
+       *
+       * `AsyncLoad` is one shared class, so hanging its targets off it would put every lazily
+       * loaded component in the app on one node and make each reachable from every other — the
+       * same merge the name-keyed map used to make. It is safe to attribute them to the owner
+       * because `AsyncLoad` neither provides nor consumes a context, so nothing sits between the
+       * two that a walk would step over. `RouteOutlet` is the opposite case and keeps its views:
+       * it publishes the matched params, and its views have to be below that provider.
+       */
+      for (const { target, site } of lazyTargets(opening) ?? []) {
+        if (target) {
+          owner.renders.add(target);
+          edge(owner.id, target.id, "renders", "lazy", site);
+        } else {
+          unresolvedEdge(owner.id, "lazy", site, whyLazyUnresolved(site));
+        }
+      }
+
       const nested = child ?? owner;
       // Only descend into a component's children if it can actually mount them.
       const inner = child && !child.usesChildren ? owner : nested;
@@ -760,7 +780,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   // ── small helpers ───────────────────────────────────────────────────────────────────────────
 
-  function resolve(id: ts.Identifier): ts.Symbol | undefined {
+  function resolve(id: ts.Node): ts.Symbol | undefined {
     let symbol = checker.getSymbolAtLocation(id);
     if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     return symbol;
@@ -782,6 +802,149 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       found.push({ target: componentAt(prop.initializer), site: prop.initializer });
     }
     return found;
+  }
+
+  /**
+   * `<AsyncLoad lazy={…} namedExport="Page" />` — the component in another chunk.
+   *
+   * This is the largest edge kind an app has and it is not a tag: the documentation site reaches 75
+   * of its 76 lazily-loaded components through one attribute. Nothing is guessed — the module is a
+   * string LITERAL, which `ts.resolveModuleName` answers, and `namedExport` is a string literal
+   * saying which export to take, so the class is named rather than inferred.
+   *
+   * **The constraint is not ours to impose.** A bundler can only split what it can see statically,
+   * so a loader this cannot read is one no bundler could split either.
+   */
+  function lazyTargets(opening: ts.JsxOpeningLikeElement): Reference[] | undefined {
+    const attribute = opening.attributes.properties.find(
+      (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "lazy",
+    );
+    const loader =
+      attribute?.initializer && ts.isJsxExpression(attribute.initializer)
+        ? attribute.initializer.expression
+        : undefined;
+    if (!attribute || !loader) return undefined;
+
+    const named = opening.attributes.properties.find(
+      (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "namedExport",
+    );
+    const asked = named?.initializer;
+    if (
+      asked &&
+      !(
+        ts.isStringLiteral(asked) ||
+        (ts.isJsxExpression(asked) && asked.expression && ts.isStringLiteral(asked.expression))
+      )
+    ) {
+      return [{ target: undefined, site: attribute }];
+    }
+    const exportName = asked
+      ? ts.isStringLiteral(asked)
+        ? asked.text
+        : ((asked as ts.JsxExpression).expression as ts.StringLiteral).text
+      : "default";
+
+    const { literals, computed } = importsUnder(loader);
+    const references: Reference[] = literals.map((literal) => ({
+      target: classExported(literal, exportName),
+      site: literal,
+    }));
+    // A specifier built at runtime: no bundler can split it either, so there is nothing to name.
+    for (let i = 0; i < computed; i += 1) references.push({ target: undefined, site: attribute });
+    if (references.length === 0) references.push({ target: undefined, site: attribute });
+    return references;
+  }
+
+  /**
+   * Every `import("…")` a loader can reach, written where it may be.
+   *
+   * Three shapes, all measured in this repository: written in the JSX; behind ONE hop to a static
+   * field or a module const, which is where `RMD020` pushes it (a fresh arrow in the JSX is a new
+   * prop on every render); and a literal registry indexed by a runtime key, which is a union of its
+   * values. The body is searched rather than read as a single expression, because a loader that
+   * retries or races still reaches its module — and `may reach` is the semantics wanted anyway.
+   */
+  function importsUnder(expression: ts.Expression): { literals: ts.StringLiteralLike[]; computed: number } {
+    const found = scanImports(expression);
+    if (found.literals.length > 0 || found.computed > 0) return found;
+
+    if (ts.isIdentifier(expression) || ts.isPropertyAccessExpression(expression)) {
+      const behind = initializerBehind(expression);
+      return behind ? scanImports(behind) : found;
+    }
+    if (ts.isElementAccessExpression(expression)) {
+      const registry = initializerBehind(expression.expression);
+      if (!registry || !ts.isObjectLiteralExpression(registry)) return found;
+      const union = { literals: [] as ts.StringLiteralLike[], computed: 0 };
+      for (const property of registry.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const value = scanImports(property.initializer);
+        union.literals.push(...value.literals);
+        union.computed += value.computed;
+      }
+      return union;
+    }
+    return found;
+  }
+
+  function scanImports(node: ts.Node): { literals: ts.StringLiteralLike[]; computed: number } {
+    const literals: ts.StringLiteralLike[] = [];
+    let computed = 0;
+    (function scan(current: ts.Node) {
+      if (ts.isCallExpression(current) && current.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const specifier = current.arguments[0];
+        if (specifier && ts.isStringLiteralLike(specifier)) literals.push(specifier);
+        else computed += 1;
+      }
+      ts.forEachChild(current, scan);
+    })(node);
+    return { literals, computed };
+  }
+
+  /** One hop: the value a name was declared with, when the declaration carries an initializer. */
+  function initializerBehind(expression: ts.Expression): ts.Expression | undefined {
+    if (!ts.isIdentifier(expression) && !ts.isPropertyAccessExpression(expression)) return undefined;
+    const declaration = resolve(expression)?.declarations?.[0];
+    if (!declaration) return undefined;
+    if (
+      ts.isVariableDeclaration(declaration) ||
+      ts.isPropertyDeclaration(declaration) ||
+      ts.isPropertyAssignment(declaration)
+    ) {
+      return declaration.initializer;
+    }
+    return undefined;
+  }
+
+  /**
+   * The component a module exports under a name.
+   *
+   * The specifier resolves against the file it is WRITTEN in, not the one holding the JSX — the
+   * loaders of the documentation site live in a generated module, and measuring from the JSX
+   * resolved 0 of its 75 pages while measuring from the module resolves all 75.
+   */
+  function classExported(specifier: ts.StringLiteralLike, exportName: string): ComponentNode | undefined {
+    const resolved = ts.resolveModuleName(
+      specifier.text,
+      specifier.getSourceFile().fileName,
+      program.getCompilerOptions(),
+      ts.sys,
+    ).resolvedModule;
+    if (!resolved) return undefined;
+    const file = program.getSourceFile(resolved.resolvedFileName);
+    const moduleSymbol = file && checker.getSymbolAtLocation(file);
+    if (!moduleSymbol) return undefined;
+    let symbol = checker.getExportsOfModule(moduleSymbol).find((s) => s.name === exportName);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+    const declaration = symbol?.declarations?.find(ts.isClassLike);
+    const declared = declaration?.name && checker.getSymbolAtLocation(declaration.name);
+    return declared ? components.get(declared) : undefined;
+  }
+
+  /** Why a loader named nothing, said where a reader can act on it. */
+  function whyLazyUnresolved(site: ts.Node): string {
+    if (ts.isStringLiteralLike(site)) return `\`${site.text}\` exports no component under the name this asks for`;
+    return 'the loader has no `import("…")` with a literal specifier, so nothing can name what it loads';
   }
 
   function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): Reference[] {
