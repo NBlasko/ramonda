@@ -247,6 +247,33 @@ registry indexed at runtime, which contributes the union of its values. What can
 specifier built at runtime, and a bundler cannot split that either, so it was never going to be a
 chunk. In the documentation site 76 of 140 edges arrive this way.
 
+**A component handed over as a prop** is two halves that meet at the walk. A node declares which
+prop paths take a component — a PATH, so a slot at depth five is the same mechanism as one at depth
+one:
+
+```json
+"slots": ["view", "spec.columns[].cell", "spec.toolbar.right.inner"]
+```
+
+A call site records what it hands over, on the edge rather than on the node, because a binding
+belongs to a call: `<Slot view={Reader} />` in one place and `<Slot view={Writer} />` in another are
+two arrangements, and merging them would make each reachable from the other.
+
+```json
+{ "from": "app/src/Page.tsx#Page", "to": "@acme/ui/src/Slot.tsx#Slot", "kind": "renders",
+  "via": "tag", "at": "app/src/Page.tsx:12:5",
+  "binds": [{ "slot": "view", "to": "app/src/Reader.tsx#Reader" }] }
+```
+
+And the tag inside the library — `<this.props.view />` — is an edge with `"via": "slot"` naming the
+prop it waits on. A walk arriving with a binding for that path fills it; one arriving without leaves
+it a hole and says nothing.
+
+Slots are read from the type as **syntax**. A prop typed as a rendered node is not a slot even
+though a node carries a component class inside it, a mapped type is not read, and neither is a
+function that returns a component: answering those means asking for a TYPE, and this resolver is on
+symbols.
+
 The file is a **format**, versioned by `schema`, and it is written for tools rather than for people
 to depend on: read it, do not build against it. `analyzeProject` returns the same structure as
 `result.graph`.

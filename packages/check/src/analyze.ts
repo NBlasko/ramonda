@@ -190,6 +190,13 @@ interface Reference {
   site: ts.Node;
 }
 
+/** One place that mounts a component, and what that place hands to the component's slots. */
+interface MountSite {
+  target: ComponentNode;
+  /** Slot path → the components handed to it at THIS site; a ternary hands over both arms. */
+  binds: Map<string, ComponentNode[]>;
+}
+
 interface ComponentNode {
   /**
    * The DECLARATION SITE, which is what a component is identified by.
@@ -215,6 +222,22 @@ interface ComponentNode {
   consumes: Map<string, { line: number; column: number }>;
   /** Components this one can render. */
   renders: Set<ComponentNode>;
+  /**
+   * One entry per SITE that mounts something, with whatever that site binds to a slot.
+   *
+   * The walk reads this rather than `renders`, because a binding belongs to a call and not to a
+   * class: `<Slot view={Reader} />` in one place and `<Slot view={Writer} />` in another are two
+   * different arrangements, and collapsing them onto `Slot` would make each reachable from the
+   * other — the merge a name-keyed map used to make.
+   */
+  mounts: MountSite[];
+  /**
+   * A tag naming a prop — `<this.props.view />` — which nothing can resolve from the class alone.
+   * The caller decides, so it is filled from the bindings the walk arrives with.
+   */
+  slotHoles: { slot: string; site: ts.Node }[];
+  /** Prop paths this component's own type declares as taking a component. */
+  slots: string[];
   /** Hooks (or components) this one mounts with `this.use(...)`. */
   uses: Set<ComponentNode>;
   /**
@@ -227,6 +250,30 @@ interface ComponentNode {
 }
 
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
+
+/** How deep a slot may sit inside a prop, on both sides. Six is far past anything measured. */
+const SLOT_DEPTH = 6;
+
+/** The type that says "a component goes here". */
+const SLOT_MARKERS = new Set(["ComponentClassKind", "ComponentKind"]);
+
+/**
+ * Core's own node types, which a slot walk must not descend into.
+ *
+ * Every one of them carries a `name: ComponentClassKind` somewhere inside, because that is what a
+ * rendered vnode holds — so a walk that merely hunted for the marker reported `children` as a slot.
+ * A prop typed `RamondaNode` is a node the caller already WROTE; a slot is one the caller fills.
+ */
+const NOT_A_SLOT = new Set([
+  "RamondaNode",
+  "VNode",
+  "VNodeComponent",
+  "ComponentChild",
+  "RamondaAtom",
+  "Element",
+  "EnhancedElement",
+  "ListNode",
+]);
 
 /**
  * A second declaration REFUSES the program: it throws, so nothing runs at all.
@@ -328,6 +375,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const roots = new Set<ComponentNode>();
   /** One per `bootstrap`/`hydrateRoot` call, which is where a tree starts. */
   const rootNodes: GraphNode[] = [];
+  /** Where each root's tree starts, for the walk. */
+  const rootMounts: { id: string; target: ComponentNode }[] = [];
   const rootsPerFile = new Map<string, number>();
   /** Every edge as it is found, including the ones that resolve to nothing. */
   const edges: GraphEdge[] = [];
@@ -389,8 +438,32 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     takenIds.set(base, seen + 1);
     return seen === 0 ? base : `${base}$${seen + 1}`;
   };
-  const edge = (from: string, to: string, kind: GraphEdge["kind"], via: GraphEdge["via"], site: ts.Node): void => {
-    edges.push({ from, to, kind, via, at: whereOf(site) });
+  const edge = (
+    from: string,
+    to: string,
+    kind: GraphEdge["kind"],
+    via: GraphEdge["via"],
+    site: ts.Node,
+    binds?: Map<string, ComponentNode[]>,
+  ): void => {
+    const flat =
+      binds && binds.size > 0
+        ? [...binds].flatMap(([slot, targets]) => targets.map((t) => ({ slot, to: t.id })))
+        : undefined;
+    edges.push({ from, to, kind, via, at: whereOf(site), ...(flat ? { binds: flat } : {}) });
+  };
+
+  /** Records a mount both ways: as an edge for the format, and as a SITE for the walk. */
+  const mount = (
+    owner: ComponentNode,
+    target: ComponentNode,
+    via: GraphEdge["via"],
+    site: ts.Node,
+    binds: Map<string, ComponentNode[]> = new Map(),
+  ): void => {
+    owner.renders.add(target);
+    owner.mounts.push({ target, binds });
+    edge(owner.id, target.id, "renders", via, site, binds);
   };
   const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
     edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
@@ -509,6 +582,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       provides: new Set(),
       consumes: new Map(),
       renders: new Set(),
+      mounts: [],
+      slotHoles: [],
+      slots: slotsOf(node),
       uses: new Set(),
       opaque: false,
       usesChildren: node.getText().includes("children"),
@@ -534,6 +610,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const target = opening && componentAt(opening.tagName);
     if (target) {
       roots.add(target);
+      // A root has no props, so it hands nothing to a slot.
+      rootMounts.push({ id, target });
       edge(id, target.id, "renders", "bootstrap", node);
     } else {
       unresolvedEdge(id, "bootstrap", node, whyUnresolved(opening?.tagName, `${name}'s first argument`));
@@ -621,8 +699,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (ts.isCallExpression(node) && calleeName(node) === "list") {
         for (const { target, site } of componentsInListOptions(node)) {
           if (target) {
-            self.renders.add(target);
-            edge(self.id, target.id, "renders", "as", site);
+            mount(self, target, "as", site);
           } else {
             unresolvedEdge(self.id, "as", site, whyUnresolved(site, "the list's `as`"));
           }
@@ -638,8 +715,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           const outlet = componentAt(node.tagName) ?? self;
           for (const { target, site } of views) {
             if (target) {
-              outlet.renders.add(target);
-              edge(outlet.id, target.id, "renders", "route", site);
+              mount(outlet, target, "route", site);
             } else {
               unresolvedEdge(outlet.id, "route", site, whyUnresolved(site, "the route's view"));
             }
@@ -668,10 +744,31 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       // that component's children, which is a different fact and a different message.
       const via = owner === self ? "tag" : "children";
       if (child) {
-        owner.renders.add(child);
-        edge(owner.id, child.id, "renders", via, opening);
+        mount(owner, child, via, opening, bindingsIn(opening));
       } else {
-        unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"));
+        /**
+         * A tag naming a PROP — `<this.props.view />`. Nothing in this class can say what it is,
+         * and that is not a defect: the caller decides. It is recorded against the class whose
+         * props it is, and the walk fills it from the bindings it arrives with.
+         *
+         * The hole belongs to `self` even when the tag sits inside another component's children,
+         * which reads the mount point one level higher than it is. Nothing in this repository
+         * writes that shape; when something does, the fix is to carry the owner on the hole.
+         */
+        const slot = slotPathOf(opening.tagName);
+        if (slot) {
+          self.slotHoles.push({ slot, site: opening });
+          edges.push({
+            from: self.id,
+            kind: "unresolved",
+            via: "slot",
+            at: whereOf(opening),
+            slot,
+            why: `\`${opening.tagName.getText()}\` is a prop, so only a caller can say what it mounts`,
+          });
+        } else {
+          unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"));
+        }
       }
 
       /**
@@ -687,8 +784,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
        */
       for (const { target, site } of lazyTargets(opening) ?? []) {
         if (target) {
-          owner.renders.add(target);
-          edge(owner.id, target.id, "renders", "lazy", site);
+          mount(owner, target, "lazy", site);
         } else {
           unresolvedEdge(owner.id, "lazy", site, whyLazyUnresolved(site));
         }
@@ -742,13 +838,27 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
 
-    for (const root of roots) {
-      visit(root, new Set(), [], new Set());
+    for (const root of rootMounts) {
+      visit(root.target, new Set(), [], new Set(), new Map());
     }
 
     return issues;
 
-    function visit(node: ComponentNode, provided: Set<string>, path: string[], onPath: Set<ComponentNode>): void {
+    /**
+     * `bound` is what the SITE that mounted this node handed to its slots.
+     *
+     * It travels with the path rather than living on the class, because `<Slot view={Reader} />`
+     * in one place and `<Slot view={Writer} />` in another are two arrangements: merged onto
+     * `Slot`, each would be reachable from the other and a provider above one would appear to
+     * cover the other.
+     */
+    function visit(
+      node: ComponentNode,
+      provided: Set<string>,
+      path: string[],
+      onPath: Set<ComponentNode>,
+      bound: Map<string, ComponentNode[]>,
+    ): void {
       if (onPath.has(node)) return; // a cycle: it adds no new ancestry
 
       const here = new Set(provided);
@@ -774,7 +884,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (node.opaque) return;
 
       const nextOnPath = new Set(onPath).add(node);
-      for (const child of node.renders) visit(child, here, nextPath, nextOnPath);
+      for (const site of node.mounts) visit(site.target, here, nextPath, nextOnPath, site.binds);
+      // A tag naming a prop mounts whatever this caller handed over. With nothing bound the hole
+      // stays a hole: the analyzer says nothing rather than guessing, which is what makes a report
+      // here safe to fail a build on.
+      for (const hole of node.slotHoles) {
+        for (const filled of bound.get(hole.slot) ?? []) visit(filled, here, nextPath, nextOnPath, new Map());
+      }
     }
   }
 
@@ -941,6 +1057,163 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return declared ? components.get(declared) : undefined;
   }
 
+  /**
+   * What a tag hands to the mounted component's slots — `<Slot view={Reader} />`.
+   *
+   * Walked to any DEPTH, keyed by the path it was found at: `view`, `spec.toolbar.right.inner`,
+   * `spec.columns[].cell`. Depth costs nothing here — it is an object literal, an array and a
+   * ternary, all of them syntax — and it is what makes a slot at depth five the same mechanism as
+   * one at depth one, with a longer string. A ternary hands over BOTH arms, because the question
+   * is what may reach, not what will.
+   */
+  function bindingsIn(opening: ts.JsxOpeningLikeElement): Map<string, ComponentNode[]> {
+    const found = new Map<string, ComponentNode[]>();
+    const add = (path: string, target: ComponentNode): void => {
+      const already = found.get(path);
+      if (already) already.push(target);
+      else found.set(path, [target]);
+    };
+
+    const dig = (expression: ts.Expression, path: string, depth: number): void => {
+      if (depth > SLOT_DEPTH) return;
+      const target = componentAt(expression);
+      if (target) {
+        add(path, target);
+        return;
+      }
+      // One hop through a module constant, which is where RMD020 pushes anything built the same
+      // way on every render — `spec={SPEC}` rather than the literal in the JSX.
+      const behind = initializerBehind(expression);
+      if (behind && behind !== expression) {
+        dig(behind, path, depth);
+        return;
+      }
+      if (ts.isObjectLiteralExpression(expression)) {
+        for (const property of expression.properties) {
+          if (ts.isPropertyAssignment(property))
+            dig(property.initializer, `${path}.${property.name.getText()}`, depth + 1);
+          else if (ts.isShorthandPropertyAssignment(property))
+            dig(property.name, `${path}.${property.name.text}`, depth + 1);
+        }
+        return;
+      }
+      if (ts.isArrayLiteralExpression(expression)) {
+        for (const element of expression.elements) dig(element, `${path}[]`, depth + 1);
+        return;
+      }
+      if (ts.isConditionalExpression(expression)) {
+        dig(expression.whenTrue, path, depth);
+        dig(expression.whenFalse, path, depth);
+        return;
+      }
+      if (ts.isParenthesizedExpression(expression)) dig(expression.expression, path, depth);
+    };
+
+    for (const attribute of opening.attributes.properties) {
+      if (!ts.isJsxAttribute(attribute) || !attribute.initializer) continue;
+      if (!ts.isJsxExpression(attribute.initializer) || !attribute.initializer.expression) continue;
+      dig(attribute.initializer.expression, attribute.name.getText(), 1);
+    }
+    return found;
+  }
+
+  /**
+   * The prop path a tag names, when it names one — `this.props.view` is `view`.
+   *
+   * Two shapes, which are the two people write: the member expression in the tag, and one hop
+   * through a local const, since `<V />` reads better than `<this.props.view />`.
+   */
+  function slotPathOf(tagName: ts.Node): string | undefined {
+    const direct = propPathOf(tagName);
+    if (direct) return direct;
+    if (!ts.isIdentifier(tagName)) return undefined;
+    const declaration = resolve(tagName)?.declarations?.[0];
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer) return undefined;
+    return propPathOf(declaration.initializer);
+  }
+
+  /** `this.props.a.b` → `a.b`; anything not rooted in `this.props` is not a slot. */
+  function propPathOf(node: ts.Node): string | undefined {
+    const parts: string[] = [];
+    let current: ts.Node = node;
+    while (ts.isPropertyAccessExpression(current)) {
+      parts.unshift(current.name.text);
+      current = current.expression;
+    }
+    if (parts.length < 2 || current.kind !== ts.SyntaxKind.ThisKeyword) return undefined;
+    if (parts[0] !== "props") return undefined;
+    return parts.slice(1).join(".");
+  }
+
+  /**
+   * The prop paths a component's own type declares as taking a component.
+   *
+   * From `class Grid extends Component<GridProps>`, walking `GridProps` as SYNTAX: a type literal,
+   * an array, a union, and one hop through a named interface or alias, carrying the path along.
+   *
+   * **It starts at the props type and stops at core's node types, and both halves are measured.**
+   * A walk that merely hunted for the marker anywhere returned eleven slots in `@ramonda/core`, of
+   * which eight were rubbish — `RamondaNode.name: ComponentClassKind` at depth four, reached
+   * through `RamondaNode` → `VNode` → `.name`. A prop typed `RamondaNode` is a NODE the caller
+   * already wrote, not a slot the caller fills.
+   */
+  function slotsOf(cls: ts.ClassDeclaration): string[] {
+    const props = baseExpression(cls) ? heritageTypeArgument(cls) : undefined;
+    if (!props) return [];
+    const found: string[] = [];
+    const seen = new Set<ts.Node>();
+
+    const dig = (type: ts.TypeNode | undefined, path: string, depth: number): void => {
+      if (!type || depth > SLOT_DEPTH) return;
+      if (ts.isTypeReferenceNode(type)) {
+        const name = type.typeName.getText();
+        if (SLOT_MARKERS.has(name)) {
+          if (path) found.push(path);
+          return;
+        }
+        if (NOT_A_SLOT.has(name)) return;
+        for (const argument of type.typeArguments ?? []) dig(argument, path, depth + 1);
+        const declaration = resolve(type.typeName)?.declarations?.[0];
+        if (!declaration || seen.has(declaration)) return;
+        seen.add(declaration);
+        if (ts.isInterfaceDeclaration(declaration))
+          for (const member of declaration.members) digMember(member, path, depth + 1);
+        else if (ts.isTypeAliasDeclaration(declaration)) dig(declaration.type, path, depth + 1);
+        return;
+      }
+      if (ts.isArrayTypeNode(type)) return dig(type.elementType, `${path}[]`, depth + 1);
+      if (ts.isTypeLiteralNode(type)) {
+        for (const member of type.members) digMember(member, path, depth + 1);
+        return;
+      }
+      if (ts.isUnionTypeNode(type) || ts.isIntersectionTypeNode(type)) {
+        for (const each of type.types) dig(each, path, depth);
+        return;
+      }
+      if (ts.isParenthesizedTypeNode(type)) dig(type.type, path, depth);
+      // A mapped type and a function returning a component are the two shapes syntax cannot
+      // answer. Both are out of scope by decision: reading them means asking for a TYPE, and the
+      // whole resolver is on symbols.
+    };
+
+    const digMember = (member: ts.TypeElement, path: string, depth: number): void => {
+      if (!ts.isPropertySignature(member) || !member.type) return;
+      dig(member.type, path ? `${path}.${member.name.getText()}` : member.name.getText(), depth);
+    };
+
+    dig(props, "", 0);
+    return [...new Set(found)].sort();
+  }
+
+  /** `class Grid extends Component<GridProps>` — the props type, when one is written. */
+  function heritageTypeArgument(cls: ts.ClassDeclaration): ts.TypeNode | undefined {
+    for (const clause of cls.heritageClauses ?? []) {
+      if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+      return clause.types[0]?.typeArguments?.[0];
+    }
+    return undefined;
+  }
+
   /** Why a loader named nothing, said where a reader can act on it. */
   function whyLazyUnresolved(site: ts.Node): string {
     if (ts.isStringLiteralLike(site)) return `\`${site.text}\` exports no component under the name this asks for`;
@@ -977,6 +1250,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         kind: node.kind,
         name: node.name,
         at: `${pathOf(node.file)}:${node.line}:${node.column}`,
+        ...(node.slots.length > 0 ? { slots: node.slots } : {}),
       });
     }
     for (const fact of contexts.values()) {
@@ -1286,8 +1560,10 @@ function jsxTagName(node: ts.Node): string | undefined {
   const opening = openingOf(node);
   if (!opening) return undefined;
   const name = opening.tagName.getText();
-  // Lowercase is an intrinsic element (`div`), which owns nothing.
-  return /^[A-Z]/.test(name) ? name : undefined;
+  // Lowercase is an intrinsic element (`div`), which owns nothing — unless the tag is a member
+  // expression (`<this.props.view />`, `<screens.reader />`), which is always a value reference and
+  // never an element. Missing those made a tag naming a prop invisible rather than a hole.
+  return /^[A-Z]/.test(name) || name.includes(".") ? name : undefined;
 }
 
 /** The `extends X` clause's expression, if the class has one at all. A class has at most one. */

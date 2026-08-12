@@ -504,3 +504,71 @@ describe("a component loaded from another chunk", () => {
     );
   });
 });
+
+/**
+ * A component handed over as a prop.
+ *
+ * The two halves are separate and only meet at the walk. A LIBRARY declares which prop paths take a
+ * component (`slots`), an APP hands one over at a call site (`binds`), and the tag inside the
+ * library — `<this.props.view />` — is a hole nothing can fill from the class alone. Which is not a
+ * defect: the caller decides, and the caller is a different file.
+ *
+ * Nothing in this repository passes a component through a prop today, at any depth. This is
+ * insurance for the packages other people will write, and the fixture is where it is measured.
+ */
+describe("a component handed over as a prop", () => {
+  const nodeNamed = (fixture: string, name: string) => run(fixture).graph.nodes.find((n) => n.name === name);
+
+  test("a slot is a PATH, so depth costs nothing", () => {
+    expect(nodeNamed("slots", "Slot")?.slots).toEqual(["spec.columns[].cell", "spec.toolbar.right.inner", "view"]);
+  });
+
+  test("a prop that carries a node is not a slot, which is the trap that needed measuring", () => {
+    /**
+     * `banner: RamondaNode` and `children: unknown`. A walk that hunted for `ComponentClassKind`
+     * anywhere in the type found eight slots in `@ramonda/core` that are not slots — `RamondaNode`
+     * → `VNode` → `.name` — because a rendered node CARRIES a component class. A prop typed as a
+     * node is one the caller already wrote; a slot is one the caller fills.
+     */
+    const slots = nodeNamed("slots", "Slot")?.slots ?? [];
+    expect(slots.some((s) => s.startsWith("banner"))).toBe(false);
+    expect(slots).not.toContain("children");
+  });
+
+  test("what a call site hands over is on the EDGE, at whatever depth it was written", () => {
+    const site = run("slots").graph.edges.find((e) => e.binds && e.from.endsWith("#Covered"));
+    const short = (id: string) => id.replace(/^.*fixtures\/slots\//, "");
+    expect(site?.binds?.map((b) => `${b.slot}=${short(b.to)}`)).toEqual([
+      "view=app.tsx#Reader",
+      "spec.toolbar.right.inner=app.tsx#Plain",
+      "spec.columns[].cell=app.tsx#Plain",
+    ]);
+  });
+
+  test("a ternary hands over both arms, because the question is what may reach", () => {
+    const site = run("slots").graph.edges.find((e) => e.binds && e.from.endsWith("#Either"));
+    expect(site?.binds?.filter((b) => b.slot === "view")).toHaveLength(2);
+  });
+
+  test("a tag naming a prop is a hole with the prop on it, in both spellings", () => {
+    // `const View = this.props.view; <View />` and `<this.props.view />`.
+    const holes = run("slots").graph.edges.filter((e) => e.via === "slot");
+    expect(holes.map((h) => h.slot)).toEqual(["view", "view"]);
+    expect(holes.every((h) => h.kind === "unresolved" && h.to === undefined)).toBe(true);
+  });
+
+  /**
+   * The whole point, and the reason a binding cannot live on the class.
+   *
+   * `Slot` is mounted twice with the SAME component in its `view`: once under a component that
+   * provides Theme and once under one that does not. One of those is broken. A binding kept on
+   * `Slot` would make the provider from the first arrangement cover the second, and the report
+   * would be silence.
+   */
+  test("the same slot filled on two paths is judged on each path", () => {
+    const { issues } = run("slots");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Reader");
+    expect(issues[0].path).toEqual(["Shell", "Bare", "Slot", "Reader"]);
+  });
+});

@@ -35,6 +35,16 @@ export interface GraphNode {
   consumer?: string;
   /** `createContext(…, { optional: true })` — no provider above it is a legitimate arrangement. */
   optional?: boolean;
+  /**
+   * Prop paths this component's type declares as taking a component — `view`,
+   * `spec.columns[].cell`.
+   *
+   * A path and not a name, because a slot can sit at any depth in a prop, and depth 1 and depth 5
+   * are then the same mechanism with a longer string. Read from the type as SYNTAX: a mapped type
+   * and a function returning a component are the two shapes this cannot answer, and both are out
+   * of scope rather than approximated.
+   */
+  slots?: string[];
 }
 
 /**
@@ -48,10 +58,25 @@ export interface GraphEdge {
   /** Absent on an `unresolved` edge, which is the whole point of that kind. */
   to?: string;
   kind: "renders" | "provides" | "consumes" | "uses" | "unresolved";
-  via: "tag" | "children" | "as" | "route" | "lazy" | "bootstrap" | "use";
+  via: "tag" | "children" | "as" | "route" | "lazy" | "slot" | "bootstrap" | "use";
   at: Where;
   /** Why nothing could be named, on an `unresolved` edge. */
   why?: string;
+  /**
+   * What THIS site hands to the mounted component's slots.
+   *
+   * On the edge and not on the node, because a binding belongs to a call: `<Slot view={Reader} />`
+   * in one place and `<Slot view={Writer} />` in another are two arrangements, and a walk that
+   * merged them would make each reachable from the other.
+   */
+  binds?: { slot: string; to: string }[];
+  /**
+   * The prop a `via: "slot"` edge is waiting on — `<this.props.view />`.
+   *
+   * Unresolvable from the class alone, and that is not a defect: the caller decides. A walk
+   * arriving with a binding for this path fills it, and one arriving without leaves it a hole.
+   */
+  slot?: string;
 }
 
 export interface ComponentGraph {
