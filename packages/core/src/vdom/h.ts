@@ -68,21 +68,19 @@ function checkMappedComponents(children: unknown[]): void {
  * and `SLOT_SYM` are built on. Anything that renders nothing becomes `false` rather than
  * disappearing, because a disappearing entry renumbers every sibling after it.
  */
-function normalizeChildren(arr: unknown[]): unknown[] {
+export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
   const result: unknown[] = [];
   let hasList = false;
 
   for (let index = 0; index < arr.length; index++) {
     const el = arr[index];
     if (isArray(el)) {
-      const inner = normalizeChildren(el);
+      const inner = normalizeChildren(el, originId);
 
       // Built by an expression rather than by JSX or by `{this.props.children}` being
       // passed down. Only unkeyed components are reported, and only from here, because
       // structure is the only thing that can see this at all — see RMD023.
       if (__DEV__ && !(OWN_CHILDREN in el)) checkMappedComponents(inner);
-
-      const owner = regionOwner(index);
 
       // An empty list still HOLDS ITS PLACE. Dropping it shortens the array, which moves
       // the slot of every sibling after it — and the slot is the identity the diff matches
@@ -101,9 +99,12 @@ function normalizeChildren(arr: unknown[]): unknown[] {
         continue;
       }
 
+      // Minted here rather than above the two early returns: both discard it, so
+      // computing it first allocated a string per passthrough and per emptied
+      // group on every render, only to throw it away.
       result.push({
         [IS_LIST]: true,
-        owner,
+        owner: regionOwner(index, originId),
         vnodes: inner,
         clean: [],
       });
@@ -120,7 +121,7 @@ function normalizeChildren(arr: unknown[]): unknown[] {
       // being the first call the moment `cond` is false, and the region (with
       // its state) would go to the wrong list.
       const listChild = el as { owner?: unknown };
-      if (listChild.owner === undefined) listChild.owner = regionOwner(index);
+      if (listChild.owner === undefined) listChild.owner = regionOwner(index, originId);
 
       result.push(el);
       hasList = true;
@@ -188,9 +189,14 @@ function normalizeChildren(arr: unknown[]): unknown[] {
  * the caller's row lost its state — "own1#0 | own2#0 | own1#0 | own2#0 | sent2#0"
  * where "own1#0 | own2#0 | sent2#8" was meant. `For` never had this problem
  * because its identity was the hook instance, which is per component already.
+ *
+ * Passed in rather than read from `currentOrigin`, because children are also
+ * normalized OUTSIDE a render: a `ChildrenRegion` — the children a hook consumes
+ * — has no render to be the origin of, and supplies its own id. Every id comes
+ * from the one process-wide counter, so a region's can never be a component's.
  */
-function regionOwner(index: number): string {
-  return `${currentOrigin.id}:g${index}`;
+function regionOwner(index: number, originId: number): string {
+  return `${originId}:g${index}`;
 }
 
 function isListLike(value: unknown): boolean {
@@ -240,7 +246,7 @@ export function __h(
   rawAttributes: Record<string, any> | null,
   ...children: ComponentChild[]
 ): VNode {
-  const parsedChildren = normalizeChildren(children);
+  const parsedChildren = normalizeChildren(children, currentOrigin.id);
 
   const attributes: Record<string, any> = rawAttributes ?? {};
 

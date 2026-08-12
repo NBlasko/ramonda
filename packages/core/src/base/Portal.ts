@@ -1,9 +1,10 @@
 import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { created, destroyed, watchProp } from "./decorators";
-import { diffAndMerge, filterVirtualChild, unmountChildrenNodes } from "../core/DiffAndMerge";
-import { PORTAL_ATTR, KEY_SYM } from "../helpers/constants";
-import type { ComponentChild, EnhancedChildNode, RamondaNode, VNode } from "../types/vdom";
+import { filterVirtualChild } from "../core/DiffAndMerge";
+import { ChildrenRegion } from "../core/childrenRegion";
+import { PORTAL_ATTR, KEY_SYM, ORIGIN_SYM } from "../helpers/constants";
+import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 export interface PortalProps {
   /**
@@ -73,22 +74,26 @@ export interface PortalProps {
  * the portalled content, or on an ancestor of the target.
  */
 export class Portal extends Hook<PortalProps> {
-  /** The nodes this portal built, in order — the only record of what it owns. */
-  private nodes: ChildNode[] = [];
   /**
-   * Whether the first reconcile has run. NOT `nodes.length`, which cannot tell
-   * "placed, and it came to nothing" from "never placed": a portal whose children
-   * resolve to an empty list still ran, and on a client build must NOT then take
-   * the hydration `adopt` path and sweep up every other portal's marked nodes.
+   * The block this portal owns in the target, and everything that makes it behave
+   * like ordinary children: the record, the list regions, the reorder.
+   *
+   * Built lazily rather than in a field initializer, because the owner is read
+   * off the runtime and a hook's fields run before the runtime is settled.
+   */
+  private area: ChildrenRegion | undefined;
+  /**
+   * Whether the first reconcile has run. NOT the block's length, which cannot
+   * tell "placed, and it came to nothing" from "never placed": a portal whose
+   * children resolve to an empty list still ran, and on a client build must NOT
+   * then take the hydration `adopt` path and sweep up every other portal's
+   * marked nodes.
    */
   private placed = false;
-  /**
-   * The target the nodes are currently IN, so a change of `target` moves them
-   * rather than leaving a copy behind. `undefined` until the first successful
-   * placement, which also means a `target` that was missing at mount and appears
-   * later is simply the first placement, not a move.
-   */
-  private currentTarget: Element | undefined;
+
+  private get region(): ChildrenRegion {
+    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal"));
+  }
 
   @created({ env: "shared" })
   place(): void {
@@ -145,10 +150,18 @@ export class Portal extends Hook<PortalProps> {
       const element = marked[m++];
       element.removeAttribute(PORTAL_ATTR);
       if (child.attributes?.key != null) (element as unknown as KeyedNode)[KEY_SYM] = child.attributes.key;
+      // Whose render built it. A node parsed from server markup carries no
+      // origin, and the reconciler refuses to match a vnode against a node
+      // somebody else built — so without this the reconcile rebuilds every tag
+      // it just adopted and leaves the server's beside it. `hydrateNode` stamps
+      // it for the same reason on the main walk, which this is the portal's twin
+      // of; the value has to be the CHILD's, not the owner's, because that is
+      // what the vnode about to be matched carries.
+      (element as unknown as OriginNode)[ORIGIN_SYM] = (child as unknown as OriginNode)[ORIGIN_SYM];
       mine.push(element as unknown as ChildNode);
     }
 
-    this.nodes = mine;
+    this.region.seed(mine, target);
     this.reconcile();
   }
 
@@ -159,133 +172,55 @@ export class Portal extends Hook<PortalProps> {
 
   @destroyed
   clear(): void {
-    if (this.nodes.length === 0) return;
-    // `false`: a portal clearing itself is part of a larger teardown, whose enclosing
-    // flush drains commit-level work once — flushing here would run it mid-teardown.
-    unmountChildrenNodes(this.nodes as EnhancedChildNode[], false);
-    this.nodes = [];
+    // Unmounts the block, releases the list regions' scopes, and takes the anchor
+    // out. No flush here: a portal clearing itself is part of a larger teardown,
+    // whose enclosing flush drains commit-level work once.
+    this.area?.dispose();
   }
 
   /**
    * Brings `target` into line with `children`, touching only the nodes this
    * portal owns.
    *
-   * Matched by KEY where a child has one, and by position otherwise — the same
-   * rule the main children diff uses, so a reordered list of keyed children keeps
-   * each node (and its component state) with its key instead of a neighbour taking
-   * its contents. A keyed node the render still asks for is reused wherever it was;
-   * an unkeyed one is matched to the next unclaimed unkeyed node in order. What the
-   * diff hands back unchanged is already in `target`; a fresh or replaced node is
-   * detached, so it is appended and then moved into place. Anything the new list no
-   * longer accounts for is unmounted — `@destroyed` and all — and removed.
+   * All of it is the region's: the real `reconcileEntries`, so `list()` gets its
+   * regions, keyed identity and per-item scopes; the LIS reorder, so a rotation
+   * costs the moves it has to and no more; and a target change moving the SAME
+   * nodes across, which is how a portal follows a reactive `target` — a modal
+   * moving from an inline anchor to `document.body`, or "inline" being nothing
+   * more than a target that points at a local element.
+   *
+   * This used to be hand-rolled here — its own key map, its own positional
+   * matching, its own reorder loop — precisely to avoid reaching into the
+   * reconciler. That is what made a `ListNode` child crash: it fell into the
+   * component branch with no `.name`. The region is that reach, done once and
+   * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const owner = this[GLOBAL_RUNTIME].owner;
     const target = this.props.target;
     if (!target) return;
 
-    // The target moved: bring the nodes we already own across before reconciling,
-    // so the SAME node (and its state) relocates instead of a stale copy staying
-    // behind. This is how a portal follows a reactive `target` — a modal moving
-    // from an inline anchor to `document.body`, or "inline" being nothing more than
-    // a target that points at a local element. A target absent at mount and
-    // supplied later is not a move: `currentTarget` is still undefined, so this is
-    // the first placement.
-    if (this.currentTarget !== undefined && this.currentTarget !== target) {
-      for (const node of this.nodes) target.appendChild(node);
+    // Which nodes the block already held, so only the ones this pass BUILT get
+    // marked below. Reasserting the marker on every node instead is wrong in a
+    // way that only shows up with two portals in one target: `adopt` claims a
+    // server node by REMOVING its marker, so re-adding it puts the node back in
+    // the pool and the next portal to adopt takes it. Measured — the second
+    // portal adopted the first's <meta> and both rendered the same tag.
+    const held = this.region.nodes.length === 0 ? undefined : new Set(this.region.nodes);
+
+    this.region.reconcile(this.props.children, target);
+
+    // Marked so the server renderer collects it and the client finds it to adopt.
+    // Elements only; text has no attributes.
+    for (const node of this.region.nodes) {
+      if (node.nodeType === 1 && held?.has(node) !== true) (node as Element).setAttribute(PORTAL_ATTR, "");
     }
-    this.currentTarget = target;
-
-    // Split the previous nodes into what a key can find and what only position can:
-    // a keyed child looks its node up regardless of where it moved, an unkeyed one
-    // takes the next unclaimed unkeyed node.
-    const previous = this.nodes;
-    const byKey = new Map<string, ChildNode>();
-    const unkeyed: ChildNode[] = [];
-    for (const node of previous) {
-      const key = (node as KeyedNode)[KEY_SYM];
-      if (key != null) byKey.set(String(key), node);
-      else unkeyed.push(node);
-    }
-    let unkeyedCursor = 0;
-
-    const children = this.childList();
-    const next: ChildNode[] = [];
-
-    for (const vchild of children) {
-      const key = typeof vchild === "string" ? undefined : vchild.attributes?.key;
-      const keyed = key != null;
-
-      let existing: ChildNode | undefined;
-      if (keyed) {
-        existing = byKey.get(String(key));
-        byKey.delete(String(key));
-      } else if (typeof vchild === "string") {
-        // A text child reuses only a text node. On a hydration seed made of adopted
-        // ELEMENTS there is none at the cursor, so build fresh WITHOUT consuming the
-        // element the following element child owns — otherwise the string strands it
-        // and it is swept as stale.
-        const candidate = unkeyed[unkeyedCursor];
-        if (candidate !== undefined && candidate.nodeType === 3) {
-          existing = candidate;
-          unkeyedCursor++;
-        }
-      } else {
-        existing = unkeyed[unkeyedCursor++];
-      }
-
-      let node: ChildNode;
-      if (typeof vchild === "string") {
-        if (existing !== undefined && existing.nodeType === 3) {
-          if (existing.textContent !== vchild) existing.textContent = vchild;
-          node = existing;
-        } else {
-          node = document.createTextNode(vchild);
-          target.appendChild(node);
-        }
-      } else {
-        node = diffAndMerge(vchild as VNode, owner, existing as EnhancedChildNode | undefined) as ChildNode;
-        // Detached when it is fresh or a replacement — the reconciler builds
-        // without inserting. An in-place reuse hands back `existing`, already here.
-        if (node !== existing) {
-          // Marked so the server renderer collects it and the client finds it to
-          // adopt. Only a fresh node needs it — a reused one, or an adopted server
-          // node, already carries it. Elements only; text has no attributes.
-          if (node.nodeType === 1) (node as Element).setAttribute(PORTAL_ATTR, "");
-          target.appendChild(node);
-        }
-      }
-
-      // Remember the key ON the node, so the next render can find it wherever it
-      // ends up — and clear a stale one if a child that was keyed no longer is.
-      (node as KeyedNode)[KEY_SYM] = keyed ? key : undefined;
-      next.push(node);
-    }
-
-    // Whatever the new list did not reuse: torn down and taken out of the target.
-    const kept = new Set(next);
-    const stale: EnhancedChildNode[] = [];
-    for (const node of previous) {
-      if (!kept.has(node)) stale.push(node as EnhancedChildNode);
-    }
-    if (stale.length > 0) unmountChildrenNodes(stale, false);
-
-    // Line the DOM up with `next`. The last node anchors the block where it is; the
-    // rest are moved before it only when out of place, so an unchanged order — the
-    // common render — costs no moves at all.
-    for (let i = next.length - 2; i >= 0; i--) {
-      const node = next[i];
-      const shouldPrecede = next[i + 1];
-      if (node.nextSibling !== shouldPrecede) target.insertBefore(node, shouldPrecede);
-    }
-
-    this.nodes = next;
   }
 
   /**
    * The children as a flat run of real nodes-to-be — arrays flattened, holes
-   * (`null`/`false`/`undefined`) dropped. Shared by `reconcile`, which walks it,
-   * and `adopt`, which needs its length and each child's key.
+   * dropped. Only `adopt` needs it now, for how many server nodes are its own and
+   * what key each carries; `reconcile` hands the children over untouched, so the
+   * region normalizes them exactly as a render would.
    */
   private childList(): ComponentChild[] {
     const flat: unknown[] = [];
@@ -303,11 +238,12 @@ export class Portal extends Hook<PortalProps> {
 /** A portal node carrying the key it was matched by, so the next render can find it. */
 type KeyedNode = ChildNode & { [KEY_SYM]?: unknown };
 
+/** Either side of the match: the vnode knows its origin, the adopted node is told it. */
+type OriginNode = { [ORIGIN_SYM]?: number };
+
 /**
  * Flattens `children` into a single run of atoms, so a nested array — `{[a, [b,
- * c]]}` — is not handed to `diffAndMerge`, which expects one vnode and would
- * build `new Component(array)`. One flat list keeps the positional match simple
- * and matches what an expression slot already does with arrays.
+ * c]]}` — is counted as the atoms it contains.
  */
 function flattenChildren(raw: unknown, out: unknown[]): void {
   if (Array.isArray(raw)) {
