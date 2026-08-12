@@ -327,7 +327,7 @@ a request.
 
 ## Size and speed
 
-1.33 KB gzipped, no dependencies.
+1.46 KB gzipped, no dependencies.
 
 `pnpm bench`, against the production build. Trials are interleaved and the median reported —
 running each shape to completion in turn produced numbers that got *better* as the state got

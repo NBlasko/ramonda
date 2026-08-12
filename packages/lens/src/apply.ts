@@ -41,6 +41,8 @@ function reportUnsafeKey(steps: readonly Step[], at: number, key: string): void 
   report("RML009", `${path} targets "${key}", so nothing was changed.`, { path, key });
 }
 
+import { carryRow } from "./rowIdentity";
+
 export function walk(node: unknown, w: Walk, i: number): unknown {
   if (i === w.stopAt) return w.terminal(node, w.steps[i]);
 
@@ -91,6 +93,10 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
       const previous = container[step.key];
       const next = walk(previous, w, i + 1);
       if (Object.is(previous, next)) return node;
+      // A list recognises a row by the object, and this just replaced one. The
+      // answer is known here — both versions are in hand — so it is carried
+      // rather than guessed at afterwards. See `carryRow`.
+      carryRow(previous, next);
 
       const copy = shallowClone(container);
       copy[step.key] = next;
@@ -120,6 +126,7 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
       const previous = node[index];
       const next = walk(previous, w, i + 1);
       if (Object.is(previous, next)) return node;
+      carryRow(previous, next);
 
       const copy = node.slice();
       copy[index] = next;
@@ -146,6 +153,7 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
 
         const next = walk(item, w, i + 1);
         if (Object.is(item, next)) continue;
+        carryRow(item, next);
         if (copy === undefined) copy = node.slice();
         copy[k] = next;
       }

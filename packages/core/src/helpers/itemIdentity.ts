@@ -41,7 +41,16 @@ import { diagnose } from "../debug/diagnostics";
  * it. Only a PRIMITIVE has nowhere to put one, and a primitive does not need one:
  * its value, or which occurrence it is, is already its identity.
  */
-export const ITEM_ID = Symbol("ramondaItemId");
+/**
+ * From the GLOBAL symbol registry, not a fresh symbol.
+ *
+ * `@ramonda/lens` writes the same marker, and it does not — and should not —
+ * depend on core to do it. `Symbol.for` is what lets two packages name the same
+ * thing without one importing the other, and it also survives a build that ends
+ * up with two copies of core, where a fresh symbol would quietly give the same
+ * row two identities.
+ */
+export const ITEM_ID = Symbol.for("ramonda.row");
 
 interface Identified {
   [ITEM_ID]?: string;
