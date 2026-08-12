@@ -13,7 +13,7 @@ export interface FieldTarget<T> {
  * The element type of an array field, `never` for anything else.
  *
  * What it buys is the row: `Field<Contact[]>` answers `rows` as `Row<Contact>[]`, so
- * `list({ each: f.rows, as: Line })` type-checks against a component taking `Row<Contact>` — with
+ * `list(f.rows, Line)` type-checks against a component taking `Row<Contact>` — with
  * `Row<unknown>` it did not, and every call site needed a cast. And `append` takes a `Contact` rather
  * than anything at all. For a leaf field it collapses to `never`, which makes the array members
  * unusable there, which is correct.

@@ -186,7 +186,7 @@ describe("rows through list()", () => {
       render(): RamondaNode {
         count("page");
         form = this.f;
-        return <div>{list({ each: this.f.fields.rows.$.rows, key: (row) => row.id, as: RowField })}</div>;
+        return <div>{list(this.f.fields.rows.$.rows, RowField)}</div>;
       }
     }
     const mounted = render((<Page />) as never);
@@ -288,7 +288,7 @@ describe("at three hundred rows", () => {
       });
       render(): RamondaNode {
         form = this.f;
-        return <div>{list({ each: this.f.fields.rows.$.rows, key: (row) => row.id, as })}</div>;
+        return <div>{list(this.f.fields.rows.$.rows, as)}</div>;
       }
     }
     const mounted = render((<Page />) as never);
@@ -350,7 +350,7 @@ describe("a watcher hears only about what it reads", () => {
 
     render(): RamondaNode {
       count("rows-container");
-      return <div>{list({ each: this.f.rows, key: (row) => row.id, as: RowField })}</div>;
+      return <div>{list(this.f.rows, RowField)}</div>;
     }
   }
 

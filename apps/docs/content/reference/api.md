@@ -25,7 +25,7 @@ Everything the three packages export. Each entry links to the page that explains
 | `Component<P>` | The base class. Extend it and implement [`render()`](/concepts/components). |
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
 | `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
-| `list<T>(options)` | Renders a list, minting identity from the items. [Lists](/lists) |
+| `list<T>(each, builder)` | Renders a list, minting identity from the items. `builder` is a component or a function. [Lists](/lists) |
 | `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
@@ -131,7 +131,7 @@ All 32, grouped by what they belong to. The server and per-request ones are expl
 
 **Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
 
-**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `ListOptions` ·
+**Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` ·
 `AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
@@ -233,7 +233,7 @@ Every field is reached by property access and its API sits behind `$`:
 | `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
 | `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
 | `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
-| `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what `list({ key })` uses. |
+| `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what keeps a row stable as it moves. |
 | `Field` | A **hook**, for a component that watches ONE field — `this.use(Field<string>, () => ({ of: this.props.of }))`. Answers everything `FieldApi` and `LeafApi` do, plus the list members. **Required** for a field in its own component: a field node is one cached object for the form's life, so without this the component's props never change and it never re-renders. Also what makes an edit wake one field rather than the form. [A field in its own component](/forms/fields#a-field-in-its-own-component) |
 | `FormState` | A **hook**, for a component that watches the FORM rather than a field — `this.use(FormState)`, no props. `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `formErrors` · `submit(event?)` · `reset()`. Wakes only when a fact it reads actually MOVED, so a save button sleeps through typing that does not change the answer. The form publishes itself on the context, so it works at any depth. [A button that watches the form](/forms/fields#a-button-that-watches-the-form) |
 

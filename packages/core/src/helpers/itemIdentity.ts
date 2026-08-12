@@ -81,10 +81,14 @@ export function stampIdentity(item: unknown, id: string): void {
  * new one — that pairing is what a changed row rides across.
  *
  * The failure mode people fear from positional matching is exactly what this
- * avoids, and for a reason rather than by a threshold: a list replaced with
- * DIFFERENT data has no value-equal rows, so it has no anchors, so nothing is
- * between anchors and nothing is paired. A refetch of the same query is almost
- * all anchors. Neither case is guessed at — the anchors are the evidence.
+ * avoids, and per ROW rather than by a threshold: a pair is only made when the
+ * two still have a field in common, so page 2 of a table shares nothing with
+ * page 1 and inherits none of it. That check is the whole guard. An earlier
+ * version ALSO bailed out when no two rows were value-equal, which read as extra
+ * safety and was not: it threw away the case where every row of a grid was
+ * edited at once — a `.map` adding a cell to each — so every row rebuilt and
+ * every cell inside it lost its state. Removing it changed nothing about
+ * pagination, which was never carried by the anchors.
  */
 export function carryIdentity(before: readonly unknown[], next: readonly unknown[]): void {
   if (before.length === 0 || next.length === 0) return;
@@ -92,7 +96,6 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
   /** For each index in `next`, the index in `before` it was paired with. */
   const pairedTo = new Int32Array(next.length).fill(-1);
   const claimed = new Uint8Array(before.length);
-  let anchors = 0;
   let unpaired = 0;
 
   // Anchors by REFERENCE first, which is most of them and costs a map lookup.
@@ -111,7 +114,6 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
       const candidate = at.shift()!;
       pairedTo[i] = candidate;
       claimed[candidate] = 1;
-      anchors++;
     } else {
       unpaired++;
     }
@@ -141,22 +143,9 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
       if (!valueEqual(before[candidate], next[i])) continue;
       pairedTo[i] = candidate;
       claimed[candidate] = 1;
-      anchors++;
       break;
     }
   }
-
-  // Not one row in common: these are two different lists, not one list changed.
-  // Without this the ENDS of the arrays act as anchors, every unmatched row is
-  // "between" them, and the whole thing degenerates to matching by position —
-  // which handed page 2 of a table the identities, and the half-typed drafts, of
-  // page 1. Measured, and it is the exact failure positional matching is known
-  // for; having anchors decide is the difference.
-  //
-  // The honest limit: a refetch where EVERY row changed has no anchors either,
-  // and its rows are rebuilt. Nothing distinguishes that from a replacement —
-  // the two are the same event as far as the data is concerned.
-  if (anchors === 0) return;
 
   // The runs between anchors, paired in order. `anchorBefore` walks the old
   // array's position for the last anchor seen, so an unmatched run knows which
@@ -186,7 +175,7 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
       let bestScore = 0;
       for (let b = beforeFrom; b < beforeTo; b++) {
         if (claimed[b] === 1) continue;
-        const score = overlap(before[b], next[n]);
+        const score = overlap(before[b], next[n], b, n);
         if (score > bestScore) {
           bestScore = score;
           best = b;
@@ -223,8 +212,27 @@ export function carryIdentity(before: readonly unknown[], next: readonly unknown
  * Only own primitive fields, and only at the top level: a nested object is what
  * `valueEqual` is for, and walking it here would pay a deep comparison for every
  * candidate in a run rather than once for the pair that wins.
+ *
+ * ## A field that only restates the position is skipped
+ *
+ * `aAt` and `bAt` are where the two items sit in their arrays. A field whose
+ * value equals that on BOTH sides is not describing the row, it is describing
+ * where the row is — which position already says. Counting it lets it outvote a
+ * field that does identify the row.
+ *
+ * Not hypothetical: a form's array rows are `{ id, index, field }`, so deleting
+ * the first row leaves the survivor `{ id: "b", index: 0 }` to be matched against
+ * `{ id: "a", index: 0 }` and `{ id: "b", index: 1 }` — one point each, the tie
+ * broken by whichever came first, and the survivor took the DELETED row's
+ * identity. Measured through the SSR playground, which marks a row's input and
+ * checks it survives: the node was reused for the wrong row, taking its focus and
+ * caret with it.
+ *
+ * Skipping can only REMOVE evidence, never invent it, so a field that happens to
+ * equal its index by coincidence costs a little precision and cannot make a
+ * false pair.
  */
-function overlap(a: unknown, b: unknown): number {
+function overlap(a: unknown, b: unknown, aAt: number, bAt: number): number {
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
     return Object.is(a, b) ? 1 : 0;
   }
@@ -235,6 +243,7 @@ function overlap(a: unknown, b: unknown): number {
   for (const key of Object.keys(left)) {
     const value = left[key];
     if (value !== null && typeof value === "object") continue;
+    if (value === aAt && right[key] === bAt) continue;
     if (Object.is(value, right[key])) score++;
   }
   return score;

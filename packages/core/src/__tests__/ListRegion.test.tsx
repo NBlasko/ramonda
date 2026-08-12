@@ -54,7 +54,7 @@ describe("list regions", () => {
       render() {
         return (
           <ul>
-            {list({ each: own, render: (row: Row) => <Item row={row} /> })}
+            {list(own, (row: Row) => <Item row={row} />)}
             {this.props.children}
           </ul>
         );
@@ -65,7 +65,7 @@ describe("list regions", () => {
     class App extends Component {
       @state passed: Row[] = sent;
       render() {
-        return <Panel>{list({ each: this.passed, render: (row: Row) => <Item row={row} /> })}</Panel>;
+        return <Panel>{list(this.passed, (row: Row) => <Item row={row} />)}</Panel>;
       }
     }
 
@@ -92,7 +92,7 @@ describe("list regions", () => {
     @Host("ul")
     class Bare extends Component {
       render() {
-        return list({ each: cells, render: (row: Row) => <Item row={row} /> });
+        return list(cells, (row: Row) => <Item row={row} />);
       }
     }
 
@@ -113,7 +113,7 @@ describe("list regions", () => {
         return (
           <ul>
             <li id="keep">keep</li>
-            {this.show ? list({ each: rows, render: (row: Row) => <Item row={row} /> }) : null}
+            {this.show ? list(rows, (row: Row) => <Item row={row} />) : null}
           </ul>
         );
       }

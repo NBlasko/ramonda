@@ -60,7 +60,7 @@ export class ComputeDemo extends Component {
             add an item
           </button>
         </p>
-        <ul className="demo-log">{list({ each: this.visible, render: this.renderItem })}</ul>
+        <ul className="demo-log">{list(this.visible, this.renderItem)}</ul>
         <p className="demo-row">
           <span>
             total: <strong>{this.total}</strong>

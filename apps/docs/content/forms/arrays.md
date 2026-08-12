@@ -39,16 +39,12 @@ cost every row its `list()` key.
 
 ```tsx
 <ul>
-  {list({
-    each: f.tags.$.rows,
-    key: (row) => row.id,
-    render: (row) => (
+  {list(f.tags.$.rows, (row) => (
       <li>
         <input {...row.field.$.bind} />
         {row.field.$.error ? <em>{row.field.$.error}</em> : null}
       </li>
-    ),
-  })}
+    ))}
 </ul>
 ```
 
@@ -69,17 +65,13 @@ interface Contact {
 ```
 
 ```tsx
-{list({
-  each: f.contacts.$.rows,
-  key: (row) => row.id,
-  render: (row) => (
+{list(f.contacts.$.rows, (row) => (
     <li>
       <input {...row.field.kind.$.bind} />
       <input {...row.field.value.$.bind} />
       {row.field.value.$.error ? <em>{row.field.value.$.error}</em> : null}
     </li>
-  ),
-})}
+  ))}
 ```
 
 `f.contacts[0].value` reaches the same field by index, and hands back the same node object —

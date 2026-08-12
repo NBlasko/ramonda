@@ -49,7 +49,6 @@ so a component that misuses the same property on every render reports once.
 | `RMD010` | error | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
 | `RMD013` | error | A list could not identify its items |
-| `RMD014` | error | A list was given both `as` and `render`, or neither |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | error | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
@@ -587,21 +586,6 @@ re-queues a component from its own build — a write in `render()` included.
 so flipping it inside a test silently keeps testing the DEV path. Verify with a
 whole process: `NODE_ENV=production npx vitest run <file>`.
 
-### RMD014 — A list was given both `as` and `render`, or neither
-
-A list needs exactly one way to turn an item into markup:
-
-- `as: RowView` when an item maps to a component. The list builds
-  `<RowView item={item} />` itself, so there is no per-item function to write.
-- `render: (item) => <li>{item.name}</li>` when an item maps to plain markup.
-
-TypeScript already rejects both together (`ListAs` sets `render?: never`,
-`ListRender` sets `as?: never`) and rejects neither. This code is for JavaScript,
-where there are no types — and where both mistakes fail **quietly**: with both
-given, `as` wins and the render callback is never called, so the list renders
-something other than what was written and nothing says why. With neither, the
-list has nothing to build an item from.
-
 ### RMD015 — Hook options assigned by the hook that received them
 
 Options belong to whoever called `this.use(...)`. The options proxy serves each
@@ -1016,6 +1000,15 @@ into one key space and the list could claim its siblings. Arrays are no longer f
 each is its own group with its own key space — so the hazard cannot happen and the warning
 would be advice about a non-problem — the fault it was written for being that a component's own
 elements could be claimed by content passed into it.
+
+### RMD014 — retired 2026-08-12
+
+It reported a list given both `as` and `render`, or neither. Both were fields of an
+options bag, and the bag is gone: `list(each, builder)` takes the component or the
+function as its second argument, so "both" and "neither" are not shapes that can be
+written. TypeScript rejected them already; this code existed for JavaScript, where
+they failed quietly — with both given, `as` won and the render callback was never
+called.
 
 ### RMD026 — retired 2026-08-03
 

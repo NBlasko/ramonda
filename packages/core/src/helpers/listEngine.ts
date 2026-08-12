@@ -4,8 +4,9 @@ import { IS_LIST, attach, detach } from "../helpers/constants";
 import { trackerContainer } from "../reactivity/tracker";
 import type { State } from "../reactivity/State";
 import { diagnose } from "../debug/diagnostics";
-import type { ListOptions } from "../types/list";
 import { identityOf, stampIdentity, carryIdentity } from "./itemIdentity";
+import { createId } from "./createId";
+import type { Each, ItemComponent, ItemRender } from "../base/list";
 
 /** Listener ids must be unique across every signal, not just within one list. */
 let scopeSequence = 0;
@@ -84,7 +85,6 @@ export class ListEngine<T> {
    * neither could a hand-written key.
    */
   private ids = new Map<T, string[]>();
-  private minted = 0;
   /** key → the scope that produced its vnode last render. */
   private scopes = new Map<string, ItemScope<T>>();
 
@@ -96,13 +96,14 @@ export class ListEngine<T> {
   /** Set by `buildItem` so the caller can store the scope it just refreshed. */
   private lastScope: ItemScope<T> | undefined;
 
-  build(options: ListOptions<T>, host: ListHost, owner: unknown): ListNode {
-    const each = options.each;
-    const asComponent = options.as;
-    const render = options.render;
-    const keyOf = options.key;
-
-    if (__DEV__) lintOptions(asComponent, render, host.name);
+  build(descriptor: ListDescriptor<T>, host: ListHost, owner: unknown): ListNode {
+    const each = descriptor.each;
+    const builder = descriptor.builder;
+    // A class has this static; an arrow does not. Asked BEFORE the arity read
+    // below, because a constructor's parameter count says nothing about whether
+    // an item watches its position.
+    const asComponent = isItemComponent(builder) ? builder : undefined;
+    const render = asComponent === undefined ? (builder as ItemRender<T>) : undefined;
 
     /**
      * Whether a moved item has to be rebuilt — decided by the mapper's ARITY.
@@ -167,48 +168,51 @@ export class ListEngine<T> {
       // The key is settled BEFORE anything is built — it is what finds the
       // item's scope, and the whole point is to decide without calling the
       // mapper at all.
-      let key: string | number;
-      if (keyOf) {
-        key = keyOf(item);
-      } else {
-        // Which occurrence of this exact item is this?
-        const occurrence = seen.get(item) ?? 0;
-        seen.set(item, occurrence + 1);
+      //
+      // Which occurrence of this exact item is this?
+      const occurrence = seen.get(item) ?? 0;
+      seen.set(item, occurrence + 1);
 
-        let carried = next.get(item);
-        if (!carried) {
-          carried = [];
-          next.set(item, carried);
-        }
-        // Reuse the id this occurrence had last render, or mint a new one.
-        // Dropping the rest of `this.ids` is the pruning: an item that left the
-        // list is simply not carried over, so the map cannot grow forever.
-        const previous = this.ids.get(item);
-        let id: string | undefined = carried[occurrence] ?? previous?.[occurrence];
+      let carried = next.get(item);
+      if (!carried) {
+        carried = [];
+        next.set(item, carried);
+      }
+      // Reuse the id this occurrence had last render, or mint a new one.
+      // Dropping the rest of `this.ids` is the pruning: an item that left the
+      // list is simply not carried over, so the map cannot grow forever.
+      const previous = this.ids.get(item);
+      let id: string | undefined = carried[occurrence] ?? previous?.[occurrence];
 
-        // The reference missed, so this object is new HERE — but it may be a row
-        // that already exists, handed over as a fresh object by a refetch. Align
-        // the two arrays once, and then the identity is on the item to be read.
-        // Only the first occurrence: a second one is a second row and mints its own.
-        if (id === undefined && occurrence === 0) {
-          if (!aligned && before !== undefined) {
-            carryIdentity(before, each);
-            aligned = true;
-          }
-          id = identityOf(item);
+      // The reference missed, so this object is new HERE — but it may be a row
+      // that already exists, handed over as a fresh object by a refetch. Align
+      // the two arrays once, and then the identity is on the item to be read.
+      // Only the first occurrence: a second one is a second row and mints its own.
+      if (id === undefined && occurrence === 0) {
+        if (!aligned && before !== undefined) {
+          carryIdentity(before, each);
+          aligned = true;
         }
-
-        if (id === undefined) {
-          id = `f${this.minted++}`;
-          // Written onto the item, so the array that replaces this one can carry
-          // it across — see `carryIdentity`.
-          stampIdentity(item, id);
-        }
-        carried[occurrence] = id;
-        key = id;
+        id = identityOf(item);
       }
 
-      const scopeKey = String(key);
+      if (id === undefined) {
+        // From the process-wide counter, not a per-list one. A per-list counter
+        // was right while identity lived in the region: two lists both starting
+        // at `f0` could not see each other, because neither id ever left. It
+        // travels with the ITEM now, so the same object shown in a second list
+        // carries `f0` into a list that has already minted `f0` for a different
+        // row — one key on two rows, and the diff hands one row's node to the
+        // other. A global id cannot collide with one carried in from anywhere.
+        id = `f${createId()}`;
+        // Written onto the item, so the array that replaces this one can carry
+        // it across — see `carryIdentity`.
+        stampIdentity(item, id);
+      }
+      carried[occurrence] = id;
+      const key = id;
+
+      const scopeKey = key;
       const existing = this.scopes.get(scopeKey);
 
       // Nothing this item's output depends on has changed, it is still the same
@@ -222,7 +226,7 @@ export class ListEngine<T> {
         continue;
       }
 
-      const vnode = this.buildItem(item, i, existing, options, host);
+      const vnode = this.buildItem(item, i, existing, asComponent, render, host);
 
       // Guards production too: skipping a null keeps the list intact instead of
       // crashing on `.attributes` below.
@@ -259,7 +263,7 @@ export class ListEngine<T> {
       this.claimScope(nextScopes, scopeKey, this.lastScope!);
     }
 
-    if (!keyOf) this.ids = next;
+    this.ids = next;
 
     // Scopes for items that left: unsubscribe, or their signals keep a live
     // reference to a list entry that no longer exists.
@@ -268,8 +272,6 @@ export class ListEngine<T> {
       this.releaseScope(scope);
     }
     this.scopes = nextScopes;
-
-    if (__DEV__ && keyOf) lintExplicitKeys(out);
 
     return this.wrap(owner, out, clean);
   }
@@ -309,11 +311,10 @@ export class ListEngine<T> {
     item: T,
     index: number,
     existing: ItemScope<T> | undefined,
-    options: ListOptions<T>,
+    asComponent: ItemComponent<T> | undefined,
+    render: ItemRender<T> | undefined,
     host: ListHost,
   ): VNode | null | undefined {
-    const asComponent = options.as;
-    const render = options.render;
 
     const scope: ItemScope<T> = existing ?? {
       listenerId: ++scopeSequence,
@@ -393,26 +394,42 @@ export class ListEngine<T> {
   }
 }
 
+/** What `list()` puts on the descriptor: the items, and the one way to build one. */
+export interface ListDescriptor<T> {
+  readonly each: Each<T>;
+  readonly builder: ItemComponent<T> | ItemRender<T>;
+}
+
 /** A descriptor `list()` produced, before its items have been built. */
-export interface LazyListNode<T = unknown> {
+export interface LazyListNode<T = unknown> extends ListDescriptor<T> {
   readonly [IS_LIST]: true;
   owner: unknown;
-  readonly options: ListOptions<T>;
+}
+
+/**
+ * Whether the second argument to `list()` is a component rather than a mapper.
+ *
+ * `Component` carries this static and every subclass inherits it, so the check
+ * is one property read and it cannot be satisfied by accident — an arrow has no
+ * statics, and a plain function that happened to be passed here has none either.
+ */
+function isItemComponent<T>(builder: ItemComponent<T> | ItemRender<T>): builder is ItemComponent<T> {
+  return (builder as { __isComponent?: true }).__isComponent === true;
 }
 
 /**
  * Distinguishes a `list()` descriptor from a `ListNode` whose items are built.
  *
- * By the presence of `options` and the absence of `vnodes`, because those are
- * exactly what differs: a hook arrives with its items already built, a
- * descriptor arrives with the instructions to build them.
+ * By the presence of `builder` and the absence of `vnodes`, because those are
+ * exactly what differs: a built list arrives with its items, a descriptor
+ * arrives with the instructions to build them.
  */
 export function isLazyList(node: unknown): node is LazyListNode {
   return (
     node !== null &&
     typeof node === "object" &&
     (node as { [IS_LIST]?: true })[IS_LIST] === true &&
-    (node as { options?: unknown }).options !== undefined &&
+    (node as { builder?: unknown }).builder !== undefined &&
     (node as { vnodes?: unknown }).vnodes === undefined
   );
 }
@@ -433,55 +450,8 @@ export function buildLazyList(
 ): { node: ListNode; engine: ListEngine<unknown> } {
   const used = engine ?? new ListEngine<unknown>();
   return {
-    node: used.build(descriptor.options, host, descriptor.owner),
+    node: used.build(descriptor, host, descriptor.owner),
     engine: used,
   };
 }
 
-/**
- * `as` and `render` are mutually exclusive, and one of them is required.
- *
- * TypeScript already forbids both — but a JavaScript app has no types, and this
- * is the kind of mistake that produces a silently wrong list rather than an
- * error: with both given, `as` wins and the `render` callback is never called,
- * so the list renders the wrong thing and nothing says why.
- */
-function lintOptions(asComponent: unknown, render: unknown, name: string): void {
-  if (asComponent && render) {
-    diagnose(
-      "RMD014",
-      `${name}:both`,
-      "`as` and `render` were both given. Only one can apply — `as` is used and the render callback is ignored. Remove whichever you did not mean.",
-    );
-    return;
-  }
-
-  if (!asComponent && !render) {
-    diagnose(
-      "RMD014",
-      `${name}:neither`,
-      "Neither `as` nor `render` was given, so the list has no way to build an item. Add `as: SomeComponent` for a component per item, or `render: (item) => …` for plain markup.",
-    );
-  }
-}
-
-/**
- * Only for the `key:` override — a callback can still collide, which is exactly
- * the failure this exists to remove, so it must not pass unnoticed. Identity
- * minted from the item cannot collide, so it is not checked.
- */
-function lintExplicitKeys(nodes: VNode[]): void {
-  const seen = new Set<unknown>();
-  for (const node of nodes) {
-    const key = node.attributes.key;
-    if (seen.has(key)) {
-      diagnose(
-        "RMD013",
-        `list:duplicate:${String(key)}`,
-        `The key callback returned "${String(key)}" for more than one item.`,
-      );
-      return;
-    }
-    seen.add(key);
-  }
-}

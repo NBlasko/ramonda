@@ -31,13 +31,10 @@ class App extends Component {
   render() {
     return (
       <ul data-tick={String(this.tick)}>
-        {list({
-          each: this.rows,
-          render: (r: Row) => {
+        {list(this.rows, (r: Row) => {
             mapperCalls++;
             return <li>{r.t}</li>;
-          },
-        })}
+          })}
       </ul>
     );
   }

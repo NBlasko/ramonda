@@ -66,17 +66,11 @@ export class MatrixGrid extends Component {
         </div>
         {/* List #1: column headers */}
         <div className="matrix" style={this.gridStyle}>
-          {list({
-            each: this.cols,
-            render: (c: Col) => <div className="mcell head">{c.label}</div>,
-          })}
+          {list(this.cols, (c: Col) => <div className="mcell head">{c.label}</div>)}
         </div>
         {/* List #2: body cells over @compute(rows × cols) */}
         <div className="matrix" style={this.gridStyle}>
-          {list({
-            each: this.grid,
-            render: (cell: { id: string; value: string }) => <div className="mcell">{cell.value}</div>,
-          })}
+          {list(this.grid, (cell: { id: string; value: string }) => <div className="mcell">{cell.value}</div>)}
         </div>
         <p className="muted small">
           Body = {this.grid.length} cells from a second list over a <code>@compute</code> of rows × columns; toggling a

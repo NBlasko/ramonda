@@ -123,13 +123,15 @@ const EXPECTED_TYPES = [
   "DevFlags",
   "Disconnect",
   "DocumentOptions",
+  "Each",
   "ErrorBoundaryFallbackProps",
   "HeadOptions",
   "HookMeta",
+  "ItemComponent",
+  "ItemRender",
   "Lazy",
   "LifecycleOptions",
   "LinkTag",
-  "ListOptions",
   "MetaTag",
   "RamondaNode",
   "RefCallback",
@@ -178,7 +180,7 @@ describe("public API surface", () => {
  * Every published type, named once, so `check-types` fails if one is renamed or removed.
  *
  * The tuple below is what makes the import count as used, and it pins one more thing on the way: a
- * generic's ARITY. `ListOptions<unknown>` stops compiling if that parameter is dropped, or if a second
+ * generic's ARITY. `Each<unknown>` stops compiling if that parameter is dropped, or if a second
  * one is added without a default — and arity is as much a part of a published type as its name. The
  * arguments are the widest each constraint allows, on purpose: nothing here asserts anything about what
  * may be passed, only that the parameter is there to pass something to.
@@ -192,13 +194,15 @@ import type {
   DevFlags,
   Disconnect,
   DocumentOptions,
+  Each,
   ErrorBoundaryFallbackProps,
   HeadOptions,
   HookMeta,
+  ItemComponent,
+  ItemRender,
   Lazy,
   LifecycleOptions,
   LinkTag,
-  ListOptions,
   MetaTag,
   RamondaNode,
   RefCallback,
@@ -227,13 +231,15 @@ export type __Published = [
   DevFlags,
   Disconnect,
   DocumentOptions,
+  Each<unknown>,
   ErrorBoundaryFallbackProps,
   HeadOptions,
   HookMeta,
+  ItemComponent<unknown>,
+  ItemRender<unknown>,
   Lazy,
   LifecycleOptions,
   LinkTag,
-  ListOptions<unknown>,
   MetaTag,
   RamondaNode,
   RefCallback<Element>,

@@ -231,10 +231,7 @@ export class SignupPage extends Component {
               element and whatever focus was in it.
             */}
             <ul id="tags">
-              {list({
-                each: f.tags.$.rows,
-                key: (row) => row.id,
-                render: (row) => (
+              {list(f.tags.$.rows, (row) => (
                   <li>
                     <input className="tag" {...row.field.$.bind} />
                     <button type="button" className="remove-tag ghost" onClick={this.removeTag(row.id)}>
@@ -242,8 +239,7 @@ export class SignupPage extends Component {
                     </button>
                     {row.field.$.error ? <em className="err">{row.field.$.error}</em> : null}
                   </li>
-                ),
-              })}
+                ))}
             </ul>
             <button type="button" id="add-tag" className="ghost" onClick={this.addTag}>
               add a tag
@@ -253,17 +249,13 @@ export class SignupPage extends Component {
           <fieldset>
             <legend>Contacts — an array of objects</legend>
             <ul>
-              {list({
-                each: f.contacts.$.rows,
-                key: (row) => row.id,
-                render: (row) => (
+              {list(f.contacts.$.rows, (row) => (
                   <li className="pair">
                     <input {...row.field.kind.$.bind} />
                     <input {...row.field.value.$.bind} />
                     {row.field.value.$.error ? <em className="err">{row.field.value.$.error}</em> : null}
                   </li>
-                ),
-              })}
+                ))}
             </ul>
             <button type="button" className="ghost" onClick={this.addContact}>
               add a contact

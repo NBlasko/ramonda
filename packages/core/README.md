@@ -188,7 +188,7 @@ class Clock extends Component {
 
 ```tsx
 render() {
-  return <ul>{list({ each: this.items, as: RowView })}</ul>;
+  return <ul>{list(this.items, RowView)}</ul>;
 }
 ```
 

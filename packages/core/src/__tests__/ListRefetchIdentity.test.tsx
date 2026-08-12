@@ -65,7 +65,7 @@ class App extends Component {
     { id: 3, t: "c" },
   ];
   render() {
-    return <ul>{list({ each: this.rows, as: RowView })}</ul>;
+    return <ul>{list(this.rows, RowView)}</ul>;
   }
 }
 
@@ -79,13 +79,10 @@ class Plain extends Component {
   render() {
     return (
       <ul>
-        {list({
-          each: this.rows,
-          render: (r: Row) => {
+        {list(this.rows, (r: Row) => {
             mapperCalls++;
             return <li>{r.t}</li>;
-          },
-        })}
+          })}
       </ul>
     );
   }
@@ -293,5 +290,47 @@ describe("what identity is NOT carried across", () => {
     await app.settle();
 
     expect(texts(app.container)).toBe("frozen");
+  });
+});
+
+describe("a field that only restates the position does not decide identity", () => {
+  test("deleting the first row leaves the survivor with its OWN identity", async () => {
+    // A form's array rows are `{ id, index, field }`, and `index` mirrors the
+    // position. Delete the first row and the survivor is rebuilt as
+    // `{ id: "b", index: 0 }`, to be matched against `{ id: "a", index: 0 }` and
+    // `{ id: "b", index: 1 }` — one field each, a tie, and whichever came first
+    // wins. The survivor took the DELETED row's identity: its node reused, and
+    // with it the focus and caret of an input the user was typing in.
+    //
+    // Found by the SSR playground's smoke check, which marks a row's input and
+    // asserts the survivor is the same element.
+    interface FormRow {
+      id: string;
+      index: number;
+      label: string;
+    }
+
+    @Host("div")
+    class Rows extends Component {
+      @state rows: FormRow[] = [
+        { id: "a", index: 0, label: "first" },
+        { id: "b", index: 1, label: "second" },
+      ];
+      render() {
+        return <ul>{list(this.rows, (r: FormRow) => <li>{r.label}</li>)}</ul>;
+      }
+    }
+
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    const [, second] = [...app.container.querySelectorAll("li")];
+
+    // Row 0 removed; the survivor moves up, so it is a NEW object carrying the
+    // index it now sits at.
+    app.instance.rows = [{ id: "b", index: 0, label: "second" }];
+    await app.settle();
+
+    expect(texts(app.container)).toBe("second");
+    expect(app.container.querySelector("li")).toBe(second);
   });
 });

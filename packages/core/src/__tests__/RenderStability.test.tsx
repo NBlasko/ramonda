@@ -167,12 +167,11 @@ describe("RMD020 — values built inside render()", () => {
       render() {
         return (
           <ul>
-            {list({
-              // A fresh array of fresh objects every render: every row gets a new
-              // minted id, every key misses, and the whole list is rebuilt.
-              each: source.map((row) => ({ ...row })),
-              render: (row: { label: string }) => <li>{row.label}</li>,
-            })}
+            {/* A fresh array of fresh objects every render — RMD020's case. */}
+            {list(
+              source.map((row) => ({ ...row })),
+              (row: { label: string }) => <li>{row.label}</li>,
+            )}
           </ul>
         );
       }
@@ -195,10 +194,7 @@ describe("RMD020 — values built inside render()", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: source,
-              render: (row: { label: string }) => <li>{row.label}</li>,
-            })}
+            {list(source, (row: { label: string }) => <li>{row.label}</li>)}
           </ul>
         );
       }

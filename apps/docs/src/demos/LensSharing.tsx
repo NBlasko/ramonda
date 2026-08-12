@@ -153,7 +153,7 @@ export class LensSharing extends Component {
           last: <code>{this.lastAction}</code>
         </p>
 
-        <ul className="demo-log">{list({ each: this.rows, as: PathRow })}</ul>
+        <ul className="demo-log">{list(this.rows, PathRow)}</ul>
 
         <p className="demo-note">
           Only what is ON the path gets a new object. `state.users` and `state.posts[0]` come out of every edit as the

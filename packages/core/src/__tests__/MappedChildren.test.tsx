@@ -113,7 +113,7 @@ describe("RMD023", () => {
         return <Row label={item} />;
       }
       render() {
-        return <ul>{list({ each: this.items, render: this.renderRow })}</ul>;
+        return <ul>{list(this.items, this.renderRow)}</ul>;
       }
     }
 

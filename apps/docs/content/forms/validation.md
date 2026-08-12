@@ -85,7 +85,7 @@ private message(text: string): RamondaNode {
 // …in render()
 {f.email.$.error ? <em>{f.email.$.error}</em> : null}
 
-<ul>{list({ each: f.password.$.errors, render: this.message })}</ul>
+<ul>{list(f.password.$.errors, this.message)}</ul>
 ```
 
 `list()` rather than `.map()`, even for markup this plain. A mapped array of `<li>`s is not

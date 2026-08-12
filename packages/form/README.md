@@ -75,7 +75,7 @@ have any of its own. A flat API was written first and `value` collided with an o
 it keeps the API as an object you can name: `const email = form.fields.email.$`.
 
 **A row's identity is not its index.** Array fields hand out `rows` with a generated `id`
-that survives insert, remove and reorder, for `list({ each, key: (row) => row.id })`, so the
+that survives insert, remove and reorder, so the
 reconciler keeps each row's DOM node and its focus. `move(from, to)` is a method for that
 reason: `remove` then `insert` mints a new id, and the row loses its element and whatever the
 browser was holding in it. A splice drops what was recorded against

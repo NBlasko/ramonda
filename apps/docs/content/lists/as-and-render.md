@@ -1,19 +1,20 @@
 ---
-title: as and render
+title: A component or a function
 description: The two ways to turn each item in a list into markup.
 section: Rendering lists
 order: 41
 ---
 
-# `as` and `render`
+# A component, or a function
 
-`list()` needs to know how to turn each item into markup. You give it exactly one of
-two options.
+`list()`'s second argument is how an item becomes markup. It is either a component or
+a function, and nothing has to say which — a class and an arrow are different shapes,
+so the framework can tell them apart and so can the types.
 
-## `as` — the item is a component
+## A component — the item has a life of its own
 
 ```tsx
-list({ each: this.tasks, as: TaskRow });
+list(this.tasks, TaskRow);
 ```
 
 Ramonda builds `<TaskRow item={task} />` for each item; the component reads it from
@@ -31,15 +32,12 @@ class TaskRow extends Component<{ item: Task }> {
 There is no per-item function in your code — nothing that gets recreated on every
 render.
 
-## `render` — the item is plain markup
+## A function — the item is plain markup
 
 ```tsx
 @state tags: { id: string; label: string }[] = [];
 
-list({
-  each: this.tags,
-  render: (tag) => <span className="chip">{tag.label}</span>,
-});
+list(this.tags, (tag) => <span className="chip">{tag.label}</span>);
 ```
 
 Use this when an item is just a few tags and a whole component would be overkill. The
@@ -49,16 +47,23 @@ result is a plain element — no wrapper appears.
 
 | | |
 |---|---|
-| the item has state, lifecycle, or handlers of its own | `as` |
-| the item is a few tags | `render` |
+| the item has state, lifecycle, or handlers of its own | a component |
+| the item is a few tags | a function |
 
-If a `render` closure starts capturing a lot of the surrounding state, that is the
-sign to make it a component and switch to `as`.
+If the function starts capturing a lot of the surrounding state, that is the sign to
+make it a component.
 
-## One or the other, never both
+## The position, when you need it
 
-Passing both, or neither, is a type error — and at runtime, where there are no types,
-it is reported as `RMD014`.
+The function takes the item's current index as a second parameter:
+
+```tsx
+list(this.tasks, (task, index) => <li>{index + 1}. {task.title}</li>);
+```
+
+Declaring it is what asks for it. A row that moves is rebuilt so the number it shows
+matches where the row is — which costs a call per moved row, so a function that does
+not name the parameter skips untouched rows through a reorder instead.
 
 ## Next
 

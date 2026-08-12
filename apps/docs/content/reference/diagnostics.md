@@ -237,19 +237,20 @@ and lifecycle without an element, that is a [Hook](/hooks).
 
 Superseded by `list()`, which prevents the problem structurally rather than reporting it.
 
-## RMD013 — A list could not identify its items
+## RMD013 — A list item produced nothing
 
-Either a `key` callback returned the same value twice, or the render callback returned nothing for
-an item. A callback that returned something which is not an element is
-[RMD031](#rmd031-a-list-item-that-is-not-an-element) instead.
+The render callback returned nothing for an item. A callback that returned something
+which is not an element is [RMD031](#rmd031-a-list-item-that-is-not-an-element)
+instead.
 
-If you passed `key`, consider dropping it — identity minted from the items cannot collide. Keep it
-only for objects re-created as fresh instances for the same entity. See [lists](/lists).
+Give it something to render for that item, or filter the item out of the array before
+it gets there. See [lists](/lists).
 
-## RMD014 — A list was given both `as` and `render`, or neither
+## RMD014 — retired
 
-Exactly one. The types forbid the mistake; this fires when the build has no types. See
-[`as` and `render`](/lists/as-and-render).
+`list()` took an options bag with `as` and `render` in it, and this fired when both or
+neither was given. The bag is gone: the second argument is the component or the
+function, so neither mistake can be written.
 
 ## RMD015 — Hook options assigned by the hook that received them
 
@@ -477,7 +478,7 @@ reported — that array is the framework's own.
 Two fixes:
 
 ```tsx
-list({ each: this.items, as: Row })              // identity from the items themselves
+list(this.items, Row)              // identity from the items themselves
 {this.items.map((i) => <Row key={i.id} item={i} />)}   // or take it over yourself
 ```
 
@@ -740,10 +741,10 @@ this one during a describe.
 
 ```tsx expect-error
 // reported: a nested list() is a descriptor, not an element
-list({ each: pages, render: (page: Post[]) => list({ each: page, as: PostRow }) });
+list(pages, (page: Post[]) => list(page, PostRow));
 
 // the way: a component, whose host element wraps the inner rows
-list({ each: pages, as: PostPage });
+list(pages, PostPage);
 ```
 
 One item becomes exactly one element. The list writes the row's key onto it and the diff matches

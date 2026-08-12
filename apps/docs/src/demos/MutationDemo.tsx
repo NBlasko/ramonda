@@ -94,7 +94,7 @@ export class MutationDemo extends Component {
           takes the query's data straight, undefined and all, so there is no `?? []` to
           rebuild every render.
         */}
-        <ul>{list({ each: this.list.data, render: this.renderTodo })}</ul>
+        <ul>{list(this.list.data, this.renderTodo)}</ul>
 
         <p className="demo-row">
           <input value={this.draft} placeholder="new todo" onInput={this.onDraftInput} />

@@ -37,10 +37,7 @@ export class TableRow extends Component<{ item: RowData }> {
     // rather than a component — that is the case `render` is for.
     return [
       <td className="rowlabel">{this.props.item.label}</td>,
-      list({
-        each: this.props.item.cells,
-        render: (cell: Cell) => <td>{cell.value}</td>,
-      }),
+      list(this.props.item.cells, (cell: Cell) => <td>{cell.value}</td>),
     ];
   }
 }
@@ -88,7 +85,7 @@ export class TablePage extends Component {
           </thead>
           {/* `as` means no per-item function at all — the list builds
               <TableRow item={row} /> itself. */}
-          <tbody>{list({ each: this.rows, as: TableRow })}</tbody>
+          <tbody>{list(this.rows, TableRow)}</tbody>
         </table>
 
         <TwoLists />

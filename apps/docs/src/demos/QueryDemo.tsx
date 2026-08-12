@@ -121,7 +121,7 @@ export class QueryDemo extends Component {
     return (
       <div>
         <p className="demo-row">
-          {list({ each: USERS, render: this.renderChoice })}
+          {list(USERS, this.renderChoice)}
           <button type="button" onClick={this.toggleSecond}>
             {this.twice ? "one card" : "two cards"}
           </button>

@@ -45,7 +45,6 @@ export type DiagnosticCode =
   | "RMD010"
   | "RMD011"
   | "RMD013"
-  | "RMD014"
   | "RMD015"
   | "RMD016"
   | "RMD017"
@@ -156,11 +155,6 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "A function was used as a JSX tag",
     fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @created/@destroyed, @watchProp and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
   },
-  RMD014: {
-    severity: "error",
-    title: "A list was given both `as` and `render`, or neither",
-    fix: "A list needs exactly one way to turn an item into markup. Use `as: RowView` when an item maps to a component — the list then builds `<RowView item={item} />` itself, with no per-item function to write. Use `render: (item) => <li>{item.name}</li>` when an item maps to plain markup instead. Giving both is not an error TypeScript lets through, so this is what a JavaScript app sees: `as` wins and the render callback is never called, which renders the wrong thing quietly. Giving neither leaves the list with nothing to build.",
-  },
   RMD015: {
     severity: "error",
     title: "Hook options assigned by the hook that received them",
@@ -208,7 +202,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // error, not warning: items are matched by position, so state lands on the wrong row.
     severity: "error",
     title: "An array was rendered straight into children",
-    fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
+    fix: "Use list() instead of mapping in place: list(items, Row) when an item maps to a component, or list(items, this.renderRow) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
   },
   RMD030: {
     // error, not warning: the panel then shows values the app did not have, to the reader least

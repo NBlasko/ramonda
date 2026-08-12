@@ -44,11 +44,7 @@ describe("list() index after a reorder", () => {
       ];
 
       render() {
-        return list({
-          each: this.rows,
-          key: (r: Row) => r.id,
-          render: (r: Row, i: number) => <li>{`${i}:${r.name}`}</li>,
-        });
+        return list(this.rows, (r: Row, i: number) => <li>{`${i}:${r.name}`}</li>);
       }
     }
 
@@ -76,14 +72,10 @@ describe("list() index after a reorder", () => {
       ];
 
       render() {
-        return list({
-          each: this.rows,
-          key: (r: Row) => r.id,
-          render: (r: Row, i: number) => {
+        return list(this.rows, (r: Row, i: number) => {
             mapperCalls++;
             return <li>{`${i}:${r.name}`}</li>;
-          },
-        });
+          });
       }
     }
 
@@ -122,15 +114,11 @@ describe("list() index after a reorder", () => {
       ];
 
       render() {
-        return list({
-          each: this.rows,
-          key: (r: Row) => r.id,
-          // One parameter: the position is not observable, so moving a row can
-          // never change what this produces.
-          render: (r: Row) => {
-            mapperCalls++;
-            return <li>{r.name}</li>;
-          },
+        // One parameter: the position is not observable, so moving a row can
+        // never change what this produces.
+        return list(this.rows, (r: Row) => {
+          mapperCalls++;
+          return <li>{r.name}</li>;
         });
       }
     }

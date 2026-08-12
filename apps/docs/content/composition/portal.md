@@ -77,7 +77,7 @@ per-item scopes, the whole-list skip. Nothing about it is special because it is 
 
 ```tsx
 this.use(Portal, () => ({
-  children: list({ each: this.rows, as: Row }),
+  children: list(this.rows, Row),
   target: modals,
 }));
 ```

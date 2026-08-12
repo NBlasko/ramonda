@@ -29,7 +29,7 @@ class TableRow extends Component<{ item: RowData }> {
   render() {
     return [
       <td className="rowlabel">{this.props.item.label}</td>,
-      list({ each: this.props.item.cells, render: (c: Cell) => <td>{c.value}</td> }),
+      list(this.props.item.cells, (c: Cell) => <td>{c.value}</td>),
     ];
   }
 }
@@ -40,10 +40,7 @@ class TwoLists extends Component {
     return (
       <div className="twocol">
         <ul className="tasks">
-          {list({
-            each: this.todo,
-            render: (t: { title: string }) => <li className="task">{t.title}</li>,
-          })}
+          {list(this.todo, (t: { title: string }) => <li className="task">{t.title}</li>)}
         </ul>
       </div>
     );
@@ -56,10 +53,7 @@ class MatrixGrid extends Component {
     return (
       <div className="matrix-wrap">
         <div className="matrix">
-          {list({
-            each: this.cols,
-            render: (c: { label: string }) => <div className="mcell head">{c.label}</div>,
-          })}
+          {list(this.cols, (c: { label: string }) => <div className="mcell head">{c.label}</div>)}
         </div>
       </div>
     );
@@ -79,7 +73,7 @@ class TablePage extends Component {
           <button onClick={this.prependRow}>prepend</button>
         </div>
         <table className="grid-table">
-          <tbody>{list({ each: this.rows, as: TableRow })}</tbody>
+          <tbody>{list(this.rows, TableRow)}</tbody>
         </table>
         <TwoLists />
         <MatrixGrid />

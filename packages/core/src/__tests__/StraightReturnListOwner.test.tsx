@@ -34,11 +34,7 @@ describe("a list returned straight from render()", () => {
       @state tick = 0;
 
       render() {
-        return list({
-          each: this.rows,
-          key: (r: { id: number }) => r.id,
-          render: (r: { id: number }) => <li>{r.id}</li>,
-        });
+        return list(this.rows, (r: { id: number }) => <li>{r.id}</li>);
       }
     }
 
@@ -63,11 +59,7 @@ describe("a list returned straight from render()", () => {
 
       render() {
         const rows = [{ id: this.props.from }, { id: this.props.from + 1 }];
-        return list({
-          each: rows,
-          key: (r: { id: number }) => r.id,
-          render: (r: { id: number }) => <li>{r.id}</li>,
-        });
+        return list(rows, (r: { id: number }) => <li>{r.id}</li>);
       }
     }
 
@@ -101,14 +93,14 @@ describe("a list returned straight from render()", () => {
     @Host("ul")
     class Straight extends Component {
       render() {
-        return list({ each: [1], render: (n: number) => <li>{n}</li> });
+        return list([1], (n: number) => <li>{n}</li>);
       }
     }
 
     @Host("div")
     class Wrapped extends Component {
       render() {
-        return <ul>{list({ each: [1], render: (n: number) => <li>{n}</li> })}</ul>;
+        return <ul>{list([1], (n: number) => <li>{n}</li>)}</ul>;
       }
     }
 

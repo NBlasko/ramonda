@@ -20,12 +20,9 @@ export class Grid extends Component<{ rows: RowData[] }> {
   render() {
     return (
       <tbody>
-        {list({
-          each: this.rows,
-          render: (row) => (
-            <tr>{list({ each: row.cells, render: (cell) => <td>{cell.value}</td> })}</tr>
-          ),
-        })}
+        {list(this.rows, (row) => (
+            <tr>{list(row.cells, (cell) => <td>{cell.value}</td>)}</tr>
+          ))}
       </tbody>
     );
   }
@@ -45,7 +42,7 @@ name:
 @Host("tr")
 class Row extends Component<{ item: RowData }> {
   render() {
-    return list({ each: this.props.item.cells, as: CellView });
+    return list(this.props.item.cells, CellView);
   }
 }
 
@@ -56,7 +53,7 @@ export class Grid extends Component<{ rows: RowData[] }> {
   }
 
   render() {
-    return <tbody>{list({ each: this.rows, as: Row })}</tbody>;
+    return <tbody>{list(this.rows, Row)}</tbody>;
   }
 }
 ```
@@ -89,10 +86,7 @@ across. Nothing to declare at either level:
 ```tsx
 @state rows: RowData[] = [];
 
-list({
-  each: this.rows,
-  render: (row) => <tr>{list({ each: row.cells, render: cellView })}</tr>,
-});
+list(this.rows, (row) => <tr>{list(row.cells, cellView)}</tr>);
 ```
 
 Editing one row is what makes the two levels visible. The edited row object is

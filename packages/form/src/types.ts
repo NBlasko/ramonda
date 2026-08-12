@@ -198,7 +198,7 @@ export interface Row<E> {
 export interface ArrayApi<E, T> extends FieldApi<T> {
   readonly length: number;
   /**
-   * The rows, for `list({ each: …, key: (row) => row.id })`.
+   * The rows, for `list(rows, RowView)`.
    *
    * One identity per structural change rather than per render: `list()`'s `each` is what
    * RMD020 compares, and a rebuilt array loses every row's identity — the exact failure

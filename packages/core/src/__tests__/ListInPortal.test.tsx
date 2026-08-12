@@ -62,13 +62,10 @@ describe("list() inside a hook's children", () => {
       portal = this.use(Portal, () => ({
         children: (
           <ul>
-            {list({
-              each: this.rows,
-              render: (r: Row) => {
+            {list(this.rows, (r: Row) => {
                 mapperCalls++;
                 return <li>{r.t}</li>;
-              },
-            })}
+              })}
           </ul>
         ),
         target,
@@ -90,13 +87,10 @@ describe("list() inside a hook's children", () => {
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       portal = this.use(Portal, () => ({
-        children: list({
-          each: this.rows,
-          render: (r: Row) => {
+        children: list(this.rows, (r: Row) => {
             mapperCalls++;
             return <li>{r.t}</li>;
-          },
-        }),
+          }),
         target,
       }));
       render() {
@@ -119,10 +113,7 @@ describe("list() inside a hook's children", () => {
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       portal = this.use(Portal, () => ({
-        children: list({
-          each: this.rows,
-          render: (r: Row) => <li>{r.t}</li>,
-        }),
+        children: list(this.rows, (r: Row) => <li>{r.t}</li>),
         target,
       }));
       render() {
@@ -153,13 +144,10 @@ describe("list() inside a hook's children", () => {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       @state tick = 0;
       portal = this.use(Portal, () => ({
-        children: list({
-          each: this.rows,
-          render: (r: Row) => {
+        children: list(this.rows, (r: Row) => {
             mapperCalls++;
             return <li>{r.t}</li>;
-          },
-        }),
+          }),
         target,
       }));
       render() {
@@ -192,17 +180,14 @@ describe("list() inside a hook's children", () => {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       @state highlight = "";
       portal = this.use(Portal, () => ({
-        children: list({
-          each: this.rows,
-          render: (r: Row) => {
+        children: list(this.rows, (r: Row) => {
             mapperCalls++;
             // Only row "b" ever READS the signal — the ternary short-circuits
             // for the others, so only its scope subscribes. A test where every
             // mapper evaluates `this.highlight === r.t` would subscribe them all
             // and prove nothing about which row was rebuilt.
             return <li>{r.t === "b" ? this.highlight : ""}</li>;
-          },
-        }),
+          }),
         target,
       }));
       render() {
@@ -238,11 +223,11 @@ describe("list() inside a hook's children", () => {
       @state left: Row[] = [{ t: "l1" }, { t: "l2" }];
       @state right: Row[] = [{ t: "r1" }];
       a = this.use(Portal, () => ({
-        children: list({ each: this.left, render: (r: Row) => <li>{r.t}</li> }),
+        children: list(this.left, (r: Row) => <li>{r.t}</li>),
         target,
       }));
       b = this.use(Portal, () => ({
-        children: list({ each: this.right, render: (r: Row) => <li>{r.t}</li> }),
+        children: list(this.right, (r: Row) => <li>{r.t}</li>),
         target,
       }));
       render() {

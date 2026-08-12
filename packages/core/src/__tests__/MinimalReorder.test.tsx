@@ -40,7 +40,7 @@ function countMoves(parent: Element) {
 class List extends Component {
   @state rows: Row[] = Array.from({ length: SIZE }, (_, i) => ({ id: i }));
   render() {
-    return <ul>{list({ each: this.rows, render: (row: Row) => <Item row={row} /> })}</ul>;
+    return <ul>{list(this.rows, (row: Row) => <Item row={row} />)}</ul>;
   }
 }
 

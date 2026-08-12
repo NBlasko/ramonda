@@ -60,7 +60,7 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
       render() {
-        return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+        return <ul>{list(this.tasks, Row)}</ul>;
       }
     }
 
@@ -75,10 +75,7 @@ describe("list() renders", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.tasks,
-              render: (task: Task) => <li>{task.title}</li>,
-            })}
+            {list(this.tasks, (task: Task) => <li>{task.title}</li>)}
           </ul>
         );
       }
@@ -93,7 +90,7 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [];
       render() {
-        return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+        return <ul>{list(this.tasks, Row)}</ul>;
       }
     }
 
@@ -107,7 +104,7 @@ describe("identity — the whole reason For exists, kept", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+      return <ul>{list(this.tasks, Row)}</ul>;
     }
   }
 
@@ -157,7 +154,7 @@ describe("identity — the whole reason For exists, kept", () => {
     class Twice extends Component {
       @state tasks: Task[] = [tag, tag];
       render() {
-        return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+        return <ul>{list(this.tasks, Row)}</ul>;
       }
     }
 
@@ -173,7 +170,7 @@ describe("identity — the whole reason For exists, kept", () => {
     expect(texts(container)).toEqual(["tag:3", "tag:0"]);
   });
 
-  test("`key` overrides identity for objects re-created per fetch", async () => {
+  test("objects re-created per fetch keep their rows", async () => {
     @Host("div")
     class Refetching extends Component {
       @state tasks = [
@@ -183,11 +180,7 @@ describe("identity — the whole reason For exists, kept", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.tasks,
-              key: (task: { id: string; title: string }) => task.id,
-              render: (task: { id: string; title: string }) => <li>{task.title}</li>,
-            })}
+            {list(this.tasks, (task: { id: string; title: string }) => <li>{task.title}</li>)}
           </ul>
         );
       }
@@ -204,42 +197,11 @@ describe("identity — the whole reason For exists, kept", () => {
     await settle();
 
     expect(texts(container)).toEqual(["a", "b*"]);
-    // Without `key` these would be unrecognised items and every node rebuilt.
+    // These are unrecognised objects; identity is carried across, so the nodes
+    // are the nodes they were. This is what `key` used to be for.
     expect([...container.querySelectorAll("li")].filter((n) => before.includes(n)).length).toBe(2);
   });
 
-  test("a colliding `key` callback is reported", async () => {
-    // `key` is the ONE place a mistake is still possible — minted identity
-    // cannot collide, a hand-written one can — so it must not pass unnoticed.
-    const codes: string[] = [];
-    const messages: string[] = [];
-    const handler = (event: Event) => {
-      const message = (event as CustomEvent).detail?.message as string;
-      const code = message?.match(/^\[(RMD\d+)\]/)?.[1];
-      if (code) {
-        codes.push(code);
-        messages.push(message);
-      }
-    };
-    window.addEventListener("ramonda:dev-log", handler);
-
-    try {
-      @Host("div")
-      class Bad extends Component {
-        @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
-        render() {
-          return <ul>{list({ each: this.tasks, key: () => "same", as: Row })}</ul>;
-        }
-      }
-
-      await getDOM<Bad>(<Bad />);
-
-      expect(codes).toContain("RMD013");
-      expect(messages.join("\n")).toContain("more than one item");
-    } finally {
-      window.removeEventListener("ramonda:dev-log", handler);
-    }
-  });
 
   test("a nested list() returned from `render` is named, not thrown on", async () => {
     // The mistake the docs made: a list of pages, each page a list of rows, written by
@@ -259,12 +221,12 @@ describe("identity — the whole reason For exists, kept", () => {
       class Pages extends Component {
         @state pages: Task[][] = [[{ title: "a" }], [{ title: "b" }]];
         render() {
-          return <ul>{list({ each: this.pages, render: this.page })}</ul>;
+          return <ul>{list(this.pages, this.page)}</ul>;
         }
         // Cast: this is exactly what the types reject, and the point is what the
         // RUNTIME does with it — a JavaScript app has no such guard.
         private page(rows: Task[]): VNode {
-          return list({ each: rows, as: Row }) as unknown as VNode;
+          return list(rows, Row) as unknown as VNode;
         }
       }
 
@@ -292,13 +254,10 @@ describe("the case list() was written for", () => {
         if (!this.open) return <p>closed</p>;
         return (
           <ul>
-            {list({
-              each: this.tasks,
-              render: (task: Task) => {
+            {list(this.tasks, (task: Task) => {
                 mapperRuns++;
                 return <li>{task.title}</li>;
-              },
-            })}
+              })}
           </ul>
         );
       }
@@ -325,8 +284,8 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <div>
-            <ul id="todo">{list({ each: this.todo, as: Row })}</ul>
-            <ul id="done">{list({ each: this.done, as: Row })}</ul>
+            <ul id="todo">{list(this.todo, Row)}</ul>
+            <ul id="done">{list(this.done, Row)}</ul>
           </div>
         );
       }
@@ -357,7 +316,7 @@ describe("the case list() was written for", () => {
         return (
           <ul>
             <li id="head">HEAD</li>
-            {list({ each: this.tasks, as: Row })}
+            {list(this.tasks, Row)}
             <li id="foot">FOOT</li>
           </ul>
         );
@@ -390,8 +349,8 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <ul>
-            {this.showFirst ? list({ each: this.a, as: Row }) : null}
-            {list({ each: this.b, as: Row })}
+            {this.showFirst ? list(this.a, Row) : null}
+            {list(this.b, Row)}
           </ul>
         );
       }
@@ -427,10 +386,7 @@ describe("nesting and composition", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.props.item.items,
-              render: (task: Task) => <li>{task.title}</li>,
-            })}
+            {list(this.props.item.items, (task: Task) => <li>{task.title}</li>)}
           </ul>
         );
       }
@@ -443,7 +399,7 @@ describe("nesting and composition", () => {
         { name: "g2", items: [{ title: "c" }] },
       ];
       render() {
-        return <ul>{list({ each: this.groups, as: GroupRow })}</ul>;
+        return <ul>{list(this.groups, GroupRow)}</ul>;
       }
     }
 
@@ -464,8 +420,8 @@ describe("nesting and composition", () => {
       render() {
         return (
           <div>
-            <ul id="left">{list({ each: this.left, as: Row })}</ul>
-            <ul id="right">{list({ each: this.right, as: Row })}</ul>
+            <ul id="left">{list(this.left, Row)}</ul>
+            <ul id="right">{list(this.right, Row)}</ul>
           </div>
         );
       }
@@ -497,13 +453,10 @@ describe("the whole-list skip still applies", () => {
           <div>
             <p>{this.unrelated}</p>
             <ul>
-              {list({
-                each: this.tasks,
-                render: (task: Task) => {
+              {list(this.tasks, (task: Task) => {
                   mapperRuns++;
                   return <li>{task.title}</li>;
-                },
-              })}
+                })}
             </ul>
           </div>
         );
@@ -527,7 +480,7 @@ describe("server rendering and hydration", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+      return <ul>{list(this.tasks, Row)}</ul>;
     }
   }
 
@@ -612,15 +565,7 @@ describe("a two-dimensional list", () => {
     render() {
       return (
         <tbody>
-          {list({
-            each: this.rows,
-            // `key` on the OUTER list, and in two dimensions it is close to
-            // mandatory — see "the trap" below. Changing anything inside a row
-            // means producing a new row OBJECT, which reference identity reads
-            // as a different row.
-            key: (row: GridRow) => row.name,
-            render: (row: GridRow) => <tr>{list({ each: row.cells, as: CellView })}</tr>,
-          })}
+          {list(this.rows, (row: GridRow) => <tr>{list(row.cells, CellView)}</tr>)}
         </tbody>
       );
     }
@@ -666,48 +611,7 @@ describe("a two-dimensional list", () => {
     expect(rowsAfter.filter((tr) => rowsBefore.includes(tr)).length).toBe(2);
   });
 
-  test("the trap: without `key`, editing a row's cells rebuilds the row", async () => {
-    // Worth pinning, because it is the first thing anyone hits in 2D and the
-    // behaviour is correct rather than buggy. An immutable update to the inner
-    // array necessarily produces a NEW outer object, and the outer list
-    // identifies rows by reference — so it is a different row, and its whole
-    // subtree goes with it.
-    @Host("table")
-    class Unkeyed extends Component {
-      @state rows: GridRow[] = [{ name: "r1", cells: [{ label: "a" }, { label: "b" }] }];
-      render() {
-        return (
-          <tbody>
-            {list({
-              each: this.rows,
-              render: (row: GridRow) => <tr>{list({ each: row.cells, as: CellView })}</tr>,
-            })}
-          </tbody>
-        );
-      }
-    }
-
-    const { container, instance, settle } = await getDOM<Unkeyed>(<Unkeyed />);
-    const cell = (
-      container.querySelectorAll("td")[0] as unknown as {
-        _componentInstance: CellView;
-      }
-    )._componentInstance;
-    cell.clicks = 3;
-    await settle();
-    expect(grid(container)[0]).toEqual(["a:3", "b:0"]);
-
-    const first = instance.rows[0];
-    instance.rows = [{ ...first, cells: [...first.cells].reverse() }];
-    await settle();
-
-    // The cells moved, but the row is a new object, so the row was rebuilt and
-    // the cell state went with the old one. Add `key: (row) => row.name` and the
-    // next test shows what happens instead.
-    expect(grid(container)[0]).toEqual(["b:0", "a:0"]);
-  });
-
-  test("with `key`, reordering CELLS moves them with their state", async () => {
+  test("reordering CELLS moves them with their state", async () => {
     const { container, instance, settle } = await getDOM<Grid>(<Grid />);
 
     const second = (
@@ -771,10 +675,7 @@ describe("a two-dimensional list", () => {
       render() {
         return (
           <tbody>
-            {list({
-              each: this.rows,
-              render: (cells: Cell[]) => <tr>{list({ each: cells, as: CellView })}</tr>,
-            })}
+            {list(this.rows, (cells: Cell[]) => <tr>{list(cells, CellView)}</tr>)}
           </tbody>
         );
       }
@@ -848,7 +749,7 @@ describe("two dimensions without keys", () => {
 
     render() {
       // A list returned STRAIGHT from render(), with no element around it.
-      return list({ each: this.cells, as: Cell2View });
+      return list(this.cells, Cell2View);
     }
   }
 
@@ -859,7 +760,7 @@ describe("two dimensions without keys", () => {
       { name: "r2", cells: [{ label: "c" }] },
     ];
     render() {
-      return <tbody>{list({ each: this.rows, as: OwningRow })}</tbody>;
+      return <tbody>{list(this.rows, OwningRow)}</tbody>;
     }
   }
 
@@ -932,7 +833,7 @@ describe("the cost of the key-free 2D shape", () => {
    * derived-state-from-props trade, and it has to be stated: the field is seeded
    * ONCE, at construction, so the parent can no longer push anything into it.
    * Measured below: the parent adds a cell and the row does not see it, even
-   * though `key` kept the row alive.
+   * though the row itself kept its identity.
    *
    * So "no keys in 2D" is an architectural choice, not a trick. It is right when
    * a row genuinely owns its rows-worth of data and edits are local. It is wrong
@@ -942,7 +843,7 @@ describe("the cost of the key-free 2D shape", () => {
   class OwningRow3 extends Component<{ item: Row3 }> {
     @state cells: Cell3[] = this.props.item.cells;
     render() {
-      return list({ each: this.cells, as: Cell3View });
+      return list(this.cells, Cell3View);
     }
   }
 
@@ -950,7 +851,7 @@ describe("the cost of the key-free 2D shape", () => {
   @Host("tr")
   class PropsRow3 extends Component<{ item: Row3 }> {
     render() {
-      return list({ each: this.props.item.cells, as: Cell3View });
+      return list(this.props.item.cells, Cell3View);
     }
   }
 
@@ -961,11 +862,7 @@ describe("the cost of the key-free 2D shape", () => {
       render() {
         return (
           <tbody>
-            {list({
-              each: this.rows,
-              key: (row: Row3) => row.name,
-              as: RowComp as typeof OwningRow3,
-            })}
+            {list(this.rows, RowComp as typeof OwningRow3)}
           </tbody>
         );
       }
@@ -1024,7 +921,7 @@ describe("what NO key costs in two dimensions", () => {
     }
   }
 
-  /** No `key` anywhere — the question is what that costs, not whether it works. */
+  /** The two-dimensional shape, with nothing declared about identity. */
   @Host("table")
   class Unkeyed extends Component {
     @state rows: Row4[] = [
@@ -1034,10 +931,7 @@ describe("what NO key costs in two dimensions", () => {
     render() {
       return (
         <tbody>
-          {list({
-            each: this.rows,
-            render: (row: Row4) => <tr>{list({ each: row.cells, as: Cell4View })}</tr>,
-          })}
+          {list(this.rows, (row: Row4) => <tr>{list(row.cells, Cell4View)}</tr>)}
         </tbody>
       );
     }

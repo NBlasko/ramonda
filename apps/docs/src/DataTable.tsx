@@ -57,9 +57,9 @@ export class DataTable extends Component<DataTableProps> {
     return (
       <table>
         <thead>
-          <tr>{list({ each: this.props.columns, render: headerCell })}</tr>
+          <tr>{list(this.props.columns, headerCell)}</tr>
         </thead>
-        <tbody>{list({ each: this.items, as: DataTableRow })}</tbody>
+        <tbody>{list(this.items, DataTableRow)}</tbody>
       </table>
     );
   }
@@ -69,7 +69,7 @@ export class DataTable extends Component<DataTableProps> {
 @Host("tr")
 class DataTableRow extends Component<{ item: Row }> {
   render(): RamondaNode {
-    return list({ each: this.props.item.cells, render: this.cell });
+    return list(this.props.item.cells, this.cell);
   }
 
   private cell(cell: Cell, index: number): VNode {

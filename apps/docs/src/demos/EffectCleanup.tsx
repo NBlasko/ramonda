@@ -66,8 +66,8 @@ export class EffectCleanup extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">{list({ each: CHANNELS, render: this.renderChannel })}</p>
-        <ul className="demo-log">{list({ each: this.log, render: this.renderLine })}</ul>
+        <p className="demo-row">{list(CHANNELS, this.renderChannel)}</p>
+        <ul className="demo-log">{list(this.log, this.renderLine)}</ul>
       </div>
     );
   }

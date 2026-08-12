@@ -71,7 +71,7 @@ class Page extends Component {
     return (
       <form>
         <EmailField of={this.f.fields.email} />
-        {list({ each: this.f.fields.rows.$.rows, key: (row) => row.id, as: Line })}
+        {list(this.f.fields.rows.$.rows, Line)}
         <SaveButton />
       </form>
     );

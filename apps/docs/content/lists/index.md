@@ -11,16 +11,16 @@ To draw a list from an array — rows of tasks, a set of cards — use `list()`:
 
 ```tsx
 render() {
-  return <ul>{list({ each: this.tasks, as: TaskRow })}</ul>;
+  return <ul>{list(this.tasks, TaskRow)}</ul>;
 }
 ```
 
 ```demo:ListDemo
 ```
 
-`each` is the array; `as` is the component to render for each item (it receives the
-item as its `item` prop). Click a few counters, then reverse the list — each count
-stays with its task.
+Two arguments: the array, and the one way to turn an item into markup — a component
+(it receives the item as its `item` prop) or a function. Click a few counters, then
+reverse the list — each count stays with its task.
 
 ## No keys to write
 
@@ -40,10 +40,10 @@ A component is one element, but a list drops several siblings into the parent �
 sit anywhere an expression can:
 
 ```tsx
-{this.open ? list({ each: this.results, as: ResultRow }) : null}
+{this.open ? list(this.results, ResultRow) : null}
 
-<ul>{list({ each: this.todo, as: TaskRow })}</ul>
-<ul>{list({ each: this.done, as: TaskRow })}</ul>
+<ul>{list(this.todo, TaskRow)}</ul>
+<ul>{list(this.done, TaskRow)}</ul>
 ```
 
 `each` is read when the list is built, so it is always the current array. **It accepts
@@ -51,19 +51,17 @@ sit anywhere an expression can:
 arrived yet looks like:
 
 ```tsx
-list({ each: this.query.data, render: this.renderRow })   // no `?? []`
+list(this.query.data, this.renderRow)   // no `?? []`
 ```
 
-That is not politeness — `each: this.query.data ?? []` builds a fresh empty array on every
-render, and a changed `each` costs the list its item scopes. RMD020 reports it.
+That is not politeness — `this.query.data ?? []` builds a fresh empty array on every
+render, and a changed array costs the list its item scopes. RMD020 reports it.
 
 ## Lists of primitives, and repeated values
 
 `["a", "a", "b"]` is fine — repeated values are told apart by which occurrence they
-are, so each gets its own stable row. You don't need (and shouldn't add) a key for a
-`string[]` or `number[]`: two equal strings would produce the same key, which is
-exactly the collision `list()` exists to avoid. (If you genuinely need to tell two
-apart, they aren't really interchangeable values — model them as objects with an id.)
+are, so each gets its own stable row. (If you genuinely need to tell two apart, they
+aren't really interchangeable values — model them as objects with an id.)
 
 ## Refetched data, and objects that are re-created
 
@@ -91,22 +89,21 @@ Rows that are **equal by content** are matched first — those are the anchors.
 Whatever sits between two anchors in the old array is then paired with whatever
 sits between the same two anchors in the new one, by how much the two still have
 in common. That is what carries a row that *changed*: its unchanged neighbours
-place it.
+place it, and what it still shares with them decides which one it is.
 
 No field is special. An `id` counts for exactly as much as a `title`, because a
 framework cannot know which of your fields is an identity — you may well build one
 array from another and repeat an id, and a rule that trusted `id` would quietly
-merge two rows.
+merge two rows. The one exception cuts the other way: a field that merely restates
+the row's position (an `index`) is ignored, because position is not identity and
+counting it would let it outvote a field that is.
 
 ### What is deliberately not carried
 
-**A list replaced with different data.** Two arrays with no row in common have no
-anchors, so nothing is paired and every row is genuinely new — page 2 of a table
-never inherits page 1's rows. This is the failure that makes position-based
-matching unsafe, and it is decided by evidence rather than by a ratio.
-
-**A refetch in which every single row changed.** No anchors again, so the rows are
-rebuilt. Nothing in the data distinguishes that from a replacement.
+**A list replaced with different data.** A pair is only made when two rows still
+have a field in common, so page 2 of a table shares nothing with page 1 and
+inherits none of it. That is the guard, and it is per row — not a ratio, not a
+threshold.
 
 **A copy.** `{ ...row }` gives you a new row, not a second claim on an old one.
 Identity is a non-enumerable symbol, so a spread, a `JSON.stringify` and every
@@ -115,7 +112,7 @@ equality check you write are all blind to it.
 **A frozen row.** `Object.freeze` leaves nothing to write identity onto, so those
 rows fall back to matching by reference.
 
-You do not need `key` for any of this.
+There is no `key` option to reach for. There is nothing to write.
 
 ## What about `.map()`?
 
@@ -157,7 +154,7 @@ class Panel extends Component {
     return <button type="button" onClick={this.select(name)}>{name}</button>;
   }
   render() {
-    return <nav>{list({ each: TABS, render: this.renderTab })}</nav>;
+    return <nav>{list(TABS, this.renderTab)}</nav>;
   }
 }
 ```
@@ -167,4 +164,4 @@ value every render, and identity is minted from the items.
 
 ## Next
 
-- [`as` and `render`](/lists/as-and-render) — two ways to turn an item into markup.
+- [A component or a function](/lists/as-and-render) — two ways to turn an item into markup.
