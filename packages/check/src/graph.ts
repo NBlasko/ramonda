@@ -81,7 +81,7 @@ export interface GraphEdge {
   /** Absent on an `unresolved` edge, which is the whole point of that kind. */
   to?: string;
   kind: "renders" | "provides" | "consumes" | "uses" | "calls" | "unresolved";
-  via: "tag" | "children" | "as" | "route" | "lazy" | "slot" | "bootstrap" | "use" | "call";
+  via: "tag" | "children" | "route" | "lazy" | "slot" | "bootstrap" | "use" | "call";
   at: Where;
   /** Why nothing could be named, on an `unresolved` edge. */
   why?: string;

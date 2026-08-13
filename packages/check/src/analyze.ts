@@ -1284,17 +1284,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
       collectCall(node, self);
 
-      // list({ as: Row }) — items render where the list sits, so the owner is this component.
-      if (ts.isCallExpression(node) && calleeName(node) === "list") {
-        for (const { target, site } of componentsInListOptions(node)) {
-          if (target) {
-            mount(self, target, "as", site);
-          } else {
-            unresolvedEdge(self.id, "as", site, whyUnresolved(site, "the list's `as`"));
-          }
-        }
-      }
-
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
       // component that renders it. The distinction matters: the outlet is what publishes the
       // matched params, so hanging the views off this component would step over that provider.
@@ -1531,19 +1520,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   function bindingSymbol(element: ts.ArrayBindingElement | undefined): ts.Symbol | undefined {
     if (!element || !ts.isBindingElement(element) || !ts.isIdentifier(element.name)) return undefined;
     return checker.getSymbolAtLocation(element.name);
-  }
-
-  /** Each site keeps its own node, so an `as` that names nothing is a recorded hole. */
-  function componentsInListOptions(call: ts.CallExpression): Reference[] {
-    const options = call.arguments[0];
-    if (!options || !ts.isObjectLiteralExpression(options)) return [];
-    const found: Reference[] = [];
-    for (const prop of options.properties) {
-      if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-      if (prop.name.text !== "as") continue;
-      found.push({ target: componentAt(prop.initializer), site: prop.initializer });
-    }
-    return found;
   }
 
   /**
@@ -1876,8 +1852,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         return `import { TheComponent } from "./the-module";\n<TheComponent />\n${record}`;
       case "lazy":
         return `lazy={() => import("./the-module")} namedExport="TheComponent"\n${record}`;
-      case "as":
-        return `list({ each: rows, as: TheRow })\n${record}`;
       case "route":
         return `const routes = createRoutes({ "/": <TheView /> });\n<RouteOutlet routes={routes} />\n${record}`;
       case "bootstrap":

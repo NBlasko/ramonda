@@ -264,8 +264,9 @@ It holds facts, not conclusions — nodes and edges, each edge with the place it
 ```
 
 `kind` is what a walk reads — `renders`, `provides`, `consumes`, `uses`, `calls`. `via` is how it was
-written — a JSX tag, children of a wrapper, `list({ as })`, a route table, `AsyncLoad`'s `lazy`,
-`bootstrap`. A component
+written — a JSX tag, children of a wrapper, a route table, `AsyncLoad`'s `lazy`, `bootstrap`. A
+list's rows need nothing of their own: the row's tag is written in the component the list sits in,
+which is where it mounts. A component
 is identified by its **declaration**, `<package>/<file>#<Name>`, because a name is not an identity:
 one app in this repository declares `class Page` seventy-five times.
 

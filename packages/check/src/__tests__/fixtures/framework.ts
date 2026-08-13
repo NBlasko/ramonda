@@ -23,7 +23,7 @@ export interface RamondaNode {
 export declare function createContext<T>(d: T, o?: { label?: string }): [unknown, unknown];
 export declare function createRoutes(table: unknown): unknown;
 export declare function bootstrap(vnode: unknown, el: unknown): void;
-export declare function list(options: { each: unknown[]; as?: unknown }): unknown;
+export declare function list<T>(each: T[], render: (item: T) => unknown): unknown;
 export declare function catchError(value: unknown, context: unknown): void;
 export declare function Host(tag: string, props?: unknown): (ctor: unknown) => void;
 export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unknown) => void;

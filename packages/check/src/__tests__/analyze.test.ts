@@ -866,3 +866,24 @@ describe("a component that cannot be followed", () => {
     expect(run("slots").graph.edges.some((e) => e.via === "slot")).toBe(true);
   });
 });
+
+/**
+ * A row's component, written in the callback `list()` takes.
+ *
+ * `list({ each, as })` is gone from core — a list mounts a component through the callback now, and
+ * the tag is written in the component the list sits in, which is where the row mounts. The
+ * ordinary JSX walk reads it, and the `as` machinery that used to read the options object is gone
+ * with the option.
+ */
+describe("a list's rows", () => {
+  test("the row's tag belongs to the component the list sits in", () => {
+    expect(edgesOf("rows")).toContain("app.tsx#Table -> app.tsx#Cell (renders/tag)");
+  });
+
+  test("and a consumer in a row is judged like any other", () => {
+    const { issues } = run("rows");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].consumer).toBe("Cell");
+    expect(issues[0].path).toEqual(["App", "Table", "Cell"]);
+  });
+});
