@@ -24,6 +24,12 @@ declare global {
   const state: BlogState;
   /** The reader's own diagnostics collector — a devtools panel, a test, a log shipper. */
   const myCollector: { alert(record: unknown): void };
+  /** A different value, for the `set` that replaces rather than corrects. */
+  const other: any;
+  /** The same value rebuilt — what `keepSymbols` is told about. */
+  const rebuilt: any;
+  /** The reader's OWN hidden symbol, the one they ask to keep by name. */
+  const MINE: unique symbol;
   /** What an update returns — the same shape, with the untouched parts identical. */
   const next: BlogState;
 }

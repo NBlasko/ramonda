@@ -52,7 +52,7 @@ class Sidebar extends Component<SidebarProps> {
     return (
       <div className="sidebar-group">
         {section ? <h4>{section}</h4> : null}
-        <ul>{list({ each: items, render: this.renderPage })}</ul>
+        <ul>{list(items, this.renderPage)}</ul>
       </div>
     );
   }
@@ -63,7 +63,7 @@ class Sidebar extends Component<SidebarProps> {
         ✕
       </button>,
       <div className="sidebar-inner" data-pagefind-ignore onClick={this.onClick}>
-        {list({ each: grouped, render: this.renderGroup })}
+        {list(grouped, this.renderGroup)}
       </div>,
     ] as RamondaNode;
   }

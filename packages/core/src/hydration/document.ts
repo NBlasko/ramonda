@@ -1,4 +1,5 @@
 import type { RenderedPage } from "./ssr";
+import { PORTAL_TARGET_ATTR } from "../base/portalTarget";
 
 export interface DocumentOptions {
   /**
@@ -74,10 +75,32 @@ export function renderDocument(page: RenderedPage, options: DocumentOptions = {}
     "</head>" +
     `<body${bodyClass ? ` class="${escapeAttribute(bodyClass)}"` : ""}>` +
     `<div id="${escapeAttribute(rootId)}">${page.body}</div>` +
+    portalContainers(page.portals) +
     scriptTags +
     "</body>" +
     "</html>"
   );
+}
+
+/**
+ * A container per named portal target, after the app root.
+ *
+ * After it on purpose: a modal aims at a container outside the app precisely to
+ * escape a stacking context or an `overflow: hidden`, and emitting it inside the
+ * root would put it back in the one it is trying to leave.
+ *
+ * Emitted even when the block is empty of elements, because the block's anchor
+ * comments are what the client hydrates against — a container that arrives
+ * without them makes the portal build a second copy of what the server wrote.
+ */
+function portalContainers(portals: Record<string, string> | undefined): string {
+  if (portals === undefined) return "";
+
+  let out = "";
+  for (const name in portals) {
+    out += `<div ${PORTAL_TARGET_ATTR}="${escapeAttribute(name)}">${portals[name]}</div>`;
+  }
+  return out;
 }
 
 /**

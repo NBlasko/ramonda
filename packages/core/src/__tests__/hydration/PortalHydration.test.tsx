@@ -1,11 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host } from "../../base/decorators";
+import { Host, state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
 import { PORTAL_ATTR } from "../../helpers/constants";
+import { isOpenAnchor, isCloseAnchor } from "../../core/childrenRegion";
 
 /**
  * A `Portal` across the server→client boundary.
@@ -25,10 +26,29 @@ function headPortalTags(): Element[] {
   return [...document.head.querySelectorAll(`[${PORTAL_ATTR}]`)];
 }
 
+/** The blocks a `Portal` wrote, found by the anchor comments that delimit them. */
+function headPortalBlocks(): Comment[] {
+  return [...document.head.childNodes].filter(isOpenAnchor) as Comment[];
+}
+
+/**
+ * Everything a portal left in the head, so one test cannot leak into the next.
+ *
+ * Every anchor comment, matched or not — this is cleanup, and an unmatched one is
+ * leftovers rather than a block to respect. `collectHead` is the one that has to
+ * tell them apart, and does; see the test at the bottom for why.
+ */
+function clearPortalBlocks(): void {
+  for (const node of [...document.head.childNodes]) {
+    if (isOpenAnchor(node) || isCloseAnchor(node)) node.remove();
+  }
+}
+
 beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
 afterEach(() => {
   vi.restoreAllMocks();
   for (const tag of headPortalTags()) tag.remove();
+  clearPortalBlocks();
   document.title = "";
 });
 
@@ -53,6 +73,43 @@ describe("Portal SSR", () => {
     expect(page.head).toContain('name="p"');
     expect(page.head).toContain('content="v"');
   });
+
+  test("a portalled subtree that re-renders on the server still reaches the page", async () => {
+    // The portal used to mark its own tags with an ATTRIBUTE, and `collectHead`
+    // emitted whatever carried it. An attribute cannot survive on a node the
+    // reconciler owns: the attribute diff reads a node's current attributes as
+    // the previous set and removes whatever the next vnode does not have. So the
+    // first re-render of anything in the block erased the marker, and the tag
+    // left the page silently — no error, no diagnostic, just a head with nothing
+    // in it.
+    //
+    // Any state write does it. Here a server-only `@created`, which is the
+    // ordinary way to fill a tag from data the server has.
+    class Badge extends Component {
+      @state n = 0;
+
+      @created({ env: "server" })
+      fill(): void {
+        this.n = 7;
+      }
+
+      render() {
+        return <meta name="badge" content={String(this.n)} />;
+      }
+    }
+
+    class Page extends Component {
+      portal = this.use(Portal, { children: <Badge />, target: document.head });
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+
+    expect(page.head).toContain('name="badge"');
+    expect(page.head).toContain('content="7"');
+  });
 });
 
 describe("Portal hydration", () => {
@@ -75,7 +132,13 @@ describe("Portal hydration", () => {
     // 2. Reconstruct what the browser receives: the head tags in <head>, the body
     //    in a container to hydrate.
     document.head.insertAdjacentHTML("beforeend", page.head);
-    expect(headPortalTags()).toHaveLength(1);
+    // The server's block, delimited by its region's anchors — not a marker
+    // ATTRIBUTE on the tag, which is what this used to look for. An attribute on
+    // a node the reconciler owns is erased by the next attribute pass, so a
+    // portalled subtree that re-rendered on the server lost it and the tag never
+    // reached the page at all.
+    expect(headPortalBlocks()).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="p"]')).toHaveLength(1);
 
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -237,5 +300,111 @@ describe("Portal hydration", () => {
 
     unmountChildrenNodes([container as unknown as never]);
     container.remove();
+  });
+});
+
+describe("Portal hydration restores components", () => {
+  test("a component inside a portal keeps the state the server gave it", async () => {
+    // The portal's block is in a target the main hydration walk never visits, so
+    // adopting it used to mean "reuse the element" and nothing more: the node
+    // carried no `_componentInstance`, so the reconcile CREATED a component
+    // against it. A fresh instance means the server's `@created` never ran here
+    // and its state is gone — the tag stays, its contents revert.
+    //
+    // `n` is set by a SERVER-only create, so it can only reach the client through
+    // the blob. Reading 0 back means the component was rebuilt, not hydrated.
+    let clientCreates = 0;
+
+    class Badge extends Component {
+      @state n = 0;
+
+      @created({ env: "server" })
+      fill(): void {
+        this.n = 7;
+      }
+
+      @created({ env: "client" })
+      count(): void {
+        clientCreates++;
+      }
+
+      render() {
+        return <meta name="badge" content={String(this.n)} />;
+      }
+    }
+
+    class Page extends Component {
+      portal = this.use(Portal, {
+        children: <Badge />,
+        target: document.head,
+      });
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    expect(page.head).toContain('content="7"');
+
+    document.head.insertAdjacentHTML("beforeend", page.head);
+    const serverBadge = document.head.querySelector('meta[name="badge"]');
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // Adopted, not replaced.
+    expect(document.head.querySelectorAll('meta[name="badge"]')).toHaveLength(1);
+    expect(document.head.querySelector('meta[name="badge"]')).toBe(serverBadge);
+    // Hydrated: the server's state survived, and the client lifecycle ran once.
+    expect(document.head.querySelector('meta[name="badge"]')?.getAttribute("content")).toBe("7");
+    expect(clientCreates).toBe(1);
+
+    unmountChildrenNodes([container as unknown as never]);
+    container.remove();
+  });
+});
+
+describe("a comment that only looks like an anchor", () => {
+  test("does not swallow the shell's head, or hide a real block", async () => {
+    // A portal's block is delimited by comments, and a shell is entitled to have
+    // one that reads the same way. Two ways of pairing them were wrong, and both
+    // were measured rather than imagined:
+    //
+    // Counting a running depth — an open that never closes swallowed everything
+    // after it, so `resetHead` DELETED the shell's own tags.
+    //
+    // Pairing with "the next close" — the stray comment took a real block's
+    // closing anchor, so the block in between was collected as part of it. And
+    // giving up at the first unmatched open hid every real block after it.
+    //
+    // So an anchor is matched to ITS close, by id, and an unmatched one is
+    // ignored while the scan carries on.
+    document.head.insertAdjacentHTML("beforeend", '<!--r999--><meta name="shell" content="stays">');
+
+    class Page extends Component {
+      portal = this.use(Portal, {
+        children: <meta name="mine" content="x" />,
+        target: document.head,
+      });
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+
+    // The shell's tag is untouched, and never claimed as part of a block …
+    expect(document.head.innerHTML).toContain('name="shell"');
+    expect(page.head).not.toContain('name="shell"');
+    // … while the portal's real block is still found and collected.
+    expect(page.head).toContain('name="mine"');
+
+    for (const node of [...document.head.childNodes]) {
+      if (node.nodeType === 8 || (node as Element).getAttribute?.("name") === "shell") node.remove();
+    }
   });
 });

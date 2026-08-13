@@ -20,7 +20,7 @@ import type { FetchContext, InfiniteData, InfiniteQueryProps, QueryKey, QuerySta
  * // `any` until it is annotated. Naming `Page` once types both callbacks.
  *
  * // render
- * {list({ each: this.feed.pages, as: PostList })}
+ * {list(this.feed.pages, PostList)}
  * <button type="button" onClick={this.feed.fetchNextPage} disabled={!this.feed.hasNextPage}>more</button>
  * ```
  *

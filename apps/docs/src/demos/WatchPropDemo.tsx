@@ -61,7 +61,7 @@ export class WatchPropDemo extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">{list({ each: USERS, render: this.renderChoice })}</p>
+        <p className="demo-row">{list(USERS, this.renderChoice)}</p>
         <Profile userId={this.userId} />
       </div>
     );

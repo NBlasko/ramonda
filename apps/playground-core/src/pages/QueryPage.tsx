@@ -223,7 +223,7 @@ class TodoPanel extends Component {
       <div className="panel">
         <p className="label">optimistic write + rollback</p>
         {/* `each` takes null/undefined, so there is no `?? []` rebuilt every render. */}
-        <ul>{list({ each: this.list.data, render: this.renderTodo })}</ul>
+        <ul>{list(this.list.data, this.renderTodo)}</ul>
         <div className="row">
           <input value={this.draft} placeholder="new todo" onInput={this.typed} />
           <button disabled={this.add.isPending} onClick={this.submit}>
@@ -326,7 +326,7 @@ export class QueryPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>1 · cache, dedup, and a key that moves</h3>
-            {list({ each: PEOPLE_IDS, render: this.renderPerson })}
+            {list(PEOPLE_IDS, this.renderPerson)}
             <button onClick={this.toggleSecond}>{this.second ? "one observer" : "two observers"}</button>
           </div>
           <p className="muted small">
@@ -389,7 +389,7 @@ export class QueryPage extends Component {
                 <th>updated</th>
               </tr>
             </thead>
-            <tbody>{list({ each: entries, render: this.renderCacheRow })}</tbody>
+            <tbody>{list(entries, this.renderCacheRow)}</tbody>
           </table>
           <p className="muted small">
             Rendered from <code>client.all()</code>, so it is one render behind whatever just happened — it is a

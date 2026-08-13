@@ -39,22 +39,20 @@ cost every row its `list()` key.
 
 ```tsx
 <ul>
-  {list({
-    each: f.tags.$.rows,
-    key: (row) => row.id,
-    render: (row) => (
-      <li>
-        <input {...row.field.$.bind} />
-        {row.field.$.error ? <em>{row.field.$.error}</em> : null}
-      </li>
-    ),
-  })}
+  {list(f.tags.$.rows, (row) => (
+    <li key={row.id}>
+      <input {...row.field.$.bind} />
+      {row.field.$.error ? <em>{row.field.$.error}</em> : null}
+    </li>
+  ))}
 </ul>
 ```
 
-`key: (row) => row.id` is the whole point. The id is generated when the row appears and stays
-with it through every insert and remove, so the reconciler keeps that row's element — and with
-it, whatever the browser was holding: the caret position, the selection, an open datalist.
+`key={row.id}` is the whole point. A row object is rebuilt whenever its position changes, so
+the object alone cannot say which row is which after an insert or a remove — the id can. It is
+generated when the row appears and stays with it, so the reconciler keeps that row's element,
+and with it whatever the browser was holding: the caret position, the selection, an open
+datalist.
 
 `row.field` is a field node like any other, so everything from [Fields](/forms/fields) applies:
 `$.value`, `$.error`, `$.bind`, and further property access when the row is an object.
@@ -69,17 +67,13 @@ interface Contact {
 ```
 
 ```tsx
-{list({
-  each: f.contacts.$.rows,
-  key: (row) => row.id,
-  render: (row) => (
+{list(f.contacts.$.rows, (row) => (
     <li>
       <input {...row.field.kind.$.bind} />
       <input {...row.field.value.$.bind} />
       {row.field.value.$.error ? <em>{row.field.value.$.error}</em> : null}
     </li>
-  ),
-})}
+  ))}
 ```
 
 `f.contacts[0].value` reaches the same field by index, and hands back the same node object —

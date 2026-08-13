@@ -60,7 +60,13 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
       render() {
-        return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+        return (
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -75,10 +81,9 @@ describe("list() renders", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.tasks,
-              render: (task: Task) => <li>{task.title}</li>,
-            })}
+            {list(this.tasks, (task: Task) => (
+              <li>{task.title}</li>
+            ))}
           </ul>
         );
       }
@@ -93,7 +98,13 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [];
       render() {
-        return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+        return (
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -107,7 +118,13 @@ describe("identity — the whole reason For exists, kept", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+      return (
+        <ul>
+          {list(this.tasks, (item) => (
+            <Row item={item} />
+          ))}
+        </ul>
+      );
     }
   }
 
@@ -157,7 +174,13 @@ describe("identity — the whole reason For exists, kept", () => {
     class Twice extends Component {
       @state tasks: Task[] = [tag, tag];
       render() {
-        return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+        return (
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -173,7 +196,7 @@ describe("identity — the whole reason For exists, kept", () => {
     expect(texts(container)).toEqual(["tag:3", "tag:0"]);
   });
 
-  test("`key` overrides identity for objects re-created per fetch", async () => {
+  test("objects re-created per fetch keep their rows", async () => {
     @Host("div")
     class Refetching extends Component {
       @state tasks = [
@@ -183,11 +206,9 @@ describe("identity — the whole reason For exists, kept", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.tasks,
-              key: (task: { id: string; title: string }) => task.id,
-              render: (task: { id: string; title: string }) => <li>{task.title}</li>,
-            })}
+            {list(this.tasks, (task: { id: string; title: string }) => (
+              <li>{task.title}</li>
+            ))}
           </ul>
         );
       }
@@ -204,41 +225,9 @@ describe("identity — the whole reason For exists, kept", () => {
     await settle();
 
     expect(texts(container)).toEqual(["a", "b*"]);
-    // Without `key` these would be unrecognised items and every node rebuilt.
+    // These are unrecognised objects; identity is carried across, so the nodes
+    // are the nodes they were. This is what `key` used to be for.
     expect([...container.querySelectorAll("li")].filter((n) => before.includes(n)).length).toBe(2);
-  });
-
-  test("a colliding `key` callback is reported", async () => {
-    // `key` is the ONE place a mistake is still possible — minted identity
-    // cannot collide, a hand-written one can — so it must not pass unnoticed.
-    const codes: string[] = [];
-    const messages: string[] = [];
-    const handler = (event: Event) => {
-      const message = (event as CustomEvent).detail?.message as string;
-      const code = message?.match(/^\[(RMD\d+)\]/)?.[1];
-      if (code) {
-        codes.push(code);
-        messages.push(message);
-      }
-    };
-    window.addEventListener("ramonda:dev-log", handler);
-
-    try {
-      @Host("div")
-      class Bad extends Component {
-        @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
-        render() {
-          return <ul>{list({ each: this.tasks, key: () => "same", as: Row })}</ul>;
-        }
-      }
-
-      await getDOM<Bad>(<Bad />);
-
-      expect(codes).toContain("RMD013");
-      expect(messages.join("\n")).toContain("more than one item");
-    } finally {
-      window.removeEventListener("ramonda:dev-log", handler);
-    }
   });
 
   test("a nested list() returned from `render` is named, not thrown on", async () => {
@@ -259,12 +248,12 @@ describe("identity — the whole reason For exists, kept", () => {
       class Pages extends Component {
         @state pages: Task[][] = [[{ title: "a" }], [{ title: "b" }]];
         render() {
-          return <ul>{list({ each: this.pages, render: this.page })}</ul>;
+          return <ul>{list(this.pages, this.page)}</ul>;
         }
         // Cast: this is exactly what the types reject, and the point is what the
         // RUNTIME does with it — a JavaScript app has no such guard.
         private page(rows: Task[]): VNode {
-          return list({ each: rows, as: Row }) as unknown as VNode;
+          return list(rows, (item) => <Row item={item} />) as unknown as VNode;
         }
       }
 
@@ -292,12 +281,9 @@ describe("the case list() was written for", () => {
         if (!this.open) return <p>closed</p>;
         return (
           <ul>
-            {list({
-              each: this.tasks,
-              render: (task: Task) => {
-                mapperRuns++;
-                return <li>{task.title}</li>;
-              },
+            {list(this.tasks, (task: Task) => {
+              mapperRuns++;
+              return <li>{task.title}</li>;
             })}
           </ul>
         );
@@ -325,8 +311,16 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <div>
-            <ul id="todo">{list({ each: this.todo, as: Row })}</ul>
-            <ul id="done">{list({ each: this.done, as: Row })}</ul>
+            <ul id="todo">
+              {list(this.todo, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+            <ul id="done">
+              {list(this.done, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
           </div>
         );
       }
@@ -357,7 +351,9 @@ describe("the case list() was written for", () => {
         return (
           <ul>
             <li id="head">HEAD</li>
-            {list({ each: this.tasks, as: Row })}
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
             <li id="foot">FOOT</li>
           </ul>
         );
@@ -390,8 +386,10 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <ul>
-            {this.showFirst ? list({ each: this.a, as: Row }) : null}
-            {list({ each: this.b, as: Row })}
+            {this.showFirst ? list(this.a, (item) => <Row item={item} />) : null}
+            {list(this.b, (item) => (
+              <Row item={item} />
+            ))}
           </ul>
         );
       }
@@ -427,10 +425,9 @@ describe("nesting and composition", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.props.item.items,
-              render: (task: Task) => <li>{task.title}</li>,
-            })}
+            {list(this.props.item.items, (task: Task) => (
+              <li>{task.title}</li>
+            ))}
           </ul>
         );
       }
@@ -443,7 +440,13 @@ describe("nesting and composition", () => {
         { name: "g2", items: [{ title: "c" }] },
       ];
       render() {
-        return <ul>{list({ each: this.groups, as: GroupRow })}</ul>;
+        return (
+          <ul>
+            {list(this.groups, (item) => (
+              <GroupRow item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -464,8 +467,16 @@ describe("nesting and composition", () => {
       render() {
         return (
           <div>
-            <ul id="left">{list({ each: this.left, as: Row })}</ul>
-            <ul id="right">{list({ each: this.right, as: Row })}</ul>
+            <ul id="left">
+              {list(this.left, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+            <ul id="right">
+              {list(this.right, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
           </div>
         );
       }
@@ -497,12 +508,9 @@ describe("the whole-list skip still applies", () => {
           <div>
             <p>{this.unrelated}</p>
             <ul>
-              {list({
-                each: this.tasks,
-                render: (task: Task) => {
-                  mapperRuns++;
-                  return <li>{task.title}</li>;
-                },
+              {list(this.tasks, (task: Task) => {
+                mapperRuns++;
+                return <li>{task.title}</li>;
               })}
             </ul>
           </div>
@@ -527,7 +535,13 @@ describe("server rendering and hydration", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list({ each: this.tasks, as: Row })}</ul>;
+      return (
+        <ul>
+          {list(this.tasks, (item) => (
+            <Row item={item} />
+          ))}
+        </ul>
+      );
     }
   }
 
@@ -612,15 +626,13 @@ describe("a two-dimensional list", () => {
     render() {
       return (
         <tbody>
-          {list({
-            each: this.rows,
-            // `key` on the OUTER list, and in two dimensions it is close to
-            // mandatory — see "the trap" below. Changing anything inside a row
-            // means producing a new row OBJECT, which reference identity reads
-            // as a different row.
-            key: (row: GridRow) => row.name,
-            render: (row: GridRow) => <tr>{list({ each: row.cells, as: CellView })}</tr>,
-          })}
+          {list(this.rows, (row: GridRow) => (
+            <tr>
+              {list(row.cells, (item) => (
+                <CellView item={item} />
+              ))}
+            </tr>
+          ))}
         </tbody>
       );
     }
@@ -666,48 +678,7 @@ describe("a two-dimensional list", () => {
     expect(rowsAfter.filter((tr) => rowsBefore.includes(tr)).length).toBe(2);
   });
 
-  test("the trap: without `key`, editing a row's cells rebuilds the row", async () => {
-    // Worth pinning, because it is the first thing anyone hits in 2D and the
-    // behaviour is correct rather than buggy. An immutable update to the inner
-    // array necessarily produces a NEW outer object, and the outer list
-    // identifies rows by reference — so it is a different row, and its whole
-    // subtree goes with it.
-    @Host("table")
-    class Unkeyed extends Component {
-      @state rows: GridRow[] = [{ name: "r1", cells: [{ label: "a" }, { label: "b" }] }];
-      render() {
-        return (
-          <tbody>
-            {list({
-              each: this.rows,
-              render: (row: GridRow) => <tr>{list({ each: row.cells, as: CellView })}</tr>,
-            })}
-          </tbody>
-        );
-      }
-    }
-
-    const { container, instance, settle } = await getDOM<Unkeyed>(<Unkeyed />);
-    const cell = (
-      container.querySelectorAll("td")[0] as unknown as {
-        _componentInstance: CellView;
-      }
-    )._componentInstance;
-    cell.clicks = 3;
-    await settle();
-    expect(grid(container)[0]).toEqual(["a:3", "b:0"]);
-
-    const first = instance.rows[0];
-    instance.rows = [{ ...first, cells: [...first.cells].reverse() }];
-    await settle();
-
-    // The cells moved, but the row is a new object, so the row was rebuilt and
-    // the cell state went with the old one. Add `key: (row) => row.name` and the
-    // next test shows what happens instead.
-    expect(grid(container)[0]).toEqual(["b:0", "a:0"]);
-  });
-
-  test("with `key`, reordering CELLS moves them with their state", async () => {
+  test("reordering CELLS moves them with their state", async () => {
     const { container, instance, settle } = await getDOM<Grid>(<Grid />);
 
     const second = (
@@ -771,10 +742,13 @@ describe("a two-dimensional list", () => {
       render() {
         return (
           <tbody>
-            {list({
-              each: this.rows,
-              render: (cells: Cell[]) => <tr>{list({ each: cells, as: CellView })}</tr>,
-            })}
+            {list(this.rows, (cells: Cell[]) => (
+              <tr>
+                {list(cells, (item) => (
+                  <CellView item={item} />
+                ))}
+              </tr>
+            ))}
           </tbody>
         );
       }
@@ -848,7 +822,7 @@ describe("two dimensions without keys", () => {
 
     render() {
       // A list returned STRAIGHT from render(), with no element around it.
-      return list({ each: this.cells, as: Cell2View });
+      return list(this.cells, (item) => <Cell2View item={item} />);
     }
   }
 
@@ -859,7 +833,13 @@ describe("two dimensions without keys", () => {
       { name: "r2", cells: [{ label: "c" }] },
     ];
     render() {
-      return <tbody>{list({ each: this.rows, as: OwningRow })}</tbody>;
+      return (
+        <tbody>
+          {list(this.rows, (item) => (
+            <OwningRow item={item} />
+          ))}
+        </tbody>
+      );
     }
   }
 
@@ -932,7 +912,7 @@ describe("the cost of the key-free 2D shape", () => {
    * derived-state-from-props trade, and it has to be stated: the field is seeded
    * ONCE, at construction, so the parent can no longer push anything into it.
    * Measured below: the parent adds a cell and the row does not see it, even
-   * though `key` kept the row alive.
+   * though the row itself kept its identity.
    *
    * So "no keys in 2D" is an architectural choice, not a trick. It is right when
    * a row genuinely owns its rows-worth of data and edits are local. It is wrong
@@ -942,7 +922,7 @@ describe("the cost of the key-free 2D shape", () => {
   class OwningRow3 extends Component<{ item: Row3 }> {
     @state cells: Cell3[] = this.props.item.cells;
     render() {
-      return list({ each: this.cells, as: Cell3View });
+      return list(this.cells, (item) => <Cell3View item={item} />);
     }
   }
 
@@ -950,7 +930,7 @@ describe("the cost of the key-free 2D shape", () => {
   @Host("tr")
   class PropsRow3 extends Component<{ item: Row3 }> {
     render() {
-      return list({ each: this.props.item.cells, as: Cell3View });
+      return list(this.props.item.cells, (item) => <Cell3View item={item} />);
     }
   }
 
@@ -961,10 +941,9 @@ describe("the cost of the key-free 2D shape", () => {
       render() {
         return (
           <tbody>
-            {list({
-              each: this.rows,
-              key: (row: Row3) => row.name,
-              as: RowComp as typeof OwningRow3,
+            {list(this.rows, (row) => {
+              const R = RowComp as typeof OwningRow3;
+              return <R item={row} />;
             })}
           </tbody>
         );
@@ -1003,7 +982,7 @@ describe("the cost of the key-free 2D shape", () => {
   });
 });
 
-describe("what NO key actually costs in two dimensions", () => {
+describe("what NO key costs in two dimensions", () => {
   interface Cell4 {
     label: string;
   }
@@ -1024,7 +1003,7 @@ describe("what NO key actually costs in two dimensions", () => {
     }
   }
 
-  /** No `key` anywhere — the question is what that costs, not whether it works. */
+  /** The two-dimensional shape, with nothing declared about identity. */
   @Host("table")
   class Unkeyed extends Component {
     @state rows: Row4[] = [
@@ -1034,10 +1013,13 @@ describe("what NO key actually costs in two dimensions", () => {
     render() {
       return (
         <tbody>
-          {list({
-            each: this.rows,
-            render: (row: Row4) => <tr>{list({ each: row.cells, as: Cell4View })}</tr>,
-          })}
+          {list(this.rows, (row: Row4) => (
+            <tr>
+              {list(row.cells, (item) => (
+                <Cell4View item={item} />
+              ))}
+            </tr>
+          ))}
         </tbody>
       );
     }
@@ -1078,7 +1060,7 @@ describe("what NO key actually costs in two dimensions", () => {
     ]);
   });
 
-  test("editing one row resets that row only", async () => {
+  test("editing one row moves its cells rather than resetting them", async () => {
     const { container, instance, settle } = await marked();
     const before = [...container.querySelectorAll("td")];
 
@@ -1086,32 +1068,300 @@ describe("what NO key actually costs in two dimensions", () => {
     instance.rows = [{ ...first, cells: [...first.cells].reverse() }, instance.rows[1]];
     await settle();
 
-    // The edited row rebuilt — cells in the right order, state reset. The other
-    // row did not notice, and its two nodes are the same objects.
+    // The edited row is a REPLACED object, and its identity is carried across —
+    // so the row is the row it was, and its cells (the same objects, reversed)
+    // travel with their state rather than being reset. The other row did not
+    // notice, and its two nodes are the same objects.
+    //
+    // This used to read `["b:0", "a:0"]`: the replaced row object matched
+    // nothing, the row was rebuilt, and rebuilding it cascaded into its cells.
+    // Nothing about the data said those cells should start again.
     expect(grid4(container)).toEqual([
-      ["b:0", "a:0"],
+      ["b:2", "a:1"],
       ["c:3", "d:4"],
     ]);
-    expect([...container.querySelectorAll("td")].filter((td) => before.includes(td)).length).toBe(2);
+    // All four, not two. The untouched row never noticed, and the edited row's
+    // cells were reordered rather than rebuilt — so not one node was replaced.
+    expect([...container.querySelectorAll("td")].filter((td) => before.includes(td)).length).toBe(4);
   });
 
-  test("state is never WRONG — only reset", async () => {
+  test("state is never WRONG — it follows the item", async () => {
     const { container, instance, settle } = await marked();
 
-    // The worst case: every row object replaced AND the rows reversed.
+    // The worst case: every row object replaced AND the rows reversed. Nothing
+    // here shares a reference with what is on screen.
     instance.rows = [...instance.rows].reverse().map((row) => ({ ...row }));
     await settle();
 
-    // The order is correct and every cell is at 0. What must never appear is
-    // `["c:1","d:2"]` — the first row's state on the second row's items.
+    // Every cell's state arrived with its own content. What must never appear is
+    // `["a:3","b:4"]` — the second row's state on the first row's items.
     //
-    // That is the difference from React's unkeyed lists, which match by INDEX:
-    // there the state stays at its position and lands on whatever item moved
-    // into it, which is silently wrong. Here identity is the item object, so a
-    // replaced object rebuilds rather than inheriting.
+    // That is the difference from an unkeyed list matched by INDEX: there the
+    // state stays at its position and lands on whatever moved into it, which is
+    // silently wrong. Here identity is carried on the item, so a replaced object
+    // is still the row it replaced — and a row that is genuinely new gets
+    // nothing, because there is no row for it to have been.
+    //
+    // This used to read all zeroes. State was never wrong then either, but it was
+    // always LOST, and a refetch is the ordinary way an app gets its data.
     expect(grid4(container)).toEqual([
-      ["c:0", "d:0"],
-      ["a:0", "b:0"],
+      ["c:3", "d:4"],
+      ["a:1", "b:2"],
     ]);
+  });
+});
+
+describe("your key, and what happens when two rows share one", () => {
+  interface Priced {
+    id: number;
+    name: string;
+  }
+
+  function reported(): { codes: string[]; stop(): void } {
+    const codes: string[] = [];
+    const handler = (event: Event) => {
+      const message = (event as CustomEvent).detail?.message as string;
+      const code = message?.match(/^\[(RMD\d+)\]/)?.[1];
+      if (code) codes.push(code);
+    };
+    window.addEventListener("ramonda:dev-log", handler);
+    return { codes, stop: () => window.removeEventListener("ramonda:dev-log", handler) };
+  }
+
+  test("a key you write survives — the list does not overwrite it", async () => {
+    // The whole point of writing one. This used to be assigned over with the
+    // list's own minted id, so a key was accepted and then ignored.
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [
+        { id: 7, name: "a" },
+        { id: 9, name: "b" },
+      ];
+      render() {
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    const { container } = await getDOM(<Board />);
+    const keys = [...container.querySelectorAll("li")].map(
+      (li) => (li as unknown as { [k: symbol]: unknown })[Symbol.for("ramonda.key")],
+    );
+    // The DOM carries what was written, not a generated id.
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(keys.length).toBe(2);
+  });
+
+  test("a key answers when the objects are all new", async () => {
+    // A refetch: nothing shares a reference with what is on screen, so the object
+    // cannot say which row is which. The key can, and it is exact.
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [
+        { id: 7, name: "a" },
+        { id: 9, name: "b" },
+      ];
+      render() {
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    const app = await getDOM<Board>(<Board />);
+    await app.settle();
+    const before = [...app.container.querySelectorAll("li")];
+
+    app.instance.rows = [
+      { id: 9, name: "b" },
+      { id: 7, name: "A!" },
+    ];
+    await app.settle();
+
+    const after = [...app.container.querySelectorAll("li")];
+    expect(after.map((li) => li.textContent)).toEqual(["b", "A!"]);
+    // Both rows moved rather than being rebuilt: 9 is the node 9 had, 7 is 7's.
+    expect(after[0]).toBe(before[1]);
+    expect(after[1]).toBe(before[0]);
+  });
+
+  test("two rows under one key are reported", async () => {
+    // Identity used to be minted, so a collision could not be written. It is
+    // yours now, and a field that is not unique is a mistake worth saying out
+    // loud — the DOM match is what it drives.
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [
+        { id: 7, name: "a" },
+        { id: 7, name: "b" },
+      ];
+      render() {
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    const seen = reported();
+    await getDOM<Board>(<Board />);
+    seen.stop();
+
+    expect(seen.codes).toContain("RMD002");
+  });
+
+  test("the same OBJECT twice is not a collision", async () => {
+    // One object rendered twice is a legitimate list, and its two rows carry the
+    // same key because the key is derived from the object. The rows are told
+    // apart by which occurrence they are, exactly as they always were.
+    const shared: Priced = { id: 7, name: "tag" };
+
+    @Host("div")
+    class Board extends Component {
+      @state rows: Priced[] = [shared, shared];
+      render() {
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li>{r.name}</li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    const seen = reported();
+    const { container } = await getDOM(<Board />);
+    seen.stop();
+
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(seen.codes).not.toContain("RMD002");
+  });
+});
+
+describe("what list() returns, and what it does not", () => {
+  test("nothing has run when it returns", () => {
+    // The one thing that separates it from `.map()`, and the one thing you cannot
+    // see: the callback is called by the framework when it renders the list, not
+    // here. That is what makes a list whose array did not change cost nothing.
+    let calls = 0;
+    list([{ t: "a" }, { t: "b" }], (item: { t: string }) => {
+      calls++;
+      return <li>{item.t}</li>;
+    });
+
+    expect(calls).toBe(0);
+  });
+
+  test("reaching for it as an array says so", () => {
+    // TypeScript refuses all of these, so getting here means the types were
+    // bypassed — an `any`, a cast, plain JavaScript. `undefined`, `is not a
+    // function` and `is not iterable` say nothing about what happened.
+    const rows = list([{ t: "a" }], (item: { t: string }) => <li>{item.t}</li>) as unknown as {
+      length: number;
+      map: () => unknown;
+      forEach: () => unknown;
+    };
+
+    expect(() => rows.length).toThrow(/description of a list, not an array/);
+    expect(() => rows.map()).toThrow(/\.map\(\)/);
+    expect(() => rows.forEach()).toThrow(/\.forEach\(\)/);
+    expect(() => [...(rows as unknown as Iterable<unknown>)]).toThrow(/spreading it/);
+    // And it points at the two things that ARE right.
+    expect(() => rows.length).toThrow(/items\.map/);
+  });
+
+  test("it is still an ordinary child, rendered where it sits", async () => {
+    @Host("div")
+    class Board extends Component {
+      @state rows = [{ t: "a" }, { t: "b" }];
+      render() {
+        return (
+          <ul>
+            {list(this.rows, (r: { t: string }) => (
+              <li>{r.t}</li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    const { container } = await getDOM(<Board />);
+    expect([...container.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["a", "b"]);
+  });
+});
+
+describe("a list that is only partly keyed", () => {
+  interface Row5 {
+    id: number;
+    label: string;
+  }
+
+  /** Refetches with one row changed, and reports what survived. */
+  async function refetch(row: (r: Row5) => VNode) {
+    @Host("div")
+    class Board extends Component {
+      @state rows: Row5[] = [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+        { id: 3, label: "c" },
+      ];
+      render() {
+        return <ul>{list(this.rows, row)}</ul>;
+      }
+    }
+
+    const app = await getDOM<Board>(<Board />);
+    await app.settle();
+    const before = [...app.container.querySelectorAll("li")];
+
+    // Every object is new — the shape a refetch takes.
+    app.instance.rows = [
+      { id: 1, label: "a" },
+      { id: 2, label: "B!" },
+      { id: 3, label: "c" },
+    ];
+    await app.settle();
+
+    const after = [...app.container.querySelectorAll("li")];
+    return after.filter((node) => before.includes(node)).length;
+  }
+
+  test("keeps its rows, like a fully keyed and a fully unkeyed one", async () => {
+    // Skipping the array alignment for a list that "has keys" made this shape
+    // WORSE than having none: the alignment was skipped for every row, so the
+    // rows without a key had nothing left to be recognised by. Measured before
+    // the fix — one row of three survived, and the marked row was lost.
+    //
+    // A half-keyed list is what a migration leaves behind halfway through, which
+    // is exactly when it must not quietly get worse than where it started.
+    const keyed = await refetch((r: Row5) => <Row item={{ title: r.label }} key={r.id} />);
+    const unkeyed = await refetch((r: Row5) => <Row item={{ title: r.label }} />);
+    const partly = await refetch((r: Row5) =>
+      r.id === 1 ? <Row item={{ title: r.label }} key={r.id} /> : <Row item={{ title: r.label }} />,
+    );
+
+    expect(keyed).toBe(3);
+    expect(unkeyed).toBe(3);
+    expect(partly).toBe(3);
+  });
+
+  test("a key of 0 is a key", async () => {
+    // `0` is falsy, and the check that decides whether to fill one in has to be
+    // about presence rather than truth.
+    const kept = await refetch((r: Row5) => <Row item={{ title: r.label }} key={r.id - 1} />);
+    expect(kept).toBe(3);
   });
 });

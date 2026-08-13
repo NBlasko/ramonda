@@ -175,11 +175,7 @@ describe("the in-place mutation guard", () => {
       @state tick = 0;
       render() {
         renders++;
-        return list({
-          each: this.rows,
-          key: (r: Row) => r.id,
-          render: (r: Row) => <li>{r.id}</li>,
-        });
+        return list(this.rows, (r: Row) => <li>{r.id}</li>);
       }
     }
 

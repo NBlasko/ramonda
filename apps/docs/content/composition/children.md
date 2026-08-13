@@ -74,7 +74,7 @@ The fix is the caller's, and it is [`list()`](/lists) instead of `.map()`:
 
 ```tsx
 // instead of  {items.map((item) => <li>{item.name}</li>)}
-<Panel>{list({ each: items, as: Item })}</Panel>
+<Panel>{list(items, (item) => <Item item={item} />)}</Panel>
 ```
 
 `list()` gives each item a stable identity, so nothing around it can be confused for

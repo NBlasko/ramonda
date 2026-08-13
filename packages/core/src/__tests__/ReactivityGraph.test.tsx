@@ -254,16 +254,13 @@ describe("reactivity graph", () => {
       render() {
         return (
           <ul>
-            {list({
-              each: this.rows,
-              render: (row: { t: string }) => {
-                mapperRuns++;
-                return (
-                  <li>
-                    {row.t}-{this.useFlag ? this.flag : this.other}
-                  </li>
-                );
-              },
+            {list(this.rows, (row: { t: string }) => {
+              mapperRuns++;
+              return (
+                <li>
+                  {row.t}-{this.useFlag ? this.flag : this.other}
+                </li>
+              );
             })}
           </ul>
         );

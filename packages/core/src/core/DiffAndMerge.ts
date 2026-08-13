@@ -544,13 +544,25 @@ export function listHostFor(owner: MaybeComponent): ListHost {
   };
 }
 
-function reconcileEntries(
+export function reconcileEntries(
   children: unknown[],
   previous: RecordEntry[],
   clean: boolean[] | undefined,
   placeholderComponent: MaybeComponent,
   parent: ChildNode,
   unclaimed: (EnhancedChildNode | DONE)[],
+  /**
+   * Where an item's invalidation reports, when it is not the owner's next render
+   * that will pick it up.
+   *
+   * A list in a render slot is rebuilt by the render that produced it, so asking
+   * the owner to re-render is the whole answer. A list in a `ChildrenRegion` is
+   * not: the children were built by a hook's props factory, which is cached on
+   * the signals IT read — an item reading something deeper leaves that cache
+   * clean, so the callback never reruns and nothing would reconcile. The region
+   * supplies a host that refreshes the region itself.
+   */
+  listHost?: ListHost,
 ): { entries: RecordEntry[]; changed: boolean } {
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
   // Looked up by owner, never by position: a list keeps its nodes even when it
@@ -599,7 +611,7 @@ function reconcileEntries(
         const materialized = buildLazyList(
           rawVchild as unknown as LazyListNode,
           engine as ListEngine<unknown> | undefined,
-          listHostFor(placeholderComponent),
+          listHost ?? listHostFor(placeholderComponent),
         );
         listNode = materialized.node as typeof rawVchild;
         engine = materialized.engine;
@@ -612,6 +624,7 @@ function reconcileEntries(
         placeholderComponent,
         parent,
         unclaimed,
+        listHost,
       );
       entries.push({
         owner: listNode.owner,
@@ -691,7 +704,7 @@ function claimByKey(
   return node;
 }
 
-function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
+export function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
   for (const entry of entries) {
     if (isRegion(entry)) flattenEntries(entry.entries, out);
     else out.push(entry);
@@ -719,26 +732,66 @@ function collectRegionNodes(region: ListRegion, out: (EnhancedChildNode | DONE)[
  * Instead: take the longest run of nodes that are already in relative order and
  * leave them alone; move only the rest. One insertion then costs exactly one
  * move, whatever the list length.
+ *
+ * ## Scoped to a block — `anchor` and `previousOrder`
+ *
+ * A `ChildrenRegion` owns a contiguous RUN of children inside a parent it shares
+ * (a portal's target holds the shell's own content and every other portal's).
+ * Both defaults above are wrong for it: `reference = null` appends past the end
+ * of the target rather than the end of the block, and a walk over
+ * `parent.childNodes` reads nodes the region does not own.
+ *
+ * So a region passes its trailing `anchor` — insertions land before it, inside
+ * the block — and the order it flattened LAST pass, from which the positions are
+ * read directly. That is not merely a way around the parent walk, it is cheaper
+ * than one: the region's nodes are contiguous and nothing else moves them, so the
+ * previous flat order IS their DOM order, and a portal into `document.body` skips
+ * walking every child of the body.
  */
-function reorderChildren(parent: ChildNode, orderedNodes: ChildNode[]): void {
+export function reorderChildren(
+  parent: ChildNode,
+  orderedNodes: ChildNode[],
+  anchor: ChildNode | null = null,
+  previousOrder?: readonly ChildNode[],
+): void {
   const length = orderedNodes.length;
   if (length === 0) return;
 
   // Fast path, no allocation: the DOM already reads exactly like the target.
   // This is the common render — a state change that moves nothing.
-  let cursor = parent.firstChild;
-  let i = 0;
-  while (cursor !== null && i < length && cursor === orderedNodes[i]) {
-    cursor = cursor.nextSibling;
-    i++;
+  if (previousOrder !== undefined) {
+    // Element-wise equality is the whole check for a block: every node was
+    // reused (a fresh one cannot appear in the previous order) and none moved,
+    // so the DOM is already right.
+    if (previousOrder.length === length) {
+      let same = true;
+      for (let n = 0; n < length; n++) {
+        if (previousOrder[n] !== orderedNodes[n]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+  } else {
+    let cursor = parent.firstChild;
+    let i = 0;
+    while (cursor !== null && i < length && cursor === orderedNodes[i]) {
+      cursor = cursor.nextSibling;
+      i++;
+    }
+    if (i === length && cursor === null) return;
   }
-  if (i === length && cursor === null) return;
 
   // Current position of every child, so "already in relative order" is decidable.
   const positions = new Map<ChildNode, number>();
   let index = 0;
-  for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
-    positions.set(node, index++);
+  if (previousOrder !== undefined) {
+    for (const node of previousOrder) positions.set(node, index++);
+  } else {
+    for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
+      positions.set(node, index++);
+    }
   }
 
   // A node with no position is one this render just built: the children diff
@@ -759,7 +812,9 @@ function reorderChildren(parent: ChildNode, orderedNodes: ChildNode[]): void {
 
   const keep = keptInOrder(current, fresh);
   let keepIndex = keep.length - 1;
-  let reference: ChildNode | null = null;
+  // The block's trailing anchor for a region, `null` — the parent's end — for an
+  // element whose children are the whole block.
+  let reference: ChildNode | null = anchor;
 
   for (let n = length - 1; n >= 0; n--) {
     const node = orderedNodes[n];
@@ -978,7 +1033,7 @@ function findIndexOfSimilarNodes(
  * on the provider's signal instead of 0, and the whole subtree stayed reachable
  * through it. See `ScopeCleanup.test.tsx`, which fails without this call.
  */
-function disposeRegions(entries: RecordEntry[]): void {
+export function disposeRegions(entries: RecordEntry[]): void {
   for (const entry of entries) {
     if (!isRegion(entry)) continue;
     entry.engine?.dispose();

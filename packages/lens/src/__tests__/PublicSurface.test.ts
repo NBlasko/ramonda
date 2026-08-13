@@ -80,14 +80,14 @@ describe("the published declarations", () => {
     return readFileSync(dts, "utf8");
   };
 
-  test("publishes the four types it means to, and no others", () => {
+  test("publishes the five types it means to, and no others", () => {
     const exported = [...declarations().matchAll(/^export \{([^}]*)\};?/gms)]
       .flatMap(([, names]) => names.split(","))
       .map((name) => name.replace(/\btype\b/, "").trim())
       .filter(Boolean)
       .sort();
 
-    expect(exported).toEqual(["ElementOf", "Focus", "FocusArray", "FocusCommon", "focusOn"]);
+    expect(exported).toEqual(["ElementOf", "Focus", "FocusArray", "FocusCommon", "KeepSymbols", "focusOn"]);
   });
 
   test("keeps the diagnostics protocol out of the published surface", () => {

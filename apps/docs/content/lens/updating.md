@@ -15,7 +15,7 @@ this.data = focusOn(this.data).get("title").set("Renamed");
 
 | | |
 |---|---|
-| `.set(value)` | replace the focused value |
+| `.set(value, opts?)` | replace the focused value |
 | `.update(fn)` | replace it with `fn(current)` |
 | `.merge(partial)` | copy the focused object and assign over it |
 | `.remove()` | drop the property or element |
@@ -25,6 +25,17 @@ this.data = focusOn(this.data).get("title").set("Renamed");
 
 With no hops at all the focused value *is* the root, so `focusOn(state).set(other)` replaces
 the whole tree and `focusOn(state).merge({ … })` rewrites its top level.
+
+`set` is the only one that REPLACES rather than derives, and that costs the value anything a
+library had attached to it under a hidden symbol — which for an item in a
+[`list()`](/lists) is what that item's component state is following. When the value you
+are handing it is the same thing rebuilt, say so:
+
+```tsx
+import { SAME_ITEM } from "@ramonda/core";
+
+this.posts = focusOn(this.posts).at(0).set(fromTheForm, SAME_ITEM);
+```
 
 ## Don't mutate the result either
 

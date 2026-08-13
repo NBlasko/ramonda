@@ -64,7 +64,7 @@ export class LifecycleLog extends Component {
           </button>
         </p>
         {this.shown ? <Tracked log={this.log} /> : null}
-        <ul className="demo-log">{list({ each: this.lines, render: this.renderLine })}</ul>
+        <ul className="demo-log">{list(this.lines, this.renderLine)}</ul>
       </div>
     );
   }

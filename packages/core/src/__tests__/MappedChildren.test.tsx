@@ -7,7 +7,7 @@ import { resetDiagnostics } from "../debug/diagnostics";
 import type { RamondaNode } from "../types/vdom";
 
 /**
- * RMD023 — components built from an array with no keys.
+ * RMD023 — children built from an array need a key.
  *
  * The check the double render cannot make. A mapper is handed to `Array.prototype.map`
  * and never stored anywhere a comparison can reach, and its output is a run of freshly
@@ -15,10 +15,13 @@ import type { RamondaNode } from "../types/vdom";
  * see it: JSX passes children as separate arguments, so a nested ARRAY among them was
  * built by an expression.
  *
- * Narrow on purpose, and these tests are the boundary. A mapped array is a SUPPORTED
- * shape here — it becomes a region with its own key space — so the report is only for the
- * part that is genuinely unhandled: identity. Plain markup patched in place is correct;
- * a component whose row moves takes its `@state` and its DOM to the wrong item.
+ * A `.map()` is a supported way to render a list, and what it needs is the thing every
+ * framework asks for here. So this asks for a key rather than for a different shape.
+ *
+ * It used to report only COMPONENTS, on the reasoning that plain markup survives being
+ * matched by position because the diff patches the text. That is true of the text and
+ * false of everything else on the element — an `<input>` in a plain `<li>` holds a caret,
+ * a selection and whatever was typed, and those follow the NODE.
  */
 
 @Host("li")
@@ -48,7 +51,7 @@ function reported(): string {
 }
 
 describe("RMD023", () => {
-  test("unkeyed components from a .map() are reported, with both names", async () => {
+  test("unkeyed rows from a .map() are reported, with both names", async () => {
     class App extends Component {
       @state items = ["a", "b"];
       render() {
@@ -65,7 +68,7 @@ describe("RMD023", () => {
     await getDOM<App>(<App />);
 
     expect(reported()).toContain("RMD023");
-    expect(reported()).toContain("<App /> built <Row /> children from an array");
+    expect(reported()).toContain("<App /> built <Row /> from an array");
     expect(reported()).toContain("key");
     expect(reported()).toContain("list(");
   });
@@ -88,7 +91,7 @@ describe("RMD023", () => {
     expect(reported()).not.toContain("RMD023");
   });
 
-  test("plain markup is not reported — the diff patches it and the result is correct", async () => {
+  test("plain markup is reported too — the text is patched, the node is not", async () => {
     class App extends Component {
       @state items = ["a", "b"];
       render() {
@@ -103,17 +106,19 @@ describe("RMD023", () => {
     }
 
     await getDOM<App>(<App />);
-    expect(reported()).not.toContain("RMD023");
+    // An `<li>` holding an `<input>` carries a caret and a selection, and those go
+    // with the node when rows are matched by position.
+    expect(reported()).toContain("RMD023");
   });
 
-  test("list() is not reported — it is the fix", async () => {
+  test("list() is not reported — it is the lazier shape, and a key is good there too", async () => {
     class App extends Component {
       @state items = ["a", "b"];
       renderRow(item: string) {
         return <Row label={item} />;
       }
       render() {
-        return <ul>{list({ each: this.items, render: this.renderRow })}</ul>;
+        return <ul>{list(this.items, this.renderRow)}</ul>;
       }
     }
 

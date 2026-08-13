@@ -15,7 +15,12 @@ declare global {
     [key: string]: any;
     render(): any;
   }
-  class PersonRow extends Component<{ item: { id: string; name: string } }> {
+  /** What the filtering page filters — a row with a name, and nothing else to it. */
+  interface Person {
+    id: string;
+    name: string;
+  }
+  class PersonRow extends Component<{ item: Person }> {
     [key: string]: any;
     render(): any;
   }

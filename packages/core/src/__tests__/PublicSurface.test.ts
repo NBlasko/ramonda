@@ -22,6 +22,12 @@ const EXPECTED = [
   "Component",
   "Hook",
   "list",
+  // Structural sharing at the data boundary, and the one place an app can say
+  // which row is which when inference cannot.
+  "merge",
+  // The ready-made option for a lens `set` that replaces a row with the same
+  // row rebuilt — so an app never has to name the symbol behind it.
+  "SAME_ITEM",
   "ShouldUpdateOnPropsChange",
   "StableProps",
   "AsyncLoad",
@@ -31,6 +37,10 @@ const EXPECTED = [
   "Ref",
   "Head",
   "Portal",
+  // A portal target outside the app's root: the token, and the attribute a
+  // hand-rolled shell needs in order to emit the container itself.
+  "portalTarget",
+  "PORTAL_TARGET_ATTR",
   // entry points
   "bootstrap",
   "unmount",
@@ -119,13 +129,15 @@ const EXPECTED_TYPES = [
   "DevFlags",
   "Disconnect",
   "DocumentOptions",
+  "Each",
   "ErrorBoundaryFallbackProps",
   "HeadOptions",
   "HookMeta",
+  "Identity",
+  "ItemRender",
   "Lazy",
   "LifecycleOptions",
   "LinkTag",
-  "ListOptions",
   "MetaTag",
   "RamondaNode",
   "RefCallback",
@@ -174,7 +186,7 @@ describe("public API surface", () => {
  * Every published type, named once, so `check-types` fails if one is renamed or removed.
  *
  * The tuple below is what makes the import count as used, and it pins one more thing on the way: a
- * generic's ARITY. `ListOptions<unknown>` stops compiling if that parameter is dropped, or if a second
+ * generic's ARITY. `Each<unknown>` stops compiling if that parameter is dropped, or if a second
  * one is added without a default — and arity is as much a part of a published type as its name. The
  * arguments are the widest each constraint allows, on purpose: nothing here asserts anything about what
  * may be passed, only that the parameter is there to pass something to.
@@ -188,13 +200,15 @@ import type {
   DevFlags,
   Disconnect,
   DocumentOptions,
+  Each,
   ErrorBoundaryFallbackProps,
   HeadOptions,
   HookMeta,
+  Identity,
+  ItemRender,
   Lazy,
   LifecycleOptions,
   LinkTag,
-  ListOptions,
   MetaTag,
   RamondaNode,
   RefCallback,
@@ -223,13 +237,15 @@ export type __Published = [
   DevFlags,
   Disconnect,
   DocumentOptions,
+  Each<unknown>,
   ErrorBoundaryFallbackProps,
   HeadOptions,
   HookMeta,
+  Identity,
+  ItemRender<unknown>,
   Lazy,
   LifecycleOptions,
   LinkTag,
-  ListOptions<unknown>,
   MetaTag,
   RamondaNode,
   RefCallback<Element>,

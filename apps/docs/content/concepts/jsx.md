@@ -90,7 +90,7 @@ track of which item is which, so items hold their place when the list changes:
 
 ```tsx
 render() {
-  return list({ each: this.rows, as: Row });
+  return list(this.rows, (item) => <Row item={item} />);
 }
 ```
 

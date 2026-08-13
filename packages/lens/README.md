@@ -98,7 +98,7 @@ a compile error at the call site rather than a runtime miss.
 
 | | |
 |---|---|
-| `.set(value)` | Replaces the focused value. |
+| `.set(value, opts?)` | Replaces the focused value. See *Hidden data on a value* for `opts`. |
 | `.update(fn)` | Replaces it with `fn(current)`. |
 | `.merge(partial)` | Copies the focused object and assigns over it. |
 | `.remove()` | Drops the property or element from its container. |
@@ -313,6 +313,35 @@ focusOn(state).get("settings").get("theme").set("light");
 leaf. Paths cannot descend *into* one: their contents live in internal slots that a copy
 cannot reach, so a chain that tries reports it and changes nothing.
 
+## Hidden data on a value
+
+Something may have attached a **non-enumerable symbol** to one of your objects — a cache
+tagging an entry, a renderer marking a list item. That is the one way to attach something to an
+object without colliding with the fields, appearing in `Object.keys`, or reaching
+`JSON.stringify`. It also means a spread drops it, and a spread is what every hop here does.
+
+So a write carries those symbols onto the copy. That is right for an **edit**: `merge`,
+`update`, and a write aimed deeper all derive the new value from the old one, and something
+attached to the value describes the value, not the object holding it at the time.
+
+`set` is the exception. It is handed a value rather than deriving one, so it cannot tell a
+corrected value from a different one, and giving a different thing the tag of the thing it
+replaced is the worse of the two mistakes. **`set` keeps nothing unless you say so:**
+
+```ts
+focusOn(items).at(0).set(other);                            // a different value
+focusOn(items).at(0).set(rebuilt, { keepSymbols: true });   // the same one, rebuilt
+focusOn(items).at(0).set(rebuilt, { keepSymbols: [MINE] }); // only this one
+```
+
+`true` keeps every hidden symbol; an array keeps exactly those and drops the rest. The option
+applies only to the value `set` lands on — everything above it on the path is being edited and
+keeps its symbols regardless.
+
+Enumerable symbols are not touched here: a spread already copies them, so they were never at
+risk. Nothing is carried onto a frozen value; there is no way to, and that was the caller's
+choice.
+
 ## Keys a write is refused for
 
 `get` takes a `string | number`, so a key can come from data — a field name, a key off a parsed
@@ -327,7 +356,7 @@ a request.
 
 ## Size and speed
 
-1.33 KB gzipped, no dependencies.
+1.50 KB gzipped, no dependencies.
 
 `pnpm bench`, against the production build. Trials are interleaved and the median reported —
 running each shape to completion in turn produced numbers that got *better* as the state got

@@ -188,18 +188,23 @@ class Clock extends Component {
 
 ```tsx
 render() {
-  return <ul>{list({ each: this.items, as: RowView })}</ul>;
+  return <ul>{list(this.items, (item) => <RowView item={item} />)}</ul>;
 }
 ```
 
-**It mints the keys itself.** A hand-written key is an identity you *assert*: it
-can be derived from the index, typed wrong, forgotten, or collide, and a runtime
-check catches it only if that branch happens to run. `list()` takes identity from
-the item — object reference, or the value for primitives — so there is nothing to
-write and nothing to get wrong. `key: (item) => item.id` exists as an escape
-hatch for when a replaced item should keep its component's state.
+**It does not iterate where you write it.** Nothing has run when that line
+finishes — what comes back is a description, and your callback is called by the
+framework while it reconciles the rows. So a list whose array did not change costs
+nothing: the callback is never called and no row is touched.
 
-Use `as` for a component per item, `render: (item, index) => …` for plain markup.
+**Identity is the item, and your `key` where the item cannot answer.** While a row
+is the same object it is the same row, which covers every update that keeps its
+references. The moment an object is new — a refetch, an array built in a
+`@compute` — write a key from your data: `<RowView key={item.id} item={item} />`.
+
+The callback takes the item alone. There is no index: a row that shows its position
+must be rebuilt whenever it moves, and an index must never become a row's identity,
+because it follows the position rather than the row.
 
 ### Lifecycle and events
 

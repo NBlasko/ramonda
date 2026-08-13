@@ -187,7 +187,7 @@ class Toolbar extends Hook<{ actions: Action[] }> {
   }
 
   buttons() {
-    return list({ each: this.props.actions, render: this.renderAction });
+    return list(this.props.actions, this.renderAction);
   }
 }
 

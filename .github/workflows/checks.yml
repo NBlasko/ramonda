@@ -1,9 +1,13 @@
 name: Checks
 
 # Reusable workflow: the single source of truth for "is this tree good?".
-# Called by ci.yml on every PR and push, and by release.yml as the gate before
-# anything is published — so a release can never ship code that would have failed
-# CI. Split into parallel jobs for fast feedback and a clear signal of WHAT broke.
+# Called by ci.yml, on every pull request and every push to main. Split into
+# parallel jobs for fast feedback and a clear signal of WHAT broke.
+#
+# `release.yml` does NOT call this. It runs after a merge whose pull request this
+# already gated, and re-running it there would be the same commit checked twice.
+# The gap that leaves is named in .github/workflows/README.md, under "What CI does
+# not gate" — the version pull request is the one tree nothing here sees.
 on:
   workflow_call:
 

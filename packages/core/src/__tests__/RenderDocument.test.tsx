@@ -60,13 +60,16 @@ describe("renderDocument", () => {
   });
 
   test("escapes a quote in an attribute value", () => {
-    const html = renderDocument({ body: "", title: "t", head: "" }, { lang: 'en" onload="alert(1)', rootId: "app" });
+    const html = renderDocument(
+      { body: "", title: "t", head: "", portals: {} },
+      { lang: 'en" onload="alert(1)', rootId: "app" },
+    );
 
     expect(html).toContain('lang="en&quot; onload=&quot;alert(1)"');
   });
 
   test("the options are optional and the defaults are sane", () => {
-    const html = renderDocument({ body: "<p>hi</p>", title: "T", head: "" });
+    const html = renderDocument({ body: "<p>hi</p>", title: "T", head: "", portals: {} });
 
     expect(html).toContain('<html lang="en">');
     expect(html).toContain('<div id="app"><p>hi</p></div>');
@@ -76,7 +79,7 @@ describe("renderDocument", () => {
 
   test("headExtra and bodyClass land where they say they do", () => {
     const html = renderDocument(
-      { body: "", title: "T", head: "" },
+      { body: "", title: "T", head: "", portals: {} },
       { headExtra: '<link rel="icon" href="/f.svg">', bodyClass: "docs dark" },
     );
 

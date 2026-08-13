@@ -21,7 +21,14 @@ declare global {
     [key: string]: any;
     render(): any;
   }
+  /**
+   * Both a component and a page of the feed: the infinite-query examples name it as the
+   * TYPE one fetch returns (`InfiniteQuery<PostPage>`), so `items` has to be a real
+   * field. The index signature below would otherwise make it `any`, and a list over
+   * `any` hands the callback an `unknown` rather than a row.
+   */
   class PostPage extends Component<any> {
+    items: { id: string; title: string }[];
     [key: string]: any;
     render(): any;
   }
