@@ -343,6 +343,41 @@ Versions and changelogs are driven by [Changesets](https://github.com/changesets
 4. **Then deploy the docs by hand** — the Actions tab, *Deploy docs*, *Run
    workflow* on `main`. Nothing does it for you, on purpose; see below.
 
+### What CI does not gate
+
+`ci.yml` runs on every pull request to `main` and every push to it, so the tree
+that gets merged is always checked. Making those checks **required** in branch
+protection is the right setting, with one thing to know first.
+
+The **Version Packages pull request is opened by the action itself**, using
+`GITHUB_TOKEN`. GitHub does not start workflow runs for events caused by that
+token — deliberately, so a workflow cannot trigger itself forever. A pull request
+opened that way therefore gets **no `ci.yml` run at all**: no checks, and if the
+checks are required, no way to merge it either. Its branch (`changeset-release/main`)
+is pushed by the same token, so the `push` trigger does not save it.
+
+Look at the next Version PR before turning branch protection on. If its checks
+list is empty, pick one:
+
+- **Give the action a token that is not `GITHUB_TOKEN`** — a fine-grained PAT or a
+  GitHub App installation token, as `GITHUB_TOKEN:` in the `changesets/action`
+  step. The pull request is then authored by that identity, workflows run on it
+  normally, and it is gated like any other. This is the option that keeps one rule
+  for everything.
+- **Or exempt it**, and accept that the one tree nobody checks is the one being
+  published. What that pull request contains is generated — version numbers and
+  changelog text — so the risk is small, but it is not zero: `pnpm release` builds
+  from it.
+
+Whichever you choose, the check names to require are the ones the PR shows next to
+each job (`Lint and format`, `Type-check`, `Test`, `Build`, prefixed by the calling
+job). Copy them from a real run rather than guessing — a required check whose name
+does not match anything blocks every merge, silently.
+
+`deploy-docs.yml` runs no checks and does not need to: it builds the site, and a
+build that fails fails the deploy. `checks.yml` also builds `@ramonda/docs` on every
+pull request, so a break shows up before the merge.
+
 ### While the packages are pre-1.0, a breaking change is a `minor`
 
 Changesets applies semver literally: `major` on `0.14.1` produces **`1.0.0`**, not
