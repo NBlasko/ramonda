@@ -88,24 +88,24 @@ const withPost = focusOn(updated).get("posts").push(newPost);
 
 ## It pairs with `list()`
 
-An immutable edit gives the edited row a **new object**, and a
-[`list()`](/lists) recognises a row by the object it holds. So without help, the
-row you just edited looks like a row it has never seen: it is torn down and built
+An immutable edit gives the edited item a **new object**, and a
+[`list()`](/lists) recognises an item by the object it holds. So without help, the
+item you just edited looks like one it has never seen: it is torn down and built
 again, and whatever its component was holding — a half-typed input, an open menu —
 goes with it.
 
 A lens write does not need that help. At the moment it replaces a value it is
-holding both versions, so it knows which row this is and says so. Edit a row and it
-keeps its element and its component:
+holding both versions, so it knows which item this is and says so. Edit an item and
+it keeps its element and its component:
 
 ```tsx
 this.posts = focusOn(this.posts).where((p) => p.id === id).merge({ title });
 ```
 
-### Editing a row, and replacing one
+### Editing an item, and replacing one
 
-The three that DERIVE the new row from the old one say "this row, changed", and the
-row keeps everything it had:
+The three that DERIVE the new item from the old one say "this item, changed", and it
+keeps everything it had:
 
 ```tsx
 focusOn(this.posts).at(0).merge({ title: "New" });              // edit some fields
@@ -116,30 +116,30 @@ focusOn(this.posts).at(0).get("title").set("New");               // edit one fie
 `set` aimed at the array element itself is the one that cannot say which you meant:
 
 ```tsx
-focusOn(this.posts).at(0).set(edited);        // "here is that row, updated"
+focusOn(this.posts).at(0).set(edited);        // "here is that post, updated"
 focusOn(this.posts).at(0).set(otherPost);     // "put a different post here"
 ```
 
 Both are the same call. A lens is *handed* the value instead of deriving it, so it
-cannot tell a corrected row from a different one — and giving a different post the
+cannot tell a corrected post from a different one — and giving a different post the
 open editor of the post it replaced is the worse of the two mistakes. **So `set`
-treats the value as something else, and the row is rebuilt.**
+treats the value as something else, and the item is rebuilt.**
 
-When you know it is the same row, say so:
+When you know it is the same item, say so:
 
 ```tsx
-import { SAME_ROW } from "@ramonda/core";
+import { SAME_ITEM } from "@ramonda/core";
 
-focusOn(this.posts).at(0).set(fromTheForm, SAME_ROW);
+focusOn(this.posts).at(0).set(fromTheForm, SAME_ITEM);
 ```
 
 Nothing about the new object has to resemble the old one — every field can differ,
-the id included — because you said which row it is rather than leaving it to be
+the id included — because you said which item it is rather than leaving it to be
 worked out.
 
-**So reach for `merge` or `update` when you are editing a row**, and keep `set` on
+**So reach for `merge` or `update` when you are editing an item**, and keep `set` on
 an array element for what it says plainly: putting something else there. For a
-property inside a row, `set` is unambiguous and is the right tool.
+property inside an item, `set` is unambiguous and is the right tool.
 
 ## Small, and usable on its own
 

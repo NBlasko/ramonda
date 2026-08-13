@@ -27,14 +27,14 @@ With no hops at all the focused value *is* the root, so `focusOn(state).set(othe
 the whole tree and `focusOn(state).merge({ … })` rewrites its top level.
 
 `set` is the only one that REPLACES rather than derives, and that costs the value anything a
-library had attached to it under a hidden symbol — which for a row in a
-[`list()`](/lists) is what the row's component state is following. When the value you
+library had attached to it under a hidden symbol — which for an item in a
+[`list()`](/lists) is what that item's component state is following. When the value you
 are handing it is the same thing rebuilt, say so:
 
 ```tsx
-import { SAME_ROW } from "@ramonda/core";
+import { SAME_ITEM } from "@ramonda/core";
 
-this.posts = focusOn(this.posts).at(0).set(fromTheForm, SAME_ROW);
+this.posts = focusOn(this.posts).at(0).set(fromTheForm, SAME_ITEM);
 ```
 
 ## Don't mutate the result either

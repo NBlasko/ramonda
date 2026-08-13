@@ -316,7 +316,7 @@ cannot reach, so a chain that tries reports it and changes nothing.
 ## Hidden data on a value
 
 Something may have attached a **non-enumerable symbol** to one of your objects — a cache
-tagging an entry, a renderer marking a row. That is the one way to attach something to an
+tagging an entry, a renderer marking a list item. That is the one way to attach something to an
 object without colliding with the fields, appearing in `Object.keys`, or reaching
 `JSON.stringify`. It also means a spread drops it, and a spread is what every hop here does.
 
@@ -329,9 +329,9 @@ corrected value from a different one, and giving a different thing the tag of th
 replaced is the worse of the two mistakes. **`set` keeps nothing unless you say so:**
 
 ```ts
-focusOn(rows).at(0).set(other);                            // a different row
-focusOn(rows).at(0).set(rebuilt, { keepSymbols: true });   // the same row, rebuilt
-focusOn(rows).at(0).set(rebuilt, { keepSymbols: [MINE] }); // only this one
+focusOn(items).at(0).set(other);                            // a different value
+focusOn(items).at(0).set(rebuilt, { keepSymbols: true });   // the same one, rebuilt
+focusOn(items).at(0).set(rebuilt, { keepSymbols: [MINE] }); // only this one
 ```
 
 `true` keeps every hidden symbol; an array keeps exactly those and drops the rest. The option

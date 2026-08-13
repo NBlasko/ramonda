@@ -39,8 +39,8 @@ export interface FocusCommon<Root, Current> {
    * and `update` derive, so they carry; say it here when you know:
    *
    * ```ts
-   * focusOn(rows).at(0).set(other)                          // a different row
-   * focusOn(rows).at(0).set(rebuilt, { keepSymbols: true }) // the same row, rebuilt
+   * focusOn(items).at(0).set(other)                          // a different value
+   * focusOn(items).at(0).set(rebuilt, { keepSymbols: true }) // the same one, rebuilt
    * ```
    *
    * See `KeepSymbols`.

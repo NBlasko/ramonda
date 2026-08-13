@@ -210,24 +210,26 @@ function mergeArray(
 }
 
 /**
- * Hands `@ramonda/lens` the one thing it needs to keep a row's identity across a
- * `set`, without either package importing the other.
+ * Hands `@ramonda/lens` the one thing it needs to keep a list item's identity
+ * across a `set`, without either package importing the other.
  *
  * A lens carries hidden data across an EDIT on its own — `merge`, `update`, a
  * write aimed deeper — because an edit is a continuation of the value. A `set`
  * is handed a value instead of deriving one, so it cannot know whether the new
- * value is the same row or a different one, and it keeps nothing unless told.
+ * value is the same item or a different one, and it keeps nothing unless told.
  *
  * Told is this:
  *
  * ```ts
  * import { focusOn } from "@ramonda/lens";
- * import { SAME_ROW } from "@ramonda/core";
+ * import { SAME_ITEM } from "@ramonda/core";
  *
- * this.rows = focusOn(this.rows).at(0).set(rebuiltRow, SAME_ROW);
+ * this.items = focusOn(this.items).at(0).set(rebuilt, SAME_ITEM);
  * ```
  *
- * Ready-made rather than left to the caller, because the alternative is an app
- * writing out a symbol it should never have to name.
+ * The name states the FACT the caller knows — this is that same item — and
+ * leaves the consequence to the framework. Ready-made rather than left to the
+ * caller, because the alternative is an app writing out a symbol it should
+ * never have to name.
  */
-export const SAME_ROW: { keepSymbols: readonly symbol[] } = { keepSymbols: [ITEM_ID] };
+export const SAME_ITEM: { keepSymbols: readonly symbol[] } = { keepSymbols: [ITEM_ID] };

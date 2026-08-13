@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, SAME_ROW, state } from "../index";
+import { Component, Host, list, SAME_ITEM, state } from "../index";
 import { created, destroyed, Host as HostDec } from "../base/decorators";
 
 /**
@@ -363,12 +363,12 @@ describe("two dimensions", () => {
 });
 
 /**
- * `SAME_ROW` — the option a lens `set` takes when the value handed to it is the
- * same row rebuilt.
+ * `SAME_ITEM` — the option a lens `set` takes when the value handed to it is the
+ * same item rebuilt.
  *
  * A lens `set` is handed a value rather than deriving one, so it cannot tell a
- * corrected row from a different row and keeps nothing by default. `SAME_ROW`
- * is the caller saying which one it is. It lives here because it is the SYMBOL
+ * corrected item from a different one and keeps nothing by default. `SAME_ITEM`
+ * is the caller saying which it is. It lives here because it is the SYMBOL
  * that matters, and this file is where what the symbol buys you is measured.
  *
  * `@ramonda/lens` is not a dependency of this package and must not become one,
@@ -376,9 +376,9 @@ describe("two dimensions", () => {
  * old value onto the new — is done inline. If that mechanism and this constant
  * ever disagree, the lens tests catch the other half.
  */
-describe("SAME_ROW, the option a lens set takes", () => {
+describe("SAME_ITEM, the option a lens set takes", () => {
   function asLensWould(previous: object, next: object): object {
-    for (const key of SAME_ROW.keepSymbols) {
+    for (const key of SAME_ITEM.keepSymbols) {
       const descriptor = Object.getOwnPropertyDescriptor(previous, key);
       if (descriptor !== undefined) Object.defineProperty(next, key, descriptor);
     }
@@ -426,6 +426,6 @@ describe("SAME_ROW, the option a lens set takes", () => {
 
     expect(Object.keys(rebuilt)).toEqual(["id", "title", "done"]);
     expect(JSON.stringify(rebuilt)).toBe('{"id":1,"title":"a","done":false}');
-    expect(SAME_ROW.keepSymbols).toHaveLength(1);
+    expect(SAME_ITEM.keepSymbols).toHaveLength(1);
   });
 });

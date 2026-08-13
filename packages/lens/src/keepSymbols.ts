@@ -23,9 +23,9 @@
  * itself replaces, so it does not, and says so where it is written:
  *
  * ```ts
- * focusOn(rows).at(0).merge({ title })                   // edit — kept
- * focusOn(rows).at(0).set(other)                         // replace — not kept
- * focusOn(rows).at(0).set(same, { keepSymbols: true })   // replace, but the same thing
+ * focusOn(items).at(0).merge({ title })                   // edit — kept
+ * focusOn(items).at(0).set(other)                         // replace — not kept
+ * focusOn(items).at(0).set(same, { keepSymbols: true })   // replace, but the same thing
  * ```
  *
  * A lens does not know what the hidden data means and does not need to. It knows

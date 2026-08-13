@@ -50,7 +50,7 @@ import { diagnose } from "../debug/diagnostics";
  * up with two copies of core, where a fresh symbol would quietly give the same
  * row two identities.
  */
-export const ITEM_ID = Symbol.for("ramonda.row");
+export const ITEM_ID = Symbol.for("ramonda.item");
 
 
 interface Identified {

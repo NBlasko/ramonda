@@ -27,7 +27,7 @@ const EXPECTED = [
   "merge",
   // The ready-made option for a lens `set` that replaces a row with the same
   // row rebuilt — so an app never has to name the symbol behind it.
-  "SAME_ROW",
+  "SAME_ITEM",
   "ShouldUpdateOnPropsChange",
   "StableProps",
   "AsyncLoad",
