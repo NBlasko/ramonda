@@ -1,5 +1,196 @@
 # @ramonda/check
 
+## 0.6.0
+
+### Minor Changes
+
+- c40698e: A component named among JSX children is reported.
+
+  `{Named}` where `<Named />` was meant. Measured in core before the rule was written: it renders
+  **nothing**, and no diagnostic is emitted — a class is a function, so `RMD037`, the check for an
+  object among children that is not markup, never sees it. The page simply comes up without the
+  component, and nothing anywhere says a word.
+
+  Nothing legitimate has this shape. Handing a component over is an attribute, and `<Slot view={Named}
+/>` is a binding rather than a child — the fixture pins that difference.
+
+  `{cond && Named}` and `{cond ? Named : null}` are the same mistake behind a branch, and are reported
+  too.
+
+- d3d182b: A ring of mounts that nothing on it can skip is reported.
+
+  A cycle by itself is not a fault, and this is the measurement that decided the rule: the one cycle in
+  this repository is a markdown renderer and a code block calling each other, and it is correct. A tree
+  renders itself for each child and stops when the data runs out — that is how a recursive structure is
+  drawn, and reporting it would report the ordinary case.
+
+  What cannot be right is a ring where every step runs on **every** render: no branch, no callback, no
+  loop anywhere on it. Nothing can stop, so the first render recurses until the stack gives out, before
+  a page appears, in every build.
+
+  That is decidable, so the rule is. Every edge now carries `always` when its site was proven to run on
+  every render of the body it is written in, and the flag is absent when nothing proved it — a site
+  this could not read can never invent a fault. `always` is a fact other rules can use: it is the
+  difference between _may reach_ and _will reach_, which the provider walk does not need and this one
+  does.
+
+  Silent across the four apps and five packages here.
+
+- 58693b4: `ramonda-check-bundle` now ships, and a scaffolded project runs it.
+
+  Ramonda's decorators are TC39 syntax that no engine can parse, so the bundler has to transform them
+  away. Which it does is decided by one line — `target` — and `esnext`, the value that reads like a
+  modernisation, is the one that leaves them in. The build still succeeds, prints no warning, and
+  emits a file that dies with `SyntaxError: Invalid or unexpected token` on the first page load.
+
+  This repository has been guarded against that for a while; a project scaffolded with
+  `npm create ramonda` was not. Both now end their `build` with `ramonda-check-bundle`, which parses
+  every emitted file and fails the build instead of the browser.
+
+  - `@ramonda/check` gains a second binary, `ramonda-check-bundle <dir-or-file>...`. Nothing about
+    `ramonda-check` changes.
+  - Both templates end `build` with it, and both `vite.config.ts` files now say what `target: "es2022"`
+    is for — the setting was already correct and completely unlabelled, which is how it got removed
+    the first time.
+
+- 1384a5f: Two more ways a component is mounted, and the documentation site is finally visible.
+
+  **A function that mounts through the factory and writes no tag at all** is a helper like any other.
+  It was recognised by looking for JSX tags, so a function that walks a content tree and calls `__h`
+  for every node was not one — its body was never walked, and everything it mounts was unreachable
+  while it sat in plain sight.
+
+  **A helper handed OVER rather than called** — `tree.map(toVNode)` — is reached too. Whoever it is
+  given to will run it, so what it mounts is reachable from there.
+
+  Measured on this repository's documentation site, which renders its entire content tree that way:
+  the walk reached **10 of 153 nodes** when this work started, 90 after the factory and the looped
+  route table, and **142 of 157** now. The only thing of its own it does not reach is the SSR entry,
+  which nothing calls because the server calls it.
+
+  Four more sites carry an escape hatch, and they are all one shape — a function that mounts whatever
+  it is handed. Three are `@ramonda/core`'s JSX runtime, which is that shape by definition, and one is
+  `@ramonda/testing-library`'s wrapper. Two more name an element from a parsed content tree.
+
+- 433027f: A declaration no root reaches is reported.
+
+  The first check computed from the graph rather than from the source, and it needed no new pass over
+  your code — which is the argument for having a graph at all. The walk already visits everything a
+  root mounts, so what it never arrived at is what nothing mounts.
+
+  **Only what it can prove.** An exported one is never reported: an app is entered through what it
+  publishes, and an SSR entry is called by the server rather than by your program, so `renderOne` and
+  `prerender` would be false positives. What is reported is a declaration nothing outside its own file
+  can even name, that no root reaches.
+
+  Two things it took to make it silent on correct code, both measured against this repository:
+
+  **A hook a reached component uses is not dead**, though a hook mounts nothing. The walk follows what
+  MOUNTS, and `this.use(Counter)` is never a mount — right for the provider check, wrong for this one.
+  Without closing over those, the playgrounds reported three hooks as dead with a component using each
+  of them one line away.
+
+  **Another package's internals are its own business.** These apps compile their dependencies from
+  source, so an app not using one of core's hooks says nothing about core; before the filter, the
+  playground reported core's `Provider` as dead.
+
+  A library is not judged at all: with no root, everything in it is unreachable by definition. Across
+  the four apps here the rule is silent.
+
+- ad994c9: A context can say that two of it conflict, and a second one is reported before the app runs.
+
+  Nesting is ordinary: a second Provider shadows the first and the nearer one wins. That is how a
+  theme override inside a panel works, and a form inside a form — so a checker cannot simply report
+  every context provided twice.
+
+  `createContext(…, { single: true })` is how an author says this one is different. The router's is the
+  case, and it now declares it: two Routers both listen to `popstate` and both write history, and the
+  first to unmount takes the listener the survivor depends on. `Router.init` already throws when it
+  happens — this is the same fault said before anything renders, on every path the source can produce,
+  including the branch nobody clicked.
+
+  Like `label` and `optional`, the flag is a declaration rather than behaviour: the runtime reads
+  neither, and it changes what is reported rather than what is read. It travels in a package's graph
+  fragment, so a context declared single stays single in every app that mounts it.
+
+- 411661b: A route table whose views can never appear is reported.
+
+  Two ways to get there, and a reader fixes them differently: nothing hands the table to a
+  `<RouteOutlet>` this build can see, or an outlet does and no root reaches that outlet. Either way
+  every page in the table renders nothing — and each page on its own looks perfectly well formed,
+  which is why nothing else says a word. A whole section of a site can be gone without one error
+  anywhere.
+
+  The second rule read from the graph rather than from the source, and it needed nothing new: the walk
+  already knows which outlets it arrived at.
+
+  The pages themselves are not reported as dead code — a page is exported, and an exported declaration
+  is a way in. The fault belongs to the table and is reported once, where the table is written.
+
+  A build with no root is not judged, for the same reason a library is not judged for dead
+  declarations. Across the four apps here the rule is silent.
+
+- 78139fe: The factory JSX compiles to is an edge, and a route table built by a loop names its views.
+
+  A tag is not the only way to mount a component, and this repository's documentation site uses the
+  other one throughout: `__h(Markdown, { tree })` with the component named outright, and
+  `__h(component, null)` with it taken from a registry. Neither is a JSX element, so the walk saw
+  nothing — and neither was a hole, because nothing looked like an unresolvable tag.
+
+  **Measured, and the number is the point: the walk reached 10 of that app's 153 nodes, and the run
+  still said every consumer had a provider above it.** It had judged almost nothing. It reaches 90 now,
+  over 242 edges rather than 141.
+
+  Three shapes are read where one was:
+
+  - the factory called with a component named outright;
+  - the factory called with a value from a registry written as a literal — the key is decided at run
+    time and the map is not, so what MAY mount is the union of its values. A shorthand entry took two
+    hops to resolve, and each of them silently emptied the union: the symbol at `{ Counter }` is the
+    PROPERTY, and the symbol behind that is the IMPORT;
+  - a route table built by a LOOP. `collectRouteTable` read only the JSX written inside
+    `createRoutes(...)`, and the documentation site builds its table with
+    `table[page.path] = __h(DocPage, { meta: page })` over a hundred paths.
+
+  A tag chosen between two ELEMENTS — `const tag = inline ? "span" : "div"` — is not a component, and
+  is not reported. A tag whose value cannot be read as either is a hole like any other; the one in
+  this repository carries its reason.
+
+- cc9a466: Fixtures for two arrangements nothing was pressing.
+
+  Both were repaired on the strength of reading the code, and no fixture in the repository had the
+  shape — so a regression in either would have gone unnoticed while every test stayed green. That is
+  exactly how the `list({ as })` path went stale.
+
+  **Two outlets on one page.** Each `<RouteOutlet>` site keeps its own views, and a view reachable only
+  under the provider its own section mounts is not judged from the other outlet.
+
+  **A context that crosses a package boundary.** A package installed from its published files needs a
+  context an app compiles from source; the app's provider satisfies it, and the path names the
+  package's own internals — `App → Bare → Themed → ThemedBody`, pointing at
+  `@acme/ui/src/index.tsx`. A second identity for one context would have failed the build against
+  correct code.
+
+  The dangling-reference invariant is stated for an APP's graph now. A library's fragment is pruned to
+  its own package, so an edge may legitimately name another package's node — the app splices both and
+  resolves it, or records a hole with the reason.
+
+### Patch Changes
+
+- 26a4f74: A component under another name is followed, and the message for one that is not says what it means.
+
+  `const Named = Reader` and then `<Named />` was reported as a hole. It is a plain rename: one hop to
+  what the name was declared with, which a loader, a binding and a factory's registry already got — a
+  tag was the one place without it.
+
+  The message for a name that genuinely cannot be followed said `resolves to VariableDeclaration`,
+  which is the compiler's word for it and reads to everyone else as something else entirely. It now
+  says a variable holds it and what it holds cannot be read from where it is declared — or, for a
+  parameter, that only a caller can say.
+
+  The hop is bounded, because two constants that name each other are a runtime error and ordinary
+  syntax; the cycles fixture caught that within the minute of the hop being added.
+
 ## 0.5.0
 
 ### Minor Changes
