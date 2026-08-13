@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    // `node` because the tests write a real entry file to a temp directory and build it — the only
+    // honest way to assert about what a bundler emits is to let one emit something.
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src"]
+}

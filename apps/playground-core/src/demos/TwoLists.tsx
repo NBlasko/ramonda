@@ -16,7 +16,7 @@ const makeTask = (title: string): Task => ({ id: nextTaskId++, title });
  *
  * Both lists mint the same ids (`f0`, `f1`, …) — they are per-list. What keeps
  * them apart is that each is ONE entry in the parent's child record with its own
- * key index; see BUGS.md in packages/core.
+ * key index.
  */
 export class TwoLists extends Component {
   @state todo: Task[] = [makeTask("wire up SSR"), makeTask("write docs")];

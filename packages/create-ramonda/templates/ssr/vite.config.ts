@@ -1,18 +1,16 @@
 import { defineConfig } from "vite";
+import { ramonda } from "@ramonda/build/vite";
 
-// Used by the DEV server only (server.mjs in middleware mode). The production
-// build is esbuild — see the `build:*` scripts.
+// Used by the DEV server only (server.mjs in middleware mode). The production build is esbuild —
+// see scripts/build.mjs, which takes the same settings from the same package.
 //
-// Ramonda needs two things from the transform, and the SECOND is the one that
-// makes server-side hot reload work at all:
-// JSX compiles through Ramonda's automatic runtime: the compiler imports what it needs from
-// `@ramonda/core/jsx-runtime` itself, per file. There is no factory to name and nothing to
-// inject.
+// `ramonda()` is the whole transform configuration. It sets `jsx`, `jsxImportSource` and `target`,
+// which have to agree with each other and with your tsconfig, and one of which is load-bearing in a
+// way nothing would tell you about: `@state`, `@compute` and the rest are TC39 decorators, which no
+// engine can parse, and esbuild only compiles them away below `esnext`. Set that one wrong and the
+// dev server still starts, warns about nothing, and hands the browser a module that dies with
+// `SyntaxError: Invalid or unexpected token`.
 export default defineConfig({
   define: { __DEV__: "true" },
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  plugins: [ramonda()],
 });

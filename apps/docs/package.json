@@ -26,7 +26,7 @@
     "@ramonda/router": "workspace:^"
   },
   "devDependencies": {
-    "@ramonda/shared": "workspace:^",
+    "@ramonda/check": "workspace:^",
     "@ramonda/theme": "workspace:^",
     "@types/node": "^26.1.2",
     "esbuild": "0.28.1",

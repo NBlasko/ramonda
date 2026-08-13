@@ -41,8 +41,8 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@ramonda/check": "workspace:^",
     "@ramonda/lens": "workspace:^",
-    "@ramonda/shared": "workspace:^",
     "@ramonda/theme": "workspace:^",
     "@types/node": "^24.10.1",
     "esbuild": "0.28.1",

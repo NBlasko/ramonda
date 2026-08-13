@@ -1,7 +1,11 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
+import { ramonda } from "@ramonda/build/vite";
 
 export default defineConfig({
+  // The same plugin a scaffolded app gets, which is the point of using it here: it carries the three
+  // transform settings, one of which decides whether the decorators survive into the output.
+  plugins: [ramonda()],
   server: {
     port: 3000,
   },
@@ -9,11 +13,6 @@ export default defineConfig({
   // playground runs (and so the devtools + dev logs are active).
   define: {
     __DEV__: JSON.stringify(true),
-  },
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
   },
   resolve: {
     alias: {

@@ -25,4 +25,4 @@ It is how versions and changelogs for the `@ramonda/*` packages are decided.
 A change with no user-facing effect (a test, CI, docs) needs no changeset — run
 `pnpm changeset --empty` if you want the check to pass explicitly.
 
-Private packages (`apps/*`, `@ramonda/shared`) are ignored automatically.
+Private packages (`apps/*`, `@ramonda/theme`) are ignored automatically.
