@@ -8,7 +8,7 @@ foundation of best practices to grow from, not an all-in-one.
 | `ci.yml` | PR to `main`, push to `main` | Lint + format, type-check, test, build — via `checks.yml` |
 | `checks.yml` | *reusable* (`workflow_call`) | The one gate: parallel lint+format / type-check / test / build |
 | `release.yml` | push to `main` | Changesets: opens a "Version Packages" PR, or publishes to npm |
-| `deploy-docs.yml` | push to `main`, or manual | Builds `apps/docs` and deploys to Cloudflare Pages |
+| `deploy-docs.yml` | **manual only**, `main` only | Builds `apps/docs` and deploys to Cloudflare Pages |
 | `codeql.yml` | PR to `main`, push to `main`, weekly | CodeQL static analysis of the TypeScript (SAST) |
 | `dependency-review.yml` | PR to `main` | Blocks a PR that adds a high/critical advisory or a copyleft licence |
 | `scorecard.yml` | weekly, branch-protection change, or manual | OpenSSF Scorecard: supply-chain hygiene, graded |
@@ -187,8 +187,9 @@ worth knowing before adding another bot:
   repository secrets, by design: its branch content is not the repository owner's.
   So `CLOUDFLARE_API_TOKEN` arrived empty, wrangler had nothing to authenticate
   with, and every bot pull request carried a red check that no reviewer could act
-  on — while the build step above it passed. `deploy-docs.yml` now runs on `main`
-  and on `workflow_dispatch` only. Preview deployments are gone, and nothing about
+  on — while the build step above it passed. `deploy-docs.yml` dropped pull
+  requests then, and has since dropped pushes too: it is started by hand, from
+  `main`. Preview deployments are gone, and nothing about
   the docs goes unverified: `checks.yml` builds `@ramonda/docs` on every pull
   request through its whole chain. A preview supplied a URL, not confidence.
 - **Dependabot rewrote a moving tag as a pin.** `github/codeql-action@v4` came back
@@ -339,6 +340,27 @@ Versions and changelogs are driven by [Changesets](https://github.com/changesets
 3. `changeset publish` skips versions already on npm, rewrites `workspace:*` to
    real versions, and tags each release. Private packages (`apps/*`,
    `@ramonda/shared`) are ignored.
+4. **Then deploy the docs by hand** — the Actions tab, *Deploy docs*, *Run
+   workflow* on `main`. Nothing does it for you, on purpose; see below.
+
+### Letting releases accumulate
+
+Nothing publishes until you merge the Version Packages PR, so leaving it open is a
+normal way to work rather than a state to get out of. Merge as many feature PRs as
+you like: each push to `main` re-runs the action, which recomputes that PR from
+**all** pending changesets and force-pushes its branch (`changeset-release/main`).
+Versions and changelogs are rebuilt from scratch every time, so they are right for
+the whole batch and not for whichever merge happened to be first.
+
+Two consequences of "rebuilt from scratch": editing the Version PR by hand is
+pointless — the next merge to `main` overwrites it — and the bumps aggregate by
+the highest one, so three patches and one minor make a minor.
+
+The docs deploy is manual because it is the one step whose right moment is not a
+push. It should describe the packages that are **on npm**, which is true only
+after step 3, and step 3 can be days after the feature merges that will appear in
+it. So the sequence is: merge features → merge the Version PR (publishes) → run
+*Deploy docs*.
 
 **The very first publish** needed no changeset: the packages were not on npm yet,
 so merging to `main` published them at the versions they already carried. Every
