@@ -2,41 +2,16 @@
 // LOUDLY if a route marked prerender read per-request data (it cannot be baked safely). Run
 // after the server bundle is built; `npm run build` wires this up.
 
-import { JSDOM } from "jsdom";
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installDom } from "../installDom.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const OUT = resolve(root, "dist/static");
 const origin = "http://localhost:5173";
 
-/** A fresh DOM seeded at a URL — the router reads `window.location` to learn the page. */
-function installDom(url) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>", { url });
-  const put = (name, value) => Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
-  for (const name of [
-    "window",
-    "document",
-    "navigator",
-    "location",
-    "history",
-    "HTMLElement",
-    "SVGElement",
-    "Node",
-    "Text",
-    "CustomEvent",
-    "Event",
-    "MouseEvent",
-    "getComputedStyle",
-  ]) {
-    put(name, dom.window[name]);
-  }
-  put("requestAnimationFrame", (cb) => setTimeout(() => cb(Date.now()), 0));
-  put("cancelAnimationFrame", (id) => clearTimeout(id));
-  return dom;
-}
 
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
 installDom(`${origin}/`);
