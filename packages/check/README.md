@@ -222,8 +222,16 @@ shape was already trouble for another reason.
 When the source is right and this is the one that cannot see it, write the reason on the line:
 
 ```tsx
-// ramonda-check-ignore the caller hands us the tree to mount, which is what this helper is for
-bootstrap(wrap(ui), container);
+class Row extends Component {
+  render() {
+    return <li>row</li>;
+  }
+}
+
+const rows = { "/": Row };
+
+// ramonda-check-ignore the table is keyed at run time, and every value is a component
+const Chosen = rows["/"];
 ```
 
 **Line-scoped, never file-scoped**, and the reason is mandatory — a directive with nothing after it
