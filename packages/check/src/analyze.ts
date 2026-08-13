@@ -256,6 +256,25 @@ export interface SecondProviderIssue {
   column: number;
 }
 
+/**
+ * A ring of mounts that nothing on it can skip.
+ *
+ * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
+ * runs out, which is how a recursive structure is drawn. Measured across this repository: the one
+ * cycle in it is a markdown renderer and a code block calling each other, and it is correct.
+ *
+ * What cannot be correct is a ring where every step runs on EVERY render: no branch, no callback,
+ * no loop anywhere on it. Nothing can stop, so the first render recurses until the stack gives out —
+ * before a page appears, in every build.
+ */
+export interface RenderCycleIssue {
+  /** The ring, in order, ending where it began. */
+  path: string[];
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -274,6 +293,8 @@ export interface AnalyzeResult {
   unreachableRoutes: UnreachableRouteIssue[];
   /** Second providers for a context declared single — see `SecondProviderIssue`. */
   secondProviders: SecondProviderIssue[];
+  /** Rings of mounts nothing on them can skip — see `RenderCycleIssue`. */
+  renderCycles: RenderCycleIssue[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -326,6 +347,8 @@ interface SplicedPackage {
 /** One place that mounts a component, and what that place hands to the component's slots. */
 interface MountSite {
   target: ComponentNode;
+  /** Whether this site runs on every render — see `GraphEdge.always`. */
+  always: boolean;
   /** Slot path → the components handed to it at THIS site; a ternary hands over both arms. */
   binds: Map<string, ComponentNode[]>;
 }
@@ -639,7 +662,15 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       binds && binds.size > 0
         ? [...binds].flatMap(([slot, targets]) => targets.map((t) => ({ slot, to: t.id })))
         : undefined;
-    edges.push({ from, to, kind, via, at: whereOf(site), ...(flat ? { binds: flat } : {}) });
+    edges.push({
+      from,
+      to,
+      kind,
+      via,
+      at: whereOf(site),
+      ...(flat ? { binds: flat } : {}),
+      ...(alwaysRuns(site) ? { always: true } : {}),
+    });
   };
 
   /** Records a mount both ways: as an edge for the format, and as a SITE for the walk. */
@@ -651,7 +682,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     binds: Map<string, ComponentNode[]> = new Map(),
     kind: GraphEdge["kind"] = "renders",
   ): void => {
-    owner.mounts.push({ target, binds });
+    owner.mounts.push({ target, binds, always: alwaysRuns(site) });
     edge(owner.id, target.id, kind, via, site, binds);
   };
   const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
@@ -795,6 +826,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const issues = walk(reached);
   const unreachable = deadOnes(reached);
   const unreachableRoutes = strandedRoutes(reached);
+  const renderCycles = endlessRings();
 
   return {
     issues,
@@ -806,6 +838,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     unreachable,
     unreachableRoutes,
     secondProviders,
+    renderCycles,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -1286,6 +1319,46 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return made;
   }
 
+  /**
+   * Whether this site runs on every render of the body it is written in.
+   *
+   * Nothing between it and the class member may be able to skip it: no branch, no `&&`, no loop,
+   * and no callback — a function handed to something else is a maybe, whoever calls it. Read as
+   * syntax, and it answers NO whenever it is unsure, so a missing flag can never invent a fault.
+   */
+  function alwaysRuns(site: ts.Node): boolean {
+    for (let node: ts.Node | undefined = site.parent; node; node = node.parent) {
+      if (
+        ts.isConditionalExpression(node) ||
+        ts.isIfStatement(node) ||
+        ts.isSwitchStatement(node) ||
+        ts.isCaseClause(node) ||
+        ts.isCatchClause(node) ||
+        ts.isForStatement(node) ||
+        ts.isForOfStatement(node) ||
+        ts.isForInStatement(node) ||
+        ts.isWhileStatement(node) ||
+        ts.isDoStatement(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isFunctionExpression(node)
+      ) {
+        return false;
+      }
+      if (ts.isBinaryExpression(node)) {
+        const kind = node.operatorToken.kind;
+        if (
+          kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+          kind === ts.SyntaxKind.BarBarToken ||
+          kind === ts.SyntaxKind.QuestionQuestionToken
+        ) {
+          return false;
+        }
+      }
+      if (ts.isMethodDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isPropertyDeclaration(node)) return true;
+    }
+    return false;
+  }
+
   /** The component a name in value position refers to, resolved through an import alias. */
   function componentAt(node: ts.Node): ComponentNode | undefined {
     if (!ts.isIdentifier(node)) return undefined;
@@ -1394,7 +1467,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           if (already2) already2.push(to);
           else binds.set(bound.slot, [to]);
         }
-        from.mounts.push({ target, binds });
+        from.mounts.push({ target, binds, always: each.always === true });
       } else if (each.kind === "provides" && each.to) {
         from.provides.add(each.to);
       } else if (each.kind === "consumes" && each.to) {
@@ -1403,7 +1476,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       } else if (each.kind === "uses" && target) {
         from.uses.add(target);
       } else if (each.kind === "calls" && target) {
-        from.mounts.push({ target, binds: new Map() });
+        from.mounts.push({ target, binds: new Map(), always: each.always === true });
       } else if (each.kind === "unresolved" && each.via === "slot" && each.slot) {
         from.slotHoles.push({ slot: each.slot });
       }
@@ -1737,6 +1810,54 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * Each page in such a table looks perfectly well formed on its own, which is why nothing else
    * reports it.
    */
+  /**
+   * A ring of mounts that nothing on it can skip.
+   *
+   * Only the sites that run on EVERY render are followed, so a tree that renders itself once per
+   * item — a callback, a branch, a loop — is not one of these. What is left cannot stop.
+   *
+   * Reported once per ring rather than once per member, at the class the ring is entered by: it is
+   * one fault, and naming each component on it would be the same sentence three times.
+   */
+  function endlessRings(): RenderCycleIssue[] {
+    const found: RenderCycleIssue[] = [];
+    const state = new Map<ComponentNode, "open" | "done">();
+    const stack: ComponentNode[] = [];
+    const reported = new Set<string>();
+
+    const walkFrom = (node: ComponentNode): void => {
+      state.set(node, "open");
+      stack.push(node);
+      for (const site of node.mounts) {
+        if (!site.always) continue;
+        const next = site.target;
+        if (state.get(next) === "open") {
+          const ring = stack.slice(stack.indexOf(next));
+          // One ring, one report: whichever member is met first names it, and the same ring found
+          // from another entry point is the same fault.
+          const key = [...ring]
+            .map((n) => n.id)
+            .sort()
+            .join("|");
+          if (!reported.has(key)) {
+            reported.add(key);
+            found.push({
+              path: [...ring.map((n) => n.name), next.name],
+              file: next.file,
+              line: next.line,
+              column: next.column,
+            });
+          }
+        } else if (!state.has(next)) walkFrom(next);
+      }
+      stack.pop();
+      state.set(node, "done");
+    };
+
+    for (const node of [...components.values(), ...helpers.values()]) if (!state.has(node)) walkFrom(node);
+    return found;
+  }
+
   function strandedRoutes(reached: Set<ComponentNode>): UnreachableRouteIssue[] {
     // No root, no verdict — the same reason a library is not judged for dead declarations.
     if (roots.size === 0) return [];

@@ -1115,3 +1115,37 @@ describe("a second provider where one is allowed", () => {
     expect(run("two-routers").issues).toEqual([]);
   });
 });
+
+/**
+ * A ring of mounts that nothing on it can skip.
+ *
+ * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
+ * runs out, which is how a recursive structure is drawn. Measured across this repository: its one
+ * cycle is a markdown renderer and a code block calling each other, and it is correct. So the rule
+ * is the narrow one, and it is decidable: every step on the ring runs on EVERY render.
+ */
+describe("a ring of mounts nothing can skip", () => {
+  test("is reported, with the ring in order", () => {
+    const found = run("cycles").renderCycles;
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toEqual(["Loop", "Half", "Loop"]);
+  });
+
+  test("a component that renders itself once per ITEM is not one", () => {
+    // `list([1, 2], () => <Branch />)` — the callback is a maybe, whoever calls it, and the data
+    // is what ends the recursion.
+    expect(run("cycles").renderCycles.flatMap((c) => c.path)).not.toContain("Branch");
+  });
+
+  test("nor one behind a condition", () => {
+    expect(run("cycles").renderCycles.flatMap((c) => c.path)).not.toContain("Maybe");
+  });
+
+  test("the flag that makes it decidable is on the edge", () => {
+    // `always` is absent unless the site was PROVEN to run on every render, so a missing one can
+    // never invent a fault.
+    const edges = run("cycles").graph.edges.filter((e) => e.kind === "renders");
+    expect(edges.find((e) => e.from.endsWith("#Loop"))?.always).toBe(true);
+    expect(edges.find((e) => e.from.endsWith("#Branch"))?.always).toBeUndefined();
+  });
+});

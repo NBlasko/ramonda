@@ -93,6 +93,15 @@ export interface GraphEdge {
   /** Why nothing could be named, on an `unresolved` edge. */
   why?: string;
   /**
+   * This site runs on EVERY render of the component that writes it — no branch, no callback, no
+   * loop between the class body and the tag.
+   *
+   * The difference between `may reach` and `will reach`, which the walk does not need and one rule
+   * does: a ring of these cannot stop, so the first render recurses until the stack gives out. The
+   * flag is absent when nothing proved it, so a missing one can never invent a fault.
+   */
+  always?: boolean;
+  /**
    * What THIS site hands to the mounted component's slots.
    *
    * On the edge and not on the node, because a binding belongs to a call: `<Slot view={Reader} />`

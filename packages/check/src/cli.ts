@@ -47,6 +47,7 @@ const {
   unreachable,
   unreachableRoutes,
   secondProviders,
+  renderCycles,
   counts,
   graph,
   notes,
@@ -91,7 +92,8 @@ if (
   unresolved.length === 0 &&
   unreachable.length === 0 &&
   unreachableRoutes.length === 0 &&
-  secondProviders.length === 0
+  secondProviders.length === 0 &&
+  renderCycles.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -182,6 +184,24 @@ if (secondProviders.length > 0) {
     `Mount it once, on a component that wraps the rest. A context whose author wrote\n` +
       `\`single: true\` is one where two CONFLICT rather than the nearer winning — for the\n` +
       `router's, both listen to popstate and both write history.\n`,
+  );
+}
+
+/**
+ * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
+ * runs out. This is the ring where nothing can stop.
+ */
+if (renderCycles.length > 0) {
+  console.error(`\n${TAG} ${renderCycles.length} ring(s) of mounts that nothing can skip:\n`);
+  for (const ring of renderCycles) {
+    console.error(`  ${ring.file}:${ring.line}:${ring.column}`);
+    console.error(`    ${ring.path.join(" → ")}`);
+    console.error("");
+  }
+  console.error(
+    `Every step on this ring runs on EVERY render — no branch, no callback, no loop — so the\n` +
+      `first render recurses until the stack gives out, before a page appears. Put the recursion\n` +
+      `behind the data that ends it: a condition, or the callback \`list()\` takes.\n`,
   );
 }
 

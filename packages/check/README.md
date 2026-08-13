@@ -219,6 +219,23 @@ package's internals are its own business, not your app's.
 
 A library is not judged at all. With no root, everything in it is unreachable by definition.
 
+## A ring of mounts nothing can skip
+
+```
+[ramonda-check] 1 ring(s) of mounts that nothing can skip:
+
+  src/Loop.tsx:4:1
+    Loop → Half → Loop
+```
+
+A cycle by itself is not a fault: a tree renders itself for each child and stops when the data runs
+out, which is how a recursive structure is drawn. What cannot be right is a ring where **every step
+runs on every render** — no branch, no callback, no loop anywhere on it. Nothing can stop, so the
+first render recurses until the stack gives out, before a page appears.
+
+Every edge carries `always` when the site was proven to run on every render, and the flag is absent
+otherwise — so a site this could not read can never invent a fault.
+
 ## A second provider where the author allows one
 
 ```
