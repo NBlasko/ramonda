@@ -44,6 +44,67 @@ export function lowersDecorators(target: string | readonly string[] | undefined 
   return list.some((entry) => entry.toLowerCase() !== "esnext");
 }
 
+/** What a transform can be told, in the shape both adapters share. */
+interface Told {
+  jsx?: string;
+  jsxImportSource?: string;
+  target?: string | readonly string[];
+}
+
+/** The two names with exactly one right answer, as opposed to `target`, which has many. */
+const EXACT = ["jsx", "jsxImportSource"] as const;
+
+/**
+ * Refuses anything the caller named that disagrees.
+ *
+ * Both adapters call this, which is the point: they drifted apart once — the Vite half replaced a
+ * disagreeing value and the esbuild half kept it, so the same config got opposite treatment
+ * depending on which bundler read it, and neither said a word.
+ */
+export function check(where: string, told: Told | undefined): void {
+  for (const name of EXACT) {
+    const actual = told?.[name];
+    if (actual !== undefined && actual !== RAMONDA_TRANSFORM[name]) throw refuseSetting(where, name, actual);
+  }
+}
+
+/**
+ * Only what the caller left unsaid.
+ *
+ * Everything here has already been through {@link check}, so anything still set is a value that
+ * agrees — and re-stating it would replace the caller's own line for no gain. On Vite it would do
+ * more than that: a plugin's config is merged OVER the user's, so returning a key is how you take
+ * it away from them.
+ */
+export function fillIn(told: Told | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of EXACT) if (told?.[name] === undefined) out[name] = RAMONDA_TRANSFORM[name];
+  if (told?.target === undefined) out.target = RAMONDA_TRANSFORM.target;
+  return out;
+}
+
+/**
+ * The refusal for `jsx` and `jsxImportSource`.
+ *
+ * A different fault from the target and so a different sentence: nothing here is silently
+ * unparseable, it simply does not compile — but it is refused for the same reason, and the two
+ * adapters have to answer it the same way. They did not, at first: the Vite half overrode a value
+ * the app had set and the esbuild half kept it, so the same config got opposite treatment depending
+ * on which bundler read it.
+ */
+export function refuseSetting(where: string, name: "jsx" | "jsxImportSource", actual: unknown): Error {
+  return new Error(
+    `[ramonda] ${where} sets \`${name}\` to ${JSON.stringify(actual)}, and Ramonda needs ` +
+      `${JSON.stringify(RAMONDA_TRANSFORM[name])}.\n\n` +
+      `JSX compiles through Ramonda's automatic runtime: every file imports what it needs from\n` +
+      `\`@ramonda/core/jsx-runtime\` itself. Both halves of that have to say the same thing, and they\n` +
+      `have to agree with \`jsx\` and \`jsxImportSource\` in your tsconfig.json as well.\n\n` +
+      `Remove it and let this plugin set it.\n\n` +
+      `This is refused rather than corrected because you asked for something specific, and the line\n` +
+      `you asked it on is the one that has to change.`,
+  );
+}
+
 /** The sentence both plugins fail with, so there is one wording of this to keep true. */
 export function refuse(where: string, target: string | readonly string[] | false | undefined): Error {
   const said = target === false ? "the transform turned off entirely" : `\`${JSON.stringify(target)}\``;

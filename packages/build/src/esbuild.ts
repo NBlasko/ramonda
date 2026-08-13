@@ -1,4 +1,4 @@
-import { RAMONDA_TRANSFORM, lowersDecorators, refuse } from "./settings";
+import { RAMONDA_TRANSFORM, check, fillIn, lowersDecorators, refuse } from "./settings";
 
 /**
  * Structural, for the same reason as the Vite half: naming esbuild's own types here would make it a
@@ -52,12 +52,16 @@ export function ramonda(): EsbuildPluginLike {
     name: "ramonda",
     setup(build) {
       const options = build.initialOptions;
+
+      // The same refusal the Vite half makes, from the same helper. These two drifted apart once —
+      // this side kept a disagreeing value with `??=` while the other silently replaced it — and a
+      // package whose whole point is that config cannot be got wrong quietly cannot afford that.
+      check("this esbuild build", options);
+
       const target = options.target;
       if (target !== undefined && !lowersDecorators(target)) throw refuse("this esbuild build's `target`", target);
 
-      options.jsx ??= RAMONDA_TRANSFORM.jsx;
-      options.jsxImportSource ??= RAMONDA_TRANSFORM.jsxImportSource;
-      options.target ??= RAMONDA_TRANSFORM.target;
+      Object.assign(options, fillIn(options));
     },
   };
 }

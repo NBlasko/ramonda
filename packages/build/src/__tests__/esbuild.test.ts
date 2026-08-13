@@ -57,6 +57,22 @@ describe("the plugin", () => {
     await expect(bundleWith({ target: "esnext", plugins: [ramonda()] })).rejects.toThrow(/decorator/i);
   });
 
+  /**
+   * The mirror of the Vite half's case. This adapter used to fill these in with `??=`, which means
+   * it KEPT a value that disagrees — so a build with the wrong `jsxImportSource` went ahead and
+   * failed later, on a module resolution, pointing at a file that was not the problem.
+   */
+  test.each(["jsx", "jsxImportSource"] as const)(
+    "refuses a %s that disagrees, rather than keeping it",
+    async (name) => {
+      // Asserted on OUR sentence, not just the setting's name: esbuild validates `jsx` itself, so a
+      // bare name match would pass on esbuild's own complaint even with this plugin doing nothing.
+      await expect(bundleWith({ [name]: "something-else", plugins: [ramonda()] })).rejects.toThrow(
+        /refused rather than corrected/,
+      );
+    },
+  );
+
   test("leaves a target that already works", async () => {
     let seen: unknown;
     const parsed = await bundleWith({

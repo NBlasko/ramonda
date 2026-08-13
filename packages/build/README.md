@@ -87,8 +87,9 @@ It fills in whatever the build did not set.
 
 ## It refuses rather than corrects
 
-If your config names a `target` that would leave the decorators in, the build stops and tells you
-which line:
+If your config names any of the three as something Ramonda cannot work with — a `target` that would
+leave the decorators in, or a `jsx` / `jsxImportSource` that disagrees — the build stops and tells
+you which line:
 
 ```
 [ramonda] `esbuild.target` in your Vite config has "esnext", and that leaves Ramonda's
@@ -101,8 +102,9 @@ you asked it on is the one that has to change.
 It could win that argument silently — Vite merges a plugin's config over the user's — and that is
 exactly why it does not. A setting that gets quietly reversed is a setting you cannot reason about.
 
-A `target` that already works is left alone, for the same reason: it was a real choice. Only an
-unset one is filled in.
+A setting that already agrees is left alone, for the same reason: it was a real choice, and handing
+it back would only replace your line with an identical one. Both adapters answer this from the same
+place, so Vite and esbuild cannot disagree about your config.
 
 ## And then check the output
 

@@ -1,4 +1,4 @@
-import { RAMONDA_TRANSFORM, lowersDecorators, refuse } from "./settings";
+import { check, fillIn, lowersDecorators, refuse } from "./settings";
 
 /**
  * Structural, rather than imported from `vite`, so this package's types do not make the whole of
@@ -55,19 +55,15 @@ export function ramonda(): VitePluginLike {
 
     config(config) {
       if (config.esbuild === false) throw refuse("`esbuild` in your Vite config", false);
+      check("your Vite config", config.esbuild);
 
       const target = config.esbuild?.target;
       if (target !== undefined && !lowersDecorators(target))
         throw refuse("`esbuild.target` in your Vite config", target);
 
-      return {
-        esbuild: {
-          jsx: RAMONDA_TRANSFORM.jsx,
-          jsxImportSource: RAMONDA_TRANSFORM.jsxImportSource,
-          // Only when the app named none, so a working choice of its own survives the merge.
-          ...(target === undefined ? { target: RAMONDA_TRANSFORM.target } : {}),
-        },
-      };
+      // Every setting the app did not name, and only those, so a choice of its own survives the
+      // merge — Vite applies this OVER the user's config, so returning one would replace it.
+      return { esbuild: fillIn(config.esbuild) };
     },
 
     /**
@@ -77,6 +73,7 @@ export function ramonda(): VitePluginLike {
      */
     configResolved(config) {
       if (config.esbuild === false) throw refuse("the resolved Vite config", false);
+      check("the resolved Vite config", config.esbuild);
       if (!lowersDecorators(config.esbuild?.target)) {
         throw refuse("the resolved Vite config's `esbuild.target`", config.esbuild?.target);
       }

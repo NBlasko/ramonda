@@ -63,6 +63,30 @@ describe("what the plugin puts in the config", () => {
     );
   });
 
+  /**
+   * `jsx` and `jsxImportSource` used to be returned unconditionally here while the esbuild adapter
+   * filled them in with `??=` — so the same config was silently overridden by one half and silently
+   * kept by the other, and only `target` was ever refused. Three behaviours for one principle.
+   * Both adapters now answer this from the same helper; the esbuild half asserts the mirror image.
+   */
+  test.each(["jsx", "jsxImportSource"] as const)("a %s that disagrees is refused, not overridden", (name) => {
+    const { config } = hooks(ramonda());
+    const env = { command: "build", mode: "production" };
+
+    expect(() => config({ esbuild: { [name]: "something-else" } }, env)).toThrow(new RegExp(name));
+    expect(() => config({ esbuild: { [name]: "something-else" } }, env)).toThrow(/refused rather than corrected/);
+  });
+
+  test("one the app already set correctly is not handed back, so its line survives", () => {
+    const { config } = hooks(ramonda());
+    const returned = config({ esbuild: { jsx: "automatic" } }, { command: "build", mode: "production" }) as {
+      esbuild: Record<string, unknown>;
+    };
+
+    expect(returned.esbuild).not.toHaveProperty("jsx");
+    expect(returned.esbuild.jsxImportSource).toBe("@ramonda/core");
+  });
+
   test("turning esbuild off entirely is refused too", () => {
     const { config } = hooks(ramonda());
     expect(() => config({ esbuild: false }, { command: "build", mode: "production" })).toThrow(/decorator/i);
@@ -74,8 +98,11 @@ describe("what the plugin puts in the config", () => {
     expect(() => configResolved({ esbuild: { target: "es2022" } })).not.toThrow();
 
     // Plugin order is not something this package controls, so the value it returned is not proof of
-    // the value that survived.
+    // the value that survived. All three settings, not just the target.
     expect(() => configResolved({ esbuild: { target: "esnext" } })).toThrow(/decorator/i);
+    expect(() => configResolved({ esbuild: { target: "es2022", jsxImportSource: "elsewhere" } })).toThrow(
+      /jsxImportSource/,
+    );
   });
 });
 
