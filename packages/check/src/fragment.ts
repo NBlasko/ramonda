@@ -91,6 +91,13 @@ export function loadFragment(
     };
   }
 
+  // The shape, before anything walks it: a fragment written by a broken emitter, or hand-edited,
+  // would otherwise throw a TypeError out of the splice — a crash in a build gate rather than a
+  // diagnostic with a reason.
+  if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+    return { refused: `${packageName}'s graph at ${file} has no nodes or edges to read` };
+  }
+
   return { fragment: { graph, file } };
 }
 

@@ -411,6 +411,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * table is read in pass 1, before every class is known.
    */
   const routeTables = new Map<ts.Symbol, ts.Node[]>();
+  /** Which of them some `<RouteOutlet routes={…}>` in this run actually named. */
+  const mountedTables = new Set<ts.Symbol>();
 
   /** Every component and hook class, by the symbol of its declaration — see `ComponentNode.id`. */
   const components = new Map<ts.Symbol, ComponentNode>();
@@ -433,6 +435,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const helpers = new Map<ts.Symbol, ComponentNode>();
   /** The body to walk for each helper, kept so pass 2.5 does not look it up again. */
   const helperBodies = new Map<ComponentNode, ts.Node>();
+  /** One node per `<RouteOutlet routes={…}>` site, so two outlets do not merge their views. */
+  const outletSites = new Map<string, ComponentNode>();
+  const outletsPerFile = new Map<string, number>();
   /** One per `bootstrap`/`hydrateRoot` call, which is where a tree starts. */
   const rootNodes: GraphNode[] = [];
   /** Where each root's tree starts, for the walk. */
@@ -594,6 +599,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     })(declaration);
   }
 
+  /**
+   * The three non-composition checks were tried over test files too, and it was WRONG.
+   *
+   * The reviewer's point stands on its face — a function literal in a class field is a fault
+   * wherever it is written, and `main` reported them in tests. Measured, though: restoring it fails
+   * `@ramonda/core`'s own build on `class Bad { fn = () => … }` and `Widget.handler`, both written
+   * to be bad because they are what their test is ABOUT. A gate that fails on a fixture written to
+   * fail is one people switch off, which is the argument this package's README opens with.
+   *
+   * So the exclusion stays for all four checks, and the cost is written down rather than hidden:
+   * a real fault written in a test file is not reported.
+   */
+
   resolveHookContexts();
   const issues = walk();
 
@@ -671,7 +689,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   function collectClass(node: ts.Node): void {
     if (!ts.isClassDeclaration(node) || !node.name) return;
     const kind = componentKind(node, checker);
-    if (!kind) return;
+    if (!kind) {
+      /**
+       * A heritage clause that is a CALL — `class Panel extends withTheme(Component)`.
+       *
+       * Answering it needs a TYPE, and this resolver is on symbols, so the class is not a
+       * component here. Dropping it in silence made the omission invisible: it rendered nothing,
+       * consumed nothing and was reachable from nothing, so no rule could notice. Said out loud
+       * instead, which is what the design asks for.
+       */
+      const base = baseExpression(node);
+      if (base && ts.isCallExpression(base)) {
+        const at = positionOf(node);
+        notes.push(
+          `${pathOf(at.file)}:${at.line}:${at.column} — \`${node.name.text}\` extends a call, which needs a type to follow, so it is not in the graph`,
+        );
+      }
+      return;
+    }
     const symbol = checker.getSymbolAtLocation(node.name);
     if (!symbol || components.has(symbol)) return;
     const pos = positionOf(node);
@@ -836,6 +871,47 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return symbol !== undefined && routeTables.has(symbol);
   }
 
+  /**
+   * One node per `<RouteOutlet routes={…}>` SITE, mounted by the component that writes the tag.
+   *
+   * The views used to hang off the shared `RouteOutlet` class, so two outlets in one app put every
+   * view on one node and made each reachable from the other — the merge avoided for `AsyncLoad`
+   * and missed here. A site of its own keeps them apart, and it `uses` the outlet class so the
+   * matched params the outlet publishes still reach the views: they have to be below that provider,
+   * which is the whole reason the views were attributed to the outlet in the first place.
+   */
+  function outletSite(node: ts.JsxSelfClosingElement | ts.JsxOpeningElement, self: ComponentNode): ComponentNode {
+    const pos = positionOf(node);
+    const file = pathOf(pos.file);
+    const key = `${file}:${pos.line}:${pos.column}`;
+    const already = outletSites.get(key);
+    if (already) return already;
+
+    const ordinal = (outletsPerFile.get(file) ?? 0) + 1;
+    outletsPerFile.set(file, ordinal);
+    const outletClass = componentAt(node.tagName);
+    const made: ComponentNode = {
+      id: `${file}#RouteOutlet@${ordinal}`,
+      kind: "component",
+      name: outletClass?.name ?? "RouteOutlet",
+      file: pos.file,
+      line: pos.line,
+      column: pos.column,
+      provides: new Set(),
+      consumes: new Map(),
+      mounts: [],
+      slotHoles: [],
+      slots: [],
+      exported: false,
+      uses: outletClass ? new Set([outletClass]) : new Set(),
+      opaque: false,
+      usesChildren: false,
+    };
+    outletSites.set(key, made);
+    mount(self, made, "route", node);
+    return made;
+  }
+
   /** The component a name in value position refers to, resolved through an import alias. */
   function componentAt(node: ts.Node): ComponentNode | undefined {
     if (!ts.isIdentifier(node)) return undefined;
@@ -873,6 +949,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
     const here: SplicedPackage = { components: new Map(), contexts: new Map() };
     const byId = new Map<string, ComponentNode>();
+    const ambiguous = new Set<string>();
 
     for (const node of fragment.graph.nodes) {
       if (node.kind === "component" || node.kind === "hook" || node.kind === "helper") {
@@ -897,12 +974,22 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           slots: node.slots ?? [],
           exported: node.exported === true,
           uses: new Set(),
-          opaque: false,
+          // Where the package stopped, this run stops too.
+          opaque: node.opaque === true,
           usesChildren: true,
         };
         byId.set(node.id, made);
         splicedNodes.push(made);
-        if (made.exported) here.components.set(made.name, made);
+        if (made.exported) {
+          // Keyed by the NAME an app imports, which is the only handle it has. Two exported
+          // classes with one name is the merge this branch removed everywhere else, so it is
+          // refused rather than resolved to whichever came last.
+          if (here.components.has(made.name)) {
+            notes.push(`${name}'s graph declares more than one exported \`${made.name}\`, so neither is spliced`);
+            here.components.delete(made.name);
+            ambiguous.add(made.name);
+          } else if (!ambiguous.has(made.name)) here.components.set(made.name, made);
+        }
       } else if (node.kind === "context") {
         const fact: ContextFact = {
           id: node.id,
@@ -1002,6 +1089,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     for (const node of components.values()) if (node.id === id) return true;
     for (const node of splicedNodes) if (node.id === id) return true;
     for (const helper of helpers.values()) if (helper.id === id) return true;
+    for (const site of outletSites.values()) if (site.id === id) return true;
     return contexts.has(id);
   }
 
@@ -1117,7 +1205,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
         const views = routeViewsOf(node);
         if (views.length > 0) {
-          const outlet = componentAt(node.tagName) ?? self;
+          const outlet = outletSite(node, self);
           for (const { target, site } of views) {
             if (target) {
               mount(outlet, target, "route", site);
@@ -1230,7 +1318,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
      * it reported the consumer under it as having no provider — the same code, two verdicts, and
      * the wrong one is the one that fails a build.
      */
-    const carriers = [...components.values(), ...splicedNodes, ...helpers.values()];
+    const carriers = [...components.values(), ...splicedNodes, ...helpers.values(), ...outletSites.values()];
     for (let pass = 0; pass < 10; pass++) {
       let changed = false;
       for (const node of carriers) {
@@ -1255,6 +1343,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       }
       if (!changed) return;
     }
+    // Ten passes and still moving. Whatever is left unpropagated can only cause a report against
+    // code that is in fact covered, so it is said out loud rather than left to look like a verdict.
+    notes.push(
+      "a hook chain is deeper than this resolves in ten passes, so a context carried through it may be reported as missing",
+    );
   }
 
   // ── the walk ────────────────────────────────────────────────────────────────────────────────
@@ -1491,7 +1584,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     const declaration = symbol?.declarations?.find(ts.isClassLike);
     const declared = declaration?.name && checker.getSymbolAtLocation(declaration.name);
-    return declared ? components.get(declared) : undefined;
+    if (!declared) return undefined;
+    // The module may be one this run does not read, in which case its package's fragment is where
+    // the class is declared — a lazily loaded page from an INSTALLED package resolved to nothing
+    // before, and the whole chunk went unjudged.
+    return components.get(declared) ?? splicedFor(declared)?.components.get(declared.name);
   }
 
   /**
@@ -1602,7 +1699,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const props = baseExpression(cls) ? heritageTypeArgument(cls) : undefined;
     if (!props) return [];
     const found: string[] = [];
-    const seen = new Set<ts.Node>();
+    /**
+     * Keyed on the declaration AND the path it was reached at.
+     *
+     * One set for the whole type meant a named type reached twice contributed slots only the first
+     * time: `{ left: Panel; right: Panel }` gave `left.cell` and never `right.cell`, so a binding
+     * handed to the second path had no declared slot to line up with.
+     */
+    const seen = new Set<string>();
+    const mark = (declaration: ts.Node, path: string): boolean => {
+      const key = `${path}|${declaration.getSourceFile().fileName}:${declaration.pos}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    };
 
     const dig = (type: ts.TypeNode | undefined, path: string, depth: number): void => {
       if (!type || depth > SLOT_DEPTH) return;
@@ -1615,8 +1725,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         if (NOT_A_SLOT.has(name)) return;
         for (const argument of type.typeArguments ?? []) dig(argument, path, depth + 1);
         const declaration = resolve(type.typeName)?.declarations?.[0];
-        if (!declaration || seen.has(declaration)) return;
-        seen.add(declaration);
+        if (!declaration || !mark(declaration, path)) return;
         if (ts.isInterfaceDeclaration(declaration))
           for (const member of declaration.members) digMember(member, path, depth + 1);
         else if (ts.isTypeAliasDeclaration(declaration)) dig(declaration.type, path, depth + 1);
@@ -1670,7 +1779,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!ts.isIdentifier(value.expression)) continue;
       const symbol = resolve(value.expression);
       const views = symbol ? routeTables.get(symbol) : undefined;
-      if (views) return views.map((site) => ({ target: componentAt(site), site }));
+      if (views && symbol) {
+        mountedTables.add(symbol);
+        return views.map((site) => ({ target: componentAt(site), site }));
+      }
     }
     return [];
   }
@@ -1692,6 +1804,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         name: node.name,
         at: `${pathOf(node.file)}:${node.line}:${node.column}`,
         ...(node.exported ? { exported: true } : {}),
+        ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
       });
     }
@@ -1707,10 +1820,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         optional: fact.optional,
       });
     }
-    for (const node of helpers.values()) {
+    for (const node of [...helpers.values(), ...outletSites.values()]) {
       nodes.push({
         id: node.id,
-        kind: "helper",
+        kind: node.kind,
         name: node.name,
         at: `${pathOf(node.file)}:${node.line}:${node.column}`,
       });

@@ -51,6 +51,14 @@ export interface GraphNode {
    */
   exported?: boolean;
   /**
+   * The package refused to judge below this one — it does something its own run could not follow.
+   *
+   * Carried so an app splicing the fragment stops where the package stopped. Without it every
+   * spliced node read as transparent, and the app reported consumers under a component whose hook
+   * may well have been providing for them.
+   */
+  opaque?: boolean;
+  /**
    * Prop paths this component's type declares as taking a component — `view`,
    * `spec.columns[].cell`.
    *
