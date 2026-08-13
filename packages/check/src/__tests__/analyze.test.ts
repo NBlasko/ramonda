@@ -1053,3 +1053,36 @@ describe("a declaration no root reaches", () => {
     expect(run("cross-package").unreachable).toEqual([]);
   });
 });
+
+/**
+ * A route table whose views can never appear.
+ *
+ * Each page in one looks perfectly well formed on its own, which is why nothing else says a word —
+ * and a whole section of a site renders nothing. Read from the graph: the walk already knows which
+ * outlets it arrived at.
+ */
+describe("a route table nothing can reach", () => {
+  const routes = () => run("stranded-routes").unreachableRoutes.map((r) => `${r.why} ${r.views}`);
+
+  test("a table handed to no outlet at all", () => {
+    // The JSX walk skips a BOUND table because `collectRouteTable` read it, so without this rule
+    // nobody reads it in either direction: the views are collected and then never mounted.
+    expect(routes()).toContain("unmounted 2");
+  });
+
+  test("a table whose outlet no root reaches", () => {
+    // The outlet exists and names the table; the component holding that outlet is mounted by
+    // nothing, so every page under it is stranded.
+    expect(routes()).toContain("stranded 1");
+  });
+
+  test("a table mounted by an outlet a root reaches is silent", () => {
+    // `live` is the ordinary arrangement, and the count is what says it is not reported.
+    expect(routes()).toHaveLength(2);
+  });
+
+  test("the pages themselves are not reported as dead, because they are exported", () => {
+    // Which is what a page is. The fault belongs to the table, and is reported once.
+    expect(run("stranded-routes").unreachable).toEqual([]);
+  });
+});

@@ -219,6 +219,23 @@ package's internals are its own business, not your app's.
 
 A library is not judged at all. With no root, everything in it is unreachable by definition.
 
+## A route table whose views can never appear
+
+```
+[ramonda-check] 1 route table(s) whose views can never appear:
+
+  src/routes.ts:29:1
+    2 view(s), and no <RouteOutlet> in this build is handed this table.
+```
+
+Two ways to get there, and they are fixed differently: nothing hands the table to a `<RouteOutlet>`
+at all, or an outlet does and no root reaches that outlet. Either way every page in it renders
+nothing — and each page on its own looks perfectly well formed, which is why nothing else says a
+word. A whole section of a site can be gone without one error anywhere.
+
+The pages themselves are not reported as dead code: a page is exported, and an exported declaration
+is a way in.
+
 ## A component it cannot follow is an error
 
 The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a

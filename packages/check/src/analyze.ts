@@ -211,6 +211,27 @@ export interface UnreachableIssue {
   column: number;
 }
 
+/**
+ * A route table whose views can never appear.
+ *
+ * Two ways to get there, and they read differently to whoever has to fix it: nothing in this run
+ * hands the table to a `<RouteOutlet>` at all, or an outlet does but no root reaches that outlet.
+ * Either way every page in the table is unreachable — a whole section of a site that renders
+ * nothing, which nothing else reports because each page on its own looks perfectly well formed.
+ *
+ * Read from the graph, like the unreachable declarations: the walk already knows which outlets it
+ * arrived at.
+ */
+export interface UnreachableRouteIssue {
+  /** How many views the table declares, which is the size of what cannot appear. */
+  views: number;
+  /** `unmounted` — no outlet names it; `stranded` — an outlet does, and nothing reaches the outlet. */
+  why: "unmounted" | "stranded";
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -225,6 +246,8 @@ export interface AnalyzeResult {
   annotated: AnnotatedSite[];
   /** Declarations no root reaches — see `UnreachableIssue`. */
   unreachable: UnreachableIssue[];
+  /** Route tables whose views can never appear — see `UnreachableRouteIssue`. */
+  unreachableRoutes: UnreachableRouteIssue[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -480,8 +503,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * table is read in pass 1, before every class is known.
    */
   const routeTables = new Map<ts.Symbol, ts.Node[]>();
-  /** Which of them some `<RouteOutlet routes={…}>` in this run actually named. */
-  const mountedTables = new Set<ts.Symbol>();
+  /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
+  const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
 
   /** Every component and hook class, by the symbol of its declaration — see `ComponentNode.id`. */
   const components = new Map<ts.Symbol, ComponentNode>();
@@ -738,6 +761,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const reached = new Set<ComponentNode>();
   const issues = walk(reached);
   const unreachable = deadOnes(reached);
+  const unreachableRoutes = strandedRoutes(reached);
 
   return {
     issues,
@@ -747,6 +771,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     unresolved,
     annotated,
     unreachable,
+    unreachableRoutes,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -1507,9 +1532,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       // component that renders it. The distinction matters: the outlet is what publishes the
       // matched params, so hanging the views off this component would step over that provider.
       if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
-        const views = routeViewsOf(node);
+        const { table, views } = routeViewsOf(node);
         if (views.length > 0) {
           const outlet = outletSite(node, self);
+          if (table) mountedTables.set(table, [...(mountedTables.get(table) ?? []), outlet]);
           for (const { target, site } of views) {
             if (target) {
               mount(outlet, target, "route", site);
@@ -1663,6 +1689,33 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * mounted. Nothing spliced: another package's internals are its business, and this app not using
    * one of them says nothing about the package.
    */
+  /**
+   * A route table whose views can never appear.
+   *
+   * Two ways to get there, and a reader fixes them differently. Nothing hands the table to a
+   * `<RouteOutlet>` this run can see — it was written and then never mounted, and the JSX walk skips
+   * a bound table on the grounds that `collectRouteTable` read it, so without this nobody reads it
+   * at all. Or an outlet does name it and no root reaches that outlet, which strands every page
+   * under it.
+   *
+   * Each page in such a table looks perfectly well formed on its own, which is why nothing else
+   * reports it.
+   */
+  function strandedRoutes(reached: Set<ComponentNode>): UnreachableRouteIssue[] {
+    // No root, no verdict — the same reason a library is not judged for dead declarations.
+    if (roots.size === 0) return [];
+    const found: UnreachableRouteIssue[] = [];
+    for (const [symbol, views] of routeTables) {
+      if (views.length === 0) continue;
+      const outlets = mountedTables.get(symbol) ?? [];
+      const why =
+        outlets.length === 0 ? "unmounted" : outlets.some((outlet) => reached.has(outlet)) ? undefined : "stranded";
+      if (why === undefined) continue;
+      found.push({ views: views.length, why, ...positionOf(views[0]) });
+    }
+    return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+  }
+
   function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
     // No root, no verdict: in a library everything is unreachable by definition.
     if (roots.size === 0) return [];
@@ -2137,8 +2190,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return 'the loader has no `import("…")` with a literal specifier, so nothing can name what it loads';
   }
 
-  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): Reference[] {
-    if (opening.tagName.getText() !== "RouteOutlet") return [];
+  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): {
+    table?: ts.Symbol;
+    views: Reference[];
+  } {
+    if (opening.tagName.getText() !== "RouteOutlet") return { views: [] };
     for (const attr of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attr) || attr.name.getText() !== "routes") continue;
       const value = attr.initializer;
@@ -2146,12 +2202,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!ts.isIdentifier(value.expression)) continue;
       const symbol = resolve(value.expression);
       const views = symbol ? routeTables.get(symbol) : undefined;
-      if (views && symbol) {
-        mountedTables.add(symbol);
-        return views.map((site) => ({ target: componentAt(site), site }));
-      }
+      if (views && symbol) return { table: symbol, views: views.map((site) => ({ target: componentAt(site), site })) };
     }
-    return [];
+    return { views: [] };
   }
 
   // ── the graph ───────────────────────────────────────────────────────────────────────────────

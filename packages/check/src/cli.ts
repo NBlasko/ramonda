@@ -45,6 +45,7 @@ const {
   unresolved,
   annotated,
   unreachable,
+  unreachableRoutes,
   counts,
   graph,
   notes,
@@ -87,7 +88,8 @@ if (
   duplicateDecorators.length === 0 &&
   unwatchedFields.length === 0 &&
   unresolved.length === 0 &&
-  unreachable.length === 0
+  unreachable.length === 0 &&
+  unreachableRoutes.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -138,6 +140,27 @@ if (unreachable.length > 0) {
     `Delete it, or mount it. Nothing outside its own file can even name it, so no import\n` +
       `elsewhere is keeping it alive — and an EXPORTED one is never reported, because an app is\n` +
       `entered through what it publishes and this cannot see who does the entering.\n`,
+  );
+}
+
+/**
+ * A whole section of a site that can never appear, which each page on its own gives no sign of.
+ */
+if (unreachableRoutes.length > 0) {
+  console.error(`\n${TAG} ${unreachableRoutes.length} route table(s) whose views can never appear:\n`);
+  for (const table of unreachableRoutes) {
+    console.error(`  ${table.file}:${table.line}:${table.column}`);
+    console.error(
+      table.why === "unmounted"
+        ? `    ${table.views} view(s), and no <RouteOutlet> in this build is handed this table.`
+        : `    ${table.views} view(s), and no root reaches the <RouteOutlet> that mounts them.`,
+    );
+    console.error("");
+  }
+  console.error(
+    `Hand the table to a <RouteOutlet>, and mount that outlet somewhere a root can reach —\n` +
+      `or delete the table. Every page in it renders today's nothing, and each one on its own\n` +
+      `looks perfectly well formed, which is why nothing else says a word.\n`,
   );
 }
 
