@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "scope": "library",
+  "package": {
+    "name": "@acme/kit",
+    "version": "1.0.0"
+  },
+  "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "describes": {
+    "file": "published/index.d.ts",
+    "hash": "sha256:abebdb86bf4660806291185f9386e974cbfed46265737921c3bd8d07f1a4df58"
+  },
+  "nodes": [
+    {
+      "id": "@acme/kit/src/index.tsx#Link",
+      "kind": "component",
+      "name": "Link",
+      "at": "src/index.tsx:16:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/kit/src/index.tsx#RouteOutlet",
+      "kind": "component",
+      "name": "RouteOutlet",
+      "at": "src/index.tsx:11:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/kit/src/index.tsx#Router",
+      "kind": "component",
+      "name": "Router",
+      "at": "src/index.tsx:6:1",
+      "exported": true
+    }
+  ],
+  "edges": []
+}

@@ -775,6 +775,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   for (const file of sources) {
     ts.forEachChild(file, function visit(node) {
       collectContextPair(node);
+      collectKitDestructure(node);
       collectRouteTable(node);
       collectClass(node);
       ts.forEachChild(node, visit);
@@ -875,6 +876,52 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   };
 
   // ── collection ──────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * `const { Router, RouteOutlet, Link } = createRouter(routes)` — a kit of components handed back
+   * by a factory, destructured once and used as tags everywhere after.
+   *
+   * This is the shape `npm create ramonda` scaffolds and the routing documentation teaches, and
+   * every tag written from it used to be a hole. A hole is an ERROR here, so a scaffolded routed
+   * project could not build at all — and nothing BELOW an unresolved tag is judged, so most of the
+   * app went unexamined with it.
+   *
+   * **Nothing is guessed.** `componentAt` already answers a direct import from an installed package
+   * by taking the symbol's name to that package's fragment — `splicedFor(symbol).components.get(name)`.
+   * The same two facts are present here, one step apart: the CALLEE is declared in the package, and
+   * the destructured KEY is the name. So this follows a name, exactly as everything else does.
+   *
+   * It has to work off the fragment rather than the factory's return type, because the type is where
+   * the answer stops being there: `@ramonda/router` publishes `Router: typeof Router` for two members
+   * and `Link: ComponentClassKind<TypedLinkProps<…>>` for the others, the second having gone through
+   * `as unknown as` in the implementation. Half the kit names its class and half does not, so a
+   * type-directed version would resolve two of four and leave the two most used.
+   *
+   * Only EXPORTED members match. A fragment carries a package's internals too, and a key that
+   * happens to share a name with one of them is not a component the package handed anybody.
+   */
+  function collectKitDestructure(node: ts.Node): void {
+    if (!ts.isVariableDeclaration(node) || !node.initializer) return;
+    if (!ts.isCallExpression(node.initializer)) return;
+    if (!ts.isObjectBindingPattern(node.name)) return;
+
+    const callee = node.initializer.expression;
+    const factory = ts.isIdentifier(callee) || ts.isPropertyAccessExpression(callee) ? resolve(callee) : undefined;
+    const spliced = factory ? splicedFor(factory) : undefined;
+    if (!spliced) return;
+
+    for (const element of node.name.elements) {
+      if (!ts.isIdentifier(element.name)) continue;
+      // `const { Link: Anchor } = …` — the KEY is what the package named, the local name is the
+      // caller's business, and it is the key that has to match.
+      const key = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName : element.name;
+      const member = spliced.components.get(key.text);
+      if (!member || !member.exported) continue;
+
+      const local = checker.getSymbolAtLocation(element.name);
+      if (local) components.set(local, member);
+    }
+  }
 
   /** `const [Theme, ThemeConsumer] = createContext({...}, { label: "Theme" })` */
   function collectContextPair(node: ts.Node): void {

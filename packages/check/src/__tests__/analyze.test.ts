@@ -1179,3 +1179,32 @@ describe("a component named among children", () => {
     expect(run("slots").classesAsChildren).toEqual([]);
   });
 });
+
+/**
+ * A kit destructured out of a factory call — `const { Router, RouteOutlet, Link } = createRouter(routes)`.
+ *
+ * This is the shape `npm create ramonda` scaffolds and the routing docs teach, and every tag written
+ * from it was a hole. A hole is an ERROR, so a scaffolded routed project could not build at all —
+ * found by scaffolding against the registry and running the build, which nothing automated had done.
+ *
+ * The damage is worse than a failed build. Nothing BELOW an unresolved tag is judged — the CLI says
+ * so on every run — so the subtree under `<RouteOutlet />` went unexamined too. That second half is
+ * NOT asserted here: this fixture renders its consumer as a sibling, where it is reported either
+ * way, and a test that passes without the fix is not a guard. Asserting it needs a fixture whose
+ * consumer sits under the outlet.
+ *
+ * Nothing is guessed to fix it. The callee is declared in a package that ships a fragment, the
+ * fragment says which components it exports, and the destructured KEY names one of them — the same
+ * name-following `componentAt` already does for a direct import.
+ */
+describe("a component kit destructured out of a factory", () => {
+  test("every member resolves, however its type is written", () => {
+    const { unresolved } = run("kit");
+    expect(unresolved).toEqual([]);
+  });
+
+  test("the tags become real edges into the package", () => {
+    expect(edgesOf("kit")).toContain("app.tsx#Shell -> @acme/kit/src/index.tsx#Link (renders/tag)");
+    expect(edgesOf("kit")).toContain("app.tsx#Shell -> @acme/kit/src/index.tsx#RouteOutlet (renders/tag)");
+  });
+});
