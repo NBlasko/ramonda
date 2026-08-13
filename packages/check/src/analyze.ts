@@ -614,12 +614,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     for (const candidate of [lines[line], lines[line - 1]]) {
       const found = candidate === undefined ? null : /ramonda-check-ignore\b:?(.*)$/.exec(candidate);
       if (!found) continue;
-      // The comment's own closing delimiter is not part of the reason — `{/* … */}` in JSX, `*/`
-      // in a block comment, `-->` in markup. Left in, an EMPTY directive read as a reason.
-      return found[1]
-        .replace(/\*\/\s*\}?\s*$/, "")
-        .replace(/-->\s*$/, "")
-        .trim();
+      // The comment's own closing delimiter is not part of the reason: JSX writes one, and a block
+      // comment writes one. Left in, an EMPTY directive read as a reason.
+      //
+      // A markup terminator was stripped here too, and CodeQL was right to flag it — HTML accepts
+      // more than one spelling of it, so the pair was half-handled. It is gone rather than
+      // completed: this reads the files of a TypeScript program, which are never markup, so the
+      // branch was for a case that cannot arrive.
+      return found[1].replace(/\*\/\s*\}?\s*$/, "").trim();
     }
     return undefined;
   }
