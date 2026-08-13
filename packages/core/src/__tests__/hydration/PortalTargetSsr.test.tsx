@@ -94,10 +94,7 @@ describe("a portal into a named target", () => {
     const page = await renderPage(<Page />);
 
     // What the browser receives: the shell's container, and the app root.
-    document.body.insertAdjacentHTML(
-      "beforeend",
-      `<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals}</div>`,
-    );
+    document.body.insertAdjacentHTML("beforeend", `<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals}</div>`);
     const serverModal = document.querySelector(".modal");
     expect(serverModal).not.toBeNull();
 
@@ -150,10 +147,7 @@ describe("a portal into a named target", () => {
     const page = await renderPage(<Page />);
     expect(page.portals.modals).toContain(">7<");
 
-    document.body.insertAdjacentHTML(
-      "beforeend",
-      `<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals}</div>`,
-    );
+    document.body.insertAdjacentHTML("beforeend", `<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals}</div>`);
     const serverDialog = document.querySelector(".dialog");
 
     const container = document.createElement("div");

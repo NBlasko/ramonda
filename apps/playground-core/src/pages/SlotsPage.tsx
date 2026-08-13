@@ -99,7 +99,9 @@ export class SlotsPage extends Component {
             counters travel with their chips.
           </p>
           <ArrayPanel>
-            {list(this.guests, (guest: Guest) => <Chip label={guest.name} />)}
+            {list(this.guests, (guest: Guest) => (
+              <Chip label={guest.name} />
+            ))}
           </ArrayPanel>
         </section>
 

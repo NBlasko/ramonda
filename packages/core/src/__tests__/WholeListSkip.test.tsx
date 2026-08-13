@@ -32,9 +32,9 @@ class App extends Component {
     return (
       <ul data-tick={String(this.tick)}>
         {list(this.rows, (r: Row) => {
-            mapperCalls++;
-            return <li>{r.t}</li>;
-          })}
+          mapperCalls++;
+          return <li>{r.t}</li>;
+        })}
       </ul>
     );
   }

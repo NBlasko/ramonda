@@ -93,7 +93,14 @@ describe("merge with an identity", () => {
     // one row's state on the other, so the second is treated as a row this has
     // not seen.
     const before = rows();
-    const after = merge(before, [{ id: 1, title: "a", done: false }, { id: 1, title: "x", done: false }], byId);
+    const after = merge(
+      before,
+      [
+        { id: 1, title: "a", done: false },
+        { id: 1, title: "x", done: false },
+      ],
+      byId,
+    );
 
     expect(after[0]).toBe(before[0]);
     expect(after[1]).not.toBe(before[0]);
@@ -136,7 +143,13 @@ describe("merge carries identity where inference cannot", () => {
     class App extends Component {
       @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
       render() {
-        return <ul>{list(this.bags, (b: Bag) => <li>{b.tags.join(",")}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.bags, (b: Bag) => (
+              <li>{b.tags.join(",")}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -168,7 +181,13 @@ describe("merge carries identity where inference cannot", () => {
         Object.freeze({ id: 2, title: "b", done: false }),
       ];
       render() {
-        return <ul>{list(this.items, (item) => <RowView item={item} />)}</ul>;
+        return (
+          <ul>
+            {list(this.items, (item) => (
+              <RowView item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 

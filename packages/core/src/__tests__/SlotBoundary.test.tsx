@@ -85,7 +85,9 @@ describe("the slot boundary", () => {
       render() {
         return (
           <Panel>
-            {list(this.items, (i: { l: string }) => <Chip label={i.l} />)}
+            {list(this.items, (i: { l: string }) => (
+              <Chip label={i.l} />
+            ))}
           </Panel>
         );
       }

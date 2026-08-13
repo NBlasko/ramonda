@@ -63,9 +63,9 @@ describe("list() inside a hook's children", () => {
         children: (
           <ul>
             {list(this.rows, (r: Row) => {
-                mapperCalls++;
-                return <li>{r.t}</li>;
-              })}
+              mapperCalls++;
+              return <li>{r.t}</li>;
+            })}
           </ul>
         ),
         target,
@@ -88,9 +88,9 @@ describe("list() inside a hook's children", () => {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       portal = this.use(Portal, () => ({
         children: list(this.rows, (r: Row) => {
-            mapperCalls++;
-            return <li>{r.t}</li>;
-          }),
+          mapperCalls++;
+          return <li>{r.t}</li>;
+        }),
         target,
       }));
       render() {
@@ -145,9 +145,9 @@ describe("list() inside a hook's children", () => {
       @state tick = 0;
       portal = this.use(Portal, () => ({
         children: list(this.rows, (r: Row) => {
-            mapperCalls++;
-            return <li>{r.t}</li>;
-          }),
+          mapperCalls++;
+          return <li>{r.t}</li>;
+        }),
         target,
       }));
       render() {
@@ -181,13 +181,13 @@ describe("list() inside a hook's children", () => {
       @state highlight = "";
       portal = this.use(Portal, () => ({
         children: list(this.rows, (r: Row) => {
-            mapperCalls++;
-            // Only row "b" ever READS the signal — the ternary short-circuits
-            // for the others, so only its scope subscribes. A test where every
-            // mapper evaluates `this.highlight === r.t` would subscribe them all
-            // and prove nothing about which row was rebuilt.
-            return <li>{r.t === "b" ? this.highlight : ""}</li>;
-          }),
+          mapperCalls++;
+          // Only row "b" ever READS the signal — the ternary short-circuits
+          // for the others, so only its scope subscribes. A test where every
+          // mapper evaluates `this.highlight === r.t` would subscribe them all
+          // and prove nothing about which row was rebuilt.
+          return <li>{r.t === "b" ? this.highlight : ""}</li>;
+        }),
         target,
       }));
       render() {

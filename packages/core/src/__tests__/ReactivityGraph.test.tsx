@@ -255,13 +255,13 @@ describe("reactivity graph", () => {
         return (
           <ul>
             {list(this.rows, (row: { t: string }) => {
-                mapperRuns++;
-                return (
-                  <li>
-                    {row.t}-{this.useFlag ? this.flag : this.other}
-                  </li>
-                );
-              })}
+              mapperRuns++;
+              return (
+                <li>
+                  {row.t}-{this.useFlag ? this.flag : this.other}
+                </li>
+              );
+            })}
           </ul>
         );
       }

@@ -19,7 +19,13 @@ const c: Row = { label: "c" };
 class List extends Component {
   @state items: Row[] = [a, b, c];
   render() {
-    return <ul>{list(this.items, (row: Row) => <li>{row.label}</li>)}</ul>;
+    return (
+      <ul>
+        {list(this.items, (row: Row) => (
+          <li>{row.label}</li>
+        ))}
+      </ul>
+    );
   }
 }
 

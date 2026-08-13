@@ -100,7 +100,13 @@ describe("a list returned straight from render()", () => {
     @Host("div")
     class Wrapped extends Component {
       render() {
-        return <ul>{list([1], (n: number) => <li>{n}</li>)}</ul>;
+        return (
+          <ul>
+            {list([1], (n: number) => (
+              <li>{n}</li>
+            ))}
+          </ul>
+        );
       }
     }
 

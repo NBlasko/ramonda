@@ -59,7 +59,11 @@ export class DataTable extends Component<DataTableProps> {
         <thead>
           <tr>{list(this.props.columns, headerCell)}</tr>
         </thead>
-        <tbody>{list(this.items, (item) => <DataTableRow item={item} />)}</tbody>
+        <tbody>
+          {list(this.items, (item) => (
+            <DataTableRow item={item} />
+          ))}
+        </tbody>
       </table>
     );
   }

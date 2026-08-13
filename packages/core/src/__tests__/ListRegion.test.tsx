@@ -54,7 +54,9 @@ describe("list regions", () => {
       render() {
         return (
           <ul>
-            {list(own, (row: Row) => <Item row={row} />)}
+            {list(own, (row: Row) => (
+              <Item row={row} />
+            ))}
             {this.props.children}
           </ul>
         );
@@ -65,7 +67,13 @@ describe("list regions", () => {
     class App extends Component {
       @state passed: Row[] = sent;
       render() {
-        return <Panel>{list(this.passed, (row: Row) => <Item row={row} />)}</Panel>;
+        return (
+          <Panel>
+            {list(this.passed, (row: Row) => (
+              <Item row={row} />
+            ))}
+          </Panel>
+        );
       }
     }
 

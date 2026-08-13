@@ -92,9 +92,9 @@ describe("a list with two items under one key", () => {
       render() {
         ownerRenders++;
         return list(this.rows, (r: Row) => {
-            if (r.id === 2) watched.get();
-            return <li>{r.id}</li>;
-          });
+          if (r.id === 2) watched.get();
+          return <li>{r.id}</li>;
+        });
       }
     }
 

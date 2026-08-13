@@ -75,7 +75,13 @@ class App extends Component {
     { id: 3, t: "c", done: false },
   ];
   render() {
-    return <ul>{list(this.rows, (item) => <RowView item={item} />)}</ul>;
+    return (
+      <ul>
+        {list(this.rows, (item) => (
+          <RowView item={item} />
+        ))}
+      </ul>
+    );
   }
 }
 
@@ -90,9 +96,9 @@ class Plain extends Component {
     return (
       <ul>
         {list(this.rows, (r: Row) => {
-            mapperCalls++;
-            return <li>{r.t}</li>;
-          })}
+          mapperCalls++;
+          return <li>{r.t}</li>;
+        })}
       </ul>
     );
   }
@@ -327,7 +333,13 @@ describe("a field that only restates the position does not decide identity", () 
         { id: "b", index: 1, label: "second" },
       ];
       render() {
-        return <ul>{list(this.rows, (r: FormRow) => <li>{r.label}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: FormRow) => (
+              <li>{r.label}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -369,7 +381,13 @@ describe("an id that happens to look like a position", () => {
         { id: 2, t: "c" },
       ];
       render() {
-        return <ul>{list(this.rows, (r: Indexed) => <li>{r.t}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: Indexed) => (
+              <li>{r.t}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -410,7 +428,13 @@ describe("RMD051 — a row nothing can tell apart", () => {
     class App extends Component {
       @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
       render() {
-        return <ul>{list(this.bags, (b: Bag) => <li>{b.tags.join(",")}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.bags, (b: Bag) => (
+              <li>{b.tags.join(",")}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -439,7 +463,13 @@ describe("RMD051 — a row nothing can tell apart", () => {
         { id: 2, t: "b", done: false },
       ];
       render() {
-        return <ul>{list(this.rows, (r: Row) => <li>{r.t}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: Row) => (
+              <li>{r.t}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -466,7 +496,13 @@ describe("RMD051 — a row nothing can tell apart", () => {
     class App extends Component {
       @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
       render() {
-        return <ul>{list(this.bags, (b: Bag) => <li>{b.tags.join(",")}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.bags, (b: Bag) => (
+              <li>{b.tags.join(",")}</li>
+            ))}
+          </ul>
+        );
       }
     }
 

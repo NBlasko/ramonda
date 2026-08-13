@@ -105,7 +105,13 @@ class App extends Component {
     { id: 4, title: "d", done: false },
   ];
   render() {
-    return <ul>{list(this.rows, (item) => <RowView item={item} />)}</ul>;
+    return (
+      <ul>
+        {list(this.rows, (item) => (
+          <RowView item={item} />
+        ))}
+      </ul>
+    );
   }
 }
 
@@ -269,11 +275,37 @@ describe("two dimensions", () => {
   @Host("table")
   class Grid extends Component {
     @state rows: GridRow[] = [
-      { id: 1, name: "r1", done: false, cells: [{ id: 11, label: "a", done: false }, { id: 12, label: "b", done: false }] },
-      { id: 2, name: "r2", done: false, cells: [{ id: 21, label: "c", done: false }, { id: 22, label: "d", done: false }] },
+      {
+        id: 1,
+        name: "r1",
+        done: false,
+        cells: [
+          { id: 11, label: "a", done: false },
+          { id: 12, label: "b", done: false },
+        ],
+      },
+      {
+        id: 2,
+        name: "r2",
+        done: false,
+        cells: [
+          { id: 21, label: "c", done: false },
+          { id: 22, label: "d", done: false },
+        ],
+      },
     ];
     render() {
-      return <tbody>{list(this.rows, (row: GridRow) => <tr>{list(row.cells, (item) => <CellView item={item} />)}</tr>)}</tbody>;
+      return (
+        <tbody>
+          {list(this.rows, (row: GridRow) => (
+            <tr>
+              {list(row.cells, (item) => (
+                <CellView item={item} />
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      );
     }
   }
 
@@ -396,9 +428,7 @@ describe("SAME_ITEM, the option a lens set takes", () => {
 
   test("a row rebuilt from scratch keeps its state when the mark comes with it", async () => {
     const r = await operate((rows) =>
-      rows.map((row) =>
-        row.id === 2 ? (asLensWould(row, { id: 77, title: "renamed", done: true }) as Row) : row,
-      ),
+      rows.map((row) => (row.id === 2 ? (asLensWould(row, { id: 77, title: "renamed", done: true }) as Row) : row)),
     );
 
     // Every field changed, including the id — nothing about this object could be

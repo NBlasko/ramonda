@@ -141,7 +141,11 @@ function walk(previous: unknown, next: unknown, state: Walk, depth: number): unk
  * `undefined` back means this array opted out: some item had no identity, so there
  * is nothing to pair on and the positional walk is the honest answer.
  */
-function pairByIdentity(previous: readonly unknown[], next: readonly unknown[], identity: Identity): number[] | undefined {
+function pairByIdentity(
+  previous: readonly unknown[],
+  next: readonly unknown[],
+  identity: Identity,
+): number[] | undefined {
   // Asked only of OBJECTS. The walk recurses into every array it meets, including
   // one of strings inside a row, and a callback written for rows — `(row) =>
   // row.id` — throws on a string long before it can decline. A primitive has no

@@ -101,7 +101,6 @@ export class ListEngine<T> {
     const each = descriptor.each;
     const render = descriptor.builder;
 
-
     if (!each) return this.wrap(owner, []);
 
     // Whole-list skip. The array is replaced on every change (mutating it in
@@ -230,11 +229,7 @@ export class ListEngine<T> {
       // crashing on `.attributes` below.
       if (vnode === null || vnode === undefined) {
         if (__DEV__) {
-          diagnose(
-            "RMD013",
-            `${host.name}:empty`,
-            `The render callback produced nothing for item ${i}.`,
-          );
+          diagnose("RMD013", `${host.name}:empty`, `The render callback produced nothing for item ${i}.`);
         }
         continue;
       }
@@ -349,7 +344,6 @@ export class ListEngine<T> {
     render: ItemRender<T>,
     host: ListHost,
   ): VNode | null | undefined {
-
     const scope: ItemScope<T> = existing ?? {
       listenerId: ++scopeSequence,
       item,
@@ -435,7 +429,6 @@ export interface LazyListNode<T = unknown> extends ListDescriptor<T> {
   owner: unknown;
 }
 
-
 /**
  * Distinguishes a `list()` descriptor from a `ListNode` whose items are built.
  *
@@ -473,4 +466,3 @@ export function buildLazyList(
     engine: used,
   };
 }
-

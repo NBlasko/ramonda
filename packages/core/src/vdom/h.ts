@@ -71,7 +71,9 @@ function checkUnkeyedArrayChildren(children: unknown[]): void {
     // One keyed child means the app is managing identity, and this does not
     // second-guess that.
     if (vnode.attributes?.key !== undefined) return;
-    names.push(typeof vnode.name === "function" ? `<${(vnode.name as { name: string }).name} />` : `<${String(vnode.name)}>`);
+    names.push(
+      typeof vnode.name === "function" ? `<${(vnode.name as { name: string }).name} />` : `<${String(vnode.name)}>`,
+    );
   }
 
   if (names.length > 0) reportUnkeyedArrayChildren(names);

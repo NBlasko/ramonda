@@ -104,7 +104,13 @@ describe("a query with structural sharing", () => {
       render() {
         counts.table++;
         void this.provider;
-        return <ul>{list(this.q.data ?? [], (item) => <RowView item={item} />)}</ul>;
+        return (
+          <ul>
+            {list(this.q.data ?? [], (item) => (
+              <RowView item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 

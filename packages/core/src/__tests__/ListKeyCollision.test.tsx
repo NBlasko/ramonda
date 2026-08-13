@@ -51,8 +51,12 @@ class TwoLists extends Component {
   render() {
     return (
       <ul>
-        {list(this.listA, (row: Row) => <Item row={row} />)}
-        {list(this.listB, (row: Row) => <Item row={row} />)}
+        {list(this.listA, (row: Row) => (
+          <Item row={row} />
+        ))}
+        {list(this.listB, (row: Row) => (
+          <Item row={row} />
+        ))}
       </ul>
     );
   }

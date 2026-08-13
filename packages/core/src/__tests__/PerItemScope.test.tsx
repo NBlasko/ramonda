@@ -48,9 +48,9 @@ class Plain extends Component {
     return (
       <ul>
         {list(this.rows, (row: Row) => {
-            mapperCalls++;
-            return <Item row={row} />;
-          })}
+          mapperCalls++;
+          return <Item row={row} />;
+        })}
       </ul>
     );
   }
@@ -68,11 +68,11 @@ class Selecting extends Component {
     return (
       <ul>
         {list(this.rows, (row: Row) => {
-            mapperCalls++;
-            // Reads a signal beyond the item — the case that makes naive vnode
-            // caching unsafe, and the reason the mapper runs inside a tracker.
-            return <Item row={row} mark={row.id === this.selected ? "*" : ""} />;
-          })}
+          mapperCalls++;
+          // Reads a signal beyond the item — the case that makes naive vnode
+          // caching unsafe, and the reason the mapper runs inside a tracker.
+          return <Item row={row} mark={row.id === this.selected ? "*" : ""} />;
+        })}
       </ul>
     );
   }
@@ -138,9 +138,9 @@ describe("per-item reactive scopes", () => {
         return (
           <ul>
             {list(this.rows, (row: Row) => {
-                mapperCalls++;
-                return <Item row={row} mark={this.loud} />;
-              })}
+              mapperCalls++;
+              return <Item row={row} mark={this.loud} />;
+            })}
           </ul>
         );
       }
@@ -190,7 +190,9 @@ describe("what the scopes deliberately do not track", () => {
       render() {
         return (
           <ul data-tick={String(this.tick)}>
-            {list(this.rows, (row: Row) => <Item row={row} mark={`-${this.mode}`} />)}
+            {list(this.rows, (row: Row) => (
+              <Item row={row} mark={`-${this.mode}`} />
+            ))}
           </ul>
         );
       }
@@ -223,7 +225,11 @@ describe("what the scopes deliberately do not track", () => {
       @state tick = 0;
       render() {
         return (
-          <ul data-tick={String(this.tick)}>{list(this.rows, (row: Row) => <Item row={row} />)}</ul>
+          <ul data-tick={String(this.tick)}>
+            {list(this.rows, (row: Row) => (
+              <Item row={row} />
+            ))}
+          </ul>
         );
       }
     }

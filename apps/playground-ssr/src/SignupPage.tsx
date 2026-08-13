@@ -232,14 +232,14 @@ export class SignupPage extends Component {
             */}
             <ul id="tags">
               {list(f.tags.$.rows, (row) => (
-                  <li>
-                    <input className="tag" {...row.field.$.bind} />
-                    <button type="button" className="remove-tag ghost" onClick={this.removeTag(row.id)}>
-                      remove
-                    </button>
-                    {row.field.$.error ? <em className="err">{row.field.$.error}</em> : null}
-                  </li>
-                ))}
+                <li>
+                  <input className="tag" {...row.field.$.bind} />
+                  <button type="button" className="remove-tag ghost" onClick={this.removeTag(row.id)}>
+                    remove
+                  </button>
+                  {row.field.$.error ? <em className="err">{row.field.$.error}</em> : null}
+                </li>
+              ))}
             </ul>
             <button type="button" id="add-tag" className="ghost" onClick={this.addTag}>
               add a tag
@@ -250,12 +250,12 @@ export class SignupPage extends Component {
             <legend>Contacts — an array of objects</legend>
             <ul>
               {list(f.contacts.$.rows, (row) => (
-                  <li className="pair">
-                    <input {...row.field.kind.$.bind} />
-                    <input {...row.field.value.$.bind} />
-                    {row.field.value.$.error ? <em className="err">{row.field.value.$.error}</em> : null}
-                  </li>
-                ))}
+                <li className="pair">
+                  <input {...row.field.kind.$.bind} />
+                  <input {...row.field.value.$.bind} />
+                  {row.field.value.$.error ? <em className="err">{row.field.value.$.error}</em> : null}
+                </li>
+              ))}
             </ul>
             <button type="button" className="ghost" onClick={this.addContact}>
               add a contact

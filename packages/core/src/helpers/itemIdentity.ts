@@ -52,7 +52,6 @@ import { diagnose } from "../debug/diagnostics";
  */
 export const ITEM_ID = Symbol.for("ramonda.item");
 
-
 interface Identified {
   [ITEM_ID]?: string;
 }

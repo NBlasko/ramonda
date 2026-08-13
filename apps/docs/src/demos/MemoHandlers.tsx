@@ -38,13 +38,13 @@ export class MemoHandlers extends Component {
       <div>
         <ul className="demo-log">
           {list(this.items, (name: string) => (
-              <li>
-                {name}{" "}
-                <button type="button" onClick={this.remove(name)}>
-                  remove
-                </button>
-              </li>
-            ))}
+            <li>
+              {name}{" "}
+              <button type="button" onClick={this.remove(name)}>
+                remove
+              </button>
+            </li>
+          ))}
         </ul>
         <p className="demo-row">
           <button type="button" onClick={this.compareIdentity}>

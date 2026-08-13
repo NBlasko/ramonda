@@ -60,7 +60,10 @@ describe("renderDocument", () => {
   });
 
   test("escapes a quote in an attribute value", () => {
-    const html = renderDocument({ body: "", title: "t", head: "", portals: {} }, { lang: 'en" onload="alert(1)', rootId: "app" });
+    const html = renderDocument(
+      { body: "", title: "t", head: "", portals: {} },
+      { lang: 'en" onload="alert(1)', rootId: "app" },
+    );
 
     expect(html).toContain('lang="en&quot; onload=&quot;alert(1)"');
   });

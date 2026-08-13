@@ -171,13 +171,13 @@ class ProfileForm extends Component {
 
           <p className="label">tags</p>
           {list(f.tags.$.rows, (row) => (
-              <div className="row">
-                <input {...row.field.$.bind} />
-                <button type="button" onClick={this.removeTag(row.index)}>
-                  ×
-                </button>
-              </div>
-            ))}
+            <div className="row">
+              <input {...row.field.$.bind} />
+              <button type="button" onClick={this.removeTag(row.index)}>
+                ×
+              </button>
+            </div>
+          ))}
           <button type="button" onClick={this.addTag}>
             + tag
           </button>

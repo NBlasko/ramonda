@@ -25,10 +25,7 @@ function mark<T extends object>(value: T, key: symbol = MARK, id = "row-1"): T {
 
 function makeRows(): { rows: { id: number; title: string; tags: string[] }[] } {
   return {
-    rows: [
-      mark({ id: 1, title: "first", tags: ["a"] }),
-      mark({ id: 2, title: "second", tags: ["b"] }, MARK, "row-2"),
-    ],
+    rows: [mark({ id: 1, title: "first", tags: ["a"] }), mark({ id: 2, title: "second", tags: ["b"] }, MARK, "row-2")],
   };
 }
 
@@ -124,7 +121,10 @@ describe("set replaces, and keeps nothing unless told", () => {
   test("a list of symbols keeps those and drops the rest", () => {
     const state = { rows: [mark(mark({ id: 1 }), OTHER, "other-1")] };
 
-    const next = focusOn(state).get("rows").at(0).set({ id: 1 }, { keepSymbols: [MARK] });
+    const next = focusOn(state)
+      .get("rows")
+      .at(0)
+      .set({ id: 1 }, { keepSymbols: [MARK] });
 
     expect((next.rows[0] as Record<symbol, unknown>)[MARK]).toBe("row-1");
     expect((next.rows[0] as Record<symbol, unknown>)[OTHER]).toBeUndefined();
@@ -133,7 +133,10 @@ describe("set replaces, and keeps nothing unless told", () => {
   test("a named symbol that is not there is not invented", () => {
     const state = { rows: [{ id: 1 }] };
 
-    const next = focusOn(state).get("rows").at(0).set({ id: 2 }, { keepSymbols: [MARK] });
+    const next = focusOn(state)
+      .get("rows")
+      .at(0)
+      .set({ id: 2 }, { keepSymbols: [MARK] });
 
     expect(Object.getOwnPropertySymbols(next.rows[0])).toEqual([]);
   });

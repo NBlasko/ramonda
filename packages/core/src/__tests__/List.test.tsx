@@ -60,7 +60,13 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
       render() {
-        return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
+        return (
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -75,7 +81,9 @@ describe("list() renders", () => {
       render() {
         return (
           <ul>
-            {list(this.tasks, (task: Task) => <li>{task.title}</li>)}
+            {list(this.tasks, (task: Task) => (
+              <li>{task.title}</li>
+            ))}
           </ul>
         );
       }
@@ -90,7 +98,13 @@ describe("list() renders", () => {
     class Board extends Component {
       @state tasks: Task[] = [];
       render() {
-        return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
+        return (
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -104,7 +118,13 @@ describe("identity — the whole reason For exists, kept", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
+      return (
+        <ul>
+          {list(this.tasks, (item) => (
+            <Row item={item} />
+          ))}
+        </ul>
+      );
     }
   }
 
@@ -154,7 +174,13 @@ describe("identity — the whole reason For exists, kept", () => {
     class Twice extends Component {
       @state tasks: Task[] = [tag, tag];
       render() {
-        return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
+        return (
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -180,7 +206,9 @@ describe("identity — the whole reason For exists, kept", () => {
       render() {
         return (
           <ul>
-            {list(this.tasks, (task: { id: string; title: string }) => <li>{task.title}</li>)}
+            {list(this.tasks, (task: { id: string; title: string }) => (
+              <li>{task.title}</li>
+            ))}
           </ul>
         );
       }
@@ -201,7 +229,6 @@ describe("identity — the whole reason For exists, kept", () => {
     // are the nodes they were. This is what `key` used to be for.
     expect([...container.querySelectorAll("li")].filter((n) => before.includes(n)).length).toBe(2);
   });
-
 
   test("a nested list() returned from `render` is named, not thrown on", async () => {
     // The mistake the docs made: a list of pages, each page a list of rows, written by
@@ -255,9 +282,9 @@ describe("the case list() was written for", () => {
         return (
           <ul>
             {list(this.tasks, (task: Task) => {
-                mapperRuns++;
-                return <li>{task.title}</li>;
-              })}
+              mapperRuns++;
+              return <li>{task.title}</li>;
+            })}
           </ul>
         );
       }
@@ -284,8 +311,16 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <div>
-            <ul id="todo">{list(this.todo, (item) => <Row item={item} />)}</ul>
-            <ul id="done">{list(this.done, (item) => <Row item={item} />)}</ul>
+            <ul id="todo">
+              {list(this.todo, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+            <ul id="done">
+              {list(this.done, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
           </div>
         );
       }
@@ -316,7 +351,9 @@ describe("the case list() was written for", () => {
         return (
           <ul>
             <li id="head">HEAD</li>
-            {list(this.tasks, (item) => <Row item={item} />)}
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
             <li id="foot">FOOT</li>
           </ul>
         );
@@ -350,7 +387,9 @@ describe("the case list() was written for", () => {
         return (
           <ul>
             {this.showFirst ? list(this.a, (item) => <Row item={item} />) : null}
-            {list(this.b, (item) => <Row item={item} />)}
+            {list(this.b, (item) => (
+              <Row item={item} />
+            ))}
           </ul>
         );
       }
@@ -386,7 +425,9 @@ describe("nesting and composition", () => {
       render() {
         return (
           <ul>
-            {list(this.props.item.items, (task: Task) => <li>{task.title}</li>)}
+            {list(this.props.item.items, (task: Task) => (
+              <li>{task.title}</li>
+            ))}
           </ul>
         );
       }
@@ -399,7 +440,13 @@ describe("nesting and composition", () => {
         { name: "g2", items: [{ title: "c" }] },
       ];
       render() {
-        return <ul>{list(this.groups, (item) => <GroupRow item={item} />)}</ul>;
+        return (
+          <ul>
+            {list(this.groups, (item) => (
+              <GroupRow item={item} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -420,8 +467,16 @@ describe("nesting and composition", () => {
       render() {
         return (
           <div>
-            <ul id="left">{list(this.left, (item) => <Row item={item} />)}</ul>
-            <ul id="right">{list(this.right, (item) => <Row item={item} />)}</ul>
+            <ul id="left">
+              {list(this.left, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+            <ul id="right">
+              {list(this.right, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
           </div>
         );
       }
@@ -454,9 +509,9 @@ describe("the whole-list skip still applies", () => {
             <p>{this.unrelated}</p>
             <ul>
               {list(this.tasks, (task: Task) => {
-                  mapperRuns++;
-                  return <li>{task.title}</li>;
-                })}
+                mapperRuns++;
+                return <li>{task.title}</li>;
+              })}
             </ul>
           </div>
         );
@@ -480,7 +535,13 @@ describe("server rendering and hydration", () => {
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
-      return <ul>{list(this.tasks, (item) => <Row item={item} />)}</ul>;
+      return (
+        <ul>
+          {list(this.tasks, (item) => (
+            <Row item={item} />
+          ))}
+        </ul>
+      );
     }
   }
 
@@ -565,7 +626,13 @@ describe("a two-dimensional list", () => {
     render() {
       return (
         <tbody>
-          {list(this.rows, (row: GridRow) => <tr>{list(row.cells, (item) => <CellView item={item} />)}</tr>)}
+          {list(this.rows, (row: GridRow) => (
+            <tr>
+              {list(row.cells, (item) => (
+                <CellView item={item} />
+              ))}
+            </tr>
+          ))}
         </tbody>
       );
     }
@@ -675,7 +742,13 @@ describe("a two-dimensional list", () => {
       render() {
         return (
           <tbody>
-            {list(this.rows, (cells: Cell[]) => <tr>{list(cells, (item) => <CellView item={item} />)}</tr>)}
+            {list(this.rows, (cells: Cell[]) => (
+              <tr>
+                {list(cells, (item) => (
+                  <CellView item={item} />
+                ))}
+              </tr>
+            ))}
           </tbody>
         );
       }
@@ -760,7 +833,13 @@ describe("two dimensions without keys", () => {
       { name: "r2", cells: [{ label: "c" }] },
     ];
     render() {
-      return <tbody>{list(this.rows, (item) => <OwningRow item={item} />)}</tbody>;
+      return (
+        <tbody>
+          {list(this.rows, (item) => (
+            <OwningRow item={item} />
+          ))}
+        </tbody>
+      );
     }
   }
 
@@ -862,7 +941,10 @@ describe("the cost of the key-free 2D shape", () => {
       render() {
         return (
           <tbody>
-            {list(this.rows, (row) => { const R = RowComp as typeof OwningRow3; return <R item={row} />; })}
+            {list(this.rows, (row) => {
+              const R = RowComp as typeof OwningRow3;
+              return <R item={row} />;
+            })}
           </tbody>
         );
       }
@@ -931,7 +1013,13 @@ describe("what NO key costs in two dimensions", () => {
     render() {
       return (
         <tbody>
-          {list(this.rows, (row: Row4) => <tr>{list(row.cells, (item) => <Cell4View item={item} />)}</tr>)}
+          {list(this.rows, (row: Row4) => (
+            <tr>
+              {list(row.cells, (item) => (
+                <Cell4View item={item} />
+              ))}
+            </tr>
+          ))}
         </tbody>
       );
     }
@@ -1050,7 +1138,13 @@ describe("your key, and what happens when two rows share one", () => {
         { id: 9, name: "b" },
       ];
       render() {
-        return <ul>{list(this.rows, (r: Priced) => <li key={r.id}>{r.name}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -1073,7 +1167,13 @@ describe("your key, and what happens when two rows share one", () => {
         { id: 9, name: "b" },
       ];
       render() {
-        return <ul>{list(this.rows, (r: Priced) => <li key={r.id}>{r.name}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -1105,7 +1205,13 @@ describe("your key, and what happens when two rows share one", () => {
         { id: 7, name: "b" },
       ];
       render() {
-        return <ul>{list(this.rows, (r: Priced) => <li key={r.id}>{r.name}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -1126,7 +1232,13 @@ describe("your key, and what happens when two rows share one", () => {
     class Board extends Component {
       @state rows: Priced[] = [shared, shared];
       render() {
-        return <ul>{list(this.rows, (r: Priced) => <li>{r.name}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: Priced) => (
+              <li>{r.name}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -1176,7 +1288,13 @@ describe("what list() returns, and what it does not", () => {
     class Board extends Component {
       @state rows = [{ t: "a" }, { t: "b" }];
       render() {
-        return <ul>{list(this.rows, (r: { t: string }) => <li>{r.t}</li>)}</ul>;
+        return (
+          <ul>
+            {list(this.rows, (r: { t: string }) => (
+              <li>{r.t}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
