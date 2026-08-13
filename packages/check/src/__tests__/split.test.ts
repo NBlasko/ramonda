@@ -99,7 +99,8 @@ describe("where the app splits, and what each piece carries", () => {
       ),
     );
     expect(split.points).toEqual([]);
-    expect(split.initial).toHaveLength(3);
+    // Two declarations and not three: the root is a CALL, walked through and never counted.
+    expect(split.initial).toEqual(["app.tsx#App", "app.tsx#Panel"]);
   });
 
   /**
@@ -111,6 +112,32 @@ describe("where the app splits, and what each piece carries", () => {
     const split = splitOf(graphOf([node("index.tsx#Grid")], [], { scope: "library" }));
     expect(split.initial).toEqual([]);
     expect(split.points).toEqual([]);
+  });
+});
+
+/**
+ * An app entered only from a server used to pass in silence, which is the failure the whole design
+ * is against: with no root the run judged nothing and still printed "every consumer has a provider
+ * above it". Measured on one file — the same code with `bootstrap` reported the broken path.
+ */
+describe("an app entered only from a server", () => {
+  test("is judged, and its broken path is named", () => {
+    const { issues, counts } = run("ssr-root");
+    expect(counts.roots).toBe(1);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.consumer).toBe("Reader");
+    expect(issues[0]?.path).toEqual(["App", "Reader"]);
+  });
+
+  /**
+   * A component METHOD of the same name is not an entry. Two apps in this repository have one, and
+   * read by name each `this.renderPage(row)` would be a root whose argument is a row of data.
+   */
+  test("a method called renderPage is not a root", () => {
+    const { graph, unresolved } = run("ssr-root");
+    const roots = graph.nodes.filter((n) => n.kind === "root");
+    expect(roots.map((r) => r.at.replace(/.*ssr-root\//, ""))).toEqual(["app.tsx:41:22", "app.tsx:45:23"]);
+    expect(unresolved).toEqual([]);
   });
 });
 
@@ -131,8 +158,8 @@ describe("what changed between two graphs", () => {
     ]);
     const change = diffGraphs(before, after);
 
-    expect(change.initialBefore).toBe(2);
-    expect(change.initialAfter).toBe(3);
+    expect(change.initialBefore).toBe(1);
+    expect(change.initialAfter).toBe(2);
     expect(change.intoInitial.map((n) => n.id)).toEqual(["heavy.tsx#Heavy"]);
     expect(change.outOfInitial).toEqual([]);
   });

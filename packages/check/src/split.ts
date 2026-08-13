@@ -78,8 +78,19 @@ export function splitOf(graph: ComponentGraph): Split {
   const out = outgoing(graph);
   const names = new Map(graph.nodes.map((node) => [node.id, node.name ?? node.id]));
 
+  /**
+   * A root is walked THROUGH and never counted.
+   *
+   * It is a call, not a declaration — `bootstrap(<App />, el)` is a line, and what loads is `App`.
+   * Counting it inflates the payload by the number of entry points, and an entry that resolved to
+   * nothing would add weight that does not exist: a package's own `renderPage` forwards the tree it
+   * was handed, so an app compiling core from source carries two such calls and neither downloads
+   * anything.
+   */
+  const roots = new Set(graph.nodes.filter((node) => node.kind === "root").map((node) => node.id));
+
   /** One payload's worth: everything reachable from here that does not sit behind another `lazy`. */
-  const payload = (from: string[]): Set<string> => {
+  const payload = (from: Iterable<string>): Set<string> => {
     const seen = new Set<string>();
     const queue = [...from];
     while (queue.length > 0) {
@@ -88,10 +99,9 @@ export function splitOf(graph: ComponentGraph): Split {
       seen.add(id);
       for (const edge of out.get(id) ?? []) if (edge.via !== "lazy") queue.push(edge.to);
     }
+    for (const id of roots) seen.delete(id);
     return seen;
   };
-
-  const roots = graph.nodes.filter((node) => node.kind === "root").map((node) => node.id);
   const initial = payload(roots);
 
   // One point per TARGET, not per site: a component two pages load lazily is downloaded once.

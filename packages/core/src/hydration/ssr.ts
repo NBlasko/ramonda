@@ -238,6 +238,7 @@ export async function renderStatic(vnode: ComponentChild, url: URL): Promise<Sta
   // last route the build baked — a build renders every page into one document.
   resetHead();
   try {
+    // ramonda-check-ignore the caller hands us the tree; this entry exists to render whichever it is
     const html = await renderToString(vnode);
     // A read inside an async @mounted throws into the drain's allSettled and is swallowed, so the
     // recorded field — not the throw — is the authority here.
@@ -308,6 +309,7 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
     // Forwarded, so a per-request render can use this instead of `renderToString` —
     // it could not before, and a server that needed `request` had to give up the head
     // to get it.
+    // ramonda-check-ignore the caller hands us the tree; this entry exists to render whichever it is
     const body = await renderToString(vnode, opts);
 
     return { body, ...collectHead(), portals: collectPortals() };

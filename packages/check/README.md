@@ -366,6 +366,26 @@ every run, whether or not anything failed, so the number cannot creep up unread.
 A tag naming a PROP — `<this.props.view />` — is not one of these. It is unresolvable from the class
 alone by design: the caller decides, and the walk fills it from what the caller binds.
 
+## Where a tree starts
+
+`bootstrap` and `hydrateRoot` in the browser, `renderToString`, `renderPage` and `renderStatic` on
+the server. All five are handed a component and render it, so all five are roots.
+
+**An app entered only from a server is judged like any other**, and leaving the server's three out
+made it pass in silence. The same file, one line different:
+
+```
+bootstrap(<App />, null)     <Reader> consumes "Theme" — nothing provides it on this path
+renderToString(<App />)      0 root(s) — every consumer has a provider above it
+```
+
+The second sentence was never checked. With no root the walk has nowhere to start, the project is
+taken for a library, and a library is judged not at all.
+
+An entry is called **by its own name**. A component method that happens to share one —
+`this.renderPage(row)`, which builds the markup for one row of data — is not an entry, and reading
+it as one would make a root out of a row.
+
 ## The graph
 
 Every check above is one reading of the same thing: **which components exist, and which one can

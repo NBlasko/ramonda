@@ -439,7 +439,18 @@ interface ComponentNode {
   usesChildren: boolean;
 }
 
-const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
+/**
+ * Where a tree starts. The server's three entries are here for the same reason the browser's two
+ * are: they are handed a component and they render it.
+ *
+ * **Leaving them out made an SSR-only app pass in silence**, which is the failure this design is
+ * against. Measured on one file with a consumer and no provider above it: written with
+ * `bootstrap(<App />, null)` the run names the broken path; change that one line to
+ * `renderToString(<App />)` and the same code comes out as "0 root(s) — every consumer has a
+ * provider above it". Nothing had been walked. An app entered only from a server — no client entry
+ * at all — was judged as a library, and a library is judged not at all.
+ */
+const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "renderPage", "renderStatic"]);
 
 /**
  * A test, as the PROJECT sees it — the path is relative to the directory holding the tsconfig.
@@ -1017,11 +1028,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     });
   }
 
-  /** `bootstrap(<App />, el)` / `hydrateRoot(<App />, el)` — where a tree starts. */
+  /** `bootstrap(<App />, el)` / `renderPage(<App />)` — where a tree starts. */
   function collectRoot(node: ts.Node): void {
     if (!ts.isCallExpression(node)) return;
-    const name = calleeName(node);
-    if (!name || !CORE_ROOTS.has(name)) return;
+    /**
+     * A BARE identifier, so a method of the same name is not a root.
+     *
+     * `calleeName` reads the property off a property access, which is right for `this.use(X)` and
+     * wrong here: two apps in this repository have a component method called `renderPage`
+     * (`apps/docs/src/App.tsx:41`, `apps/playground-ssr/src/ProductsPage.tsx:267`), and each
+     * `this.renderPage(page)` would otherwise be a root whose first argument is a row of data.
+     * An entry is imported and called by its own name; nothing here is written through an object.
+     */
+    if (!ts.isIdentifier(node.expression)) return;
+    const name = node.expression.text;
+    if (!CORE_ROOTS.has(name)) return;
     const pos = positionOf(node);
     // Numbered within its file rather than by line, for the same reason a component's id carries no
     // line: moving a call down a file would otherwise rename the node and a graph diff would report
