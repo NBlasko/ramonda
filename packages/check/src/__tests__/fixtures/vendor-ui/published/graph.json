@@ -5,7 +5,7 @@
     "name": "@acme/ui",
     "version": "2.1.0"
   },
-  "hash": "sha256:52301008d1e4009f12fa3aa7a1b96347e5d1bf756845f9c34bfb618f4ccc5bfb",
+  "hash": "sha256:64579c712c5e6f302d62af0cff8ae9310c333a285fb39a1c3f094e6552982032",
   "describes": {
     "file": "published/index.d.ts",
     "hash": "sha256:2be328b123e0c8857c9c18e62f1eb7997bcec4811848919142bd764809ca02af"
@@ -15,8 +15,14 @@
       "id": "@acme/ui/src/index.tsx#DataGrid",
       "kind": "component",
       "name": "DataGrid",
-      "at": "@acme/ui/src/index.tsx:45:1",
+      "at": "@acme/ui/src/index.tsx:57:1",
       "exported": true
+    },
+    {
+      "id": "@acme/ui/src/index.tsx#HelperBody",
+      "kind": "component",
+      "name": "HelperBody",
+      "at": "@acme/ui/src/index.tsx:45:1"
     },
     {
       "id": "@acme/ui/src/index.tsx#PagedBody",
@@ -52,6 +58,12 @@
       "name": "SelfServing",
       "at": "@acme/ui/src/index.tsx:38:1",
       "exported": true
+    },
+    {
+      "id": "@acme/ui/src/index.tsx#helpedRow",
+      "kind": "helper",
+      "name": "helpedRow",
+      "at": "@acme/ui/src/index.tsx:53:1"
     }
   ],
   "edges": [
@@ -60,7 +72,21 @@
       "to": "@acme/ui/src/index.tsx#PagedBody",
       "kind": "renders",
       "via": "tag",
-      "at": "@acme/ui/src/index.tsx:47:12"
+      "at": "@acme/ui/src/index.tsx:61:9"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#DataGrid",
+      "to": "@acme/ui/src/index.tsx#helpedRow",
+      "kind": "calls",
+      "via": "call",
+      "at": "@acme/ui/src/index.tsx:62:10"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#HelperBody",
+      "to": "@acme/ui/src/index.tsx#QueryProvider",
+      "kind": "consumes",
+      "via": "use",
+      "at": "@acme/ui/src/index.tsx:46:7"
     },
     {
       "from": "@acme/ui/src/index.tsx#PagedBody",
@@ -96,6 +122,13 @@
       "kind": "renders",
       "via": "tag",
       "at": "@acme/ui/src/index.tsx:41:12"
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#helpedRow",
+      "to": "@acme/ui/src/index.tsx#HelperBody",
+      "kind": "renders",
+      "via": "tag",
+      "at": "@acme/ui/src/index.tsx:54:10"
     }
   ]
 }

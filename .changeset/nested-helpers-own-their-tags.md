@@ -1,5 +1,5 @@
 ---
-"@ramonda/check": patch
+"@ramonda/check": minor
 ---
 
 A helper written inside another helper owns its own tags.

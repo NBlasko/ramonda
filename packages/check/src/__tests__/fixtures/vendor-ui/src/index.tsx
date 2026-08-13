@@ -42,8 +42,25 @@ export class SelfServing extends Component {
   }
 }
 
+class HelperBody extends Component {
+  q = this.use(QueryConsumer);
+  render() {
+    return <span>helped</span>;
+  }
+}
+
+/** The package's own helper: a consumer reached only through a function that returns JSX. */
+function helpedRow(): unknown {
+  return <HelperBody />;
+}
+
 export class DataGrid extends Component {
   render() {
-    return <PagedBody />;
+    return (
+      <div>
+        <PagedBody />
+        {helpedRow()}
+      </div>
+    );
   }
 }

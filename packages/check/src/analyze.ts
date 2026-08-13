@@ -288,6 +288,14 @@ const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot"]);
 const isTest = (relativePath: string): boolean =>
   /(^|\/)(__tests__|tests?)\//.test(relativePath) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(relativePath);
 
+/**
+ * How long a path the walk will follow before it stops.
+ *
+ * The cycle guard keys on a node and its bindings, so a component that mounts itself with a
+ * different binding each turn is not a cycle by that key. This is what makes it terminate anyway.
+ */
+const PATH_LIMIT = 200;
+
 /** How deep a slot may sit inside a prop, on both sides. Six is far past anything measured. */
 const SLOT_DEPTH = 6;
 
@@ -457,11 +465,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       // The package ROOT is cached, not just its name: caching the name against every directory
       // climbed through and then measuring from THAT directory produced
       // `@ramonda/docs/DataTable.test.tsx` for a file three levels down.
-      const found = ts.sys.fileExists(`${dir}/package.json`)
-        ? { name: packageOf(dir).name, root: dir }
-        : up === dir
-          ? undefined
-          : undefined;
+      const found = ts.sys.fileExists(`${dir}/package.json`) ? { name: packageOf(dir).name, root: dir } : undefined;
       if (found || up === dir) {
         packageAt.set(dir, found);
         for (const step of climbed) packageAt.set(step, found);
@@ -574,12 +578,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   for (const helper of helpers.values()) {
     const declaration = helperBodies.get(helper);
     if (!declaration) continue;
-    ts.forEachChild(declaration, (n) => walkJsx(n, helper, helper));
-    ts.forEachChild(declaration, function visit(node) {
+    /**
+     * The body ITSELF, not its children.
+     *
+     * `const header = () => <Legend />` stores the element as the body, and iterating its children
+     * reaches the tag name and the attributes but never the element — so the helper came out with
+     * no edges at all, and no hole either. A block body falls through to `forEachChild` inside
+     * `walkJsx` and is unaffected.
+     */
+    walkJsx(declaration, helper, helper);
+    (function visit(node: ts.Node) {
       collectCall(node, helper);
-      if (helperAt(node) !== undefined) return;
+      if (node !== declaration && helperAt(node) !== undefined) return;
       ts.forEachChild(node, visit);
-    });
+    })(declaration);
   }
 
   resolveHookContexts();
@@ -609,13 +621,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isArrayBindingPattern(node.name)) return;
 
     const pos = positionOf(node);
-    const id = `${pos.file}:${pos.line}`;
     const label = labelOf(node.initializer) ?? bindingName(node.name, 1) ?? bindingName(node.name, 0) ?? "context";
     const providerName = bindingName(node.name, 0);
+    /**
+     * ONE identity, and it is the graph's.
+     *
+     * It used to be `<absolute file>:<line>` internally and a graph id in the artifact. A spliced
+     * fragment can only speak the graph id, so a package's `consumes` naming a context declared
+     * outside it could never meet the local `provides` that satisfies it — the app failed the
+     * build against correct code. Named after the PROVIDER binding, because that is what an app
+     * mounts and what a message tells you to mount.
+     */
+    const id = idFor(pos.file, providerName ?? label);
     const fact: ContextFact = {
       id,
-      // The PROVIDER's binding name, because that is what an app mounts and what a message names.
-      graphId: idFor(pos.file, providerName ?? label),
+      graphId: id,
       at: whereOf(node),
       provider: providerName,
       consumer: bindingName(node.name, 1),
@@ -855,10 +875,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const byId = new Map<string, ComponentNode>();
 
     for (const node of fragment.graph.nodes) {
-      if (node.kind === "component" || node.kind === "hook") {
+      if (node.kind === "component" || node.kind === "hook" || node.kind === "helper") {
         const at = splitWhere(node.at);
         const made: ComponentNode = {
           id: node.id,
+          // A helper carries a package's composition as much as a component does: drop it and a
+          // consumer reached only through `function row() { return <Cell /> }` inside an installed
+          // package is invisible, which is the silence fragments exist to remove.
           kind: node.kind,
           name: node.name ?? node.id,
           // The path INSIDE the package, which is what the fragment carries. The source is not
@@ -917,12 +940,31 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         if (!from.consumes.has(each.to)) from.consumes.set(each.to, { line: at.line, column: at.column });
       } else if (each.kind === "uses" && target) {
         from.uses.add(target);
+      } else if (each.kind === "calls" && target) {
+        from.mounts.push({ target, binds: new Map() });
       } else if (each.kind === "unresolved" && each.via === "slot" && each.slot) {
         from.slotHoles.push({ slot: each.slot });
       }
-      // Every edge of the fragment is carried into the app's graph as written, so a report can name
-      // the real path THROUGH the package rather than stopping at its surface.
-      edges.push(each);
+      /**
+       * Carried into the app's graph as written, so a report can name the real path THROUGH the
+       * package rather than stopping at its surface — unless it names a node nothing declares.
+       *
+       * A fragment is pruned to its own package, so an edge may point at another package's node;
+       * if that package's fragment is not here, copying the edge would leave the emitted file with
+       * a `to` that matches no node, which a reader has to treat as corrupt. Kept as a hole
+       * instead, with the reason, which is the fact rather than the reference.
+       */
+      if (each.to !== undefined && !byId.has(each.to) && !declaredElsewhere(each.to)) {
+        edges.push({
+          from: each.from,
+          kind: "unresolved",
+          via: each.via,
+          at: each.at,
+          why: `\`${each.to}\` is declared by a package whose graph this run does not have`,
+        });
+      } else {
+        edges.push(each);
+      }
     }
 
     // A context a fragment declares OPTIONAL is one the walk must not report, and the walk reads
@@ -950,6 +992,17 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const hash = fingerprint(entry);
     if (!hash) return undefined;
     return { describes: { file: relative(packageRoot, entry).split(sep).join("/"), hash } };
+  }
+
+  /**
+   * Whether some other source in this run declares that node — a package compiled from source, or
+   * a fragment already spliced. Asked only to decide whether an edge's target can be named.
+   */
+  function declaredElsewhere(id: string): boolean {
+    for (const node of components.values()) if (node.id === id) return true;
+    for (const node of splicedNodes) if (node.id === id) return true;
+    for (const helper of helpers.values()) if (helper.id === id) return true;
+    return contexts.has(id);
   }
 
   /** `@acme/ui/src/Grid.tsx:10:3` back into its three parts. */
@@ -1228,10 +1281,22 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       node: ComponentNode,
       provided: Set<string>,
       path: string[],
-      onPath: Set<ComponentNode>,
+      onPath: Set<string>,
       bound: Map<string, ComponentNode[]>,
     ): void {
-      if (onPath.has(node)) return; // a cycle: it adds no new ancestry
+      /**
+       * Keyed on the node AND what is bound to its slots, because those are different arrangements.
+       *
+       * Keyed on the node alone, a component that mounts itself with another component in a slot —
+       * a tree renderer — was cut on the second arrival, and the second arrangement's subtree was
+       * never judged. The depth cap is the backstop: a binding that grows on every turn would
+       * otherwise make each arrival a new key.
+       */
+      const key = `${node.id}|${[...bound]
+        .map(([slot, targets]) => `${slot}=${targets.map((t) => t.id).join(",")}`)
+        .sort()
+        .join(";")}`;
+      if (onPath.has(key) || path.length > PATH_LIMIT) return;
 
       const here = new Set(provided);
       for (const id of node.provides) here.add(id);
@@ -1255,7 +1320,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       // An opaque class may provide anything, so stop judging below it.
       if (node.opaque) return;
 
-      const nextOnPath = new Set(onPath).add(node);
+      const nextOnPath = new Set(onPath).add(key);
       for (const site of node.mounts) visit(site.target, here, nextPath, nextOnPath, site.binds);
       // A tag naming a prop mounts whatever this caller handed over. With nothing bound the hole
       // stays a hole: the analyzer says nothing rather than guessing, which is what makes a report
@@ -1663,7 +1728,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     nodes.push(...rootNodes);
 
     const hash = createHash("sha256");
-    for (const file of [...sources].sort((a, b) => a.fileName.localeCompare(b.fileName))) {
+    // Ordered by code unit, not by `localeCompare`: collation depends on the machine's locale and
+    // ICU build, so the same sources could hash and diff differently on two machines.
+    for (const file of [...sources].sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0))) {
       hash.update(pathOf(file.fileName));
       hash.update(file.text);
     }
@@ -1700,12 +1767,16 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       package: home ? { name: home.name, version: packageOf(home.root).version } : packageOf(projectRoot),
       hash: `sha256:${hash.digest("hex")}`,
       ...(scope === "library" && home ? describedFile(home.root) : {}),
-      nodes: nodes.filter((n) => owned(n.id)).sort((a, b) => a.id.localeCompare(b.id)),
+      nodes: nodes.filter((n) => owned(n.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // Sorted so two runs over the same sources produce the same bytes, and a diff between two
       // commits is the change rather than the traversal order.
       edges: edges
         .filter((e) => owned(e.from))
-        .sort((a, b) => `${a.from}${a.at}${a.to ?? ""}`.localeCompare(`${b.from}${b.at}${b.to ?? ""}`)),
+        .sort((a, b) => {
+          const left = `${a.from}${a.at}${a.to ?? ""}`;
+          const right = `${b.from}${b.at}${b.to ?? ""}`;
+          return left < right ? -1 : left > right ? 1 : 0;
+        }),
     };
   }
 

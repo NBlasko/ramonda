@@ -1,5 +1,5 @@
 ---
-"@ramonda/check": patch
+"@ramonda/check": minor
 ---
 
 Four faults found reviewing the graph work, each reproduced before it was fixed.

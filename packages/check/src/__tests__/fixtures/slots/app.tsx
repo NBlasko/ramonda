@@ -81,6 +81,35 @@ class Looping extends Component {
   }
 }
 
+class Leaf extends Component {
+  ctx = this.use(ThemeConsumer);
+  render() {
+    return <span>leaf</span>;
+  }
+}
+
+/**
+ * A tree renderer: it mounts whatever it is handed, and mounts ITSELF with something else handed
+ * over. Keyed on the node alone, the second arrival was read as a cycle and `Leaf` was never
+ * judged.
+ */
+class Tree extends Component {
+  render() {
+    return (
+      <div>
+        <this.props.cell />
+        <Tree cell={Leaf} />
+      </div>
+    );
+  }
+}
+
+class Grove extends Component {
+  render() {
+    return <Tree cell={Plain} />;
+  }
+}
+
 class App extends Component {
   p = this.use(ThemeProvider);
   render() {
@@ -95,7 +124,12 @@ class App extends Component {
 
 class Shell extends Component {
   render() {
-    return <Bare />;
+    return (
+      <div>
+        <Bare />
+        <Grove />
+      </div>
+    );
   }
 }
 

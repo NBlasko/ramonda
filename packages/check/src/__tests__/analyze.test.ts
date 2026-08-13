@@ -557,10 +557,21 @@ describe("a component handed over as a prop", () => {
     expect(run("slots").graph.nodes.some((n) => n.name === "Looping")).toBe(true);
   });
 
+  /**
+   * A component that mounts ITSELF with something else in its slot is not a cycle: it is a second
+   * arrangement. Keyed on the node alone, the second arrival was cut and its subtree was never
+   * judged — so a consumer handed to a tree renderer one level down went unreported.
+   */
+  test("a component that mounts itself with another binding is judged again", () => {
+    const found = run("slots").issues.find((i) => i.consumer === "Leaf");
+    expect(found?.path).toEqual(["Shell", "Grove", "Tree", "Tree", "Leaf"]);
+  });
+
   test("a tag naming a prop is a hole with the prop on it, in both spellings", () => {
     // `const View = this.props.view; <View />` and `<this.props.view />`.
     const holes = run("slots").graph.edges.filter((e) => e.via === "slot");
-    expect(holes.map((h) => h.slot)).toEqual(["view", "view"]);
+    // Two spellings of `view`, and the recursive tree's `cell`.
+    expect(holes.map((h) => h.slot)).toEqual(["view", "view", "cell"]);
     expect(holes.every((h) => h.kind === "unresolved" && h.to === undefined)).toBe(true);
   });
 
@@ -573,10 +584,10 @@ describe("a component handed over as a prop", () => {
    * would be silence.
    */
   test("the same slot filled on two paths is judged on each path", () => {
-    const { issues } = run("slots");
-    expect(issues).toHaveLength(1);
-    expect(issues[0].consumer).toBe("Reader");
-    expect(issues[0].path).toEqual(["Shell", "Bare", "Slot", "Reader"]);
+    const found = run("slots").issues.find((i) => i.consumer === "Reader");
+    expect(found?.path).toEqual(["Shell", "Bare", "Slot", "Reader"]);
+    // `Covered` mounts the same `Slot` with the same `Reader` under a provider, and is silent.
+    expect(run("slots").issues.filter((i) => i.consumer === "Reader")).toHaveLength(1);
   });
 });
 
@@ -624,13 +635,11 @@ describe("a package's fragment", () => {
    * would name no line.
    */
   test("an app splices it in and judges what the package mounts", () => {
-    const { issues } = run("fragment");
-    expect(issues).toHaveLength(1);
-    expect(issues[0].consumer).toBe("PagedBody");
-    expect(issues[0].context).toBe("Query");
-    expect(issues[0].path).toEqual(["App", "Bare", "DataGrid", "PagedBody"]);
+    const found = run("fragment").issues.find((i) => i.consumer === "PagedBody");
+    expect(found?.context).toBe("Query");
+    expect(found?.path).toEqual(["App", "Bare", "DataGrid", "PagedBody"]);
     // And it names the file inside the package, which is where the fault is.
-    expect(issues[0].file).toBe("@acme/ui/src/index.tsx");
+    expect(found?.file).toBe("@acme/ui/src/index.tsx");
   });
 
   /**
@@ -646,13 +655,14 @@ describe("a package's fragment", () => {
     const { issues } = run("fragment");
     // `<SelfServing />` is mounted with nothing above it, and needs nothing above it.
     expect(issues.map((i) => i.consumer)).not.toContain("SelfBody");
-    expect(issues).toHaveLength(1);
+    // The two that ARE reported both sit under `Bare`, which provides nothing.
+    expect(issues.map((i) => i.consumer).sort()).toEqual(["HelperBody", "PagedBody"]);
   });
 
   test("the same component under the provider the package needs is silent", () => {
     // `Covered` mounts `QueryProvider` — the pair the package exports — and `Bare` does not. One
     // arrangement is broken and the other is not, and only the broken one is reported.
-    expect(run("fragment").issues.map((i) => i.path[1])).toEqual(["Bare"]);
+    expect(new Set(run("fragment").issues.map((i) => i.path[1]))).toEqual(new Set(["Bare"]));
   });
 
   test("the package's own nodes and edges are in the app's graph", () => {
@@ -667,6 +677,17 @@ describe("a package's fragment", () => {
    * The fixture is a package rebuilt without regenerating its graph — the fingerprint no longer
    * matches the installed `dist`. It is refused, said out loud, and nothing of it is spliced.
    */
+  /**
+   * A package's helper carries composition as much as its components do. `splice` built nodes for
+   * components, hooks and contexts only, and matched no branch for a `calls` edge, so a consumer
+   * reached only through a function that returns JSX inside an installed package was invisible —
+   * the very silence fragments exist to remove.
+   */
+  test("a consumer reached through the package's own helper is judged", () => {
+    const found = run("fragment").issues.find((i) => i.consumer === "HelperBody");
+    expect(found?.path).toEqual(["App", "Bare", "DataGrid", "helpedRow", "HelperBody"]);
+  });
+
   test("a fragment that does not describe the installed package is refused", () => {
     const { notes, counts, issues } = run("fragment-stale");
     expect(notes.join(" ")).toContain("rebuilt without regenerating its graph");
@@ -734,6 +755,15 @@ describe("a function that returns JSX", () => {
     expect(edges).not.toContain("app.tsx#outer -> app.tsx#Legend (renders/tag)");
   });
 
+  /**
+   * A concise arrow's body IS the element, and iterating its children reaches the tag name and the
+   * attributes but never the element — so the helper came out with no edges at all, and no hole
+   * either. Silence on a path, which is the failure this design is against.
+   */
+  test("a helper written as a concise arrow keeps its outermost tag", () => {
+    expect(edgesOf("helpers")).toContain("app.tsx#header -> app.tsx#Legend (renders/tag)");
+  });
+
   test("a route table and a root argument are not helpers", () => {
     // Both are read where they are written. Counted twice, one mount would have two owners.
     const helpers = (name: string) => run(name).graph.nodes.filter((n) => n.kind === "helper");
@@ -767,6 +797,22 @@ describe("a function that returns JSX", () => {
  * project's test tree. Which is exactly where these fixtures are: each is analysed through its own
  * tsconfig, where nothing is a test.
  */
+/**
+ * Nothing in the emitted graph names a node the graph does not declare.
+ *
+ * The format's own invariant, and the one a fragment can break: a library's graph is pruned to its
+ * own package, so an edge may point at another package's node, and copying that edge into an app
+ * that has no fragment for the other package would leave a `to` matching nothing.
+ */
+describe("the emitted graph refers only to nodes it declares", () => {
+  test.each(["ok", "children", "slots", "helpers", "lazy", "fragment", "same-name", "vendor-ui"])("%s", (fixture) => {
+    const graph = run(fixture).graph;
+    const declared = new Set(graph.nodes.map((n) => n.id));
+    const dangling = graph.edges.filter((e) => e.to !== undefined && !declared.has(e.to));
+    expect(dangling).toEqual([]);
+  });
+});
+
 describe("what a graph covers", () => {
   test("this package's own fixtures are not read as tests", () => {
     // The proof that the rule is relative. Read absolutely, every fixture here sits under
