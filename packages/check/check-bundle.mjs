@@ -8,12 +8,16 @@
  * TC39 decorators are not parseable JavaScript in any engine yet, so a build
  * that fails to strip them produces a bundle that dies with
  * `SyntaxError: Invalid or unexpected token` the moment a browser reads it.
- * That happened, and it reached a browser — see BUGS.md, "TC39 decorators
- * survived the bundle, and only an accident hid it". The transform that strips
- * them was being applied for an unrelated reason (`esbuild.jsxInject`), so
- * removing an option nothing seemed to depend on silently broke the output.
+ * That happened, and it reached a browser: the transform that strips them was
+ * being applied for an unrelated reason (`esbuild.jsxInject` put an import in
+ * every module, which forced every module through it), so removing an option
+ * nothing seemed to depend on silently broke the output.
  *
  * Nothing checked it, which is the only reason it shipped. This is that check.
+ * It runs over this repository's builds and over yours — a project scaffolded
+ * with `npm create ramonda` ends its `build` with it, because the setting that
+ * makes the transform happen is one line of bundler config, and the failure it
+ * guards is invisible until the first page load.
  *
  * ## Why it PARSES rather than grepping for `@`
  *
@@ -45,10 +49,16 @@ async function collect(target, out) {
     if (JS.test(target)) out.push(target);
     return;
   }
+  // No directory is skipped. There WAS one exception — a folder named `pagefind`, because this
+  // repository's docs site ships a prebuilt search bundle it did not author. That was written when
+  // this tool was private to the workspace, and it stopped being defensible the moment the tool
+  // shipped: a name that means "search index" here means nothing in someone else's project, and a
+  // check that quietly declines to look at part of the output is worse than one that does not run.
+  //
+  // It was dead where it was written, too — `apps/docs` passes `dist/assets .build`, and its
+  // indexing step runs AFTER this check. Point the command at what you want checked; that is the
+  // control, not a name this file happens to know.
   for (const entry of await readdir(target, { withFileTypes: true })) {
-    // `pagefind` ships its own prebuilt bundle; it is not ours to vouch for,
-    // and it contains generated code that is none of this check's business.
-    if (entry.isDirectory() && entry.name === "pagefind") continue;
     await collect(join(target, entry.name), out);
   }
 }

@@ -339,7 +339,7 @@ Versions and changelogs are driven by [Changesets](https://github.com/changesets
      **builds and `changeset publish`es** to npm.
 3. `changeset publish` skips versions already on npm, rewrites `workspace:*` to
    real versions, and tags each release. Private packages (`apps/*`,
-   `@ramonda/shared`) are ignored.
+   `@ramonda/theme`) are ignored.
 4. **Then deploy the docs by hand** — the Actions tab, *Deploy docs*, *Run
    workflow* on `main`. Nothing does it for you, on purpose; see below.
 

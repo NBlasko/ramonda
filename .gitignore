@@ -30,6 +30,10 @@ out/
 build
 dist
 
+# `build` above matches any directory of that name, and one of them is a package rather than an
+# output. Re-included by name, so its source is tracked; anything it emits is caught by `dist`.
+!packages/build
+
 
 # Debug
 npm-debug.log*

@@ -1,7 +1,7 @@
 {
   "name": "@ramonda/check",
   "version": "0.5.0",
-  "description": "Static checks for a Ramonda app — proves a context consumer has a provider above it, and finds class fields holding a function literal, before the page is ever opened.",
+  "description": "Static checks for a Ramonda app — proves a context consumer has a provider above it, finds class fields holding a function literal, and parses what your build emitted, before the page is ever opened.",
   "license": "MIT",
   "author": "Nikola Blagojević",
   "homepage": "https://ramonda.pages.dev",
@@ -18,11 +18,13 @@
     "static-analysis",
     "context",
     "lint",
-    "cli"
+    "cli",
+    "build"
   ],
   "type": "module",
   "bin": {
-    "ramonda-check": "./bin.mjs"
+    "ramonda-check": "./bin.mjs",
+    "ramonda-check-bundle": "./check-bundle.mjs"
   },
   "exports": {
     ".": {
@@ -34,6 +36,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "bin.mjs",
+    "check-bundle.mjs",
     "dist",
     "README.md"
   ],

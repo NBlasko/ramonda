@@ -1,23 +1,25 @@
 {
-  "name": "@ramonda/testing-library",
-  "version": "0.2.0",
-  "description": "Testing utilities for Ramonda components and hooks, built on @testing-library/dom.",
+  "name": "@ramonda/build",
+  "version": "0.0.0",
+  "description": "The bundler settings a Ramonda app needs, as a Vite plugin and an esbuild plugin — so the app names none of them.",
   "license": "MIT",
   "author": "Nikola Blagojević",
   "homepage": "https://ramonda.pages.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",
-    "directory": "packages/testing-library"
+    "directory": "packages/build"
   },
   "bugs": {
     "url": "https://github.com/NBlasko/ramonda/issues"
   },
   "keywords": [
     "ramonda",
-    "testing",
-    "testing-library",
-    "test"
+    "vite",
+    "esbuild",
+    "plugin",
+    "decorators",
+    "build"
   ],
   "type": "module",
   "exports": {
@@ -25,37 +27,34 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./dont-cleanup-after-each": {
-      "import": "./dist/dont-cleanup-after-each.js"
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./esbuild": {
+      "types": "./dist/esbuild.d.ts",
+      "import": "./dist/esbuild.js"
     }
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsup && ramonda-check-bundle dist",
     "dev": "tsup --watch",
-    "test": "vitest run --coverage",
-    "test:watch": "vitest",
+    "test": "vitest run",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
     "format": "biome format --write src"
   },
-  "peerDependencies": {
-    "@ramonda/core": ">=0.0.2 <1.0.0"
-  },
-  "dependencies": {
-    "@testing-library/dom": "^10.4.1"
-  },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
-    "@ramonda/core": "workspace:^",
-    "@ramonda/devtools": "workspace:^",
     "@types/node": "^26.1.2",
-    "jsdom": "28.0.0",
+    "esbuild": "0.28.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",

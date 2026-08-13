@@ -82,7 +82,6 @@
   "devDependencies": {
     "@ramonda/check": "workspace:^",
     "@ramonda/devtools": "workspace:^",
-    "@ramonda/shared": "workspace:^",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/user-event": "^14.6.1",

@@ -16,7 +16,7 @@ import { defineConfig } from "tsup";
  * version on disk is the one about to go to npm.
  */
 const ranges: Record<string, string> = {};
-for (const folder of ["core", "router", "query", "form", "lens", "devtools", "testing-library", "check"]) {
+for (const folder of ["core", "router", "query", "form", "lens", "devtools", "testing-library", "check", "build"]) {
   const pkg = JSON.parse(readFileSync(new URL(`../${folder}/package.json`, import.meta.url), "utf8")) as {
     name: string;
     version: string;

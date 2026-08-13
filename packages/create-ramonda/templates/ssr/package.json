@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
-    "build:client": "esbuild src/entry-client.tsx --bundle --format=esm --jsx=automatic --jsx-import-source=@ramonda/core --target=es2022 --conditions=production --define:__DEV__=false --outfile=dist/client/assets/client.js",
-    "build:server": "esbuild src/entry-server.tsx --bundle --format=esm --jsx=automatic --jsx-import-source=@ramonda/core --target=es2022 --conditions=production --define:__DEV__=false --platform=node --outfile=dist/server/entry-server.js",
-    "build": "ramonda-check && npm run build:client && npm run build:server && node scripts/prerender.mjs",
+    "build:bundles": "node scripts/build.mjs",
+    "build": "ramonda-check && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist",
     "start": "node server.mjs --prod"
   }
 }

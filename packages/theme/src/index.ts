@@ -10,9 +10,8 @@
  * ## Why it is private, and how a published package still uses it
  *
  * `@ramonda/devtools` is published, and it depends on this. That works because devtools declares no
- * runtime dependencies at all — everything is a `devDependency` and tsup inlines it, which is
- * already how `@ramonda/shared` reaches the same packages. Nothing here is ever resolved by somebody
- * installing Ramonda; the values are in the bundle by the time they see it.
+ * runtime dependencies at all — everything is a `devDependency` and tsup inlines it. Nothing here is
+ * ever resolved by somebody installing Ramonda; the values are in the bundle by the time they see it.
  *
  * ## Why it is one file
  *

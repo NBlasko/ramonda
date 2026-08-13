@@ -35,6 +35,6 @@
     }
   },
   "dependencies": {
-    "@ramonda/shared": "workspace:^"
+    "@ramonda/check": "workspace:^"
   }
 }

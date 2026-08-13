@@ -284,8 +284,8 @@ describe("development is development", () => {
     expect(scripts.dev).toBe("node server.mjs");
     expect(read("vite.config.ts")).toContain("__DEV__");
     expect(read("vite.config.ts")).toMatch(/__DEV__.*true/);
-    expect(scripts["build:client"]).toContain("--conditions=production");
-    expect(scripts["build:client"]).toContain("--define:__DEV__=false");
+    expect(read("scripts/build.mjs")).toContain('conditions: ["production"]');
+    expect(read("scripts/build.mjs")).toContain('define: { __DEV__: "false" }');
     expect(scripts.start).toContain("--prod");
   });
 });
@@ -354,6 +354,105 @@ describe("the generated project declares what its own code needs", () => {
     // automatic runtime — so there is nothing left for a `global.d.ts` to say.
     expect(existsSync(join(dir, "global.d.ts"))).toBe(false);
     expect(read("src/main.tsx")).toContain("import.meta.env.DEV");
+  });
+});
+
+/**
+ * The decorators are the public API, and they are not parseable JavaScript in any engine. A build
+ * that does not transform them emits a file that dies with `SyntaxError: Invalid or unexpected
+ * token` the moment a browser reads it — not at build time, not in a test, but on the first page
+ * load, in the user's project.
+ *
+ * That shipped here once. It had been working by accident: `esbuild.jsxInject` put an import in
+ * every module, which forced every module through the esbuild transform, and that transform is
+ * what strips the decorators. Nobody had chosen it. Removing `jsxInject`, for an unrelated
+ * reason, broke the output in silence.
+ *
+ * Measured against esbuild 0.28.1, on a project with a tsconfig — which every real one has:
+ * `target: es2022` compiles decorators into helpers, `esnext` leaves them verbatim, and
+ * `node --check` on that output is a SyntaxError. `esnext` is also esbuild's DEFAULT, so saying
+ * nothing is the same as saying the wrong thing, and it reads like a modernisation besides.
+ *
+ * A generated project therefore configures **none** of the three settings that decide this. It
+ * takes them from `@ramonda/build`, which is the whole reason that package exists: three values
+ * that have to agree with each other, in as many places as an app runs a transform, is not
+ * something to hand to somebody who just typed `npm create ramonda`. Then the build parses what it
+ * emitted, so if it is somehow got wrong anyway, the build says so rather than the browser.
+ */
+describe("the decorators survive a scaffolded build", () => {
+  /** Everywhere the generated project could configure a transform, with where it lives. */
+  function couldConfigureTheTransform(read: (file: string) => string, scripts: Record<string, string>, mode: string) {
+    return [
+      ["vite.config.ts", read("vite.config.ts")],
+      ...(mode === "ssr" ? [["scripts/build.mjs", read("scripts/build.mjs")] as const] : []),
+      ...Object.entries(scripts),
+    ] as [string, string][];
+  }
+
+  /** Comments name these settings on purpose — the question is whether anything SETS one. */
+  const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  test("the project names none of the three settings — the package owns them", () => {
+    for (const mode of ["spa", "ssr"] as const) {
+      const { read, pkg } = make(mode, []);
+      const scripts = (pkg as unknown as { scripts: Record<string, string> }).scripts;
+      const places = couldConfigureTheTransform(read, scripts, mode);
+
+      // A guard on the guard: if the template is ever restructured so none of these files is
+      // found, every assertion below would pass over an empty list and say nothing.
+      expect(places.length).toBeGreaterThan(2);
+
+      for (const [where, source] of places) {
+        for (const setting of [/\btarget\b\s*[:=]/, /\bjsx\b\s*[:=]/, /jsx-?[iI]mport-?[sS]ource/]) {
+          expect(`${mode}/${where}`.concat("\n", code(source))).not.toMatch(setting);
+        }
+      }
+    }
+  });
+
+  test("both modes take the settings from the package, in every place they run a transform", () => {
+    for (const mode of ["spa", "ssr"] as const) {
+      const { read, pkg } = make(mode, []);
+
+      // The dev server and the SPA build, through the Vite plugin.
+      expect(read("vite.config.ts")).toContain('from "@ramonda/build/vite"');
+      expect(read("vite.config.ts")).toContain("ramonda()");
+
+      // And the SSR production build, which is esbuild directly, through the options object. This
+      // is the half that actually shipped broken, because esbuild's default target is the wrong one.
+      if (mode === "ssr") {
+        expect(read("scripts/build.mjs")).toContain('from "@ramonda/build/esbuild"');
+        expect(read("scripts/build.mjs")).toContain("...ramondaOptions");
+      }
+
+      expect(pkg.devDependencies).toHaveProperty("@ramonda/build");
+    }
+  });
+
+  test("the config says what the package is for, where the app would otherwise be configuring it", () => {
+    // The reason has to be at the line somebody edits. `server.mjs` used to point at "the one
+    // setting (es2022)" in a config that did not mention decorators at all, which is a reason
+    // nobody reads at the moment it matters.
+    for (const mode of ["spa", "ssr"] as const) {
+      const { read } = make(mode, []);
+      expect(read("vite.config.ts")).toMatch(/decorator/i);
+    }
+  });
+
+  test("the build parses every file it emitted", () => {
+    for (const mode of ["spa", "ssr"] as const) {
+      const { pkg, read } = make(mode, []);
+      const scripts = (pkg as unknown as { scripts: Record<string, string> }).scripts;
+
+      // The check has to run over the build OUTPUT, so it has to come after the build, and the
+      // `&&` chain has to keep it from running on a build that already failed.
+      expect(scripts.build).toMatch(/&&\s*ramonda-check-bundle\s+\S+\s*$/);
+
+      // And it has to be installable, which is the whole reason it moved out of the workspace's
+      // private package: `@ramonda/check` is the one a generated project already has.
+      expect(pkg.devDependencies).toHaveProperty("@ramonda/check");
+      expect(read("package.json")).toContain("ramonda-check-bundle");
+    }
   });
 });
 
