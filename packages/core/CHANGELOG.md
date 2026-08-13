@@ -1,5 +1,61 @@
 # @ramonda/core
 
+## 0.17.0
+
+### Minor Changes
+
+- ad994c9: A context can say that two of it conflict, and a second one is reported before the app runs.
+
+  Nesting is ordinary: a second Provider shadows the first and the nearer one wins. That is how a
+  theme override inside a panel works, and a form inside a form — so a checker cannot simply report
+  every context provided twice.
+
+  `createContext(…, { single: true })` is how an author says this one is different. The router's is the
+  case, and it now declares it: two Routers both listen to `popstate` and both write history, and the
+  first to unmount takes the listener the survivor depends on. `Router.init` already throws when it
+  happens — this is the same fault said before anything renders, on every path the source can produce,
+  including the branch nobody clicked.
+
+  Like `label` and `optional`, the flag is a declaration rather than behaviour: the runtime reads
+  neither, and it changes what is reported rather than what is read. It travels in a package's graph
+  fragment, so a context declared single stays single in every app that mounts it.
+
+- 5c54de8: `RMD052` — a component among JSX children, where an element was meant.
+
+  `{Panel}` names the class instead of rendering it. It is not markup, so it is dropped and the page
+  comes up without it — and until now nothing said so: the check beside it looks for an OBJECT among
+  children, and a class is a function, so it fell through with the strings and numbers. Measured before
+  the code was written: the component simply never appears, and no record is emitted.
+
+  Only reported, never replaced. A function child already renders nothing, so putting a hole there
+  instead would change no page — the report is what was missing.
+
+  Handing a component to something else is an attribute rather than a child: `<Slot view={Panel} />`
+  passes it as a prop, which is a different thing entirely.
+
+  `ramonda-check` reports the same mistake from the source, before anything renders.
+
+### Patch Changes
+
+- 1384a5f: Two more ways a component is mounted, and the documentation site is finally visible.
+
+  **A function that mounts through the factory and writes no tag at all** is a helper like any other.
+  It was recognised by looking for JSX tags, so a function that walks a content tree and calls `__h`
+  for every node was not one — its body was never walked, and everything it mounts was unreachable
+  while it sat in plain sight.
+
+  **A helper handed OVER rather than called** — `tree.map(toVNode)` — is reached too. Whoever it is
+  given to will run it, so what it mounts is reachable from there.
+
+  Measured on this repository's documentation site, which renders its entire content tree that way:
+  the walk reached **10 of 153 nodes** when this work started, 90 after the factory and the looped
+  route table, and **142 of 157** now. The only thing of its own it does not reach is the SSR entry,
+  which nothing calls because the server calls it.
+
+  Four more sites carry an escape hatch, and they are all one shape — a function that mounts whatever
+  it is handed. Three are `@ramonda/core`'s JSX runtime, which is that shape by definition, and one is
+  `@ramonda/testing-library`'s wrapper. Two more name an element from a parsed content tree.
+
 ## 0.16.0
 
 ### Minor Changes
