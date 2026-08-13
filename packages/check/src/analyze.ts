@@ -189,6 +189,28 @@ export interface AnnotatedSite {
   column: number;
 }
 
+/**
+ * A component, hook or helper no root can reach.
+ *
+ * The first rule computed from the graph rather than from the source, and it needs nothing new: the
+ * walk already visits everything a root mounts, so what it never arrived at is what nothing mounts.
+ *
+ * **Only what it can prove.** An EXPORTED one is left alone — an app is entered through what it
+ * publishes, and an SSR entry is called by the server rather than by this program, so `renderOne`
+ * and `prerender` would be false positives. A class nothing outside its file can even name, that no
+ * root reaches, is dead with no room for argument.
+ *
+ * A library is not judged at all: with no root, nothing in it is reachable by definition.
+ */
+export interface UnreachableIssue {
+  /** The class or function name. */
+  name: string;
+  kind: "component" | "hook" | "helper";
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -201,6 +223,8 @@ export interface AnalyzeResult {
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
   annotated: AnnotatedSite[];
+  /** Declarations no root reaches — see `UnreachableIssue`. */
+  unreachable: UnreachableIssue[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -711,7 +735,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
 
   resolveHookContexts();
-  const issues = walk();
+  const reached = new Set<ComponentNode>();
+  const issues = walk(reached);
+  const unreachable = deadOnes(reached);
 
   return {
     issues,
@@ -720,6 +746,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     unwatchedFields,
     unresolved,
     annotated,
+    unreachable,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -1083,6 +1110,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const name = named.text;
     const symbol = checker.getSymbolAtLocation(named);
     if (!symbol || helpers.has(symbol)) return;
+    // `export function renderOne(…)` and `export const appNode = …` — an SSR entry is called by the
+    // server, not by this program, so being exported is the only sign it is a way IN.
+    const declared = ts.isVariableDeclaration(node) ? node.parent.parent : node;
+    const exported = (ts.getCombinedModifierFlags(declared as ts.Declaration) & ts.ModifierFlags.Export) !== 0;
     const pos = positionOf(node);
     const made: ComponentNode = {
       id: idFor(pos.file, name),
@@ -1096,7 +1127,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       mounts: [],
       slotHoles: [],
       slots: [],
-      exported: false,
+      exported,
       uses: new Set(),
       opaque: false,
       usesChildren: false,
@@ -1625,7 +1656,55 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   // ── the walk ────────────────────────────────────────────────────────────────────────────────
 
-  function walk(): ContextIssue[] {
+  /**
+   * What no root reaches, once the walk has been everywhere it can.
+   *
+   * Read from the same traversal that judges providers, so the two can never disagree about what is
+   * mounted. Nothing spliced: another package's internals are its business, and this app not using
+   * one of them says nothing about the package.
+   */
+  function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
+    // No root, no verdict: in a library everything is unreachable by definition.
+    if (roots.size === 0) return [];
+    /**
+     * This project's OWN declarations, and nothing else.
+     *
+     * These apps compile their dependencies from source, so `components` holds core's and the
+     * router's classes too — and an app not using one of core's hooks says nothing about core.
+     * Measured before the filter: the playground reported `Provider` from
+     * `@ramonda/core/src/base/Context.ts` as dead.
+     */
+    /**
+     * Everything a reached node USES is reached too.
+     *
+     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
+     * edge and never a mount, which is right for the provider check and wrong for this one.
+     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
+     * while a component used each of them one line away.
+     */
+    const queue = [...reached];
+    while (queue.length > 0) {
+      const node = queue.pop();
+      if (!node) continue;
+      for (const used of node.uses) {
+        if (reached.has(used)) continue;
+        reached.add(used);
+        queue.push(used);
+      }
+    }
+
+    const home = owner(projectRoot);
+    const ours = home ? `${home.name}/` : undefined;
+    const found: UnreachableIssue[] = [];
+    for (const node of [...components.values(), ...helpers.values()]) {
+      if (reached.has(node) || node.exported) continue;
+      if (ours !== undefined && !node.id.startsWith(ours)) continue;
+      found.push({ name: node.name, kind: node.kind, file: node.file, line: node.line, column: node.column });
+    }
+    return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+  }
+
+  function walk(reached: Set<ComponentNode>): ContextIssue[] {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
 
@@ -1663,6 +1742,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         .sort()
         .join(";")}`;
       if (onPath.has(key) || path.length > PATH_LIMIT) return;
+      reached.add(node);
 
       const here = new Set(provided);
       for (const id of node.provides) here.add(id);
@@ -2113,6 +2193,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         kind: node.kind,
         name: node.name,
         at: `${pathOf(node.file)}:${node.line}:${node.column}`,
+        ...(node.exported ? { exported: true } : {}),
       });
     }
     for (const node of splicedNodes) {
@@ -2138,6 +2219,25 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
     // no package.json of its own belongs to the package above it, and saying otherwise would give
     // the graph two names for one thing.
+    /**
+     * Everything a reached node USES is reached too.
+     *
+     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
+     * edge and never a mount, which is right for the provider check and wrong for this one.
+     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
+     * while a component used each of them one line away.
+     */
+    const queue = [...reached];
+    while (queue.length > 0) {
+      const node = queue.pop();
+      if (!node) continue;
+      for (const used of node.uses) {
+        if (reached.has(used)) continue;
+        reached.add(used);
+        queue.push(used);
+      }
+    }
+
     const home = owner(projectRoot);
     /**
      * A root that names a component, not merely a call to `bootstrap`.

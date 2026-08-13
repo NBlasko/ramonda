@@ -198,6 +198,27 @@ reported either. `path` and `name` are not reads: they are fixed for the life of
 know who is rendering, and it cannot — nothing in the running page distinguishes "the owner is
 reading its own field" from "a child is reading a field it will never hear about again".
 
+## A declaration no root reaches
+
+The first check computed from the graph rather than from the source — and it needed no new pass over
+your code, which is the argument for having a graph at all. The walk already visits everything a root
+mounts, so what it never arrived at is what nothing mounts:
+
+```
+[ramonda-check] 1 declaration(s) no root reaches:
+
+  src/Orphan.tsx:4:1
+    Orphan — nothing mounts this component, on any path from any root.
+```
+
+**Only what it can prove.** An EXPORTED one is never reported: an app is entered through what it
+publishes, and an SSR entry is called by the server rather than by your program. What is reported is
+a declaration nothing outside its own file can even name, that no root reaches — dead with no room
+for argument. A hook a reached component uses is not dead, though a hook mounts nothing; and another
+package's internals are its own business, not your app's.
+
+A library is not judged at all. With no root, everything in it is unreachable by definition.
+
 ## A component it cannot follow is an error
 
 The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a

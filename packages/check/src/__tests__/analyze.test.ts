@@ -1013,3 +1013,43 @@ describe("a component mounted through the factory", () => {
     expect(edgesOf("factory")).toContain("app.tsx#RouteOutlet@1 -> app.tsx#Page (renders/route)");
   });
 });
+
+/**
+ * The first rule computed from the GRAPH rather than from the source.
+ *
+ * The walk already visits everything a root mounts, so what it never arrived at is what nothing
+ * mounts. It needed no new pass over the AST — which was the argument for building the graph in the
+ * first place.
+ */
+describe("a declaration no root reaches", () => {
+  const dead = () => run("unreachable").unreachable.map((u) => `${u.kind} ${u.name}`);
+
+  test("is reported, whether it is a component or a helper", () => {
+    expect(dead().sort()).toEqual(["component Orphan", "helper unusedRow"]);
+  });
+
+  test("a hook a reached component USES is not dead", () => {
+    // The walk follows what MOUNTS, and a hook mounts nothing: `this.use(Counter)` is a `uses` edge
+    // and never a mount. Measured without closing over those, this repository's own playgrounds
+    // reported three hooks as dead with a component using each of them one line away.
+    expect(dead()).not.toContain("hook Counter");
+  });
+
+  test("an EXPORTED one is left alone, because it is a way in", () => {
+    // An SSR entry is called by the server rather than by this program, so `renderOne` and
+    // `prerender` would be false positives — and a false positive is what this cannot afford.
+    expect(dead()).not.toContain("helper renderOne");
+  });
+
+  test("a library is not judged at all", () => {
+    // With no root, everything in it is unreachable by definition.
+    expect(run("vendor-ui").unreachable).toEqual([]);
+  });
+
+  test("another package's internals are its own business", () => {
+    // These apps compile their dependencies from source, so an app not using one of core's hooks
+    // says nothing about core. Measured before the filter: the playground reported core's
+    // `Provider` as dead.
+    expect(run("cross-package").unreachable).toEqual([]);
+  });
+});

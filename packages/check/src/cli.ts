@@ -37,8 +37,18 @@ if (argv.includes("--graph") && !graphAt) {
   process.exit(2);
 }
 
-const { issues, arrowFields, duplicateDecorators, unwatchedFields, unresolved, annotated, counts, graph, notes } =
-  analyzeProject(tsconfig);
+const {
+  issues,
+  arrowFields,
+  duplicateDecorators,
+  unwatchedFields,
+  unresolved,
+  annotated,
+  unreachable,
+  counts,
+  graph,
+  notes,
+} = analyzeProject(tsconfig);
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
@@ -76,7 +86,8 @@ if (
   arrowFields.length === 0 &&
   duplicateDecorators.length === 0 &&
   unwatchedFields.length === 0 &&
-  unresolved.length === 0
+  unresolved.length === 0 &&
+  unreachable.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -106,6 +117,27 @@ if (unresolved.length > 0) {
     `Nothing below one of these is judged, so a broken page can pass. If the source is right and\n` +
       `this is the one that cannot see it, write the reason on the line — it is listed on every run:\n\n` +
       `    // ramonda-check-ignore the chunk is deliberately missing, to demonstrate the failure\n`,
+  );
+}
+
+/**
+ * The first rule computed from the graph rather than from the source.
+ *
+ * The walk visits everything a root mounts, so what it never arrived at is what nothing mounts. An
+ * EXPORTED one is left alone: an app is entered through what it publishes, and an SSR entry is
+ * called by the server rather than by this program.
+ */
+if (unreachable.length > 0) {
+  console.error(`\n${TAG} ${unreachable.length} declaration(s) no root reaches:\n`);
+  for (const dead of unreachable) {
+    console.error(`  ${dead.file}:${dead.line}:${dead.column}`);
+    console.error(`    ${dead.name} — nothing mounts this ${dead.kind}, on any path from any root.`);
+    console.error("");
+  }
+  console.error(
+    `Delete it, or mount it. Nothing outside its own file can even name it, so no import\n` +
+      `elsewhere is keeping it alive — and an EXPORTED one is never reported, because an app is\n` +
+      `entered through what it publishes and this cannot see who does the entering.\n`,
   );
 }
 
