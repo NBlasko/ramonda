@@ -1,5 +1,383 @@
 # @ramonda/check
 
+## 0.5.0
+
+### Minor Changes
+
+- b5a2ec5: Every package ships its graph, and a graph describes what a project ships.
+
+  `@ramonda/core`, `@ramonda/router`, `@ramonda/query` and `@ramonda/form` emit their fragment in
+  their own build and point at it from `package.json`:
+
+  ```json
+  { "ramonda": { "graph": "./dist/graph.json" } }
+  ```
+
+  An app that installs them rather than compiling them from source now gets their composition instead
+  of a hole. Measured on `apps/playground-core`, which has no `paths` entry for `@ramonda/form`: its
+  two unresolved `this.use(Form<typeof schema>)` edges are gone, and four of the package's own nodes —
+  `Form`, `Field`, `FormState` and the context the form publishes — are in the app's graph.
+
+  **A graph now describes what a project ships, so test files are left out** — `__tests__/`, `test/`,
+  `tests/`, `*.test.*`, `*.spec.*`, judged relative to the directory holding the tsconfig. This is a
+  change to what the checks read as well: a class written to be checked is no longer reported. It had
+  to happen for a fragment to mean anything. Measured: `@ramonda/query` counted 109 components against
+  a real 12, `@ramonda/form` came out as an APP because its tests mount one, and core's fragment
+  carried a component from a fixture directory.
+
+  Two more things fell out of emitting fragments for real packages:
+
+  **A root is a `bootstrap` that names a component.** `@ramonda/testing-library` calls `bootstrap` on
+  a vnode it is handed — that is its whole job — and a call whose argument nothing can name starts no
+  tree. Counting it made every package that maps testing-library in its tsconfig come out as an app.
+
+  **A library's fragment describes itself.** These packages compile their dependencies from source, so
+  `@ramonda/router`'s fragment carried `@ramonda/core`'s classes too — the same nodes, under the same
+  ids, that core's own fragment declares. An app splices one fragment per package and gets each once;
+  an edge pointing into another package still resolves, because the id is the same on both sides.
+
+  Across this repository's four apps the graph is now complete but for two edges, and both are
+  deliberate demonstrations of a failed load.
+
+- 35ac1ba: Four faults found reviewing the graph work, each reproduced before it was fixed.
+
+  **A package's component that provides its own context through a hook was reported as broken.** A
+  hook is how a component publishes a context for its own subtree, and a fragment records that as a
+  `uses` edge — the propagation is a rule, not a fact, and the rule ran over this project's own
+  classes only. So a package judged its `SelfServing` clean and an app that installed it reported the
+  consumer underneath as having no provider: the same code, two verdicts, and the wrong one is the one
+  that fails a build. A false positive is the single thing this tool cannot afford.
+
+  **Two constants that name each other crashed the run.** `const A = B; const B = A;` is a runtime
+  error and ordinary syntax; following one into the other while reading a tag's props recursed with
+  the depth unchanged, so `ramonda-check` died with `Maximum call stack size exceeded` instead of
+  reporting anything — and every other check in that run died with it.
+
+  **A route table built inline lost its edges.** `collectRouteTable` reads `const routes =
+createRoutes(…)` and nothing else, but the JSX walk skipped every `createRoutes(…)` call on the
+  grounds that it was read elsewhere. A table written inside a component was then read by nobody, the
+  walk stopped there, and every consumer below it went unjudged — silence, which is the failure this
+  whole design is against. Now only a BOUND table is skipped.
+
+  **`ComponentNode.renders` was written in three places and read in none.** The walk moved to a
+  per-site structure that carries what each call binds to a slot; the old set carried neither and,
+  left in place, would have handed a later rule a quietly different answer.
+
+- ea2a08c: The composition graph, written out with `--graph`.
+
+  Every check this package already makes is one reading of the same thing — which components exist,
+  and which one can mount which. That is now a value on the result (`result.graph`) and a file:
+
+  ```bash
+  ramonda-check tsconfig.json --graph .ramonda/graph.json
+  ```
+
+  It holds facts and never conclusions: nodes and edges, no issues and no paths, since the graph is
+  small while the set of paths through it is not. `kind` is what a walk reads — `renders`, `provides`,
+  `consumes`, `uses` — and `via` is only how it was written: a JSX tag, children of a wrapper,
+  `list({ as })`, a route table, `bootstrap`. Splitting the two is what lets a new way of naming a
+  component arrive without touching any reader.
+
+  Every edge carries the place it was written, so a rule computed from the graph can name a line
+  without going back to the source. A component is identified by its declaration —
+  `<package>/<file>#<Name>` — and an edge that resolved to nothing is kept as `"kind": "unresolved"`
+  with the reason: `` `Form` is declared in @ramonda/form/dist/index.d.ts, which this run does not
+read ``. A blank left off the map is worse than no map, because it is trusted.
+
+  It is a format rather than an API, versioned by `schema`. Measured on this repository's apps: 155
+  nodes and 64 edges for the documentation site, 46 kB, and no difference to the run's ~2 s.
+
+- 57710a9: A class counts as a component when its heritage chain reaches `Component` or `Hook`.
+
+  The membership test read one heritage clause and said yes to a class extending anything at all, on
+  the reasoning that a subclass of a subclass still is one. It is — and so was `class MyError extends
+Error`. Measured on a fixture of five classes, all five counted; measured on this repository's four
+  apps, the number the CLI prints was inflated by every error type and every custom element in scope:
+  75 → 72 components in the docs app, 12 → 9, 57 → 53, 33 → 29 in the others, and every class the
+  walk now drops extends `Error` or `HTMLElement`.
+
+  The chain is walked by symbols — the base's symbol, through an import alias, to its class
+  declaration, and up — so `Deep extends Base extends Component` is still a component. A tighter name
+  check would have dropped it. A mixin's heritage clause is a call (`extends withTheme(Component)`)
+  and has no symbol to follow, so it reads as "not a component": answering it needs a type, and types
+  are outside what this analyzer loads.
+
+- 7b9cc9a: JSX written outside a component class is an edge too.
+
+  `function row() { return <Cell /> }` mounts `Cell` wherever it is called, and nothing owned that tag
+  before: JSX outside a class was read only inside a route table or a `bootstrap` argument, and
+  everything else was invisible rather than a hole — so a consumer reached only through a helper was
+  never judged at all.
+
+  Nothing has to be followed to fix that. The tag is written in the helper, so the edge is read where
+  it is; only the owner was in question. The answer is the helper itself, as a node of its own
+  (`"kind": "helper"`), with a `calls` edge from every component that reaches it — and the report then
+  names it: `App → Bare → row → Cell`. Three spellings are read: a declared function, a const holding
+  an arrow or a function expression, and a method of a class that is not a component.
+
+  A route table and a `bootstrap` argument are not helpers. Both are read where they are written, and
+  counting them twice would give one mount two owners.
+
+  Four turned up in this repository's own apps, all of them SSR entries — `entry-server.tsx`'s
+  `render` and `prerender`, and the docs site's `renderOne`. They render `<App />` into a string
+  rather than mounting it, so they were not roots and nothing else saw them either. They are in the
+  graph now, as facts, with nothing calling them.
+
+- c7ac716: A component in another chunk is an edge like any other.
+
+  `<AsyncLoad lazy={…} namedExport="Page" />` is the largest edge kind an app has and it is not a
+  tag: the documentation site in this repository reaches 75 of its 76 lazily loaded components
+  through one attribute, so a walk without it judged a fraction of what the app mounts. Those pages
+  are now walked, which means a consumer with no provider above it inside a lazily loaded page is
+  reported like any other.
+
+  Nothing is guessed. The module is a string literal — exactly what a bundler needs to split a chunk,
+  so a loader this cannot read is one no bundler could split either — and `namedExport` is a literal
+  saying which class to take. Three shapes are read, all of them measured in this repository: the
+  loader written in the JSX, one hop to a static field or module constant (which is where `RMD020`
+  pushes it, since a fresh arrow in the JSX is a new prop on every render), and a literal registry
+  indexed by a runtime key, which contributes the union of its values. A loader that fails and
+  retries still reaches its module, because the body is searched rather than read as one expression —
+  `may reach`, which is the semantics the whole walk is on.
+
+  A specifier built at runtime is kept as an `unresolved` edge with its reason rather than left out.
+
+  The edge is attributed to the component that writes the tag, not to `AsyncLoad`. `AsyncLoad` is one
+  shared class and neither provides nor consumes a context, so nothing sits between the two that a
+  walk would step over — while hanging the targets off it would put every lazily loaded component in
+  an app on one node and make each reachable from every other. `RouteOutlet` is the opposite case and
+  keeps its views: it publishes the matched params, so its views have to be below it.
+
+  Measured on the documentation site: 140 edges rather than 64, 76 of them through a loader, and the
+  run is unchanged at ~2.05 s.
+
+- 0688194: A list's rows are read where they are written.
+
+  `list({ each, as })` is gone from core — a list mounts a component through the callback it takes,
+  and the row's tag is written in the component the list sits in, which is exactly where the row
+  mounts. The ordinary JSX walk already reads it, so the machinery that read the `as` option is gone
+  with the option, along with the `as` value of an edge's `via`.
+
+  Measured across this repository: no `as` edge survives in any app, and `renders/tag` rises by the
+  same amount — the documentation site goes from 29 tags and 5 `as` to 33 tags and none.
+
+  That path had no fixture, which is how it could go stale unnoticed; the new shape has one.
+
+- 2027f6a: A helper written inside another helper owns its own tags.
+
+  A helper's body was walked whole, nested functions included, so a tag written in an inner function
+  became an edge from the inner helper AND from the outer one — from the same line, with the outer one
+  never writing it. And a helper calling a helper produced no edge at all, because a call was read only
+  inside a component's body; the false render edge is what accidentally covered for the missing call
+  edge.
+
+  Reachability agreed while the outer function did call the inner one. Define the inner one and never
+  call it and the outer still claimed to render its tags, which a rule about components nobody renders
+  would read as live.
+
+  Found by an agent's scratch fixture during a review that was stopped before it reported.
+
+- e16a94a: A component is a declaration, not a name.
+
+  Components were held in a map keyed by class NAME, so two classes with one name were one node
+  sharing a single set of providers, consumers and children. This repository's own documentation app
+  declares `class Page` seventy-five times, one per page: 146 component and hook classes were counted
+  and reported as 72, and a provider mounted by one page covered every other page on every path.
+
+  Identity is the declaration site now, and everything that names a component — a JSX tag,
+  `list({ as })`, a route table, `bootstrap` — is resolved to its symbol rather than looked up by
+  name. An import alias therefore reaches the class it renames: `import { Page as Themed }` followed
+  by `<Themed />` is an edge, where a name lookup found nothing at all and the walk stopped there.
+
+  The counts the CLI prints move with it — the docs app reports 146 components rather than 72 — and
+  the four apps in this repository report the same issues as before.
+
+- 916a9db: A component handed over as a prop is followed to where it mounts.
+
+  Two halves that meet at the walk. A component declares which prop paths take a component, read from
+  its own props type as syntax — and a **path**, not a name, so a slot at depth five is the same
+  mechanism as one at depth one with a longer string: `view`, `spec.columns[].cell`. A call site
+  records what it hands over, walked to any depth through object literals, arrays, a ternary (both
+  arms, because the question is what may reach) and one hop through a module constant, which is where
+  `RMD020` pushes anything built the same way on every render. And a tag naming a prop —
+  `<this.props.view />`, or `const View = this.props.view` — is an edge that names the prop it waits
+  on rather than a missing one.
+
+  **A binding lives on the edge, not on the component.** `<Slot view={Reader} />` in one place and
+  `<Slot view={Writer} />` in another are two arrangements; kept on `Slot` each would be reachable
+  from the other, and a provider above one would appear to cover the other. The walk carries them
+  with the path, so the same component filled into the same slot is judged separately on each path —
+  which is the fixture: one `Slot` mounted twice with one `Reader`, under a provider and not, and
+  exactly one report.
+
+  Slots are read as syntax, and what syntax cannot answer is left alone rather than approximated: a
+  mapped type, and a function that returns a component. A prop typed as a rendered NODE is not a slot
+  either, though a node carries a component class inside it — measured, a walk that hunted for the
+  marker anywhere reported eight slots in `@ramonda/core` that are not slots.
+
+  A JSX tag written as a member expression is seen now — `<this.props.view />`, `<screens.reader />`.
+  Those were invisible rather than holes, because a tag was taken for a component only when it began
+  with a capital.
+
+  Nothing in this repository passes a component through a prop at any depth, so no app's graph
+  changes: this is for the packages other people write.
+
+- 5940f4e: Seven more faults from a second review, each reproduced before it was fixed.
+
+  **A helper written as a concise arrow lost every edge in it.** `const header = () => <Legend />`
+  stores the element as the arrow's body, and the walk iterated the body's CHILDREN — the tag name and
+  the attributes, never the element. The helper came out with no edges and no hole either, so a
+  consumer reached that way was never judged. It was in this package's own fixture the whole time.
+
+  **A context had two identities, and a package's requirement could never be met.** A local context was
+  keyed by absolute file and line while a spliced fragment keys it by its graph id, so a fragment
+  consuming a context declared in another package could not be satisfied by the app mounting that
+  provider — a false positive against correct code — and an optional context consumed across a
+  boundary was reported as a hard failure. There is one identity now, the graph's.
+
+  **A package's helpers were dropped on splice.** `splice` built nodes for components, hooks and
+  contexts only and matched no branch for a `calls` edge, so composition that runs through a
+  package's own `function row() { return <Cell /> }` was invisible. The report now reads
+  `App → Bare → DataGrid → helpedRow → HelperBody`, naming a function the app cannot import.
+
+  **An edge could name a node the graph does not declare.** A fragment is pruned to its own package, so
+  its edges may point outward; copying one into an app with no fragment for the other package left a
+  `to` matching nothing. Those become holes with the reason, and every fixture is now checked for
+  dangling references.
+
+  **A component that mounts itself with another binding was cut as a cycle.** The guard keyed on the
+  node alone while the bindings travel per path, so a tree renderer's second arrangement was never
+  walked. It keys on the node and its bindings now, with a hard path limit as the backstop.
+
+  **The emitted bytes depended on the machine's locale**, because `localeCompare` ordered the nodes,
+  the edges and the source hash. Ordered by code unit now.
+
+  Also: a dead ternary whose two arms were both `undefined`; the author's name re-encoded as an escape
+  in four package.json files by a JSON writer; and two changesets that said `patch` where the rule
+  while everything is 0.x is minor.
+
+- b8a4ad9: The rest of the second review's findings.
+
+  **A lazily loaded component inside an installed package now resolves.** `classExported` looked the
+  class up among this project's own components only, so `<AsyncLoad lazy={…}>` pointing into a package
+  compiled from `dist` found nothing and the whole chunk went unjudged. It reads the package's
+  fragment now.
+
+  **Two exported classes with one name are refused rather than merged.** A package's surface is keyed
+  by the name an app imports, which is the only handle it has; a second class under that name used to
+  overwrite the first silently — the name-keyed merge this work removed everywhere else. Neither is
+  spliced now, and the run says so.
+
+  **A route table nobody hands to a `<RouteOutlet>` this run can see is named.** The table is skipped
+  by the JSX walk because `collectRouteTable` reads it, and that only becomes edges when some outlet
+  names the binding — so one handed to an outlet outside the program left every view with no edge and
+  nothing saying so.
+
+  **Every `<RouteOutlet>` site is its own node.** Views hung off the shared `RouteOutlet` class, so two
+  outlets in one app put every view on one node and made each reachable from the other. Each site
+  `uses` the outlet class, so the matched params it publishes still reach the views — which is why
+  they were attributed to the outlet in the first place.
+
+  **A fragment carries `opaque`.** A component whose own package refused to judge below it was walked
+  by an app as if it were transparent, so a consumer under it could be reported when the hook the
+  package could not follow may well have been providing.
+
+  **A class extending a CALL is named instead of dropped.** `class Panel extends withTheme(Component)`
+  needs a type to follow, so it is not a component here — and dropping it in silence made the omission
+  invisible.
+
+  **`slotsOf` keeps its `seen` set per path**, so `{ left: Panel; right: Panel }` yields `right.cell`
+  as well as `left.cell`.
+
+  **A malformed fragment is refused with a reason** rather than throwing out of the splice, and the
+  hook fixpoint says so when ten passes are not enough instead of quietly under-propagating.
+
+  One finding was tried and reverted, with the measurement kept: running the three non-composition
+  checks over test files again — which is what `main` did — fails `@ramonda/core`'s own build on
+  `class Bad { fn = () => … }`, a fixture written to be bad because it is what its test is about. A
+  gate that fails on those is one people switch off. The cost of leaving it is written down where the
+  exclusion is.
+
+- 8678567: The CLI is reachable on a fresh install.
+
+  `pnpm install` creates a package's bin links from what is on disk at that moment, and this package's
+  bin WAS its build output — so on a clean checkout it warned, skipped the link, and every build that
+  calls `ramonda-check` failed with `sh: 1: ramonda-check: not found`. It worked on a machine that had
+  already built the package once, which is why it passed locally and failed in CI on the first run.
+
+  The bin is a committed launcher now, which imports `dist/cli.js`. A file that is always present can
+  always take the link, and the build output is reached through it.
+
+- 05c28dc: A component this cannot follow is an error.
+
+  The walk goes quiet below a name it cannot resolve, so everything under it is unjudged and the build
+  passes over a page that may be broken. That is the one thing this package cannot afford, because its
+  whole value is that a report is a real broken path rather than a maybe — and that only holds while
+  the map has no unmarked blanks.
+
+  The constraint is not this tool's to impose. A bundler can only split what it can see statically, so
+  whatever this cannot resolve could not have been code-split either: the shape was already trouble
+  for another reason.
+
+  **The escape hatch is a record.** When the source is right and this is the one that cannot see it,
+  write the reason on the line:
+
+  ```tsx
+  // ramonda-check-ignore the caller hands us the tree to mount, which is what this helper is for
+  bootstrap(wrap(ui), container);
+  ```
+
+  Line-scoped, never file-scoped — a file-scoped suppression blinds a whole file with one line, which
+  is exactly what somebody in a hurry reaches for. The reason is mandatory: a directive with nothing
+  after it is refused. And every annotated site is listed on every run, whether or not anything
+  failed, so the number cannot creep up unread.
+
+  A tag naming a prop is not one of these. `<this.props.view />` is unresolvable from the class alone
+  by design, and the walk fills it from what the caller binds.
+
+  Messages carry the fix as CODE rather than as advice, because most of what this reports on will be
+  written by an agent, and an agent acts on a patch far more reliably than on a sentence.
+
+  **Measured across this repository: three sites need the hatch**, all in `@ramonda/testing-library`
+  and all the same shape — a helper that mounts whatever the caller hands it, which is its whole job.
+  Those three carry their reason now. The two in `apps/playground-core` are demonstrations of a failed
+  load, which is what they are for.
+
+- 48b2345: A package publishes its own graph, and an app splices it in.
+
+  An installed package is a `.d.ts` and nothing else, and this reads source — so its components, its
+  hooks and the contexts they need vanished at the package boundary, silently. It is measurable in
+  this repository today: `apps/playground-core` has no `paths` entry for `@ramonda/form`, so
+  `this.use(Form<typeof schema>)` reaches `dist/index.d.ts` and the whole package drops out of the
+  graph.
+
+  A package closes it by emitting its graph in its own build and saying where it is:
+
+  ```json
+  { "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+  ```
+
+  ```bash
+  ramonda-check tsconfig.json --graph dist/graph.json
+  ```
+
+  A package has no root, so its graph comes out with `"scope": "library"`: nothing in it can be judged,
+  because "unreachable" and "no provider above" are questions only whoever mounts it can answer. What
+  it carries is a **fragment** — its surface marked `"exported": true`, and its internals as well.
+  That is the difference from a summary. A summary would say _DataGrid requires Query_ and an app
+  would have to trust it; a fragment is spliced in and walked, so the report names the real path
+  through the package: `App → Bare → DataGrid → PagedBody`, where `PagedBody` is a class the app
+  cannot import and has never heard of.
+
+  **A stale fragment is refused rather than trusted**, which is the failure this design calls worse
+  than no map. The fragment fingerprints the declaration file a consumer can actually see — the source
+  hash is no use to somebody who has `dist` and nothing else — so a package rebuilt without
+  regenerating its graph is reported and left out, and no verdict is invented from it. A fragment also
+  carries the package's version, because two versions of one package can be installed at once: the
+  node ids collide while the graphs differ.
+
+  Nothing in this repository publishes a fragment yet, so no app's graph changes.
+
 ## 0.4.0
 
 ### Minor Changes
