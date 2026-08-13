@@ -85,6 +85,29 @@ so a component that misuses the same property on every render reports once.
 | `RMD049` | error | Two lazy functions with the same source |
 | `RMD050` | warning | A decorator whose effect this member already has |
 | `RMD051` | warning | A list row cannot be told apart from its siblings |
+| `RMD052` | error | A component among JSX children, where an element was meant |
+
+### RMD052 — A component among JSX children, where an element was meant
+
+```tsx
+render() {
+  return <div>{Panel}</div>; // ✗ names the class
+}
+```
+
+`{Panel}` puts the class itself among the children. It is not markup, so it is dropped and the
+page comes up without the component.
+
+It fell through in silence until this code, and the reason is worth keeping: the check beside it
+— RMD037 — looks for an OBJECT among children, and a class is a **function**, so it never
+reached that branch and left with the strings and numbers. Measured by rendering it: nothing
+appears and no record is emitted.
+
+Reported only, never replaced. A function child already renders nothing, so putting a hole
+there instead would change no page — the report is the part that was missing.
+
+Handing a component to something else is an attribute rather than a child: `<Slot view={Panel} />`
+passes it as a prop, and that is a different thing entirely.
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 
