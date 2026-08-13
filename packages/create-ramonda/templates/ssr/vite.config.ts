@@ -1,23 +1,16 @@
 import { defineConfig } from "vite";
+import { ramonda } from "@ramonda/build/vite";
 
-// Used by the DEV server only (server.mjs in middleware mode). The production
-// build is esbuild — see the `build:*` scripts, which set the same three options
-// on the command line.
+// Used by the DEV server only (server.mjs in middleware mode). The production build is esbuild —
+// see scripts/build.mjs, which takes the same settings from the same package.
 //
-// JSX compiles through Ramonda's automatic runtime: the compiler imports what it
-// needs from `@ramonda/core/jsx-runtime` itself, per file. There is no factory to
-// name and nothing to inject.
+// `ramonda()` is the whole transform configuration. It sets `jsx`, `jsxImportSource` and `target`,
+// which have to agree with each other and with your tsconfig, and one of which is load-bearing in a
+// way nothing would tell you about: `@state`, `@compute` and the rest are TC39 decorators, which no
+// engine can parse, and esbuild only compiles them away below `esnext`. Set that one wrong and the
+// dev server still starts, warns about nothing, and hands the browser a module that dies with
+// `SyntaxError: Invalid or unexpected token`.
 export default defineConfig({
   define: { __DEV__: "true" },
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    // Load-bearing, and the least obvious line in this file. `@state`, `@compute` and the rest are
-    // TC39 decorators, which no engine can parse — esbuild has to transform them away, and it only
-    // does that below `esnext`. Raise this to `esnext` and the dev server still starts, prints no
-    // warning, and hands the browser a module that dies with `SyntaxError: Invalid or unexpected
-    // token`. On the production side the same setting is `--target=es2022` in `build:client` and
-    // `build:server`, and `ramonda-check-bundle` parses what those emit.
-    target: "es2022",
-  },
+  plugins: [ramonda()],
 });

@@ -302,7 +302,12 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   }
   // The static context check runs as the first step of `build`, so a consumer that lost its
   // provider fails the build instead of quietly falling back to the default in someone's browser.
+  // Its second binary, `ramonda-check-bundle`, runs at the END and parses what the build emitted.
   deps.devDependencies["@ramonda/check"] = ramonda("@ramonda/check");
+  // Owns the three transform settings — `jsx`, `jsxImportSource`, `target` — so the generated
+  // project names none of them. Both modes: the SPA config and the SSR dev server take the Vite
+  // plugin, and the SSR production build spreads the esbuild options.
+  deps.devDependencies["@ramonda/build"] = ramonda("@ramonda/build");
   deps.devDependencies["typescript"] = tool("typescript");
   deps.devDependencies["@types/node"] = tool("@types/node");
 

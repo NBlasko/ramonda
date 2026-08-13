@@ -92,8 +92,8 @@ function escapeHtml(text) {
 // ── DEV: Vite middleware, hot reload, no build step ─────────────────────────────
 // The server module is loaded through `ssrLoadModule`, which re-evaluates it when a
 // file changes — so editing a component is picked up on the next request with no
-// restart, and the browser gets HMR for the client half. See vite.config.ts for the
-// one setting (es2022) that makes this work with decorators.
+// restart, and the browser gets HMR for the client half. The transform itself comes
+// from `@ramonda/build` — see vite.config.ts.
 let vite;
 // ── PROD: the esbuild bundle. Serves each route by its mode — a baked static file, an
 //    ISR page (cached + revalidated), or a fresh per-request render. See src/entry-server.tsx.

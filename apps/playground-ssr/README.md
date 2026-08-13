@@ -96,11 +96,15 @@ parse `@Host("div") class …`, and neither can a browser — the built bundle t
 `Uncaught SyntaxError: Invalid or unexpected token` in Chrome, from a decorator
 that survived minification inside `AsyncLoad`.
 
-`playground-core` builds cleanly only by accident: its `esbuild.jsxInject` puts
-an import into *every* module, which forces each one through the esbuild
-transform, and that transform is what removes the decorators. Take `jsxInject`
-away — as this app had to, because injecting `import { h }` into `packages/core/
-src/vdom/h.ts` collides with the `h` it declares — and the decorators come back.
+It built cleanly before that only by accident: `esbuild.jsxInject` put an import
+into *every* module, which forced each one through the esbuild transform, and
+that transform is what removes the decorators. Nobody chose it, and taking
+`jsxInject` away — as this app had to, because injecting `import { h }` into
+`packages/core/src/vdom/h.ts` collides with the `h` it declares — brought the
+decorators back, in silence.
 
-esbuild transforms them reliably, so both bundles are built with it. See BUGS.md,
-"TC39 decorators survived the bundle".
+What actually decides it is `target`: esbuild compiles decorators away for every
+value except `esnext`, which is also its default. So both bundles here are built
+with esbuild and an explicit target, and `ramonda-check-bundle` parses what comes
+out. A generated project gets the same settings from `@ramonda/build` without
+naming any of them.

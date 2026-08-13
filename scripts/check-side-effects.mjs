@@ -92,6 +92,11 @@ const DECIDED = {
     expect: undefined,
     why: "A CLI, consumed through its `bin` rather than by importing it. Tree-shaking never enters the picture, and the safe default is the honest declaration.",
   },
+  build: {
+    keeps: false,
+    expect: false,
+    why: "Two plugin factories and a constant, imported by a config file that a bundler never bundles. Nothing runs on import, and the claim costs nothing to keep true.",
+  },
 };
 
 /** Published means somebody installs it: a private package is never resolved by a consumer. */

@@ -284,8 +284,8 @@ describe("development is development", () => {
     expect(scripts.dev).toBe("node server.mjs");
     expect(read("vite.config.ts")).toContain("__DEV__");
     expect(read("vite.config.ts")).toMatch(/__DEV__.*true/);
-    expect(scripts["build:client"]).toContain("--conditions=production");
-    expect(scripts["build:client"]).toContain("--define:__DEV__=false");
+    expect(read("scripts/build.mjs")).toContain('conditions: ["production"]');
+    expect(read("scripts/build.mjs")).toContain('define: { __DEV__: "false" }');
     expect(scripts.start).toContain("--prod");
   });
 });
@@ -368,53 +368,71 @@ describe("the generated project declares what its own code needs", () => {
  * what strips the decorators. Nobody had chosen it. Removing `jsxInject`, for an unrelated
  * reason, broke the output in silence.
  *
- * Measured against esbuild 0.28.1: `--target=es2022` transforms decorators into helpers,
- * `--target=esnext` leaves `@Host("div")` verbatim, and `node --check` on that output is a
- * SyntaxError. So a scaffolded project's whole public API rests on one line of config — and
- * `esnext` reads like a modernisation, which is how it gets raised.
+ * Measured against esbuild 0.28.1, on a project with a tsconfig — which every real one has:
+ * `target: es2022` compiles decorators into helpers, `esnext` leaves them verbatim, and
+ * `node --check` on that output is a SyntaxError. `esnext` is also esbuild's DEFAULT, so saying
+ * nothing is the same as saying the wrong thing, and it reads like a modernisation besides.
  *
- * Two guards, and both are needed. The target has to be set on every transform a scaffolded
- * project runs, and the reason has to be written where the setting is, or the next person to
- * tidy the config has nothing to read. Then the build parses what it emitted, so if both of
- * those are ever got wrong anyway, the build says so instead of the browser.
+ * A generated project therefore configures **none** of the three settings that decide this. It
+ * takes them from `@ramonda/build`, which is the whole reason that package exists: three values
+ * that have to agree with each other, in as many places as an app runs a transform, is not
+ * something to hand to somebody who just typed `npm create ramonda`. Then the build parses what it
+ * emitted, so if it is somehow got wrong anyway, the build says so rather than the browser.
  */
 describe("the decorators survive a scaffolded build", () => {
-  /** Every transform in the generated project, with where it lives. */
-  function transforms(read: (file: string) => string, scripts: Record<string, string>) {
+  /** Everywhere the generated project could configure a transform, with where it lives. */
+  function couldConfigureTheTransform(read: (file: string) => string, scripts: Record<string, string>, mode: string) {
     return [
       ["vite.config.ts", read("vite.config.ts")],
-      ...Object.entries(scripts).filter(([, command]) => command.includes("esbuild ")),
+      ...(mode === "ssr" ? [["scripts/build.mjs", read("scripts/build.mjs")] as const] : []),
+      ...Object.entries(scripts),
     ] as [string, string][];
   }
 
-  /** What each transform was actually told to target — the config object and the CLI flag alike. */
-  function targetsIn(source: string) {
-    return [...source.matchAll(/target:\s*"([^"]+)"/g), ...source.matchAll(/--target=(\S+)/g)].map((m) => m[1]);
-  }
+  /** Comments name these settings on purpose — the question is whether anything SETS one. */
+  const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
-  test("every transform targets es2022 — never esnext, which leaves them in", () => {
+  test("the project names none of the three settings — the package owns them", () => {
     for (const mode of ["spa", "ssr"] as const) {
       const { read, pkg } = make(mode, []);
       const scripts = (pkg as unknown as { scripts: Record<string, string> }).scripts;
-      const found = transforms(read, scripts);
+      const places = couldConfigureTheTransform(read, scripts, mode);
 
-      // Guards on the guard. If the config is ever restructured so no transform is found, or a
-      // transform names no target and inherits esbuild's default, the loops below would pass over
-      // an empty list and say nothing.
-      expect(found.length).toBeGreaterThan(0);
+      // A guard on the guard: if the template is ever restructured so none of these files is
+      // found, every assertion below would pass over an empty list and say nothing.
+      expect(places.length).toBeGreaterThan(2);
 
-      for (const [where, source] of found) {
-        const targets = targetsIn(source);
-        expect(targets.length, `${mode}/${where} names no target`).toBeGreaterThan(0);
-        for (const target of targets) expect(`${mode}/${where} → ${target}`).toContain("es2022");
+      for (const [where, source] of places) {
+        for (const setting of [/\btarget\b\s*[:=]/, /\bjsx\b\s*[:=]/, /jsx-?[iI]mport-?[sS]ource/]) {
+          expect(`${mode}/${where}`.concat("\n", code(source))).not.toMatch(setting);
+        }
       }
     }
   });
 
-  test("the config says why the target is there, next to the target", () => {
-    // `server.mjs` already points at "the one setting (es2022) that makes this work with
-    // decorators" — and pointed at a config that did not mention decorators at all. A reason
-    // kept somewhere else is a reason nobody reads at the moment they are editing the line.
+  test("both modes take the settings from the package, in every place they run a transform", () => {
+    for (const mode of ["spa", "ssr"] as const) {
+      const { read, pkg } = make(mode, []);
+
+      // The dev server and the SPA build, through the Vite plugin.
+      expect(read("vite.config.ts")).toContain('from "@ramonda/build/vite"');
+      expect(read("vite.config.ts")).toContain("ramonda()");
+
+      // And the SSR production build, which is esbuild directly, through the options object. This
+      // is the half that actually shipped broken, because esbuild's default target is the wrong one.
+      if (mode === "ssr") {
+        expect(read("scripts/build.mjs")).toContain('from "@ramonda/build/esbuild"');
+        expect(read("scripts/build.mjs")).toContain("...ramondaOptions");
+      }
+
+      expect(pkg.devDependencies).toHaveProperty("@ramonda/build");
+    }
+  });
+
+  test("the config says what the package is for, where the app would otherwise be configuring it", () => {
+    // The reason has to be at the line somebody edits. `server.mjs` used to point at "the one
+    // setting (es2022)" in a config that did not mention decorators at all, which is a reason
+    // nobody reads at the moment it matters.
     for (const mode of ["spa", "ssr"] as const) {
       const { read } = make(mode, []);
       expect(read("vite.config.ts")).toMatch(/decorator/i);
