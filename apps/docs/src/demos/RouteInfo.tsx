@@ -1,5 +1,5 @@
 import { Component, Host } from "@ramonda/core";
-import { Navigator, Anchor } from "@ramonda/router";
+import { Navigator, Link } from "@ramonda/router";
 
 // A live one: this page is served by a Ramonda router, so the hook below is
 // reading the real navigation state of the site you are on. Click the links and
@@ -25,15 +25,15 @@ export class RouteInfo extends Component {
           <span className="demo-note">{query.length ? query.map(([k, v]) => `${k}=${v}`).join(" · ") : "(none)"}</span>
         </p>
         <p className="demo-row">
-          <Anchor href="/concepts/state" className="link">
+          <Link href="/concepts/state" className="link">
             → State
-          </Anchor>
-          <Anchor href="/lists" className="link">
+          </Link>
+          <Link href="/lists" className="link">
             → Lists
-          </Anchor>
-          <Anchor href="/routing?from=demo" className="link">
+          </Link>
+          <Link href="/routing?from=demo" className="link">
             → back here, with a query
-          </Anchor>
+          </Link>
           <button type="button" onClick={this.route.back}>
             ← back
           </button>

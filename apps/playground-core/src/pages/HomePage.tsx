@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { Anchor } from "@ramonda/router";
+import { Link } from "@ramonda/router";
 
 export class HomePage extends Component {
   render() {
@@ -12,22 +12,22 @@ export class HomePage extends Component {
         </p>
         <ul>
           <li>
-            <Anchor href="/showcase">→ Decorator showcase</Anchor>
+            <Link href="/showcase">→ Decorator showcase</Link>
           </li>
           <li>
-            <Anchor href="/users/123">→ User 123 (route :param)</Anchor>
+            <Link href="/users/123">→ User 123 (route :param)</Link>
           </li>
           <li>
-            <Anchor href="/table">→ Lists and tables</Anchor>
+            <Link href="/table">→ Lists and tables</Link>
           </li>
           <li>
-            <Anchor href="/slots">→ Slots and their edge cases</Anchor>
+            <Link href="/slots">→ Slots and their edge cases</Link>
           </li>
           <li>
-            <Anchor href="/async">→ AsyncLoad (code splitting)</Anchor>
+            <Link href="/async">→ AsyncLoad (code splitting)</Link>
           </li>
           <li>
-            <Anchor href="/about">→ About</Anchor>
+            <Link href="/about">→ About</Link>
           </li>
         </ul>
       </div>

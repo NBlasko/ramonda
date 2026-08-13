@@ -7,7 +7,7 @@ import { CodeBlock } from "./CodeBlock";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
-import { Anchor } from "@ramonda/router";
+import { Link } from "@ramonda/router";
 
 interface MarkdownProps {
   tree: readonly ContentNode[];
@@ -83,7 +83,7 @@ export function toVNode(node: ContentNode): ComponentChild {
     if (columns.length > 0) return __h(DataTable, { columns, rows }) as ComponentChild;
   }
 
-  // An in-prose link to another docs page becomes a real <Anchor>, so it navigates
+  // An in-prose link to another docs page becomes a real <Link>, so it navigates
   // client-side like the sidebar does. Markdown only ever produces a plain <a>,
   // and a plain <a> is not intercepted — it would reload the whole document.
   // External links, anchors and anything with a target are left exactly as they
@@ -92,7 +92,7 @@ export function toVNode(node: ContentNode): ComponentChild {
     const href = node.a?.href ?? "";
     const internal = href.startsWith("/") && !node.a?.target;
     if (internal) {
-      return __h(Anchor, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
+      return __h(Link, { ...node.a, href }, ...(node.c?.map(toVNode) ?? [])) as ComponentChild;
     }
   }
 

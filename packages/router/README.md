@@ -8,7 +8,7 @@ with nested route outlets.
 
 ```tsx
 import { Component, Host } from "@ramonda/core";
-import { Router, RouteOutlet, Anchor, createRoutes } from "@ramonda/router";
+import { Router, RouteOutlet, Link, createRoutes } from "@ramonda/router";
 
 const routes = createRoutes({
   "/": <Home />,
@@ -25,8 +25,8 @@ export class App extends Component {
     return (
       <div>
         <nav>
-          <Anchor href="/">Home</Anchor>
-          <Anchor href="/posts/42">A post</Anchor>
+          <Link href="/">Home</Link>
+          <Link href="/posts/42">A post</Link>
         </nav>
         <RouteOutlet routes={routes} />
       </div>
@@ -43,7 +43,7 @@ export class App extends Component {
 - **State-first, so it cannot race.** Navigation updates one piece of route state and the outlet
   renders from it; the URL and what is on screen are derived from the same source, so they cannot
   disagree. A left click, the back button, and a server render all go through the same channel.
-- **`<Anchor>` is a real `<a>`.** Its host element *is* the anchor, so middle-click, open-in-new-tab,
+- **`<Link>` is a real `<a>`.** Its host element *is* the anchor, so middle-click, open-in-new-tab,
   and crawlers get a proper `href`; a plain left click is intercepted and routed client-side.
 - **Outlets nest.** A `<RouteOutlet>` inside a matched route renders the next segment, so layouts
   compose without a central route tree.

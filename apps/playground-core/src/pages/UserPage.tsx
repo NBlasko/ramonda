@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { Anchor, Navigator } from "@ramonda/router";
+import { Link, Navigator } from "@ramonda/router";
 
 export class UserPage extends Component {
   route = this.use(Navigator);
@@ -13,12 +13,12 @@ export class UserPage extends Component {
           &nbsp;(from &lt;Router&gt; match → Navigator.params)
         </p>
         <div className="row">
-          <Anchor href="/users/7" className="navlink">
+          <Link href="/users/7" className="navlink">
             User 7
-          </Anchor>
-          <Anchor href="/users/99" className="navlink">
+          </Link>
+          <Link href="/users/99" className="navlink">
             User 99
-          </Anchor>
+          </Link>
         </div>
       </div>
     );

@@ -4,7 +4,7 @@ import { RouteConsumer } from "./Router";
 import { buildUrl, parseUrlString, sanitizeHref } from "./urlUtils";
 import type { StateUpdater } from "./types";
 
-export interface AnchorProps {
+export interface LinkProps {
   href?: string;
   replace?: boolean;
   /** Scroll to the top after navigating. Default `true` — a link is a real
@@ -42,11 +42,11 @@ function shouldSkipIntercept(href: string, e: MouseEvent): boolean {
  * middle-click / open-in-new-tab) whose plain left click routes through the
  * single `updateState` channel.
  */
-@Host("a", (self: Anchor) => ({
+@Host("a", (self: Link) => ({
   href: self.currentHref,
   className: self.props.className,
 }))
-export class Anchor extends Component<AnchorProps> {
+export class Link extends Component<LinkProps> {
   private ctx = this.use(RouteConsumer);
 
   /**
@@ -87,19 +87,3 @@ export class Anchor extends Component<AnchorProps> {
     return this.props.children;
   }
 }
-
-/**
- * The same anchor, under the name the router's kit hands back.
- *
- * A second DECLARATION rather than a factory or a renamed constructor, and each half of that matters.
- * Devtools reads `constructor.name`, so one class cannot show two names — and the distinction earns
- * its place there: seeing `<Link>` rather than `<Anchor>` tells you the href was checked against the
- * route table, which is the difference between the two everywhere except at runtime.
- *
- * A factory returning a class EXPRESSION would give the names and lose something worse: `ramonda-check`
- * follows class declarations, so both of these would vanish from this package's graph, and every tag
- * written from the kit would go back to being a hole.
- *
- * It carries no body. `Anchor` is the whole implementation.
- */
-export class Link extends Anchor {}

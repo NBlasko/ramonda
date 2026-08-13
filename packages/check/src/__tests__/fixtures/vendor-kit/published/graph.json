@@ -15,7 +15,8 @@
       "id": "@acme/kit/src/index.tsx#Link",
       "kind": "component",
       "name": "Link",
-      "at": "src/index.tsx:16:1"
+      "at": "src/index.tsx:16:1",
+      "exported": true
     },
     {
       "id": "@acme/kit/src/index.tsx#RouteOutlet",

@@ -1,6 +1,6 @@
 import { Component, Host, state, createRef, onDocument, list } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { Anchor } from "@ramonda/router";
+import { Link } from "@ramonda/router";
 
 interface Result {
   url: string;
@@ -181,7 +181,7 @@ export class Search extends Component {
             <p className="search-note">{this.loading ? "Searching…" : "Nothing found."}</p>
           ) : (
             /*
-              The handler is on the <ul>, not on each row. `Anchor` takes no
+              The handler is on the <ul>, not on each row. `Link` takes no
               onClick — a reasonable line to draw, since its click handling
               decides whether to intercept and whether to preventDefault, so a
               user handler there would need answers for ordering and for
@@ -217,10 +217,10 @@ class SearchResult extends Component<{ item: Result }> {
   render(): RamondaNode {
     const result = this.props.item;
     return (
-      <Anchor href={result.url} className="search-result">
+      <Link href={result.url} className="search-result">
         <strong>{result.title}</strong>
         <SearchExcerpt html={result.excerpt} />
-      </Anchor>
+      </Link>
     );
   }
 }
@@ -230,7 +230,7 @@ class SearchResult extends Component<{ item: Result }> {
  * trailing slash, because that is how a static host addresses
  * `dist/ssr/async/index.html`.
  *
- * The route table does not have trailing slashes, so a `<Anchor>` to one falls
+ * The route table does not have trailing slashes, so a `<Link>` to one falls
  * through to the `*` route: measured, a search result navigated to "Not found"
  * while the URL bar showed the right page.
  */

@@ -1,6 +1,6 @@
 import { Component, Host, Head, AsyncLoad } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { Anchor } from "@ramonda/router";
+import { Link } from "@ramonda/router";
 import type { PageMeta } from "./content-types";
 import { pageLoaders } from "./generated/page-loaders";
 import { pagePreloads } from "./generated/preloads";
@@ -58,7 +58,7 @@ export class DocPage extends Component<DocPageProps> {
           <h1>Page not found</h1>
           <p>That page does not exist — it may have moved, or the link that brought you here was mistyped.</p>
           <p>
-            <Anchor href="/">← Back to the documentation home</Anchor>
+            <Link href="/">← Back to the documentation home</Link>
           </p>
         </div>
       );

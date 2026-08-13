@@ -3,7 +3,7 @@ import { Component, Host } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, fireEvent } from "@ramonda/testing-library";
 import { Router } from "../Router";
-import { Link } from "../Anchor";
+import { Link } from "../Link";
 
 /**
  * A <Link> must navigate to exactly the URL it renders.

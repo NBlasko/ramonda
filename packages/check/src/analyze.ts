@@ -361,12 +361,6 @@ interface Reference {
 interface SplicedPackage {
   /** Exported components and hooks, by name — the only ones an app can mount. */
   components: Map<string, ComponentNode>;
-  /**
-   * The ones an app CANNOT import, by name — a kit's members, handed back through a factory rather
-   * than the entry. Kept apart from `components` on purpose: nothing may mount these by writing the
-   * name, and only a factory's destructured key may reach them.
-   */
-  internals: Map<string, ComponentNode>;
   /** Exported context bindings, by the name of either half of the pair. */
   contexts: Map<string, { fact: ContextFact; half: "provides" | "consumes" }>;
 }
@@ -903,12 +897,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * `as unknown as` in the implementation. Half the kit names its class and half does not, so a
    * type-directed version would resolve two of four and leave the two most used.
    *
-   * **Exported or not.** A kit's members are routinely NOT exported — that is the point of handing
-   * them back through a factory rather than the entry, and `@ramonda/router` does exactly this with
-   * the `Link` whose href is checked. Requiring `exported` was the first rule written here and it
-   * was wrong for the one shape this exists to resolve. The guard against matching a package's
-   * internals by accident is that the FACTORY is the package's own, and its key is the package's
-   * own name for what it handed over.
+   * Only EXPORTED members match. A fragment carries a package's internals too, and a key that
+   * happens to share a name with one of them is not a component the package handed anybody.
    */
   function collectKitDestructure(node: ts.Node): void {
     if (!ts.isVariableDeclaration(node) || !node.initializer) return;
@@ -925,8 +915,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       // `const { Link: Anchor } = …` — the KEY is what the package named, the local name is the
       // caller's business, and it is the key that has to match.
       const key = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName : element.name;
-      const member = spliced.components.get(key.text) ?? spliced.internals.get(key.text);
-      if (!member) continue;
+      const member = spliced.components.get(key.text);
+      if (!member || !member.exported) continue;
 
       const local = checker.getSymbolAtLocation(element.name);
       if (local) components.set(local, member);
@@ -1530,7 +1520,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       return undefined;
     }
 
-    const here: SplicedPackage = { components: new Map(), contexts: new Map(), internals: new Map() };
+    const here: SplicedPackage = { components: new Map(), contexts: new Map() };
     const byId = new Map<string, ComponentNode>();
     const ambiguous = new Set<string>();
 
@@ -1572,8 +1562,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             here.components.delete(made.name);
             ambiguous.add(made.name);
           } else if (!ambiguous.has(made.name)) here.components.set(made.name, made);
-        } else if (!here.internals.has(made.name)) {
-          here.internals.set(made.name, made);
         }
       } else if (node.kind === "context") {
         const fact: ContextFact = {

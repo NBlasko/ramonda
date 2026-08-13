@@ -3,7 +3,7 @@ import { Component, Host, created } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
-import { Link } from "../Anchor";
+import { Link } from "../Link";
 import { createRoutes } from "../match";
 import { scanComponentTree } from "../../../core/src/debug/inspector";
 

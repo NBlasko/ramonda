@@ -1,6 +1,6 @@
 import { Component, Host, list, state } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
-import { Router, RouteOutlet, Navigator, Anchor } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Link } from "@ramonda/router";
 import { routes, pages } from "./routes";
 import { Search } from "./Search";
 
@@ -26,7 +26,7 @@ class Sidebar extends Component<SidebarProps> {
 
   /**
    * On mobile the sidebar is a drawer over the page, so a followed link has to
-   * close it. Delegated here rather than on each `Anchor` — one handler, and it
+   * close it. Delegated here rather than on each `Link` — one handler, and it
    * only fires when the click landed on an actual link, not the padding.
    */
   onClick(event: MouseEvent): void {
@@ -41,9 +41,9 @@ class Sidebar extends Component<SidebarProps> {
   renderPage(page: (typeof pages)[number]): VNode {
     return (
       <li>
-        <Anchor href={page.path} className={this.route.pathname === page.path ? "link active" : "link"}>
+        <Link href={page.path} className={this.route.pathname === page.path ? "link active" : "link"}>
           {page.title}
-        </Anchor>
+        </Link>
       </li>
     );
   }
@@ -104,10 +104,10 @@ export class App extends Component {
           >
             ☰
           </button>
-          <Anchor href="/" className="brand">
+          <Link href="/" className="brand">
             <img className="brand-mark" src="/favicon.svg" width="24" height="24" alt="" />
             Ramonda
-          </Anchor>
+          </Link>
           <Search />
         </header>
         <div className={this.menuOpen ? "body nav-open" : "body"}>
