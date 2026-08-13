@@ -46,6 +46,7 @@ const {
   annotated,
   unreachable,
   unreachableRoutes,
+  secondProviders,
   counts,
   graph,
   notes,
@@ -89,7 +90,8 @@ if (
   unwatchedFields.length === 0 &&
   unresolved.length === 0 &&
   unreachable.length === 0 &&
-  unreachableRoutes.length === 0
+  unreachableRoutes.length === 0 &&
+  secondProviders.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -161,6 +163,25 @@ if (unreachableRoutes.length > 0) {
     `Hand the table to a <RouteOutlet>, and mount that outlet somewhere a root can reach —\n` +
       `or delete the table. Every page in it renders today's nothing, and each one on its own\n` +
       `looks perfectly well formed, which is why nothing else says a word.\n`,
+  );
+}
+
+/**
+ * The runtime throws when this happens. Here it is said before anything renders, on every path the
+ * source can produce — including the branch nobody clicked.
+ */
+if (secondProviders.length > 0) {
+  console.error(`\n${TAG} ${secondProviders.length} second provider(s) for a context that allows one:\n`);
+  for (const second of secondProviders) {
+    console.error(`  ${second.file}:${second.line}:${second.column}`);
+    console.error(`    <${second.provider}> mounts a second "${second.context}", and one is already above it:`);
+    console.error(`    ${second.path.join(" → ")}`);
+    console.error("");
+  }
+  console.error(
+    `Mount it once, on a component that wraps the rest. A context whose author wrote\n` +
+      `\`single: true\` is one where two CONFLICT rather than the nearer winning — for the\n` +
+      `router's, both listen to popstate and both write history.\n`,
   );
 }
 

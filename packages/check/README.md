@@ -219,6 +219,22 @@ package's internals are its own business, not your app's.
 
 A library is not judged at all. With no root, everything in it is unreachable by definition.
 
+## A second provider where the author allows one
+
+```
+[ramonda-check] 1 second provider(s) for a context that allows one:
+
+  src/Panel.tsx:12:1
+    <Panel> mounts a second "Route", and one is already above it:
+    App → Shell → Panel
+```
+
+Nesting is ordinary — a second Provider shadows the first and the nearer one wins, which is what a
+theme override inside a panel is. `createContext(…, { single: true })` is how an author says this one
+is different: two Routers both listen to `popstate` and both write history, so the second is a
+conflict rather than a narrower scope. The runtime throws when it happens; this says the same thing
+before anything renders, on every path your source can produce.
+
 ## A route table whose views can never appear
 
 ```

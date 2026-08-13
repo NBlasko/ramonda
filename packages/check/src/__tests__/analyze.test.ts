@@ -1086,3 +1086,32 @@ describe("a route table nothing can reach", () => {
     expect(run("stranded-routes").unreachable).toEqual([]);
   });
 });
+
+/**
+ * A second provider for a context whose author declared that two conflict.
+ *
+ * Nesting is ordinary and the nearer Provider wins — a theme override inside a panel, a form inside
+ * a form. `createContext(…, { single: true })` is how an author says this one is different, and the
+ * router's is the case: two Routers both listen to `popstate` and both write history. The runtime
+ * throws when it happens; this says it before anything renders.
+ */
+describe("a second provider where one is allowed", () => {
+  test("is reported, with the path that reaches it", () => {
+    const found = run("two-routers").secondProviders;
+    expect(found).toHaveLength(1);
+    expect(found[0].provider).toBe("Inner");
+    expect(found[0].context).toBe("Route");
+    expect(found[0].path).toEqual(["App", "Inner"]);
+  });
+
+  test("a context WITHOUT the flag nests, and is silent", () => {
+    // The same fixture nests a theme inside a theme one line away, which is an override and the
+    // reason this cannot simply report every context provided twice.
+    expect(run("two-routers").secondProviders.map((s) => s.context)).not.toContain("Theme");
+  });
+
+  test("and the consumer below is not also reported as missing one", () => {
+    // It has a provider above it — two, in fact. One fault, said once.
+    expect(run("two-routers").issues).toEqual([]);
+  });
+});

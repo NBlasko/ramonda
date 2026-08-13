@@ -50,7 +50,16 @@ const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
     hashTags: [],
     nav: detachedNavigator,
   },
-  { label: "Route" },
+  /**
+   * `single`, because a second Router is a CONFLICT and not a narrower scope: both listen to
+   * `popstate` and both write history, and the first to unmount takes the listener the survivor
+   * depends on. `Router.init` throws when it happens; this is the same fault said before anything
+   * renders, on every path the source can produce.
+   *
+   * The params context below is deliberately NOT single — outlets nest freely, and a nested one
+   * publishing its own matched params is the point.
+   */
+  { label: "Route", single: true },
 );
 
 /**

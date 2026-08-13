@@ -232,6 +232,30 @@ export interface UnreachableRouteIssue {
   column: number;
 }
 
+/**
+ * A second provider for a context whose author declared that two conflict.
+ *
+ * Nesting is ordinary and the nearest Provider wins — a theme override inside a panel, a form
+ * inside a form. `createContext(…, { single: true })` is how an author says this one is different:
+ * the router's, where both Routers listen to `popstate` and both write history, so the second is a
+ * conflict rather than a narrower scope.
+ *
+ * The runtime throws when it happens. This says the same thing before anything renders, on every
+ * path the source can produce — including the branch nobody clicked, which is the whole reason to
+ * read the source at all.
+ */
+export interface SecondProviderIssue {
+  /** The context's label, which is what a message calls it. */
+  context: string;
+  /** The component mounting the second one. */
+  provider: string;
+  /** Root → … → that component. */
+  path: string[];
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -248,6 +272,8 @@ export interface AnalyzeResult {
   unreachable: UnreachableIssue[];
   /** Route tables whose views can never appear — see `UnreachableRouteIssue`. */
   unreachableRoutes: UnreachableRouteIssue[];
+  /** Second providers for a context declared single — see `SecondProviderIssue`. */
+  secondProviders: SecondProviderIssue[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -275,6 +301,12 @@ interface ContextFact {
    * is worse than no check at all.
    */
   optional: boolean;
+  /**
+   * `createContext(…, { single: true })` — a second one on the same path is a fault rather than an
+   * override. Nesting is ordinary and the nearest Provider wins; this is for the context where two
+   * conflict, which the router's route context is.
+   */
+  single: boolean;
 }
 
 /** A place where something names a component, and what it resolved to — `undefined` is a hole. */
@@ -512,6 +544,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
+  const secondProviders: SecondProviderIssue[] = [];
   const annotated: AnnotatedSite[] = [];
   const roots = new Set<ComponentNode>();
   /** Package root → what its fragment contributed, or `null` for one that has none. */
@@ -772,6 +805,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     annotated,
     unreachable,
     unreachableRoutes,
+    secondProviders,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -811,6 +845,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       consumer: bindingName(node.name, 1),
       label,
       optional: flagOf(node.initializer, "optional"),
+      single: flagOf(node.initializer, "single"),
     };
     contexts.set(id, fact);
 
@@ -1338,6 +1373,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           consumer: node.consumer,
           label: node.label ?? node.name ?? "context",
           optional: node.optional === true,
+          single: node.single === true,
         };
         contexts.set(fact.id, fact);
         if (node.provider) here.contexts.set(node.provider, { fact, half: "provides" });
@@ -1760,6 +1796,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   function walk(reached: Set<ComponentNode>): ContextIssue[] {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
+    const seenSeconds = new Set<string>();
 
     for (const root of rootMounts) {
       visit(root.target, new Set(), [], new Set(), new Map());
@@ -1798,8 +1835,27 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       reached.add(node);
 
       const here = new Set(provided);
-      for (const id of node.provides) here.add(id);
       const nextPath = [...path, node.name];
+      for (const id of node.provides) {
+        /**
+         * Already provided ABOVE, and its author says two conflict.
+         *
+         * Checked before this node's own are added, so `provided` is strictly the ancestry. Deduped
+         * per context and component: one class mounted on ten paths is one fault to fix.
+         */
+        if (provided.has(id) && contexts.get(id)?.single === true && !seenSeconds.has(`${id}@${node.id}`)) {
+          seenSeconds.add(`${id}@${node.id}`);
+          secondProviders.push({
+            context: contexts.get(id)?.label ?? "context",
+            provider: node.name,
+            path: nextPath,
+            file: node.file,
+            line: node.line,
+            column: node.column,
+          });
+        }
+        here.add(id);
+      }
 
       for (const [contextId, where] of node.consumes) {
         if (here.has(contextId)) continue;
@@ -2238,6 +2294,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         provider: fact.provider,
         consumer: fact.consumer,
         optional: fact.optional,
+        ...(fact.single ? { single: true } : {}),
       });
     }
     for (const node of [...helpers.values(), ...outletSites.values()]) {

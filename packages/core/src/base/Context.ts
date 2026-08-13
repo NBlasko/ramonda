@@ -40,6 +40,22 @@ export interface ContextOptions {
    * DEV-only, like every diagnostic: it changes what is reported, never what is read.
    */
   optional?: boolean;
+  /**
+   * Says whether TWO of these may sit on one path.
+   *
+   * Default `false`: nesting is ordinary, and the nearest Provider wins. A theme override inside a
+   * panel and a form inside a form are both correct, and shadowing is how they work.
+   *
+   * Set it to `true` when a second one on the same path is a fault rather than an override — the
+   * router's route context is the example: two Routers both listen to `popstate` and both write
+   * history, so the second is a conflict and not a narrower scope. `@ramonda/check` reports it
+   * before anything renders, on every path the source can produce, including the branch nobody
+   * clicked.
+   *
+   * A declaration, not behaviour, like `label`: the runtime reads neither, and it changes what is
+   * REPORTED rather than what is read.
+   */
+  single?: boolean;
 }
 
 /**

@@ -42,6 +42,13 @@ export interface GraphNode {
   /** `createContext(…, { optional: true })` — no provider above it is a legitimate arrangement. */
   optional?: boolean;
   /**
+   * `createContext(…, { single: true })` — two of these on one path is a fault, not an override.
+   *
+   * Carried in a fragment: a package that declares its context single must stay single in every app
+   * that mounts it, and the app cannot see the declaration any other way.
+   */
+  single?: boolean;
+  /**
    * Whether an app can name this — only an exported class can be mounted from outside.
    *
    * Carried in a library's fragment, where it is the difference between the surface and the
