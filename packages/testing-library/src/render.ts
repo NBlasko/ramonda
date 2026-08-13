@@ -120,6 +120,7 @@ export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): Ren
   // The one cast in this file, and it is confined here. `h` wants core's own
   // `ComponentClassKind`, which is not part of the public type surface; the
   // structural `WrapperComponent` above is what a user can actually write.
+  // ramonda-check-ignore the caller names the wrapper; this helper exists to mount whichever it is
   const wrap = (node: VNode): VNode => (options.wrapper ? __h(options.wrapper as never, null, node) : node);
 
   if (typeof options.hydrate === "string") {

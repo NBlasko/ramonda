@@ -34,6 +34,22 @@ class Stage extends Component {
   }
 }
 
+/**
+ * A function that mounts through the factory and writes no tag at all.
+ *
+ * Looking for tags alone made it no helper, so its body was never walked — and it is HANDED to
+ * something rather than called, so nothing reached it either.
+ */
+function toNode(name: string): unknown {
+  return __h(demos[name], null);
+}
+
+class Content extends Component {
+  render() {
+    return <div>{["Counter", "Clock"].map(toNode)}</div>;
+  }
+}
+
 /** The factory called with a component named outright, which is how a generated page renders. */
 class Page extends Component {
   render() {
@@ -58,6 +74,7 @@ class App extends Component {
       <div>
         <RouteOutlet routes={routes} />
         <Stage name="Counter" inline={false} />
+        <Content />
       </div>
     );
   }

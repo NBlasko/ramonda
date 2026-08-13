@@ -690,6 +690,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     walkJsx(declaration, helper, helper);
     (function visit(node: ts.Node) {
       collectCall(node, helper);
+      // The factory too: a helper may mount everything it mounts without writing one tag.
+      collectFactory(node, helper);
       if (node !== declaration && helperAt(node) !== undefined) return;
       ts.forEachChild(node, visit);
     })(declaration);
@@ -1022,6 +1024,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const symbol = callee ? resolve(callee) : undefined;
     const called = symbol ? helpers.get(symbol) : undefined;
     if (called && called !== self) mount(self, called, "call", node, new Map(), "calls");
+
+    /**
+     * A helper handed OVER rather than called — `tree.map(toVNode)`.
+     *
+     * Whoever it is given to will run it, so what it mounts is reachable from here. Measured: the
+     * documentation site renders its whole content tree that way, and reading only `toVNode(…)`
+     * left the helper in the graph with nothing reaching it.
+     */
+    for (const argument of node.arguments) {
+      const handed =
+        ts.isIdentifier(argument) || ts.isPropertyAccessExpression(argument) ? resolve(argument) : undefined;
+      const target = handed ? helpers.get(handed) : undefined;
+      if (target && target !== self) mount(self, target, "call", argument, new Map(), "calls");
+    }
   }
 
   /** The helper this node declares, if it declares one — the three shapes `collectHelper` reads. */
@@ -1097,6 +1113,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (jsxTagName(node)) {
         found = true;
         return;
+      }
+      /**
+       * …or mounts through the factory, which a function may do without writing a single tag.
+       *
+       * `toVNode` in the documentation site is exactly that: it walks a content tree and calls
+       * `__h` for every node. Looking for tags alone made it no helper at all, so its body was
+       * never walked and everything it mounts — the demo registry, the code block, the table —
+       * was unreachable while the function sat in plain sight.
+       */
+      if (ts.isCallExpression(node) && /^_*h$/.test(node.expression.getText())) {
+        const named = node.arguments[0];
+        if (named && !ts.isStringLiteralLike(named)) {
+          found = true;
+          return;
+        }
       }
       ts.forEachChild(node, scan);
     })(body);

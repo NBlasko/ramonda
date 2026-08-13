@@ -972,6 +972,8 @@ describe("a component mounted through the factory", () => {
       "app.tsx#Page -> app.tsx#Panel (renders/factory)",
       "app.tsx#Stage -> app.tsx#Clock (renders/factory)",
       "app.tsx#Stage -> app.tsx#Counter (renders/factory)",
+      "app.tsx#toNode -> app.tsx#Clock (renders/factory)",
+      "app.tsx#toNode -> app.tsx#Counter (renders/factory)",
     ]);
   });
 
@@ -993,6 +995,20 @@ describe("a component mounted through the factory", () => {
    * site builds its table with `table[page.path] = __h(DocPage, { meta: page })` over a hundred
    * paths — so the whole site's routing was invisible.
    */
+  /**
+   * A function that mounts through the factory and writes no tag at all, HANDED to something rather
+   * than called — `tree.map(toVNode)`.
+   *
+   * Looking for tags alone made it no helper, so its body was never walked; reading only `f(…)`
+   * left it in the graph with nothing reaching it. The documentation site renders its entire
+   * content tree that way, and both halves had to give before it was reachable at all.
+   */
+  test("a helper that only calls the factory, and is handed over rather than called", () => {
+    const edges = edgesOf("factory");
+    expect(edges).toContain("app.tsx#toNode -> app.tsx#Counter (renders/factory)");
+    expect(edges).toContain("app.tsx#Content -> app.tsx#toNode (calls/call)");
+  });
+
   test("a table built by a loop still names its views", () => {
     expect(edgesOf("factory")).toContain("app.tsx#RouteOutlet@1 -> app.tsx#Page (renders/route)");
   });

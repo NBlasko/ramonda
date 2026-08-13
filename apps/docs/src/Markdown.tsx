@@ -97,6 +97,7 @@ export function toVNode(node: ContentNode): ComponentChild {
   }
 
   const children = node.c?.map(toVNode) ?? [];
+  // ramonda-check-ignore the tag comes from the parsed content tree and is always an element name
   return __h(node.t, node.a ?? null, ...children) as ComponentChild;
 }
 
