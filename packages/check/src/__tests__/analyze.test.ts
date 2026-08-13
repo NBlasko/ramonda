@@ -947,3 +947,53 @@ describe("a context that crosses a package boundary", () => {
     expect(found.file).toBe("@acme/ui/src/index.tsx");
   });
 });
+
+/**
+ * The factory JSX compiles to, called by hand.
+ *
+ * A tag is not the only way to mount a component, and this repository's documentation site uses
+ * the other one throughout — `__h(component, null)` with the component taken from a registry, and
+ * `__h(Markdown, { tree })` with it named outright. Neither is a JSX element, so the walk saw
+ * nothing: measured, it reached 10 of 153 nodes there and still reported that every consumer had a
+ * provider above it. It had judged almost nothing.
+ */
+describe("a component mounted through the factory", () => {
+  const factoryEdges = () => edgesOf("factory").filter((e) => e.includes("/factory)"));
+
+  test("named outright, it is an edge", () => {
+    expect(factoryEdges()).toContain("app.tsx#Page -> app.tsx#Panel (renders/factory)");
+  });
+
+  test("taken from a literal registry, it is the union of the map's values", () => {
+    // The key is decided at run time and the map is not: what MAY mount is every value in it.
+    // The entries are shorthand, whose symbol is the PROPERTY and then an IMPORT — two hops that
+    // each silently emptied the union.
+    expect(factoryEdges()).toEqual([
+      "app.tsx#Page -> app.tsx#Panel (renders/factory)",
+      "app.tsx#Stage -> app.tsx#Clock (renders/factory)",
+      "app.tsx#Stage -> app.tsx#Counter (renders/factory)",
+    ]);
+  });
+
+  test("a tag chosen between two ELEMENTS is not a component", () => {
+    // `const tag = inline ? "span" : "div"` — reporting it would be reporting a <div>.
+    expect(run("factory").unresolved).toEqual([]);
+  });
+
+  test("and a consumer reached only that way is judged", () => {
+    const { issues } = run("factory");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(["App", "Stage", "Counter"]);
+  });
+
+  /**
+   * A route table built by a LOOP, through the factory.
+   *
+   * `collectRouteTable` read only the JSX written inside `createRoutes(...)`, and the documentation
+   * site builds its table with `table[page.path] = __h(DocPage, { meta: page })` over a hundred
+   * paths — so the whole site's routing was invisible.
+   */
+  test("a table built by a loop still names its views", () => {
+    expect(edgesOf("factory")).toContain("app.tsx#RouteOutlet@1 -> app.tsx#Page (renders/route)");
+  });
+});

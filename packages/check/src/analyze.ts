@@ -774,14 +774,56 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isCallExpression(node.initializer) || calleeName(node.initializer) !== "createRoutes") return;
     const symbol = node.name && ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
     if (!symbol) return;
+    routeTables.set(symbol, viewsOf(node.initializer));
+  }
 
-    const views: ts.Node[] = [];
-    ts.forEachChild(node.initializer, function scan(n) {
-      const opening = openingOf(n);
-      if (opening && jsxTagName(n)) views.push(opening.tagName);
-      ts.forEachChild(n, scan);
-    });
-    routeTables.set(symbol, views);
+  /**
+   * Every name a route table gives a view, however the table was built.
+   *
+   * Reading only the JSX written INSIDE `createRoutes(...)` covered a literal table and nothing
+   * else — and this repository's documentation site builds its table in a loop, `table[page.path] =
+   * __h(DocPage, { meta: page })`, over a hundred paths. Measured: its whole routing was invisible,
+   * the walk reached 10 of 153 nodes, and the run still said every consumer had a provider above
+   * it. It had judged almost nothing.
+   *
+   * So an identifier is followed to its declaration and to every WRITE into that binding, and a
+   * view is read whether it is written as a tag or handed to the factory directly.
+   */
+  function viewsOf(call: ts.CallExpression): ts.Node[] {
+    const found: ts.Node[] = [];
+    const scan = (from: ts.Node): void => {
+      ts.forEachChild(from, function walk(n) {
+        const opening = openingOf(n);
+        if (opening && jsxTagName(n)) found.push(opening.tagName);
+        // `__h(DocPage, …)` — the same edge, written through the factory the JSX compiles to.
+        if (ts.isCallExpression(n) && /^_*h$/.test(n.expression.getText())) {
+          const first = n.arguments[0];
+          if (first && ts.isIdentifier(first) && /^[A-Z]/.test(first.text)) found.push(first);
+        }
+        ts.forEachChild(n, walk);
+      });
+    };
+
+    const table = call.arguments[0];
+    if (!table) return found;
+    if (!ts.isIdentifier(table)) {
+      scan(call);
+      return found;
+    }
+
+    const declaration = resolve(table)?.declarations?.[0];
+    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer) scan(declaration);
+    const file = declaration?.getSourceFile();
+    if (file) {
+      ts.forEachChild(file, function walk(n) {
+        if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          const target = n.left;
+          if (ts.isElementAccessExpression(target) && target.expression.getText() === table.text) scan(n);
+        }
+        ts.forEachChild(n, walk);
+      });
+    }
+    return found;
   }
 
   function collectClass(node: ts.Node): void {
@@ -852,6 +894,118 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     } else {
       unresolvedEdge(id, "bootstrap", node, whyUnresolved(opening?.tagName, `${name}'s first argument`));
     }
+  }
+
+  /**
+   * `__h(Thing, …)` — the factory JSX compiles to, called by hand.
+   *
+   * A tag is not the only way to mount a component, and this repository's documentation site uses
+   * the other one throughout: `__h(component, null)` with the component taken from a registry, and
+   * `__h(ExamplesIndex, {})` with it named outright. Neither is a JSX element, so the walk saw
+   * nothing — measured, it reached 10 of 153 nodes there and still said every consumer had a
+   * provider above it.
+   *
+   * A string tag is an intrinsic element and owns nothing. Anything else names a component, and if
+   * it cannot be followed it is a hole like any other.
+   */
+  function collectFactory(node: ts.Node, self: ComponentNode): void {
+    if (!ts.isCallExpression(node) || !/^_*h$/.test(node.expression.getText())) return;
+    const named = node.arguments[0];
+    if (!named || ts.isStringLiteralLike(named)) return;
+    // `__h(tag, …)` where every value `tag` can hold is a string is an intrinsic element, and owns
+    // nothing. Read from the syntax, one hop: `const tag = typeof pre === "string" ? "pre" : pre.t`
+    // is the shape the documentation site writes, and reporting it would be reporting a `<pre>`.
+    if (namesAnElement(unwrapAs(named))) return;
+
+    const direct = componentAt(unwrapAs(named));
+    if (direct) {
+      mount(self, direct, "factory", node);
+      return;
+    }
+    // One hop through a local const, which is how a registry lookup is written in practice:
+    // `const component = demos[name]; __h(component, null)`.
+    const behind = initializerBehind(unwrapAs(named));
+    const union = registryComponents(unwrapAs(named)) ?? (behind ? registryComponents(unwrapAs(behind)) : undefined);
+    if (union === undefined && behind) {
+      const hopped = componentAt(unwrapAs(behind));
+      if (hopped) {
+        mount(self, hopped, "factory", node);
+        return;
+      }
+    }
+    if (union === undefined) {
+      unresolvedEdge(self.id, "factory", node, whyUnresolved(unwrapAs(named), "the factory's first argument"));
+      return;
+    }
+    for (const target of union) mount(self, target, "factory", node);
+  }
+
+  /**
+   * Whether every value this expression can hold is a string — an intrinsic element.
+   *
+   * One hop to a local const, and both arms of a ternary, which is how a tag chosen between two
+   * elements is written. Anything else is unknown, and unknown is a hole rather than a guess.
+   */
+  function namesAnElement(expression: ts.Expression): boolean {
+    if (ts.isStringLiteralLike(expression)) return true;
+    if (ts.isConditionalExpression(expression)) {
+      return namesAnElement(unwrapAs(expression.whenTrue)) && namesAnElement(unwrapAs(expression.whenFalse));
+    }
+    if (ts.isIdentifier(expression)) {
+      const behind = initializerBehind(expression);
+      return behind !== undefined && behind !== expression && namesAnElement(unwrapAs(behind));
+    }
+    return false;
+  }
+
+  /** `value as never` and `(value)` are the same value; the cast is for the compiler, not for this. */
+  function unwrapAs(expression: ts.Expression): ts.Expression {
+    let current = expression;
+    while (ts.isAsExpression(current) || ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current)) {
+      current = current.expression;
+    }
+    return current;
+  }
+
+  /**
+   * `REGISTRY[key]` — every component a literal map's values name.
+   *
+   * The key is decided at run time and the map is not: what MAY be mounted is the union of its
+   * values, which is the same `may reach` the whole walk is on. `undefined` means this is not that
+   * shape, so the caller records a hole.
+   */
+  function registryComponents(expression: ts.Expression): ComponentNode[] | undefined {
+    if (!ts.isElementAccessExpression(expression)) return undefined;
+    const declaration = resolve(unwrapAs(expression.expression))?.declarations?.[0];
+    const registry =
+      declaration && (ts.isVariableDeclaration(declaration) || ts.isPropertyDeclaration(declaration))
+        ? declaration.initializer
+        : undefined;
+    if (!registry || !ts.isObjectLiteralExpression(registry)) return undefined;
+
+    const found: ComponentNode[] = [];
+    for (const property of registry.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        const target = componentAt(unwrapAs(property.initializer));
+        if (target) found.push(target);
+        continue;
+      }
+      /**
+       * `{ Counter, ComputeDemo }` — a shorthand, and the symbol at that name is the PROPERTY, not
+       * the value. Asking the checker for the property's symbol finds no class and the whole
+       * registry reads as empty, which is how the documentation site's forty demos stayed
+       * unreachable while the map sat in front of it.
+       */
+      if (ts.isShorthandPropertyAssignment(property)) {
+        let symbol = checker.getShorthandAssignmentValueSymbol(property);
+        // …and that symbol is the local binding, which for `{ Counter }` beside
+        // `import { Counter } from "./Counter"` is the IMPORT. One more hop reaches the class.
+        if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+        const target = symbol ? (components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name)) : undefined;
+        if (target) found.push(target);
+      }
+    }
+    return found.length > 0 ? found : undefined;
   }
 
   /**
@@ -1285,6 +1439,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       }
 
       collectCall(node, self);
+      collectFactory(node, self);
 
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
       // component that renders it. The distinction matters: the outlet is what publishes the
@@ -1854,6 +2009,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         return `import { TheComponent } from "./the-module";\n<TheComponent />\n${record}`;
       case "lazy":
         return `lazy={() => import("./the-module")} namedExport="TheComponent"\n${record}`;
+      case "factory":
+        return `__h(TheComponent, props)\n// or, from a map written as a literal:\n__h(REGISTRY[key], props)\n${record}`;
       case "route":
         return `const routes = createRoutes({ "/": <TheView /> });\n<RouteOutlet routes={routes} />\n${record}`;
       case "bootstrap":
