@@ -158,9 +158,13 @@ this", and that is the engine.
 
 ### If it fires
 
-Look at your bundler's `target`. In a scaffolded project it is `es2022`, set in `vite.config.ts` and
-on the `esbuild` command lines in `build:client` / `build:server`, and each place says why it is
-there. Raising any of them to `esnext` is the way back to this error.
+Look at your bundler's `target`. Every value below `esnext` compiles the decorators away; `esnext`
+itself, which is also esbuild's default, is the one that does not.
+
+A scaffolded project does not set it by hand at all — `@ramonda/build` carries it, along with `jsx`
+and `jsxImportSource`, into both the Vite config and the esbuild build. If you configure the
+transform yourself, that package is the shorter way to get it right, and it refuses a `target` that
+would bring you back to this error instead of letting the build proceed.
 
 ## Next
 

@@ -49,10 +49,16 @@ async function collect(target, out) {
     if (JS.test(target)) out.push(target);
     return;
   }
+  // No directory is skipped. There WAS one exception — a folder named `pagefind`, because this
+  // repository's docs site ships a prebuilt search bundle it did not author. That was written when
+  // this tool was private to the workspace, and it stopped being defensible the moment the tool
+  // shipped: a name that means "search index" here means nothing in someone else's project, and a
+  // check that quietly declines to look at part of the output is worse than one that does not run.
+  //
+  // It was dead where it was written, too — `apps/docs` passes `dist/assets .build`, and its
+  // indexing step runs AFTER this check. Point the command at what you want checked; that is the
+  // control, not a name this file happens to know.
   for (const entry of await readdir(target, { withFileTypes: true })) {
-    // `pagefind` ships its own prebuilt bundle; it is not ours to vouch for,
-    // and it contains generated code that is none of this check's business.
-    if (entry.isDirectory() && entry.name === "pagefind") continue;
     await collect(join(target, entry.name), out);
   }
 }
