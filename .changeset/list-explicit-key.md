@@ -1,5 +1,5 @@
 ---
-"@ramonda/core": major
+"@ramonda/core": minor
 ---
 
 `list()` uses the key you write, and its callback no longer takes an index.

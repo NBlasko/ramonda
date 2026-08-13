@@ -1,5 +1,5 @@
 ---
-"@ramonda/core": major
+"@ramonda/core": minor
 ---
 
 `list()` takes two arguments, and `key` is gone.

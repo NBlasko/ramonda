@@ -343,6 +343,22 @@ Versions and changelogs are driven by [Changesets](https://github.com/changesets
 4. **Then deploy the docs by hand** — the Actions tab, *Deploy docs*, *Run
    workflow* on `main`. Nothing does it for you, on purpose; see below.
 
+### While the packages are pre-1.0, a breaking change is a `minor`
+
+Changesets applies semver literally: `major` on `0.14.1` produces **`1.0.0`**, not
+`0.15.0`. There is no "0.x is special" rule in it. So until these packages are
+deliberately declared stable, a breaking change goes in as **`minor`** and is
+described as breaking in its own text — which is what 0.x means anyway.
+
+Picking `major` by reflex does more than bump one number. Every dependent declares
+`"@ramonda/core": ">=0.1.0 <1.0.0"`, so core at `1.0.0` falls out of all of them
+and changesets majors **`@ramonda/form`, `@ramonda/router` and
+`@ramonda/testing-library` as well — packages with no change in them at all**.
+Four unintended 1.0.0s from one word in one file.
+
+`pnpm changeset status --verbose` prints the exact versions a merge would produce.
+Run it before merging a batch; it is the only place that cascade is visible.
+
 ### Letting releases accumulate
 
 Nothing publishes until you merge the Version Packages PR, so leaving it open is a
