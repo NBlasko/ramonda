@@ -37,8 +37,22 @@ if (argv.includes("--graph") && !graphAt) {
   process.exit(2);
 }
 
-const { issues, arrowFields, duplicateDecorators, unwatchedFields, unresolved, annotated, counts, graph, notes } =
-  analyzeProject(tsconfig);
+const {
+  issues,
+  arrowFields,
+  duplicateDecorators,
+  unwatchedFields,
+  unresolved,
+  annotated,
+  unreachable,
+  unreachableRoutes,
+  secondProviders,
+  renderCycles,
+  classesAsChildren,
+  counts,
+  graph,
+  notes,
+} = analyzeProject(tsconfig);
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
@@ -76,7 +90,12 @@ if (
   arrowFields.length === 0 &&
   duplicateDecorators.length === 0 &&
   unwatchedFields.length === 0 &&
-  unresolved.length === 0
+  unresolved.length === 0 &&
+  unreachable.length === 0 &&
+  unreachableRoutes.length === 0 &&
+  secondProviders.length === 0 &&
+  renderCycles.length === 0 &&
+  classesAsChildren.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -106,6 +125,105 @@ if (unresolved.length > 0) {
     `Nothing below one of these is judged, so a broken page can pass. If the source is right and\n` +
       `this is the one that cannot see it, write the reason on the line — it is listed on every run:\n\n` +
       `    // ramonda-check-ignore the chunk is deliberately missing, to demonstrate the failure\n`,
+  );
+}
+
+/**
+ * The first rule computed from the graph rather than from the source.
+ *
+ * The walk visits everything a root mounts, so what it never arrived at is what nothing mounts. An
+ * EXPORTED one is left alone: an app is entered through what it publishes, and an SSR entry is
+ * called by the server rather than by this program.
+ */
+if (unreachable.length > 0) {
+  console.error(`\n${TAG} ${unreachable.length} declaration(s) no root reaches:\n`);
+  for (const dead of unreachable) {
+    console.error(`  ${dead.file}:${dead.line}:${dead.column}`);
+    console.error(`    ${dead.name} — nothing mounts this ${dead.kind}, on any path from any root.`);
+    console.error("");
+  }
+  console.error(
+    `Delete it, or mount it. Nothing outside its own file can even name it, so no import\n` +
+      `elsewhere is keeping it alive — and an EXPORTED one is never reported, because an app is\n` +
+      `entered through what it publishes and this cannot see who does the entering.\n`,
+  );
+}
+
+/**
+ * A whole section of a site that can never appear, which each page on its own gives no sign of.
+ */
+if (unreachableRoutes.length > 0) {
+  console.error(`\n${TAG} ${unreachableRoutes.length} route table(s) whose views can never appear:\n`);
+  for (const table of unreachableRoutes) {
+    console.error(`  ${table.file}:${table.line}:${table.column}`);
+    console.error(
+      table.why === "unmounted"
+        ? `    ${table.views} view(s), and no <RouteOutlet> in this build is handed this table.`
+        : `    ${table.views} view(s), and no root reaches the <RouteOutlet> that mounts them.`,
+    );
+    console.error("");
+  }
+  console.error(
+    `Hand the table to a <RouteOutlet>, and mount that outlet somewhere a root can reach —\n` +
+      `or delete the table. Every page in it renders today's nothing, and each one on its own\n` +
+      `looks perfectly well formed, which is why nothing else says a word.\n`,
+  );
+}
+
+/**
+ * The runtime throws when this happens. Here it is said before anything renders, on every path the
+ * source can produce — including the branch nobody clicked.
+ */
+if (secondProviders.length > 0) {
+  console.error(`\n${TAG} ${secondProviders.length} second provider(s) for a context that allows one:\n`);
+  for (const second of secondProviders) {
+    console.error(`  ${second.file}:${second.line}:${second.column}`);
+    console.error(`    <${second.provider}> mounts a second "${second.context}", and one is already above it:`);
+    console.error(`    ${second.path.join(" → ")}`);
+    console.error("");
+  }
+  console.error(
+    `Mount it once, on a component that wraps the rest. A context whose author wrote\n` +
+      `\`single: true\` is one where two CONFLICT rather than the nearer winning — for the\n` +
+      `router's, both listen to popstate and both write history.\n`,
+  );
+}
+
+/**
+ * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
+ * runs out. This is the ring where nothing can stop.
+ */
+if (renderCycles.length > 0) {
+  console.error(`\n${TAG} ${renderCycles.length} ring(s) of mounts that nothing can skip:\n`);
+  for (const ring of renderCycles) {
+    console.error(`  ${ring.file}:${ring.line}:${ring.column}`);
+    console.error(`    ${ring.path.join(" → ")}`);
+    console.error("");
+  }
+  console.error(
+    `Every step on this ring runs on EVERY render — no branch, no callback, no loop — so the\n` +
+      `first render recurses until the stack gives out, before a page appears. Put the recursion\n` +
+      `behind the data that ends it: a condition, or the callback \`list()\` takes.\n`,
+  );
+}
+
+/**
+ * `{Named}` where `<Named />` was meant. It renders nothing and the runtime says nothing, because a
+ * class is a function and the check for an object among children never sees it.
+ */
+if (classesAsChildren.length > 0) {
+  console.error(
+    `\n${TAG} ${classesAsChildren.length} component(s) named among children, where an element was meant:\n`,
+  );
+  for (const named of classesAsChildren) {
+    console.error(`  ${named.file}:${named.line}:${named.column}`);
+    console.error(`    {${named.name}} renders nothing. Write <${named.name} />.`);
+    console.error("");
+  }
+  console.error(
+    `A class among children is dropped, and nothing reports it at run time — the check for an\n` +
+      `object that is not markup never sees it, because a class is a function. Handing a component\n` +
+      `OVER is an attribute: \`<Slot view={Named} />\` is a binding, not a child.\n`,
   );
 }
 

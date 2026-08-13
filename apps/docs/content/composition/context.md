@@ -125,6 +125,29 @@ The flag belongs to the context, not to each consumer, because whoever wrote `cr
 one who knows what the default means. Every consumer then behaves consistently, and nobody has to
 remember to repeat it.
 
+## When two of them conflict
+
+Nesting is ordinary: a second Provider below the first shadows it, and the nearer one wins. That is
+how a theme override inside a panel works, and a form inside a form.
+
+For some contexts a second one is not a narrower scope but a **conflict**. Say so once, where the
+context is created:
+
+```tsx
+const [RouteProvider, RouteConsumer] = createContext(
+  { path: "/" },
+  { label: "Route", single: true },
+);
+```
+
+The router's is the case: two Routers both listen to `popstate` and both write history, and the
+first to unmount takes the listener the survivor depends on. Mounting a second one throws — and
+[`ramonda-check`](/reference/check) reports it before anything renders, on every path your source
+can produce, including the branch nobody clicked.
+
+Like `label` and `optional`, this is a declaration rather than behaviour: it changes what is
+reported, never what is read.
+
 ## The order of your use() calls matters
 
 A consumer resolves its provider once, when it is constructed — so inside **one** class, the

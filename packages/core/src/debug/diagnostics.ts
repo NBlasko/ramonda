@@ -80,7 +80,8 @@ export type DiagnosticCode =
   | "RMD048"
   | "RMD049"
   | "RMD050"
-  | "RMD051";
+  | "RMD051"
+  | "RMD052";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -377,6 +378,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "A list row cannot be told apart from its siblings",
     fix: "A list identifies a row by what sets it apart from the others, so that a row replaced by fresh objects — a refetch, a `JSON.parse` — is recognised as the row it replaces and updated rather than destroyed and rebuilt. This row carries nothing that could do that: every field it has is either nested (compared, never counted) or a value its siblings share, like a `done: false` on all of them. It will be rebuilt whenever the data is replaced, and any state its component was holding goes with it — a half-typed input, an open menu, a scroll position. Give the row a field that is its own, such as an id; or, when only your app knows which row is which, say so where the data arrives: `this.rows = merge(this.rows, incoming, (row) => row.id)`.",
+  },
+  RMD052: {
+    severity: "error",
+    title: "A component among JSX children, where an element was meant",
+    fix: "`{Panel}` names the component instead of rendering it — write `<Panel />`. A class is a function rather than a vnode, so it is dropped and the page comes up without it, and until now nothing said so: the check beside this one looks for an OBJECT among children, and a function never reaches it. Handing a component to something else is an attribute — `<Slot view={Panel} />` — and that is a prop, not a child.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

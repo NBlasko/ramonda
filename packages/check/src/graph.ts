@@ -42,6 +42,13 @@ export interface GraphNode {
   /** `createContext(…, { optional: true })` — no provider above it is a legitimate arrangement. */
   optional?: boolean;
   /**
+   * `createContext(…, { single: true })` — two of these on one path is a fault, not an override.
+   *
+   * Carried in a fragment: a package that declares its context single must stay single in every app
+   * that mounts it, and the app cannot see the declaration any other way.
+   */
+  single?: boolean;
+  /**
    * Whether an app can name this — only an exported class can be mounted from outside.
    *
    * Carried in a library's fragment, where it is the difference between the surface and the
@@ -81,10 +88,19 @@ export interface GraphEdge {
   /** Absent on an `unresolved` edge, which is the whole point of that kind. */
   to?: string;
   kind: "renders" | "provides" | "consumes" | "uses" | "calls" | "unresolved";
-  via: "tag" | "children" | "route" | "lazy" | "slot" | "bootstrap" | "use" | "call";
+  via: "tag" | "children" | "route" | "lazy" | "slot" | "factory" | "bootstrap" | "use" | "call";
   at: Where;
   /** Why nothing could be named, on an `unresolved` edge. */
   why?: string;
+  /**
+   * This site runs on EVERY render of the component that writes it — no branch, no callback, no
+   * loop between the class body and the tag.
+   *
+   * The difference between `may reach` and `will reach`, which the walk does not need and one rule
+   * does: a ring of these cannot stop, so the first render recurses until the stack gives out. The
+   * flag is absent when nothing proved it, so a missing one can never invent a fault.
+   */
+  always?: boolean;
   /**
    * What THIS site hands to the mounted component's slots.
    *

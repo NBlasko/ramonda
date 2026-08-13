@@ -409,13 +409,13 @@ describe("the composition graph", () => {
    * Leaving it out would make the graph a map with unmarked blanks, which is worse than no map
    * because it is trusted. Every rule computed from this reads the same holes.
    */
-  test("a component held in a variable is a recorded hole, not a missing edge", () => {
+  test("a component chosen by a CALL is a recorded hole, not a missing edge", () => {
     const graph = run("holes").graph;
     const hole = graph.edges.find((e) => e.kind === "unresolved");
     expect(hole?.via).toBe("tag");
     expect(hole?.to).toBeUndefined();
     expect(hole?.why).toContain("`Alias`");
-    expect(hole?.why).toContain("not to a component class");
+    expect(hole?.why).toContain("cannot be read from where it is declared");
     // And the place is on the edge, so a rule can name it without going back to the source.
     expect(hole?.at).toMatch(/app\.tsx:\d+:\d+$/);
   });
@@ -612,7 +612,7 @@ describe("a package's fragment", () => {
     expect(graph.package).toEqual({ name: "@acme/ui", version: "2.1.0" });
 
     const exported = graph.nodes.filter((n) => n.exported).map((n) => n.name);
-    expect(exported.sort()).toEqual(["DataGrid", "SelfServing"]);
+    expect(exported.sort()).toEqual(["DataGrid", "SelfServing", "Themed"]);
     // And the internals are in it anyway — that is the difference between a fragment and a summary.
     expect(graph.nodes.map((n) => n.name)).toContain("PagedBody");
     expect(graph.nodes.map((n) => n.name)).toContain("QueryOwner");
@@ -805,12 +805,18 @@ describe("a function that returns JSX", () => {
  * that has no fragment for the other package would leave a `to` matching nothing.
  */
 describe("the emitted graph refers only to nodes it declares", () => {
-  test.each(["ok", "children", "slots", "helpers", "lazy", "fragment", "same-name", "vendor-ui"])("%s", (fixture) => {
-    const graph = run(fixture).graph;
-    const declared = new Set(graph.nodes.map((n) => n.id));
-    const dangling = graph.edges.filter((e) => e.to !== undefined && !declared.has(e.to));
-    expect(dangling).toEqual([]);
-  });
+  // An APP's graph, which is where the invariant bites: a LIBRARY's fragment is pruned to its own
+  // package, so an edge may legitimately name another package's node — the app splices both and
+  // resolves it, or records a hole with the reason.
+  test.each(["ok", "children", "slots", "helpers", "lazy", "fragment", "same-name", "cross-package"])(
+    "%s",
+    (fixture) => {
+      const graph = run(fixture).graph;
+      const declared = new Set(graph.nodes.map((n) => n.id));
+      const dangling = graph.edges.filter((e) => e.to !== undefined && !declared.has(e.to));
+      expect(dangling).toEqual([]);
+    },
+  );
 });
 
 describe("what a graph covers", () => {
@@ -830,10 +836,19 @@ describe("what a graph covers", () => {
  * resolve, a bundler could not have code-split either.
  */
 describe("a component that cannot be followed", () => {
+  /**
+   * `const Named = Reader` and then `<Named />` is FOLLOWED — one hop to what the name was declared
+   * with, which a loader, a binding and a factory's registry already got. A tag was the one place
+   * without it, and the run reported a hole where there was a plain rename.
+   */
+  test("a component under another name is an edge, not a hole", () => {
+    expect(edgesOf("holes")).toContain("app.tsx#App -> app.tsx#Reader (renders/tag)");
+  });
+
   test("is an error, and the message carries the fix as code", () => {
     const found = run("holes").unresolved.find((u) => u.why.includes("`Alias`"));
     expect(found?.what).toBe("tag");
-    expect(found?.why).toContain("not to a component class");
+    expect(found?.why).toContain("cannot be read from where it is declared");
     // Code, not advice: most of what this reports on is written by an agent, and an agent acts on
     // a patch far more reliably than on a sentence.
     expect(found?.fix).toContain('import { TheComponent } from "./the-module";');
@@ -847,10 +862,8 @@ describe("a component that cannot be followed", () => {
    */
   test("a line with a written reason is recorded rather than reported", () => {
     const { annotated, unresolved } = run("holes");
-    expect(annotated.map((a) => a.reason)).toEqual([
-      "the alias is built at run time here, and the reason is this line",
-    ]);
-    expect(unresolved.map((u) => u.why)).not.toContain(expect.stringContaining("the alias is built at run time"));
+    expect(annotated.map((a) => a.reason)).toEqual(["the component is chosen at run time here, and this is why"]);
+    expect(unresolved.map((u) => u.why)).not.toContain(expect.stringContaining("chosen at run time"));
   });
 
   test("a directive with no reason is refused, not honoured", () => {
@@ -885,5 +898,284 @@ describe("a list's rows", () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].consumer).toBe("Cell");
     expect(issues[0].path).toEqual(["App", "Table", "Cell"]);
+  });
+});
+
+/**
+ * Two arrangements the fixes for them were structurally right about, and nothing pressed.
+ *
+ * Both were repaired on the strength of reading the code — no fixture in the repository had the
+ * shape, so a regression in either would have gone unnoticed while every test stayed green. That is
+ * how `list({ as })` quietly went stale, and these are the two that were left in the same state.
+ */
+describe("two outlets on one page", () => {
+  test("each keeps its own views", () => {
+    const routes = run("two-outlets")
+      .graph.edges.filter((e) => e.via === "route" && e.to)
+      .map((e) => `${e.from.split("/").pop()} -> ${(e.to ?? "").split("/").pop()}`)
+      .sort();
+    // Two sites, two tables, and neither view on the other's node. Each site is mounted by the
+    // component that writes the tag, and `uses` the outlet class, so the params it publishes still
+    // reach its own views.
+    expect(routes).toEqual([
+      "app.tsx#App -> app.tsx#RouteOutlet@2",
+      "app.tsx#RouteOutlet@1 -> app.tsx#Deep",
+      "app.tsx#RouteOutlet@2 -> app.tsx#Shallow",
+      "app.tsx#Section -> app.tsx#RouteOutlet@1",
+    ]);
+  });
+
+  test("a view reachable only under a provider is not judged from the other outlet", () => {
+    // `Deep` consumes Theme and is only ever in the nested table, under a `Section` that provides
+    // it. Merged onto one `RouteOutlet` node it would also hang off the top-level outlet, where
+    // nothing provides anything.
+    expect(run("two-outlets").issues).toEqual([]);
+  });
+});
+
+describe("a context that crosses a package boundary", () => {
+  /**
+   * The package is INSTALLED and the context it needs is COMPILED FROM SOURCE by the app.
+   *
+   * Two identities for one context is what breaks this — the app records its provider one way, the
+   * fragment names the requirement another, and they never meet. That is a build failing against
+   * correct code, which is the one thing this tool cannot afford.
+   */
+  test("the app's provider satisfies the package's requirement", () => {
+    const { issues } = run("cross-package");
+    expect(issues.map((i) => i.path[1])).toEqual(["Bare"]);
+  });
+
+  test("and the path names the package's own internals", () => {
+    const found = run("cross-package").issues[0];
+    expect(found.consumer).toBe("ThemedBody");
+    expect(found.context).toBe("Theme");
+    expect(found.path).toEqual(["App", "Bare", "Themed", "ThemedBody"]);
+    expect(found.file).toBe("@acme/ui/src/index.tsx");
+  });
+});
+
+/**
+ * The factory JSX compiles to, called by hand.
+ *
+ * A tag is not the only way to mount a component, and this repository's documentation site uses
+ * the other one throughout — `__h(component, null)` with the component taken from a registry, and
+ * `__h(Markdown, { tree })` with it named outright. Neither is a JSX element, so the walk saw
+ * nothing: measured, it reached 10 of 153 nodes there and still reported that every consumer had a
+ * provider above it. It had judged almost nothing.
+ */
+describe("a component mounted through the factory", () => {
+  const factoryEdges = () => edgesOf("factory").filter((e) => e.includes("/factory)"));
+
+  test("named outright, it is an edge", () => {
+    expect(factoryEdges()).toContain("app.tsx#Page -> app.tsx#Panel (renders/factory)");
+  });
+
+  test("taken from a literal registry, it is the union of the map's values", () => {
+    // The key is decided at run time and the map is not: what MAY mount is every value in it.
+    // The entries are shorthand, whose symbol is the PROPERTY and then an IMPORT — two hops that
+    // each silently emptied the union.
+    expect(factoryEdges()).toEqual([
+      "app.tsx#Page -> app.tsx#Panel (renders/factory)",
+      "app.tsx#Stage -> app.tsx#Clock (renders/factory)",
+      "app.tsx#Stage -> app.tsx#Counter (renders/factory)",
+      "app.tsx#toNode -> app.tsx#Clock (renders/factory)",
+      "app.tsx#toNode -> app.tsx#Counter (renders/factory)",
+    ]);
+  });
+
+  test("a tag chosen between two ELEMENTS is not a component", () => {
+    // `const tag = inline ? "span" : "div"` — reporting it would be reporting a <div>.
+    expect(run("factory").unresolved).toEqual([]);
+  });
+
+  test("and a consumer reached only that way is judged", () => {
+    const { issues } = run("factory");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(["App", "Stage", "Counter"]);
+  });
+
+  /**
+   * A route table built by a LOOP, through the factory.
+   *
+   * `collectRouteTable` read only the JSX written inside `createRoutes(...)`, and the documentation
+   * site builds its table with `table[page.path] = __h(DocPage, { meta: page })` over a hundred
+   * paths — so the whole site's routing was invisible.
+   */
+  /**
+   * A function that mounts through the factory and writes no tag at all, HANDED to something rather
+   * than called — `tree.map(toVNode)`.
+   *
+   * Looking for tags alone made it no helper, so its body was never walked; reading only `f(…)`
+   * left it in the graph with nothing reaching it. The documentation site renders its entire
+   * content tree that way, and both halves had to give before it was reachable at all.
+   */
+  test("a helper that only calls the factory, and is handed over rather than called", () => {
+    const edges = edgesOf("factory");
+    expect(edges).toContain("app.tsx#toNode -> app.tsx#Counter (renders/factory)");
+    expect(edges).toContain("app.tsx#Content -> app.tsx#toNode (calls/call)");
+  });
+
+  test("a table built by a loop still names its views", () => {
+    expect(edgesOf("factory")).toContain("app.tsx#RouteOutlet@1 -> app.tsx#Page (renders/route)");
+  });
+});
+
+/**
+ * The first rule computed from the GRAPH rather than from the source.
+ *
+ * The walk already visits everything a root mounts, so what it never arrived at is what nothing
+ * mounts. It needed no new pass over the AST — which was the argument for building the graph in the
+ * first place.
+ */
+describe("a declaration no root reaches", () => {
+  const dead = () => run("unreachable").unreachable.map((u) => `${u.kind} ${u.name}`);
+
+  test("is reported, whether it is a component or a helper", () => {
+    expect(dead().sort()).toEqual(["component Orphan", "helper unusedRow"]);
+  });
+
+  test("a hook a reached component USES is not dead", () => {
+    // The walk follows what MOUNTS, and a hook mounts nothing: `this.use(Counter)` is a `uses` edge
+    // and never a mount. Measured without closing over those, this repository's own playgrounds
+    // reported three hooks as dead with a component using each of them one line away.
+    expect(dead()).not.toContain("hook Counter");
+  });
+
+  test("an EXPORTED one is left alone, because it is a way in", () => {
+    // An SSR entry is called by the server rather than by this program, so `renderOne` and
+    // `prerender` would be false positives — and a false positive is what this cannot afford.
+    expect(dead()).not.toContain("helper renderOne");
+  });
+
+  test("a library is not judged at all", () => {
+    // With no root, everything in it is unreachable by definition.
+    expect(run("vendor-ui").unreachable).toEqual([]);
+  });
+
+  test("another package's internals are its own business", () => {
+    // These apps compile their dependencies from source, so an app not using one of core's hooks
+    // says nothing about core. Measured before the filter: the playground reported core's
+    // `Provider` as dead.
+    expect(run("cross-package").unreachable).toEqual([]);
+  });
+});
+
+/**
+ * A route table whose views can never appear.
+ *
+ * Each page in one looks perfectly well formed on its own, which is why nothing else says a word —
+ * and a whole section of a site renders nothing. Read from the graph: the walk already knows which
+ * outlets it arrived at.
+ */
+describe("a route table nothing can reach", () => {
+  const routes = () => run("stranded-routes").unreachableRoutes.map((r) => `${r.why} ${r.views}`);
+
+  test("a table handed to no outlet at all", () => {
+    // The JSX walk skips a BOUND table because `collectRouteTable` read it, so without this rule
+    // nobody reads it in either direction: the views are collected and then never mounted.
+    expect(routes()).toContain("unmounted 2");
+  });
+
+  test("a table whose outlet no root reaches", () => {
+    // The outlet exists and names the table; the component holding that outlet is mounted by
+    // nothing, so every page under it is stranded.
+    expect(routes()).toContain("stranded 1");
+  });
+
+  test("a table mounted by an outlet a root reaches is silent", () => {
+    // `live` is the ordinary arrangement, and the count is what says it is not reported.
+    expect(routes()).toHaveLength(2);
+  });
+
+  test("the pages themselves are not reported as dead, because they are exported", () => {
+    // Which is what a page is. The fault belongs to the table, and is reported once.
+    expect(run("stranded-routes").unreachable).toEqual([]);
+  });
+});
+
+/**
+ * A second provider for a context whose author declared that two conflict.
+ *
+ * Nesting is ordinary and the nearer Provider wins — a theme override inside a panel, a form inside
+ * a form. `createContext(…, { single: true })` is how an author says this one is different, and the
+ * router's is the case: two Routers both listen to `popstate` and both write history. The runtime
+ * throws when it happens; this says it before anything renders.
+ */
+describe("a second provider where one is allowed", () => {
+  test("is reported, with the path that reaches it", () => {
+    const found = run("two-routers").secondProviders;
+    expect(found).toHaveLength(1);
+    expect(found[0].provider).toBe("Inner");
+    expect(found[0].context).toBe("Route");
+    expect(found[0].path).toEqual(["App", "Inner"]);
+  });
+
+  test("a context WITHOUT the flag nests, and is silent", () => {
+    // The same fixture nests a theme inside a theme one line away, which is an override and the
+    // reason this cannot simply report every context provided twice.
+    expect(run("two-routers").secondProviders.map((s) => s.context)).not.toContain("Theme");
+  });
+
+  test("and the consumer below is not also reported as missing one", () => {
+    // It has a provider above it — two, in fact. One fault, said once.
+    expect(run("two-routers").issues).toEqual([]);
+  });
+});
+
+/**
+ * A ring of mounts that nothing on it can skip.
+ *
+ * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
+ * runs out, which is how a recursive structure is drawn. Measured across this repository: its one
+ * cycle is a markdown renderer and a code block calling each other, and it is correct. So the rule
+ * is the narrow one, and it is decidable: every step on the ring runs on EVERY render.
+ */
+describe("a ring of mounts nothing can skip", () => {
+  test("is reported, with the ring in order", () => {
+    const found = run("cycles").renderCycles;
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toEqual(["Loop", "Half", "Loop"]);
+  });
+
+  test("a component that renders itself once per ITEM is not one", () => {
+    // `list([1, 2], () => <Branch />)` — the callback is a maybe, whoever calls it, and the data
+    // is what ends the recursion.
+    expect(run("cycles").renderCycles.flatMap((c) => c.path)).not.toContain("Branch");
+  });
+
+  test("nor one behind a condition", () => {
+    expect(run("cycles").renderCycles.flatMap((c) => c.path)).not.toContain("Maybe");
+  });
+
+  test("the flag that makes it decidable is on the edge", () => {
+    // `always` is absent unless the site was PROVEN to run on every render, so a missing one can
+    // never invent a fault.
+    const edges = run("cycles").graph.edges.filter((e) => e.kind === "renders");
+    expect(edges.find((e) => e.from.endsWith("#Loop"))?.always).toBe(true);
+    expect(edges.find((e) => e.from.endsWith("#Branch"))?.always).toBeUndefined();
+  });
+});
+
+/**
+ * `{Named}` where `<Named />` was meant.
+ *
+ * Measured in core before the rule was written: it renders NOTHING and no record is emitted. A
+ * class is a function, so the check for an object among children that is not markup never sees it,
+ * and the page simply comes up without the component.
+ *
+ * Nothing legitimate has this shape. Handing a component OVER is an attribute — `view={Named}` —
+ * and that is a binding, not a child.
+ */
+describe("a component named among children", () => {
+  test("is reported, and names the element that was meant", () => {
+    const found = run("holes").classesAsChildren;
+    expect(found.map((c) => c.name)).toEqual(["Reader"]);
+  });
+
+  test("an attribute is a binding and is not this", () => {
+    // `<Slot view={Reader} />` in the slots fixture hands a component over, which is the mechanism
+    // rather than the mistake.
+    expect(run("slots").classesAsChildren).toEqual([]);
   });
 });

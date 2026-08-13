@@ -238,6 +238,91 @@ reported either. `path` and `name` are not reads: they are fixed for the life of
 know who is rendering, and it cannot — nothing in the running page distinguishes "the owner is
 reading its own field" from "a child is reading a field it will never hear about again".
 
+## A declaration no root reaches
+
+The first check computed from the graph rather than from the source — and it needed no new pass over
+your code, which is the argument for having a graph at all. The walk already visits everything a root
+mounts, so what it never arrived at is what nothing mounts:
+
+```
+[ramonda-check] 1 declaration(s) no root reaches:
+
+  src/Orphan.tsx:4:1
+    Orphan — nothing mounts this component, on any path from any root.
+```
+
+**Only what it can prove.** An EXPORTED one is never reported: an app is entered through what it
+publishes, and an SSR entry is called by the server rather than by your program. What is reported is
+a declaration nothing outside its own file can even name, that no root reaches — dead with no room
+for argument. A hook a reached component uses is not dead, though a hook mounts nothing; and another
+package's internals are its own business, not your app's.
+
+A library is not judged at all. With no root, everything in it is unreachable by definition.
+
+## A component named among children
+
+```
+[ramonda-check] 1 component(s) named among children, where an element was meant:
+
+  src/Panel.tsx:12:10
+    {Reader} renders nothing. Write <Reader />.
+```
+
+Measured in core: `{Named}` renders **nothing** and no diagnostic is emitted — a class is a function,
+so the check for an object among children that is not markup never sees it, and the page comes up
+without the component. Nothing legitimate has this shape; handing a component over is an attribute,
+and `<Slot view={Named} />` is a binding rather than a child.
+
+## A ring of mounts nothing can skip
+
+```
+[ramonda-check] 1 ring(s) of mounts that nothing can skip:
+
+  src/Loop.tsx:4:1
+    Loop → Half → Loop
+```
+
+A cycle by itself is not a fault: a tree renders itself for each child and stops when the data runs
+out, which is how a recursive structure is drawn. What cannot be right is a ring where **every step
+runs on every render** — no branch, no callback, no loop anywhere on it. Nothing can stop, so the
+first render recurses until the stack gives out, before a page appears.
+
+Every edge carries `always` when the site was proven to run on every render, and the flag is absent
+otherwise — so a site this could not read can never invent a fault.
+
+## A second provider where the author allows one
+
+```
+[ramonda-check] 1 second provider(s) for a context that allows one:
+
+  src/Panel.tsx:12:1
+    <Panel> mounts a second "Route", and one is already above it:
+    App → Shell → Panel
+```
+
+Nesting is ordinary — a second Provider shadows the first and the nearer one wins, which is what a
+theme override inside a panel is. `createContext(…, { single: true })` is how an author says this one
+is different: two Routers both listen to `popstate` and both write history, so the second is a
+conflict rather than a narrower scope. The runtime throws when it happens; this says the same thing
+before anything renders, on every path your source can produce.
+
+## A route table whose views can never appear
+
+```
+[ramonda-check] 1 route table(s) whose views can never appear:
+
+  src/routes.ts:29:1
+    2 view(s), and no <RouteOutlet> in this build is handed this table.
+```
+
+Two ways to get there, and they are fixed differently: nothing hands the table to a `<RouteOutlet>`
+at all, or an outlet does and no root reaches that outlet. Either way every page in it renders
+nothing — and each page on its own looks perfectly well formed, which is why nothing else says a
+word. A whole section of a site can be gone without one error anywhere.
+
+The pages themselves are not reported as dead code: a page is exported, and an exported declaration
+is a way in.
+
 ## A component it cannot follow is an error
 
 The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a

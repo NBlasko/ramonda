@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "scope": "library",
+  "package": {
+    "name": "@acme/shared",
+    "version": "1.4.0"
+  },
+  "hash": "sha256:b9af66df6223bec7b3c436b2e2c39355b0f63dee0d9283eff637f682726f1aa6",
+  "describes": {
+    "file": "published/index.d.ts",
+    "hash": "sha256:e73cf8f02434eeaf540abd2802ebdac42aaf6a4d2e839c96f7c2e75ae18e3bfc"
+  },
+  "nodes": [
+    {
+      "id": "@acme/shared/src/index.tsx#ThemeProvider",
+      "kind": "context",
+      "name": "ThemeProvider",
+      "at": "@acme/shared/src/index.tsx:4:14",
+      "label": "Theme",
+      "provider": "ThemeProvider",
+      "consumer": "ThemeConsumer",
+      "optional": false
+    }
+  ],
+  "edges": []
+}

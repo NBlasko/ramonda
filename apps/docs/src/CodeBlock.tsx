@@ -65,6 +65,7 @@ export class CodeBlock extends Component<CodeBlockProps> {
       <button type="button" className="copy-btn" onClick={this.copy} aria-label="Copy code to clipboard">
         {this.copied ? "Copied" : "Copy"}
       </button>,
+      // ramonda-check-ignore the tag comes from the parsed content tree and is always an element name
       __h(tag, attrs, ...children) as ComponentChild,
     ] as RamondaNode;
   }

@@ -189,6 +189,111 @@ export interface AnnotatedSite {
   column: number;
 }
 
+/**
+ * A component, hook or helper no root can reach.
+ *
+ * The first rule computed from the graph rather than from the source, and it needs nothing new: the
+ * walk already visits everything a root mounts, so what it never arrived at is what nothing mounts.
+ *
+ * **Only what it can prove.** An EXPORTED one is left alone — an app is entered through what it
+ * publishes, and an SSR entry is called by the server rather than by this program, so `renderOne`
+ * and `prerender` would be false positives. A class nothing outside its file can even name, that no
+ * root reaches, is dead with no room for argument.
+ *
+ * A library is not judged at all: with no root, nothing in it is reachable by definition.
+ */
+export interface UnreachableIssue {
+  /** The class or function name. */
+  name: string;
+  kind: "component" | "hook" | "helper";
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * A route table whose views can never appear.
+ *
+ * Two ways to get there, and they read differently to whoever has to fix it: nothing in this run
+ * hands the table to a `<RouteOutlet>` at all, or an outlet does but no root reaches that outlet.
+ * Either way every page in the table is unreachable — a whole section of a site that renders
+ * nothing, which nothing else reports because each page on its own looks perfectly well formed.
+ *
+ * Read from the graph, like the unreachable declarations: the walk already knows which outlets it
+ * arrived at.
+ */
+export interface UnreachableRouteIssue {
+  /** How many views the table declares, which is the size of what cannot appear. */
+  views: number;
+  /** `unmounted` — no outlet names it; `stranded` — an outlet does, and nothing reaches the outlet. */
+  why: "unmounted" | "stranded";
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * A second provider for a context whose author declared that two conflict.
+ *
+ * Nesting is ordinary and the nearest Provider wins — a theme override inside a panel, a form
+ * inside a form. `createContext(…, { single: true })` is how an author says this one is different:
+ * the router's, where both Routers listen to `popstate` and both write history, so the second is a
+ * conflict rather than a narrower scope.
+ *
+ * The runtime throws when it happens. This says the same thing before anything renders, on every
+ * path the source can produce — including the branch nobody clicked, which is the whole reason to
+ * read the source at all.
+ */
+export interface SecondProviderIssue {
+  /** The context's label, which is what a message calls it. */
+  context: string;
+  /** The component mounting the second one. */
+  provider: string;
+  /** Root → … → that component. */
+  path: string[];
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * A ring of mounts that nothing on it can skip.
+ *
+ * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
+ * runs out, which is how a recursive structure is drawn. Measured across this repository: the one
+ * cycle in it is a markdown renderer and a code block calling each other, and it is correct.
+ *
+ * What cannot be correct is a ring where every step runs on EVERY render: no branch, no callback,
+ * no loop anywhere on it. Nothing can stop, so the first render recurses until the stack gives out —
+ * before a page appears, in every build.
+ */
+export interface RenderCycleIssue {
+  /** The ring, in order, ending where it began. */
+  path: string[];
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * A component CLASS written among JSX children, where an element was meant.
+ *
+ * `{Named}` instead of `<Named />`. Measured in core: it renders NOTHING and no diagnostic is
+ * emitted — a class is a function rather than an object, so `RMD037` (an object among children that
+ * is not markup) never fires, and the page simply comes up without it.
+ *
+ * There is no arrangement in which this is what somebody meant: the value renders nothing wherever
+ * it lands. Handing a component OVER is an attribute — `<Slot view={Named} />` — and that is a
+ * binding, not a child.
+ */
+export interface ClassAsChildIssue {
+  /** The component named where an element was meant. */
+  name: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -201,6 +306,16 @@ export interface AnalyzeResult {
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
   annotated: AnnotatedSite[];
+  /** Declarations no root reaches — see `UnreachableIssue`. */
+  unreachable: UnreachableIssue[];
+  /** Route tables whose views can never appear — see `UnreachableRouteIssue`. */
+  unreachableRoutes: UnreachableRouteIssue[];
+  /** Second providers for a context declared single — see `SecondProviderIssue`. */
+  secondProviders: SecondProviderIssue[];
+  /** Rings of mounts nothing on them can skip — see `RenderCycleIssue`. */
+  renderCycles: RenderCycleIssue[];
+  /** Component classes written among children, where an element was meant — see `ClassAsChildIssue`. */
+  classesAsChildren: ClassAsChildIssue[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -228,6 +343,12 @@ interface ContextFact {
    * is worse than no check at all.
    */
   optional: boolean;
+  /**
+   * `createContext(…, { single: true })` — a second one on the same path is a fault rather than an
+   * override. Nesting is ordinary and the nearest Provider wins; this is for the context where two
+   * conflict, which the router's route context is.
+   */
+  single: boolean;
 }
 
 /** A place where something names a component, and what it resolved to — `undefined` is a hole. */
@@ -247,6 +368,8 @@ interface SplicedPackage {
 /** One place that mounts a component, and what that place hands to the component's slots. */
 interface MountSite {
   target: ComponentNode;
+  /** Whether this site runs on every render — see `GraphEdge.always`. */
+  always: boolean;
   /** Slot path → the components handed to it at THIS site; a ternary hands over both arms. */
   binds: Map<string, ComponentNode[]>;
 }
@@ -340,6 +463,9 @@ const isTest = (relativePath: string): boolean =>
  * different binding each turn is not a cycle by that key. This is what makes it terminate anyway.
  */
 const PATH_LIMIT = 200;
+
+/** How many renames a tag is followed through — `const A = B; const B = Reader`. */
+const ALIAS_HOPS = 4;
 
 /** How deep a slot may sit inside a prop, on both sides. Six is far past anything measured. */
 const SLOT_DEPTH = 6;
@@ -456,8 +582,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * table is read in pass 1, before every class is known.
    */
   const routeTables = new Map<ts.Symbol, ts.Node[]>();
-  /** Which of them some `<RouteOutlet routes={…}>` in this run actually named. */
-  const mountedTables = new Set<ts.Symbol>();
+  /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
+  const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
 
   /** Every component and hook class, by the symbol of its declaration — see `ComponentNode.id`. */
   const components = new Map<ts.Symbol, ComponentNode>();
@@ -465,6 +591,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
+  const secondProviders: SecondProviderIssue[] = [];
+  const classesAsChildren: ClassAsChildIssue[] = [];
   const annotated: AnnotatedSite[] = [];
   const roots = new Set<ComponentNode>();
   /** Package root → what its fragment contributed, or `null` for one that has none. */
@@ -559,7 +687,15 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       binds && binds.size > 0
         ? [...binds].flatMap(([slot, targets]) => targets.map((t) => ({ slot, to: t.id })))
         : undefined;
-    edges.push({ from, to, kind, via, at: whereOf(site), ...(flat ? { binds: flat } : {}) });
+    edges.push({
+      from,
+      to,
+      kind,
+      via,
+      at: whereOf(site),
+      ...(flat ? { binds: flat } : {}),
+      ...(alwaysRuns(site) ? { always: true } : {}),
+    });
   };
 
   /** Records a mount both ways: as an edge for the format, and as a SITE for the walk. */
@@ -571,7 +707,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     binds: Map<string, ComponentNode[]> = new Map(),
     kind: GraphEdge["kind"] = "renders",
   ): void => {
-    owner.mounts.push({ target, binds });
+    owner.mounts.push({ target, binds, always: alwaysRuns(site) });
     edge(owner.id, target.id, kind, via, site, binds);
   };
   const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
@@ -690,6 +826,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     walkJsx(declaration, helper, helper);
     (function visit(node: ts.Node) {
       collectCall(node, helper);
+      // The factory too: a helper may mount everything it mounts without writing one tag.
+      collectFactory(node, helper);
       if (node !== declaration && helperAt(node) !== undefined) return;
       ts.forEachChild(node, visit);
     })(declaration);
@@ -709,7 +847,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
 
   resolveHookContexts();
-  const issues = walk();
+  const reached = new Set<ComponentNode>();
+  const issues = walk(reached);
+  const unreachable = deadOnes(reached);
+  const unreachableRoutes = strandedRoutes(reached);
+  const renderCycles = endlessRings();
 
   return {
     issues,
@@ -718,6 +860,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     unwatchedFields,
     unresolved,
     annotated,
+    unreachable,
+    unreachableRoutes,
+    secondProviders,
+    renderCycles,
+    classesAsChildren,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -757,6 +904,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       consumer: bindingName(node.name, 1),
       label,
       optional: flagOf(node.initializer, "optional"),
+      single: flagOf(node.initializer, "single"),
     };
     contexts.set(id, fact);
 
@@ -774,14 +922,56 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isCallExpression(node.initializer) || calleeName(node.initializer) !== "createRoutes") return;
     const symbol = node.name && ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
     if (!symbol) return;
+    routeTables.set(symbol, viewsOf(node.initializer));
+  }
 
-    const views: ts.Node[] = [];
-    ts.forEachChild(node.initializer, function scan(n) {
-      const opening = openingOf(n);
-      if (opening && jsxTagName(n)) views.push(opening.tagName);
-      ts.forEachChild(n, scan);
-    });
-    routeTables.set(symbol, views);
+  /**
+   * Every name a route table gives a view, however the table was built.
+   *
+   * Reading only the JSX written INSIDE `createRoutes(...)` covered a literal table and nothing
+   * else — and this repository's documentation site builds its table in a loop, `table[page.path] =
+   * __h(DocPage, { meta: page })`, over a hundred paths. Measured: its whole routing was invisible,
+   * the walk reached 10 of 153 nodes, and the run still said every consumer had a provider above
+   * it. It had judged almost nothing.
+   *
+   * So an identifier is followed to its declaration and to every WRITE into that binding, and a
+   * view is read whether it is written as a tag or handed to the factory directly.
+   */
+  function viewsOf(call: ts.CallExpression): ts.Node[] {
+    const found: ts.Node[] = [];
+    const scan = (from: ts.Node): void => {
+      ts.forEachChild(from, function walk(n) {
+        const opening = openingOf(n);
+        if (opening && jsxTagName(n)) found.push(opening.tagName);
+        // `__h(DocPage, …)` — the same edge, written through the factory the JSX compiles to.
+        if (ts.isCallExpression(n) && /^_*h$/.test(n.expression.getText())) {
+          const first = n.arguments[0];
+          if (first && ts.isIdentifier(first) && /^[A-Z]/.test(first.text)) found.push(first);
+        }
+        ts.forEachChild(n, walk);
+      });
+    };
+
+    const table = call.arguments[0];
+    if (!table) return found;
+    if (!ts.isIdentifier(table)) {
+      scan(call);
+      return found;
+    }
+
+    const declaration = resolve(table)?.declarations?.[0];
+    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer) scan(declaration);
+    const file = declaration?.getSourceFile();
+    if (file) {
+      ts.forEachChild(file, function walk(n) {
+        if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          const target = n.left;
+          if (ts.isElementAccessExpression(target) && target.expression.getText() === table.text) scan(n);
+        }
+        ts.forEachChild(n, walk);
+      });
+    }
+    return found;
   }
 
   function collectClass(node: ts.Node): void {
@@ -855,6 +1045,118 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   }
 
   /**
+   * `__h(Thing, …)` — the factory JSX compiles to, called by hand.
+   *
+   * A tag is not the only way to mount a component, and this repository's documentation site uses
+   * the other one throughout: `__h(component, null)` with the component taken from a registry, and
+   * `__h(ExamplesIndex, {})` with it named outright. Neither is a JSX element, so the walk saw
+   * nothing — measured, it reached 10 of 153 nodes there and still said every consumer had a
+   * provider above it.
+   *
+   * A string tag is an intrinsic element and owns nothing. Anything else names a component, and if
+   * it cannot be followed it is a hole like any other.
+   */
+  function collectFactory(node: ts.Node, self: ComponentNode): void {
+    if (!ts.isCallExpression(node) || !/^_*h$/.test(node.expression.getText())) return;
+    const named = node.arguments[0];
+    if (!named || ts.isStringLiteralLike(named)) return;
+    // `__h(tag, …)` where every value `tag` can hold is a string is an intrinsic element, and owns
+    // nothing. Read from the syntax, one hop: `const tag = typeof pre === "string" ? "pre" : pre.t`
+    // is the shape the documentation site writes, and reporting it would be reporting a `<pre>`.
+    if (namesAnElement(unwrapAs(named))) return;
+
+    const direct = componentAt(unwrapAs(named));
+    if (direct) {
+      mount(self, direct, "factory", node);
+      return;
+    }
+    // One hop through a local const, which is how a registry lookup is written in practice:
+    // `const component = demos[name]; __h(component, null)`.
+    const behind = initializerBehind(unwrapAs(named));
+    const union = registryComponents(unwrapAs(named)) ?? (behind ? registryComponents(unwrapAs(behind)) : undefined);
+    if (union === undefined && behind) {
+      const hopped = componentAt(unwrapAs(behind));
+      if (hopped) {
+        mount(self, hopped, "factory", node);
+        return;
+      }
+    }
+    if (union === undefined) {
+      unresolvedEdge(self.id, "factory", node, whyUnresolved(unwrapAs(named), "the factory's first argument"));
+      return;
+    }
+    for (const target of union) mount(self, target, "factory", node);
+  }
+
+  /**
+   * Whether every value this expression can hold is a string — an intrinsic element.
+   *
+   * One hop to a local const, and both arms of a ternary, which is how a tag chosen between two
+   * elements is written. Anything else is unknown, and unknown is a hole rather than a guess.
+   */
+  function namesAnElement(expression: ts.Expression): boolean {
+    if (ts.isStringLiteralLike(expression)) return true;
+    if (ts.isConditionalExpression(expression)) {
+      return namesAnElement(unwrapAs(expression.whenTrue)) && namesAnElement(unwrapAs(expression.whenFalse));
+    }
+    if (ts.isIdentifier(expression)) {
+      const behind = initializerBehind(expression);
+      return behind !== undefined && behind !== expression && namesAnElement(unwrapAs(behind));
+    }
+    return false;
+  }
+
+  /** `value as never` and `(value)` are the same value; the cast is for the compiler, not for this. */
+  function unwrapAs(expression: ts.Expression): ts.Expression {
+    let current = expression;
+    while (ts.isAsExpression(current) || ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current)) {
+      current = current.expression;
+    }
+    return current;
+  }
+
+  /**
+   * `REGISTRY[key]` — every component a literal map's values name.
+   *
+   * The key is decided at run time and the map is not: what MAY be mounted is the union of its
+   * values, which is the same `may reach` the whole walk is on. `undefined` means this is not that
+   * shape, so the caller records a hole.
+   */
+  function registryComponents(expression: ts.Expression): ComponentNode[] | undefined {
+    if (!ts.isElementAccessExpression(expression)) return undefined;
+    const declaration = resolve(unwrapAs(expression.expression))?.declarations?.[0];
+    const registry =
+      declaration && (ts.isVariableDeclaration(declaration) || ts.isPropertyDeclaration(declaration))
+        ? declaration.initializer
+        : undefined;
+    if (!registry || !ts.isObjectLiteralExpression(registry)) return undefined;
+
+    const found: ComponentNode[] = [];
+    for (const property of registry.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        const target = componentAt(unwrapAs(property.initializer));
+        if (target) found.push(target);
+        continue;
+      }
+      /**
+       * `{ Counter, ComputeDemo }` — a shorthand, and the symbol at that name is the PROPERTY, not
+       * the value. Asking the checker for the property's symbol finds no class and the whole
+       * registry reads as empty, which is how the documentation site's forty demos stayed
+       * unreachable while the map sat in front of it.
+       */
+      if (ts.isShorthandPropertyAssignment(property)) {
+        let symbol = checker.getShorthandAssignmentValueSymbol(property);
+        // …and that symbol is the local binding, which for `{ Counter }` beside
+        // `import { Counter } from "./Counter"` is the IMPORT. One more hop reaches the class.
+        if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+        const target = symbol ? (components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name)) : undefined;
+        if (target) found.push(target);
+      }
+    }
+    return found.length > 0 ? found : undefined;
+  }
+
+  /**
    * A call to a function that returns JSX: whatever it writes mounts wherever the call sits.
    *
    * Read in a HELPER's body as well as a component's. It was a component's only, so a helper
@@ -868,6 +1170,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const symbol = callee ? resolve(callee) : undefined;
     const called = symbol ? helpers.get(symbol) : undefined;
     if (called && called !== self) mount(self, called, "call", node, new Map(), "calls");
+
+    /**
+     * A helper handed OVER rather than called — `tree.map(toVNode)`.
+     *
+     * Whoever it is given to will run it, so what it mounts is reachable from here. Measured: the
+     * documentation site renders its whole content tree that way, and reading only `toVNode(…)`
+     * left the helper in the graph with nothing reaching it.
+     */
+    for (const argument of node.arguments) {
+      const handed =
+        ts.isIdentifier(argument) || ts.isPropertyAccessExpression(argument) ? resolve(argument) : undefined;
+      const target = handed ? helpers.get(handed) : undefined;
+      if (target && target !== self) mount(self, target, "call", argument, new Map(), "calls");
+    }
   }
 
   /** The helper this node declares, if it declares one — the three shapes `collectHelper` reads. */
@@ -913,6 +1229,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const name = named.text;
     const symbol = checker.getSymbolAtLocation(named);
     if (!symbol || helpers.has(symbol)) return;
+    // `export function renderOne(…)` and `export const appNode = …` — an SSR entry is called by the
+    // server, not by this program, so being exported is the only sign it is a way IN.
+    const declared = ts.isVariableDeclaration(node) ? node.parent.parent : node;
+    const exported = (ts.getCombinedModifierFlags(declared as ts.Declaration) & ts.ModifierFlags.Export) !== 0;
     const pos = positionOf(node);
     const made: ComponentNode = {
       id: idFor(pos.file, name),
@@ -926,7 +1246,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       mounts: [],
       slotHoles: [],
       slots: [],
-      exported: false,
+      exported,
       uses: new Set(),
       opaque: false,
       usesChildren: false,
@@ -943,6 +1263,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (jsxTagName(node)) {
         found = true;
         return;
+      }
+      /**
+       * …or mounts through the factory, which a function may do without writing a single tag.
+       *
+       * `toVNode` in the documentation site is exactly that: it walks a content tree and calls
+       * `__h` for every node. Looking for tags alone made it no helper at all, so its body was
+       * never walked and everything it mounts — the demo registry, the code block, the table —
+       * was unreachable while the function sat in plain sight.
+       */
+      if (ts.isCallExpression(node) && /^_*h$/.test(node.expression.getText())) {
+        const named = node.arguments[0];
+        if (named && !ts.isStringLiteralLike(named)) {
+          found = true;
+          return;
+        }
       }
       ts.forEachChild(node, scan);
     })(body);
@@ -1010,12 +1345,105 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return made;
   }
 
+  /**
+   * `{Named}` where `<Named />` was meant.
+   *
+   * A class among children renders nothing and says nothing — measured in core, the page comes up
+   * without it and no record is emitted, because a class is a function and the check for an object
+   * among children never sees it. Nothing legitimate has this shape: handing a component over is an
+   * ATTRIBUTE, and that is a binding rather than a child.
+   */
+  function namedWhereAnElementWasMeant(child: ts.Node): void {
+    if (!ts.isJsxExpression(child) || !child.expression) return;
+    const look = (expression: ts.Expression, depth: number): void => {
+      if (depth > 2) return;
+      const target = componentAt(unwrapAs(expression));
+      if (target) {
+        classesAsChildren.push({ name: target.name, ...positionOf(expression) });
+        return;
+      }
+      // `{cond && Named}` and `{cond ? Named : null}` are the same mistake behind a branch.
+      if (ts.isConditionalExpression(expression)) {
+        look(expression.whenTrue, depth + 1);
+        look(expression.whenFalse, depth + 1);
+        return;
+      }
+      if (
+        ts.isBinaryExpression(expression) &&
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+      ) {
+        look(expression.right, depth + 1);
+        return;
+      }
+      if (ts.isArrayLiteralExpression(expression)) for (const element of expression.elements) look(element, depth + 1);
+    };
+    look(child.expression, 0);
+  }
+
+  /**
+   * Whether this site runs on every render of the body it is written in.
+   *
+   * Nothing between it and the class member may be able to skip it: no branch, no `&&`, no loop,
+   * and no callback — a function handed to something else is a maybe, whoever calls it. Read as
+   * syntax, and it answers NO whenever it is unsure, so a missing flag can never invent a fault.
+   */
+  function alwaysRuns(site: ts.Node): boolean {
+    for (let node: ts.Node | undefined = site.parent; node; node = node.parent) {
+      if (
+        ts.isConditionalExpression(node) ||
+        ts.isIfStatement(node) ||
+        ts.isSwitchStatement(node) ||
+        ts.isCaseClause(node) ||
+        ts.isCatchClause(node) ||
+        ts.isForStatement(node) ||
+        ts.isForOfStatement(node) ||
+        ts.isForInStatement(node) ||
+        ts.isWhileStatement(node) ||
+        ts.isDoStatement(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isFunctionExpression(node)
+      ) {
+        return false;
+      }
+      if (ts.isBinaryExpression(node)) {
+        const kind = node.operatorToken.kind;
+        if (
+          kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+          kind === ts.SyntaxKind.BarBarToken ||
+          kind === ts.SyntaxKind.QuestionQuestionToken
+        ) {
+          return false;
+        }
+      }
+      if (ts.isMethodDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isPropertyDeclaration(node)) return true;
+    }
+    return false;
+  }
+
   /** The component a name in value position refers to, resolved through an import alias. */
-  function componentAt(node: ts.Node): ComponentNode | undefined {
+  function componentAt(node: ts.Node, hops = 0): ComponentNode | undefined {
     if (!ts.isIdentifier(node)) return undefined;
     const symbol = resolve(node);
     if (!symbol) return undefined;
-    return components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name);
+    const direct = components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name);
+    if (direct) return direct;
+
+    /**
+     * `const Alias = Reader` and then `<Alias />`.
+     *
+     * One hop to what the name was declared with, which is the same hop already made for a loader,
+     * for a binding and for a factory's registry — a tag was the one place without it, and it was
+     * reported as a hole. Nothing is guessed: the initializer NAMES a class, and a name is all this
+     * ever follows.
+     */
+    // Bounded, because two constants that name each other are a runtime error and ordinary syntax:
+    // following one into the other without spending a hop runs the stack out. The same fault the
+    // review found in the binding walk, and the `slots` fixture caught it here within the minute.
+    if (hops >= ALIAS_HOPS) return undefined;
+    const behind = initializerBehind(node);
+    if (!behind || behind === node) return undefined;
+    if (ts.isIdentifier(behind) || ts.isPropertyAccessExpression(behind)) return componentAt(behind, hops + 1);
+    return undefined;
   }
 
   /**
@@ -1097,6 +1525,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           consumer: node.consumer,
           label: node.label ?? node.name ?? "context",
           optional: node.optional === true,
+          single: node.single === true,
         };
         contexts.set(fact.id, fact);
         if (node.provider) here.contexts.set(node.provider, { fact, half: "provides" });
@@ -1117,7 +1546,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           if (already2) already2.push(to);
           else binds.set(bound.slot, [to]);
         }
-        from.mounts.push({ target, binds });
+        from.mounts.push({ target, binds, always: each.always === true });
       } else if (each.kind === "provides" && each.to) {
         from.provides.add(each.to);
       } else if (each.kind === "consumes" && each.to) {
@@ -1126,7 +1555,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       } else if (each.kind === "uses" && target) {
         from.uses.add(target);
       } else if (each.kind === "calls" && target) {
-        from.mounts.push({ target, binds: new Map() });
+        from.mounts.push({ target, binds: new Map(), always: each.always === true });
       } else if (each.kind === "unresolved" && each.via === "slot" && each.slot) {
         from.slotHoles.push({ slot: each.slot });
       }
@@ -1216,7 +1645,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) {
       return `\`${text}\` is declared in ${pathOf(file.fileName)}, which this run does not read`;
     }
-    return `\`${text}\` resolves to ${ts.SyntaxKind[declaration.kind]}, not to a component class`;
+    if (ts.isVariableDeclaration(declaration)) {
+      return `\`${text}\` is a variable, and what it holds cannot be read from where it is declared`;
+    }
+    if (ts.isParameter(declaration)) return `\`${text}\` is a parameter, so only a caller can say what it mounts`;
+    return `\`${text}\` does not name a component class`;
   }
 
   function readClassBody(cls: ts.ClassDeclaration, self: ComponentNode): void {
@@ -1285,14 +1718,16 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       }
 
       collectCall(node, self);
+      collectFactory(node, self);
 
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
       // component that renders it. The distinction matters: the outlet is what publishes the
       // matched params, so hanging the views off this component would step over that provider.
       if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
-        const views = routeViewsOf(node);
+        const { table, views } = routeViewsOf(node);
         if (views.length > 0) {
           const outlet = outletSite(node, self);
+          if (table) mountedTables.set(table, [...(mountedTables.get(table) ?? []), outlet]);
           for (const { target, site } of views) {
             if (target) {
               mount(outlet, target, "route", site);
@@ -1317,6 +1752,12 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function walkJsx(node: ts.Node, owner: ComponentNode, self: ComponentNode): void {
     if (readElsewhere(node)) return;
+    // Checked here rather than beside a component tag's children: `{Named}` almost always sits
+    // inside a plain `<div>`, and an intrinsic element is never walked as a tag at all. The PARENT
+    // is what separates a child from an attribute's value, which is a binding and not this.
+    if (ts.isJsxExpression(node) && node.parent && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
+      namedWhereAnElementWasMeant(node);
+    }
     /**
      * A function declared inside this one is a helper of its own, and its tags are ITS edges.
      *
@@ -1439,9 +1880,133 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   // ── the walk ────────────────────────────────────────────────────────────────────────────────
 
-  function walk(): ContextIssue[] {
+  /**
+   * What no root reaches, once the walk has been everywhere it can.
+   *
+   * Read from the same traversal that judges providers, so the two can never disagree about what is
+   * mounted. Nothing spliced: another package's internals are its business, and this app not using
+   * one of them says nothing about the package.
+   */
+  /**
+   * A route table whose views can never appear.
+   *
+   * Two ways to get there, and a reader fixes them differently. Nothing hands the table to a
+   * `<RouteOutlet>` this run can see — it was written and then never mounted, and the JSX walk skips
+   * a bound table on the grounds that `collectRouteTable` read it, so without this nobody reads it
+   * at all. Or an outlet does name it and no root reaches that outlet, which strands every page
+   * under it.
+   *
+   * Each page in such a table looks perfectly well formed on its own, which is why nothing else
+   * reports it.
+   */
+  /**
+   * A ring of mounts that nothing on it can skip.
+   *
+   * Only the sites that run on EVERY render are followed, so a tree that renders itself once per
+   * item — a callback, a branch, a loop — is not one of these. What is left cannot stop.
+   *
+   * Reported once per ring rather than once per member, at the class the ring is entered by: it is
+   * one fault, and naming each component on it would be the same sentence three times.
+   */
+  function endlessRings(): RenderCycleIssue[] {
+    const found: RenderCycleIssue[] = [];
+    const state = new Map<ComponentNode, "open" | "done">();
+    const stack: ComponentNode[] = [];
+    const reported = new Set<string>();
+
+    const walkFrom = (node: ComponentNode): void => {
+      state.set(node, "open");
+      stack.push(node);
+      for (const site of node.mounts) {
+        if (!site.always) continue;
+        const next = site.target;
+        if (state.get(next) === "open") {
+          const ring = stack.slice(stack.indexOf(next));
+          // One ring, one report: whichever member is met first names it, and the same ring found
+          // from another entry point is the same fault.
+          const key = [...ring]
+            .map((n) => n.id)
+            .sort()
+            .join("|");
+          if (!reported.has(key)) {
+            reported.add(key);
+            found.push({
+              path: [...ring.map((n) => n.name), next.name],
+              file: next.file,
+              line: next.line,
+              column: next.column,
+            });
+          }
+        } else if (!state.has(next)) walkFrom(next);
+      }
+      stack.pop();
+      state.set(node, "done");
+    };
+
+    for (const node of [...components.values(), ...helpers.values()]) if (!state.has(node)) walkFrom(node);
+    return found;
+  }
+
+  function strandedRoutes(reached: Set<ComponentNode>): UnreachableRouteIssue[] {
+    // No root, no verdict — the same reason a library is not judged for dead declarations.
+    if (roots.size === 0) return [];
+    const found: UnreachableRouteIssue[] = [];
+    for (const [symbol, views] of routeTables) {
+      if (views.length === 0) continue;
+      const outlets = mountedTables.get(symbol) ?? [];
+      const why =
+        outlets.length === 0 ? "unmounted" : outlets.some((outlet) => reached.has(outlet)) ? undefined : "stranded";
+      if (why === undefined) continue;
+      found.push({ views: views.length, why, ...positionOf(views[0]) });
+    }
+    return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+  }
+
+  function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
+    // No root, no verdict: in a library everything is unreachable by definition.
+    if (roots.size === 0) return [];
+    /**
+     * This project's OWN declarations, and nothing else.
+     *
+     * These apps compile their dependencies from source, so `components` holds core's and the
+     * router's classes too — and an app not using one of core's hooks says nothing about core.
+     * Measured before the filter: the playground reported `Provider` from
+     * `@ramonda/core/src/base/Context.ts` as dead.
+     */
+    /**
+     * Everything a reached node USES is reached too.
+     *
+     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
+     * edge and never a mount, which is right for the provider check and wrong for this one.
+     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
+     * while a component used each of them one line away.
+     */
+    const queue = [...reached];
+    while (queue.length > 0) {
+      const node = queue.pop();
+      if (!node) continue;
+      for (const used of node.uses) {
+        if (reached.has(used)) continue;
+        reached.add(used);
+        queue.push(used);
+      }
+    }
+
+    const home = owner(projectRoot);
+    const ours = home ? `${home.name}/` : undefined;
+    const found: UnreachableIssue[] = [];
+    for (const node of [...components.values(), ...helpers.values()]) {
+      if (reached.has(node) || node.exported) continue;
+      if (ours !== undefined && !node.id.startsWith(ours)) continue;
+      found.push({ name: node.name, kind: node.kind, file: node.file, line: node.line, column: node.column });
+    }
+    return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+  }
+
+  function walk(reached: Set<ComponentNode>): ContextIssue[] {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
+    const seenSeconds = new Set<string>();
 
     for (const root of rootMounts) {
       visit(root.target, new Set(), [], new Set(), new Map());
@@ -1477,10 +2042,30 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         .sort()
         .join(";")}`;
       if (onPath.has(key) || path.length > PATH_LIMIT) return;
+      reached.add(node);
 
       const here = new Set(provided);
-      for (const id of node.provides) here.add(id);
       const nextPath = [...path, node.name];
+      for (const id of node.provides) {
+        /**
+         * Already provided ABOVE, and its author says two conflict.
+         *
+         * Checked before this node's own are added, so `provided` is strictly the ancestry. Deduped
+         * per context and component: one class mounted on ten paths is one fault to fix.
+         */
+        if (provided.has(id) && contexts.get(id)?.single === true && !seenSeconds.has(`${id}@${node.id}`)) {
+          seenSeconds.add(`${id}@${node.id}`);
+          secondProviders.push({
+            context: contexts.get(id)?.label ?? "context",
+            provider: node.name,
+            path: nextPath,
+            file: node.file,
+            line: node.line,
+            column: node.column,
+          });
+        }
+        here.add(id);
+      }
 
       for (const [contextId, where] of node.consumes) {
         if (here.has(contextId)) continue;
@@ -1854,6 +2439,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         return `import { TheComponent } from "./the-module";\n<TheComponent />\n${record}`;
       case "lazy":
         return `lazy={() => import("./the-module")} namedExport="TheComponent"\n${record}`;
+      case "factory":
+        return `__h(TheComponent, props)\n// or, from a map written as a literal:\n__h(REGISTRY[key], props)\n${record}`;
       case "route":
         return `const routes = createRoutes({ "/": <TheView /> });\n<RouteOutlet routes={routes} />\n${record}`;
       case "bootstrap":
@@ -1869,8 +2456,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return 'the loader has no `import("…")` with a literal specifier, so nothing can name what it loads';
   }
 
-  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): Reference[] {
-    if (opening.tagName.getText() !== "RouteOutlet") return [];
+  function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): {
+    table?: ts.Symbol;
+    views: Reference[];
+  } {
+    if (opening.tagName.getText() !== "RouteOutlet") return { views: [] };
     for (const attr of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attr) || attr.name.getText() !== "routes") continue;
       const value = attr.initializer;
@@ -1878,12 +2468,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!ts.isIdentifier(value.expression)) continue;
       const symbol = resolve(value.expression);
       const views = symbol ? routeTables.get(symbol) : undefined;
-      if (views && symbol) {
-        mountedTables.add(symbol);
-        return views.map((site) => ({ target: componentAt(site), site }));
-      }
+      if (views && symbol) return { table: symbol, views: views.map((site) => ({ target: componentAt(site), site })) };
     }
-    return [];
+    return { views: [] };
   }
 
   // ── the graph ───────────────────────────────────────────────────────────────────────────────
@@ -1917,6 +2504,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         provider: fact.provider,
         consumer: fact.consumer,
         optional: fact.optional,
+        ...(fact.single ? { single: true } : {}),
       });
     }
     for (const node of [...helpers.values(), ...outletSites.values()]) {
@@ -1925,6 +2513,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         kind: node.kind,
         name: node.name,
         at: `${pathOf(node.file)}:${node.line}:${node.column}`,
+        ...(node.exported ? { exported: true } : {}),
       });
     }
     for (const node of splicedNodes) {
@@ -1950,6 +2539,25 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
     // no package.json of its own belongs to the package above it, and saying otherwise would give
     // the graph two names for one thing.
+    /**
+     * Everything a reached node USES is reached too.
+     *
+     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
+     * edge and never a mount, which is right for the provider check and wrong for this one.
+     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
+     * while a component used each of them one line away.
+     */
+    const queue = [...reached];
+    while (queue.length > 0) {
+      const node = queue.pop();
+      if (!node) continue;
+      for (const used of node.uses) {
+        if (reached.has(used)) continue;
+        reached.add(used);
+        queue.push(used);
+      }
+    }
+
     const home = owner(projectRoot);
     /**
      * A root that names a component, not merely a call to `bootstrap`.
