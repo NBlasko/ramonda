@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "ramonda-check && vite build",
+    "build": "ramonda-check && vite build && ramonda-check-bundle dist",
     "preview": "vite preview"
   }
 }

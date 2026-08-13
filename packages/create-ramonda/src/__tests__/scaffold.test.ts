@@ -358,6 +358,87 @@ describe("the generated project declares what its own code needs", () => {
 });
 
 /**
+ * The decorators are the public API, and they are not parseable JavaScript in any engine. A build
+ * that does not transform them emits a file that dies with `SyntaxError: Invalid or unexpected
+ * token` the moment a browser reads it — not at build time, not in a test, but on the first page
+ * load, in the user's project.
+ *
+ * That shipped here once. It had been working by accident: `esbuild.jsxInject` put an import in
+ * every module, which forced every module through the esbuild transform, and that transform is
+ * what strips the decorators. Nobody had chosen it. Removing `jsxInject`, for an unrelated
+ * reason, broke the output in silence.
+ *
+ * Measured against esbuild 0.28.1: `--target=es2022` transforms decorators into helpers,
+ * `--target=esnext` leaves `@Host("div")` verbatim, and `node --check` on that output is a
+ * SyntaxError. So a scaffolded project's whole public API rests on one line of config — and
+ * `esnext` reads like a modernisation, which is how it gets raised.
+ *
+ * Two guards, and both are needed. The target has to be set on every transform a scaffolded
+ * project runs, and the reason has to be written where the setting is, or the next person to
+ * tidy the config has nothing to read. Then the build parses what it emitted, so if both of
+ * those are ever got wrong anyway, the build says so instead of the browser.
+ */
+describe("the decorators survive a scaffolded build", () => {
+  /** Every transform in the generated project, with where it lives. */
+  function transforms(read: (file: string) => string, scripts: Record<string, string>) {
+    return [
+      ["vite.config.ts", read("vite.config.ts")],
+      ...Object.entries(scripts).filter(([, command]) => command.includes("esbuild ")),
+    ] as [string, string][];
+  }
+
+  /** What each transform was actually told to target — the config object and the CLI flag alike. */
+  function targetsIn(source: string) {
+    return [...source.matchAll(/target:\s*"([^"]+)"/g), ...source.matchAll(/--target=(\S+)/g)].map((m) => m[1]);
+  }
+
+  test("every transform targets es2022 — never esnext, which leaves them in", () => {
+    for (const mode of ["spa", "ssr"] as const) {
+      const { read, pkg } = make(mode, []);
+      const scripts = (pkg as unknown as { scripts: Record<string, string> }).scripts;
+      const found = transforms(read, scripts);
+
+      // Guards on the guard. If the config is ever restructured so no transform is found, or a
+      // transform names no target and inherits esbuild's default, the loops below would pass over
+      // an empty list and say nothing.
+      expect(found.length).toBeGreaterThan(0);
+
+      for (const [where, source] of found) {
+        const targets = targetsIn(source);
+        expect(targets.length, `${mode}/${where} names no target`).toBeGreaterThan(0);
+        for (const target of targets) expect(`${mode}/${where} → ${target}`).toContain("es2022");
+      }
+    }
+  });
+
+  test("the config says why the target is there, next to the target", () => {
+    // `server.mjs` already points at "the one setting (es2022) that makes this work with
+    // decorators" — and pointed at a config that did not mention decorators at all. A reason
+    // kept somewhere else is a reason nobody reads at the moment they are editing the line.
+    for (const mode of ["spa", "ssr"] as const) {
+      const { read } = make(mode, []);
+      expect(read("vite.config.ts")).toMatch(/decorator/i);
+    }
+  });
+
+  test("the build parses every file it emitted", () => {
+    for (const mode of ["spa", "ssr"] as const) {
+      const { pkg, read } = make(mode, []);
+      const scripts = (pkg as unknown as { scripts: Record<string, string> }).scripts;
+
+      // The check has to run over the build OUTPUT, so it has to come after the build, and the
+      // `&&` chain has to keep it from running on a build that already failed.
+      expect(scripts.build).toMatch(/&&\s*ramonda-check-bundle\s+\S+\s*$/);
+
+      // And it has to be installable, which is the whole reason it moved out of the workspace's
+      // private package: `@ramonda/check` is the one a generated project already has.
+      expect(pkg.devDependencies).toHaveProperty("@ramonda/check");
+      expect(read("package.json")).toContain("ramonda-check-bundle");
+    }
+  });
+});
+
+/**
  * Type-checking a scaffolded project is NOT tested here, and that is deliberate: it needs a
  * real install to resolve `@ramonda/*` and `vitest`, and a symlink to this workspace's
  * `node_modules` does not provide them (pnpm's isolated layout keeps them in each package's

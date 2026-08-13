@@ -12,13 +12,20 @@ npm add -D @ramonda/check
 ```
 
 ```jsonc
-// package.json — first, so a broken app never reaches the bundler
+// package.json — the source before the bundler, the output after it
 "scripts": {
-  "build": "ramonda-check && vite build"
+  "build": "ramonda-check && vite build && ramonda-check-bundle dist"
 }
 ```
 
-A project scaffolded with `npm create ramonda` already has both lines.
+A project scaffolded with `npm create ramonda` already has all of this.
+
+## Two commands
+
+`ramonda-check` reads your **source** and is what the rest of this page is about.
+
+`ramonda-check-bundle` reads what your build **emitted**, and answers one question: can an engine
+parse it? See [The bundle that did not parse](#the-bundle-that-did-not-parse).
 
 ## The fault it exists for
 
@@ -84,6 +91,39 @@ It reads your config with two options overridden — `noLib` and `types` — bec
 checker only where a symbol was declared, never what type anything is. Skipping the lib and the
 `@types/*` packages is most of its running time, which matters when it goes first in a build. It
 does not typecheck and never did; that is `tsc`'s job.
+
+## The bundle that did not parse
+
+`@state`, `@compute` and the rest are TC39 decorators. No engine can parse them, so a bundler that
+does not transform them away emits a file that dies with `SyntaxError: Invalid or unexpected token`
+the moment a browser reads it — not at build time, not in a test, but on the first page load.
+
+That shipped here once. It had been working by accident: an unrelated esbuild option was forcing
+every module through the transform that strips them, and removing that option broke the output in
+silence. The setting that actually decides it is `target`, and `esnext` — which reads like a
+modernisation — is the one value that leaves the decorators in.
+
+```bash
+$ ramonda-check-bundle dist
+
+[check-bundle] 1 of 42 emitted file(s) do not parse:
+
+  dist/assets/index-Bq7xk.js
+    SyntaxError: Invalid or unexpected token
+```
+
+It **parses** rather than grepping for `@`, and that distinction is the whole design. A grep is
+weaker, because a decorator is only one way to emit unparseable output. And it is wrong, because a
+bundle may legitimately contain decorator text inside a string — Ramonda's own diagnostics put
+`@Host("div")` in a suggestion message, so it appears in any bundle that ships them. A parser does
+not care what is inside a string.
+
+`node --check` does the parsing, on purpose: the failure being guarded against is "no engine can
+read this", and that is the engine.
+
+Point it at directories or files, as many as you like; it walks directories and looks at every
+`.js`, `.mjs` and `.cjs`. Finding no JavaScript at all is a failure rather than a pass, because a
+build that silently emitted nothing is the same shape of bug.
 
 ## Docs
 

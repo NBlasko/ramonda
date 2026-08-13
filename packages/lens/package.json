@@ -51,7 +51,7 @@
     "test:prod": "vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod"
   },
   "devDependencies": {
-    "@ramonda/shared": "workspace:^",
+    "@ramonda/check": "workspace:^",
     "@types/node": "^26.1.2",
     "immer": "^11.1.15",
     "tsup": "^8.5.1",

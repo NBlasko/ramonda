@@ -2,15 +2,15 @@ import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * The build-output guard, tested as the instrument it is.
  *
- * It lives in `packages/shared` and every package's `build` runs it. Its own
- * correctness has to be checked somewhere, and this is the package with a test
- * harness and the most to lose — a core bundle that does not parse takes down
- * every app at once.
+ * Every package's `build` ends with it, and so does the `build` of every project
+ * scaffolded with `npm create ramonda` — which is why it ships from here rather
+ * than from a package private to this workspace.
  *
  * Why it exists at all: TC39 decorators are not parseable JavaScript in any
  * engine, so a build that fails to strip them emits a file that dies on load
@@ -19,12 +19,11 @@ import { join } from "node:path";
  * **The pipeline that produced that bug no longer reproduces it.** Re-measured
  * on the pinned toolchain: building `apps/playground-core` with Vite 7.3.1 and
  * `esbuild.jsxInject` REMOVED — the documented trigger — still emits output that
- * parses. So the historical table below describes versions that have since
- * moved. That makes a test against the SYMPTOM, rather than against the
+ * parses. That makes a test against the SYMPTOM, rather than against the
  * pipeline, the only honest way to keep the guard covered.
  */
 
-const GUARD = join(__dirname, "../../../shared/check-bundle.mjs");
+const GUARD = join(dirname(fileURLToPath(import.meta.url)), "../../check-bundle.mjs");
 
 function runGuard(...args: string[]): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {

@@ -8,12 +8,16 @@
  * TC39 decorators are not parseable JavaScript in any engine yet, so a build
  * that fails to strip them produces a bundle that dies with
  * `SyntaxError: Invalid or unexpected token` the moment a browser reads it.
- * That happened, and it reached a browser — see BUGS.md, "TC39 decorators
- * survived the bundle, and only an accident hid it". The transform that strips
- * them was being applied for an unrelated reason (`esbuild.jsxInject`), so
- * removing an option nothing seemed to depend on silently broke the output.
+ * That happened, and it reached a browser: the transform that strips them was
+ * being applied for an unrelated reason (`esbuild.jsxInject` put an import in
+ * every module, which forced every module through it), so removing an option
+ * nothing seemed to depend on silently broke the output.
  *
  * Nothing checked it, which is the only reason it shipped. This is that check.
+ * It runs over this repository's builds and over yours — a project scaffolded
+ * with `npm create ramonda` ends its `build` with it, because the setting that
+ * makes the transform happen is one line of bundler config, and the failure it
+ * guards is invisible until the first page load.
  *
  * ## Why it PARSES rather than grepping for `@`
  *

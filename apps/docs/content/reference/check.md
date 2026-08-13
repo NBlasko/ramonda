@@ -1,6 +1,6 @@
 ---
 title: Checking your app
-description: ramonda-check reads your source and proves two things a running page would not tell you.
+description: ramonda-check reads your source and proves what a running page would not tell you; ramonda-check-bundle reads what your build emitted.
 section: Reference
 order: 112
 ---
@@ -24,13 +24,15 @@ npm add -D @ramonda/check
 ```
 
 ```jsonc
-// package.json — run it first, so a broken app never reaches the bundler
+// package.json — the source before the bundler, the output after it
 "scripts": {
-  "build": "ramonda-check && vite build"
+  "build": "ramonda-check && vite build && ramonda-check-bundle dist"
 }
 ```
 
-A scaffolded project (`npm create ramonda`) already has both lines.
+A scaffolded project (`npm create ramonda`) already has all of this. The package installs two
+commands: `ramonda-check`, which reads your **source** and is what most of this page is about, and
+[`ramonda-check-bundle`](#the-bundle-that-did-not-parse), which reads what your build **emitted**.
 
 ## What it looks like
 
@@ -116,6 +118,49 @@ your config with `noLib` and `types` overridden, and skips the whole TypeScript 
 matters for something that goes first in a build.
 
 A project that does not compile is still `tsc`'s news to break. Run both.
+
+## The bundle that did not parse
+
+`@state`, `@compute` and the rest are TC39 decorators, which no engine can parse. Your bundler has
+to transform them away, and whether it does comes down to one setting — `target`. Below `esnext`,
+esbuild rewrites them into helpers. At `esnext` it leaves them exactly as written.
+
+Nothing tells you when that goes wrong. The build succeeds, prints no warning, and emits a file that
+dies with `SyntaxError: Invalid or unexpected token` the moment a browser reads it. It happened
+here: the transform was being applied as a side effect of an unrelated option, and removing that
+option broke the output in silence.
+
+`ramonda-check-bundle` reads the build's output and answers the one question that matters about it:
+
+```
+$ ramonda-check-bundle dist
+
+[check-bundle] 1 of 42 emitted file(s) do not parse:
+
+  dist/assets/index-Bq7xk.js
+    SyntaxError: Invalid or unexpected token
+```
+
+Point it at directories or files, as many as you like; it walks directories and reads every `.js`,
+`.mjs` and `.cjs`. Finding no JavaScript at all is a failure rather than a pass — a build that
+silently emitted nothing is the same shape of bug.
+
+### Why it parses instead of searching for `@`
+
+Searching for decorator syntax is both weaker and wrong. Weaker, because a surviving decorator is
+only one way to emit something an engine cannot read. Wrong, because a bundle may legitimately
+**contain** decorator text inside a string: Ramonda's own diagnostics put `@Host("div")` into a
+suggestion message, so it appears in any bundle that ships them, as data. A parser does not care
+what is inside a string — and that is exactly the distinction being asked for.
+
+The parser is `node --check`, on purpose. The failure being guarded against is "no engine can read
+this", and that is the engine.
+
+### If it fires
+
+Look at your bundler's `target`. In a scaffolded project it is `es2022`, set in `vite.config.ts` and
+on the `esbuild` command lines in `build:client` / `build:server`, and each place says why it is
+there. Raising any of them to `esnext` is the way back to this error.
 
 ## Next
 
