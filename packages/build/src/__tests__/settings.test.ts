@@ -1,14 +1,23 @@
 import { describe, expect, test } from "vitest";
 import { transform } from "esbuild";
+import ts from "typescript";
 import { RAMONDA_TRANSFORM, lowersDecorators } from "../settings";
 
 /**
- * The rule this package exists to enforce, checked against the thing it is a rule about.
+ * The rule this package exists to enforce, checked against the things it is a rule about.
  *
- * `lowersDecorators` is a claim about esbuild's behaviour, and a claim about a dependency is worth
- * nothing unless the dependency is asked. So the table below is not a list of values somebody
- * believed — every row is run through the real esbuild, and the assertion is that the predicate and
- * the compiler agree. When esbuild changes its mind, this fails here rather than in a user's browser.
+ * `lowersDecorators` is a claim about a compiler's behaviour, and a claim about a dependency is
+ * worth nothing unless the dependency is asked. So the table below is not a list of values somebody
+ * believed — every row is run through the real compiler, and the assertion is that the predicate and
+ * the compiler agree. When one of them changes its mind, this fails here rather than in a user's
+ * browser.
+ *
+ * **Both compilers, on purpose.** esbuild is what this package's two adapters drive, and it is where
+ * the fault shipped. TypeScript is here because of what the README tells anyone wiring up a bundler
+ * there is no adapter for: it hands them `lowersDecorators` and says the rule holds. A webpack or
+ * rollup toolchain most often lowers TypeScript with `tsc` rather than esbuild, so that sentence is
+ * a promise about a compiler nothing here was asking. Measured, they agree exactly — `esnext` leaves
+ * the decorators in, everything below it compiles them away — and this is what keeps them agreeing.
  */
 
 /** A decorator whose output is unambiguous to look for: if `@Host` is still in the text, it survived. */
@@ -17,6 +26,18 @@ const SOURCE = `function Host(t) { return (v, c) => v; }\n@Host("div") export cl
 async function survivesDecorator(target: string | string[]) {
   const { code } = await transform(SOURCE, { loader: "ts", target });
   return code.includes("@Host");
+}
+
+/**
+ * `transpileModule` rather than a program, because that is the mode the loaders use — ts-loader's
+ * `transpileOnly`, and every esbuild-style single-file transform. It is also the only mode where
+ * the question is purely "what did the target do", with no type errors in the way.
+ */
+function survivesDecoratorInTs(target: ts.ScriptTarget) {
+  const { outputText } = ts.transpileModule(SOURCE, {
+    compilerOptions: { target, module: ts.ModuleKind.ESNext },
+  });
+  return outputText.includes("@Host");
 }
 
 describe("the target rule", () => {
@@ -46,6 +67,22 @@ describe("the target rule", () => {
 
     const { code } = await transform(SOURCE, { loader: "ts" });
     expect(code).toContain("@Host");
+  });
+
+  /**
+   * The same rule, asked of TypeScript, because the README hands `lowersDecorators` to anyone
+   * wiring up a bundler this package has no adapter for — and that toolchain is far more likely to
+   * be running `tsc` than esbuild. Fewer rows than above: `tsc` takes one target, never a list.
+   */
+  test.each([
+    // Spelled out rather than read back off the enum: `ESNext` and `Latest` share a value, so a
+    // reverse lookup answers "latest" and the predicate is then asked about the wrong string.
+    ["esnext", ts.ScriptTarget.ESNext, false],
+    ["es2022", ts.ScriptTarget.ES2022, true],
+    ["es2020", ts.ScriptTarget.ES2020, true],
+  ] as const)("tsc %s", (name, target, expected) => {
+    expect(lowersDecorators(name)).toBe(expected);
+    expect(survivesDecoratorInTs(target)).toBe(!expected);
   });
 
   test("the settings this package installs are the safe ones", () => {

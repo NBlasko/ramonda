@@ -116,6 +116,9 @@ emitted and fails the build instead of the browser:
 }
 ```
 
+That one is worth reaching for whichever bundler you use. It reads the artifact rather than the
+configuration, so it does not need to know how the artifact was made.
+
 ## Another bundler
 
 There is no adapter for webpack, rspack or rollup, because none of them is a bundler Ramonda is
@@ -129,6 +132,12 @@ import { RAMONDA_TRANSFORM, lowersDecorators } from "@ramonda/build";
 
 `lowersDecorators(target)` answers whether a given target compiles the decorators away — including
 for a list like `["es2022", "chrome100"]`, which esbuild reads as the intersection of its entries.
+
+The rule is the same for **`tsc`** as for esbuild, which matters here because a webpack or rollup
+toolchain usually lowers TypeScript with `tsc`: `esnext` leaves the decorators in, and every target
+below it compiles them away. Both compilers are run against that table in this package's tests, so
+it is a measurement rather than a recollection — but it is only those two. If you lower with
+something else, run `ramonda-check-bundle` over the output and let the artifact answer.
 
 ## Docs
 
