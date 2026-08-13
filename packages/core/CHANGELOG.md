@@ -1,5 +1,148 @@
 # @ramonda/core
 
+## 0.15.0
+
+### Minor Changes
+
+- f7dc629: A refetch updates its rows instead of destroying and rebuilding them.
+
+  Data from outside — a refetch, a `JSON.parse`, anything round-tripped through the network — hands over fresh objects meaning the same rows, so matching by reference found none of them and every row was destroyed and built again: `@destroyed`, `@created`, and whatever each row's component was holding. Measured on a two-row list where one title changed: both rows recreated and a half-typed draft lost. `key: (item) => item.id` existed for this.
+
+  `list()` now aligns the incoming array against the one it is showing and carries each row's identity across, so a row that changed keeps its DOM node, its component instance and its state. Rows equal by content are the anchors; rows between two anchors are paired by how much they still have in common. No field is privileged — an `id` counts for exactly as much as any other, because a framework cannot know which field is an identity.
+
+  Two arrays with nothing in common have no anchors and share nothing, so page 2 of a table never inherits page 1's rows. A `{ ...row }` copy is a new row: identity is a non-enumerable symbol, invisible to spread, `JSON.stringify` and every equality check. A frozen row keeps matching by reference.
+
+  This changes what a replaced row object costs. It used to reset that row's state; it now carries it, and `key` is no longer needed for re-created objects.
+
+- f478b92: `list()` uses the key you write, and its callback no longer takes an index.
+
+  Which row is which is now answered in three steps, and the first two are exact. **The object** — while a row is the same object it is the same row, which covers every update that keeps its references. **Your key** — the moment an object is new (a refetch, a `for`/`push` in a `@compute`) the object cannot answer, and a `key` on the vnode is what still can. **A guess** — with no key and a new object, the incoming array is aligned against the one on screen by what the rows still have in common.
+
+  A key used to be accepted and then silently overwritten with the list's own id. It is now left exactly as written, and the list fills one in only when there is none, so a list that declares nothing behaves as it did.
+
+  Two rows under one key are reported (`RMD002`). The same OBJECT twice is not a collision — those rows are told apart by which occurrence they are, as always.
+
+  **Breaking.** The second argument is always a function; passing a component class directly is gone, because that form leaves nowhere to put a key. And the callback takes the item alone — no index. A row that shows its position had to be rebuilt whenever it moved, and an index is the one thing that must never become a row's identity. Resolve the position where the data is built instead.
+
+  ```diff
+  -list(this.rows, TaskRow)
+  +list(this.rows, (task) => <TaskRow key={task.id} item={task} />)
+
+  -list(this.cells, (cell, index) => <td data-label={labels[index]}>{cell}</td>)
+  +// pair the label with the cell in a @compute, then
+  +list(this.labelled, (at) => <td data-label={at.label}>{at.cell}</td>)
+  ```
+
+- 3176268: `list()` works wherever a hook consumes renderable children, not only in a render slot.
+
+  A `list()` handed to a hook — `this.use(Portal, () => ({ children: list({ each, as }), target }))` — used to crash: the descriptor fell into the diff's component branch with no `.name`. It now goes through the real region reconcile, so it gets what a list in `render()` gets: minted identity, per-item reactive scopes, the whole-list skip, and the LIS reorder.
+
+  The mechanism is a new internal `ChildrenRegion` — a contiguous block of children owned by something other than an element's render, with a record of its own and a trailing anchor so it can share a target with the shell's content and with other portals. `Portal` is rewritten on top of it and no longer hand-rolls a reconcile.
+
+- 1d65b53: `list()` takes two arguments, and `key` is gone.
+
+  ```diff
+  -list({ each: this.todo, as: TaskRow })
+  +list(this.todo, TaskRow)
+
+  -list({ each: this.rows, render: (r) => <li>{r.t}</li> })
+  +list(this.rows, (r) => <li>{r.t}</li>)
+
+  -list({ each: this.users, key: (u) => u.id, as: UserRow })
+  +list(this.users, UserRow)
+  ```
+
+  The options bag had one field left worth having. `key` stopped covering anything when identity started being carried on the item — a refetch keeps its rows without one — and `as` and `render` were always mutually exclusive, which is a shape that can be written wrong. Two positional arguments cannot be: the items, and the one way to turn an item into markup.
+
+  The second argument is a component or a function, and nothing has to declare which. A class has a construct signature and no call signature, an arrow the reverse, so the two overloads are mutually exclusive with no union; at runtime the class is recognised by the `__isComponent` static that `Component` already carried.
+
+  `RMD014` (both given, or neither) is retired — neither mistake is expressible. `ListOptions` is replaced by `Each`, `ItemRender` and `ItemComponent`.
+
+  Also fixed: minted ids now come from the process-wide counter rather than a per-list one. A per-list counter was safe while an id never left its region; identity travels with the item now, so the same object shown in a second list carried an id that list had already minted for a different row.
+
+- 7879405: `merge()` — structural sharing, and the one place an app can say which row is which.
+
+  `list()` infers identity, and for the shapes real data takes it is right. But it is inference, and there was no way to tell it otherwise. `merge` is that way, and it sits at the data boundary rather than on the list — said once, where the rows arrive, instead of on every list that renders them.
+
+  ```ts
+  this.rows = merge(this.rows, await api.getRows()); // shares what did not change
+  this.rows = merge(this.rows, await api.getRows(), (r) => r.id); // and pairs rows across a reorder or a resize
+  ```
+
+  With an identity, an unchanged row comes back as the same object wherever it moved to, and a changed row carries its predecessor's identity so it updates in place instead of being rebuilt. Without one, a refetch that changed nothing is not a change at all.
+
+  `@ramonda/query` has done the structural-sharing half on every fetch for a while; it now uses this implementation, so an app gets the same function with the same bounds whether its data came through a query or not.
+
+  **Also fixed:** a frozen row kept no identity. `Object.defineProperty` throws on a frozen object, so a refetch of frozen rows rebuilt every one of them — measured, changed or not. The write falls back to a WeakMap, so freezing your data no longer costs you row identity.
+
+- 5d0c694: A portalled subtree survives a re-render, and a component inside a portal restores its server state.
+
+  **Fixed:** a `Portal` marked its own tags with a `data-ramonda-portal` attribute, and the server emitted whatever carried it. An attribute cannot survive on a node the reconciler owns — the attribute diff reads a node's current attributes as the previous set and removes whatever the next vnode does not have — so the first re-render of anything in a portal's block erased the marker and the tag left the page silently. Any state write did it. A portal's block is now delimited by comment anchors, which no attribute pass can reach.
+
+  **Served markup changes** for portals: `<!--r7-->…<!--/r7-->` around the block instead of `data-ramonda-portal` on each tag. `Head` is unaffected — it builds its own tags outside the reconciler and keeps the attribute.
+
+  **New:** hydrating a portal runs the ordinary `hydrateLevel` walk over its block, so a component inside a portal is hydrated rather than rebuilt — its server state is restored, its host adopted. Server state blobs are now stamped inside portal blocks too; they only ever covered the body container.
+
+- e9b5620: A portal can server-render into any target, not only `document.head`.
+
+  `document.head` worked because the server's document has one. Every other container — a modal root in the body — does not exist during a server render: the shell is assembled after the render returns, so there is no element to point at. Those portals were client-only, and a component inside one was rebuilt rather than restored.
+
+  `portalTarget("name")` names a target instead of pointing at it. The server collects that target's content into a container of its own and returns it on `page.portals`, keyed by name; `renderDocument` emits a container per entry after the app root, and a hand-rolled shell can place them itself using the exported `PORTAL_TARGET_ATTR`. On the client the name resolves to that container and the block inside it is adopted, anchors and all — so a component in it restores its server state. With no server render, the container is created on demand.
+
+  A token rather than a selector string: a selector is a claim about markup the portal does not own, and it fails silently when the shell changes.
+
+  `RenderedPage` gains `portals: Record<string, string>`.
+
+- 928f63d: `.map()` is no longer discouraged — `RMD023` asks for a key instead.
+
+  It used to say "use `list()` instead", and only for components, on the reasoning that plain markup survives being matched by position because the diff patches the text. That is true of the text and false of everything else on the element: an `<input>` inside a plain `<li>` holds a caret, a selection and whatever the user typed, and those follow the node.
+
+  So a `.map()` is a supported way to render a list, and what it needs is the thing every framework asks for here. `RMD023` now asks for a key, for any element, and mentions `list()` as the lazier shape rather than the required one. It drops from `error` to `warning`.
+
+  What a missing key costs is only which row _inside_ the array is which — rows built from an array cannot be confused with the siblings around them, keyed or not, because every array in JSX becomes its own group with its own key space.
+
+- c1c2cf1: `RMD051` reports a list row that nothing can tell apart from its siblings.
+
+  `list()` identifies a row by what sets it apart, so a row replaced by fresh objects is recognised and updated rather than rebuilt. A row whose every field is either nested (compared, never counted) or a value its siblings share — `{ tags: [...] }`, or rows carrying nothing but flags — cannot be identified by anything, so it is rebuilt on every replacement and whatever its component held goes with it.
+
+  It does not fire for a row that is simply new: page 2 of a table is unpaired too, and warning about that would put a report on correct code. The question asked is about the row — could anything ever have identified it — not about whether it was matched.
+
+  The fix is a field of the row's own, or `merge(previous, incoming, (row) => row.id)` where the data arrives.
+
+### Patch Changes
+
+- fedc99f: A lens write keeps hidden symbols across an edit, and `set` takes an option.
+
+  `list()` recognises a row by the object it holds. Every immutable update replaces that object, so the row was torn down and built again — taking whatever its component was holding with it: a half-typed input, an open menu, a scroll position.
+
+  Anything looking at the result afterwards has to GUESS which new object is which old row. A lens write does not have to: at the moment it replaces a value it is holding both versions, so the answer is known. It now carries the value's non-enumerable symbols onto the copy, and `focusOn(rows).at(0).merge({ done: true })` keeps that row's component exactly as it was.
+
+  `set` is the exception. It is handed a value rather than deriving one, so `set(edited)` and `set(aDifferentRow)` are the same call, and carrying would give a different row the open editor of the row it replaced. It keeps nothing unless told:
+
+  ```ts
+  focusOn(items).at(0).set(other); // a different value
+  focusOn(items).at(0).set(rebuilt, { keepSymbols: true }); // the same one, rebuilt
+  focusOn(items)
+    .at(0)
+    .set(rebuilt, { keepSymbols: [MINE] }); // only this one
+  ```
+
+  The lens knows nothing about what the symbols mean — `keepSymbols` is generic, and `merge`, `update` and a write aimed deeper all keep automatically because they derive. Core exports `SAME_ITEM` as the ready-made option, so an app never has to name the symbol behind it:
+
+  ```ts
+  this.rows = focusOn(this.rows).at(0).set(fromTheForm, SAME_ITEM);
+  ```
+
+  `1.33 KB → 1.50 KB` gzipped.
+
+- 00924fe: Reaching for a `list()` as if it were an array now says what it is.
+
+  `list(items, (item) => …)` reads exactly like `items.map((item) => …)`, and the one thing that differs is the thing you cannot see: it does not iterate there. Nothing has run when it returns — the callback is called by the framework while it reconciles the rows, which is what makes a list whose array did not change cost nothing.
+
+  Anyone expecting an array met `undefined`, `is not a function` and `is not iterable`, none of which say what happened. TypeScript refuses all three, so getting there means the types were bypassed; development now throws with an explanation and points at the two things that are right — render it, or use `.map()` if what you want is an array of values.
+
+  The docs say the same thing up front, since the shared shape makes the difference easy to miss.
+
 ## 0.14.1
 
 ### Patch Changes
