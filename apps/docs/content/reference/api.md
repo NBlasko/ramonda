@@ -160,7 +160,7 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 | `Router` | A **hook** on the app root; owns the store, adds no element. Also exposes the `Navigator` surface (minus `params()`). [Setup](/routing) |
 | `RouteOutlet` | Renders the matched route. |
 | `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashTags` · `push` · `replace` · `updateSearchParams` · `updateHashTags` · `back` · `forward`. [Reading the URL](/routing/params) |
-| `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
+| `Anchor` | A real `<a href>` that intercepts a plain left click, taking any string. The kit's `Link` is this component with its `href` checked against your route table. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
 | `createRouter(routes)` | Returns `{ Router, RouteOutlet, Navigator, Link, route }` bound to the table, so `<Link href>` is type-checked. [Setup](/routing) |
 | `route(pattern, params)` | Builds a `:param` href — the only way to make one; params are typed. [Links](/routing/links) |

@@ -79,7 +79,7 @@ const ALIASES = [
 const FIXTURE = `
 import { Component, Hook, bootstrap, list, StableProps, state, compute, mounted, updated, watchProp, memoizedHandler, configureDev, hydrateRoot } from "@ramonda/core";
 import { Query, Mutation, QueryClient, QueryClientProvider } from "@ramonda/query";
-import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Anchor, createRoutes } from "@ramonda/router";
 
 @StableProps("id")
 class Row extends Hook {
@@ -109,7 +109,7 @@ class App extends Component {
 
 globalThis.__fixture = [
   App, Row, bootstrap, hydrateRoot, configureDev, Mutation, QueryClient, QueryClientProvider,
-  Router, RouteOutlet, Navigator, Link, createRoutes,
+  Router, RouteOutlet, Navigator, Anchor, createRoutes,
 ];
 `;
 

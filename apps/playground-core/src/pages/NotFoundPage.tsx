@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { Link, Navigator } from "@ramonda/router";
+import { Anchor, Navigator } from "@ramonda/router";
 
 export class NotFoundPage extends Component {
   route = this.use(Navigator);
@@ -10,9 +10,9 @@ export class NotFoundPage extends Component {
         <p className="muted">
           No route for <code>{this.route.pathname}</code>.
         </p>
-        <Link href="/" className="navlink">
+        <Anchor href="/" className="navlink">
           Go home
-        </Link>
+        </Anchor>
       </div>
     );
   }

@@ -1,5 +1,5 @@
 import { Component, bootstrap, state } from "@ramonda/core";
-import { Router, RouteOutlet, Navigator, Link } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Anchor } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ThemeProvider, ThemedBadge } from "./theme";
 import { routes } from "./routes";
@@ -7,7 +7,7 @@ import "./styles";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Ramonda showcase + router demo.
-   - Nav uses <Link> (real <a>, race-free state-first navigation).
+   - Nav uses <Anchor> (real <a>, race-free state-first navigation).
    - "/showcase" mounts a grid exercising every decorator + nested hooks.
    - "/table" exercises list(): nested lists, two lists in one component, a matrix.
    - Open devtools (🌸 badge / Alt+D) → COMPONENTS to inspect the live tree.
@@ -22,36 +22,36 @@ class NavBar extends Component {
   render() {
     return (
       <nav className="nav">
-        <Link href="/" className="navlink">
+        <Anchor href="/" className="navlink">
           Home
-        </Link>
-        <Link href="/showcase" className="navlink">
+        </Anchor>
+        <Anchor href="/showcase" className="navlink">
           Showcase
-        </Link>
-        <Link href="/table" className="navlink">
+        </Anchor>
+        <Anchor href="/table" className="navlink">
           Table
-        </Link>
-        <Link href="/slots" className="navlink">
+        </Anchor>
+        <Anchor href="/slots" className="navlink">
           Slots
-        </Link>
-        <Link href="/async" className="navlink">
+        </Anchor>
+        <Anchor href="/async" className="navlink">
           Async
-        </Link>
-        <Link href="/query" className="navlink">
+        </Anchor>
+        <Anchor href="/query" className="navlink">
           Query
-        </Link>
-        <Link href="/form" className="navlink">
+        </Anchor>
+        <Anchor href="/form" className="navlink">
           Form
-        </Link>
-        <Link href="/users/42" className="navlink">
+        </Anchor>
+        <Anchor href="/users/42" className="navlink">
           User 42
-        </Link>
-        <Link href="/about" className="navlink">
+        </Anchor>
+        <Anchor href="/about" className="navlink">
           About
-        </Link>
-        <Link href="/diagnostics" className="navlink">
+        </Anchor>
+        <Anchor href="/diagnostics" className="navlink">
           Diagnostics
-        </Link>
+        </Anchor>
         <button onClick={this.route.back}>← Back</button>
         <button onClick={this.route.forward}>Forward →</button>
         <code className="path">{this.route.pathname}</code>

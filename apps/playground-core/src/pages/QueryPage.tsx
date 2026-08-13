@@ -1,5 +1,5 @@
 import { Component, list, memoizedHandler, state } from "@ramonda/core";
-import { Link } from "@ramonda/router";
+import { Anchor } from "@ramonda/router";
 import { Mutation, Query, QueryClientAccess, type FetchContext, type QueryEntry } from "@ramonda/query";
 
 /** Module scope, so `each` is the same array every render — a fresh literal would be a new value
@@ -365,9 +365,9 @@ export class QueryPage extends Component {
             Click away from this window and back: a STALE query refreshes on focus, a fresh one does not — so an alt-tab
             inside <code>staleTime</code> costs nothing. Polling ignores staleness, because an interval <em>is</em> the
             freshness policy.{" "}
-            <Link href="/about" className="navlink">
+            <Anchor href="/about" className="navlink">
               Navigate to About
-            </Link>{" "}
+            </Anchor>{" "}
             and come back: the page remounts, the cache still has the data (<code>gcTime</code> is 5 minutes), so it
             paints filled in.
           </p>

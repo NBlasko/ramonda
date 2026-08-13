@@ -1,5 +1,5 @@
 import type { ComponentClassKind, RamondaNode } from "@ramonda/core";
-import { Link as LinkImpl } from "./Link";
+import { Link as LinkImpl } from "./Anchor";
 import { Router, RouteOutlet, Navigator as NavigatorImpl } from "./Router";
 import type { PathOf, RouteConfig } from "./match";
 import type { StateUpdater } from "./types";

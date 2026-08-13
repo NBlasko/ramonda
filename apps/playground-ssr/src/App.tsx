@@ -1,5 +1,5 @@
 import { Component, Head, Host, state } from "@ramonda/core";
-import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
+import { Router, RouteOutlet, Navigator, Anchor, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ProductsPage } from "./ProductsPage";
 import { SignupPage } from "./SignupPage";
@@ -133,12 +133,12 @@ export class App extends Component {
     return (
       <div className="app">
         <nav>
-          <Link href="/">Home</Link>
-          <Link href="/about">About</Link>
-          <Link href="/users/42">User 42</Link>
-          <Link href="/products">Products</Link>
-          <Link href="/signup">Sign up</Link>
-          <Link href="/nope">Missing</Link>
+          <Anchor href="/">Home</Anchor>
+          <Anchor href="/about">About</Anchor>
+          <Anchor href="/users/42">User 42</Anchor>
+          <Anchor href="/products">Products</Anchor>
+          <Anchor href="/signup">Sign up</Anchor>
+          <Anchor href="/nope">Missing</Anchor>
         </nav>
         <code id="path">{this.route.pathname}</code>
         <RouteOutlet routes={routes} />
