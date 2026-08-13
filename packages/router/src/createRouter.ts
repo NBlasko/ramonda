@@ -33,13 +33,50 @@ type ParamPath<C extends RouteConfig> = Extract<PathOf<C>, `${string}:${string}`
 type StaticPath<C extends RouteConfig> = Exclude<PathOf<C>, `${string}:${string}`>;
 
 /**
+ * `/users/:id` → `` `/users/${string}` ``, recursively, so every literal segment between the
+ * parameters is still checked to the letter: `/t/1/p/2` passes and `/t/1/x/2` does not.
+ *
+ * `route()` is no longer the only way to write one. It stays for building an href programmatically,
+ * but `<Link href="/users/42">` and `` href={`/users/${id}`} `` — an id that came from a backend —
+ * are the ordinary case and they now type-check on their own.
+ *
+ * Known limit: the substituted segment is `${string}`, which a slash also satisfies, so
+ * `/users/a/b` is accepted. Forbidding that needs the href prop to be generic over the literal
+ * written at the call site, which is a larger change than this one.
+ */
+type Filled<S extends string> = S extends `${infer A}:${infer _P}/${infer Rest}`
+  ? `${A}${string}/${Filled<Rest>}`
+  : S extends `${infer A}:${infer _P}`
+    ? `${A}${string}`
+    : S;
+
+/** A query with at least one `key=value`, so a bare `?tab` is still refused. */
+type Search = `?${string}=${string}`;
+type Hash = `#${string}`;
+
+/**
+ * Everywhere an href is accepted: a path the table names — filled in, if it takes parameters —
+ * optionally with a query and a fragment, or an `Href` from `route()`.
+ *
+ * The looseness is ONLY behind the `?`. The path is checked as strictly as before: `/nope?x=1`
+ * fails on the path, not the query. Runtime concatenation (`"/a?" + q`) widens to `string` and is
+ * refused, so a query has to be written where it can be read.
+ *
+ * Measured before it went in: 50 routes and 2100 href sites cost 0.39s of check time against 0.34s
+ * for a plain `string` — about 24 µs per site. TypeScript keeps these as PATTERNS rather than
+ * expanding them, so the table's size enters linearly.
+ */
+type Located<P extends string> = P | `${P}${Search}` | `${P}${Hash}` | `${P}${Search}${Hash}`;
+export type AnyHref<C extends RouteConfig> = Located<StaticPath<C> | Filled<ParamPath<C>>> | Href | `${Href}${Search}`;
+
+/**
  * `<Link>` props, typed to one route table. `href` is the PLAIN path union or an `Href`
  * from `route()` — a static path goes in directly, a `:param` path must come through
  * `route()`. (Benchmarked: a plain union is the TS-cheap choice; excluding param paths
  * cost check time for no gain, since `route()` is the only thing that produces an `Href`.)
  */
 export interface TypedLinkProps<P extends string> {
-  href?: P | Href;
+  href?: P;
   replace?: boolean;
   /** Scroll to the top after navigating. Default `true`. */
   scroll?: boolean;
@@ -55,8 +92,8 @@ export interface TypedLinkProps<P extends string> {
  * satisfies `this.use`'s `BaseHook` constraint), with just `push`/`replace` narrowed.
  */
 export type TypedNavigator<P extends string> = Omit<InstanceType<typeof NavigatorImpl>, "push" | "replace"> & {
-  push(href: P | Href, opts?: { scroll?: boolean }): void;
-  replace(href: P | Href, opts?: { scroll?: boolean }): void;
+  push(href: P, opts?: { scroll?: boolean }): void;
+  replace(href: P, opts?: { scroll?: boolean }): void;
 };
 
 /**
@@ -72,9 +109,9 @@ export interface TypedRouterKit<C extends RouteConfig> {
   /** Renders whichever route matches. `<RouteOutlet routes={routes} />`. */
   RouteOutlet: typeof RouteOutlet;
   /** `this.use(Navigator)` — reads the URL + navigates, with `push`/`replace` typed to this table. */
-  Navigator: NoPropsHookClass<TypedNavigator<StaticPath<C>>>;
+  Navigator: NoPropsHookClass<TypedNavigator<AnyHref<C>>>;
   /** `<Link href="/…">` — `href` is a static path or an `Href` from `route()` (raw `:param` patterns rejected). */
-  Link: ComponentClassKind<TypedLinkProps<StaticPath<C>>>;
+  Link: ComponentClassKind<TypedLinkProps<AnyHref<C>>>;
   /**
    * Build an href for a `:param` pattern: `route("/u/:id", { id })`. The only thing that makes
    * an `Href`. Static paths are not accepted — pass them straight as `href="/about"`.
@@ -103,8 +140,8 @@ export function createRouter<C extends RouteConfig>(_routes: C): TypedRouterKit<
   return {
     Router,
     RouteOutlet,
-    Navigator: NavigatorImpl as unknown as NoPropsHookClass<TypedNavigator<StaticPath<C>>>,
-    Link: LinkImpl as unknown as ComponentClassKind<TypedLinkProps<StaticPath<C>>>,
+    Navigator: NavigatorImpl as unknown as NoPropsHookClass<TypedNavigator<AnyHref<C>>>,
+    Link: LinkImpl as unknown as ComponentClassKind<TypedLinkProps<AnyHref<C>>>,
     route: buildRoute as TypedRouterKit<C>["route"],
   };
 }

@@ -41,7 +41,7 @@ should be somewhere else, send them. But **the guard is only half of it**, and t
 half is what `render()` does meanwhile:
 
 ```tsx
-import { Navigator } from "@ramonda/router";
+const { Link, Navigator, route } = createRouter(routes);
 
 class Account extends Component {
   private route = this.use(Navigator);
@@ -83,7 +83,7 @@ Most real apps have a moment on startup where the token has not been checked yet
 "no", render your pending state on "not yet", and render the page only on "yes":
 
 ```tsx
-import { Navigator } from "@ramonda/router";
+const { Link, Navigator, route } = createRouter(routes);
 
 class Account extends Component {
   private route = this.use(Navigator);
@@ -125,6 +125,8 @@ amount of batching saves it — the `await` releases the frame, the browser pain
 account page sits there until the answer comes back:
 
 ```tsx
+const { Link, Navigator, route } = createRouter(routes);
+
 // ✗ The account page is on screen for the whole round trip.
 @mounted async guard() {
   const ok = await fetch("/api/session").then((r) => r.ok);

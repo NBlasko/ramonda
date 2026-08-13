@@ -1208,3 +1208,22 @@ describe("a component kit destructured out of a factory", () => {
     expect(edgesOf("kit")).toContain("app.tsx#Shell -> @acme/kit/src/index.tsx#RouteOutlet (renders/tag)");
   });
 });
+
+/**
+ * The same kit, with the factory in THIS program rather than an installed package.
+ *
+ * The fragment-only version of this passed every fixture here and still failed the documentation
+ * site, because a monorepo compiles its own packages from source: there is no `.d.ts` to splice, and
+ * none is needed — the `return { … }` is in front of you, and a key names a class exactly as a tag
+ * does. Not the rarer half, and the one nothing was covering.
+ */
+describe("a component kit whose factory is in the same program", () => {
+  test("every member resolves, cast or not", () => {
+    expect(run("kit-source").unresolved).toEqual([]);
+  });
+
+  test("the tags become real edges", () => {
+    expect(edgesOf("kit-source")).toContain("app.tsx#App -> app.tsx#Anchor (renders/tag)");
+    expect(edgesOf("kit-source")).toContain("app.tsx#App -> app.tsx#Outlet (renders/tag)");
+  });
+});

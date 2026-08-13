@@ -48,4 +48,23 @@ declare global {
   /** The decorator these pages build. Shaped as a modern method decorator, or `@onStore(store)`
    *  lands in decorator position as `any` and TypeScript falls back to the legacy form. */
   const onStore: (...args: any[]) => <T>(value: T, context: ClassMethodDecoratorContext) => T | void;
+
+  /**
+   * The routing kit, for the example showing a hook using another hook.
+   *
+   * Destructured from the factory rather than imported: `Link` and `Navigator` are bound to an
+   * app's own route table and reachable only through `createRouter`. Declared here, not as globals,
+   * because `lib.dom` already owns the name `Navigator`.
+   */
+  class RouterNavigator extends Hook<any> {
+    [key: string]: any;
+  }
+  const routes: any;
+  const createRouter: (routes: any) => {
+    Router: any;
+    RouteOutlet: any;
+    Navigator: typeof RouterNavigator;
+    Link: any;
+    route: (...args: any[]) => any;
+  };
 }

@@ -8,13 +8,17 @@ with nested route outlets.
 
 ```tsx
 import { Component, Host } from "@ramonda/core";
-import { Router, RouteOutlet, Link, createRoutes } from "@ramonda/router";
+import { createRouter, createRoutes } from "@ramonda/router";
 
 const routes = createRoutes({
   "/": <Home />,
   "/posts/:id": <Post />,
   "*": <NotFound />,
 });
+
+// Once, in a module of its own. `Link` and `Navigator` come from here and nowhere else — each is
+// bound to THIS table, so `href` and `push` take the paths it names and nothing else.
+export const { Router, RouteOutlet, Link, Navigator, route } = createRouter(routes);
 
 @Host("div")
 export class App extends Component {

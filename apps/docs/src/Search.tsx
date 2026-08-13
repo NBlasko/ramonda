@@ -1,6 +1,6 @@
 import { Component, Host, state, createRef, onDocument, list } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { Link } from "@ramonda/router";
+import { Link } from "./routes";
 
 interface Result {
   url: string;

@@ -124,7 +124,15 @@ function _typeChecks() {
   // @ts-expect-error — "/nope" is not a declared route
   void (<Link href="/nope" />);
 
-  // @ts-expect-error — a raw :param pattern is not a ready href (needs route())
+  /**
+   * A raw `:param` pattern now COMPILES, and that is a known cost rather than an oversight.
+   *
+   * `/u/:id` is filled in as `` `/u/${string}` ``, and `":id"` is a string like any other — so the
+   * one shape the type cannot tell apart from a real id is the pattern itself. The trade bought
+   * `<Link href="/users/42" />` and `` href={`/users/${id}`} `` without `route()`, which is the
+   * ordinary case; forgetting to substitute is the rare one, and it misses at runtime into the
+   * catch-all rather than going anywhere wrong.
+   */
   void (<Link href="/u/:id" />);
 
   // @ts-expect-error — "pid" is not a param of "/u/:id"

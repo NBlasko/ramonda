@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { Link, Navigator } from "@ramonda/router";
+import { Link, Navigator } from "../routes";
 
 export class UserPage extends Component {
   route = this.use(Navigator);

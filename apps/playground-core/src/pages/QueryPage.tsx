@@ -1,5 +1,5 @@
 import { Component, list, memoizedHandler, state } from "@ramonda/core";
-import { Link } from "@ramonda/router";
+import { Link } from "../routes";
 import { Mutation, Query, QueryClientAccess, type FetchContext, type QueryEntry } from "@ramonda/query";
 
 /** Module scope, so `each` is the same array every render — a fresh literal would be a new value
