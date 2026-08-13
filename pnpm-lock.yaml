@@ -184,6 +184,9 @@ importers:
 
   packages/core:
     devDependencies:
+      '@ramonda/check':
+        specifier: workspace:^
+        version: link:../check
       '@ramonda/devtools':
         specifier: workspace:^
         version: link:../devtools
@@ -282,6 +285,9 @@ importers:
         specifier: '>=0.1.0 <1.0.0'
         version: 0.1.0
     devDependencies:
+      '@ramonda/check':
+        specifier: workspace:^
+        version: link:../check
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../shared
@@ -340,6 +346,9 @@ importers:
         specifier: '>=0.1.0 <1.0.0'
         version: 0.1.0
     devDependencies:
+      '@ramonda/check':
+        specifier: workspace:^
+        version: link:../check
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../shared
@@ -368,6 +377,9 @@ importers:
         specifier: '>=0.1.0 <1.0.0'
         version: 0.1.0
     devDependencies:
+      '@ramonda/check':
+        specifier: workspace:^
+        version: link:../check
       '@ramonda/shared':
         specifier: workspace:^
         version: link:../shared

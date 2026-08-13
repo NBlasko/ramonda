@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "scope": "library",
+  "package": {
+    "name": "@acme/stale",
+    "version": "2.1.0"
+  },
+  "hash": "sha256:8ec0957c2ce7db319840cc5c8ea21a3a26052a4a77c7a2eba827d3980e3e254c",
+  "describes": {
+    "file": "published/index.d.ts",
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "nodes": [
+    {
+      "id": "@acme/stale/src/index.tsx#DataGrid",
+      "kind": "component",
+      "name": "DataGrid",
+      "at": "@acme/stale/src/index.tsx:19:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/stale/src/index.tsx#PagedBody",
+      "kind": "component",
+      "name": "PagedBody",
+      "at": "@acme/stale/src/index.tsx:12:1"
+    },
+    {
+      "id": "@acme/stale/src/index.tsx#QueryProvider",
+      "kind": "context",
+      "name": "QueryProvider",
+      "at": "@acme/stale/src/index.tsx:3:14",
+      "label": "Query",
+      "provider": "QueryProvider",
+      "consumer": "QueryConsumer",
+      "optional": false
+    }
+  ],
+  "edges": [
+    {
+      "from": "@acme/stale/src/index.tsx#DataGrid",
+      "to": "@acme/stale/src/index.tsx#PagedBody",
+      "kind": "renders",
+      "via": "tag",
+      "at": "@acme/stale/src/index.tsx:21:12"
+    },
+    {
+      "from": "@acme/stale/src/index.tsx#PagedBody",
+      "to": "@acme/stale/src/index.tsx#QueryProvider",
+      "kind": "consumes",
+      "via": "use",
+      "at": "@acme/stale/src/index.tsx:13:7"
+    }
+  ]
+}

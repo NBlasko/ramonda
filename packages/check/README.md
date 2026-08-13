@@ -197,3 +197,186 @@ reported either. `path` and `name` are not reads: they are fixed for the life of
 **This one cannot be a runtime diagnostic at all**, which is why it is here. The form would have to
 know who is rendering, and it cannot — nothing in the running page distinguishes "the owner is
 reading its own field" from "a child is reading a field it will never hear about again".
+
+## A component it cannot follow is an error
+
+The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a
+build passes over a page that may be broken. A map with unmarked blanks is worse than no map,
+because it is trusted:
+
+```
+[ramonda-check] 1 place(s) naming a component that cannot be followed:
+
+  src/App.tsx:26:9
+    through `tag` — `Alias` resolves to VariableDeclaration, not to a component class
+
+      import { TheComponent } from "./the-module";
+      <TheComponent />
+      // ramonda-check-ignore <why this cannot be resolved>
+```
+
+The constraint is not this tool's to impose. **A bundler can only split what it can see
+statically** — whatever this cannot resolve, a bundler could not have code-split either, so the
+shape was already trouble for another reason.
+
+When the source is right and this is the one that cannot see it, write the reason on the line:
+
+```tsx
+class Row extends Component {
+  render() {
+    return <li>row</li>;
+  }
+}
+
+const rows = { "/": Row };
+
+// ramonda-check-ignore the table is keyed at run time, and every value is a component
+const Chosen = rows["/"];
+```
+
+**Line-scoped, never file-scoped**, and the reason is mandatory — a directive with nothing after it
+is refused, because a suppression without a reason is a silence. Every annotated site is listed on
+every run, whether or not anything failed, so the number cannot creep up unread.
+
+A tag naming a PROP — `<this.props.view />` — is not one of these. It is unresolvable from the class
+alone by design: the caller decides, and the walk fills it from what the caller binds.
+
+## The graph
+
+Every check above is one reading of the same thing: **which components exist, and which one can
+mount which.** `--graph` writes it out.
+
+```bash
+$ ramonda-check tsconfig.json --graph .ramonda/graph.json
+[ramonda-check] graph written to .ramonda/graph.json — 155 nodes, 64 edges, 3 of them unresolved
+```
+
+It holds facts, not conclusions — nodes and edges, each edge with the place it was written:
+
+```json
+{
+  "from": "@ramonda/docs/src/DocPage.tsx#DocPage",
+  "to": "@ramonda/core/src/base/AsyncLoad.ts#AsyncLoad",
+  "kind": "renders",
+  "via": "tag",
+  "at": "@ramonda/docs/src/DocPage.tsx:69:7"
+}
+```
+
+`kind` is what a walk reads — `renders`, `provides`, `consumes`, `uses`, `calls`. `via` is how it was
+written — a JSX tag, children of a wrapper, a route table, `AsyncLoad`'s `lazy`, `bootstrap`. A
+list's rows need nothing of their own: the row's tag is written in the component the list sits in,
+which is where it mounts. A component
+is identified by its **declaration**, `<package>/<file>#<Name>`, because a name is not an identity:
+one app in this repository declares `class Page` seventy-five times.
+
+An edge that resolved to nothing is `"kind": "unresolved"`, and carries the reason:
+
+```json
+{
+  "from": "playground-core/src/pages/FormPage.tsx#FormPage",
+  "kind": "unresolved",
+  "via": "use",
+  "at": "playground-core/src/pages/FormPage.tsx:43:18",
+  "why": "`Form` is declared in @ramonda/form/dist/index.d.ts, which this run does not read"
+}
+```
+
+A blank left off the map is worse than no map, because it is trusted.
+
+**JSX written outside a component class** is an edge too. `function row() { return <Cell /> }` mounts
+`Cell` wherever it is called, so the function is a node of its own — `"kind": "helper"` — owning the
+tags it writes, with a `calls` edge from every component that reaches it. Nothing has to be followed
+to work that out: the tag is written in the helper, so the edge is read where it is. A route table
+and a `bootstrap` argument are not helpers; they are read where they are written, and counting them
+twice would give one mount two owners.
+
+**A lazily loaded component is an edge like any other.** `lazy={() => import("./page")}` names a
+module with a string literal, `namedExport` names the class, and both are read: the loader may sit
+in the JSX, one hop away in a static field — which is where `RMD020` pushes it — or in a literal
+registry indexed at runtime, which contributes the union of its values. What cannot be read is a
+specifier built at runtime, and a bundler cannot split that either, so it was never going to be a
+chunk. In the documentation site 76 of 140 edges arrive this way.
+
+**A component handed over as a prop** is two halves that meet at the walk. A node declares which
+prop paths take a component — a PATH, so a slot at depth five is the same mechanism as one at depth
+one:
+
+```json
+"slots": ["view", "spec.columns[].cell", "spec.toolbar.right.inner"]
+```
+
+A call site records what it hands over, on the edge rather than on the node, because a binding
+belongs to a call: `<Slot view={Reader} />` in one place and `<Slot view={Writer} />` in another are
+two arrangements, and merging them would make each reachable from the other.
+
+```json
+{ "from": "app/src/Page.tsx#Page", "to": "@acme/ui/src/Slot.tsx#Slot", "kind": "renders",
+  "via": "tag", "at": "app/src/Page.tsx:12:5",
+  "binds": [{ "slot": "view", "to": "app/src/Reader.tsx#Reader" }] }
+```
+
+And the tag inside the library — `<this.props.view />` — is an edge with `"via": "slot"` naming the
+prop it waits on. A walk arriving with a binding for that path fills it; one arriving without leaves
+it a hole and says nothing.
+
+Slots are read from the type as **syntax**. A prop typed as a rendered node is not a slot even
+though a node carries a component class inside it, a mapped type is not read, and neither is a
+function that returns a component: answering those means asking for a TYPE, and this resolver is on
+symbols.
+
+## A package's own graph
+
+An installed package is a `.d.ts` and nothing else, and this reads source — so its components, its
+hooks and the contexts they need used to vanish at the package boundary, silently. A package closes
+that by publishing its own graph, and saying where it is:
+
+```json
+{ "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+```
+
+Emit it in the package's build, after the declarations are written:
+
+```bash
+ramonda-check tsconfig.json --graph dist/graph.json
+```
+
+A package has no root, so its graph comes out with `"scope": "library"` — nothing in it can be
+judged, because "unreachable" and "no provider above" are questions only whoever mounts it can
+answer. What it carries is a **fragment**: its surface, marked `"exported": true`, and its
+internals as well. That is the difference from a summary. A summary would say *DataGrid requires
+Query* and the app would have to trust it; a fragment is spliced in and walked, so the report names
+the real path:
+
+```
+  @acme/ui/src/index.tsx:13:7
+    <PagedBody> consumes "Query" — nothing provides it on this path:
+    App → Bare → DataGrid → PagedBody
+```
+
+`PagedBody` is a class the app cannot import and has never heard of.
+
+**A stale fragment is refused, not trusted.** The fragment fingerprints the declaration file a
+consumer actually sees — the source hash is no use to somebody who has `dist` and nothing else — so
+a package rebuilt without regenerating its graph is reported and left out:
+
+```
+[ramonda-check] @acme/ui's graph describes a dist/index.d.ts that is no longer the installed one —
+                the package was rebuilt without regenerating its graph
+```
+
+Emit it AFTER the declarations are written, or it fingerprints a file from the previous build.
+
+**A graph describes what a project ships**, so test files are left out: `__tests__/`, `test/`,
+`tests/`, `*.test.*` and `*.spec.*`, judged relative to the directory holding the tsconfig. A test's
+`bootstrap` is not the app's root, and a class written to be checked is not one the package
+publishes. A library's fragment is also pruned to its own package — an app splices one fragment per
+package, and an edge pointing into another one still resolves, because the id is the same on both
+sides.
+
+A fragment also carries the package's version, because two versions of one package can be installed
+at once: the node ids collide while the graphs differ.
+
+The file is a **format**, versioned by `schema`, and it is written for tools rather than for people
+to depend on: read it, do not build against it. `analyzeProject` returns the same structure as
+`result.graph`.

@@ -39,8 +39,11 @@
   "files": [
     "dist"
   ],
+  "ramonda": {
+    "graph": "./dist/graph.json"
+  },
   "scripts": {
-    "build": "tsup && ramonda-check-bundle dist",
+    "build": "tsup && ramonda-check tsconfig.json --graph dist/graph.json && ramonda-check-bundle dist",
     "dev": "tsup --watch",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
@@ -49,6 +52,7 @@
     "format": "biome format --write src"
   },
   "devDependencies": {
+    "@ramonda/check": "workspace:^",
     "@ramonda/shared": "workspace:^",
     "@ramonda/testing-library": "workspace:^",
     "@types/node": "^26.1.2",
