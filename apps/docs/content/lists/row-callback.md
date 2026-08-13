@@ -57,13 +57,17 @@ When a row genuinely needs to know where it sits, work it out where the data is 
 rather than where it is rendered:
 
 ```tsx
-@compute
-private get numbered() {
-  return this.tasks.map((task, at) => ({ task, position: at + 1 }));
-}
+class NumberedTasks extends Component {
+  @state tasks: Task[] = [];
 
-render() {
-  return <ol>{list(this.numbered, (row) => <li key={row.task.id}>{row.position}. {row.task.title}</li>)}</ol>;
+  @compute
+  private get numbered() {
+    return this.tasks.map((task, at) => ({ task, position: at + 1 }));
+  }
+
+  render() {
+    return <ol>{list(this.numbered, (row) => <li key={row.task.id}>{row.position}. {row.task.title}</li>)}</ol>;
+  }
 }
 ```
 

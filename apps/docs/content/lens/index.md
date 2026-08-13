@@ -108,16 +108,16 @@ The three that DERIVE the new item from the old one say "this item, changed", an
 keeps everything it had:
 
 ```tsx
-focusOn(this.posts).at(0).merge({ title: "New" });              // edit some fields
-focusOn(this.posts).at(0).update((p) => ({ ...p, seen: true })); // edit from the old value
-focusOn(this.posts).at(0).get("title").set("New");               // edit one field
+focusOn(state.posts).at(0).merge({ title: "New" });                 // edit some fields
+focusOn(state.posts).at(0).update((p) => ({ ...p, draft: false })); // edit from the old value
+focusOn(state.posts).at(0).get("title").set("New");                 // edit one field
 ```
 
 `set` aimed at the array element itself is the one that cannot say which you meant:
 
 ```tsx
-focusOn(this.posts).at(0).set(edited);        // "here is that post, updated"
-focusOn(this.posts).at(0).set(otherPost);     // "put a different post here"
+focusOn(state.posts).at(0).set(edited);     // "here is that post, updated"
+focusOn(state.posts).at(0).set(otherPost);  // "put a different post here"
 ```
 
 Both are the same call. A lens is *handed* the value instead of deriving it, so it
@@ -130,7 +130,7 @@ When you know it is the same item, say so:
 ```tsx
 import { SAME_ITEM } from "@ramonda/core";
 
-focusOn(this.posts).at(0).set(fromTheForm, SAME_ITEM);
+focusOn(state.posts).at(0).set(fromTheForm, SAME_ITEM);
 ```
 
 Nothing about the new object has to resemble the old one — every field can differ,

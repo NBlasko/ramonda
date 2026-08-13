@@ -68,7 +68,7 @@ Same shape — it is a call in an expression slot, so a list that may never exis
 nothing until it does, and an empty result is just an empty array:
 
 ```tsx
-{this.query ? <ul>{list(this.visible, (item) => <PersonRow item={item} />)}</ul> : null}
+{this.query ? <ul>{list(this.visible, (item: Person) => <PersonRow item={item} />)}</ul> : null}
 {this.visible.length === 0 ? <p>No matches.</p> : null}
 ```
 

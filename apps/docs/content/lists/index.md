@@ -10,8 +10,12 @@ order: 40
 To draw a list from an array — rows of tasks, a set of cards — use `list()`:
 
 ```tsx
-render() {
-  return <ul>{list(this.tasks, (item) => <TaskRow item={item} />)}</ul>;
+class TaskList extends Component {
+  @state tasks: Task[] = [];
+
+  render() {
+    return <ul>{list(this.tasks, (item) => <TaskRow item={item} />)}</ul>;
+  }
 }
 ```
 

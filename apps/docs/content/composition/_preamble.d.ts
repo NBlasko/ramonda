@@ -8,6 +8,9 @@ declare global {
     render(): any;
   }
 
+  /** Where the portal examples send their children — the reader's own element, outside the app. */
+  const modals: HTMLElement;
+
   class Dialog extends Component<any> {
     [key: string]: any;
     render(): any;

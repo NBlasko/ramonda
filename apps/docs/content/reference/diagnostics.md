@@ -1361,8 +1361,8 @@ every field it has is either nested (compared, but never counted as evidence) or
 siblings share.
 
 ```ts
-[{ tags: ["a"] }, { tags: ["b"] }]                              // nothing but nested data
-[{ done: false, kind: "task" }, { done: false, kind: "task" }]  // only shared flags
+[{ tags: ["a"] }, { tags: ["b"] }];                              // nothing but nested data
+[{ done: false, kind: "task" }, { done: false, kind: "task" }];  // only shared flags
 ```
 
 So the row is rebuilt whenever the array is replaced, and a half-typed input or an open menu
