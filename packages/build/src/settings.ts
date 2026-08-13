@@ -33,12 +33,15 @@ export const RAMONDA_TRANSFORM = {
  * saying nothing is the same as saying the wrong thing. And nothing complains: the build succeeds,
  * emits no warning, and the failure waits for the first page load.
  *
- * A target may also be a list (`["es2022", "chrome100"]`), in which case esbuild lowers to whatever
- * the strictest entry needs — so one `esnext` among them still leaves the rest to decide, but an
- * all-`esnext` list does not, and neither does a bare `esnext`.
+ * A target may also be a list (`["es2022", "chrome100"]`). esbuild compiles down to whatever the
+ * STRICTEST entry needs, so the rule is: a list lowers if even one entry is something other than
+ * `esnext`. Only a bare `esnext`, or a list of nothing but `esnext`, leaves the decorators in.
+ *
+ * `esbuild: false` — the transform switched off altogether — is not a target and is not asked here.
+ * Both adapters catch that first, and answer it with {@link refuseOff}.
  */
-export function lowersDecorators(target: string | readonly string[] | undefined | false): boolean {
-  if (target === undefined || target === false) return false;
+export function lowersDecorators(target: string | readonly string[] | undefined): boolean {
+  if (target === undefined) return false;
   const list = typeof target === "string" ? [target] : target;
   if (list.length === 0) return false;
   return list.some((entry) => entry.toLowerCase() !== "esnext");
@@ -105,17 +108,41 @@ export function refuseSetting(where: string, name: "jsx" | "jsxImportSource", ac
   );
 }
 
-/** The sentence both plugins fail with, so there is one wording of this to keep true. */
-export function refuse(where: string, target: string | readonly string[] | false | undefined): Error {
-  const said = target === false ? "the transform turned off entirely" : `\`${JSON.stringify(target)}\``;
+/** Why a surviving decorator is fatal — the half of the refusal that does not depend on the cause. */
+const WHY =
+  `\`@state\`, \`@compute\` and the rest are TC39 decorators. No engine can parse them, so they have\n` +
+  `to be compiled away — and esbuild does that for every target except \`esnext\`, which is also its\n` +
+  `default. A build configured this way succeeds, warns about nothing, and emits a file that dies\n` +
+  `with \`SyntaxError: Invalid or unexpected token\` on the first page load.`;
+
+/** The last line of every refusal here, so there is one wording of it to keep true. */
+const WHY_NOT_CORRECTED =
+  `This is refused rather than corrected because you asked for something specific, and the line\n` +
+  `you asked it on is the one that has to change.`;
+
+/** A `target` that leaves the decorators in. */
+export function refuse(where: string, target: string | readonly string[] | undefined): Error {
   return new Error(
-    `[ramonda] ${where} has ${said}, and that leaves Ramonda's decorators in the output.\n\n` +
-      `\`@state\`, \`@compute\` and the rest are TC39 decorators. No engine can parse them, so they have\n` +
-      `to be compiled away — and esbuild does that for every target except \`esnext\`, which is also its\n` +
-      `default. A build configured this way succeeds, warns about nothing, and emits a file that dies\n` +
-      `with \`SyntaxError: Invalid or unexpected token\` on the first page load.\n\n` +
+    `[ramonda] ${where} has \`${JSON.stringify(target)}\`, and that leaves Ramonda's decorators in ` +
+      `the output.\n\n${WHY}\n\n` +
       `Set it to \`${RAMONDA_TRANSFORM.target}\`, or remove it and let this plugin do it.\n\n` +
-      `This is refused rather than corrected because you asked for something specific, and the line\n` +
-      `you asked it on is the one that has to change.`,
+      WHY_NOT_CORRECTED,
+  );
+}
+
+/**
+ * The transform switched off entirely (`esbuild: false`).
+ *
+ * Its own function rather than a branch inside {@link refuse}, because the only useful sentence —
+ * what to do about it — is different. The shared version said "set it to `es2022`", which is not
+ * something you can do to a line that reads `esbuild: false`.
+ */
+export function refuseOff(where: string): Error {
+  return new Error(
+    `[ramonda] ${where} turns the esbuild transform off entirely, and that leaves Ramonda's ` +
+      `decorators in the output.\n\n${WHY}\n\n` +
+      `Remove that line. There is no target to set while the transform is off, and this plugin\n` +
+      `cannot put one anywhere it would be read.\n\n` +
+      WHY_NOT_CORRECTED,
   );
 }

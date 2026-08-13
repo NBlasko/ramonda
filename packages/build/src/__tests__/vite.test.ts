@@ -87,9 +87,17 @@ describe("what the plugin puts in the config", () => {
     expect(returned.esbuild.jsxImportSource).toBe("@ramonda/core");
   });
 
-  test("turning esbuild off entirely is refused too", () => {
+  test("turning esbuild off entirely is refused too, and told what to actually do", () => {
     const { config } = hooks(ramonda());
-    expect(() => config({ esbuild: false }, { command: "build", mode: "production" })).toThrow(/decorator/i);
+    const off = () => config({ esbuild: false }, { command: "build", mode: "production" });
+
+    expect(off).toThrow(/decorator/i);
+    expect(off).toThrow(/Remove that line/);
+
+    // It used to share the target's wording and end with "set it to `es2022`" — advice you cannot
+    // follow on a line that reads `esbuild: false`, and the only path through that message where
+    // the one useful sentence was wrong.
+    expect(off).not.toThrow(/Set it to/);
   });
 
   test("and it checks the resolved config, in case something later put it back", () => {

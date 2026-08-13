@@ -1,4 +1,4 @@
-import { check, fillIn, lowersDecorators, refuse } from "./settings";
+import { check, fillIn, lowersDecorators, refuse, refuseOff } from "./settings";
 
 /**
  * Structural, rather than imported from `vite`, so this package's types do not make the whole of
@@ -48,13 +48,18 @@ export function ramonda(): VitePluginLike {
     name: "ramonda",
 
     /**
-     * `pre`, so the settings are in the config before a plugin that reads them can look. Nothing
-     * here transforms anything — Vite's own pipeline does that — so being early costs nothing.
+     * `pre` puts this FIRST, which — since Vite merges each plugin's config over the one before —
+     * makes it the easiest of them to overrule, not the hardest. That is the intended side: this
+     * package exists so a transform setting cannot be reversed in silence, and quietly outranking
+     * whatever an app added deliberately would be the same fault pointed the other way.
+     *
+     * So it goes first, states the settings, and lets `configResolved` be the place where being
+     * overruled is discovered — and reported with the value that actually won.
      */
     enforce: "pre",
 
     config(config) {
-      if (config.esbuild === false) throw refuse("`esbuild` in your Vite config", false);
+      if (config.esbuild === false) throw refuseOff("`esbuild` in your Vite config");
       check("your Vite config", config.esbuild);
 
       const target = config.esbuild?.target;
@@ -72,7 +77,7 @@ export function ramonda(): VitePluginLike {
      * everyone has had their turn.
      */
     configResolved(config) {
-      if (config.esbuild === false) throw refuse("the resolved Vite config", false);
+      if (config.esbuild === false) throw refuseOff("the resolved Vite config");
       check("the resolved Vite config", config.esbuild);
       if (!lowersDecorators(config.esbuild?.target)) {
         throw refuse("the resolved Vite config's `esbuild.target`", config.esbuild?.target);

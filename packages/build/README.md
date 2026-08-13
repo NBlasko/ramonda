@@ -92,7 +92,7 @@ leave the decorators in, or a `jsx` / `jsxImportSource` that disagrees — the b
 you which line:
 
 ```
-[ramonda] `esbuild.target` in your Vite config has "esnext", and that leaves Ramonda's
+[ramonda] `esbuild.target` in your Vite config has `"esnext"`, and that leaves Ramonda's
 decorators in the output.
 …
 This is refused rather than corrected because you asked for something specific, and the line
