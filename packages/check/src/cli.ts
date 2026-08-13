@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { analyzeProject } from "./analyze";
+import { diffGraphs, refuseToDiff } from "./diff";
+import type { ComponentGraph } from "./graph";
+import { filesOf, splitOf } from "./split";
 
 /**
  * `ramonda-check [tsconfig]`
@@ -21,10 +24,22 @@ import { analyzeProject } from "./analyze";
  *
  * `--graph <file>` also writes the composition graph the checks are computed from — which
  * components exist and which one can mount which, including the edges nothing could resolve.
+ *
+ * `--split` says what the browser loads before it does anything and what each lazily loaded piece
+ * brings with it, and `--diff <graph.json>` compares this run against a graph written earlier.
+ * Both are reports: they describe, they never fail a build.
  */
 const argv = process.argv.slice(2);
-const graphAt = argv.includes("--graph") ? argv[argv.indexOf("--graph") + 1] : undefined;
-const arg = argv.find((a) => !a.startsWith("--") && a !== graphAt);
+/** The value after a flag, so it is never mistaken for the tsconfig argument. */
+const valueOf = (flag: string): string | undefined => {
+  const at = argv.indexOf(flag);
+  return at === -1 ? undefined : argv[at + 1];
+};
+const graphAt = valueOf("--graph");
+const diffAgainst = valueOf("--diff");
+const wantsSplit = argv.includes("--split");
+const values = new Set([graphAt, diffAgainst].filter((v): v is string => v !== undefined));
+const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
 const tsconfig = resolve(arg ?? "tsconfig.json");
 const TAG = "[ramonda-check]";
 
@@ -32,8 +47,17 @@ if (!existsSync(tsconfig)) {
   console.error(`${TAG} no tsconfig at ${tsconfig}. Pass one: ramonda-check <path>`);
   process.exit(2);
 }
-if (argv.includes("--graph") && !graphAt) {
-  console.error(`${TAG} --graph wants a file to write: ramonda-check <tsconfig> --graph graph.json`);
+for (const [flag, value, example] of [
+  ["--graph", graphAt, "--graph graph.json"],
+  ["--diff", diffAgainst, "--diff graph.json"],
+] as const) {
+  if (argv.includes(flag) && (value === undefined || value.startsWith("--"))) {
+    console.error(`${TAG} ${flag} wants a file: ramonda-check <tsconfig> ${example}`);
+    process.exit(2);
+  }
+}
+if (diffAgainst && !existsSync(resolve(diffAgainst))) {
+  console.error(`${TAG} nothing to compare against at ${resolve(diffAgainst)}`);
   process.exit(2);
 }
 
@@ -67,6 +91,113 @@ if (graphAt) {
     `${TAG} graph written to ${graphAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
       (holes > 0 ? `, ${holes} of them unresolved` : ""),
   );
+}
+
+/**
+ * What the browser loads before it does anything, and what each lazily loaded piece brings.
+ *
+ * A description and never a verdict: there is no budget to exceed here and nothing fails. The
+ * counts are DECLARATIONS, not bytes — nothing in this program has weighed a bundle, and a
+ * number that looks like a size and is not would be read as one.
+ */
+if (wantsSplit) {
+  if (graph.scope === "library") {
+    console.log(
+      `\n${TAG} ${graph.package.name} is a library, so nothing here loads first — what its\n` +
+        `        pieces cost is decided by the app that mounts them.\n`,
+    );
+  } else {
+    const split = splitOf(graph);
+    console.log(`\n${TAG} what loads when — ${graph.package.name}\n`);
+    console.log(`  before anything      ${split.initial.length} declaration(s) in ${filesOf(split.initial)} file(s)`);
+    console.log(`  loaded on demand     ${split.points.length} split point(s)`);
+    console.log(`  shared between them  ${split.shared.length} declaration(s)\n`);
+
+    if (split.points.length > 0) {
+      const SHOWN = 10;
+      const header = `${"split point".padEnd(52)}${"reach".padStart(6)}${"already".padStart(9)}${"shared".padStart(8)}${"its own".padStart(9)}`;
+      console.log(`  ${header}`);
+      for (const point of split.points.slice(0, SHOWN)) {
+        // The file and not the name alone: `class Page` is declared once per generated page here,
+        // so a column of names is a column of one word repeated.
+        const named = `${point.name}  ${point.file}`;
+        console.log(
+          `  ${(named.length > 51 ? `…${named.slice(named.length - 50)}` : named).padEnd(52)}` +
+            `${String(point.reach).padStart(6)}${String(point.loaded).padStart(9)}` +
+            `${String(point.shared).padStart(8)}${String(point.own.length).padStart(9)}`,
+        );
+        if (point.sites.length > 1) console.log(`    loaded from ${point.sites.length} places, one chunk`);
+      }
+      if (split.points.length > SHOWN) {
+        console.log(
+          `  … and ${split.points.length - SHOWN} more. Sorted by what each carries alone, so the ` +
+            `ones\n    left out are the ones whose weight is already counted above as shared.`,
+        );
+      }
+      console.log("");
+    }
+
+    if (split.shared.length > 0) {
+      const most = split.shared[0];
+      console.log(
+        `  ${split.shared.length} declaration(s) are reached by more than one split point — ` +
+          `${most?.name} by ${most?.by} of them.\n  A bundler puts those in a chunk the others pull ` +
+          `in, so they are downloaded once and not per point.\n`,
+      );
+    }
+    if (split.points.length === 0) {
+      console.log(`  Nothing is loaded on demand: every declaration this app mounts is in the first payload.\n`);
+    }
+  }
+}
+
+/**
+ * What a change moved — and above all, what it moved into the first payload.
+ */
+if (diffAgainst) {
+  const file = resolve(diffAgainst);
+  let saved: ComponentGraph | undefined;
+  try {
+    saved = JSON.parse(readFileSync(file, "utf8")) as ComponentGraph;
+  } catch {
+    console.error(`${TAG} ${diffAgainst} is not readable JSON, so there is nothing to compare against`);
+    process.exit(2);
+  }
+  const refused = refuseToDiff(saved as ComponentGraph, graph);
+  if (refused) {
+    console.error(`${TAG} refusing to compare: ${refused}`);
+    process.exit(2);
+  }
+
+  const change = diffGraphs(saved as ComponentGraph, graph);
+  console.log(`\n${TAG} against ${diffAgainst} — ${graph.package.name}\n`);
+  if (change.identical) {
+    console.log(`  The same sources, byte for byte. Nothing moved.\n`);
+  } else {
+    console.log(
+      `  nodes  +${change.nodesAdded.length}  -${change.nodesRemoved.length}` +
+        `        edges  +${change.edgesAdded.length}  -${change.edgesRemoved.length}`,
+    );
+    const delta = change.initialAfter - change.initialBefore;
+    console.log(
+      `  before anything: ${change.initialBefore} → ${change.initialAfter} declaration(s)` +
+        (delta === 0 ? "" : ` (${delta > 0 ? "+" : ""}${delta})`),
+    );
+    console.log("");
+    for (const [title, list] of [
+      ["in the first payload now, and not before", change.intoInitial],
+      ["no longer in the first payload", change.outOfInitial],
+    ] as const) {
+      if (list.length === 0) continue;
+      console.log(`  ${list.length} ${title}:`);
+      for (const node of list.slice(0, 12)) console.log(`    ${node.name ?? node.id} — ${node.at}`);
+      if (list.length > 12) console.log(`    … and ${list.length - 12} more`);
+      console.log("");
+    }
+    if (change.intoInitial.length === 0 && change.outOfInitial.length === 0) {
+      console.log(`  Nothing moved in or out of the first payload.\n`);
+    }
+  }
 }
 
 /**

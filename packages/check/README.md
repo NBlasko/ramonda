@@ -450,6 +450,69 @@ though a node carries a component class inside it, a mapped type is not read, an
 function that returns a component: answering those means asking for a TYPE, and this resolver is on
 symbols.
 
+## What loads when
+
+A bundler splits at a dynamic import and nowhere else, so the graph splits at a `lazy` edge and
+nowhere else. `--split` reads it that way:
+
+```bash
+$ ramonda-check tsconfig.json --split
+
+[ramonda-check] what loads when — @ramonda/docs
+
+  before anything      16 declaration(s) in 8 file(s)
+  loaded on demand     76 split point(s)
+  shared between them  55 declaration(s)
+
+  split point                                          reach  already  shared  its own
+  Page  src/generated/pages/composition-children.ts       62        6      55        1
+  Page  src/generated/pages/composition-context.ts        62        6      55        1
+  …
+```
+
+The three counts partition what a chunk reaches, and each is a different claim. **already** is in
+the first payload, so arriving here costs nothing. **shared** is reached by another split point too,
+so a bundler puts it in a chunk they both pull in and it is downloaded once. **its own** is what
+this one alone pays for. Collapsing any two of them reports a page as expensive when it is free.
+
+A file is named beside every component, because a name is not an identity: the site above declares
+`class Page` seventy-six times.
+
+**It counts declarations, never bytes.** Nothing here has weighed a bundle — a declaration is not a
+size and a file holds more than the declarations in this graph. For kilobytes, ask the bundler.
+
+**Routes are deliberately not the unit.** Measured on this repository: one app imports all eleven of
+its pages statically, so every one is in the first payload and opening a route downloads nothing;
+another builds its route table in a loop, so no route in it has a URL this could name. The unit is
+where the code actually splits.
+
+## What a change moved
+
+`--diff` compares this run against a graph written earlier:
+
+```bash
+$ ramonda-check tsconfig.json --diff .ramonda/main.json
+
+[ramonda-check] against .ramonda/main.json — @ramonda/docs
+
+  nodes  +0  -0        edges  +1  -0
+  before anything: 16 → 72 declaration(s) (+56)
+
+  56 in the first payload now, and not before:
+    ErrorBoundary — @ramonda/core/src/base/ErrorBoundary.ts:16:1
+    CodeBlock — @ramonda/docs/src/CodeBlock.tsx:29:1
+    …
+```
+
+That run is one added import line. Nothing in a diff of the source says what it costs: the line is
+in one file and the download is paid somewhere else entirely.
+
+Identity leaves the **line** out on both sides — a node id already does, and an edge is compared on
+`from → to (kind/via)`. Insert a line near the top of a file and nothing below it has moved. A graph
+of a different package, scope or schema is refused rather than subtracted.
+
+Both flags describe. Neither fails a build.
+
 ## A package's own graph
 
 An installed package is a `.d.ts` and nothing else, and this reads source — so its components, its
