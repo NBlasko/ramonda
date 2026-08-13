@@ -612,7 +612,7 @@ describe("a package's fragment", () => {
     expect(graph.package).toEqual({ name: "@acme/ui", version: "2.1.0" });
 
     const exported = graph.nodes.filter((n) => n.exported).map((n) => n.name);
-    expect(exported.sort()).toEqual(["DataGrid", "SelfServing"]);
+    expect(exported.sort()).toEqual(["DataGrid", "SelfServing", "Themed"]);
     // And the internals are in it anyway — that is the difference between a fragment and a summary.
     expect(graph.nodes.map((n) => n.name)).toContain("PagedBody");
     expect(graph.nodes.map((n) => n.name)).toContain("QueryOwner");
@@ -805,12 +805,18 @@ describe("a function that returns JSX", () => {
  * that has no fragment for the other package would leave a `to` matching nothing.
  */
 describe("the emitted graph refers only to nodes it declares", () => {
-  test.each(["ok", "children", "slots", "helpers", "lazy", "fragment", "same-name", "vendor-ui"])("%s", (fixture) => {
-    const graph = run(fixture).graph;
-    const declared = new Set(graph.nodes.map((n) => n.id));
-    const dangling = graph.edges.filter((e) => e.to !== undefined && !declared.has(e.to));
-    expect(dangling).toEqual([]);
-  });
+  // An APP's graph, which is where the invariant bites: a LIBRARY's fragment is pruned to its own
+  // package, so an edge may legitimately name another package's node — the app splices both and
+  // resolves it, or records a hole with the reason.
+  test.each(["ok", "children", "slots", "helpers", "lazy", "fragment", "same-name", "cross-package"])(
+    "%s",
+    (fixture) => {
+      const graph = run(fixture).graph;
+      const declared = new Set(graph.nodes.map((n) => n.id));
+      const dangling = graph.edges.filter((e) => e.to !== undefined && !declared.has(e.to));
+      expect(dangling).toEqual([]);
+    },
+  );
 });
 
 describe("what a graph covers", () => {
@@ -885,5 +891,59 @@ describe("a list's rows", () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].consumer).toBe("Cell");
     expect(issues[0].path).toEqual(["App", "Table", "Cell"]);
+  });
+});
+
+/**
+ * Two arrangements the fixes for them were structurally right about, and nothing pressed.
+ *
+ * Both were repaired on the strength of reading the code — no fixture in the repository had the
+ * shape, so a regression in either would have gone unnoticed while every test stayed green. That is
+ * how `list({ as })` quietly went stale, and these are the two that were left in the same state.
+ */
+describe("two outlets on one page", () => {
+  test("each keeps its own views", () => {
+    const routes = run("two-outlets")
+      .graph.edges.filter((e) => e.via === "route" && e.to)
+      .map((e) => `${e.from.split("/").pop()} -> ${(e.to ?? "").split("/").pop()}`)
+      .sort();
+    // Two sites, two tables, and neither view on the other's node. Each site is mounted by the
+    // component that writes the tag, and `uses` the outlet class, so the params it publishes still
+    // reach its own views.
+    expect(routes).toEqual([
+      "app.tsx#App -> app.tsx#RouteOutlet@2",
+      "app.tsx#RouteOutlet@1 -> app.tsx#Deep",
+      "app.tsx#RouteOutlet@2 -> app.tsx#Shallow",
+      "app.tsx#Section -> app.tsx#RouteOutlet@1",
+    ]);
+  });
+
+  test("a view reachable only under a provider is not judged from the other outlet", () => {
+    // `Deep` consumes Theme and is only ever in the nested table, under a `Section` that provides
+    // it. Merged onto one `RouteOutlet` node it would also hang off the top-level outlet, where
+    // nothing provides anything.
+    expect(run("two-outlets").issues).toEqual([]);
+  });
+});
+
+describe("a context that crosses a package boundary", () => {
+  /**
+   * The package is INSTALLED and the context it needs is COMPILED FROM SOURCE by the app.
+   *
+   * Two identities for one context is what breaks this — the app records its provider one way, the
+   * fragment names the requirement another, and they never meet. That is a build failing against
+   * correct code, which is the one thing this tool cannot afford.
+   */
+  test("the app's provider satisfies the package's requirement", () => {
+    const { issues } = run("cross-package");
+    expect(issues.map((i) => i.path[1])).toEqual(["Bare"]);
+  });
+
+  test("and the path names the package's own internals", () => {
+    const found = run("cross-package").issues[0];
+    expect(found.consumer).toBe("ThemedBody");
+    expect(found.context).toBe("Theme");
+    expect(found.path).toEqual(["App", "Bare", "Themed", "ThemedBody"]);
+    expect(found.file).toBe("@acme/ui/src/index.tsx");
   });
 });

@@ -1,4 +1,5 @@
 import { Component, Hook, createContext } from "../../framework";
+import { ThemeConsumer } from "@acme/shared";
 
 export const [QueryProvider, QueryConsumer] = createContext({ client: null }, { label: "Query" });
 
@@ -62,5 +63,19 @@ export class DataGrid extends Component {
         {helpedRow()}
       </div>
     );
+  }
+}
+
+class ThemedBody extends Component {
+  theme = this.use(ThemeConsumer);
+  render() {
+    return <span>themed</span>;
+  }
+}
+
+/** Needs a context ANOTHER package declares — the shape that has to survive the splice. */
+export class Themed extends Component {
+  render() {
+    return <ThemedBody />;
   }
 }
