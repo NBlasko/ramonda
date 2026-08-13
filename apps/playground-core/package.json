@@ -2,8 +2,8 @@
   "name": "playground-core",
   "version": "1.0.1",
   "private": true,
+  "type": "module",
   "description": "",
-  "main": "index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -19,6 +19,7 @@
     "@ramonda/router": "workspace:^"
   },
   "devDependencies": {
+    "@ramonda/build": "workspace:^",
     "@ramonda/devtools": "workspace:^",
     "@types/node": "^26.1.2",
     "vite": "^7.3.6"

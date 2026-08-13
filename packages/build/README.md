@@ -20,6 +20,10 @@ export default defineConfig({ plugins: [ramonda()] });
 
 A project scaffolded with `npm create ramonda` already has this.
 
+The package is ESM only, so your project needs `"type": "module"` in its package.json — without it
+Vite loads the config as CommonJS and stops with *"This package is ESM only but it was tried to load
+by `require`"*. Scaffolded projects already declare it.
+
 ## The fault it exists for
 
 `@state`, `@compute` and the rest are TC39 decorators. **No engine can parse them** — so a bundler

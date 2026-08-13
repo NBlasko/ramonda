@@ -30,7 +30,9 @@ async function bundleWith(options: Parameters<typeof esbuild>[0]) {
     // decorator is not the one that was written and the question is only ever whether it parses.
     const emitted = join(dir, "out.mjs");
     await writeFile(emitted, code);
-    return await new Promise<boolean>((resolve) => execFile(process.execPath, ["--check", emitted], (e) => resolve(!e)));
+    return await new Promise<boolean>((resolve) =>
+      execFile(process.execPath, ["--check", emitted], (e) => resolve(!e)),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

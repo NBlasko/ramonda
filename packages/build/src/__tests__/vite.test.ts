@@ -57,9 +57,7 @@ describe("what the plugin puts in the config", () => {
 
     // The plugin COULD win this one silently, and that is exactly why it must not: the app said
     // something specific, it is wrong, and the person who wrote it needs to hear which line.
-    expect(() => config({ esbuild: { target: "esnext" } }, { command: "build", mode: "production" })).toThrow(
-      /esnext/,
-    );
+    expect(() => config({ esbuild: { target: "esnext" } }, { command: "build", mode: "production" })).toThrow(/esnext/);
     expect(() => config({ esbuild: { target: "esnext" } }, { command: "build", mode: "production" })).toThrow(
       /decorator/i,
     );

@@ -15,7 +15,9 @@ interface VitePluginLike {
 interface UserConfigLike {
   // `jsx` is Vite's own union rather than `string`, so this plugin is assignable where Vite expects
   // a plugin. Widening it type-checks here and fails at every call site, which is the wrong way round.
-  esbuild?: false | { jsx?: "automatic" | "transform" | "preserve"; jsxImportSource?: string; target?: string | string[] };
+  esbuild?:
+    | false
+    | { jsx?: "automatic" | "transform" | "preserve"; jsxImportSource?: string; target?: string | string[] };
 }
 
 /**
@@ -55,7 +57,8 @@ export function ramonda(): VitePluginLike {
       if (config.esbuild === false) throw refuse("`esbuild` in your Vite config", false);
 
       const target = config.esbuild?.target;
-      if (target !== undefined && !lowersDecorators(target)) throw refuse("`esbuild.target` in your Vite config", target);
+      if (target !== undefined && !lowersDecorators(target))
+        throw refuse("`esbuild.target` in your Vite config", target);
 
       return {
         esbuild: {
