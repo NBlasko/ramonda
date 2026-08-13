@@ -32,7 +32,7 @@ class TableRow extends Component<{ item: Row }> {
   render() {
     return [
       <td className="lbl">{this.props.item.label}</td>,
-      list({ each: this.props.item.cells, render: (cell: Cell) => <td>{cell.v}</td> }),
+      list(this.props.item.cells, (cell: Cell) => <td>{cell.v}</td>),
     ];
   }
 }
@@ -43,7 +43,11 @@ class TableApp extends Component {
   render() {
     return (
       <table>
-        <tbody>{list({ each: this.rows, as: TableRow })}</tbody>
+        <tbody>
+          {list(this.rows, (item) => (
+            <TableRow item={item} />
+          ))}
+        </tbody>
       </table>
     );
   }
@@ -58,7 +62,7 @@ class GroupApp extends Component {
       <ul>
         {[
           <li className="head">HEAD</li>,
-          list({ each: this.rows, render: (row: Row) => <li>{row.label}</li> }),
+          list(this.rows, (row: Row) => <li>{row.label}</li>),
           <li className="foot">FOOT</li>,
         ]}
       </ul>

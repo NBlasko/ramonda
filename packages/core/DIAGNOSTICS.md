@@ -48,8 +48,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD009` | error | Update loop — a component never stopped re-rendering |
 | `RMD010` | error | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
-| `RMD013` | error | A list could not identify its items |
-| `RMD014` | error | A list was given both `as` and `render`, or neither |
+| `RMD013` | error | A list item produced nothing |
 | `RMD015` | error | A hook wrote to its own options |
 | `RMD016` | error | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
@@ -58,7 +57,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD020` | warning | `render()` produced a different value the second time |
 | `RMD021` | error | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
 | `RMD022` | warning | A hook's props callback built a new value for the same contents |
-| `RMD023` | error | Components built from an array, with no keys |
+| `RMD023` | warning | Children built from an array need a key |
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
 | `RMD025` | error | Per-request data read in the browser |
 | `RMD027` | error | A props callback reads a value that is not reactive |
@@ -85,6 +84,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD048` | error | Object in state changed in place |
 | `RMD049` | error | Two lazy functions with the same source |
 | `RMD050` | warning | A decorator whose effect this member already has |
+| `RMD051` | warning | A list row cannot be told apart from its siblings |
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 
@@ -524,84 +524,14 @@ subclass that never mentions `handleClick`. That took a fix; it used
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.
 
-### RMD013 — A list could not identify its items
+### RMD013 — a list item produced nothing
 
-`list()` exists to delete the key. Identity is the item itself — an object
-reference, or the value for a primitive — held in a `Map<item, id[]>` by
-`helpers/listEngine.ts`, so there is nothing to write and nothing to get wrong.
-This code fires only where a mistake is still possible.
+`helpers/listEngine.ts`, on the result of the row callback. The item is skipped rather than
+rendered, so the list on screen is a row shorter than the array — which is the kind of fault
+that reads as missing DATA rather than as a bug in the row.
 
-**A colliding `key` callback.** The `key:` option survives for one real case:
-items re-created as fresh objects that mean the same entity (a refetch). A
-callback can still return the same value twice, which is exactly the failure
-minted identity removes — so it is checked. Identity minted from the item cannot
-collide, so that path is not checked at all.
-
-**A render callback that returned nothing.** There is no vnode to key or place.
-A callback that returns something which is not an element is RMD031 instead.
-
-**Why the same item twice is not an error.** `[tag, tag]` is legitimate. Reference
-identity cannot tell two occurrences apart — and neither could a hand-written key
-— so each occurrence gets its own id (`Map<item, id[]>`, one id per occurrence)
-and both rows stay stable across a reorder. Verified by test.
-
-**Why a list also fixes the slot problem.** The vnodes come out keyed, so the diff
-claims them by identity instead of by position, and nothing after the list can be
-mistaken for a list item. That is what corrupts a component's own chrome when a
-caller passes an unkeyed list into `{this.props.children}`. The keys are
-synthetic strings rather than the items themselves because the diff's key index is
-a plain object — an object key would stringify to `"[object Object]"` and every
-item would collide into one.
-
-**What it does not fix.** A `Card` cannot force its caller to use `list()`.
-`list()` makes the correct call the shorter one; RMD023 is the net for whoever
-maps anyway. The distinction that settled this: **a wrong key is an accident,
-using `.map()` is a decision** — you can teach a decision, you cannot defend
-against an accident.
-
-#### RMD009's production counterpart
-
-The RMD009 guard above is DEV-only, so it is stripped from a production build —
-and a loop that only appears with real data (an effect that writes when
-`items.length > 100`) would never have been seen in development. `core/Task.ts`
-therefore carries a second, blunt stop that **does** ship:
-`MAX_BUILDS_PER_DRAIN = 100_000` total rebuilds in one drain, then throw.
-
-One integer for the whole drain — no attribution, no allocation, an increment
-next to a render and a diff. It names no component (that stays RMD009's job in
-DEV); its only purpose is to not freeze the machine. It clears the queue and
-every `inBuildQueue` flag before throwing, so no component is left silently
-unable to render again.
-
-Measured: the two-effect ping-pong is stopped after **1.4s**, against hanging
-until the OS killed it at 25s. The number is deliberately huge — a legitimate
-drain is bounded by how many components have pending state, which for a big app
-under a global change can be tens of thousands, and a wrong throw in production
-is worse than 1.4s of jank.
-
-It counts rebuilds rather than watching effects, so it catches any path that
-re-queues a component from its own build — a write in `render()` included.
-
-**The default test run does not cover it.** `__DEV__` compiles to
-`process.env.NODE_ENV !== "production"` and vite bakes NODE_ENV in at transform,
-so flipping it inside a test silently keeps testing the DEV path. Verify with a
-whole process: `NODE_ENV=production npx vitest run <file>`.
-
-### RMD014 — A list was given both `as` and `render`, or neither
-
-A list needs exactly one way to turn an item into markup:
-
-- `as: RowView` when an item maps to a component. The list builds
-  `<RowView item={item} />` itself, so there is no per-item function to write.
-- `render: (item) => <li>{item.name}</li>` when an item maps to plain markup.
-
-TypeScript already rejects both together (`ListAs` sets `render?: never`,
-`ListRender` sets `as?: never`) and rejects neither. This code is for JavaScript,
-where there are no types — and where both mistakes fail **quietly**: with both
-given, `as` wins and the render callback is never called, so the list renders
-something other than what was written and nothing says why. With neither, the
-list has nothing to build an item from.
-
+It used to report a colliding `key` callback as well. That option is gone: a key is written
+on the vnode now, and two rows carrying the same one is `RMD002`.
 ### RMD015 — Hook options assigned by the hook that received them
 
 Options belong to whoever called `this.use(...)`. The options proxy serves each
@@ -821,25 +751,35 @@ objects, so comparing them by identity would report the fix as the fault. Conten
 DIFFER between the two calls are still reported: a wrapper cannot launder
 non-determinism.
 
-### RMD023 — components built from an array, with no keys
+### RMD023 — children built from an array need a key
 
-Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the
-mapper goes to `Array.prototype.map` and is never stored, and the output is a run of fresh
-vnodes, which is what all JSX is. The evidence is the SHAPE: JSX passes children as
-separate arguments, so a nested array among them was built by an expression.
+Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the mapper
+goes to `Array.prototype.map` and is never stored, and the output is a run of fresh vnodes,
+which is what all JSX is. The evidence is the SHAPE: JSX passes children as separate
+arguments, so a nested array among them was built by an expression.
 
 `normalizeChildren` brands every array it builds with `OWN_CHILDREN` (DEV only), which is
 what makes `{this.props.children}` — the framework's own array, one level down —
 distinguishable from a mapped one. Without that brand it fired on every component that
 forwards children.
 
-**Narrow on purpose, and the bound is what makes it usable.** Reporting every raw array would
-fire on child groups, which are supported and common — `SlotKeys.test.tsx` carries the note about
-that shape being legitimate. What this reports is only what is genuinely unhandled: unkeyed
-COMPONENT rows, of which there are at least two. Plain
-markup is patched in place and correct; a component's row moving takes its state and its
-DOM with it. One keyed child anywhere means the app is managing identity and the framework
-does not second-guess it.
+**It asks for a key rather than forbidding the shape.** It used to say "use `list()`
+instead", and only for COMPONENTS, on the reasoning that plain markup survives being matched
+by position because the diff patches the text. That is true of the text and false of
+everything else on the element: an `<input>` inside a plain `<li>` holds a caret, a
+selection and whatever the user typed, and those follow the NODE. So any element counts now.
+
+**What is at stake is only the inside of the array.** Rows built this way cannot be confused
+with the siblings around them — every array in JSX becomes its own group with its own key
+space, so a sibling toggling in or out never reaches inside and the array never reaches out.
+Measured with components of the same type on both sides of a `.map()`, no keys anywhere: the
+siblings are never created or destroyed by anything happening in the array. What a missing
+key costs is which row INSIDE the array is which.
+
+**The bounds.** At least two children, because a single one has no sibling to be reordered
+against. One keyed child anywhere means the app is managing identity and this does not
+second-guess it. Nested arrays and `list()` descriptors are skipped: each is matched as one
+child, so a key on it answers a question nobody asked.
 
 ### RMD024 — a @compute recomputes without its answer changing
 
@@ -981,16 +921,16 @@ callback was not going to be called, and, having no `declared` list to hand down
 
 ### RMD031 — a list item that is not an element
 
-`helpers/listEngine.ts`, one line above the assignment it replaces. The engine writes the row's key
-onto the vnode — `vnode.attributes.key = key` — and the diff matches rows on that key, so an item
-that is not one element has nowhere to carry its identity.
+`helpers/listEngine.ts`, one line above the assignment it guards. A row's key lives on the vnode
+and the diff matches rows on it, so an item that is not one element has nowhere to carry its
+identity — whether the key is one you wrote or one the list filled in.
 
 **What it replaces, measured:** returning a nested `list()` from a `render:` callback threw
 `Cannot set properties of undefined (setting 'key')`. A message about the assignment, from inside
 the framework, naming neither the list nor what to write instead.
 
 **The case it is really about.** A list of pages, each page a list of rows. The inner `list()` is a
-descriptor, not an element, and nesting goes through a **component**: `as: PageView`, whose host
+descriptor, not an element, and nesting goes through a **component** — `(page) => <PageView item={page} />` — whose host
 element wraps the inner rows and takes the key. `content/lists/nested.md` teaches that; a docs
 example that did the other thing was a live crash until this check was written.
 
@@ -999,6 +939,39 @@ row and keeps rendering, which is recoverable; a throw takes the whole tree down
 
 `describe()` names the value in the writer's words: "a nested `list()`" rather than "an object",
 because the object literal somebody would then go looking for is not what happened.
+
+### RMD051 — A list row cannot be told apart from its siblings
+
+A list identifies a row by what sets it apart from the others. That is what lets a row
+replaced by fresh objects — a refetch, a `JSON.parse`, anything round-tripped through the
+network — be recognised as the row it replaces and updated, rather than destroyed and built
+again with whatever its component was holding.
+
+This row carries nothing that could do that. Every field it has is either nested (compared,
+but never counted as evidence) or a value its siblings share:
+
+```ts
+// nothing but nested data — no field to tell one from another
+[{ tags: ["a"] }, { tags: ["b"] }]
+
+// every field is a flag they all carry
+[{ done: false, kind: "task" }, { done: false, kind: "task" }]
+```
+
+So the row is rebuilt whenever the array is replaced, and a half-typed input, an open menu
+or a scroll position on it goes with it.
+
+Give the row a field that is its own — an id is the usual answer. Or, when only your app
+knows which row is which, say so where the data arrives rather than on every list that
+renders it:
+
+```ts
+this.rows = merge(this.rows, incoming, (row) => row.id);
+```
+
+**This does not fire for a row that is simply new.** A new row in a paginated table is
+unpaired too, and reporting that would put a warning on correct code. The question asked is
+about the ROW — could anything ever have identified it — not about whether it was matched.
 
 ## Retired codes
 
@@ -1016,6 +989,15 @@ into one key space and the list could claim its siblings. Arrays are no longer f
 each is its own group with its own key space — so the hazard cannot happen and the warning
 would be advice about a non-problem — the fault it was written for being that a component's own
 elements could be claimed by content passed into it.
+
+### RMD014 — retired 2026-08-12
+
+It reported a list given both `as` and `render`, or neither. Both were fields of an
+options bag, and the bag is gone: `list(each, builder)` takes the component or the
+function as its second argument, so "both" and "neither" are not shapes that can be
+written. TypeScript rejected them already; this code existed for JavaScript, where
+they failed quietly — with both given, `as` won and the render callback was never
+called.
 
 ### RMD026 — retired 2026-08-03
 

@@ -72,7 +72,11 @@ export class FilteredList extends Component {
           so it is always the current filter. No key: the objects are the same
           references a filter selected, so identity already holds.
         */}
-        <ul className="demo-list">{list({ each: this.visible, as: PersonRow })}</ul>
+        <ul className="demo-list">
+          {list(this.visible, (item) => (
+            <PersonRow item={item} />
+          ))}
+        </ul>
         {this.visible.length === 0 ? <p className="demo-note">No one matches “{this.query}”.</p> : null}
       </div>
     );

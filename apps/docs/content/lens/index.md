@@ -88,16 +88,58 @@ const withPost = focusOn(updated).get("posts").push(newPost);
 
 ## It pairs with `list()`
 
-An immutable edit gives the edited item a **new object**. In a [`list()`](/lists)
-without a `key`, that edited row counts as a new entity, so its component state resets
-(every other row is untouched — [state is never wrong, only reset](/lists/nested)).
-When a row owns state you care about, add a `key`:
+An immutable edit gives the edited item a **new object**, and a
+[`list()`](/lists) recognises an item by the object it holds. So without help, the
+item you just edited looks like one it has never seen: it is torn down and built
+again, and whatever its component was holding — a half-typed input, an open menu —
+goes with it.
+
+A lens write does not need that help. At the moment it replaces a value it is
+holding both versions, so it knows which item this is and says so. Edit an item and
+it keeps its element and its component:
 
 ```tsx
-list({ each: this.posts, key: (post) => post.id, as: PostRow });
+this.posts = focusOn(this.posts).where((p) => p.id === id).merge({ title });
 ```
 
-`focusOn` and `key` belong together whenever list items own state.
+### Editing an item, and replacing one
+
+The three that DERIVE the new item from the old one say "this item, changed", and it
+keeps everything it had:
+
+```tsx
+focusOn(state.posts).at(0).merge({ title: "New" });                 // edit some fields
+focusOn(state.posts).at(0).update((p) => ({ ...p, draft: false })); // edit from the old value
+focusOn(state.posts).at(0).get("title").set("New");                 // edit one field
+```
+
+`set` aimed at the array element itself is the one that cannot say which you meant:
+
+```tsx
+focusOn(state.posts).at(0).set(edited);     // "here is that post, updated"
+focusOn(state.posts).at(0).set(otherPost);  // "put a different post here"
+```
+
+Both are the same call. A lens is *handed* the value instead of deriving it, so it
+cannot tell a corrected post from a different one — and giving a different post the
+open editor of the post it replaced is the worse of the two mistakes. **So `set`
+treats the value as something else, and the item is rebuilt.**
+
+When you know it is the same item, say so:
+
+```tsx
+import { SAME_ITEM } from "@ramonda/core";
+
+focusOn(state.posts).at(0).set(fromTheForm, SAME_ITEM);
+```
+
+Nothing about the new object has to resemble the old one — every field can differ,
+the id included — because you said which item it is rather than leaving it to be
+worked out.
+
+**So reach for `merge` or `update` when you are editing an item**, and keep `set` on
+an array element for what it says plainly: putting something else there. For a
+property inside an item, `set` is unambiguous and is the right tool.
 
 ## Small, and usable on its own
 

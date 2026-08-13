@@ -103,7 +103,7 @@ class App extends Component {
   pick(id) { return () => { this.items = [id]; }; }
 
   render() {
-    return h("div", null, list({ each: this.items, render: this.pick }));
+    return h("div", null, list(this.items, this.pick));
   }
 }
 

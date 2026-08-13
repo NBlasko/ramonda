@@ -125,22 +125,18 @@ export class FormDemo extends Component {
         <fieldset>
           <legend>Tags</legend>
           <ul className="demo-rows">
-            {list({
-              each: f.tags.$.rows,
-              key: (row) => row.id,
-              render: (row) => (
-                <li>
-                  <input {...row.field.$.bind} />
-                  <button type="button" onClick={this.moveTagUp(row.id)} disabled={row.index === 0}>
-                    up
-                  </button>
-                  <button type="button" onClick={this.removeTag(row.id)}>
-                    remove
-                  </button>
-                  {row.field.$.error ? <em className="demo-error">{row.field.$.error}</em> : null}
-                </li>
-              ),
-            })}
+            {list(f.tags.$.rows, (row) => (
+              <li>
+                <input {...row.field.$.bind} />
+                <button type="button" onClick={this.moveTagUp(row.id)} disabled={row.index === 0}>
+                  up
+                </button>
+                <button type="button" onClick={this.removeTag(row.id)}>
+                  remove
+                </button>
+                {row.field.$.error ? <em className="demo-error">{row.field.$.error}</em> : null}
+              </li>
+            ))}
           </ul>
           <button type="button" onClick={this.addTag}>
             add a tag

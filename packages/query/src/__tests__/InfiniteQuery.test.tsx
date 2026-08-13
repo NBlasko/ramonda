@@ -73,7 +73,7 @@ function mountFeed(server: ReturnType<typeof makeServer>, options?: { maxPages?:
       void this.provider;
       return (
         <div>
-          <ul id="pages">{list({ each: this.feed.pages, render: this.renderPage })}</ul>
+          <ul id="pages">{list(this.feed.pages, this.renderPage)}</ul>
           <span id="state">
             {`${this.feed.status}|next:${this.feed.hasNextPage}|adding:${this.feed.isFetchingNextPage}`}
           </span>

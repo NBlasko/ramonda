@@ -14,7 +14,7 @@ import { isArray } from "../helpers/utils";
 import { diagnose } from "../debug/diagnostics";
 import { currentOrigin } from "../core/origin";
 import { renderingOwner } from "../debug/renderPhase";
-import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
+import { reportFunctionTag, reportUnkeyedArrayChildren } from "../debug/jsxRules";
 
 /**
  * Normalizes one element's children — and, unlike a plain flatten, **keeps a
@@ -39,26 +39,44 @@ import { reportFunctionTag, reportMappedComponents } from "../debug/jsxRules";
  * regions recursively (`reconcileEntries`), so there is no depth limit.
  */
 /**
- * Collects the unkeyed component children of an expression-built array and reports them
- * together — one diagnostic per component kind rather than one per row.
+ * Reports the children of an expression-built array that carry no key, together —
+ * one diagnostic per kind rather than one per row.
  *
- * A single child is skipped: `{cond && <Row />}` and `{[<Row />]}` have no siblings to be
- * reordered against, so position identity cannot go wrong. One keyed child anywhere means
- * the app is managing identity, and the framework does not second-guess that.
+ * ## Why this changed
+ *
+ * It used to say "do not do this, use `list()`", and only for COMPONENTS, on the
+ * reasoning that plain markup survives being matched by position because the diff
+ * patches the text. That is true of the text and false of everything else on the
+ * element: an `<input>` in a plain `<li>` holds a caret, a selection and whatever
+ * the user typed, and those follow the node.
+ *
+ * A `.map()` is a perfectly good way to render a list, and the thing it needs is
+ * the thing every framework asks for here — a key. So this asks for one, for any
+ * element, and mentions `list()` as the faster shape rather than the required one.
+ *
+ * A single child is skipped: `{cond && <Row />}` and `{[<Row />]}` have no siblings
+ * to be reordered against, so position identity cannot go wrong.
  */
-function checkMappedComponents(children: unknown[]): void {
+function checkUnkeyedArrayChildren(children: unknown[]): void {
   if (children.length < 2) return;
 
   const names: string[] = [];
   for (const child of children) {
     if (child === null || typeof child !== "object") continue;
     const vnode = child as { type?: unknown; name?: unknown; attributes?: { key?: unknown } };
-    if (vnode.type !== COMPONENT_TYPE) continue;
+    // Only real elements. A nested array or a `list()` is its own region and is
+    // matched as one child, so a key on it would be answering a question nobody
+    // asked here.
+    if (vnode.type !== COMPONENT_TYPE && vnode.type !== TEXT_TYPE) continue;
+    // One keyed child means the app is managing identity, and this does not
+    // second-guess that.
     if (vnode.attributes?.key !== undefined) return;
-    if (typeof vnode.name === "function") names.push((vnode.name as { name: string }).name);
+    names.push(
+      typeof vnode.name === "function" ? `<${(vnode.name as { name: string }).name} />` : `<${String(vnode.name)}>`,
+    );
   }
 
-  if (names.length > 0) reportMappedComponents(names);
+  if (names.length > 0) reportUnkeyedArrayChildren(names);
 }
 
 /**
@@ -68,21 +86,19 @@ function checkMappedComponents(children: unknown[]): void {
  * and `SLOT_SYM` are built on. Anything that renders nothing becomes `false` rather than
  * disappearing, because a disappearing entry renumbers every sibling after it.
  */
-function normalizeChildren(arr: unknown[]): unknown[] {
+export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
   const result: unknown[] = [];
   let hasList = false;
 
   for (let index = 0; index < arr.length; index++) {
     const el = arr[index];
     if (isArray(el)) {
-      const inner = normalizeChildren(el);
+      const inner = normalizeChildren(el, originId);
 
       // Built by an expression rather than by JSX or by `{this.props.children}` being
       // passed down. Only unkeyed components are reported, and only from here, because
       // structure is the only thing that can see this at all — see RMD023.
-      if (__DEV__ && !(OWN_CHILDREN in el)) checkMappedComponents(inner);
-
-      const owner = regionOwner(index);
+      if (__DEV__ && !(OWN_CHILDREN in el)) checkUnkeyedArrayChildren(inner);
 
       // An empty list still HOLDS ITS PLACE. Dropping it shortens the array, which moves
       // the slot of every sibling after it — and the slot is the identity the diff matches
@@ -101,9 +117,12 @@ function normalizeChildren(arr: unknown[]): unknown[] {
         continue;
       }
 
+      // Minted here rather than above the two early returns: both discard it, so
+      // computing it first allocated a string per passthrough and per emptied
+      // group on every render, only to throw it away.
       result.push({
         [IS_LIST]: true,
-        owner,
+        owner: regionOwner(index, originId),
         vnodes: inner,
         clean: [],
       });
@@ -120,7 +139,7 @@ function normalizeChildren(arr: unknown[]): unknown[] {
       // being the first call the moment `cond` is false, and the region (with
       // its state) would go to the wrong list.
       const listChild = el as { owner?: unknown };
-      if (listChild.owner === undefined) listChild.owner = regionOwner(index);
+      if (listChild.owner === undefined) listChild.owner = regionOwner(index, originId);
 
       result.push(el);
       hasList = true;
@@ -188,9 +207,14 @@ function normalizeChildren(arr: unknown[]): unknown[] {
  * the caller's row lost its state — "own1#0 | own2#0 | own1#0 | own2#0 | sent2#0"
  * where "own1#0 | own2#0 | sent2#8" was meant. `For` never had this problem
  * because its identity was the hook instance, which is per component already.
+ *
+ * Passed in rather than read from `currentOrigin`, because children are also
+ * normalized OUTSIDE a render: a `ChildrenRegion` — the children a hook consumes
+ * — has no render to be the origin of, and supplies its own id. Every id comes
+ * from the one process-wide counter, so a region's can never be a component's.
  */
-function regionOwner(index: number): string {
-  return `${currentOrigin.id}:g${index}`;
+function regionOwner(index: number, originId: number): string {
+  return `${originId}:g${index}`;
 }
 
 function isListLike(value: unknown): boolean {
@@ -240,7 +264,7 @@ export function __h(
   rawAttributes: Record<string, any> | null,
   ...children: ComponentChild[]
 ): VNode {
-  const parsedChildren = normalizeChildren(children);
+  const parsedChildren = normalizeChildren(children, currentOrigin.id);
 
   const attributes: Record<string, any> = rawAttributes ?? {};
 

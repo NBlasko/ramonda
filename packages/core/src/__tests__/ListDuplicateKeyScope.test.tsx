@@ -2,9 +2,10 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, Host, list, state } from "../index";
 import { State } from "../reactivity/State";
+import { stampIdentity } from "../helpers/itemIdentity";
 
 /**
- * Two items with the same key, and the scope one of them leaves behind.
+ * Two items under one identity, and the scope one of them leaves behind.
  *
  * Each item gets a reactive scope, stored under its key. When two items produce
  * the SAME key, the second one's scope overwrites the first in the map being
@@ -18,8 +19,15 @@ import { State } from "../reactivity/State";
  * re-rendering the list's owner for an item that no longer exists — and marking
  * the engine dirty, which defeats the whole-list skip along the way.
  *
- * Duplicate keys are user error and DEV reports them (RMD013), but the leak is
- * production behaviour, and "you were warned" does not detach a listener.
+ * There is no longer a way to ASK for this. Identity is minted from a
+ * process-wide counter and carried on the item, so two items cannot answer the
+ * same thing through any API — the `key` callback that could is gone. So the
+ * collision is forced here, by stamping one item with another's identity.
+ *
+ * The guard is kept, and tested, because the cost of being wrong is a listener
+ * that is never detached and an engine that is permanently dirty — and because
+ * identity now travels between lists, which is a great deal more surface than
+ * "one region mints its own ids" ever had.
  *
  * The signal is a raw `State` rather than the component's own `@state` on
  * purpose: a component subscribes its own state at construction, so writing to it
@@ -35,22 +43,23 @@ describe("a list with two items under one key", () => {
 
     type Row = { id: number };
 
+    // Forced: both items carry the identity `f-same`, so the second's scope
+    // lands on the first's key and shadows it. Nothing an app can write does
+    // this — see the note above.
+    const rows: Row[] = [{ id: 1 }, { id: 2 }];
+    for (const row of rows) stampIdentity(row, "f-same");
+
     @Host("ul")
     class L extends Component {
-      @state rows: Row[] = [{ id: 1 }, { id: 2 }];
+      @state rows: Row[] = rows;
 
       render() {
         ownerRenders++;
-        return list({
-          each: this.rows,
-          // Both items answer the same thing: the mistake this is about.
-          key: () => "same",
-          render: (r: Row) => {
-            // Only the FIRST item reads it, and the first item is the one whose
-            // scope gets shadowed.
-            if (r.id === 1) hidden.get();
-            return <li>{r.id}</li>;
-          },
+        return list(this.rows, (r: Row) => {
+          // Only the FIRST item reads it, and the first item is the one whose
+          // scope gets shadowed.
+          if (r.id === 1) hidden.get();
+          return <li>{r.id}</li>;
         });
       }
     }
@@ -82,13 +91,9 @@ describe("a list with two items under one key", () => {
 
       render() {
         ownerRenders++;
-        return list({
-          each: this.rows,
-          key: (r: Row) => `k${r.id}`,
-          render: (r: Row) => {
-            if (r.id === 2) watched.get();
-            return <li>{r.id}</li>;
-          },
+        return list(this.rows, (r: Row) => {
+          if (r.id === 2) watched.get();
+          return <li>{r.id}</li>;
         });
       }
     }

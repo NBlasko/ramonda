@@ -1,4 +1,5 @@
 import { NOT_FOUND, collect, removeAt, replace, resolveInsertIndex } from "./apply";
+import type { KeepSymbols } from "./keepSymbols";
 import { isArray, isContainer, isUnsafeKey, shallowClone } from "./clone";
 import { fatal, report } from "./diagnostics";
 import { NO_STEPS, type Predicate, type Step, formatPath } from "./steps";
@@ -78,9 +79,12 @@ class Chain {
     origin.spent = true;
   }
 
-  set(value: unknown): unknown {
+  set(value: unknown, options?: { keepSymbols?: KeepSymbols }): unknown {
     this.beginWrite();
-    return replace(this.root, this.steps, () => value);
+    // `false` unless asked: `set` is handed a value rather than deriving one, so
+    // it cannot know that the new value continues the old. Everything else here
+    // does derive, and keeps by default. See `keepSymbols`.
+    return replace(this.root, this.steps, () => value, options?.keepSymbols ?? false);
   }
 
   update(updater: (value: unknown) => unknown): unknown {

@@ -4,6 +4,8 @@ import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToJSON } from "./serialize";
 import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
+import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
+import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
 import {
@@ -248,6 +250,7 @@ export async function renderStatic(vnode: ComponentChild, url: URL): Promise<Sta
   } finally {
     setRequestScope(undefined);
     resetHead();
+    resetPortalTargets();
   }
 }
 
@@ -259,6 +262,15 @@ export interface RenderedPage {
   title: string;
   /** Serialized `<meta>` / `<link>` tags, ready to drop into a `<head>`. */
   head: string;
+  /**
+   * What each NAMED portal target collected, by name — the blocks belonging in a
+   * container outside the app's root.
+   *
+   * Separate from `head` because they land somewhere else and the document
+   * builder has to know which is which. `renderDocument` emits a container per
+   * entry; a hand-rolled shell places them itself.
+   */
+  portals: Record<string, string>;
 }
 
 /**
@@ -290,6 +302,7 @@ export interface RenderedPage {
  */
 export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
   resetHead();
+  resetPortalTargets();
 
   try {
     // Forwarded, so a per-request render can use this instead of `renderToString` —
@@ -297,7 +310,7 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
     // to get it.
     const body = await renderToString(vnode, opts);
 
-    return { body, ...collectHead() };
+    return { body, ...collectHead(), portals: collectPortals() };
   } finally {
     // Cleared once the markup is safely captured — and in a `finally` so a render
     // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
@@ -323,19 +336,116 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
  */
 const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
 
+/**
+ * Two mechanisms, because the two owners are genuinely different.
+ *
+ * `Head` builds its tags ITSELF — it never hands them to the reconciler — so an
+ * attribute it writes stays written, and `PORTAL_ATTR` is the right marker for
+ * it. A `Portal` does hand its block to the reconciler, and there an attribute
+ * cannot survive: the attribute diff treats a node's current attributes as the
+ * previous set and removes what the next vnode lacks, so the first re-render of
+ * anything in the block erased the marker and the tag silently left the page.
+ * A portal's block is delimited by its region's anchor COMMENTS instead, which
+ * nothing in the attribute pass can reach.
+ *
+ * So this walks the head once, in document order, and takes: everything between
+ * a pair of anchors (the anchors included, because the client hydrates against
+ * them), and outside a block, the elements `Head` marked.
+ */
 function collectHead(): { title: string; head: string } {
-  const tags = Array.from(document.head.querySelectorAll(MANAGED_HEAD));
-  return {
-    title: document.title,
-    head: tags.map((tag) => tag.outerHTML).join(""),
-  };
+  const inBlock = blockNodes(document.head);
+  let head = "";
+
+  for (let node = document.head.firstChild; node !== null; node = node.nextSibling) {
+    if (inBlock.has(node)) {
+      // Inside a portal's block, where a component may be sitting on any node —
+      // `stampBlobs` only ever walked the body container, so a portalled
+      // component reached the client with no state to restore.
+      stampBlobs(node);
+      head += serializeNode(node);
+    } else if (node.nodeType === 1 && (node as Element).matches(MANAGED_HEAD)) {
+      head += (node as Element).outerHTML;
+    }
+  }
+
+  return { title: document.title, head };
 }
 
-/** Clears the tags a previous `Head` left behind, and the title with them. */
+/**
+ * The nodes belonging to a portal's block, anchors included.
+ *
+ * Paired in a first pass rather than counted with a running depth, because a
+ * depth that goes up and never comes down swallows the rest of the head. An
+ * OPENING anchor with no closing one is not a block — it is a comment that
+ * happens to read like ours, and a shell is entitled to have one. Counted
+ * instead, `resetHead` deleted every tag after it: measured with a stray
+ * `<!--r999-->` in front of the shell's own `<meta>`, which vanished.
+ *
+ * So an unmatched anchor is ignored, and what is between a real pair is the
+ * block. Nesting is not a case here — a region's block holds elements and text,
+ * and a region inside a region belongs to a different target.
+ */
+function blockNodes(head: Node): Set<Node> {
+  const nodes: Node[] = [];
+  for (let node = head.firstChild; node !== null; node = node.nextSibling) nodes.push(node);
+
+  const inBlock = new Set<Node>();
+
+  for (let at = 0; at < nodes.length; at++) {
+    if (!isOpenAnchor(nodes[at])) continue;
+    const id = anchorId(nodes[at]);
+
+    // ITS close, by id. Scanning for "the next close" instead let a comment that
+    // merely reads like an anchor pair with a real block's close, swallowing the
+    // block in between; and giving up at the first unmatched open let that same
+    // comment hide every real block after it. Neither is hypothetical — both were
+    // measured with a stray `<!--r999-->` in front of the shell's own `<meta>`.
+    let end = -1;
+    for (let scan = at + 1; scan < nodes.length; scan++) {
+      if (isCloseAnchor(nodes[scan]) && anchorId(nodes[scan]) === id) {
+        end = scan;
+        break;
+      }
+    }
+    // No close of its own: not a block, and the scan carries on past it so a real
+    // one further down is still found.
+    if (end === -1) continue;
+
+    for (let inside = at; inside <= end; inside++) inBlock.add(nodes[inside]);
+    at = end;
+  }
+
+  return inBlock;
+}
+
+/**
+ * The named targets' blocks, with their state blobs written first.
+ *
+ * `stampBlobs` walked only the body container, so a component a portal placed
+ * anywhere else reached the client with no state to restore and was rebuilt from
+ * its initial values. Same reason `collectHead` stamps inside a head block.
+ */
+function collectPortals(): Record<string, string> {
+  for (const container of portalTargetContainers()) stampBlobs(container);
+  return collectPortalTargets();
+}
+
+function serializeNode(node: Node): string {
+  if (node.nodeType === 1) return (node as Element).outerHTML;
+  if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`;
+  return (node as Text).data ?? "";
+}
+
+/** Clears the tags a previous `Head` left behind, the portal blocks, and the title. */
 function resetHead(): void {
   for (const tag of Array.from(document.head.querySelectorAll(MANAGED_HEAD))) {
     tag.remove();
   }
+  // A portal's block, anchors and all. Nothing tears a server render's tree down
+  // on the way out, so its regions never dispose themselves — without this a
+  // long-lived server process accumulates one block per portal per request.
+  // Only COMPLETE blocks: see `blockNodes` for what an unmatched anchor cost.
+  for (const node of blockNodes(document.head)) (node as ChildNode).remove();
   document.title = "";
   // The registry goes with the tags: it holds the elements just removed and the
   // title to go back to, both of which belong to the request that is ending.

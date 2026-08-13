@@ -22,6 +22,6 @@ export class ExamplesIndex extends Component {
   }
 
   render(): RamondaNode {
-    return <div className="examples">{list({ each: demoNames, render: this.renderDemo })}</div>;
+    return <div className="examples">{list(demoNames, this.renderDemo)}</div>;
   }
 }

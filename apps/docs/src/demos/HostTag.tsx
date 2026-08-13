@@ -54,7 +54,7 @@ export class HostTag extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">{list({ each: TAGS, render: this.renderChoice })}</p>
+        <p className="demo-row">{list(TAGS, this.renderChoice)}</p>
         <Card as={this.as} />
         <Plain />
         <p className="demo-note">

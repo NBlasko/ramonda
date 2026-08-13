@@ -47,7 +47,7 @@ never fall out of step, because it isn't stored anywhere to go stale.
 ## Bind the list to the derived value
 
 ```tsx
-<ul>{list({ each: this.visible, as: PersonRow })}</ul>
+<ul>{list(this.visible, (item) => <PersonRow item={item} />)}</ul>
 ```
 
 `each` is read as the list is built, so it is always the current filter. You don't
@@ -68,7 +68,7 @@ Same shape — it is a call in an expression slot, so a list that may never exis
 nothing until it does, and an empty result is just an empty array:
 
 ```tsx
-{this.query ? <ul>{list({ each: this.visible, as: PersonRow })}</ul> : null}
+{this.query ? <ul>{list(this.visible, (item: Person) => <PersonRow item={item} />)}</ul> : null}
 {this.visible.length === 0 ? <p>No matches.</p> : null}
 ```
 

@@ -237,19 +237,20 @@ and lifecycle without an element, that is a [Hook](/hooks).
 
 Superseded by `list()`, which prevents the problem structurally rather than reporting it.
 
-## RMD013 — A list could not identify its items
+## RMD013 — A list item produced nothing
 
-Either a `key` callback returned the same value twice, or the render callback returned nothing for
-an item. A callback that returned something which is not an element is
-[RMD031](#rmd031-a-list-item-that-is-not-an-element) instead.
+The render callback returned nothing for an item. A callback that returned something
+which is not an element is [RMD031](#rmd031-a-list-item-that-is-not-an-element)
+instead.
 
-If you passed `key`, consider dropping it — identity minted from the items cannot collide. Keep it
-only for objects re-created as fresh instances for the same entity. See [lists](/lists).
+Give it something to render for that item, or filter the item out of the array before
+it gets there. See [lists](/lists).
 
-## RMD014 — A list was given both `as` and `render`, or neither
+## RMD014 — retired
 
-Exactly one. The types forbid the mistake; this fires when the build has no types. See
-[`as` and `render`](/lists/as-and-render).
+`list()` took an options bag with `as` and `render` in it, and this fired when both or
+neither was given. The bag is gone: the second argument is the component or the
+function, so neither mistake can be written.
 
 ## RMD015 — Hook options assigned by the hook that received them
 
@@ -454,45 +455,32 @@ Three findings, three fixes:
 A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
 answer when several are unstable together.
 
-## RMD023 — components built from an array, with no keys
+## RMD023 — Children built from an array need a key
+
+You rendered an array straight into children — a `.map()`, a `filter`, an array literal —
+and its rows carry no `key`. That is supported, and it is what every framework asks for
+here: give each row a key from your data.
 
 ```tsx
-{this.items.map((item) => <Row item={item} />)}   // reported
+{this.items.map((item) => <Row key={item.id} item={item} />)}
 ```
 
-A mapped array is a **supported** shape — it becomes its own region with its own key
-space, so it cannot reach past itself and claim a sibling. What is not handled is
-identity: a region's rows are matched by POSITION unless they carry keys. Insert or
-remove anywhere but the end and every row after it takes the previous row's place. For
-plain markup that is invisible, because the diff patches the text and the result is
-correct. For a **component** it is state landing on the wrong item — the `@state` that
-was row 2's is now row 3's, and the DOM goes with it: focus, scroll position, an open
-menu, a half-typed input.
+Not the array index. The index **is** the position, so keying by it changes nothing.
 
-So the report is narrow, and deliberately so. It needs all of: built by an expression,
-more than one child, no `key` on any of them, and at least one component among them.
-`{items.map((i) => <li>{i}</li>)}` is not reported. `{this.props.children}` is not
-reported — that array is the framework's own.
+Without a key the rows are matched by position, so inserting or removing anywhere but the
+end hands every row below it the previous row's state and DOM — a half-typed input, an open
+menu, a scroll position, all one row off, while the page still looks right.
 
-Two fixes:
+**What is at stake is only the inside of the array.** Rows built this way cannot be confused
+with the siblings around them: every array in JSX becomes its own group with its own key
+space, so an element toggling in or out beside the array never reaches into it, and the
+array never reaches out. A missing key costs you which row *inside* the array is which.
 
-```tsx
-list({ each: this.items, as: Row })              // identity from the items themselves
-{this.items.map((i) => <Row key={i.id} item={i} />)}   // or take it over yourself
-```
+[`list()`](/lists) is the same thing without the eager build — the descriptor is rebuilt on
+a render and the rows are not — and a key is good practice there too.
 
-[`list()`](/lists) is the better one for a second reason: it is lazy. The descriptor is
-built in `render()` and the items by the diff, so a 500-row table's render is 0.04% of
-its commit — and `each` accepts `null` and `undefined`, so there is no `?? []` to rebuild
-every render.
-
-**Why this is a structural check and not part of the double render.** [RMD020](#rmd020-render-produced-a-different-value-the-second-time)
-compares two renders, and it cannot see this at all: the mapper is handed to
-`Array.prototype.map` and never stored anywhere the comparison can reach, and its output
-is a run of freshly built vnodes — which is what all JSX looks like. The shape is the
-only evidence, and it is conclusive: JSX passes children as separate arguments, so a
-nested array among them was built by an expression.
-
+It does not fire for a single child, which has no sibling to be reordered against, nor when
+any child carries a key, which means you are managing identity yourself.
 ## RMD024 — a `@compute` recomputes without its answer changing
 
 Four recomputes in a row, each producing a value equal to the last. The cache is doing
@@ -740,19 +728,19 @@ this one during a describe.
 
 ```tsx expect-error
 // reported: a nested list() is a descriptor, not an element
-list({ each: pages, render: (page: Post[]) => list({ each: page, as: PostRow }) });
+list(pages, (page: Post[]) => list(page, (item) => <PostRow item={item} />));
 
 // the way: a component, whose host element wraps the inner rows
-list({ each: pages, as: PostPage });
+list(pages, (item) => <PostPage item={item} />);
 ```
 
-One item becomes exactly one element. The list writes the row's key onto it and the diff matches
-rows on that key, so a string, a number, an array or a nested `list()` has nowhere to carry its
-identity — the item is **skipped**, and the page renders one row short.
+One item becomes exactly one element. The element is what carries the row's key and what the
+diff matches rows on, so a string, a number, an array or a nested `list()` has nowhere to carry
+its identity — the item is **skipped**, and the page renders one row short.
 
-For plain values, wrap them: `render: (name) => <li>{name}</li>`. For a nested list — a list of
-pages, each holding rows — go through a component, as [nested lists](/lists/nested) shows. The
-component's host element is what wraps the inner rows.
+For plain values, wrap them: `list(names, (name) => <li>{name}</li>)`. For a nested list — a
+list of pages, each holding rows — put a component between them, as
+[nested lists](/lists/nested) shows. The component's host element is what wraps the inner rows.
 
 TypeScript rejects all of this at the call site; this fires when the build has no types.
 
@@ -1363,3 +1351,27 @@ to drop first: `focusOn(state).get("home").remove()`.
 `RML010` and `RML011` **throw** in development and are a silent no-op in production, so neither is
 control flow to rely on — do not wrap either in a `try` expecting to catch something in a shipped
 build.
+
+## RMD051 — A list row cannot be told apart from its siblings
+
+A list identifies a row by what sets it apart from the others, which is what lets a row
+replaced by fresh objects — a refetch, a `JSON.parse` — be recognised as the row it replaces
+and updated rather than destroyed and rebuilt. This row carries nothing that could do that:
+every field it has is either nested (compared, but never counted as evidence) or a value its
+siblings share.
+
+```ts
+[{ tags: ["a"] }, { tags: ["b"] }];                              // nothing but nested data
+[{ done: false, kind: "task" }, { done: false, kind: "task" }];  // only shared flags
+```
+
+So the row is rebuilt whenever the array is replaced, and a half-typed input or an open menu
+on it goes with it. Give the row a field of its own — an id is the usual answer — or say which
+row is which where the data arrives, rather than on every list that renders it:
+
+```ts
+this.rows = merge(this.rows, incoming, (row) => row.id);
+```
+
+It does **not** fire for a row that is simply new. Page 2 of a table is unpaired too, and
+warning about that would put a report on correct code. See [lists](/lists).

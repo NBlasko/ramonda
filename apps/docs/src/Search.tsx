@@ -200,11 +200,9 @@ export class Search extends Component {
                 page that matched "hydr" usually still matches "hydra". Keying by
                 URL keeps those rows instead of rebuilding on every character.
               */}
-              {list({
-                each: this.results,
-                as: SearchResult,
-                key: (result: Result) => result.url,
-              })}
+              {list(this.results, (item) => (
+                <SearchResult item={item} />
+              ))}
             </ul>
           )}
         </div>

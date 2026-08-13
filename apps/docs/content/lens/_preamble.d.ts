@@ -24,6 +24,12 @@ declare global {
   const state: BlogState;
   /** A post to add — the sharing page pushes it, correctly and incorrectly. */
   const newPost: Post;
+  /** The same post, corrected — what a `set` is handed when it means "this one, updated". */
+  const edited: Post;
+  /** A DIFFERENT post — what the same call means when it does not. */
+  const otherPost: Post;
+  /** A post rebuilt from scratch, every field possibly new: the case `SAME_ITEM` is for. */
+  const fromTheForm: Post;
   /** What an update returns — the same shape, with the untouched parts identical. */
   const next: BlogState;
 }

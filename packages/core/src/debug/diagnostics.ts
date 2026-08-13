@@ -45,7 +45,6 @@ export type DiagnosticCode =
   | "RMD010"
   | "RMD011"
   | "RMD013"
-  | "RMD014"
   | "RMD015"
   | "RMD016"
   | "RMD017"
@@ -80,7 +79,8 @@ export type DiagnosticCode =
   | "RMD047"
   | "RMD048"
   | "RMD049"
-  | "RMD050";
+  | "RMD050"
+  | "RMD051";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -156,11 +156,6 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "A function was used as a JSX tag",
     fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @created/@destroyed, @watchProp and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
   },
-  RMD014: {
-    severity: "error",
-    title: "A list was given both `as` and `render`, or neither",
-    fix: "A list needs exactly one way to turn an item into markup. Use `as: RowView` when an item maps to a component — the list then builds `<RowView item={item} />` itself, with no per-item function to write. Use `render: (item) => <li>{item.name}</li>` when an item maps to plain markup instead. Giving both is not an error TypeScript lets through, so this is what a JavaScript app sees: `as` wins and the render callback is never called, which renders the wrong thing quietly. Giving neither leaves the list with nothing to build.",
-  },
   RMD015: {
     severity: "error",
     title: "Hook options assigned by the hook that received them",
@@ -205,10 +200,10 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: 'Every prop is a signal, so a fresh reference is a change: a @compute reading it recomputes, a @watchProp on it fires, and a subscription whose connect reads it reconnects — every time the callback runs. This is reported only when the value was rebuilt on four consecutive runs WITHOUT ever moving, so a prop that genuinely changes each time is not it, and neither is a callback that runs once and is then cached. For an array or an object, hold it somewhere that HAS an identity — a @compute (@compute get key() { return ["user", this.props.id] }), a field, a module constant — so the bag receives the same value instead of a fresh one, and the identity follows what it was derived from rather than a comparison. If you own the hook, @StableProps("key") declares the prop a value and settles it for every call site at once. For a function, a bound method (fetch: self.load) reads this when it is called, so there is nothing to capture; @memoizedHandler when it has to be built per argument. A @compute holding the whole bag fixes every value in it at once. If the two calls produced different CONTENTS, the callback is not a function of state — read the value once in @created and keep it in @state; that one is reported the first time it happens.',
   },
   RMD023: {
-    // error, not warning: items are matched by position, so state lands on the wrong row.
-    severity: "error",
-    title: "An array was rendered straight into children",
-    fix: "Use list() instead of mapping in place: list({ each: items, as: Row }) when an item maps to a component, or list({ each: items, render: this.renderRow }) with a bound method for plain markup. Two reasons, and the second is the one that bites: a map builds every vnode on every render, where a list is lazy (a 500-row table's render is 0.04% of its commit, because the second render rebuilds the descriptor and not the items) — and a raw array's rows are matched by POSITION, so inserting at the top hands every row below it the previous row's state and DOM, while a list mints identity from the items themselves. `each` accepts null and undefined, so there is no `?? []` to write.",
+    // Warning, not error: the page renders, and the fault only shows when the rows move.
+    severity: "warning",
+    title: "Children built from an array need a key",
+    fix: "Give each one a `key` from your data — an id, not the array index, which IS the position and so changes nothing. Without a key these rows are matched by POSITION, so inserting or removing anywhere but the end hands every row below it the previous row's state and DOM: a half-typed input, an open menu, a scroll position, all one row off, while the page still looks right. Rows built this way cannot be confused with the siblings around them — that boundary holds with or without a key — so what is at stake is only which row inside the array is which. `list(items, (item) => …)` is the same thing without the eager build (a 500-row table's render is 0.04% of its commit, because the descriptor is rebuilt and the rows are not), and a key is good practice there too.",
   },
   RMD030: {
     // error, not warning: the panel then shows values the app did not have, to the reader least
@@ -250,8 +245,8 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   },
   RMD013: {
     severity: "error",
-    title: "A list could not identify its items",
-    fix: "Every row a list renders needs an identity and a vnode. If a key callback returned the same value twice, two rows are claiming one identity — drop the `key` option entirely and let the list mint identity from the items themselves, which cannot collide; keep `key` only if your items are re-created as fresh objects for the same entity, and then return a field that really is unique. If the render callback returned nothing, give it something to render for that item, or filter the item out of `each` before it gets here.",
+    title: "A list item produced nothing",
+    fix: "The callback returned nothing for this item, so the list on screen is a row shorter than the array. Give it something to render — a placeholder row, or the empty state you meant — or filter the item out of the array before it gets here. A callback that returned something which is not an element is RMD031 instead.",
   },
   RMD032: {
     // error, not warning: one declaration wins, so errors go to a handler the author did not pick,
@@ -348,7 +343,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // error, not warning: the item is dropped, so the list on screen is shorter than `each`.
     severity: "error",
     title: "A list item that is not an element",
-    fix: "A list writes each row's key onto the vnode it gets back, and the diff matches rows on that key — so one item has to become exactly one element. A string or a number is not one: wrap it, `render: (name) => <li>{name}</li>`. A nested `list()` is not one either, and it is the common case: a list of pages, each holding a list of rows. Nesting goes through a COMPONENT rather than a bare descriptor — `render: (page) => <PageView item={page} />`, or `as: PageView` — because the component's host element is what wraps the inner rows and carries the key. The item is skipped rather than rendered, so the page is missing a row wherever this fires.",
+    fix: "One item has to become exactly one element, because an element is what carries the row's key and what the diff matches on. A string or a number is not one: wrap it, `list(names, (name) => <li>{name}</li>)`. A nested `list()` is not one either, and it is the common case — a list of pages, each holding a list of rows. Put a COMPONENT between them: `list(pages, (page) => <PageView item={page} />)`, because the component's host element is what wraps the inner rows. The item is skipped rather than rendered, so the page is missing a row wherever this fires.",
   },
   RMD047: {
     // error, not warning: development stops at it, and in production the handler is rebuilt on every
@@ -377,6 +372,11 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "A decorator whose effect this member already has",
     fix: "Either the same decorator is on this member twice, or two decorators give it the same thing — `@state` already puts a field in the hydration blob, so `@persist` beside it adds nothing. Delete the one that adds nothing. This is not about two decorators that do different work on one member: `@created` with `@mounted`, `@onWindow` with `@onDocument`, `@watchProp` with `@updated` all run twice on purpose and are silent.",
+  },
+  RMD051: {
+    severity: "warning",
+    title: "A list row cannot be told apart from its siblings",
+    fix: "A list identifies a row by what sets it apart from the others, so that a row replaced by fresh objects — a refetch, a `JSON.parse` — is recognised as the row it replaces and updated rather than destroyed and rebuilt. This row carries nothing that could do that: every field it has is either nested (compared, never counted) or a value its siblings share, like a `done: false` on all of them. It will be rebuilt whenever the data is replaced, and any state its component was holding goes with it — a half-typed input, an open menu, a scroll position. Give the row a field that is its own, such as an id; or, when only your app knows which row is which, say so where the data arrives: `this.rows = merge(this.rows, incoming, (row) => row.id)`.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

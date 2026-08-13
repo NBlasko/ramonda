@@ -124,7 +124,7 @@ class ProductPageRows extends Component<{
   onPick: (id: number) => void;
 }> {
   render() {
-    return list({ each: this.props.item.products, render: this.renderRow });
+    return list(this.props.item.products, this.renderRow);
   }
 
   /** A bound method, so the list's `render` is the same function on every pass (RMD020). */
@@ -292,7 +292,7 @@ export class ProductsPage extends Component {
 
         <div className="split">
           <div className="feed">
-            {list({ each: feed.pages, render: this.renderPage })}
+            {list(feed.pages, this.renderPage)}
 
             {/* The sentinel: scrolling it into view asks for the next page. */}
             <div id="sentinel" ref={this.sentinel} className="sentinel">

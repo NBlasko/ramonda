@@ -27,14 +27,11 @@ class Consumer extends Component {
   render() {
     return (
       <ul>
-        {list({
-          each: this.rows,
-          render: (row: Row) => (
-            <li>
-              {row.t}-{this.ctx.theme}
-            </li>
-          ),
-        })}
+        {list(this.rows, (row: Row) => (
+          <li>
+            {row.t}-{this.ctx.theme}
+          </li>
+        ))}
       </ul>
     );
   }

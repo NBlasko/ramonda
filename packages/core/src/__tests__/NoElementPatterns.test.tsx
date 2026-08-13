@@ -159,7 +159,8 @@ describe("state and lifecycle without markup", () => {
     // rule holds even when types are bypassed, and so the message can point at
     // the two patterns above instead of leaving a tag that is not an element.
     function Rows() {
-      return [<span>a</span>, <span>b</span>];
+      // Keyed, so the only thing this fixture reports is the fault it is about.
+      return [<span key="a">a</span>, <span key="b">b</span>];
     }
 
     @Host("div")

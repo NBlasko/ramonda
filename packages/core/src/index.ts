@@ -21,11 +21,16 @@ export { Ref, createRef } from "./base/Ref";
 export type { RefCallback, RefTarget } from "./base/Ref";
 export type { AsyncLoadProps, AsyncLoadFailure, Lazy } from "./base/AsyncLoad";
 export { list } from "./base/list";
-export type { ListOptions } from "./types/list";
+export type { Each, ItemRender } from "./base/list";
+export { merge, SAME_ITEM } from "./base/merge";
+
+export type { Identity } from "./base/merge";
 export { Head } from "./base/Head";
 export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";
 export { Portal } from "./base/Portal";
 export type { PortalProps } from "./base/Portal";
+export { portalTarget, PORTAL_TARGET_ATTR } from "./base/portalTarget";
+export type { PortalTarget } from "./base/portalTarget";
 
 // Server rendering and hydration. Exported now that there is a server that uses
 // them (apps/playground-ssr); until then the tests reached them by path.

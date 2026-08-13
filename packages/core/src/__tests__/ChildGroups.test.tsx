@@ -120,7 +120,7 @@ describe("regions nest", () => {
           <ul>
             {[
               <Item label="HEAD" />,
-              list({ each: this.rows, render: (r: { t: string }) => <Item label={r.t} /> }),
+              list(this.rows, (r: { t: string }) => <Item label={r.t} />),
               <Item label="FOOT" />,
             ]}
           </ul>

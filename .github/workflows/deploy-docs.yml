@@ -1,7 +1,15 @@
 name: Deploy docs
 
-# Deploys apps/docs (the prerendered static site) to Cloudflare Pages, from `main`
-# only, plus a manual run when a deployment needs repeating.
+# Deploys apps/docs (the prerendered static site) to Cloudflare Pages. Started BY
+# HAND, and only from `main`.
+#
+# It is manual because the docs describe the packages as PUBLISHED, and a push to
+# `main` is not the moment they get published. A release lands on main in two
+# steps — feature merges first, then the "Version Packages" PR that actually
+# publishes — and several feature merges usually accumulate before the second
+# step. Deploying on every push documented versions that were not on npm yet, for
+# however long that gap lasted. So the order is now stated rather than hoped for:
+# merge what you mean to ship, publish, then run this.
 #
 # It used to deploy pull requests too, as previews. That went away with the
 # dependency bots: a Dependabot pull request never receives repository secrets —
@@ -22,11 +30,8 @@ name: Deploy docs
 # the script directly skips it. The docs consume the workspace packages from SOURCE
 # via esbuild aliases, so no package needs building first.
 on:
-  push:
-    branches: [main]
-  # Re-deploy the current `main` without pushing a commit — for a deploy that failed
-  # on something outside the repository, or a Cloudflare project that needs filling
-  # again.
+  # The only trigger. Run it from the Actions tab after a publish, or to repeat a
+  # deploy that failed on something outside the repository.
   workflow_dispatch:
 
 concurrency:
@@ -41,6 +46,11 @@ jobs:
   deploy:
     name: Build and deploy
     runs-on: ubuntu-latest
+    # `workflow_dispatch` lets the person starting it pick any branch, and this one
+    # deploys to PRODUCTION — the Cloudflare project treats a deploy on its
+    # production branch as the live site. Publishing the docs off a feature branch
+    # is never what was meant, so the run stops here instead.
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

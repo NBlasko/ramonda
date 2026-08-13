@@ -189,16 +189,15 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
   const aList = (a as { [IS_LIST]?: true })?.[IS_LIST];
   const bList = (b as { [IS_LIST]?: true })?.[IS_LIST];
   if (aList && bList) {
-    const aOptions = (a as { options?: Attributes }).options ?? {};
-    const bOptions = (b as { options?: Attributes }).options ?? {};
-
-    // `each` only — the function options (`render`, `as`, `key`) are declared inline
-    // by design, and a fresh one costs nothing: an item scope is reused on
-    // `existing.item === item && !existing.dirty` (listEngine.ts), so the mapper's
-    // identity is never compared and never re-invokes anything. Reporting them would
-    // put a warning on every list in the app, which is how a diagnostic becomes noise
-    // people scroll past.
-    compareAttributes(aOptions, bOptions, path ? `${path}.list` : "list", walk, true);
+    // `each` only — the BUILDER is declared inline by design, and a fresh one
+    // costs nothing: an item scope is reused on `existing.item === item &&
+    // !existing.dirty` (listEngine.ts), so the mapper's identity is never
+    // compared and never re-invokes anything. Reporting it would put a warning
+    // on every list in the app, which is how a diagnostic becomes noise people
+    // scroll past.
+    const aEach = { each: (a as { each?: unknown }).each } as Attributes;
+    const bEach = { each: (b as { each?: unknown }).each } as Attributes;
+    compareAttributes(aEach, bEach, path ? `${path}.list` : "list", walk, true);
     return;
   }
 

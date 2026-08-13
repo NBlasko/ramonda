@@ -170,18 +170,14 @@ class ProfileForm extends Component {
           {f.bio.$.error ? <p className="error small">{f.bio.$.error}</p> : null}
 
           <p className="label">tags</p>
-          {list({
-            each: f.tags.$.rows,
-            key: (row) => row.id,
-            render: (row) => (
-              <div className="row">
-                <input {...row.field.$.bind} />
-                <button type="button" onClick={this.removeTag(row.index)}>
-                  ×
-                </button>
-              </div>
-            ),
-          })}
+          {list(f.tags.$.rows, (row) => (
+            <div className="row">
+              <input {...row.field.$.bind} />
+              <button type="button" onClick={this.removeTag(row.index)}>
+                ×
+              </button>
+            </div>
+          ))}
           <button type="button" onClick={this.addTag}>
             + tag
           </button>

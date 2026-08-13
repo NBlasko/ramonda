@@ -20,12 +20,9 @@ export class Grid extends Component<{ rows: RowData[] }> {
   render() {
     return (
       <tbody>
-        {list({
-          each: this.rows,
-          render: (row) => (
-            <tr>{list({ each: row.cells, render: (cell) => <td>{cell.value}</td> })}</tr>
-          ),
-        })}
+        {list(this.rows, (row) => (
+            <tr>{list(row.cells, (cell) => <td>{cell.value}</td>)}</tr>
+          ))}
       </tbody>
     );
   }
@@ -45,7 +42,7 @@ name:
 @Host("tr")
 class Row extends Component<{ item: RowData }> {
   render() {
-    return list({ each: this.props.item.cells, as: CellView });
+    return list(this.props.item.cells, (item) => <CellView item={item} />);
   }
 }
 
@@ -56,7 +53,7 @@ export class Grid extends Component<{ rows: RowData[] }> {
   }
 
   render() {
-    return <tbody>{list({ each: this.rows, as: Row })}</tbody>;
+    return <tbody>{list(this.rows, (item) => <Row item={item} />)}</tbody>;
   }
 }
 ```
@@ -77,23 +74,28 @@ one must be the element the parent expects:
 
 Development reports a mismatch as `RMD010`. See [the host element](/concepts/host).
 
-## Keys in two dimensions
+## Identity in two dimensions
 
-Same rule as a flat list: identity is the object, so a row is identified by its row
-object and a cell by its cell object. Reorder rows (same objects) and everything moves
-with its state — no key needed. You only need a `key` when rows are *replaced* by
-fresh objects (a refetch, an immutable update) **and** they own state you don't want
-reset:
+Same rule as a flat list, at both levels: a row is identified by its row object and
+a cell by its cell object. Reorder rows and everything moves with its state.
+
+Replacing rows with fresh objects — an immutable update, a refetch — works the same
+way it does for a flat list: each level aligns its own array and carries identity
+across. Nothing to declare at either level:
 
 ```tsx
 @state rows: RowData[] = [];
 
-list({
-  each: this.rows,
-  key: (row) => row.id,
-  render: (row) => <tr>{list({ each: row.cells, key: (cell) => cell.id, render: cellView })}</tr>,
-});
+list(this.rows, (row) => <tr>{list(row.cells, cellView)}</tr>);
 ```
+
+Editing one row is what makes the two levels visible. The edited row object is
+replaced, so it is aligned against the row it replaced; its cells are then aligned
+inside it. A cell that only moved keeps its node and its state, and only a cell
+that is genuinely new is built.
+
+See [refetched data](/lists#refetched-data-and-objects-that-are-re-created) for
+what the alignment does and does not carry.
 
 ## Next
 
