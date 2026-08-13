@@ -1,11 +1,12 @@
 import { Component, memoizedHandler, state, list } from "@ramonda/core";
 
 interface Task {
+  id: number;
   title: string;
 }
 
-let nextTaskId = 5;
-const makeTask = (title: string): Task => ({ title });
+let nextTaskId = 1;
+const makeTask = (title: string): Task => ({ id: nextTaskId++, title });
 
 /**
  * One component, two lists. Moving a task from one side to the other removes it
@@ -22,19 +23,23 @@ export class TwoLists extends Component {
   @state done: Task[] = [makeTask("ship list()")];
 
   /**
-   * Keyed by the row's INDEX, which the mapper already hands over — not by the task
-   * itself, because `@memoizedHandler` builds its cache key from primitives and
-   * throws on an object. The body resolves the task from the CURRENT array when the
-   * click happens, so a reorder cannot make a cached handler act on the wrong row,
-   * and identity still decides what moves (`t !== task`).
+   * Keyed by the task's `id` — not by the task itself, because `@memoizedHandler`
+   * builds its cache key from primitives and throws on an object. The body resolves
+   * the task from the CURRENT array when the click happens, so a reorder cannot make
+   * a cached handler act on the wrong row, and identity still decides what moves
+   * (`t !== task`).
+   *
+   * The `id` is here for the handler cache and nothing else: `list()` is given no
+   * key, and works out which row is which on its own. Position would have done just
+   * as well until the mapper stopped handing over an index.
    *
    * The alternative is a fresh arrow per row per render, which RMD020 reports: each
    * one is removed and re-added on its button every time the parent renders.
    */
   @memoizedHandler
-  finish(index: number) {
+  finish(id: number) {
     return () => {
-      const task = this.todo[index];
+      const task = this.todo.find((t) => t.id === id);
       if (!task) return;
       this.todo = this.todo.filter((t) => t !== task);
       this.done = [...this.done, task];
@@ -42,16 +47,16 @@ export class TwoLists extends Component {
   }
 
   @memoizedHandler
-  reopen(index: number) {
+  reopen(id: number) {
     return () => {
-      const task = this.done[index];
+      const task = this.done.find((t) => t.id === id);
       if (!task) return;
       this.done = this.done.filter((t) => t !== task);
       this.todo = [...this.todo, task];
     };
   }
   addTodo() {
-    this.todo = [...this.todo, makeTask(`task #${nextTaskId++}`)];
+    this.todo = [...this.todo, makeTask(`task #${nextTaskId}`)];
   }
 
   render() {
@@ -63,23 +68,23 @@ export class TwoLists extends Component {
             <button onClick={this.addTodo}>add</button>
           </div>
           <ul className="tasks">
-            {list(this.todo, (t: Task, i: number) => (
-                <li className="task">
-                  <span>{t.title}</span>
-                  <button onClick={this.finish(i)}>done →</button>
-                </li>
-              ))}
+            {list(this.todo, (t: Task) => (
+              <li className="task">
+                <span>{t.title}</span>
+                <button onClick={this.finish(t.id)}>done →</button>
+              </li>
+            ))}
           </ul>
         </div>
         <div className="col">
           <h3>Done ({this.done.length})</h3>
           <ul className="tasks">
-            {list(this.done, (t: Task, i: number) => (
-                <li className="task done">
-                  <button onClick={this.reopen(i)}>← undo</button>
-                  <span>{t.title}</span>
-                </li>
-              ))}
+            {list(this.done, (t: Task) => (
+              <li className="task done">
+                <button onClick={this.reopen(t.id)}>← undo</button>
+                <span>{t.title}</span>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
