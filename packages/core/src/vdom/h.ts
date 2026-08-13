@@ -170,6 +170,27 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
       // Dropped in DEV and in production alike: an object that is not a vnode
       // has nothing the diff can do with it, and letting it into the children
       // array would fault somewhere later, far from the JSX that produced it.
+    } else if (typeof el === "function") {
+      /**
+       * `{Panel}` where `<Panel />` was meant.
+       *
+       * It renders nothing and, until this, said nothing: the check above looks for an OBJECT among
+       * children, and a class is a function, so it fell through here with the primitives and was
+       * dropped in silence. Measured before the code was added — the page simply comes up without
+       * the component.
+       *
+       * Only reported, not replaced: a function child already renders nothing, so pushing a hole
+       * instead would change no page and this is the report that was missing.
+       */
+      if (__DEV__) {
+        const owner = renderingOwner();
+        const named = (el as { name?: string }).name || "a component";
+        diagnose("RMD052", `${owner}:${named}`, `\`{${named}}\` among the children of ${owner} renders nothing.`, {
+          named,
+          owner,
+        });
+      }
+      result.push(el);
     } else {
       // Strings, numbers and other primitives pass through untouched.
       result.push(el);

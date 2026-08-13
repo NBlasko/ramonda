@@ -1375,3 +1375,34 @@ this.rows = merge(this.rows, incoming, (row) => row.id);
 
 It does **not** fire for a row that is simply new. Page 2 of a table is unpaired too, and
 warning about that would put a report on correct code. See [lists](/lists).
+
+## RMD052 — A component among JSX children, where an element was meant
+
+```tsx
+render() {
+  return <div>{Panel}</div>; // ✗ names the component
+}
+```
+
+`{Panel}` puts the class itself among the children. It is not markup, so it is dropped and the page
+comes up without it. Write the element:
+
+```tsx
+render() {
+  return (
+    <div>
+      <Panel />
+    </div>
+  );
+}
+```
+
+This is reported separately from [RMD037](#rmd037-an-object-among-jsx-children-that-is-not-markup),
+which looks for an OBJECT among children — a class is a function, so it never reached that check and
+the mistake was silent until now.
+
+Handing a component to something else is an attribute rather than a child: `<Slot view={Panel} />`
+passes it as a prop, and that is a different thing entirely.
+
+[`ramonda-check`](/reference/check) reports the same mistake from the source, before anything
+renders.
