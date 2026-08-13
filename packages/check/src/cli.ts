@@ -48,6 +48,7 @@ const {
   unreachableRoutes,
   secondProviders,
   renderCycles,
+  classesAsChildren,
   counts,
   graph,
   notes,
@@ -93,7 +94,8 @@ if (
   unreachable.length === 0 &&
   unreachableRoutes.length === 0 &&
   secondProviders.length === 0 &&
-  renderCycles.length === 0
+  renderCycles.length === 0 &&
+  classesAsChildren.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -202,6 +204,26 @@ if (renderCycles.length > 0) {
     `Every step on this ring runs on EVERY render — no branch, no callback, no loop — so the\n` +
       `first render recurses until the stack gives out, before a page appears. Put the recursion\n` +
       `behind the data that ends it: a condition, or the callback \`list()\` takes.\n`,
+  );
+}
+
+/**
+ * `{Named}` where `<Named />` was meant. It renders nothing and the runtime says nothing, because a
+ * class is a function and the check for an object among children never sees it.
+ */
+if (classesAsChildren.length > 0) {
+  console.error(
+    `\n${TAG} ${classesAsChildren.length} component(s) named among children, where an element was meant:\n`,
+  );
+  for (const named of classesAsChildren) {
+    console.error(`  ${named.file}:${named.line}:${named.column}`);
+    console.error(`    {${named.name}} renders nothing. Write <${named.name} />.`);
+    console.error("");
+  }
+  console.error(
+    `A class among children is dropped, and nothing reports it at run time — the check for an\n` +
+      `object that is not markup never sees it, because a class is a function. Handing a component\n` +
+      `OVER is an attribute: \`<Slot view={Named} />\` is a binding, not a child.\n`,
   );
 }
 

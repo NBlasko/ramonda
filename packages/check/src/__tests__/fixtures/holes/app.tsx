@@ -30,6 +30,8 @@ class App extends Component {
     return (
       <div>
         <Named />
+        {/* `{Named}` renders nothing, and the runtime says nothing either. */}
+        {Named}
         <Alias />
         {/* ramonda-check-ignore the component is chosen at run time here, and this is why */}
         <Recorded />

@@ -219,6 +219,20 @@ package's internals are its own business, not your app's.
 
 A library is not judged at all. With no root, everything in it is unreachable by definition.
 
+## A component named among children
+
+```
+[ramonda-check] 1 component(s) named among children, where an element was meant:
+
+  src/Panel.tsx:12:10
+    {Reader} renders nothing. Write <Reader />.
+```
+
+Measured in core: `{Named}` renders **nothing** and no diagnostic is emitted — a class is a function,
+so the check for an object among children that is not markup never sees it, and the page comes up
+without the component. Nothing legitimate has this shape; handing a component over is an attribute,
+and `<Slot view={Named} />` is a binding rather than a child.
+
 ## A ring of mounts nothing can skip
 
 ```

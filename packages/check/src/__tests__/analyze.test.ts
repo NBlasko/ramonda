@@ -1156,3 +1156,26 @@ describe("a ring of mounts nothing can skip", () => {
     expect(edges.find((e) => e.from.endsWith("#Branch"))?.always).toBeUndefined();
   });
 });
+
+/**
+ * `{Named}` where `<Named />` was meant.
+ *
+ * Measured in core before the rule was written: it renders NOTHING and no record is emitted. A
+ * class is a function, so the check for an object among children that is not markup never sees it,
+ * and the page simply comes up without the component.
+ *
+ * Nothing legitimate has this shape. Handing a component OVER is an attribute — `view={Named}` —
+ * and that is a binding, not a child.
+ */
+describe("a component named among children", () => {
+  test("is reported, and names the element that was meant", () => {
+    const found = run("holes").classesAsChildren;
+    expect(found.map((c) => c.name)).toEqual(["Reader"]);
+  });
+
+  test("an attribute is a binding and is not this", () => {
+    // `<Slot view={Reader} />` in the slots fixture hands a component over, which is the mechanism
+    // rather than the mistake.
+    expect(run("slots").classesAsChildren).toEqual([]);
+  });
+});

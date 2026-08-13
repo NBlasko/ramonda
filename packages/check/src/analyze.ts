@@ -275,6 +275,25 @@ export interface RenderCycleIssue {
   column: number;
 }
 
+/**
+ * A component CLASS written among JSX children, where an element was meant.
+ *
+ * `{Named}` instead of `<Named />`. Measured in core: it renders NOTHING and no diagnostic is
+ * emitted — a class is a function rather than an object, so `RMD037` (an object among children that
+ * is not markup) never fires, and the page simply comes up without it.
+ *
+ * There is no arrangement in which this is what somebody meant: the value renders nothing wherever
+ * it lands. Handing a component OVER is an attribute — `<Slot view={Named} />` — and that is a
+ * binding, not a child.
+ */
+export interface ClassAsChildIssue {
+  /** The component named where an element was meant. */
+  name: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -295,6 +314,8 @@ export interface AnalyzeResult {
   secondProviders: SecondProviderIssue[];
   /** Rings of mounts nothing on them can skip — see `RenderCycleIssue`. */
   renderCycles: RenderCycleIssue[];
+  /** Component classes written among children, where an element was meant — see `ClassAsChildIssue`. */
+  classesAsChildren: ClassAsChildIssue[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -571,6 +592,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
   const secondProviders: SecondProviderIssue[] = [];
+  const classesAsChildren: ClassAsChildIssue[] = [];
   const annotated: AnnotatedSite[] = [];
   const roots = new Set<ComponentNode>();
   /** Package root → what its fragment contributed, or `null` for one that has none. */
@@ -842,6 +864,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     unreachableRoutes,
     secondProviders,
     renderCycles,
+    classesAsChildren,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -1323,6 +1346,41 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   }
 
   /**
+   * `{Named}` where `<Named />` was meant.
+   *
+   * A class among children renders nothing and says nothing — measured in core, the page comes up
+   * without it and no record is emitted, because a class is a function and the check for an object
+   * among children never sees it. Nothing legitimate has this shape: handing a component over is an
+   * ATTRIBUTE, and that is a binding rather than a child.
+   */
+  function namedWhereAnElementWasMeant(child: ts.Node): void {
+    if (!ts.isJsxExpression(child) || !child.expression) return;
+    const look = (expression: ts.Expression, depth: number): void => {
+      if (depth > 2) return;
+      const target = componentAt(unwrapAs(expression));
+      if (target) {
+        classesAsChildren.push({ name: target.name, ...positionOf(expression) });
+        return;
+      }
+      // `{cond && Named}` and `{cond ? Named : null}` are the same mistake behind a branch.
+      if (ts.isConditionalExpression(expression)) {
+        look(expression.whenTrue, depth + 1);
+        look(expression.whenFalse, depth + 1);
+        return;
+      }
+      if (
+        ts.isBinaryExpression(expression) &&
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+      ) {
+        look(expression.right, depth + 1);
+        return;
+      }
+      if (ts.isArrayLiteralExpression(expression)) for (const element of expression.elements) look(element, depth + 1);
+    };
+    look(child.expression, 0);
+  }
+
+  /**
    * Whether this site runs on every render of the body it is written in.
    *
    * Nothing between it and the class member may be able to skip it: no branch, no `&&`, no loop,
@@ -1694,6 +1752,12 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function walkJsx(node: ts.Node, owner: ComponentNode, self: ComponentNode): void {
     if (readElsewhere(node)) return;
+    // Checked here rather than beside a component tag's children: `{Named}` almost always sits
+    // inside a plain `<div>`, and an intrinsic element is never walked as a tag at all. The PARENT
+    // is what separates a child from an attribute's value, which is a binding and not this.
+    if (ts.isJsxExpression(node) && node.parent && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
+      namedWhereAnElementWasMeant(node);
+    }
     /**
      * A function declared inside this one is a helper of its own, and its tags are ITS edges.
      *
