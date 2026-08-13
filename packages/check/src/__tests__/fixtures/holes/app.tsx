@@ -1,5 +1,7 @@
 import { Component, Hook, bootstrap } from "../framework";
 
+declare function pickComponent(): unknown;
+
 class Counter extends Hook {
   n = 0;
 }
@@ -10,21 +12,26 @@ class Reader extends Component {
   }
 }
 
-// A component held in a variable. The tag names the VARIABLE, and following it means reading a
-// value rather than a declaration — so the edge is recorded as a hole with its reason rather than
-// being left out, which is the difference between a map with a blank marked and one without.
-const Alias = Reader;
+/**
+ * A component under another name, which IS followed: one hop to what the name was declared with,
+ * the same hop a loader, a binding and a factory's registry already get.
+ */
+const Named = Reader;
 
-const Recorded = Reader;
-const Bare = Reader;
+/** Chosen by a call, so there is nothing to read where it is declared. */
+const Alias = pickComponent();
+
+const Recorded = pickComponent();
+const Bare = pickComponent();
 
 class App extends Component {
   counter = this.use(Counter);
   render() {
     return (
       <div>
+        <Named />
         <Alias />
-        {/* ramonda-check-ignore the alias is built at run time here, and the reason is this line */}
+        {/* ramonda-check-ignore the component is chosen at run time here, and this is why */}
         <Recorded />
         {/* ramonda-check-ignore */}
         <Bare />

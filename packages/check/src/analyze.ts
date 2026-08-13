@@ -443,6 +443,9 @@ const isTest = (relativePath: string): boolean =>
  */
 const PATH_LIMIT = 200;
 
+/** How many renames a tag is followed through — `const A = B; const B = Reader`. */
+const ALIAS_HOPS = 4;
+
 /** How deep a slot may sit inside a prop, on both sides. Six is far past anything measured. */
 const SLOT_DEPTH = 6;
 
@@ -1360,11 +1363,29 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   }
 
   /** The component a name in value position refers to, resolved through an import alias. */
-  function componentAt(node: ts.Node): ComponentNode | undefined {
+  function componentAt(node: ts.Node, hops = 0): ComponentNode | undefined {
     if (!ts.isIdentifier(node)) return undefined;
     const symbol = resolve(node);
     if (!symbol) return undefined;
-    return components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name);
+    const direct = components.get(symbol) ?? splicedFor(symbol)?.components.get(symbol.name);
+    if (direct) return direct;
+
+    /**
+     * `const Alias = Reader` and then `<Alias />`.
+     *
+     * One hop to what the name was declared with, which is the same hop already made for a loader,
+     * for a binding and for a factory's registry — a tag was the one place without it, and it was
+     * reported as a hole. Nothing is guessed: the initializer NAMES a class, and a name is all this
+     * ever follows.
+     */
+    // Bounded, because two constants that name each other are a runtime error and ordinary syntax:
+    // following one into the other without spending a hop runs the stack out. The same fault the
+    // review found in the binding walk, and the `slots` fixture caught it here within the minute.
+    if (hops >= ALIAS_HOPS) return undefined;
+    const behind = initializerBehind(node);
+    if (!behind || behind === node) return undefined;
+    if (ts.isIdentifier(behind) || ts.isPropertyAccessExpression(behind)) return componentAt(behind, hops + 1);
+    return undefined;
   }
 
   /**
@@ -1566,7 +1587,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) {
       return `\`${text}\` is declared in ${pathOf(file.fileName)}, which this run does not read`;
     }
-    return `\`${text}\` resolves to ${ts.SyntaxKind[declaration.kind]}, not to a component class`;
+    if (ts.isVariableDeclaration(declaration)) {
+      return `\`${text}\` is a variable, and what it holds cannot be read from where it is declared`;
+    }
+    if (ts.isParameter(declaration)) return `\`${text}\` is a parameter, so only a caller can say what it mounts`;
+    return `\`${text}\` does not name a component class`;
   }
 
   function readClassBody(cls: ts.ClassDeclaration, self: ComponentNode): void {

@@ -409,13 +409,13 @@ describe("the composition graph", () => {
    * Leaving it out would make the graph a map with unmarked blanks, which is worse than no map
    * because it is trusted. Every rule computed from this reads the same holes.
    */
-  test("a component held in a variable is a recorded hole, not a missing edge", () => {
+  test("a component chosen by a CALL is a recorded hole, not a missing edge", () => {
     const graph = run("holes").graph;
     const hole = graph.edges.find((e) => e.kind === "unresolved");
     expect(hole?.via).toBe("tag");
     expect(hole?.to).toBeUndefined();
     expect(hole?.why).toContain("`Alias`");
-    expect(hole?.why).toContain("not to a component class");
+    expect(hole?.why).toContain("cannot be read from where it is declared");
     // And the place is on the edge, so a rule can name it without going back to the source.
     expect(hole?.at).toMatch(/app\.tsx:\d+:\d+$/);
   });
@@ -836,10 +836,19 @@ describe("what a graph covers", () => {
  * resolve, a bundler could not have code-split either.
  */
 describe("a component that cannot be followed", () => {
+  /**
+   * `const Named = Reader` and then `<Named />` is FOLLOWED — one hop to what the name was declared
+   * with, which a loader, a binding and a factory's registry already got. A tag was the one place
+   * without it, and the run reported a hole where there was a plain rename.
+   */
+  test("a component under another name is an edge, not a hole", () => {
+    expect(edgesOf("holes")).toContain("app.tsx#App -> app.tsx#Reader (renders/tag)");
+  });
+
   test("is an error, and the message carries the fix as code", () => {
     const found = run("holes").unresolved.find((u) => u.why.includes("`Alias`"));
     expect(found?.what).toBe("tag");
-    expect(found?.why).toContain("not to a component class");
+    expect(found?.why).toContain("cannot be read from where it is declared");
     // Code, not advice: most of what this reports on is written by an agent, and an agent acts on
     // a patch far more reliably than on a sentence.
     expect(found?.fix).toContain('import { TheComponent } from "./the-module";');
@@ -853,10 +862,8 @@ describe("a component that cannot be followed", () => {
    */
   test("a line with a written reason is recorded rather than reported", () => {
     const { annotated, unresolved } = run("holes");
-    expect(annotated.map((a) => a.reason)).toEqual([
-      "the alias is built at run time here, and the reason is this line",
-    ]);
-    expect(unresolved.map((u) => u.why)).not.toContain(expect.stringContaining("the alias is built at run time"));
+    expect(annotated.map((a) => a.reason)).toEqual(["the component is chosen at run time here, and this is why"]);
+    expect(unresolved.map((u) => u.why)).not.toContain(expect.stringContaining("chosen at run time"));
   });
 
   test("a directive with no reason is refused, not honoured", () => {
