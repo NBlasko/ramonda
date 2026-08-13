@@ -148,6 +148,47 @@ export interface UnwatchedFieldIssue {
   column: number;
 }
 
+/**
+ * A place where the source names a component this cannot follow.
+ *
+ * An ERROR, not a note. The whole value of this tool is that a report is a real broken path rather
+ * than a maybe, and that only holds while the map has no unmarked blanks: a walk that goes quiet at
+ * a component it could not resolve reports nothing about anything below it, and a build passes over
+ * a page that is broken.
+ *
+ * **The constraint is not this tool's to impose.** A bundler can only split what it can see
+ * statically; whatever this cannot resolve, a bundler could not have split either, so the shape was
+ * already trouble for another reason.
+ */
+export interface UnresolvedIssue {
+  /** How the component was named — a tag, a route, a loader, `this.use`, a root. */
+  what: string;
+  /** What could not be followed, said in terms of the source. */
+  why: string;
+  /** What to write instead: code, not advice. */
+  fix: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * A site whose author has recorded, in the source, why it cannot be resolved.
+ *
+ * LINE-SCOPED, never file-scoped, and the reason is mandatory. A file-scoped suppression blinds a
+ * whole file with one line, which is exactly what somebody in a hurry reaches for. Every annotated
+ * site is listed on every run, so the count cannot grow unnoticed — the escape hatch is a record,
+ * not a silence.
+ */
+export interface AnnotatedSite {
+  what: string;
+  /** The author's own words. A directive without them is refused. */
+  reason: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
@@ -156,6 +197,10 @@ export interface AnalyzeResult {
   duplicateDecorators: DuplicateDecoratorIssue[];
   /** Form fields read by a component that does not watch them — see `UnwatchedFieldIssue`. */
   unwatchedFields: UnwatchedFieldIssue[];
+  /** Places that name a component this cannot follow — see `UnresolvedIssue`. */
+  unresolved: UnresolvedIssue[];
+  /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
+  annotated: AnnotatedSite[];
   counts: { components: number; contexts: number; roots: number };
   /**
    * What can mount what — see `ComponentGraph`.
@@ -419,6 +464,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const arrowFields: ArrowFieldIssue[] = [];
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
+  const unresolved: UnresolvedIssue[] = [];
+  const annotated: AnnotatedSite[] = [];
   const roots = new Set<ComponentNode>();
   /** Package root → what its fragment contributed, or `null` for one that has none. */
   const splicedPackages = new Map<string, SplicedPackage | null>();
@@ -443,6 +490,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   /** Where each root's tree starts, for the walk. */
   const rootMounts: { id: string; target: ComponentNode }[] = [];
   const rootsPerFile = new Map<string, number>();
+  const fileLines = new Map<string, string[]>();
   /** Every edge as it is found, including the ones that resolve to nothing. */
   const edges: GraphEdge[] = [];
 
@@ -528,7 +576,53 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   };
   const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
     edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
+
+    // A slot is not a defect: `<this.props.view />` is unresolvable from the class alone BY
+    // DESIGN, because the caller decides. Everything else is a blank on the map.
+    if (via === "slot") return;
+
+    const pos = positionOf(site);
+    const written = directiveAt(site);
+    if (written !== undefined) {
+      if (written === "") {
+        unresolved.push({
+          what: via,
+          why: "a `ramonda-check-ignore` with no reason after it is a silence, not a record",
+          fix: `// ramonda-check-ignore why this cannot be resolved`,
+          ...pos,
+        });
+      } else {
+        annotated.push({ what: via, reason: written, ...pos });
+      }
+      return;
+    }
+    unresolved.push({ what: via, why, fix: fixFor(via), ...pos });
   };
+
+  /**
+   * The directive on this site's own line or the line above it, and the reason after it.
+   *
+   * Read from the LINE rather than from the comment attached to a node: a JSX attribute's comments
+   * do not attach where a reader would expect, and the rule people can hold in their head is "the
+   * line, or the line above it".
+   */
+  function directiveAt(site: ts.Node): string | undefined {
+    const file = site.getSourceFile();
+    const lines = fileLines.get(file.fileName) ?? file.text.split("\n");
+    fileLines.set(file.fileName, lines);
+    const { line } = file.getLineAndCharacterOfPosition(site.getStart());
+    for (const candidate of [lines[line], lines[line - 1]]) {
+      const found = candidate === undefined ? null : /ramonda-check-ignore\b:?(.*)$/.exec(candidate);
+      if (!found) continue;
+      // The comment's own closing delimiter is not part of the reason — `{/* … */}` in JSX, `*/`
+      // in a block comment, `-->` in markup. Left in, an EMPTY directive read as a reason.
+      return found[1]
+        .replace(/\*\/\s*\}?\s*$/, "")
+        .replace(/-->\s*$/, "")
+        .trim();
+    }
+    return undefined;
+  }
 
   const sources = program
     .getSourceFiles()
@@ -620,6 +714,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     arrowFields,
     duplicateDecorators,
     unwatchedFields,
+    unresolved,
+    annotated,
     counts: {
       components: components.size,
       contexts: contexts.size,
@@ -1762,6 +1858,33 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       return clause.types[0]?.typeArguments?.[0];
     }
     return undefined;
+  }
+
+  /**
+   * What to write instead, as CODE.
+   *
+   * Most of the code this reports on will be written by an agent, and an agent acts on a patch far
+   * more reliably than on advice. Each is the shape that IS resolvable, with the escape hatch as the
+   * last line — because sometimes the honest answer is that the author knows something the resolver
+   * cannot.
+   */
+  function fixFor(via: GraphEdge["via"]): string {
+    const record = `// ramonda-check-ignore <why this cannot be resolved>`;
+    switch (via) {
+      case "tag":
+      case "children":
+        return `import { TheComponent } from "./the-module";\n<TheComponent />\n${record}`;
+      case "lazy":
+        return `lazy={() => import("./the-module")} namedExport="TheComponent"\n${record}`;
+      case "as":
+        return `list({ each: rows, as: TheRow })\n${record}`;
+      case "route":
+        return `const routes = createRoutes({ "/": <TheView /> });\n<RouteOutlet routes={routes} />\n${record}`;
+      case "bootstrap":
+        return `bootstrap(<App />, element)\n${record}`;
+      default:
+        return `this.use(TheHook)\n${record}`;
+    }
   }
 
   /** Why a loader named nothing, said where a reader can act on it. */

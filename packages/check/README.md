@@ -198,6 +198,41 @@ reported either. `path` and `name` are not reads: they are fixed for the life of
 know who is rendering, and it cannot — nothing in the running page distinguishes "the owner is
 reading its own field" from "a child is reading a field it will never hear about again".
 
+## A component it cannot follow is an error
+
+The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a
+build passes over a page that may be broken. A map with unmarked blanks is worse than no map,
+because it is trusted:
+
+```
+[ramonda-check] 1 place(s) naming a component that cannot be followed:
+
+  src/App.tsx:26:9
+    through `tag` — `Alias` resolves to VariableDeclaration, not to a component class
+
+      import { TheComponent } from "./the-module";
+      <TheComponent />
+      // ramonda-check-ignore <why this cannot be resolved>
+```
+
+The constraint is not this tool's to impose. **A bundler can only split what it can see
+statically** — whatever this cannot resolve, a bundler could not have code-split either, so the
+shape was already trouble for another reason.
+
+When the source is right and this is the one that cannot see it, write the reason on the line:
+
+```tsx
+// ramonda-check-ignore the caller hands us the tree to mount, which is what this helper is for
+bootstrap(wrap(ui), container);
+```
+
+**Line-scoped, never file-scoped**, and the reason is mandatory — a directive with nothing after it
+is refused, because a suppression without a reason is a silence. Every annotated site is listed on
+every run, whether or not anything failed, so the number cannot creep up unread.
+
+A tag naming a PROP — `<this.props.view />` — is not one of these. It is unresolvable from the class
+alone by design: the caller decides, and the walk fills it from what the caller binds.
+
 ## The graph
 
 Every check above is one reading of the same thing: **which components exist, and which one can

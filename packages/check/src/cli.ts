@@ -37,7 +37,8 @@ if (argv.includes("--graph") && !graphAt) {
   process.exit(2);
 }
 
-const { issues, arrowFields, duplicateDecorators, unwatchedFields, counts, graph, notes } = analyzeProject(tsconfig);
+const { issues, arrowFields, duplicateDecorators, unwatchedFields, unresolved, annotated, counts, graph, notes } =
+  analyzeProject(tsconfig);
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
@@ -54,11 +55,28 @@ if (graphAt) {
   );
 }
 
+/**
+ * Every annotated site, on every run.
+ *
+ * The escape hatch is a RECORD, not a silence: printed whether or not anything failed, so the
+ * number cannot creep up unread. This is also the only place a reader learns what the map does not
+ * cover.
+ */
+if (annotated.length > 0) {
+  console.warn(`\n${TAG} ${annotated.length} site(s) this cannot resolve, with a reason written beside them:\n`);
+  for (const site of annotated) {
+    console.warn(`  ${site.file}:${site.line}:${site.column}`);
+    console.warn(`    ${site.what} — ${site.reason}`);
+  }
+  console.warn("");
+}
+
 if (
   issues.length === 0 &&
   arrowFields.length === 0 &&
   duplicateDecorators.length === 0 &&
-  unwatchedFields.length === 0
+  unwatchedFields.length === 0 &&
+  unresolved.length === 0
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -66,6 +84,29 @@ if (
       `single-use decorator is declared twice, and every component reading a form field watches it.`,
   );
   process.exit(0);
+}
+
+/**
+ * The strict rule: a component this cannot follow is an ERROR.
+ *
+ * The walk goes quiet below a name it cannot resolve, so everything under it is unjudged and the
+ * build passes over a page that may be broken. A map with unmarked blanks is worse than no map,
+ * because it is trusted. Whatever this cannot resolve, a bundler could not have code-split either.
+ */
+if (unresolved.length > 0) {
+  console.error(`\n${TAG} ${unresolved.length} place(s) naming a component that cannot be followed:\n`);
+  for (const hole of unresolved) {
+    console.error(`  ${hole.file}:${hole.line}:${hole.column}`);
+    console.error(`    through \`${hole.what}\` — ${hole.why}`);
+    console.error("");
+    for (const line of hole.fix.split("\n")) console.error(`      ${line}`);
+    console.error("");
+  }
+  console.error(
+    `Nothing below one of these is judged, so a broken page can pass. If the source is right and\n` +
+      `this is the one that cannot see it, write the reason on the line — it is listed on every run:\n\n` +
+      `    // ramonda-check-ignore the chunk is deliberately missing, to demonstrate the failure\n`,
+  );
 }
 
 if (issues.length > 0) {

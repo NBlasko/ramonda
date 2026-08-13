@@ -15,10 +15,21 @@ class Reader extends Component {
 // being left out, which is the difference between a map with a blank marked and one without.
 const Alias = Reader;
 
+const Recorded = Reader;
+const Bare = Reader;
+
 class App extends Component {
   counter = this.use(Counter);
   render() {
-    return <Alias />;
+    return (
+      <div>
+        <Alias />
+        {/* ramonda-check-ignore the alias is built at run time here, and the reason is this line */}
+        <Recorded />
+        {/* ramonda-check-ignore */}
+        <Bare />
+      </div>
+    );
   }
 }
 

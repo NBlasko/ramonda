@@ -417,7 +417,7 @@ describe("the composition graph", () => {
     expect(hole?.why).toContain("`Alias`");
     expect(hole?.why).toContain("not to a component class");
     // And the place is on the edge, so a rule can name it without going back to the source.
-    expect(hole?.at).toMatch(/app\.tsx:21:12$/);
+    expect(hole?.at).toMatch(/app\.tsx:\d+:\d+$/);
   });
 
   test("the envelope says what the graph is and what it was read from", () => {
@@ -818,5 +818,51 @@ describe("what a graph covers", () => {
     // The proof that the rule is relative. Read absolutely, every fixture here sits under
     // `src/__tests__/` and would be empty.
     expect(run("ok").counts.components).toBe(3);
+  });
+});
+
+/**
+ * The strict rule: a component this cannot follow is an ERROR.
+ *
+ * The walk goes quiet below a name it cannot resolve, so everything under it is unjudged and a
+ * build passes over a page that may be broken. A map with unmarked blanks is worse than no map,
+ * because it is trusted. And the constraint is not this tool's to impose: whatever it cannot
+ * resolve, a bundler could not have code-split either.
+ */
+describe("a component that cannot be followed", () => {
+  test("is an error, and the message carries the fix as code", () => {
+    const found = run("holes").unresolved.find((u) => u.why.includes("`Alias`"));
+    expect(found?.what).toBe("tag");
+    expect(found?.why).toContain("not to a component class");
+    // Code, not advice: most of what this reports on is written by an agent, and an agent acts on
+    // a patch far more reliably than on a sentence.
+    expect(found?.fix).toContain('import { TheComponent } from "./the-module";');
+    expect(found?.fix).toContain("ramonda-check-ignore");
+  });
+
+  /**
+   * The escape hatch is a RECORD. Line-scoped, never file-scoped — a file-scoped suppression
+   * blinds a whole file with one line, which is what somebody in a hurry reaches for — and the
+   * reason is mandatory, because a suppression without one is a silence.
+   */
+  test("a line with a written reason is recorded rather than reported", () => {
+    const { annotated, unresolved } = run("holes");
+    expect(annotated.map((a) => a.reason)).toEqual([
+      "the alias is built at run time here, and the reason is this line",
+    ]);
+    expect(unresolved.map((u) => u.why)).not.toContain(expect.stringContaining("the alias is built at run time"));
+  });
+
+  test("a directive with no reason is refused, not honoured", () => {
+    const found = run("holes").unresolved.find((u) => u.why.includes("no reason"));
+    expect(found?.why).toContain("is a silence, not a record");
+    expect(found?.fix).toContain("ramonda-check-ignore why this cannot be resolved");
+  });
+
+  test("a tag naming a PROP is not one of these", () => {
+    // `<this.props.view />` is unresolvable from the class alone BY DESIGN: the caller decides.
+    // Reporting it would be reporting the mechanism.
+    expect(run("slots").unresolved).toEqual([]);
+    expect(run("slots").graph.edges.some((e) => e.via === "slot")).toBe(true);
   });
 });

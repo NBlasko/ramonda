@@ -117,6 +117,7 @@ export class AsyncPage extends Component {
           </p>
           {this.showBroken ? (
             <AsyncLoad
+              // ramonda-check-ignore the export is absent on purpose: this demo is what a bad namedExport looks like
               lazy={() => import("../demos/HeavyPanel")}
               namedExport="NotExported"
               cacheKey="missing-export"
@@ -221,6 +222,7 @@ export class AsyncPage extends Component {
           </p>
           {this.showMemo ? (
             <AsyncLoad
+              // ramonda-check-ignore the chunk is missing on purpose: this demo is what a failed load looks like
               lazy={() => {
                 const started = performance.now();
                 return import(/* @vite-ignore */ MISSING_CHUNK).catch((error) => {
