@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { coverage } from "../../vitest.coverage.mjs";
+import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 
 /**
  * The production test run. Some safety code only exists in a production build —
@@ -38,6 +39,8 @@ export default defineConfig({
   },
   test: {
     coverage,
+    testTimeout,
+    hookTimeout,
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

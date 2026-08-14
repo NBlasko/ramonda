@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
+import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 
 export default defineConfig({
   define: {
@@ -29,6 +30,8 @@ export default defineConfig({
   },
   test: {
     coverage,
+    testTimeout,
+    hookTimeout,
     globals: true,
     environment: "jsdom",
     // The `*.prod.test.*` files belong to `test:prod`, which runs them in a separate process
