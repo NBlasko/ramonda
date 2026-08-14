@@ -612,7 +612,8 @@ describe("a package's fragment", () => {
     expect(graph.package).toEqual({ name: "@acme/ui", version: "2.1.0" });
 
     const exported = graph.nodes.filter((n) => n.exported).map((n) => n.name);
-    expect(exported.sort()).toEqual(["DataGrid", "SelfServing", "Themed"]);
+    // `Frame` mounts a method parameter — the shape the app's own splice test needs on the surface.
+    expect(exported.sort()).toEqual(["DataGrid", "Frame", "SelfServing", "Themed"]);
     // And the internals are in it anyway — that is the difference between a fragment and a summary.
     expect(graph.nodes.map((n) => n.name)).toContain("PagedBody");
     expect(graph.nodes.map((n) => n.name)).toContain("QueryOwner");

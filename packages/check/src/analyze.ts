@@ -729,12 +729,45 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     owner.mounts.push({ target, binds, always: alwaysRuns(site) });
     edge(owner.id, target.id, kind, via, site, binds);
   };
-  const unresolvedEdge = (from: string, via: GraphEdge["via"], site: ts.Node, why: string): void => {
-    edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
+  /**
+   * A directive written on a site that needs none is unnecessary — and reading it is not.
+   *
+   * A hole that stops being reported must not take its written reason down with it: the reason
+   * vanishing from the list the run prints on every pass is exactly the drift that list exists to
+   * prevent, and an EMPTY directive would be accepted here while being refused everywhere else.
+   * Both exemptions call this — the prop that only a caller can fill, and the parameter that is
+   * the same promise through a different door.
+   */
+  const readDirective = (site: ts.Node, what: string): void => {
+    const written = directiveAt(site);
+    if (written === "") {
+      unresolved.push({
+        what,
+        why: "a `ramonda-check-ignore` with no reason after it is a silence, not a record",
+        fix: `// ramonda-check-ignore why this cannot be resolved`,
+        ...positionOf(site),
+      });
+    } else if (written !== undefined) {
+      annotated.push({ what, reason: written, ...positionOf(site) });
+    }
+  };
 
-    // A slot is not a defect: `<this.props.view />` is unresolvable from the class alone BY
-    // DESIGN, because the caller decides. Everything else is a blank on the map.
-    if (via === "slot") return;
+  const unresolvedEdge = (
+    from: string,
+    via: GraphEdge["via"],
+    site: ts.Node,
+    why: string,
+    /** What the site NAMED, when there is a name to read — see `slotFromParameter`. */
+    named?: ts.Node,
+  ): void => {
+    // A value handed in by the caller is a slot, whether it arrived as a prop or as a parameter.
+    const fromParameter = slotFromParameter(named);
+    if (fromParameter !== undefined) {
+      edges.push({ from, kind: "unresolved", via: "parameter", at: whereOf(site), slot: fromParameter, why });
+      readDirective(site, "parameter");
+      return;
+    }
+    edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
 
     const pos = positionOf(site);
     const written = directiveAt(site);
@@ -1191,7 +1224,22 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       rootMounts.push({ id, target });
       edge(id, target.id, "renders", "bootstrap", node);
     } else {
-      unresolvedEdge(id, "bootstrap", node, whyUnresolved(opening?.tagName, `${name}'s first argument`));
+      /**
+       * The reason is read from what was WRITTEN, which is the argument itself when it is not JSX.
+       *
+       * Reading `opening?.tagName` alone gave `undefined` for every non-JSX argument and the
+       * generic "…'s first argument is not a component element" — so a slot edge said it was
+       * waiting on `vnode` while its own reason said there was nothing to wait on. Measured on
+       * core's `renderPage`, which is exactly that shape.
+       */
+      const written = node.arguments[0] ? unwrapAs(node.arguments[0]) : undefined;
+      unresolvedEdge(
+        id,
+        "bootstrap",
+        node,
+        whyUnresolved(opening?.tagName ?? written, `${name}'s first argument`),
+        written,
+      );
     }
   }
 
@@ -1233,7 +1281,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       }
     }
     if (union === undefined) {
-      unresolvedEdge(self.id, "factory", node, whyUnresolved(unwrapAs(named), "the factory's first argument"));
+      unresolvedEdge(
+        self.id,
+        "factory",
+        node,
+        whyUnresolved(unwrapAs(named), "the factory's first argument"),
+        unwrapAs(named),
+      );
       return;
     }
     for (const target of union) mount(self, target, "factory", node);
@@ -1833,7 +1887,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           // A hook picked at runtime: it might be any provider, so nothing below can be judged.
           if (arg) {
             self.opaque = true;
-            unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"));
+            unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"), named);
           }
         } else {
           const provided = providerSymbols.get(symbol);
@@ -1881,7 +1935,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
               self.uses.add(hook);
               edge(self.id, hook.id, "uses", "use", node);
             } else {
-              unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"));
+              /**
+               * A hook that is a PARAMETER blinds the walk below it; one merely declared elsewhere
+               * does not.
+               *
+               * The distinction is not cosmetic and the fixtures pin both halves. `this.use(hook)`
+               * with a bare parameter resolves to a symbol — the parameter's — so it lands here
+               * rather than in the `!symbol` branch that marks opacity, and it used to end in a
+               * reported hole, which is why the omission never showed. It showed the moment the
+               * hole went silent: a consumer below was reported against a component that may well
+               * have been providing for it.
+               *
+               * Widening this to everything that reaches here is the OTHER fault, and `pinned-hook`
+               * catches it: `this.use(Form<typeof schema>)` arrives here too, and marking that
+               * opaque leaves every consumer under a form or a query unjudged — which is what it
+               * used to do.
+               */
+              if (slotFromParameter(named) !== undefined) self.opaque = true;
+              unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"), named);
             }
           }
         }
@@ -1967,8 +2038,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             slot,
             why: `\`${opening.tagName.getText()}\` is a prop, so only a caller can say what it mounts`,
           });
+          readDirective(opening, "slot");
         } else {
-          unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"));
+          unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"), opening.tagName);
         }
       }
 
@@ -2198,6 +2270,17 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       path: string[],
       onPath: Set<string>,
       bound: Map<string, ComponentNode[]>,
+      /**
+       * Whether a context verdict may be produced here — false once an OPAQUE node is above.
+       *
+       * Two questions used to share one early return, and they are not the same question. What a
+       * component PROVIDES is unknowable below an opaque one, so no consumer under it can be
+       * judged. What it MOUNTS is written in its body and perfectly visible. Stopping the descent
+       * answered the first and broke the second: everything below was unreached, and the
+       * dead-declaration rule read that as "nothing mounts this" while the tag sat one line above
+       * it in the same file.
+       */
+      judging = true,
     ): void {
       /**
        * Keyed on the node AND what is bound to its slots, because those are different arrangements.
@@ -2223,7 +2306,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
          * Checked before this node's own are added, so `provided` is strictly the ancestry. Deduped
          * per context and component: one class mounted on ten paths is one fault to fix.
          */
-        if (provided.has(id) && contexts.get(id)?.single === true && !seenSeconds.has(`${id}@${node.id}`)) {
+        if (judging && provided.has(id) && contexts.get(id)?.single === true && !seenSeconds.has(`${id}@${node.id}`)) {
           seenSeconds.add(`${id}@${node.id}`);
           secondProviders.push({
             context: contexts.get(id)?.label ?? "context",
@@ -2238,7 +2321,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       }
 
       for (const [contextId, where] of node.consumes) {
-        if (here.has(contextId)) continue;
+        if (!judging || here.has(contextId)) continue;
         const key = `${contextId}@${node.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -2252,16 +2335,18 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         });
       }
 
-      // An opaque class may provide anything, so stop judging below it.
-      if (node.opaque) return;
+      // An opaque class may provide anything, so nothing below it can be judged — but it is still
+      // walked, because what it mounts is written in its body.
+      const judgeBelow = judging && !node.opaque;
 
       const nextOnPath = new Set(onPath).add(key);
-      for (const site of node.mounts) visit(site.target, here, nextPath, nextOnPath, site.binds);
+      for (const site of node.mounts) visit(site.target, here, nextPath, nextOnPath, site.binds, judgeBelow);
       // A tag naming a prop mounts whatever this caller handed over. With nothing bound the hole
       // stays a hole: the analyzer says nothing rather than guessing, which is what makes a report
       // here safe to fail a build on.
       for (const hole of node.slotHoles) {
-        for (const filled of bound.get(hole.slot) ?? []) visit(filled, here, nextPath, nextOnPath, new Map());
+        for (const filled of bound.get(hole.slot) ?? [])
+          visit(filled, here, nextPath, nextOnPath, new Map(), judgeBelow);
       }
     }
   }
@@ -2497,6 +2582,46 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const declaration = resolve(tagName)?.declarations?.[0];
     if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer) return undefined;
     return propPathOf(declaration.initializer);
+  }
+
+  /**
+   * The slot a mount waits on when the value it names came from a PARAMETER — `type`,
+   * `options.wrapper`.
+   *
+   * **A prop and a parameter are the same fact through different doors: the caller decides.**
+   * `<this.props.view />` has never been a defect, and neither is `__h(type, …)` inside a JSX
+   * runtime — nothing in either body can say what it mounts, and nothing was meant to. Reporting
+   * one and not the other made the framework apologise for being a framework: thirteen escape
+   * hatches across this repository, seven of them this shape, against a plan whose own test is that
+   * more than a handful means the rule is formulated wrongly.
+   *
+   * What this does NOT buy is coverage. Nothing fills these: the compiler calls `jsx`, and
+   * `render(ui, { wrapper })` hands its wrapper through a call argument while bindings are read
+   * from JSX attributes. The gain is a fact that says what it waits on instead of a blank that
+   * says nothing.
+   *
+   * The cost, plainly: a mount whose value came from a parameter is no longer an error anywhere,
+   * an app's own helper included. It is a marked blank rather than a reported one — the walk still
+   * goes no further, and a component that hands its own hook over stays `opaque`, so nothing
+   * beneath it is judged on a guess.
+   *
+   * A CALL is not one of these. `bootstrap(wrap(ui), container)` names a function, and reading
+   * what it returns is dataflow — out of scope by decision, so those two sites keep their written
+   * reason.
+   */
+  function slotFromParameter(node: ts.Node | undefined): string | undefined {
+    if (!node) return undefined;
+    // `hook as never` is the same name behind a cast, and the casts in this repository are all
+    // written for the same reason: core's `ComponentClassKind` is not on the public type surface.
+    const named = ts.isExpression(node) ? unwrapAs(node) : node;
+    let root: ts.Node = named;
+    while (ts.isPropertyAccessExpression(root)) root = root.expression;
+    if (!ts.isIdentifier(root)) return undefined;
+    const declaration = resolve(root)?.declarations?.[0];
+    // A parameter of ANY enclosing function, not only the nearest: `renderHook` closes its
+    // `hook` over a class declared inside it, and that is the same promise to the caller.
+    if (!declaration || !ts.isParameter(declaration)) return undefined;
+    return named.getText();
   }
 
   /** `this.props.a.b` → `a.b`; anything not rooted in `this.props` is not a slot. */
