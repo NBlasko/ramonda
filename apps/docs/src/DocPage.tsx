@@ -1,6 +1,6 @@
 import { Component, Host, Head, AsyncLoad } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { Link } from "@ramonda/router";
+import { Link } from "./routes";
 import type { PageMeta } from "./content-types";
 import { pageLoaders } from "./generated/page-loaders";
 import { pagePreloads } from "./generated/preloads";

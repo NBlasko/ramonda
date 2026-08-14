@@ -384,6 +384,36 @@ const files = [
 ].filter((f) => !filter || f.includes(filter));
 
 const work = mkdtempSync(join(tmpdir(), "ramonda-examples-"));
+
+/**
+ * `./routes` — the module every routed app has, so an example can import from it and be checked.
+ *
+ * `Link` and `Navigator` are reachable only through `createRouter`, so there is no import from the
+ * package that a component example could show. Writing the factory call into every example instead
+ * would teach the opposite of what the router asks for — call it ONCE, in a module of its own — and
+ * a reader copies what the example does.
+ *
+ * Every block is written flat into this directory, so a sibling `routes.d.ts` is what `./routes`
+ * resolves to from any of them. The types come from the real package rather than a hand-written
+ * shim: `this.use(Navigator)` then has to actually carry `push`, `params` and the rest, which is
+ * the half a shim gets wrong quietly.
+ */
+writeFileSync(
+  join(work, "routes.d.ts"),
+  `import { createRouter } from "@ramonda/router";
+import type { RouteConfig } from "@ramonda/router";
+
+declare const kit: ReturnType<typeof createRouter<RouteConfig>>;
+
+export declare const routes: RouteConfig;
+export declare const Router: typeof kit.Router;
+export declare const RouteOutlet: typeof kit.RouteOutlet;
+export declare const Navigator: typeof kit.Navigator;
+export declare const Link: typeof kit.Link;
+export declare const route: typeof kit.route;
+`,
+);
+
 const units = [];
 
 const unparseable = [];

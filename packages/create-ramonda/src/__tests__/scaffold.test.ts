@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -335,7 +335,18 @@ describe("the scaffolded server shuts its DOM down through its own handle", () =
      */
     expect(server).not.toContain("window.close()");
     expect(server).toContain("dom.close()");
-    expect(server).toContain("return { close:");
+    expect(read("installDom.mjs")).toContain("return { close:");
+  });
+
+  test("and the prerender step gets its DOM from that same installer", () => {
+    const { read } = make("ssr", []);
+
+    // The two used to have an installer each, and they drifted: the server moved to linkedom and
+    // prerender stayed on jsdom, which nothing installs unless the testing add-on was picked. One
+    // file cannot drift from itself.
+    expect(read("scripts/prerender.mjs")).toContain('from "../installDom.mjs"');
+    expect(read("server.mjs")).toContain('from "./installDom.mjs"');
+    expect(read("installDom.mjs")).toContain('from "linkedom"');
   });
 });
 
@@ -452,6 +463,57 @@ describe("the decorators survive a scaffolded build", () => {
       // private package: `@ramonda/check` is the one a generated project already has.
       expect(pkg.devDependencies).toHaveProperty("@ramonda/check");
       expect(read("package.json")).toContain("ramonda-check-bundle");
+    }
+  });
+});
+
+/**
+ * Every package the generated project's own scripts import has to be one the scaffolder installs.
+ *
+ * This is a whole class of fault, and it stayed invisible for the same reason all the others here
+ * did: the scaffolder's tests read files, and CI installs from the workspace, so a package that is
+ * merely PRESENT in this monorepo resolves fine and only 404s in a user's project.
+ *
+ * It had already happened. `server.mjs` was moved from jsdom to linkedom and the scaffolder's
+ * dependency list moved with it — but `scripts/prerender.mjs` was left importing jsdom, which now
+ * arrives only with the `testing` add-on. So a scaffolded SSR project without that add-on installed,
+ * built its bundles, and then died on `ERR_MODULE_NOT_FOUND` at the prerender step. Found by
+ * scaffolding against the registry and running the build, which nothing automated had ever done.
+ */
+describe("the generated project can resolve everything its scripts import", () => {
+  /** Every `.mjs` the template ships, wherever it sits. */
+  function scripts(dir: string, prefix = ""): [string, string][] {
+    const out: [string, string][] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...scripts(path, `${prefix}${entry.name}/`));
+      else if (entry.name.endsWith(".mjs")) out.push([`${prefix}${entry.name}`, readFileSync(path, "utf8")]);
+    }
+    return out;
+  }
+
+  /** The package a bare specifier resolves to — `@scope/name/sub` → `@scope/name`, `a/b` → `a`. */
+  function packageOf(specifier: string): string | undefined {
+    if (specifier.startsWith(".") || specifier.startsWith("node:")) return undefined;
+    const parts = specifier.split("/");
+    return specifier.startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];
+  }
+
+  test.each(["spa", "ssr"] as const)("%s", (mode) => {
+    const { dir, pkg } = make(mode, []);
+    const declared = new Set([...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)]);
+    const found = scripts(dir);
+
+    // A guard on the guard: SSR ships three of these, and a run that found none would assert nothing.
+    if (mode === "ssr") expect(found.length).toBeGreaterThan(0);
+
+    for (const [where, source] of found) {
+      for (const match of source.matchAll(/^import\s[^"']*from\s*["']([^"']+)["']/gm)) {
+        const name = packageOf(match[1]);
+        if (name === undefined) continue;
+        expect(declared, `${mode}/${where} imports "${name}", which nothing installs`).toContain(name);
+      }
     }
   });
 });

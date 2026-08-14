@@ -91,6 +91,47 @@ describe("check-bundle", () => {
     expect(output).toContain("parse");
   });
 
+  test("an ESM bundle under a CommonJS package.json is not called broken", async () => {
+    // A bundler emits ES modules into `dist` whatever the surrounding
+    // package.json declares, so `"type": "commonjs"` next to ESM output is an
+    // ordinary arrangement, not a mistake.
+    //
+    // `node --check` reads a `.js` file as a SCRIPT there, and reported the
+    // build broken with `Cannot use import statement outside a module` — while
+    // suggesting the cause was an unstripped decorator. A guard that accuses a
+    // correct build of the one bug it exists to find is worse than no guard.
+    //
+    // The same accusation reached projects with NO `type` field at all on Node
+    // 22.0–22.6, where module detection had not landed yet. That window is below
+    // this package's `engines` floor; this arrangement is not, on any version.
+    const app = join(dir, "cjs-app");
+    await mkdir(join(app, "dist"), { recursive: true });
+    await writeFile(join(app, "package.json"), '{"name":"an-app","type":"commonjs"}\n');
+    await writeFile(
+      join(app, "dist", "index.js"),
+      'import { render } from "./chunk.js";\nexport const app = render();\n',
+    );
+
+    const { code, output } = await runGuard(join(app, "dist"));
+    expect(code).toBe(0);
+    expect(output).toContain("1 emitted file(s) parse");
+  });
+
+  test("reading a file as a module does not hide a decorator in it", async () => {
+    // The guard against the fix above: a second parse that accepts anything
+    // would buy the false pass back at full price. A decorator is unparseable
+    // as a module too, so the file this tool was written for still fails.
+    const app = join(dir, "cjs-app-bad");
+    await mkdir(join(app, "dist"), { recursive: true });
+    await writeFile(join(app, "package.json"), '{"name":"an-app","type":"commonjs"}\n');
+    await writeFile(join(app, "dist", "chunk.js"), "@G class q { isFetched = 0 }\nexport { q };\n");
+
+    const { code, output } = await runGuard(join(app, "dist"));
+    expect(code).toBe(1);
+    expect(output).toContain("do not parse");
+    expect(output).toContain("chunk.js");
+  });
+
   test("a build that emitted nothing is a failure, not a pass", async () => {
     // The same shape as the bug: something silently produced no output, and a
     // check that reported success would be worse than no check.

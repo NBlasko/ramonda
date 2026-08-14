@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "scope": "library",
+  "package": {
+    "name": "@acme/kit",
+    "version": "1.0.0"
+  },
+  "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "describes": {
+    "file": "published/index.d.ts",
+    "hash": "sha256:ad2b7df91ed5d7e7e14e1613fd5a51b605ac9be6efcf6f190ecf53defeefb33d"
+  },
+  "nodes": [
+    {
+      "id": "@acme/kit/src/index.tsx#Link",
+      "kind": "component",
+      "name": "Link",
+      "at": "src/index.tsx:16:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/kit/src/index.tsx#RouteOutlet",
+      "kind": "component",
+      "name": "RouteOutlet",
+      "at": "src/index.tsx:11:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/kit/src/index.tsx#Router",
+      "kind": "component",
+      "name": "Router",
+      "at": "src/index.tsx:6:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/kit/src/Sidebar.tsx#Sidebar",
+      "kind": "component",
+      "name": "Sidebar",
+      "at": "src/Sidebar.tsx:3:1"
+    },
+    {
+      "id": "@acme/kit/src/panels/left.tsx#Panel",
+      "kind": "component",
+      "name": "Panel",
+      "at": "src/panels/left.tsx:3:1"
+    },
+    {
+      "id": "@acme/kit/src/panels/right.tsx#Panel",
+      "kind": "component",
+      "name": "Panel",
+      "at": "src/panels/right.tsx:3:1"
+    }
+  ],
+  "edges": []
+}

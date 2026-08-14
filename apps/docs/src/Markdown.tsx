@@ -7,7 +7,7 @@ import { CodeBlock } from "./CodeBlock";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
-import { Link } from "@ramonda/router";
+import { Link } from "./routes";
 
 interface MarkdownProps {
   tree: readonly ContentNode[];

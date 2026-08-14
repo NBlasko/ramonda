@@ -1179,3 +1179,76 @@ describe("a component named among children", () => {
     expect(run("slots").classesAsChildren).toEqual([]);
   });
 });
+
+/**
+ * A kit destructured out of a factory call — `const { Router, RouteOutlet, Link } = createRouter(routes)`.
+ *
+ * This is the shape `npm create ramonda` scaffolds and the routing docs teach, and every tag written
+ * from it was a hole. A hole is an ERROR, so a scaffolded routed project could not build at all —
+ * found by scaffolding against the registry and running the build, which nothing automated had done.
+ *
+ * The damage is worse than a failed build. Nothing BELOW an unresolved tag is judged — the CLI says
+ * so on every run — so the subtree under `<RouteOutlet />` went unexamined too. That second half is
+ * NOT asserted here: this fixture renders its consumer as a sibling, where it is reported either
+ * way, and a test that passes without the fix is not a guard. Asserting it needs a fixture whose
+ * consumer sits under the outlet.
+ *
+ * Nothing is guessed to fix it. The callee is declared in a package that ships a fragment, the
+ * fragment says which components it exports, and the destructured KEY names one of them — the same
+ * name-following `componentAt` already does for a direct import.
+ */
+describe("a component kit destructured out of a factory", () => {
+  test("every member resolves, however its type is written", () => {
+    const { unresolved } = run("kit");
+    expect(unresolved).toEqual([]);
+  });
+
+  test("the tags become real edges into the package", () => {
+    expect(edgesOf("kit")).toContain("app.tsx#Shell -> @acme/kit/src/index.tsx#Link (renders/tag)");
+    expect(edgesOf("kit")).toContain("app.tsx#Shell -> @acme/kit/src/index.tsx#RouteOutlet (renders/tag)");
+  });
+});
+
+/**
+ * A kit whose members the package does not export — the ordinary case, since the factory is the
+ * door — and what happens when one of those names answers to two classes.
+ *
+ * The exported half of `splice` already refuses that: two exported classes sharing a name are
+ * dropped and noted, "refused rather than resolved to whichever came last". The internal half kept
+ * the FIRST and said nothing, and internal names collide far more often than exported ones — this
+ * repository's own documentation app declares `class Page` seventy-five times. A kit member bound
+ * to an arbitrary class puts every edge below it under the wrong component, which is a wrong ANSWER
+ * rather than a missing one.
+ */
+describe("a kit member the package never exported", () => {
+  test("resolves when the package declares it once", () => {
+    expect(edgesOf("kit-ambiguous")).toContain("app.tsx#Shell -> @acme/kit/src/Sidebar.tsx#Sidebar (renders/tag)");
+  });
+
+  test("resolves to NOTHING when the name answers to two classes", () => {
+    const edges = edgesOf("kit-ambiguous");
+    expect(edges).not.toContain("app.tsx#Shell -> @acme/kit/src/panels/left.tsx#Panel (renders/tag)");
+    expect(edges).not.toContain("app.tsx#Shell -> @acme/kit/src/panels/right.tsx#Panel (renders/tag)");
+    // Reported as the hole it is, which is the honest outcome and already an error.
+    expect(run("kit-ambiguous").unresolved.map((u) => u.why)).toContainEqual(expect.stringContaining("Panel"));
+  });
+});
+
+/**
+ * The same kit, with the factory in THIS program rather than an installed package.
+ *
+ * The fragment-only version of this passed every fixture here and still failed the documentation
+ * site, because a monorepo compiles its own packages from source: there is no `.d.ts` to splice, and
+ * none is needed — the `return { … }` is in front of you, and a key names a class exactly as a tag
+ * does. Not the rarer half, and the one nothing was covering.
+ */
+describe("a component kit whose factory is in the same program", () => {
+  test("every member resolves, cast or not", () => {
+    expect(run("kit-source").unresolved).toEqual([]);
+  });
+
+  test("the tags become real edges", () => {
+    expect(edgesOf("kit-source")).toContain("app.tsx#App -> app.tsx#Anchor (renders/tag)");
+    expect(edgesOf("kit-source")).toContain("app.tsx#App -> app.tsx#Outlet (renders/tag)");
+  });
+});

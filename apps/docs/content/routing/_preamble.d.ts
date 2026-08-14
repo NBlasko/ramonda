@@ -36,7 +36,6 @@ declare global {
   const routes: any;
   const paths: any;
   const createRoutes: (...args: any[]) => any;
-
   /** A node server's request and response, for the server-routing page. */
   const req: any;
   const res: any;
