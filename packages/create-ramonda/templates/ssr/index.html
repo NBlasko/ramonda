@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ramonda SSR</title>
+    <!-- Where a page's <Head> lands: its <meta> and <link>, and the title above is rewritten to
+         whatever the page resolved. Nothing to do unless you remove it. -->
+    <!--head-->
     <style>
       :root {
         --bg: #fbf8ff; --fg: #241a2e; --muted: #6b6376; --accent: #7a4fbf;
@@ -39,6 +42,14 @@
   </head>
   <body>
     <div id="app"><!--ssr--></div>
+
+    <!-- Named portal targets, AFTER the app root — which is the point of aiming at one: a subtree
+         goes here to escape a stacking context or an `overflow: hidden` inside the app.
+
+         Nothing uses it yet. It is here because the alternative is a build that FAILS the day you
+         add your first `<Portal target={portalTarget("modals")}>`, and the fix would be one line
+         in a file you had no reason to open. -->
+    <!--portals-->
     <!-- Dev (Vite) serves this source directly with HMR; the production build
          rewrites it to the bundled /assets/client.js (see server.mjs). -->
     <script type="module" src="/src/entry-client.tsx"></script>

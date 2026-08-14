@@ -96,6 +96,10 @@
   <body>
     <div id="app"><!--ssr--></div>
 
+    <!-- Named portal targets. AFTER the app root, which is the point of aiming at one: a subtree
+         goes here to escape a stacking context or an `overflow: hidden` inside the app. -->
+    <!--portals-->
+
     <!--
       ADOPTION CHECK — a permanent fixture of this playground.
 
@@ -134,14 +138,23 @@
     -->
     <script>
       (function () {
+        // The app root AND every named portal target. A portal's whole point is living outside
+        // the root, so walking only `#app` would leave the one subtree this check was extended
+        // for unmeasured — and "unmeasured" is how a rebuild stays silent.
+        var roots = function () {
+          var out = [document.getElementById("app")];
+          var containers = document.querySelectorAll("[data-ramonda-portal-target]");
+          for (var i = 0; i < containers.length; i++) out.push(containers[i]);
+          return out.filter(Boolean);
+        };
+
         var walk = function () {
           var out = [];
-          var walker = document.createTreeWalker(
-            document.getElementById("app"),
-            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT
-          );
-          var node;
-          while ((node = walker.nextNode())) out.push(node);
+          roots().forEach(function (root) {
+            var walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+            var node;
+            while ((node = walker.nextNode())) out.push(node);
+          });
           return out;
         };
 

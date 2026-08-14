@@ -367,6 +367,44 @@ describe("the scaffolded server shuts its DOM down through its own handle", () =
     expect(deps.dependencies).toHaveProperty("@ramonda/server");
   });
 
+  test("a page's Head reaches the served HTML", () => {
+    const { read } = make("ssr", []);
+
+    // `renderToString` hands back the body and NOTHING else — no title, no meta, no portal blocks.
+    // A scaffolded project rendering with it shipped pages with no title and no description, which
+    // is invisible to exactly the crawlers server rendering exists for. Measured, not assumed.
+    const entry = read("src/entry-server.tsx");
+    expect(entry).toContain("renderPage(");
+    // The CALL, not the word: the comment above it explains why the other one is wrong, and that
+    // explanation is worth more in the generated project than a grep-clean file.
+    expect(entry).not.toContain("renderToString(");
+    expect(read("index.html")).toContain("<!--head-->");
+  });
+
+  test("the shell has somewhere to put a named portal target", () => {
+    const { read } = make("ssr", []);
+
+    // Nothing in the template uses one. It is here because `fillDocument` REFUSES a render that
+    // collected portal blocks with no marker to put them in — so without this, adding a first
+    // `<Portal target={portalTarget("modals")}>` breaks the build, and the fix is one line in a
+    // file the reader had no reason to open.
+    const shell = read("index.html");
+    expect(shell).toContain("<!--portals-->");
+    // After the app root: a subtree aims at a named target to escape a stacking context inside it.
+    expect(shell.indexOf("<!--portals-->")).toBeGreaterThan(shell.indexOf('<div id="app">'));
+  });
+
+  test("an ISR entry caches the whole document, not just the body", () => {
+    const { read } = make("ssr", []);
+
+    // Caching the body and filling the shell at send time works until the shell changes under a
+    // cached page — and with a head collected per page, it is the head that goes stale first:
+    // page A's cached entry served with whatever title the last render left behind.
+    const server = read("server.mjs");
+    expect(server).toContain("return fillDocument({ template: prodTemplate");
+    expect(server).not.toContain("res.end(fillDocument({ template: prodTemplate, html }))");
+  });
+
   test("the shell is filled through the package, never `String.replace`", () => {
     const { read } = make("ssr", []);
 

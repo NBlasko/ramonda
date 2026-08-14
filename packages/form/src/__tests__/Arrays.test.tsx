@@ -1,5 +1,5 @@
-import { Component, type RamondaNode } from "@ramonda/core";
-import { render } from "@ramonda/testing-library";
+import { Component, list, type RamondaNode } from "@ramonda/core";
+import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
 import { Form } from "../Form";
 import type { StandardResult, StandardSchemaV1 } from "../types";
@@ -340,5 +340,56 @@ describe("array fields", () => {
     } finally {
       unmount();
     }
+  });
+});
+
+/**
+ * A row keeps its element across a remove WITHOUT a key.
+ *
+ * The arrays page said `key={row.id}` "is the whole point", and that stopped being true. A row
+ * object IS rebuilt whenever its position changes — that part still holds — but the row carries a
+ * generated `id` that survives, and `list()` aligns the incoming array against the one on screen by
+ * what the rows still have in common. The `id` is what they have in common; `index` restates the
+ * position and is deliberately ignored, which is a fix that was made FOR this shape.
+ *
+ * So the identity carries on its own, and this is what says so. If it ever stops, the docs are
+ * wrong before anyone notices — a rebuilt row looks identical and only loses what the browser was
+ * holding: the caret, the selection, an open datalist.
+ */
+describe("a row's element survives a remove with no key written", () => {
+  test("the survivors keep their nodes, and their ids", async () => {
+    let form!: Form<typeof schema>;
+
+    class Page extends Component {
+      private f = this.use(Form<typeof schema>, { schema, defaultValues: SEED, onSubmit: () => {} });
+      render(): RamondaNode {
+        form = this.f;
+        return (
+          <ul>
+            {list(this.f.fields.tags.$.rows, (row) => (
+              <li data-row={row.id}>
+                <input {...row.field.$.bind} />
+              </li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    const { container } = render((<Page />) as never);
+    const nodeOf = (id: string) => container.querySelector(`[data-row="${id}"] input`);
+
+    const before = form.fields.tags.$.rows.map((r) => r.id);
+    const second = nodeOf(before[1]);
+    const third = nodeOf(before[2]);
+
+    await act(() => {
+      form.fields.tags.$.remove(0);
+    });
+
+    const after = form.fields.tags.$.rows.map((r) => r.id);
+    expect(after).toEqual([before[1], before[2]]);
+    expect(nodeOf(after[0]), "the second row was rebuilt instead of moved").toBe(second);
+    expect(nodeOf(after[1]), "the third row was rebuilt instead of moved").toBe(third);
   });
 });

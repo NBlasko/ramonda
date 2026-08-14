@@ -20,7 +20,14 @@ is reported ([`RMD031`](/reference/diagnostics)) — wrap it in an element inste
 
 ## When the row is a component
 
-Give the component the item as a prop, and put the key on it:
+Give the component the item as a prop:
+
+```tsx
+list(this.tasks, (task) => <TaskRow item={task} />);
+```
+
+If the rows are replaced by fresh objects and you want a key, it goes on the component — not on a
+tag inside it, which the row's own render owns and you cannot reach:
 
 ```tsx
 list(this.tasks, (task) => <TaskRow key={task.id} item={task} />);
