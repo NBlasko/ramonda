@@ -36,7 +36,7 @@ class Counter extends Component {
  * collects into a detached container per name; the shell emits a container carrying the name; the
  * client adopts what is inside it.
  */
-const notices = portalTarget("notices");
+const noticesTarget = portalTarget("notices");
 
 @Host("li")
 class Notice extends Component<{ text: string }> {
@@ -74,10 +74,27 @@ class NoticeStack extends Component {
     this.origin = "server";
   }
 
+  /**
+   * Reverses the rows, so the smoke test can ask the question `list()` exists to answer: does a
+   * reorder MOVE the rows, or rewrite them?
+   *
+   * A positional fallback produces the same TEXT either way — that is exactly why it is a trap —
+   * so the check compares the row elements by identity across the reorder. Bound, not an arrow:
+   * an arrow in a class field is a new function every render and RMD022 says so.
+   */
+  reverse(): void {
+    this.items = [...this.items].reverse();
+  }
+
   render() {
     return (
       <ul id="notices">
         <li id="notice-origin">{this.origin}</li>
+        <li>
+          <button id="reverse-notices" onClick={this.reverse}>
+            reverse
+          </button>
+        </li>
         {list(this.items, (item) => (
           <Notice text={item.text} />
         ))}
@@ -192,7 +209,7 @@ export class App extends Component {
    * PIPELINE rather than of one page. A static route, an ISR route and a dynamic one all have to
    * carry it.
    */
-  notices = this.use(Portal, { children: <NoticeStack />, target: notices });
+  notices = this.use(Portal, { children: <NoticeStack />, target: noticesTarget });
   head = this.use(Head, () => ({
     title: "Ramonda SSR playground",
     description: "The layout's description, shown when a page sets none.",

@@ -329,7 +329,13 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
     // so left its head tags behind) does not leak them into the next request. The
     // reset above is the one that guarantees correctness; this keeps a long-lived
     // server process from carrying a rendered page's tags between requests.
+    //
+    // Portals for the same reason, and they were missing it — measured, a container still held
+    // the last page's markup after this returned. They matter MORE than the head here: a head
+    // block is a few tags, a portal container holds a whole DOM subtree, and it stayed reachable
+    // until the next request happened to arrive.
     resetHead();
+    resetPortalTargets();
   }
 }
 

@@ -57,3 +57,9 @@ head is what goes stale first: one page's cached entry served with another's tit
 `fillDocument` also stops taking an EMPTY title literally. `renderPage` returns `""` when no `Head`
 set one, which is a report of absence; writing it emptied the shell's own `<title>`, and a
 scaffolded project shipped `<title></title>`. Found by building one.
+
+**A finished `renderPage` no longer leaves a page's portal containers standing.** It resets the head
+in its `finally` for a stated reason — keeping a long-lived server from carrying one request's tags
+into the next — and portals were missing it, though they hold whole DOM subtrees rather than a few
+tags. Measured: a container still held the last page's markup after the call returned, while
+`renderStatic` cleared both.

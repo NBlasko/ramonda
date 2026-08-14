@@ -51,11 +51,11 @@ const isr = createIsrCache({
 
 const origin = `http://localhost:${PORT}`;
 
-function sendHtml(res, document, mode) {
+function sendHtml(res, html, mode) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
-  res.end(document);
+  res.end(html);
 }
 
 /**

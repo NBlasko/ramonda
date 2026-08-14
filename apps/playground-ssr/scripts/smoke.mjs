@@ -533,7 +533,29 @@ async function checkPortal() {
     fail(`the portalled component was rebuilt, not restored: origin=${origin} after hydration (expected server)`);
   }
 
-  return { rows: liveRows.length };
+  // The question `list()` exists to answer: does a reorder MOVE the rows or rewrite them?
+  //
+  // A positional fallback produces identical TEXT, which is exactly what makes it a trap — so this
+  // compares the row ELEMENTS by identity. Same nodes in the opposite order is a region reconcile;
+  // same nodes in the same order with swapped text is the fallback, and anything else is a rebuild.
+  const before = [...doc.querySelectorAll(".notice")];
+  const textBefore = before.map((row) => row.textContent);
+  doc.querySelector("#reverse-notices").dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const after = [...doc.querySelectorAll(".notice")];
+  const textAfter = after.map((row) => row.textContent);
+  if (JSON.stringify(textAfter) !== JSON.stringify([...textBefore].reverse())) {
+    fail(`the reorder did not reverse the portal's rows: ${textBefore} then ${textAfter}`);
+  }
+  if (after.length !== before.length || !after.every((row) => before.includes(row))) {
+    fail("the reorder REBUILT the portal's rows instead of moving them — list() degraded to a positional pass");
+  }
+  if (after[0] === before[0]) {
+    fail("the rows kept their positions after a reverse, so nothing moved");
+  }
+
+  return { rows: after.length };
 }
 
 const panel = await checkPanel();
@@ -552,7 +574,7 @@ console.log(
     `and refused a path that does not exist\n` +
     `[smoke] /signup rendered ${form.inputs} named inputs, hydration adopted them, ` +
     `and the row ids survived a splice (${form.rowids})\n` +
-    `[smoke] a portal into a named target was served outside #app, adopted on hydration with its ` +
-    `${portal.rows} list() rows, and kept the state the server gave it\n` +
+    `[smoke] a portal into a named target was served outside #app, adopted on hydration, kept the ` +
+    `state the server gave it, and MOVED its ${portal.rows} list() rows on a reorder\n` +
     `[smoke] all three render modes answered: static, dynamic, and ISR through a background rebake`,
 );

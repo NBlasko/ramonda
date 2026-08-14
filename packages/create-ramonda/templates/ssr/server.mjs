@@ -103,11 +103,11 @@ async function renderDev(req, res) {
  * what would silently go stale: page A's cached entry served with whatever title the last render
  * happened to leave.
  */
-function sendHtml(res, document, mode) {
+function sendHtml(res, html, mode) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
-  res.end(document);
+  res.end(html);
 }
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */

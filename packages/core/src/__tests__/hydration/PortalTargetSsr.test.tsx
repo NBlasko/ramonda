@@ -4,6 +4,7 @@ import { Host, state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { portalTarget, PORTAL_TARGET_ATTR } from "../../base/portalTarget";
 import { renderPage, renderDocument, renderStatic } from "../../index";
+import { portalTargetContainers } from "../../base/portalTarget";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
 
@@ -220,5 +221,36 @@ describe("a portal into a named target, on a prerendered page", () => {
     expect(baked.html).not.toContain("modal");
     expect(baked.portals?.modals).toContain('class="modal"');
     expect(baked.portals?.modals).toContain("baked");
+  });
+});
+
+/**
+ * What a finished render leaves standing.
+ *
+ * `renderPage` resets the head in its `finally` for a reason it states itself — it "keeps a
+ * long-lived server process from carrying a rendered page's tags between requests". The same
+ * argument applies to a portal's containers, which hold whole DOM subtrees rather than a few head
+ * tags, and they were not cleared. Not a wrong page: the reset at the START of the next render
+ * makes the output correct either way. It is one request's nodes kept alive until another arrives.
+ *
+ * Measured before the fix: a container still held 31 characters of the last page after
+ * `renderPage` returned, and none after `renderStatic`, which cleared both.
+ */
+describe("after the markup has been captured", () => {
+  test("neither render leaves a page's portal nodes standing", async () => {
+    class Page extends Component {
+      portal = this.use(Portal, { children: <div class="modal">held</div>, target: modals });
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    expect(page.portals.modals).toContain("held");
+    expect([...portalTargetContainers()].map((c) => c.innerHTML)).toEqual([]);
+
+    const baked = await renderStatic(<Page />, new URL("http://localhost/"));
+    expect(baked.portals?.modals).toContain("held");
+    expect([...portalTargetContainers()].map((c) => c.innerHTML)).toEqual([]);
   });
 });
