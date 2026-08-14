@@ -52,17 +52,14 @@ export function jsx(type: unknown, props: Props | null, key?: string | number): 
   // `in` rather than `!== undefined`: `<p>{undefined}</p>` HAS a child, and it holds a slot the
   // diff matches siblings by. `<p/>` has none.
   return props !== null && props !== undefined && "children" in props
-    ? // ramonda-check-ignore the compiler hands this whatever the tag was; that is what a JSX runtime is
-      __h(type as never, attributes as never, props.children as ComponentChild)
-    : // ramonda-check-ignore the compiler hands this whatever the tag was; that is what a JSX runtime is
-      __h(type as never, attributes as never);
+    ? __h(type as never, attributes as never, props.children as ComponentChild)
+    : __h(type as never, attributes as never);
 }
 
 /** Children the compiler wrote itself: spread, so each one keeps its own index. */
 export function jsxs(type: unknown, props: Props | null, key?: string | number): VNode {
   const attributes = attributesOf(props, key);
   const children = (props?.children ?? []) as ComponentChild[];
-  // ramonda-check-ignore the compiler hands this whatever the tag was; that is what a JSX runtime is
   return __h(type as never, attributes as never, ...children);
 }
 

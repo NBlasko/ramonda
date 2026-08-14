@@ -9,3 +9,7 @@ export declare class Themed {
 }
 export declare const QueryProvider: unknown;
 export declare const QueryConsumer: unknown;
+export declare class Frame {
+  show(view: unknown): unknown;
+  render(): unknown;
+}

@@ -79,7 +79,6 @@ export function renderHook<T, O = undefined>(
     // bag. Reversed, the hook would be constructed against `undefined`.
     @state currentProps: O | undefined = initialProps;
 
-    // ramonda-check-ignore the caller names the hook; this helper exists to mount whichever it is
     instance = this.use(hook as never, (self: HookHost) => self.currentProps as never) as T;
 
     render(): RamondaNode {

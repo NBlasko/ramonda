@@ -366,6 +366,37 @@ every run, whether or not anything failed, so the number cannot creep up unread.
 A tag naming a PROP — `<this.props.view />` — is not one of these. It is unresolvable from the class
 alone by design: the caller decides, and the walk fills it from what the caller binds.
 
+**Nor is a PARAMETER, which is the same promise through a different door.** A function handed a
+component and asked to mount it knows no more than a component handed one in a prop:
+
+```ts
+function __h(type: unknown, props: unknown): unknown {
+  return { type, props };
+}
+
+// The shape a JSX runtime is: whatever the compiler wrote is what gets mounted.
+function jsx(type: unknown, props: unknown): unknown {
+  return __h(type, props); // waits on `type`
+}
+```
+
+That is an edge naming what it waits on — `"via": "parameter", "slot": "type"` — rather than a blank
+that says nothing. A path works the same way at any depth (`options.wrapper`), a cast is seen
+through, and `this.use(hook)` makes the same promise about a hook.
+
+**Its own `via`, and not a flag on the slot one.** A prop edge is FILLED from what a JSX call site
+binds; a parameter must never be, because the two live in different namespaces. A package whose
+`Frame.show(view)` mounts its own argument, spliced into an app that writes `<Frame view={Foo} />`,
+would otherwise have `Foo` judged under `Frame` — a verdict on a mount nobody wrote.
+
+Two shapes near it are **not** this, because reading either means running something: what a **call**
+returns (`bootstrap(wrap(ui), container)`), and whatever a **local binding** was last assigned
+(`const tag = …; __h(tag, …)`). Those stay holes and want a written reason.
+
+The site goes silent; it does not become transparent. A component whose hook came from a parameter
+may be providing anything, so nothing beneath it is judged — but it is still walked, because what it
+mounts is written in its body.
+
 ## Where a tree starts
 
 `bootstrap` and `hydrateRoot` in the browser, `renderToString`, `renderPage` and `renderStatic` on
