@@ -1,5 +1,5 @@
 import { Component, Head, Host, state } from "@ramonda/core";
-import { Router, RouteOutlet, Navigator, Link, createRoutes } from "@ramonda/router";
+import { Router, RouteOutlet, createRouter, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ProductsPage } from "./ProductsPage";
 import { SignupPage } from "./SignupPage";
@@ -106,6 +106,15 @@ export const routes = createRoutes({
   "*": <NotFoundPage />,
 });
 
+/**
+ * The kit, minted once. `Link` and `Navigator` are reachable only from here — `@ramonda/router`
+ * exports neither — so there is no second, unchecked import to reach for by accident.
+ *
+ * Below the table on purpose: `createRouter` reads it. The classes above use these inside field
+ * initializers and `render`, which run per instance rather than while this module is evaluating.
+ */
+export const { Link, Navigator, route } = createRouter(routes);
+
 @Host("div")
 export class App extends Component {
   router = this.use(Router);
@@ -138,7 +147,13 @@ export class App extends Component {
           <Link href="/users/42">User 42</Link>
           <Link href="/products">Products</Link>
           <Link href="/signup">Sign up</Link>
-          <Link href="/nope">Missing</Link>
+          {/*
+            Deliberately NOT in the table — this demo exists to show the catch-all handling a URL
+            the app does not know. So it is a plain anchor: `Link` accepts the paths the table
+            names, and a link the table cannot name is not one of them. The full load is the
+            honest behaviour for a URL this app never claimed.
+          */}
+          <a href="/nope">Missing</a>
         </nav>
         <code id="path">{this.route.pathname}</code>
         <RouteOutlet routes={routes} />

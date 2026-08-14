@@ -11,7 +11,7 @@ To read the current URL inside a component — the `id` in `/players/9`, a `?que
 `#hash` — use `Navigator`:
 
 ```tsx
-import { Navigator } from "@ramonda/router";
+import { Navigator } from "./routes";
 
 export class Player extends Component {
   route = this.use(Navigator);
@@ -57,7 +57,7 @@ live in the URL. Then it survives a reload, it's shareable as a link, and Back u
 it, all for free. Read it with `searchParams`, and change it with `updateSearchParams`:
 
 ```tsx
-import { Navigator } from "@ramonda/router";
+import { Navigator } from "./routes";
 
 export class Filters extends Component {
   route = this.use(Navigator);

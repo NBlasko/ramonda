@@ -361,6 +361,12 @@ interface Reference {
 interface SplicedPackage {
   /** Exported components and hooks, by name — the only ones an app can mount. */
   components: Map<string, ComponentNode>;
+  /**
+   * The ones an app CANNOT import, by name — a kit's members, handed back through a factory rather
+   * than the entry. Kept apart from `components` on purpose: nothing may mount these by writing the
+   * name, and only a factory's destructured key may reach them.
+   */
+  internals: Map<string, ComponentNode>;
   /** Exported context bindings, by the name of either half of the pair. */
   contexts: Map<string, { fact: ContextFact; half: "provides" | "consumes" }>;
 }
@@ -598,6 +604,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   /** Every component and hook class, by the symbol of its declaration — see `ComponentNode.id`. */
   const components = new Map<ts.Symbol, ComponentNode>();
+  /** `const { Link } = createRouter(routes)` sites, resolved once the classes are all in. */
+  const kitDestructures: ts.VariableDeclaration[] = [];
   const arrowFields: ArrowFieldIssue[] = [];
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
@@ -799,11 +807,16 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   for (const file of sources) {
     ts.forEachChild(file, function visit(node) {
       collectContextPair(node);
+      if (isKitDestructure(node)) kitDestructures.push(node);
       collectRouteTable(node);
       collectClass(node);
       ts.forEachChild(node, visit);
     });
   }
+
+  // After every class is known: a kit's key names a component, and `componentAt` has to be able to
+  // find it. Resolving during the walk would answer only for the classes collected so far.
+  for (const node of kitDestructures) resolveKitDestructure(node);
 
   // ── Pass 1.5: functions that return JSX, which are edges nothing owned before ────────────────
   for (const file of sources) {
@@ -899,6 +912,123 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   };
 
   // ── collection ──────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * A cheap shape test: `const { … } = someCall()`. Recorded during the walk and answered later.
+   *
+   * It says nothing about WHICH factory, on purpose — that question needs every class in the
+   * program to have been collected first, and this runs while they are still being collected.
+   * `resolveKitDestructure` is where a candidate becomes a kit or stays nothing.
+   */
+  function isKitDestructure(node: ts.Node): node is ts.VariableDeclaration {
+    return (
+      ts.isVariableDeclaration(node) &&
+      node.initializer !== undefined &&
+      ts.isCallExpression(node.initializer) &&
+      ts.isObjectBindingPattern(node.name)
+    );
+  }
+
+  /**
+   * The object literal a function hands back, if it plainly hands one back.
+   *
+   * Two shapes and no more: `return { … }` in a body, and a concise arrow `() => ({ … })`. A factory
+   * that builds its result any other way is one this cannot read, and it says so by resolving
+   * nothing rather than by guessing.
+   */
+  function returnedObject(declaration: ts.Declaration | undefined): ts.ObjectLiteralExpression | undefined {
+    const fn =
+      declaration && (ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration))
+        ? declaration
+        : declaration &&
+            ts.isVariableDeclaration(declaration) &&
+            declaration.initializer &&
+            (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
+          ? declaration.initializer
+          : undefined;
+    if (!fn) return undefined;
+
+    const body = fn.body;
+    if (!body) return undefined;
+    if (!ts.isBlock(body))
+      return ts.isParenthesizedExpression(body) && ts.isObjectLiteralExpression(body.expression)
+        ? body.expression
+        : undefined;
+
+    let found: ts.ObjectLiteralExpression | undefined;
+    for (const statement of body.statements) {
+      if (ts.isReturnStatement(statement) && statement.expression) {
+        const expression = unwrapAs(statement.expression);
+        if (ts.isObjectLiteralExpression(expression)) found = expression;
+      }
+    }
+    return found;
+  }
+
+  /** What a key of that object NAMES, with the `as` casts peeled off. */
+  function memberNamed(literal: ts.ObjectLiteralExpression, key: string): ComponentNode | undefined {
+    for (const property of literal.properties) {
+      if (!property.name || !ts.isIdentifier(property.name) || property.name.text !== key) continue;
+      if (ts.isShorthandPropertyAssignment(property)) return componentAt(property.name);
+      if (ts.isPropertyAssignment(property)) return componentAt(unwrapAs(property.initializer));
+    }
+    return undefined;
+  }
+
+  /**
+   * `const { Router, RouteOutlet, Link } = createRouter(routes)` — a kit of components handed back by
+   * a factory, destructured once and used as tags everywhere after.
+   *
+   * This is the shape `npm create ramonda` scaffolds and the routing documentation teaches, and every
+   * tag written from it used to be a hole. A hole is an ERROR here, so a scaffolded routed project
+   * could not build at all — and nothing BELOW an unresolved tag is judged, so most of the app went
+   * unexamined with it.
+   *
+   * **Nothing is guessed**, and the two branches are the two ways a factory can be in front of you.
+   *
+   * INSTALLED — the factory is declared in a `.d.ts` and its package ships a fragment. `componentAt`
+   * already answers a direct import that way, by taking the symbol's name to the fragment; the same
+   * two facts sit one step apart here, the callee being the package's and the key being its name.
+   * It has to read the fragment rather than the factory's return type, because the type is where the
+   * answer stops being there: `@ramonda/router` publishes `Router: typeof Router` but
+   * `Link: ComponentClassKind<TypedLinkProps<…>>`, the latter having gone through `as unknown as`.
+   *
+   * FROM SOURCE — the factory is in this program, so there is no fragment and no need for one: the
+   * `return { … }` is right there, and a key names a class exactly as a tag does. This is not the
+   * rarer half. It is how this repository builds its own apps, which is why the first version passed
+   * every fixture and still failed the docs site.
+   */
+  function resolveKitDestructure(node: ts.VariableDeclaration): void {
+    const initializer = node.initializer as ts.CallExpression;
+    const name = node.name as ts.ObjectBindingPattern;
+
+    const callee = initializer.expression;
+    const factory = ts.isIdentifier(callee) || ts.isPropertyAccessExpression(callee) ? resolve(callee) : undefined;
+    if (!factory) return;
+
+    const spliced = splicedFor(factory);
+    const literal = spliced ? undefined : returnedObject(factory.declarations?.[0]);
+    if (!spliced && !literal) return;
+
+    for (const element of name.elements) {
+      if (!ts.isIdentifier(element.name)) continue;
+      // `const { Link: Anchor } = …` — the KEY is what the package named, the local name is the
+      // caller's business, and it is the key that has to match.
+      const key = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName : element.name;
+
+      // Exported or not. A kit's members are routinely NOT exported — that is the point of handing
+      // them back through a factory rather than the entry — so the exported-only rule the first
+      // version had was wrong for the one shape this exists to resolve. What keeps it honest is that
+      // the FACTORY is the package's own, and the key is the package's own name for what it handed over.
+      const member = spliced
+        ? (spliced.components.get(key.text) ?? spliced.internals.get(key.text))
+        : memberNamed(literal as ts.ObjectLiteralExpression, key.text);
+      if (!member) continue;
+
+      const local = checker.getSymbolAtLocation(element.name);
+      if (local) components.set(local, member);
+    }
+  }
 
   /** `const [Theme, ThemeConsumer] = createContext({...}, { label: "Theme" })` */
   function collectContextPair(node: ts.Node): void {
@@ -1519,9 +1649,15 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       return undefined;
     }
 
-    const here: SplicedPackage = { components: new Map(), contexts: new Map() };
+    const here: SplicedPackage = { components: new Map(), contexts: new Map(), internals: new Map() };
     const byId = new Map<string, ComponentNode>();
     const ambiguous = new Set<string>();
+    /**
+     * Kept apart from `ambiguous` because the two are different namespaces: a package may well
+     * export a `Panel` and declare another one privately, and neither should make the other
+     * unanswerable.
+     */
+    const ambiguousInternals = new Set<string>();
 
     for (const node of fragment.graph.nodes) {
       if (node.kind === "component" || node.kind === "hook" || node.kind === "helper") {
@@ -1561,6 +1697,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             here.components.delete(made.name);
             ambiguous.add(made.name);
           } else if (!ambiguous.has(made.name)) here.components.set(made.name, made);
+        } else if (here.internals.has(made.name)) {
+          // Refused for the same reason the exported branch above refuses: a kit member bound to
+          // whichever class came first puts every edge below it under an arbitrary component, and a
+          // wrong answer is worse than a missing one. The tag then reports as the hole it is.
+          //
+          // No note, unlike the exported branch. Internal names collide often — this repository's
+          // documentation app declares `class Page` seventy-five times — and almost none of them is
+          // ever reached by a factory's destructured key. A note per collision would bury the runs
+          // where it matters; the unresolved edge says it at the one place it does.
+          here.internals.delete(made.name);
+          ambiguousInternals.add(made.name);
+        } else if (!ambiguousInternals.has(made.name)) {
+          here.internals.set(made.name, made);
         }
       } else if (node.kind === "context") {
         const fact: ContextFact = {

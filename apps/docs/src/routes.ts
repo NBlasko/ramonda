@@ -1,4 +1,4 @@
-import { createRoutes, type RouteConfig } from "@ramonda/router";
+import { createRoutes, createRouter, type RouteConfig } from "@ramonda/router";
 import type { VNode } from "@ramonda/core";
 import { __h } from "@ramonda/core";
 import { pages } from "./generated/content";
@@ -20,3 +20,11 @@ table["*"] = __h(DocPage, { meta: pages[0], notFound: true });
 
 export const routes: RouteConfig = createRoutes(table);
 export { pages };
+
+/**
+ * The kit, minted once and imported from here across the app.
+ *
+ * `Link` and `Navigator` are reachable only this way — `@ramonda/router` exports neither, so there
+ * is no second, unchecked import to reach for by accident.
+ */
+export const { Link, Navigator, route } = createRouter(routes);

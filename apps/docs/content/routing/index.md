@@ -46,8 +46,10 @@ export class App extends Component {
 }
 ```
 
-Put this in one module and import `Link` / `Navigator` / `route` / `routes` from it across your
-app. Binding them to your table is what makes links **type-safe** — next.
+Put this in one module — `routes.ts` in the examples that follow — and import `Link` / `Navigator` /
+`route` / `routes` from it across your app. Call `createRouter` **once**, there: it is the only
+place `Link` and `Navigator` come from, and binding them to your table is what makes links
+**type-safe** — next.
 
 ```demo:RouteInfo
 ```
