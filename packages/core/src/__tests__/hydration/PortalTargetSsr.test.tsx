@@ -3,7 +3,7 @@ import { Component } from "../../base/Component";
 import { Host, state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { portalTarget, PORTAL_TARGET_ATTR } from "../../base/portalTarget";
-import { renderPage, renderDocument } from "../../index";
+import { renderPage, renderDocument, renderStatic } from "../../index";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
 
@@ -189,5 +189,36 @@ describe("a portal into a named target", () => {
     expect(container).not.toBeNull();
     expect(container?.querySelector(".modal")?.textContent).toBe("client");
     expect(app.container.querySelector(".modal")).toBeNull();
+  });
+});
+
+/**
+ * The BAKED path collects them too.
+ *
+ * `renderPage` hands back `portals`; `renderStatic` — the build-time render that proves a page
+ * holds no per-request data — did not. So a prerendered page dropped every named portal block on
+ * the floor: the file looked correct, and the client built the modal a second time on hydration
+ * because there was no container to adopt.
+ *
+ * It could only show up in a real static build, which is why nothing here caught it.
+ */
+describe("a portal into a named target, on a prerendered page", () => {
+  test("renderStatic collects the blocks the way renderPage does", async () => {
+    class Page extends Component {
+      portal = this.use(Portal, {
+        children: <div class="modal">baked</div>,
+        target: modals,
+      });
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    const baked = await renderStatic(<Page />, new URL("http://localhost/"));
+
+    expect(baked.blockedBy).toBeUndefined();
+    expect(baked.html).not.toContain("modal");
+    expect(baked.portals?.modals).toContain('class="modal"');
+    expect(baked.portals?.modals).toContain("baked");
   });
 });

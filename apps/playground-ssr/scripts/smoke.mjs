@@ -464,9 +464,82 @@ async function checkModes() {
   );
 }
 
+/**
+ * A portal into a NAMED target, across the whole pipeline.
+ *
+ * The plan for `Portal` was that a portalled subtree should be indistinguishable from a normally
+ * mounted one — it just lives somewhere else in the DOM. Every part of that had unit tests and
+ * NOT ONE application used it, here or in the docs site. This is the first thing that renders a
+ * portal through a real build, a real server and a real hydration.
+ *
+ * Three claims, and each fails differently:
+ *
+ * - **Served.** The container is outside `#app`, so it exists only if the server collected the
+ *   block and the shell had a `<!--portals-->` to put it in. Dropping it renders a page that looks
+ *   perfect and builds the subtree a second time in the browser.
+ * - **Adopted.** The nodes are compared by IDENTITY before and after hydration. A rebuild is not a
+ *   crash — the page looks the same — so nothing but identity can tell the difference.
+ * - **Restored.** `#notice-origin` is written by a SERVER-only `@created`. A component that was
+ *   rebuilt rather than hydrated shows `client`, the value the field initialises to.
+ */
+async function checkPortal() {
+  const { JSDOM } = await import("jsdom");
+  const code = await readFile(join(root, "dist/client/assets/client.js"), "utf8");
+
+  const served = await httpGet(`http://localhost:${PORT}/`);
+  const page = await served.text();
+
+  if (!page.includes('data-ramonda-portal-target="notices"')) {
+    fail("the served page has no container for the `notices` portal target");
+  }
+  // Outside the app root, which is the entire reason to aim at a named target.
+  if (page.indexOf("data-ramonda-portal-target") < page.indexOf('<div id="app">')) {
+    fail("the portal container was emitted before the app root");
+  }
+  const servedOrigin = /<li id="notice-origin">([^<]*)</.exec(page)?.[1];
+  if (servedOrigin !== "server") fail(`the server rendered the portal with origin=${servedOrigin}, expected server`);
+
+  const dom = new JSDOM(page, {
+    url: `http://localhost:${PORT}/`,
+    runScripts: "outside-only",
+    pretendToBeVisual: true,
+  });
+  const { window } = dom;
+  window.fetch = async () => new window.Response("{}", { status: 200 });
+
+  // Held as NODES, never as attributes: the diff removes attributes it does not know about, so a
+  // marker would read as a replacement even where the element was adopted.
+  const doc = window.document;
+  const serverContainer = doc.querySelector("[data-ramonda-portal-target]");
+  const serverList = doc.querySelector("#notices");
+  const serverRows = [...doc.querySelectorAll(".notice")];
+  if (serverRows.length !== 2) fail(`the server rendered ${serverRows.length} portal row(s), expected 2`);
+
+  window.eval(code);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  if (doc.querySelector("[data-ramonda-portal-target]") !== serverContainer) {
+    fail("hydration replaced the portal's container instead of adopting it");
+  }
+  if (doc.querySelector("#notices") !== serverList) {
+    fail("hydration rebuilt the portalled subtree instead of adopting it");
+  }
+  const liveRows = [...doc.querySelectorAll(".notice")];
+  if (liveRows.length !== serverRows.length || liveRows.some((row, i) => row !== serverRows[i])) {
+    fail("hydration rebuilt the list() rows inside the portal instead of adopting them");
+  }
+  const origin = doc.querySelector("#notice-origin")?.textContent;
+  if (origin !== "server") {
+    fail(`the portalled component was rebuilt, not restored: origin=${origin} after hydration (expected server)`);
+  }
+
+  return { rows: liveRows.length };
+}
+
 const panel = await checkPanel();
 const editor = await checkEditorEndpoint();
 const form = await checkForm();
+const portal = await checkPortal();
 await checkModes();
 
 stop();
@@ -479,5 +552,7 @@ console.log(
     `and refused a path that does not exist\n` +
     `[smoke] /signup rendered ${form.inputs} named inputs, hydration adopted them, ` +
     `and the row ids survived a splice (${form.rowids})\n` +
+    `[smoke] a portal into a named target was served outside #app, adopted on hydration with its ` +
+    `${portal.rows} list() rows, and kept the state the server gave it\n` +
     `[smoke] all three render modes answered: static, dynamic, and ISR through a background rebake`,
 );

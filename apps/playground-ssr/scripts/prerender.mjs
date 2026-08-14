@@ -62,7 +62,7 @@ let blocked = 0;
 for (const path of paths) {
   // Point the DOM at this path first, so the router matches it.
   await installDom(`${origin}${path}`);
-  const { html, title, head, blockedBy } = await prerender(path);
+  const { html, title, head, portals, blockedBy } = await prerender(path);
 
   if (blockedBy !== undefined) {
     console.error(`  ✗ ${path} — reads the request (${blockedBy}); cannot be prerendered.`);
@@ -74,7 +74,7 @@ for (const path of paths) {
   await mkdir(dirname(file), { recursive: true });
   // A baked page is the whole of what a crawler that runs no JavaScript sees, so the
   // title and the meta have to be IN the file rather than applied on hydration.
-  await writeFile(file, fillDocument({ template, html, title, head }));
+  await writeFile(file, fillDocument({ template, html, title, head, portals }));
   console.log(`  ✓ ${path} → ${file.replace(root + "/", "")}`);
 }
 

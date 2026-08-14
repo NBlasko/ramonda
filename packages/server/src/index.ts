@@ -11,6 +11,6 @@
  * This package knows nothing about routes.
  */
 
-export { escapeHtml, fillDocument, type Document } from "./document";
+export { escapeHtml, fillDocument, PORTAL_TARGET_ATTR, type Document } from "./document";
 export { installDom, installWindow, type DomHandle } from "./dom";
 export { mimeFor, parseCookies } from "./request";
