@@ -41,3 +41,21 @@ one, and what it mounts is written in its body and perfectly visible.
 
 `@ramonda/core` and `@ramonda/testing-library` lose the annotations they no longer need; nothing
 else changes in either.
+
+**Four faults a review found on this branch, all of them in the new code:**
+
+- `this.use(hook)` written WITHOUT a cast resolved to the parameter's own symbol and so missed the
+  branch that marks a component opaque — silenced but transparent, which is the worst of both: a
+  consumer below it reported against a component that may well have been providing for it, and no
+  hole left to point at the cause. Only the cast spelling was covered, so the tests passed. Opacity
+  is keyed on the value tracing to a parameter now, and **not** on merely reaching that branch:
+  widening it is the opposite fault, and `this.use(Form<typeof schema>)` arrives there too.
+- A `ramonda-check-ignore` already written on a site that becomes a slot went silently dead — out
+  of the list printed on every run, which exists so the number cannot creep up unread, and an EMPTY
+  directive was accepted there while being refused everywhere else. It is read before the edge is
+  emitted now.
+- A root's reason was computed from a JSX element that is absent when the argument is not JSX, so
+  the edge said it waits on `vnode` while its own `why` said there was nothing to wait on.
+- The format's own documentation for `slot` still described a prop. It says what it now carries,
+  and warns that `edge.slot` must not be joined against a node's `slots`: a parameter appears in
+  neither, and the `from` of one of these can be a root, which has no props at all.

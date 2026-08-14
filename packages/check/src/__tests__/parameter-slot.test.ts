@@ -20,9 +20,9 @@ describe("a value handed in by the caller", () => {
       .filter((e) => e.kind === "unresolved" && e.via === "slot")
       .map((e) => e.slot)
       .sort();
-    // A bare parameter, a parameter at depth, the same name behind a cast — and `this.use(hook)`,
-    // which is the same promise about a HOOK rather than about a tag.
-    expect(slots).toEqual(["hook", "options.wrapper", "type", "view"]);
+    // A bare parameter, a parameter at depth, the same name behind a cast — and `this.use(hook)`
+    // in both spellings, which is the same promise about a HOOK rather than about a tag.
+    expect(slots).toEqual(["chosen", "hook", "hook", "options.wrapper", "type", "view"]);
   });
 
   test("and nothing is reported about it", () => {
@@ -36,10 +36,28 @@ describe("a value handed in by the caller", () => {
    */
   test("a call and a local binding are still holes needing a written reason", () => {
     const { annotated } = run();
-    expect(annotated).toHaveLength(2);
-    expect(annotated.map((a) => a.reason).sort()).toEqual([
+    expect(
+      annotated
+        .filter((a) => a.what === "factory")
+        .map((a) => a.reason)
+        .sort(),
+    ).toEqual([
       "a local binding holds whatever ran, and this fixture is about that line",
       "what a call returns cannot be read, and this fixture is about that line",
+    ]);
+  });
+
+  /**
+   * A directive on a site that has since become a slot is unnecessary — and reading it is not.
+   * Returning before the directive was consulted left it out of the list the run prints on every
+   * pass, which exists so the number cannot creep up unread, and let an EMPTY one through here
+   * while it is refused everywhere else.
+   */
+  test("a directive left over on one of these still prints", () => {
+    const { annotated } = run();
+    const kept = annotated.filter((a) => a.what === "slot");
+    expect(kept.map((a) => a.reason)).toEqual([
+      "written when this was still reported, and kept to prove it still prints",
     ]);
   });
 });
@@ -49,10 +67,17 @@ describe("a value handed in by the caller", () => {
  * transparent.
  */
 describe("a component whose hook came from a parameter", () => {
-  test("still shields what is under it from a verdict", () => {
+  /**
+   * Both spellings, because they take different branches and only one was covered.
+   *
+   * `this.use(hook as never)` leaves the name unresolvable, `this.use(hook)` resolves it to the
+   * parameter's own symbol — and only the first branch marked the component opaque. The second
+   * went silent without going opaque, which is the worst of both: no hole to point at, and a
+   * consumer below reported against a component that may well have been providing for it.
+   */
+  test("still shields what is under it from a verdict, cast or not", () => {
     const { issues } = run();
-    // `Quiet` sits under `Host`, whose hook only its caller knows — it may well be providing.
-    // `Loud` sits where nothing could be.
+    // `Quiet` is under `Host`, `Hushed` under `BareHost`; only `Loud` sits where nothing could be.
     expect(issues.map((i) => i.consumer)).toEqual(["Loud"]);
   });
 

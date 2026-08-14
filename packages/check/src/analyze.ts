@@ -741,6 +741,25 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const fromParameter = slotFromParameter(named);
     if (fromParameter !== undefined) {
       edges.push({ from, kind: "unresolved", via: "slot", at: whereOf(site), slot: fromParameter, why });
+      /**
+       * A directive already written here is no longer needed — and it still has to be READ.
+       *
+       * Returning before this left one silently dead: it vanished from the list the run prints on
+       * every pass, which exists so the number cannot creep up unread, and an EMPTY directive was
+       * accepted here while being refused everywhere else. Whoever upgrades and keeps their
+       * annotation sees it in the list exactly as before; deleting it changes nothing.
+       */
+      const already = directiveAt(site);
+      if (already === "") {
+        unresolved.push({
+          what: "slot",
+          why: "a `ramonda-check-ignore` with no reason after it is a silence, not a record",
+          fix: `// ramonda-check-ignore why this cannot be resolved`,
+          ...positionOf(site),
+        });
+      } else if (already !== undefined) {
+        annotated.push({ what: "slot", reason: already, ...positionOf(site) });
+      }
       return;
     }
     edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
@@ -1204,12 +1223,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       rootMounts.push({ id, target });
       edge(id, target.id, "renders", "bootstrap", node);
     } else {
+      /**
+       * The reason is read from what was WRITTEN, which is the argument itself when it is not JSX.
+       *
+       * Reading `opening?.tagName` alone gave `undefined` for every non-JSX argument and the
+       * generic "…'s first argument is not a component element" — so a slot edge said it was
+       * waiting on `vnode` while its own reason said there was nothing to wait on. Measured on
+       * core's `renderPage`, which is exactly that shape.
+       */
+      const written = node.arguments[0] ? unwrapAs(node.arguments[0]) : undefined;
       unresolvedEdge(
         id,
         "bootstrap",
         node,
-        whyUnresolved(opening?.tagName, `${name}'s first argument`),
-        node.arguments[0] ? unwrapAs(node.arguments[0]) : undefined,
+        whyUnresolved(opening?.tagName ?? written, `${name}'s first argument`),
+        written,
       );
     }
   }
@@ -1906,6 +1934,23 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
               self.uses.add(hook);
               edge(self.id, hook.id, "uses", "use", node);
             } else {
+              /**
+               * A hook that is a PARAMETER blinds the walk below it; one merely declared elsewhere
+               * does not.
+               *
+               * The distinction is not cosmetic and the fixtures pin both halves. `this.use(hook)`
+               * with a bare parameter resolves to a symbol — the parameter's — so it lands here
+               * rather than in the `!symbol` branch that marks opacity, and it used to end in a
+               * reported hole, which is why the omission never showed. It showed the moment the
+               * hole went silent: a consumer below was reported against a component that may well
+               * have been providing for it.
+               *
+               * Widening this to everything that reaches here is the OTHER fault, and `pinned-hook`
+               * catches it: `this.use(Form<typeof schema>)` arrives here too, and marking that
+               * opaque leaves every consumer under a form or a query unjudged — which is what it
+               * used to do.
+               */
+              if (slotFromParameter(named) !== undefined) self.opaque = true;
               unresolvedEdge(self.id, "use", node, whyUnresolved(named, "the hook"), named);
             }
           }

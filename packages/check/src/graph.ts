@@ -110,10 +110,17 @@ export interface GraphEdge {
    */
   binds?: { slot: string; to: string }[];
   /**
-   * The prop a `via: "slot"` edge is waiting on — `<this.props.view />`.
+   * What a `via: "slot"` edge is waiting on — a prop (`<this.props.view />`) or a PARAMETER
+   * (`__h(type, …)`, `options.wrapper`, `this.use(hook)`).
    *
-   * Unresolvable from the class alone, and that is not a defect: the caller decides. A walk
+   * Unresolvable from where it is written, and that is not a defect: the caller decides. A walk
    * arriving with a binding for this path fills it, and one arriving without leaves it a hole.
+   *
+   * **Do not join this against a node's `slots`.** Those are the prop paths a component's own type
+   * declares, and a parameter appears in neither: the function that mounts it has no props to
+   * declare. A reader drawing unfilled slots has to treat an unmatched name as ordinary, and the
+   * `from` of one of these can be a ROOT id — `renderPage(vnode)` waits on `vnode`, and a root has
+   * no props at all.
    */
   slot?: string;
 }

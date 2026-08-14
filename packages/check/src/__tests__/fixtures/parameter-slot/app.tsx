@@ -20,6 +20,15 @@ export function mountCast(view: unknown): unknown {
 }
 
 /**
+ * A directive written before this shape stopped being a hole. It is unnecessary now and must not
+ * go silently dead: whoever upgrades keeps seeing it in the list the run prints on every pass.
+ */
+export function mountAnnotated(chosen: unknown): unknown {
+  // ramonda-check-ignore written when this was still reported, and kept to prove it still prints
+  return __h(chosen, null);
+}
+
+/**
  * A CALL is not a parameter. Reading what `pick` returns is dataflow, which this resolver refuses
  * by decision, so this stays a hole and needs a written reason.
  */
@@ -53,6 +62,29 @@ class Host extends Component {
   }
 }
 
+/**
+ * The same thing WITHOUT the cast, which is a different branch and was the one that broke.
+ *
+ * A bare name resolves to a symbol — the parameter's — so it never reached the branch that marks
+ * a component opaque, and only the cast happened to miss it. Silenced but transparent, `Hushed`
+ * below was reported against a component that may well have been providing for it.
+ */
+class BareHost extends Component {
+  attach(hook: unknown): unknown {
+    return this.use(hook);
+  }
+  render() {
+    return <Hushed />;
+  }
+}
+
+class Hushed extends Component {
+  ctx = this.use(ThemeConsumer);
+  render() {
+    return <span>hushed</span>;
+  }
+}
+
 class Quiet extends Component {
   ctx = this.use(ThemeConsumer);
   render() {
@@ -72,6 +104,7 @@ class App extends Component {
     return (
       <div>
         <Host />
+        <BareHost />
         <Loud />
       </div>
     );
