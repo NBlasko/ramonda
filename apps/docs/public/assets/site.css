@@ -176,6 +176,38 @@ article h3 {
  * appears below. A `ch` on a `<pre>` is measured in the mono font and a `ch` on a `<p>` is not, so the
  * same number would have produced two different widths and missed the point.
  */
+/*
+ * A long token in prose wraps rather than widening the page.
+ *
+ * The default `overflow-wrap: normal` breaks lines only at spaces, so one unbroken run of
+ * characters — `this.user = focusOn(this.user).get("address").get("city").set(city)` on
+ * /concepts/state, 64 characters of it — is wider than the column and the whole DOCUMENT scrolls
+ * sideways to fit it. On a phone that moves every page, not just the paragraph.
+ *
+ * Set on the text elements rather than on `code` alone, because the same thing happens to a bare
+ * URL, a long identifier or a package name written as plain prose. `anywhere` rather than
+ * `break-word` because it also shrinks the element's min-content width, which is what a flex item
+ * measures.
+ *
+ * A table CELL is deliberately not in this list. On a phone a `DataTable` gives every value cell a
+ * fixed width so the columns line up down the page, and `anywhere` there would break words inside
+ * an already narrow box — earlier, not later. The cells have their own wrapping story; this rule
+ * is about prose that has none.
+ *
+ * Block code is deliberately NOT included: a `<pre>` scrolls inside its own box (`overflow-x: auto`
+ * above), which keeps lines intact and indentation readable. Wrapping it would be worse than the
+ * bug — it is code, and where the line ends is information.
+ */
+article p,
+article li,
+article dd,
+article blockquote {
+  overflow-wrap: anywhere;
+}
+article pre,
+article pre code {
+  overflow-wrap: normal;
+}
 article code {
   background: var(--rmd-code-bg);
   padding: 0.15em 0.4em;
@@ -545,6 +577,15 @@ article img[src$=".gif"] {
   .table-wrap td:nth-child(2) {
     border-left: 0;
   }
+  /* One value column has nothing to line up with, so it takes the width instead of 11rem of it.
+     The fixed width above is there to keep the second value of one row above the second value of
+     the next; a two-column table has no second value, nothing scrolls, and the fixed width leaves
+     the text wrapping inside 176px with the rest of the screen empty beside it — measured on
+     /routing/params, whose table is `| name | what it gives you |`.
+     `:nth-child(2):last-child` is exactly "the only value cell". */
+  .table-wrap td:nth-child(2):last-child {
+    width: 100cqw;
+  }
   /* The column heading, in small type above its value. */
   .table-wrap td:not(:first-child)::before {
     content: attr(data-label);
@@ -809,6 +850,22 @@ article pre.shiki {
     inset: 0;
     z-index: 55;
     background: rgba(0, 0, 0, 0.4);
+    /* A drag on the backdrop dismisses, it does not scroll what is underneath. `overflow: hidden`
+       below stops the document's own scrolling; this stops the gesture from reaching it at all,
+       which is the half `overflow` has never been reliable about on a phone. */
+    touch-action: none;
+  }
+
+  /*
+   * The page behind an open drawer does not move.
+   *
+   * Set from `App`'s `@updated`, so the class always says what `menuOpen` says. Scoped inside this
+   * breakpoint on purpose: the drawer only exists here, and a class left behind by a resize must
+   * not be able to lock a desktop page that has no drawer to explain it.
+   */
+  html.nav-locked,
+  html.nav-locked body {
+    overflow: hidden;
   }
   /* The search modal fills the screen instead of floating in a card. */
   .search-panel {

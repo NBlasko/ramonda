@@ -1,4 +1,4 @@
-import { Component, Host, list, state } from "@ramonda/core";
+import { Component, Host, destroyed, list, state, updated } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "@ramonda/router";
 import { Navigator, Link, routes, pages } from "./routes";
@@ -89,6 +89,33 @@ export class App extends Component {
 
   closeMenu(): void {
     this.menuOpen = false;
+  }
+
+  /**
+   * The page behind an open drawer does not move.
+   *
+   * The drawer covers the screen and dismisses on a tap outside, so it is a modal, and a modal that
+   * lets the page scroll underneath it is how the bottom of the drawer got lost in the first place:
+   * scrolling behind it retracts the URL bar, which changes the height the drawer is measured
+   * against.
+   *
+   * Written from `@updated` rather than from the two handlers so the class always says what the
+   * state says. A handler can be added later that sets `menuOpen` and forgets the class; a
+   * derivation cannot drift.
+   *
+   * `@updated` takes no `env` — unlike `@created`, `@mounted` and `@destroyed` it is not built by
+   * `createLifecycleDecorator` — and it needs none: a server render renders once and never updates,
+   * so this cannot run where `document` is absent. The prerender of all 75 pages is what proves it.
+   */
+  @updated
+  lockThePageBehind(): void {
+    document.documentElement.classList.toggle("nav-locked", this.menuOpen);
+  }
+
+  /** A drawer left open when the app goes away must not take the page's scrolling with it. */
+  @destroyed({ env: "client" })
+  releaseThePageBehind(): void {
+    document.documentElement.classList.remove("nav-locked");
   }
 
   render(): RamondaNode {
