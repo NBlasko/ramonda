@@ -88,7 +88,7 @@ export interface GraphEdge {
   /** Absent on an `unresolved` edge, which is the whole point of that kind. */
   to?: string;
   kind: "renders" | "provides" | "consumes" | "uses" | "calls" | "unresolved";
-  via: "tag" | "children" | "route" | "lazy" | "slot" | "factory" | "bootstrap" | "use" | "call";
+  via: "tag" | "children" | "route" | "lazy" | "slot" | "parameter" | "factory" | "bootstrap" | "use" | "call";
   at: Where;
   /** Why nothing could be named, on an `unresolved` edge. */
   why?: string;
@@ -110,17 +110,20 @@ export interface GraphEdge {
    */
   binds?: { slot: string; to: string }[];
   /**
-   * What a `via: "slot"` edge is waiting on — a prop (`<this.props.view />`) or a PARAMETER
-   * (`__h(type, …)`, `options.wrapper`, `this.use(hook)`).
+   * What the edge is waiting on, and **which `via` it carries decides what may fill it.**
    *
-   * Unresolvable from where it is written, and that is not a defect: the caller decides. A walk
-   * arriving with a binding for this path fills it, and one arriving without leaves it a hole.
+   * `via: "slot"` is a PROP — `<this.props.view />` — and a walk arriving with a binding for that
+   * path fills it, because a prop is what a JSX call site hands over.
    *
-   * **Do not join this against a node's `slots`.** Those are the prop paths a component's own type
-   * declares, and a parameter appears in neither: the function that mounts it has no props to
-   * declare. A reader drawing unfilled slots has to treat an unmatched name as ordinary, and the
-   * `from` of one of these can be a ROOT id — `renderPage(vnode)` waits on `vnode`, and a root has
-   * no props at all.
+   * `via: "parameter"` is a parameter — `__h(type, …)`, `options.wrapper`, `this.use(hook)`. It
+   * reads the same and must never be filled from a binding: the two live in different namespaces,
+   * and a prop that happens to share a parameter's name would otherwise invent a mount nobody
+   * wrote. It is also why this is a second `via` rather than a flag — a reader that switches on
+   * `kind` is unaffected, which is what the split between `kind` and `via` is for.
+   *
+   * Neither belongs in a node's `slots`: those are the prop paths a component's own type declares,
+   * and the `from` of a parameter edge can be a ROOT (`renderPage(vnode)`) or a free function,
+   * which have no props at all.
    */
   slot?: string;
 }

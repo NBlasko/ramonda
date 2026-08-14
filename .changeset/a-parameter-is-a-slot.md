@@ -16,8 +16,14 @@ A mount whose named value traces to a parameter is now an edge that says what it
 
 ```json
 { "from": "@ramonda/core/src/jsx-runtime.ts#jsx", "kind": "unresolved",
-  "via": "slot", "slot": "type", "at": "@ramonda/core/src/jsx-runtime.ts:55:7" }
+  "via": "parameter", "slot": "type", "at": "@ramonda/core/src/jsx-runtime.ts:55:7" }
 ```
+
+`parameter` is a new `via` value, which is what the format's split between `kind` and `via` exists
+for: a reader that switches on `kind` is unaffected. It is a second value rather than a flag on
+`slot` because a prop edge is FILLED from what a JSX call site binds and a parameter must never be
+— a package whose `Frame.show(view)` mounts its own argument, spliced into an app writing
+`<Frame view={Foo} />`, would otherwise have `Foo` judged under `Frame`.
 
 A path works at any depth (`options.wrapper`), a cast is seen through, and `this.use(hook)` makes
 the same promise about a hook. **Thirteen annotations become five**, measured by deleting all
@@ -57,5 +63,10 @@ else changes in either.
 - A root's reason was computed from a JSX element that is absent when the argument is not JSX, so
   the edge said it waits on `vnode` while its own `why` said there was nothing to wait on.
 - The format's own documentation for `slot` still described a prop. It says what it now carries,
-  and warns that `edge.slot` must not be joined against a node's `slots`: a parameter appears in
-  neither, and the `from` of one of these can be a root, which has no props at all.
+  and that neither kind belongs in a node's `slots`: the `from` of a parameter edge can be a root
+  or a free function, which have no props at all.
+
+**And two more from a second review, over the fixes themselves.** A spliced fragment filled a
+parameter from a colliding prop name — the fault above, found before it could bite and pinned by a
+vendor package that mounts a method argument. And the exemption for a PROP never read its own
+directive either, so the two symptoms fixed above still held there: both call one reader now.

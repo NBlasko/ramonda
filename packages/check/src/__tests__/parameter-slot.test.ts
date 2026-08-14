@@ -14,10 +14,10 @@ const run = () => analyzeProject(join(here, "fixtures", "parameter-slot", "tscon
  * for being a framework — thirteen escape hatches in this repository, eight of them this shape.
  */
 describe("a value handed in by the caller", () => {
-  test("is a slot naming what it waits on, not a hole", () => {
+  test("is an edge naming what it waits on, not a hole", () => {
     const { graph } = run();
     const slots = graph.edges
-      .filter((e) => e.kind === "unresolved" && e.via === "slot")
+      .filter((e) => e.kind === "unresolved" && e.via === "parameter")
       .map((e) => e.slot)
       .sort();
     // A bare parameter, a parameter at depth, the same name behind a cast — and `this.use(hook)`
@@ -55,7 +55,7 @@ describe("a value handed in by the caller", () => {
    */
   test("a directive left over on one of these still prints", () => {
     const { annotated } = run();
-    const kept = annotated.filter((a) => a.what === "slot");
+    const kept = annotated.filter((a) => a.what === "parameter");
     expect(kept.map((a) => a.reason)).toEqual([
       "written when this was still reported, and kept to prove it still prints",
     ]);
@@ -89,5 +89,24 @@ describe("a component whose hook came from a parameter", () => {
   test("is still walked, so what it mounts is not called dead", () => {
     const { unreachable } = run();
     expect(unreachable.map((d) => d.name)).toEqual([]);
+  });
+});
+
+/**
+ * The half of the change that crosses a package boundary, and the one that can INVENT a fault.
+ *
+ * A fragment's slot edges are filled from the bindings a JSX call site writes, which is right for a
+ * prop and wrong for a parameter: the two live in different namespaces. `@acme/ui`'s `Frame` mounts
+ * its own method argument `view`, the app writes `<Frame view={Rogue} />`, and the names have
+ * nothing to do with each other. That is why a parameter carries its own `via` rather than a flag
+ * on the same one — the splice reads `via`, and reading it wrong is a verdict on a mount nobody
+ * wrote.
+ */
+describe("a parameter inside a spliced package", () => {
+  test("is not filled from a prop that happens to share its name", () => {
+    const { issues } = analyzeProject(join(here, "fixtures", "fragment", "tsconfig.json"));
+    // `Rogue` is mounted under `Safe`, which provides Query. It must be judged there and nowhere
+    // else; filling `Frame`'s parameter would judge it again where nothing provides.
+    expect(issues.map((i) => i.consumer).sort()).toEqual(["HelperBody", "PagedBody"]);
   });
 });

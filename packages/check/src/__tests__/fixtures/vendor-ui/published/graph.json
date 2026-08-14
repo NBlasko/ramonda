@@ -5,10 +5,10 @@
     "name": "@acme/ui",
     "version": "2.1.0"
   },
-  "hash": "sha256:bc4088a270ffae1bf81a50d519fee5b19b63b785a06861eb4175eb43e02b4d80",
+  "hash": "sha256:a9e297673e785e5d36b5a0c1817db9b405e9c194d89543b6a3f4971237510c5b",
   "describes": {
     "file": "published/index.d.ts",
-    "hash": "sha256:e4127473d391207246ee102176e433e3ec4998f25d9f204ac1f4fcb2ef487260"
+    "hash": "sha256:8354e3a7766f82848c5e113dbeca0ba8744e41e24915dabf1892a3ac2a11aee3"
   },
   "nodes": [
     {
@@ -16,6 +16,13 @@
       "kind": "component",
       "name": "DataGrid",
       "at": "@acme/ui/src/index.tsx:58:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/ui/src/index.tsx#Frame",
+      "kind": "component",
+      "name": "Frame",
+      "at": "@acme/ui/src/index.tsx:92:1",
       "exported": true
     },
     {
@@ -85,77 +92,96 @@
       "to": "@acme/ui/src/index.tsx#PagedBody",
       "kind": "renders",
       "via": "tag",
-      "at": "@acme/ui/src/index.tsx:62:9"
+      "at": "@acme/ui/src/index.tsx:62:9",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#DataGrid",
       "to": "@acme/ui/src/index.tsx#helpedRow",
       "kind": "calls",
       "via": "call",
-      "at": "@acme/ui/src/index.tsx:63:10"
+      "at": "@acme/ui/src/index.tsx:63:10",
+      "always": true
+    },
+    {
+      "from": "@acme/ui/src/index.tsx#Frame",
+      "kind": "unresolved",
+      "via": "parameter",
+      "at": "@acme/ui/src/index.tsx:94:12",
+      "slot": "view",
+      "why": "`view` is a parameter, so only a caller can say what it mounts"
     },
     {
       "from": "@acme/ui/src/index.tsx#HelperBody",
       "to": "@acme/ui/src/index.tsx#QueryProvider",
       "kind": "consumes",
       "via": "use",
-      "at": "@acme/ui/src/index.tsx:47:7"
+      "at": "@acme/ui/src/index.tsx:47:7",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#PagedBody",
       "to": "@acme/ui/src/index.tsx#QueryProvider",
       "kind": "consumes",
       "via": "use",
-      "at": "@acme/ui/src/index.tsx:14:7"
+      "at": "@acme/ui/src/index.tsx:14:7",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#QueryOwner",
       "to": "@acme/ui/src/index.tsx#QueryProvider",
       "kind": "provides",
       "via": "use",
-      "at": "@acme/ui/src/index.tsx:22:7"
+      "at": "@acme/ui/src/index.tsx:22:7",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#SelfBody",
       "to": "@acme/ui/src/index.tsx#QueryProvider",
       "kind": "consumes",
       "via": "use",
-      "at": "@acme/ui/src/index.tsx:26:7"
+      "at": "@acme/ui/src/index.tsx:26:7",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#SelfServing",
       "to": "@acme/ui/src/index.tsx#QueryOwner",
       "kind": "uses",
       "via": "use",
-      "at": "@acme/ui/src/index.tsx:40:11"
+      "at": "@acme/ui/src/index.tsx:40:11",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#SelfServing",
       "to": "@acme/ui/src/index.tsx#SelfBody",
       "kind": "renders",
       "via": "tag",
-      "at": "@acme/ui/src/index.tsx:42:12"
+      "at": "@acme/ui/src/index.tsx:42:12",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#Themed",
       "to": "@acme/ui/src/index.tsx#ThemedBody",
       "kind": "renders",
       "via": "tag",
-      "at": "@acme/ui/src/index.tsx:79:12"
+      "at": "@acme/ui/src/index.tsx:79:12",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#ThemedBody",
       "to": "@acme/shared/src/index.tsx#ThemeProvider",
       "kind": "consumes",
       "via": "use",
-      "at": "@acme/ui/src/index.tsx:70:11"
+      "at": "@acme/ui/src/index.tsx:70:11",
+      "always": true
     },
     {
       "from": "@acme/ui/src/index.tsx#helpedRow",
       "to": "@acme/ui/src/index.tsx#HelperBody",
       "kind": "renders",
       "via": "tag",
-      "at": "@acme/ui/src/index.tsx:55:10"
+      "at": "@acme/ui/src/index.tsx:55:10",
+      "always": true
     }
   ]
 }

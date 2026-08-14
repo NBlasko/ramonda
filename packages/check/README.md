@@ -380,9 +380,14 @@ function jsx(type: unknown, props: unknown): unknown {
 }
 ```
 
-That is an edge naming what it waits on — `"via": "slot", "slot": "type"` — rather than a blank
+That is an edge naming what it waits on — `"via": "parameter", "slot": "type"` — rather than a blank
 that says nothing. A path works the same way at any depth (`options.wrapper`), a cast is seen
 through, and `this.use(hook)` makes the same promise about a hook.
+
+**Its own `via`, and not a flag on the slot one.** A prop edge is FILLED from what a JSX call site
+binds; a parameter must never be, because the two live in different namespaces. A package whose
+`Frame.show(view)` mounts its own argument, spliced into an app that writes `<Frame view={Foo} />`,
+would otherwise have `Foo` judged under `Frame` — a verdict on a mount nobody wrote.
 
 Two shapes near it are **not** this, because reading either means running something: what a **call**
 returns (`bootstrap(wrap(ui), container)`), and whatever a **local binding** was last assigned

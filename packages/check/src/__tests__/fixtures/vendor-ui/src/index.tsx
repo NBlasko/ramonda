@@ -79,3 +79,21 @@ export class Themed extends Component {
     return <ThemedBody />;
   }
 }
+
+declare function __h(type: unknown, props: unknown): unknown;
+
+/**
+ * Mounts whatever a METHOD is handed. `view` is a PARAMETER here, not a prop.
+ *
+ * The app splicing this fragment writes `<Frame view={Rogue} />`, and the two `view`s have nothing
+ * to do with each other. Filling a parameter from a JSX binding would invent a mount nobody wrote
+ * and judge `Rogue` against this package's providers.
+ */
+export class Frame extends Component {
+  show(view: unknown): unknown {
+    return __h(view, null);
+  }
+  render() {
+    return <span>frame</span>;
+  }
+}

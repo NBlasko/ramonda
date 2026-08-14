@@ -729,6 +729,29 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     owner.mounts.push({ target, binds, always: alwaysRuns(site) });
     edge(owner.id, target.id, kind, via, site, binds);
   };
+  /**
+   * A directive written on a site that needs none is unnecessary — and reading it is not.
+   *
+   * A hole that stops being reported must not take its written reason down with it: the reason
+   * vanishing from the list the run prints on every pass is exactly the drift that list exists to
+   * prevent, and an EMPTY directive would be accepted here while being refused everywhere else.
+   * Both exemptions call this — the prop that only a caller can fill, and the parameter that is
+   * the same promise through a different door.
+   */
+  const readDirective = (site: ts.Node, what: string): void => {
+    const written = directiveAt(site);
+    if (written === "") {
+      unresolved.push({
+        what,
+        why: "a `ramonda-check-ignore` with no reason after it is a silence, not a record",
+        fix: `// ramonda-check-ignore why this cannot be resolved`,
+        ...positionOf(site),
+      });
+    } else if (written !== undefined) {
+      annotated.push({ what, reason: written, ...positionOf(site) });
+    }
+  };
+
   const unresolvedEdge = (
     from: string,
     via: GraphEdge["via"],
@@ -740,33 +763,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     // A value handed in by the caller is a slot, whether it arrived as a prop or as a parameter.
     const fromParameter = slotFromParameter(named);
     if (fromParameter !== undefined) {
-      edges.push({ from, kind: "unresolved", via: "slot", at: whereOf(site), slot: fromParameter, why });
-      /**
-       * A directive already written here is no longer needed — and it still has to be READ.
-       *
-       * Returning before this left one silently dead: it vanished from the list the run prints on
-       * every pass, which exists so the number cannot creep up unread, and an EMPTY directive was
-       * accepted here while being refused everywhere else. Whoever upgrades and keeps their
-       * annotation sees it in the list exactly as before; deleting it changes nothing.
-       */
-      const already = directiveAt(site);
-      if (already === "") {
-        unresolved.push({
-          what: "slot",
-          why: "a `ramonda-check-ignore` with no reason after it is a silence, not a record",
-          fix: `// ramonda-check-ignore why this cannot be resolved`,
-          ...positionOf(site),
-        });
-      } else if (already !== undefined) {
-        annotated.push({ what: "slot", reason: already, ...positionOf(site) });
-      }
+      edges.push({ from, kind: "unresolved", via: "parameter", at: whereOf(site), slot: fromParameter, why });
+      readDirective(site, "parameter");
       return;
     }
     edges.push({ from, kind: "unresolved", via, at: whereOf(site), why });
-
-    // A slot is not a defect: `<this.props.view />` is unresolvable from the class alone BY
-    // DESIGN, because the caller decides. Everything else is a blank on the map.
-    if (via === "slot") return;
 
     const pos = positionOf(site);
     const written = directiveAt(site);
@@ -2037,6 +2038,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             slot,
             why: `\`${opening.tagName.getText()}\` is a prop, so only a caller can say what it mounts`,
           });
+          readDirective(opening, "slot");
         } else {
           unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"), opening.tagName);
         }
