@@ -23,7 +23,8 @@ in one place — it publishes, and a second pin there could drift.
 ```
 pnpm check      # preflight-node + frozen-lockfile install + check-workflows +
                 # ramonda-check, then lint, format:check, turbo run check-types
-                # test build, and finally check-examples
+                # test build, check-examples, check-side-effects, and finally
+                # check-scaffold (ssr + spa)
 ```
 
 `test` carries `--coverage`, so this also leaves an lcov report under each package —
@@ -36,6 +37,12 @@ scripts that turbo never sees:
   `lint` script, so `turbo run lint` covers `packages/` only — a lint error in a
   playground or in the docs app is invisible to turbo and fatal in CI.
 - `pnpm format:check` is not a turbo task at all.
+- `scripts/check-scaffold.mjs` packs the built packages, generates a project with them, installs,
+  builds, and — for SSR — reinstalls with `--omit=dev` and serves two routes. **A template is data
+  in this repository, not source**, so nothing else can tell you it works: the gate runs
+  `ramonda-check` over `apps/docs` only, and `create-ramonda`'s own tests read template files as
+  text. Four faults reached released packages through that gap. 5.6s per mode locally, because npm
+  has the third-party half cached.
 - `pnpm install --frozen-lockfile` is the FIRST thing CI does, and it was the one CI step the
   local gate did not have. Editing a `package.json` without reinstalling leaves the lockfile
   behind, everything local keeps passing — `pnpm check` never installs — and the push fails on
