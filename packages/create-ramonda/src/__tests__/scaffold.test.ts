@@ -335,18 +335,34 @@ describe("the scaffolded server shuts its DOM down through its own handle", () =
      */
     expect(server).not.toContain("window.close()");
     expect(server).toContain("dom.close()");
-    expect(read("installDom.mjs")).toContain("return { close:");
   });
 
-  test("and the prerender step gets its DOM from that same installer", () => {
+  test("and both the server and the prerender step take their DOM from the package", () => {
+    const { dir, read, pkg } = make("ssr", []);
+
+    // The two used to have an installer each, written into the project, and they drifted: the
+    // server moved to linkedom and prerender stayed on jsdom, which nothing installs unless the
+    // testing add-on was picked. Then they became one file in the template, which fixed the drift
+    // between THEM and left every generated project holding its own copy of it.
+    //
+    // It ships from `@ramonda/server` now, so a fix reaches projects that already exist.
+    expect(read("server.mjs")).toContain('from "@ramonda/server"');
+    expect(read("scripts/prerender.mjs")).toContain('from "@ramonda/server"');
+    expect(existsSync(join(dir, "installDom.mjs"))).toBe(false);
+    expect((pkg as unknown as { dependencies: Record<string, string> }).dependencies).toHaveProperty("@ramonda/server");
+  });
+
+  test("the shell is filled through the package, never `String.replace`", () => {
     const { read } = make("ssr", []);
 
-    // The two used to have an installer each, and they drifted: the server moved to linkedom and
-    // prerender stayed on jsdom, which nothing installs unless the testing add-on was picked. One
-    // file cannot drift from itself.
-    expect(read("scripts/prerender.mjs")).toContain('from "../installDom.mjs"');
-    expect(read("server.mjs")).toContain('from "./installDom.mjs"');
-    expect(read("installDom.mjs")).toContain('from "linkedom"');
+    // `String.prototype.replace` reads `$&`, `$$` and `` $` `` in the REPLACEMENT as patterns, so a
+    // page rendering a price — "Save $$ today" — swapped the marker back into its own output and
+    // still answered 200. It was found and fixed in this repository's playground; the scaffolded
+    // template kept shipping it, which is the argument for the package in one line.
+    for (const file of ["server.mjs", "scripts/prerender.mjs"]) {
+      expect(read(file), `${file} fills the shell by hand`).not.toContain('replace("<!--ssr-->"');
+      expect(read(file)).toContain("fillDocument(");
+    }
   });
 });
 

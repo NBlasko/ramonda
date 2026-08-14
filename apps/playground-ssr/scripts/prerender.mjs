@@ -3,6 +3,7 @@
 // is the dogfood that exercises the whole SSG stack — defineServer, routePlan, renderStatic,
 // requestContext — against the real routed app.
 
+import { fillDocument } from "@ramonda/server";
 import { installDom } from "../installDom.mjs";
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
@@ -73,16 +74,7 @@ for (const path of paths) {
   await mkdir(dirname(file), { recursive: true });
   // A baked page is the whole of what a crawler that runs no JavaScript sees, so the
   // title and the meta have to be IN the file rather than applied on hydration.
-  //
-  // Function replacements, never string ones: a `$&`/`$$`/`` $` `` in html, title or
-  // head is a special pattern to `replace` and would corrupt the file. And the title
-  // is ESCAPED — raw text from `document.title` would otherwise break out of `<title>`.
-  let page = template.replace("<!--ssr-->", () => html);
-  if (title) page = page.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(title)}</title>`);
-  await writeFile(
-    file,
-    page.replace("<!--head-->", () => head ?? ""),
-  );
+  await writeFile(file, fillDocument({ template, html, title, head }));
   console.log(`  ✓ ${path} → ${file.replace(root + "/", "")}`);
 }
 
@@ -91,8 +83,3 @@ if (blocked > 0) {
   process.exit(1);
 }
 console.log(`\nPrerendered ${paths.length} route(s) into dist/static.`);
-
-/** Escapes text for HTML element content — enough for a `<title>`'s text node. */
-function escapeHtml(value) {
-  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}

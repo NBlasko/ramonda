@@ -299,6 +299,10 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     deps.devDependencies["vite"] = tool("vite");
     deps.devDependencies["esbuild"] = tool("esbuild");
     deps.devDependencies["linkedom"] = tool("linkedom");
+    // The DOM installer, the shell fill and the cookie parser, from one place. They used to be
+    // written into `server.mjs` and `scripts/prerender.mjs` per project, and the two copies drifted
+    // — one moved to linkedom and the other did not, and the build died at prerender.
+    deps.dependencies["@ramonda/server"] = ramonda("@ramonda/server");
   }
   // The static context check runs as the first step of `build`, so a consumer that lost its
   // provider fails the build instead of quietly falling back to the default in someone's browser.

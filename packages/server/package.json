@@ -1,0 +1,61 @@
+{
+  "name": "@ramonda/server",
+  "version": "0.0.0",
+  "description": "The plumbing a Ramonda server render needs — a DOM for the render, and the document it goes into — so an app does not hand-roll it.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/server"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "keywords": [
+    "ramonda",
+    "ssr",
+    "server",
+    "prerender",
+    "linkedom",
+    "dom"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup && ramonda-check-bundle dist",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "peerDependencies": {
+    "linkedom": ">=0.18.0"
+  },
+  "devDependencies": {
+    "@ramonda/check": "workspace:^",
+    "@types/node": "^26.1.2",
+    "linkedom": "^0.18.13",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

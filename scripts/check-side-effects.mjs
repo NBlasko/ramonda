@@ -97,6 +97,11 @@ const DECIDED = {
     expect: false,
     why: "Two plugin factories and a constant, imported by a config file that a bundler never bundles. Nothing runs on import, and the claim costs nothing to keep true.",
   },
+  server: {
+    keeps: false,
+    expect: false,
+    why: "Functions only. `installDom` writes globals, which is emphatically a side effect — but it happens when a render CALLS it, not when the module loads, and that is the distinction this field is about. Imported by a Node server that no bundler touches either way.",
+  },
 };
 
 /** Published means somebody installs it: a private package is never resolved by a consumer. */

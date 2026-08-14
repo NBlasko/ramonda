@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync, cpSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { JSDOM } from "jsdom";
+import { installWindow } from "@ramonda/server";
 
 /**
  * Writes the whole site to `dist/` as static HTML.
@@ -35,40 +36,15 @@ const dist = join(root, "dist");
 const serverBundle = join(root, ".build", "entry-server.js");
 
 function installDom(url) {
-  const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
-    url,
-  });
-
-  // defineProperty, not assignment: Node ships `navigator` and `location` as
-  // getter-only globals, so `globalThis.navigator = ...` throws outright.
-  const put = (name, value) =>
-    Object.defineProperty(globalThis, name, {
-      value,
-      configurable: true,
-      writable: true,
-    });
-
-  for (const name of [
-    "window",
-    "document",
-    "navigator",
-    "location",
-    "history",
-    "HTMLElement",
-    "SVGElement",
-    "Node",
-    "Text",
-    "DOMParser",
-    "CustomEvent",
-    "Event",
-    "MouseEvent",
-    "PopStateEvent",
-    "getComputedStyle",
-  ]) {
-    put(name, dom.window[name]);
-  }
-  put("requestAnimationFrame", (cb) => setTimeout(() => cb(Date.now()), 0));
-  put("cancelAnimationFrame", (id) => clearTimeout(id));
+  const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", { url });
+  /**
+   * `navigation: "dom"` — jsdom's own `location`/`history`, not a pair built from the URL.
+   *
+   * This loop walks the whole site on ONE document, moving between pages with `pushState`, and only
+   * jsdom's location follows that. The default builds a frozen location from the URL it was given,
+   * which is right for a server answering one request and would pin every page here to the first.
+   */
+  installWindow(url, dom.window, { navigation: "dom" });
   return dom;
 }
 

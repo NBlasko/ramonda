@@ -2,9 +2,9 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
-import { installDom } from "./installDom.mjs";
+import { escapeHtml, fillDocument, installDom, mimeFor, parseCookies } from "@ramonda/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 5173);
@@ -12,22 +12,10 @@ const PORT = Number(process.env.PORT ?? 5173);
 // including Windows where `NODE_ENV=… node` does not.
 const isProd = process.env.NODE_ENV === "production" || process.argv.includes("--prod");
 
-const MIME = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
-
-
 function sendRedirect(res, redirect) {
   res.statusCode = redirect.status;
   res.setHeader("Location", redirect.url);
   res.end();
-}
-
-/**
- * Escape the characters that let text break out of an HTML `<pre>` context. An error message can
- * carry parts of the request (a bad URL, a header), so writing it into the page raw would be a
- * reflected-XSS hole.
- */
-function escapeHtml(text) {
-  return String(text).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
 }
 
 // ── DEV: Vite middleware, hot reload, no build step ─────────────────────────────
@@ -97,7 +85,7 @@ async function renderDev(req, res) {
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/html");
-    res.end(template.replace("<!--ssr-->", html));
+    res.end(fillDocument({ template, html }));
   } catch (error) {
     // Rewrites the stack to your source, not the transformed module.
     vite.ssrFixStacktrace(error);
@@ -107,23 +95,11 @@ async function renderDev(req, res) {
   }
 }
 
-/** Parse a Cookie header into the Map `requestContext` reads. */
-function parseCookies(header) {
-  const out = new Map();
-  if (!header) return out;
-  for (const pair of header.split(";")) {
-    const i = pair.indexOf("=");
-    if (i === -1) continue;
-    out.set(pair.slice(0, i).trim(), decodeURIComponent(pair.slice(i + 1).trim()));
-  }
-  return out;
-}
-
 function sendHtml(res, html, mode) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
-  res.end(prodTemplate.replace("<!--ssr-->", html));
+  res.end(fillDocument({ template: prodTemplate, html }));
 }
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
@@ -144,7 +120,7 @@ async function renderProd(req, res) {
   if (url.startsWith("/assets/")) {
     const file = join(here, "dist", "client", "assets", url.slice("/assets/".length));
     if (existsSync(file)) {
-      res.setHeader("Content-Type", MIME[extname(file)] ?? "application/octet-stream");
+      res.setHeader("Content-Type", mimeFor(file));
       res.end(readFileSync(file));
       return;
     }

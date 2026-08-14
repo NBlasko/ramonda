@@ -23,7 +23,8 @@
     "@ramonda/form": "workspace:^",
     "@ramonda/lens": "workspace:^",
     "@ramonda/query": "workspace:^",
-    "@ramonda/router": "workspace:^"
+    "@ramonda/router": "workspace:^",
+    "@ramonda/server": "workspace:^"
   },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
