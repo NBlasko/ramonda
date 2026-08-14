@@ -119,6 +119,50 @@ matters for something that goes first in a build.
 
 A project that does not compile is still `tsc`'s news to break. Run both.
 
+## What loads when, and what a change moved
+
+The same reading of the same graph answers a question no check does: what the browser downloads
+before it does anything.
+
+A bundler splits at a dynamic import and nowhere else, so this splits at a `lazy` prop and nowhere
+else.
+
+```
+$ ramonda-check tsconfig.json --split
+
+[ramonda-check] what loads when — @ramonda/docs
+
+  before anything      16 declaration(s) in 8 file(s)
+  loaded on demand     76 split point(s)
+  shared between them  55 declaration(s)
+```
+
+What a chunk reaches is split three ways, and each is a different claim: **already** in the first
+payload and free, **shared** with another split point and downloaded once for both, and **its own**,
+which only that one pays for.
+
+It counts declarations, never bytes. Nothing here has weighed a bundle; for kilobytes, ask the
+bundler.
+
+`--diff` compares the run against a graph written earlier, and the number it exists for is the one
+below:
+
+```
+$ ramonda-check tsconfig.json --diff .ramonda/main.json
+
+  nodes  +0  -0        edges  +1  -0
+  before anything: 16 → 72 declaration(s) (+56)
+
+  56 in the first payload now, and not before:
+    ErrorBoundary — @ramonda/core/src/base/ErrorBoundary.ts:16:1
+    …
+```
+
+That is one added import line. A diff of the source shows the line; nothing in it shows the
+fifty-six components that now arrive with the first page.
+
+Both flags describe. Neither fails a build.
+
 ## The bundle that did not parse
 
 `@state`, `@compute` and the rest are TC39 decorators, which no engine can parse. Your bundler has
