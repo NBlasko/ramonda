@@ -35,6 +35,12 @@ same shape:
 A scaffolded SSR project now depends on `@ramonda/server` and carries no `installDom.mjs` of its
 own, so the next fix to any of this reaches projects that already exist.
 
+`linkedom` is a DEPENDENCY, not a peer, so a project that installs this names no DOM library at
+all. It was a peer for one afternoon, and the scaffolder put linkedom in `devDependencies` — which
+made `npm ci --omit=dev` produce a project that built and then died on `ERR_MODULE_NOT_FOUND`, the
+very fault being extracted. A peer is right when the consumer must choose the copy; nothing here is
+shared, and `installWindow` is already the seam for bringing your own.
+
 **`installWindow(url, window, { navigation })`** is the seam for a DOM you built yourself — a jsdom,
 to measure one implementation against the other, or to prerender a whole site on one document.
 `navigation: "dom"` takes that DOM's own `location`/`history`, so `pushState` between pages moves

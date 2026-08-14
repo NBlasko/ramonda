@@ -18,8 +18,13 @@ export function escapeHtml(value: unknown): string {
 export interface Document {
   /** The shell, with `<!--ssr-->` where the app goes and optionally `<!--head-->` for its head. */
   template: string;
-  /** What the app rendered. */
-  html: string;
+  /**
+   * What the app rendered.
+   *
+   * Optional because the callers are `.mjs` files with no types to protect them, and a render that
+   * came back empty should produce a shell rather than the string "undefined" in the page.
+   */
+  html?: string;
   /** Read back from `document.title` after the render — raw text, so it is escaped here. */
   title?: string;
   /** Head elements as `outerHTML`, already escaped by having been serialised from real nodes. */

@@ -47,13 +47,12 @@
     "lint": "oxlint",
     "format": "biome format --write src"
   },
-  "peerDependencies": {
-    "linkedom": ">=0.18.0"
+  "dependencies": {
+    "linkedom": "^0.18.13"
   },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
     "@types/node": "^26.1.2",
-    "linkedom": "^0.18.13",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"

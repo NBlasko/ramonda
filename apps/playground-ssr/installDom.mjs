@@ -37,5 +37,3 @@ export async function installDom(url) {
    */
   return { close: () => dom.window.close() };
 }
-
-export const domName = () => (process.env.RAMONDA_DOM === "jsdom" ? "jsdom" : "linkedom");

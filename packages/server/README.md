@@ -7,6 +7,10 @@ into.
 pnpm add @ramonda/server
 ```
 
+It brings its own DOM — you do not install one. That is deliberate: `linkedom` was a peer once, an
+app put it in `devDependencies`, and a production install produced a server that started and then
+died on `ERR_MODULE_NOT_FOUND`.
+
 ```js
 import { fillDocument, installDom, mimeFor, parseCookies } from "@ramonda/server";
 
@@ -65,7 +69,8 @@ const dom = new JSDOM(shell, { url });
 installWindow(url, dom.window, { navigation: "dom" });
 ```
 
-`navigation` decides whose `location` and `history` the render sees. `"request"`, the default,
+`navigation` decides whose `location` and `history` the render sees, and a DOM that has neither is
+refused rather than rendered against `undefined`. `"request"`, the default,
 builds both from `url`: the DOM has none, and each render is one request at one URL. `"dom"` takes
 the DOM's own pair — jsdom's `pushState` moves its location, which is how a sequential prerender
 walks a whole site on a single document instead of building one per page.

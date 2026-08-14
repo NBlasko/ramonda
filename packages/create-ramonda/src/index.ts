@@ -292,16 +292,17 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     // SSR: prod is an esbuild bundle served by a Node process that needs a DOM;
     // dev is a Vite middleware server (hot reload) — see server.mjs.
     //
-    // linkedom, not jsdom, for the SERVER's DOM. It needs no Node built-in, so the same server can
-    // run on an edge runtime, and it builds a document in 0.018 ms against jsdom's 4.8 — a cost paid
-    // on every request. The whole SSR smoke suite in this repo runs on it. jsdom is still what the
-    // `testing` add-on installs below, where it stands in for a BROWSER rather than a server.
     deps.devDependencies["vite"] = tool("vite");
     deps.devDependencies["esbuild"] = tool("esbuild");
-    deps.devDependencies["linkedom"] = tool("linkedom");
     // The DOM installer, the shell fill and the cookie parser, from one place. They used to be
     // written into `server.mjs` and `scripts/prerender.mjs` per project, and the two copies drifted
     // — one moved to linkedom and the other did not, and the build died at prerender.
+    //
+    // A DEPENDENCY, and it brings its own DOM. The generated project names no DOM library at all:
+    // linkedom was a devDependency here while `server.mjs` needed it to start, so `npm ci
+    // --omit=dev` produced a project that built and then died on `ERR_MODULE_NOT_FOUND` — the very
+    // fault this package was extracted to end. jsdom is still installed by the `testing` add-on
+    // below, where it stands in for a BROWSER rather than a server.
     deps.dependencies["@ramonda/server"] = ramonda("@ramonda/server");
   }
   // The static context check runs as the first step of `build`, so a consumer that lost its

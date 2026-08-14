@@ -352,6 +352,21 @@ describe("the scaffolded server shuts its DOM down through its own handle", () =
     expect((pkg as unknown as { dependencies: Record<string, string> }).dependencies).toHaveProperty("@ramonda/server");
   });
 
+  test("the generated project names no DOM library, and cannot get it wrong", () => {
+    const { pkg } = make("ssr", []);
+    const deps = pkg as unknown as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+
+    // `linkedom` was a devDependency while `server.mjs` needed it to START. `npm ci --omit=dev`
+    // therefore produced a project that installed, built, and then died on `ERR_MODULE_NOT_FOUND`
+    // the moment it was asked to serve a page — the exact fault `@ramonda/server` was extracted to
+    // end, reintroduced one level up.
+    //
+    // The DOM comes with the package now, so there is nothing here to put in the wrong section.
+    expect(deps.devDependencies).not.toHaveProperty("linkedom");
+    expect(deps.dependencies).not.toHaveProperty("linkedom");
+    expect(deps.dependencies).toHaveProperty("@ramonda/server");
+  });
+
   test("the shell is filled through the package, never `String.replace`", () => {
     const { read } = make("ssr", []);
 

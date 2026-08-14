@@ -89,6 +89,14 @@ describe("installDom", () => {
     expect(history.pushState(null, "", "/x")).toBe("real");
   });
 
+  test('navigation: "dom" refuses a DOM that has no such pair', () => {
+    // The option is the caller asserting the DOM has one. Installing `undefined` instead would fail
+    // far from here — in the router, reading a property of nothing, on whichever page came first.
+    expect(() => installWindow("http://localhost:3000/", {}, { navigation: "dom" })).toThrow(
+      /needs a DOM with its own `location` and `history`/,
+    );
+  });
+
   test("the handle closes without needing to know which DOM it was", () => {
     // The caller reached past this into `dom.window.close()` once, which is jsdom's shape and not
     // linkedom's — that is what broke every ISR and dynamic render under linkedom.

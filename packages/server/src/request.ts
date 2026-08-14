@@ -1,7 +1,5 @@
 /** Reading what a request carries, and answering with the right content type. */
 
-import { extname } from "node:path";
-
 /**
  * A `Cookie` header as the Map a request context reads.
  *
@@ -56,6 +54,29 @@ const MIME: Record<string, string> = {
   ".wasm": "application/wasm",
 };
 
+/**
+ * The extension, read here rather than with `node:path`.
+ *
+ * This package argues for linkedom over jsdom because it needs no Node built-in — which is what
+ * lets the same render run on Cloudflare Workers, Deno Deploy or Vercel Edge. Importing `node:path`
+ * to find the last dot would take that back for three lines of code.
+ *
+ * The last segment first, so a dot in a DIRECTORY name is not read as an extension:
+ * `/v1.2/bundle` has none. A query and a fragment come off before that — a static handler is
+ * usually handed a filesystem path, but a URL reaches one often enough that `client.js?v=2`
+ * answering `application/octet-stream` would be a live fault. (`node:path`'s `extname` gets that
+ * one wrong too, so this is not merely a reimplementation of it.)
+ *
+ * A leading dot is a NAME, not an extension: `.gitignore` has none, which is `extname`'s rule and
+ * the right one.
+ */
+function extensionOf(path: string): string {
+  const bare = path.split(/[?#]/, 1)[0];
+  const last = bare.slice(bare.lastIndexOf("/") + 1);
+  const dot = last.lastIndexOf(".");
+  return dot <= 0 ? "" : last.slice(dot).toLowerCase();
+}
+
 export function mimeFor(path: string): string {
-  return MIME[extname(path).toLowerCase()] ?? "application/octet-stream";
+  return MIME[extensionOf(path)] ?? "application/octet-stream";
 }

@@ -91,6 +91,15 @@ export function installWindow(
    * box on a server; they exist so a module that merely NAMES one at import does not throw.
    */
   if (navigation === "dom") {
+    // Refused rather than installed as `undefined`. `navigation: "dom"` is the caller ASSERTING
+    // that this DOM has a working pair, and a render against `undefined` fails somewhere far from
+    // here — in the router, reading a property of nothing, on whichever page happens to be first.
+    if (source.location === undefined || source.history === undefined) {
+      throw new Error(
+        '[ramonda] navigation: "dom" needs a DOM with its own `location` and `history` (jsdom has ' +
+          "both; linkedom has neither). Drop the option to have them built from the url instead.",
+      );
+    }
     put("location", source.location);
     put("history", source.history);
   } else {

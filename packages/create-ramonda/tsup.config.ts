@@ -54,8 +54,6 @@ function toolRanges(): Record<string, string> {
     vitest: "../core",
     vite: "../core",
     jsdom: "../core",
-    // From the SSR playground, which is the app that proved it: its whole smoke suite runs on it.
-    linkedom: "../../apps/playground-ssr",
     "@types/node": "../core",
     typescript: "../../package.json",
     "@biomejs/biome": "../../package.json",

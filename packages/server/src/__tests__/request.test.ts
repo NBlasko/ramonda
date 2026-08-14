@@ -46,4 +46,25 @@ describe("mimeFor", () => {
   test("an unknown extension is a byte stream, not a guess", () => {
     expect(mimeFor("/download.bin")).toBe("application/octet-stream");
   });
+
+  test("a dot in a directory name is not an extension", () => {
+    // Read from the last SEGMENT, not the whole path: `/v1.2/bundle` has no extension, and a
+    // whole-path search would answer for `.2/bundle`.
+    expect(mimeFor("/assets/v1.2/bundle")).toBe("application/octet-stream");
+    expect(mimeFor("/assets/v1.2/bundle.js")).toBe("text/javascript");
+  });
+
+  test("a dotfile has no extension, it has a name", () => {
+    expect(mimeFor("/.gitignore")).toBe("application/octet-stream");
+  });
+
+  test("the extension is matched whatever its case", () => {
+    expect(mimeFor("/LOGO.SVG")).toBe("image/svg+xml");
+  });
+
+  test("a query string is not part of the name", () => {
+    // A static handler is normally handed a filesystem path, but a URL reaches one often enough
+    // that answering `application/octet-stream` for `client.js?v=2` would be a live fault.
+    expect(mimeFor("/assets/client.js?v=2")).toBe("text/javascript");
+  });
 });
