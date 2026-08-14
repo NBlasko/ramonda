@@ -1,6 +1,7 @@
 ---
 "@ramonda/core": patch
 "@ramonda/server": minor
+"create-ramonda": minor
 ---
 
 A prerendered page keeps its named portal targets, and a hand-assembled shell can place them.
