@@ -80,6 +80,37 @@ hook's props are rebuilt by its own callback on every owner render, which is the
 answers. A component's props come from the parent's JSX and are compared by the diff, where
 `@ShouldUpdateOnPropsChange` is the control.
 
+## `render` takes none
+
+Not one decorator goes on `render`, and each one is refused where the class is defined.
+
+They are not shades of wrong. Measured, one class per decorator:
+
+| written on `render` | what it did |
+|---|---|
+| `@compute` | Turned the method into a cached property, so rendering died with `component.render is not a function` — before a page appeared, and with no diagnostic. |
+| `@memoizedHandler` | Did not throw. The render was memoised on arguments it does not have, and the component **never updated again** — a frozen page, and nothing said. |
+| `@created`, `@mounted`, `@updated`, `@destroyed` | Registered the render as a lifecycle callback, so it ran outside the render pass as well as inside it. |
+| `@catchError` | Made the render the handler for errors thrown by its own subtree. |
+| `@state`, `@persist` | Mean "serialise me", which a render is not. |
+
+`render` is the one member Ramonda reserves. Put the behaviour on a member of its own and call it
+from `render`:
+
+```tsx
+class Cart extends Component {
+  @state items: { price: number }[] = [];
+
+  @compute get total() {
+    return this.items.reduce((sum, item) => sum + item.price, 0);
+  }
+
+  render() {
+    return <p>{this.total}</p>;
+  }
+}
+```
+
 ## How many times
 
 Most decorators stack, and the order is defined:

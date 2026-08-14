@@ -13,6 +13,37 @@ function fail(decorator: string, message: string): never {
   throw new Error(`[@${decorator}] ${message}`);
 }
 
+/**
+ * `render` takes no decorator, and the reason is that every one of them either breaks it or means
+ * nothing.
+ *
+ * Measured, one class per decorator:
+ * - `@compute get render()` turns the method into a cached PROPERTY, so the framework's
+ *   `component.render()` dies with `TypeError: component.render is not a function` — before a page
+ *   appears, with no diagnostic of any kind.
+ * - `@memoizedHandler render()` is worse, because it does not throw. The render is memoised on its
+ *   arguments, it has none, and the component **never updates again**: measured `"0" -> "0"` after
+ *   a state write that should have shown `1`. A frozen page and nothing said.
+ * - `@created`, `@mounted`, `@updated`, `@destroyed` register the render as a lifecycle callback,
+ *   so it runs outside the render pass as well as inside it.
+ * - `@catchError render()` makes the render the handler for errors thrown by its own subtree.
+ * - `@state`/`@persist` mean "serialise me", which a render is not.
+ *
+ * None of those is a shade of wrong: there is no decorator this name accepts. `render` is the one
+ * member core reserves, and until now it was reserved only by TypeScript's `abstract` — a build
+ * with no types refused nothing.
+ */
+export function assertNotRender(decorator: string, name: string | symbol): void {
+  if (name !== "render") return;
+  fail(
+    decorator,
+    `\`render\` takes no decorator. It is the method the framework calls to build your element, and ` +
+      `a decorator either replaces it — \`@compute\` makes it a property, and rendering dies with ` +
+      `"component.render is not a function" — or quietly changes when it runs. Put the behaviour on a ` +
+      `member of its own and call it from \`render\`.`,
+  );
+}
+
 function show(value: unknown): string {
   if (typeof value === "function") return "a function";
   try {
@@ -24,6 +55,7 @@ function show(value: unknown): string {
 
 /** The decorator only makes sense on a method. */
 export function assertMethod(kind: string, decorator: string, name: string | symbol): void {
+  assertNotRender(decorator, name);
   if (kind !== "method") {
     fail(decorator, `Can only decorate a method, but \`${String(name)}\` is a ${kind}.`);
   }
@@ -31,6 +63,7 @@ export function assertMethod(kind: string, decorator: string, name: string | sym
 
 /** The decorator only makes sense on a field. */
 export function assertField(kind: string, decorator: string, name: string | symbol): void {
+  assertNotRender(decorator, name);
   if (kind !== "field") {
     fail(decorator, `Can only decorate a field, but \`${String(name)}\` is a ${kind}.`);
   }
@@ -42,6 +75,7 @@ export function assertField(kind: string, decorator: string, name: string | symb
  * way, so both are allowed and everything else is not.
  */
 export function assertMethodOrGetter(kind: string, decorator: string, name: string | symbol): void {
+  assertNotRender(decorator, name);
   if (kind !== "method" && kind !== "getter") {
     fail(decorator, `Can only decorate a method or a getter, but \`${String(name)}\` is a ${kind}.`);
   }
