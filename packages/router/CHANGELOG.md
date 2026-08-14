@@ -1,5 +1,84 @@
 # @ramonda/router
 
+## 0.7.0
+
+### Minor Changes
+
+- 7191ab6: `Link` and `Navigator` are reached through `createRouter`, and nowhere else.
+
+  Both existed in two versions — the kit casts them so `href`, `push` and `replace` take only paths
+  your table names — and the untyped one was an equally short import that silently gave up the
+  checking the typed one exists to provide. Not one app in this repository was using `createRouter`
+  when this was measured, which says the wrong door was not so much chosen as walked through.
+
+  ```ts
+  const { Router, RouteOutlet, Link, Navigator, route } = createRouter(routes);
+  ```
+
+  **Breaking.** `Link`, `LinkProps` and `Navigator` are no longer exported from the package. `Router`
+  and `RouteOutlet` still are: the kit hands those back unchanged, so there is only one of each and
+  nothing to pick wrongly.
+
+  A second NAME for each was tried first and abandoned — it worked for `Link` only because HTML had a
+  word for the raw thing, and there is none for a navigator. Five members would have meant five
+  separate arguments about vocabulary; one door needs none.
+
+  **`href` now takes a query, a fragment, and a filled-in `:param` path.** `route()` is no longer
+  required for the ordinary case:
+
+  ```tsx
+  <Link href="/users/42" />
+  <Link href={`/users/${id}`} />        // an id from a backend
+  <Link href="/about?tab=2#top" />
+  ```
+
+  The looseness is only behind the `?`: a query needs at least one `key=value`, the path is still
+  checked to the letter, and runtime concatenation (`"/a?" + q`) widens to `string` and is refused.
+  Measured before it went in — 50 routes and 2100 href sites cost 0.39s of check time against 0.34s
+  for a plain `string`, because TypeScript keeps these as patterns rather than expanding them.
+
+  Two known costs, both written down where they bite: a substituted segment is `${string}`, which a
+  slash also satisfies, so `/users/a/b` is accepted; and a raw `/users/:id` compiles, since `":id"` is
+  a string like any other.
+
+  `@ramonda/check` follows a kit destructured from a factory whose declaration is in the same program,
+  not only one that arrives through an installed package's fragment. A monorepo compiles its own
+  packages from source, which is why the fragment-only version passed every fixture and still failed
+  this repository's own documentation site.
+
+### Patch Changes
+
+- c0df2d1: A kit member whose name answers to two classes resolves to nothing, and a built href takes a
+  fragment.
+
+  **`@ramonda/check`** — when a package hands a component back through a factory without exporting it,
+  the fragment is read by name. Two exported classes sharing a name were already refused, "rather than
+  resolved to whichever came last"; two INTERNAL ones kept the first and said nothing. Internal names
+  collide far more often than exported ones — this repository's own documentation app declares
+  `class Page` seventy-five times — and a kit member bound to an arbitrary class puts every edge below
+  it under the wrong component. That is a wrong answer where an unresolved tag would have been an
+  honest missing one. Both are now refused and the tag reports as the hole it is.
+
+  No note is emitted for an internal collision, unlike the exported case: almost none of them is ever
+  reached by a destructured key, and a note per collision would bury the runs where it matters.
+
+  **`@ramonda/router`** — `AnyHref` is `Located` over both halves of the union, including the `Href`
+  that `route()` builds. Written out by hand, the second half took a query but not a fragment, so
+  `` href={`${route("/u/:id", { id })}#top`} `` was refused while `href="/about#top"` was accepted.
+  An anchor into a section of a parameterised page is the ordinary reason to write one; the asymmetry
+  was an omission, not a decision.
+
+  Two JSDoc claims that this branch had already made false are corrected — `href` no longer requires
+  `route()` for a `:param` path, and a raw `:param` pattern is accepted rather than rejected (a known
+  cost, documented three lines above where the comment denied it).
+
+  Docs: component examples import `Link` / `Navigator` from `./routes` instead of calling
+  `createRouter(routes)` in each file. Every app in this repository mints the kit once and imports it,
+  the setup page says to do exactly that, and eight examples across five pages taught the opposite —
+  six of them destructuring three names to use one. The sample checker now resolves `./routes` to the
+  real package's types, so `this.use(Navigator)` has to genuinely carry `push` and `params`; the
+  hand-written `any` shims those examples leaned on are gone.
+
 ## 0.6.0
 
 ### Minor Changes

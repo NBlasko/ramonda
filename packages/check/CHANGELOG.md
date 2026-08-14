@@ -1,5 +1,278 @@
 # @ramonda/check
 
+## 0.7.0
+
+### Minor Changes
+
+- 48ec521: A value the caller hands in is a slot, whether it arrived as a prop or as a parameter.
+
+  `<this.props.view />` has never been a defect: nothing in that class can say what it mounts, and
+  nothing was meant to. `__h(type, …)` inside a JSX runtime is the same promise written differently,
+  and reporting one and not the other made the framework apologise for being a framework — thirteen
+  escape hatches across this repository against a plan whose own test is that more than a handful
+  means the rule is formulated wrongly.
+
+  A mount whose named value traces to a parameter is now an edge that says what it waits on:
+
+  ```json
+  {
+    "from": "@ramonda/core/src/jsx-runtime.ts#jsx",
+    "kind": "unresolved",
+    "via": "parameter",
+    "slot": "type",
+    "at": "@ramonda/core/src/jsx-runtime.ts:55:7"
+  }
+  ```
+
+  `parameter` is a new `via` value, which is what the format's split between `kind` and `via` exists
+  for: a reader that switches on `kind` is unaffected. It is a second value rather than a flag on
+  `slot` because a prop edge is FILLED from what a JSX call site binds and a parameter must never be
+  — a package whose `Frame.show(view)` mounts its own argument, spliced into an app writing
+  `<Frame view={Foo} />`, would otherwise have `Foo` judged under `Frame`.
+
+  A path works at any depth (`options.wrapper`), a cast is seen through, and `this.use(hook)` makes
+  the same promise about a hook. **Thirteen annotations become five**, measured by deleting all
+  thirteen and running every project: core keeps none, testing-library two, the documentation site
+  one, the playground its two deliberate failed-load demos.
+
+  **What stays a hole**, because reading either means running something: what a CALL returns
+  (`bootstrap(wrap(ui), container)`) and whatever a LOCAL BINDING was last assigned
+  (`const tag = …; __h(tag, …)`).
+
+  **The cost, plainly.** A mount whose value came from a parameter is no longer an error anywhere, an
+  app's own helper included. It is a marked blank rather than a reported one. What it does not buy is
+  coverage: nothing fills these — the compiler calls `jsx`, and a wrapper handed through a call
+  argument is not a JSX binding.
+
+  **A latent false positive fell out of it, and it is the more useful half.** Judging and walking
+  shared one early return, so everything below an OPAQUE component was unreached — and the
+  dead-declaration rule read that as "nothing mounts this" with the tag one line above it in the same
+  file. The two questions are now separate: what a component provides is unknowable below an opaque
+  one, and what it mounts is written in its body and perfectly visible.
+
+  `@ramonda/core` and `@ramonda/testing-library` lose the annotations they no longer need; nothing
+  else changes in either.
+
+  **Four faults a review found on this branch, all of them in the new code:**
+
+  - `this.use(hook)` written WITHOUT a cast resolved to the parameter's own symbol and so missed the
+    branch that marks a component opaque — silenced but transparent, which is the worst of both: a
+    consumer below it reported against a component that may well have been providing for it, and no
+    hole left to point at the cause. Only the cast spelling was covered, so the tests passed. Opacity
+    is keyed on the value tracing to a parameter now, and **not** on merely reaching that branch:
+    widening it is the opposite fault, and `this.use(Form<typeof schema>)` arrives there too.
+  - A `ramonda-check-ignore` already written on a site that becomes a slot went silently dead — out
+    of the list printed on every run, which exists so the number cannot creep up unread, and an EMPTY
+    directive was accepted there while being refused everywhere else. It is read before the edge is
+    emitted now.
+  - A root's reason was computed from a JSX element that is absent when the argument is not JSX, so
+    the edge said it waits on `vnode` while its own `why` said there was nothing to wait on.
+  - The format's own documentation for `slot` still described a prop. It says what it now carries,
+    and that neither kind belongs in a node's `slots`: the `from` of a parameter edge can be a root
+    or a free function, which have no props at all.
+
+  **And two more from a second review, over the fixes themselves.** A spliced fragment filled a
+  parameter from a colliding prop name — the fault above, found before it could bite and pinned by a
+  vendor package that mounts a method argument. And the exemption for a PROP never read its own
+  directive either, so the two symptoms fixed above still held there: both call one reader now.
+
+- 2039753: An app entered only from a server is judged. It used to pass in silence.
+
+  `renderToString`, `renderPage` and `renderStatic` are roots now, alongside `bootstrap` and
+  `hydrateRoot`. All five are handed a component and render it; only the browser's two were read.
+  Measured on one file with a consumer and no provider above it, changing nothing but the last line:
+
+  ```
+  bootstrap(<App />, null)     <Reader> consumes "Theme" — nothing provides it on this path
+  renderToString(<App />)      0 root(s) — every consumer has a provider above it
+  ```
+
+  The second sentence was never checked. With no root the walk has nowhere to start, the project is
+  taken for a library, and a library is judged not at all — so an SSR-only app got a green line over
+  code nothing had looked at, which is the failure this package exists to prevent.
+
+  **An entry is called by its own name.** A component method that shares one is not an entry: two
+  apps in this repository have a `renderPage(row)` that builds the markup for one row of data, and
+  reading the callee by name would make a root out of a row.
+
+  Also fixed while measuring it: `--split` counted a root as a declaration in the first payload. A
+  root is a CALL, not a declaration — it is walked through and never counted.
+
+  `@ramonda/core` gains two escape-hatch comments in `hydration/ssr.ts`, where `renderPage` and
+  `renderStatic` forward the tree they were handed to `renderToString`. Nothing else changes there.
+
+- 4f097b8: `ramonda-check-bundle` stops calling a correct build broken, and both packages declare Node 24.
+
+  A `.js` file is a script or a module depending on the nearest `package.json`, and a bundler emits ES
+  modules into `dist` whatever that file declares — so `"type": "commonjs"` beside ESM output is an
+  ordinary arrangement. Read as a script, such a bundle "does not parse", and this tool reported it as
+  the one fault it exists to find:
+
+  ```
+  [check-bundle] 1 of 1 emitted file(s) do not parse:
+      SyntaxError: Cannot use import statement outside a module
+  If these contain decorators, the build is not running a transform that strips them.
+  ```
+
+  Nothing was wrong with the build. The guard failed it anyway, and named the wrong cause while doing
+  so. Every project in this repository sets `"type": "module"`, which is the only reason this was
+  never seen here.
+
+  A file that fails to parse as a script, **and fails with one of the four messages that mean
+  module-only syntax**, is now parsed again as a module. The second parse never runs otherwise, so a
+  decorator still fails both ways and no failure is downgraded — there is a test for exactly that,
+  because a retry that accepted anything would buy the false pass back at full price.
+
+  **Breaking:** both packages now declare `"engines": { "node": ">=24" }`, matching the repository
+  root and `create-ramonda`. `pnpm` refuses an install that violates `engines` rather than warning, so
+  this is a floor and not advice.
+
+  The floor is a choice about the future, not a measurement: `node --check` reads ESM in an untyped
+  `.js` on 20.19 and on 22.7+, but **not on 22.0 through 22.6**, where module detection had not landed
+  yet — a range that is not monotone, so `>=20.19` would have been a wrong description of it. Rather
+  than encode that shape, the supported version is the one that will be current by the time anyone
+  adopts this. The parse fix stands on its own regardless: `npm` only warns on `engines`, so the floor
+  alone would have left the false accusation reachable.
+
+- 9104bf0: `ramonda-check` follows a component kit destructured out of a factory.
+
+  ```ts
+  export const { Router, RouteOutlet, Navigator, Link, route } =
+    createRouter(routes);
+  ```
+
+  This is the shape `npm create ramonda` scaffolds and the routing docs teach, and every tag written
+  from it was reported as a component that cannot be followed. That is an ERROR, so **a scaffolded
+  routed project could not run `npm run build` at all** — and because nothing below an unresolved tag
+  is judged, most of the app went unexamined with it.
+
+  Nothing is guessed. `componentAt` already answers a direct import from an installed package by
+  taking the symbol's name to that package's fragment; the same two facts are present one step apart
+  here — the callee is declared in the package, and the destructured key is the name. Only exported
+  members match, so a key sharing a name with a package's internals resolves to nothing.
+
+  It reads the fragment rather than the factory's return type, because the type is where the answer
+  stops being there: `@ramonda/router` publishes `Router: typeof Router` but `Link:
+ComponentClassKind<TypedLinkProps<…>>`, the latter having passed through `as unknown as`. Half the
+  kit names its class and half does not, so a type-directed version would have resolved two of four
+  and left the two used most.
+
+- 7191ab6: `Link` and `Navigator` are reached through `createRouter`, and nowhere else.
+
+  Both existed in two versions — the kit casts them so `href`, `push` and `replace` take only paths
+  your table names — and the untyped one was an equally short import that silently gave up the
+  checking the typed one exists to provide. Not one app in this repository was using `createRouter`
+  when this was measured, which says the wrong door was not so much chosen as walked through.
+
+  ```ts
+  const { Router, RouteOutlet, Link, Navigator, route } = createRouter(routes);
+  ```
+
+  **Breaking.** `Link`, `LinkProps` and `Navigator` are no longer exported from the package. `Router`
+  and `RouteOutlet` still are: the kit hands those back unchanged, so there is only one of each and
+  nothing to pick wrongly.
+
+  A second NAME for each was tried first and abandoned — it worked for `Link` only because HTML had a
+  word for the raw thing, and there is none for a navigator. Five members would have meant five
+  separate arguments about vocabulary; one door needs none.
+
+  **`href` now takes a query, a fragment, and a filled-in `:param` path.** `route()` is no longer
+  required for the ordinary case:
+
+  ```tsx
+  <Link href="/users/42" />
+  <Link href={`/users/${id}`} />        // an id from a backend
+  <Link href="/about?tab=2#top" />
+  ```
+
+  The looseness is only behind the `?`: a query needs at least one `key=value`, the path is still
+  checked to the letter, and runtime concatenation (`"/a?" + q`) widens to `string` and is refused.
+  Measured before it went in — 50 routes and 2100 href sites cost 0.39s of check time against 0.34s
+  for a plain `string`, because TypeScript keeps these as patterns rather than expanding them.
+
+  Two known costs, both written down where they bite: a substituted segment is `${string}`, which a
+  slash also satisfies, so `/users/a/b` is accepted; and a raw `/users/:id` compiles, since `":id"` is
+  a string like any other.
+
+  `@ramonda/check` follows a kit destructured from a factory whose declaration is in the same program,
+  not only one that arrives through an installed package's fragment. A monorepo compiles its own
+  packages from source, which is why the fragment-only version passed every fixture and still failed
+  this repository's own documentation site.
+
+- eb0b34b: `--split` says what loads when, and `--diff` says what a change moved.
+
+  Both are readings of the graph that is already emitted — no second walk over the source, and no new
+  fact in the format. That was the argument for making the graph a product, and this is the second
+  time it has held.
+
+  **A bundler splits at a dynamic import and nowhere else**, so `--split` splits at a `lazy` edge and
+  nowhere else. What a chunk reaches comes out in three parts, each a different claim: already in the
+  first payload and free, shared with another split point and downloaded once for both, or its own.
+  Collapsing any two of them reports a page as expensive when it is free.
+
+  ```
+  [ramonda-check] what loads when — @ramonda/docs
+
+    before anything      16 declaration(s) in 8 file(s)
+    loaded on demand     76 split point(s)
+    shared between them  55 declaration(s)
+  ```
+
+  `--diff <graph.json>` compares the run against a graph written earlier. The number it exists for:
+
+  ```
+    nodes  +0  -0        edges  +1  -0
+    before anything: 16 → 72 declaration(s) (+56)
+  ```
+
+  That is one added import line, measured on this repository's documentation site. A diff of the
+  source shows the line; nothing in it shows the fifty-six components that now arrive with the first
+  page. Identity leaves the LINE out on both sides, so inserting a line near the top of a file moves
+  nothing below it, and a graph of a different package, scope or schema is refused rather than
+  subtracted.
+
+  **Routes are deliberately not the unit, and that is a measurement rather than a preference.** The
+  plan called this "what one route pulls in". Measured: one app here imports all eleven of its pages
+  statically, so every one is in the first payload and opening a route downloads nothing; another
+  builds its route table in a loop, so no route in it has a URL this could name. The unit is where the
+  code actually splits.
+
+  It counts declarations and names files. It never says bytes — nothing here has weighed a bundle.
+  Both flags describe; neither fails a build.
+
+### Patch Changes
+
+- c0df2d1: A kit member whose name answers to two classes resolves to nothing, and a built href takes a
+  fragment.
+
+  **`@ramonda/check`** — when a package hands a component back through a factory without exporting it,
+  the fragment is read by name. Two exported classes sharing a name were already refused, "rather than
+  resolved to whichever came last"; two INTERNAL ones kept the first and said nothing. Internal names
+  collide far more often than exported ones — this repository's own documentation app declares
+  `class Page` seventy-five times — and a kit member bound to an arbitrary class puts every edge below
+  it under the wrong component. That is a wrong answer where an unresolved tag would have been an
+  honest missing one. Both are now refused and the tag reports as the hole it is.
+
+  No note is emitted for an internal collision, unlike the exported case: almost none of them is ever
+  reached by a destructured key, and a note per collision would bury the runs where it matters.
+
+  **`@ramonda/router`** — `AnyHref` is `Located` over both halves of the union, including the `Href`
+  that `route()` builds. Written out by hand, the second half took a query but not a fragment, so
+  `` href={`${route("/u/:id", { id })}#top`} `` was refused while `href="/about#top"` was accepted.
+  An anchor into a section of a parameterised page is the ordinary reason to write one; the asymmetry
+  was an omission, not a decision.
+
+  Two JSDoc claims that this branch had already made false are corrected — `href` no longer requires
+  `route()` for a `:param` path, and a raw `:param` pattern is accepted rather than rejected (a known
+  cost, documented three lines above where the comment denied it).
+
+  Docs: component examples import `Link` / `Navigator` from `./routes` instead of calling
+  `createRouter(routes)` in each file. Every app in this repository mints the kit once and imports it,
+  the setup page says to do exactly that, and eight examples across five pages taught the opposite —
+  six of them destructuring three names to use one. The sample checker now resolves `./routes` to the
+  real package's types, so `this.use(Navigator)` has to genuinely carry `push` and `params`; the
+  hand-written `any` shims those examples leaned on are gone.
+
 ## 0.6.0
 
 ### Minor Changes
