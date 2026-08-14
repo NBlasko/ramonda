@@ -128,3 +128,21 @@ jobs:
           SELFTEST=table node scripts/check-side-effects.mjs
           SELFTEST=honoured node scripts/check-side-effects.mjs
           node scripts/check-side-effects.mjs
+
+      # In this job because it packs the built packages and installs them into a generated
+      # project — the tarballs a publish would push, not what npm already has.
+      #
+      # It exists because nothing else here runs a template. Every fault it lists in its own
+      # header reached a released package: a project that could not build, one that died at
+      # prerender, one that shipped pages with no title, and one whose production install would
+      # not start. The gate could not see any of them — it runs `ramonda-check` over `apps/docs`
+      # only, and the scaffolder's tests read templates as TEXT.
+      #
+      # Both self-tests first, each planting a fault the check must report, so a check that has
+      # gone quiet fails here rather than passing.
+      - name: Scaffold a project and build it
+        run: |
+          SELFTEST=head node scripts/check-scaffold.mjs ssr
+          SELFTEST=app node scripts/check-scaffold.mjs ssr
+          node scripts/check-scaffold.mjs ssr
+          node scripts/check-scaffold.mjs spa

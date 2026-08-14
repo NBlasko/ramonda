@@ -58,6 +58,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/server
     devDependencies:
+      '@ramonda/build':
+        specifier: workspace:^
+        version: link:../../packages/build
       '@ramonda/check':
         specifier: workspace:^
         version: link:../../packages/check
@@ -151,6 +154,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/server
     devDependencies:
+      '@ramonda/build':
+        specifier: workspace:^
+        version: link:../../packages/build
       '@ramonda/check':
         specifier: workspace:^
         version: link:../../packages/check

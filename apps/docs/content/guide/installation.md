@@ -35,41 +35,85 @@ project you already have.
 
 ```
 npm install @ramonda/core
+npm install -D @ramonda/build
 ```
 
-Ramonda has no runtime dependencies. It needs **two** things from your bundler, and
-both fail confusingly when they're missing — so they come first.
+Ramonda has no runtime dependencies. It needs three settings from your bundler, and
+`@ramonda/build` carries them so you name none:
 
-### 1. The JSX factory is `h`
+```js
+// vite.config.ts
+import { defineConfig } from "vite";
+import { ramonda } from "@ramonda/build/vite";
 
-Ramonda's JSX compiles to calls to a function named `h`. Point your bundler's JSX
-transform at `h` and have it auto-inject the import, so individual files never write
-it themselves.
+export default defineConfig({ plugins: [ramonda()] });
+```
 
-### 2. Decorators must be transpiled
+For a build that is a script rather than a config — an esbuild bundle for a server —
+the same settings spread in, and the plugin refuses a `target` that would break them:
 
-Ramonda uses TC39 (stage-3) decorators. Chrome parses them natively — which is the
-trap: a dev server can look fine while a production or server build fails with
-`Invalid or unexpected token` on the first `@Host("div")`. Set a `target` your
-bundler will down-level to, so the transform runs.
+```js
+import { build } from "esbuild";
+import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";
+
+await build({
+  plugins: [ramonda()],
+  ...ramondaOptions,
+  entryPoints: ["src/entry-server.tsx"],
+  bundle: true,
+  platform: "node",
+  outfile: "dist/server/entry-server.js",
+});
+```
+
+The package is ESM only, so your project needs `"type": "module"` in its
+package.json. A project from `create-ramonda` already has all of this.
 
 > You do **not** need to define `__DEV__`. The published `@ramonda/core` ships
 > separate development and production builds and picks the right one automatically —
 > you get the diagnostics on `dev` and a stripped build on `build`.
 
-### A working Vite config
+### What those settings are, and why they are not yours to keep
+
+**The JSX transform is the automatic one**, pointed at `@ramonda/core`. The compiler
+writes one import per file; nothing is injected into your module scope. The section
+below says why that matters.
+
+**Decorators have to be compiled away.** `@state`, `@compute` and the rest are TC39
+stage-3, and no engine parses them — so the build has to lower them, and whether it
+does comes down to `target`. esbuild lowers for every target except `esnext`, and
+`esnext` is also esbuild's **default**.
+
+So a build that says nothing about a target has already chosen the one value that
+breaks, and nothing tells you: it succeeds, prints no warning, and emits a file that
+dies with `SyntaxError: Invalid or unexpected token` the first time a browser reads
+it. A dev server can look perfectly fine meanwhile, because Chrome parses decorators
+natively.
+
+That shipped here once. It is why the settings live in a package rather than in a
+paragraph asking you to copy three lines correctly, in every bundler config, forever.
+
+### By hand, if you must
+
+For a bundler `@ramonda/build` does not cover, the three settings are:
 
 ```js
+// vite.config.ts — the long way
 import { defineConfig } from "vite";
 
 export default defineConfig({
   esbuild: {
     jsx: "automatic",
     jsxImportSource: "@ramonda/core",
+    // Anything except `esnext`. This is the one that decides whether the app runs.
     target: "es2022",
   },
 });
 ```
+
+`ramonda-check-bundle`, from [`@ramonda/check`](/reference/check), parses what your
+build emitted and fails if any of it is unparseable — which is the second line of
+defence for exactly this, and worth running whichever way you configure it.
 
 ### tsconfig
 

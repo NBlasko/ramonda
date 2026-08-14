@@ -1,9 +1,22 @@
-import { Component, Host, state } from "@ramonda/core";
+import { Component, Head, Host, state } from "@ramonda/core";
 import { createRoutes, createRouter } from "@ramonda/router";
 
 /** The home page — static: the same for everyone, so the build bakes it to a file. */
 @Host("main")
 class HomePage extends Component {
+  /**
+   * The page's title and description, in the HTML the server sends.
+   *
+   * Not decoration: server rendering earns its cost with readers who never run your JavaScript —
+   * a crawler, a link preview, a reader mode — and what they see is what is in the file. A page
+   * that sets its title on hydration has none for any of them.
+   *
+   * Each route sets its own; whatever a route leaves out falls back to the layout's below.
+   */
+  head = this.use(Head, () => ({
+    title: "Home — Ramonda",
+    description: "A server-rendered Ramonda app, prerendered at build time.",
+  }));
   @state count = 0;
   increment(): void {
     this.count = this.count + 1;
@@ -35,6 +48,7 @@ class HomePage extends Component {
 /** A second page, configured as ISR: baked, then rebaked on a timer — never per request. */
 @Host("main")
 class AboutPage extends Component {
+  head = this.use(Head, () => ({ title: "About — Ramonda" }));
   render() {
     return (
       <div className="card">
@@ -50,6 +64,11 @@ class AboutPage extends Component {
 @Host("main")
 class GreetingPage extends Component {
   private nav = this.use(Navigator);
+  // Below `nav` on purpose: field initialisers run in order, so reading `this.nav` above this
+  // point would read the field before it exists.
+  head = this.use(Head, (self: GreetingPage) => ({
+    title: `Hello, ${self.nav.params<{ name: string }>().name} — Ramonda`,
+  }));
   render() {
     const { name } = this.nav.params<{ name: string }>();
     return (

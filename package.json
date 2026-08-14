@@ -9,12 +9,13 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check-types": "turbo run check-types",
-    "check": "node scripts/preflight-node.mjs && pnpm install --frozen-lockfile && node scripts/check-workflows.mjs && pnpm --filter @ramonda/check build && node packages/check/dist/cli.js apps/docs/tsconfig.json && pnpm lint && pnpm format:check && turbo run check-types test build && node scripts/check-examples.mjs && node scripts/check-side-effects.mjs",
+    "check": "node scripts/preflight-node.mjs && pnpm install --frozen-lockfile && node scripts/check-workflows.mjs && pnpm --filter @ramonda/check build && node packages/check/dist/cli.js apps/docs/tsconfig.json && pnpm lint && pnpm format:check && turbo run check-types test build && node scripts/check-examples.mjs && node scripts/check-side-effects.mjs && pnpm check:scaffold",
     "check:workflows": "node scripts/check-workflows.mjs",
     "check:examples": "node scripts/check-examples.mjs",
     "check:side-effects": "node scripts/check-side-effects.mjs",
     "changeset": "changeset",
-    "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish"
+    "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish",
+    "check:scaffold": "node scripts/check-scaffold.mjs ssr && node scripts/check-scaffold.mjs spa"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

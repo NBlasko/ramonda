@@ -454,3 +454,137 @@ describe("a render that changed nothing the head owns", () => {
     expect(document.title).toBe("Fixed");
   });
 });
+
+/**
+ * A tag the page author wrote in `index.html`, and what is left of it afterwards.
+ *
+ * The registry adopts a matching element rather than adding a second one beside it — right, and
+ * the reason a page with its own `<meta name="description">` does not end up with two. But it then
+ * REMOVED that element on unmount, whether it had created it or merely borrowed it, so a
+ * hand-written tag disappeared from the document and never came back.
+ *
+ * `title` has always done the other thing: `originalTitle` is captured when the registry is made
+ * and put back when no page claims one. The tags simply never got the same treatment, and the
+ * asymmetry is what makes this a fault rather than a design — measured before it was fixed, a
+ * `<title>` came back as `from index.html` while the description beside it was gone.
+ *
+ * The guard is the title's, for the title's reason: go back only if what is in the document is
+ * still what this registry wrote. Something else may own it by now.
+ */
+describe("a head tag the document already had", () => {
+  test("is given back, not deleted, when no page asks for it any more", async () => {
+    resetHeadRegistry();
+    document.head.innerHTML =
+      '<meta name="description" content="from index.html"><link rel="icon" href="/favicon.ico">';
+    const theirMeta = document.head.querySelector("meta[name=description]");
+    const theirLink = document.head.querySelector("link[rel=icon]");
+
+    class Page extends Component {
+      head = this.use(Head, () => ({
+        description: "set by the page",
+        // The SAME href the document already had, which is the ordinary case: a shell declares the
+        // favicon and the app declares it too. A link is identified by its `href`, so a different
+        // one is a different link and nothing is adopted.
+        link: [{ rel: "icon", href: "/favicon.ico" }],
+      }));
+      render() {
+        return <span>page</span>;
+      }
+    }
+
+    const { unmount } = await getDOM<Page>(<Page />);
+
+    // Adopted, not duplicated — the thing that was already right.
+    expect(document.head.querySelectorAll("meta[name=description]")).toHaveLength(1);
+    expect(document.head.querySelector("meta[name=description]")).toBe(theirMeta);
+    expect(theirMeta?.getAttribute("content")).toBe("set by the page");
+    expect(document.head.querySelectorAll("link[rel=icon]")).toHaveLength(1);
+    expect(document.head.querySelector("link[rel=icon]")).toBe(theirLink);
+
+    unmount?.();
+    await Promise.resolve();
+
+    expect(document.head.querySelector("meta[name=description]")?.getAttribute("content")).toBe("from index.html");
+    expect(document.head.querySelector("link[rel=icon]")?.getAttribute("href")).toBe("/favicon.ico");
+  });
+
+  test("a tag the page INVENTED still goes", async () => {
+    // The other half, and the reason this is not "never remove anything": a tag nothing in the
+    // document had before must not outlive the page that asked for it.
+    resetHeadRegistry();
+    document.head.innerHTML = "";
+
+    class Page extends Component {
+      head = this.use(Head, () => ({ meta: [{ property: "og:title", content: "ours alone" }] }));
+      render() {
+        return <span>page</span>;
+      }
+    }
+
+    const { unmount } = await getDOM<Page>(<Page />);
+    expect(document.head.querySelector('meta[property="og:title"]')).not.toBeNull();
+
+    unmount?.();
+    await Promise.resolve();
+    expect(document.head.querySelector('meta[property="og:title"]')).toBeNull();
+  });
+});
+
+/**
+ * The two ways giving a tag back can go wrong, both found reviewing the change that added it.
+ *
+ * `title` guards against the first and says why: the document's title may have been set by
+ * something that is not a `Head` at all — an analytics script, a notification counter — and
+ * "restoring" over that undoes a live value nobody asked us to touch. A tag is no different, and
+ * the first version of the restore carried only half of the title's logic.
+ */
+describe("giving a tag back, when the document moved underneath", () => {
+  test("does not overwrite a value something else wrote", async () => {
+    resetHeadRegistry();
+    document.head.innerHTML = '<meta name="description" content="from index.html">';
+
+    class Page extends Component {
+      head = this.use(Head, () => ({ description: "set by the page" }));
+      render() {
+        return <span>x</span>;
+      }
+    }
+    const { unmount } = await getDOM<Page>(<Page />);
+
+    // Not a Head: a script that owns this tag now.
+    document.head.querySelector("meta[name=description]")?.setAttribute("content", "written by someone else");
+
+    unmount?.();
+    await Promise.resolve();
+
+    // Left alone. Handing back what the document had would undo a live value.
+    expect(document.head.querySelector("meta[name=description]")?.getAttribute("content")).toBe(
+      "written by someone else",
+    );
+  });
+
+  test("a tag REBUILT after an external delete is removed, not handed to the author", async () => {
+    // The element the author wrote is gone — something deleted it. What stands in its place was
+    // built by this registry, so it belongs to the page and must go with it. Restoring the old
+    // attributes onto it would leave a tag in the document that nothing put there.
+    resetHeadRegistry();
+    document.head.innerHTML = '<meta name="description" content="from index.html">';
+
+    class Page extends Component {
+      head = this.use(Head, () => ({ description: "set by the page" }));
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    const first = await getDOM<Page>(<Page />);
+    document.head.querySelector("meta[name=description]")?.remove();
+
+    const second = await getDOM<Page>(<Page />);
+    first.unmount?.();
+    second.unmount?.();
+    await Promise.resolve();
+
+    expect(document.head.querySelector("meta[name=description]")).toBeNull();
+  });
+});
