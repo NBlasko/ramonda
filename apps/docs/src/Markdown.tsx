@@ -55,7 +55,8 @@ export class Markdown extends Component<MarkdownProps> {
    * the time this runs the heading exists.
    *
    * Both `@mounted` and `@updated`, because both happen: a new page mounts a new `Markdown`, while
-   * a link to a section of the page you are already on only updates the one already there.
+   * a link to a section of the page you are already on only updates the one already there — and
+   * that second half needs the read in `render()` below to happen at all.
    */
   @mounted({ env: "client" })
   arriveOnMount(): void {
@@ -77,6 +78,20 @@ export class Markdown extends Component<MarkdownProps> {
   }
 
   render(): RamondaNode {
+    /**
+     * Read here so the subscription EXISTS.
+     *
+     * `@updated` tracks nothing — `decorators.ts` says so outright, "No dependencies. Nothing is
+     * tracked while it runs" — so reading the route only inside a lifecycle callback subscribes to
+     * nothing, and this component never hears a hash-only navigation. `@mounted` still covers a
+     * link to another page, which is why every one of the 70 links in this site happened to work;
+     * a link to a section of the page you are ALREADY on would have done nothing at all.
+     *
+     * `hashTags` alone, not `pathname`: the context subscribes per key on read, so this wakes on a
+     * hash change and stays asleep through an ordinary navigation, which remounts this component
+     * anyway.
+     */
+    void this.route.hashTags;
     return this.props.tree.map(toVNode) as RamondaNode;
   }
 }

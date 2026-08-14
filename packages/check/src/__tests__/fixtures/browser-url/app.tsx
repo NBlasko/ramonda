@@ -4,7 +4,15 @@ import { Component, bootstrap } from "../framework";
 import { Router } from "@ramonda/router";
 
 declare const window: {
-  location: { pathname: string; hash: string; search: string; origin: string };
+  location: {
+    pathname: string;
+    hash: string;
+    search: string;
+    origin: string;
+    href: string;
+    assign(to: string): void;
+    reload(): void;
+  };
 };
 
 /** Asks the browser where the router already knows. Every read here is reported. */
@@ -33,12 +41,30 @@ class Careful extends Component {
   }
 }
 
+/**
+ * Writing the URL and calling its methods. Neither is a READ, and neither is reported.
+ *
+ * A write is a different fault with a different answer, and `reload()` is the one thing the router
+ * genuinely cannot replace — reported as "reads", they would be advice to do something impossible.
+ */
+class Leaving extends Component {
+  go() {
+    window.location.href = "https://example.com";
+    window.location.assign("/x");
+    window.location.reload();
+  }
+  render() {
+    return <span>go</span>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
       <div>
         <Astray />
         <Careful />
+        <Leaving />
       </div>
     );
   }

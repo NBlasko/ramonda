@@ -44,6 +44,17 @@ export interface ContextIssue {
  * that one is legitimate, because a wrapper cannot be expressed as a method. Only the source can
  * tell a function LITERAL from a call that returns one.
  */
+export interface ArrowFieldIssue {
+  /** The class the field is on. */
+  component: string;
+  field: string;
+  file: string;
+  line: number;
+  column: number;
+  /** Whether the body mentions `this` — which decides whether it becomes a method or leaves the class. */
+  readsThis: boolean;
+}
+
 /**
  * A component or hook asking the BROWSER where it is, in a project whose router already knows.
  *
@@ -67,17 +78,6 @@ export interface BrowserUrlIssue {
   file: string;
   line: number;
   column: number;
-}
-
-export interface ArrowFieldIssue {
-  /** The class the field is on. */
-  component: string;
-  field: string;
-  file: string;
-  line: number;
-  column: number;
-  /** Whether the body mentions `this` — which decides whether it becomes a method or leaves the class. */
-  readsThis: boolean;
 }
 
 /**
@@ -483,6 +483,8 @@ interface ComponentNode {
  * provider above it". Nothing had been walked. An app entered only from a server — no client entry
  * at all — was judged as a library, and a library is judged not at all.
  */
+const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "renderPage", "renderStatic"]);
+
 /**
  * The member of the router that answers the same question as a piece of `location`.
  *
@@ -498,8 +500,6 @@ const ROUTER_ANSWER: Record<string, string> = {
   search: "searchParams",
   hash: "hashTags",
 };
-
-const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "renderPage", "renderStatic"]);
 
 /**
  * A test, as the PROJECT sees it — the path is relative to the directory holding the tsconfig.
@@ -3156,7 +3156,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             ["window", "globalThis", "document"].includes(base.expression.text)) ||
           (ts.isIdentifier(base) && base.text === "location" && resolve(base) === undefined);
 
-        if (onLocation) {
+        /**
+         * A READ, and only a read. Reported without this guard: `window.location.href = "…"`,
+         * `location.assign("/x")` and `location.reload()` — measured, all three came out as
+         * "reads", and a reload is the one thing the router cannot replace. A write is a different
+         * fault with a different answer, and this rule is about asking the wrong source a question
+         * the router already answers.
+         */
+        const written =
+          ts.isBinaryExpression(node.parent) &&
+          node.parent.left === node &&
+          node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+        const called = ts.isCallExpression(node.parent) && node.parent.expression === node;
+
+        if (onLocation && !written && !called) {
           const at = positionOf(node);
           browserUrlReads.push({
             component: self.name,

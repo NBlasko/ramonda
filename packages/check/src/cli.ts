@@ -224,7 +224,13 @@ if (annotated.length > 0) {
  * the next that refuses. It is printed above the verdict and counts for nothing in it.
  */
 if (browserUrlReads.length > 0) {
-  console.warn(`\n${TAG} ${browserUrlReads.length} component(s) reading the browser's URL, not the router's:\n`);
+  // Components, not reads — four reads in one class is one component with a habit, and saying
+  // "4 component(s)" of a file that has one is a count nobody can reconcile with what follows.
+  const guilty = new Set(browserUrlReads.map((read) => read.component)).size;
+  console.warn(
+    `\n${TAG} ${guilty} component(s) reading the browser's URL, not the router's` +
+      `${browserUrlReads.length === guilty ? "" : ` — ${browserUrlReads.length} reads`}:\n`,
+  );
   for (const read of browserUrlReads) {
     console.warn(`  ${read.file}:${read.line}:${read.column}`);
     console.warn(

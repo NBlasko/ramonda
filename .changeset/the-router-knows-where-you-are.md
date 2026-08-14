@@ -21,6 +21,10 @@ tag with a `value` is the first and one without is the second.
 names the router's member where one answers the same question and says nothing where none does —
 `location.origin` gets no invented replacement.
 
+**A read, and only a read.** `window.location.href = "…"` is a different fault with a different
+answer, and `location.reload()` is the one thing the router genuinely cannot replace; reported as
+reads, both would be advice to do something impossible.
+
 **Two things it deliberately does not report.** A project that imports no router: there `location`
 is the only place the answer lives, and a rule that reports the only thing you could have written
 is a rule people switch off. And a local variable called `location`, which is not the global —

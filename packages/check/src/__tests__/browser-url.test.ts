@@ -38,6 +38,16 @@ describe("a component reading the browser's URL", () => {
   });
 
   /**
+   * A read, and only a read. `window.location.href = "…"` is a different fault with a different
+   * answer, and `location.reload()` is the one thing the router genuinely cannot replace —
+   * reported as "reads", both would be advice to do something impossible.
+   */
+  test("a write and a method call are not reads", () => {
+    const { browserUrlReads } = run("browser-url");
+    expect(browserUrlReads.some((r) => r.component === "Leaving")).toBe(false);
+  });
+
+  /**
    * Without a router there is nowhere else to read it from, and a rule that reports the only thing
    * a reader could have written is a rule people switch off.
    */
