@@ -427,6 +427,10 @@ importers:
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jsdom@28.0.0)(vite@7.3.6(@types/node@26.1.2)(lightningcss@1.33.0))
 
   packages/server:
+    dependencies:
+      linkedom:
+        specifier: ^0.18.13
+        version: 0.18.13
     devDependencies:
       '@ramonda/check':
         specifier: workspace:^
@@ -434,9 +438,6 @@ importers:
       '@types/node':
         specifier: ^26.1.2
         version: 26.1.2
-      linkedom:
-        specifier: ^0.18.13
-        version: 0.18.13
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@microsoft/api-extractor@7.58.12(@types/node@26.1.2))(postcss@8.5.22)(typescript@5.9.3)
