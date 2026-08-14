@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
+import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 
 /**
  * The panel is a custom element, so jsdom is enough to test it — it renders into a shadow root
@@ -31,19 +32,14 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     /**
-     * Headroom, because the default gates these on the machine's spare capacity.
+     * Shared with every other package now — this is where the number was first got wrong.
      *
-     * Nothing here asserts a duration — every case is a DOM fact — but a panel test mounts a custom
-     * element, attaches a shadow root and lays out a tree, and jsdom charges for all of it. Measured:
-     * the slowest case takes 894ms alone and this file takes 9 seconds, while the same file inside
-     * `turbo run test` — 25 tasks at once, which is what CI runs — took 77 seconds, and one case
-     * crossed the 5-second default and failed. Twice more, forced, it passed. That is a flake, and a
-     * flake in a gate is worse than a slow gate: it teaches everyone to re-run it.
-     *
-     * Twenty seconds against a 894ms worst case is deliberately far more than the contention seen, so
-     * that a slower CI runner has room too. It cannot hide a real regression: a test that starts
-     * taking twenty seconds has stopped being one of these.
+     * It was 20 s, chosen against a then-worst case of 894 ms and called "deliberately far more than
+     * the contention seen". It failed anyway, at 25.7 s, because the repository grew from 25
+     * concurrent tasks to 45 and the contention grew with it. A multiple of today's worst case
+     * expires; the reasoning and the measurements are in `vitest.timeout.mjs`.
      */
-    testTimeout: 20_000,
+    testTimeout,
+    hookTimeout,
   },
 });

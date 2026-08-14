@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
+import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 
 /**
  * The production test run, and the reason it exists is a gap this package had until its first release.
@@ -20,6 +21,8 @@ export default defineConfig({
   },
   test: {
     coverage,
+    testTimeout,
+    hookTimeout,
     globals: true,
     include: ["src/**/*.prod.test.ts"],
   },

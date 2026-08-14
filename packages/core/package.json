@@ -68,11 +68,11 @@
     "dist"
   ],
   "ramonda": {
-    "graph": "./dist/graph.json"
+    "graph": "./dist/ramonda-graph.json"
   },
   "scripts": {
     "dev": "tsup --watch",
-    "build": "tsup && ramonda-check tsconfig.json --graph dist/graph.json && ramonda-check-bundle dist",
+    "build": "tsup && ramonda-check tsconfig.json --graph dist/ramonda-graph.json && ramonda-check-bundle dist",
     "test": "vitest run --coverage && pnpm test:prod",
     "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod",
     "check-types": "tsc --noEmit",

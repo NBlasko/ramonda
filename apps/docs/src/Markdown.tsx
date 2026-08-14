@@ -1,4 +1,4 @@
-import { Component, Host, __h } from "@ramonda/core";
+import { Component, Host, __h, mounted } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
@@ -7,7 +7,7 @@ import { CodeBlock } from "./CodeBlock";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
-import { Link } from "./routes";
+import { Link, Navigator } from "./routes";
 
 interface MarkdownProps {
   tree: readonly ContentNode[];
@@ -26,11 +26,64 @@ interface MarkdownProps {
  * component per `<em>` would be thousands of instances per page, each with its
  * own runtime, for markup that never changes independently.
  */
-@Host("div")
+/**
+ * The host takes the click handler, so a link to a section of THIS page is handled where the click
+ * lands rather than by watching the URL for it.
+ */
+@Host("div", (self: Markdown) => ({ onClick: self.onLinkClick }))
 export class Markdown extends Component<MarkdownProps> {
+  /**
+   * The route, read from the ROUTER rather than from `window.location`.
+   *
+   * Read once, in `@mounted`, and never subscribed to: a lifecycle callback tracks nothing, which
+   * is exactly right here — the value is wanted at one instant, when this page's markup first
+   * exists.
+   */
+  private route = this.use(Navigator);
+
+  /**
+   * A link to a section arrives at that section.
+   *
+   * The browser does this for a document it loaded, and a client-side navigation is not one: the
+   * click is intercepted, history is pushed, and nothing tells the page to move. 70 links in this
+   * site name a section, and every one of them landed at the top.
+   *
+   * **Two arrivals, and neither needs the component to watch the URL.** A link from another page
+   * mounts a new `Markdown`, and `@mounted` reads where it landed. A link to a section of the page
+   * you are already on remounts nothing — so it is handled at the click, where the destination is
+   * written in the link itself and no subscription is required to learn it.
+   *
+   * The one arrival not covered is `back`/`forward` onto a fragment, which is neither a mount nor a
+   * click here.
+   */
+  @mounted({ env: "client" })
+  arriveOnMount(): void {
+    const named = this.route.hashTags.find((tag) => tag.value === "");
+    if (named) show(named.key);
+  }
+
+  /**
+   * Delegated on the host, the way the sidebar delegates its own — one handler, and it fires only
+   * when the click landed on a link rather than on the prose around it.
+   */
+  onLinkClick(event: MouseEvent): void {
+    const link = (event.target as HTMLElement).closest("a");
+    const href = link?.getAttribute("href") ?? "";
+    const at = href.indexOf("#");
+    // A fragment with an `=` in it is route state (`#tab=film`), not the name of an element.
+    if (at === -1) return;
+    const id = href.slice(at + 1);
+    if (id && !id.includes("=")) show(id);
+  }
+
   render(): RamondaNode {
     return this.props.tree.map(toVNode) as RamondaNode;
   }
+}
+
+/** The one imperative thing here, and it has no declarative form: telling the viewport to move. */
+function show(id: string): void {
+  document.getElementById(id)?.scrollIntoView();
 }
 
 export function toVNode(node: ContentNode): ComponentChild {

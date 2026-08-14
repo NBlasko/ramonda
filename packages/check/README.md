@@ -323,6 +323,32 @@ word. A whole section of a site can be gone without one error anywhere.
 The pages themselves are not reported as dead code: a page is exported, and an exported declaration
 is a way in.
 
+## The browser's URL, where the router knows it
+
+A component that reads `window.location` in a project with a router is asking the browser a
+question its own router already answers:
+
+```
+[ramonda-check] 1 component(s) reading the browser's URL, not the router's:
+
+  src/Article.tsx:31:20
+    <Article> reads `window.location.hash` — the router answers this with `hashTags`.
+```
+
+The two are the same fact from two sources, and only one is reactive: read from the router, a
+component re-renders when the route moves; read from `window`, it is a snapshot taken once and
+never corrected, so the page quietly goes out of date. The router also keeps a distinction the URL
+hands over as one string — `#tab=film` is route state and `#a-section` names an element, so a hash
+tag with a `value` is the first and one without is the second.
+
+**Only where there is a router.** Without one, `location` is the only place the answer lives, and a
+rule that reports the only thing you could have written is a rule people switch off. A local
+variable called `location` is not the global either, and telling them apart costs no type: this
+runs with no lib, so the browser's name resolves to nothing while yours resolves where you wrote it.
+
+This is a **warning** today and an error in a later version, which is the rule for adding a rule
+here.
+
 ## A component it cannot follow is an error
 
 The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a
@@ -424,7 +450,7 @@ mount which.** `--graph` writes it out.
 
 ```bash
 $ ramonda-check tsconfig.json --graph .ramonda/graph.json
-[ramonda-check] graph written to .ramonda/graph.json — 155 nodes, 64 edges, 3 of them unresolved
+[ramonda-check] graph written to .ramonda/graph.json — 161 nodes, 255 edges, 7 of them unresolved
 ```
 
 It holds facts, not conclusions — nodes and edges, each edge with the place it was written:
@@ -472,7 +498,7 @@ module with a string literal, `namedExport` names the class, and both are read: 
 in the JSX, one hop away in a static field — which is where `RMD020` pushes it — or in a literal
 registry indexed at runtime, which contributes the union of its values. What cannot be read is a
 specifier built at runtime, and a bundler cannot split that either, so it was never going to be a
-chunk. In the documentation site 76 of 140 edges arrive this way.
+chunk. In the documentation site 76 of 255 edges arrive this way.
 
 **A component handed over as a prop** is two halves that meet at the walk. A node declares which
 prop paths take a component — a PATH, so a slot at depth five is the same mechanism as one at depth
@@ -571,14 +597,20 @@ hooks and the contexts they need used to vanish at the package boundary, silentl
 that by publishing its own graph, and saying where it is:
 
 ```json
-{ "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+{ "name": "@acme/ui", "ramonda": { "graph": "./dist/ramonda-graph.json" } }
 ```
 
 Emit it in the package's build, after the declarations are written:
 
 ```bash
-ramonda-check tsconfig.json --graph dist/graph.json
+ramonda-check tsconfig.json --graph dist/ramonda-graph.json
 ```
+
+**The path is declared, never guessed**, so any name works and a package already built to another
+one keeps working. The name above is the convention for a reason worth stating: this file is
+published. It sits in a stranger's `node_modules/@acme/ui/dist/` beside whatever their bundler
+wrote, where `graph.json` says neither whose it is nor what it is for. An app writing its own graph
+has no such problem — it picks the path, and nobody else ever reads the file.
 
 A package has no root, so its graph comes out with `"scope": "library"` — nothing in it can be
 judged, because "unreachable" and "no provider above" are questions only whoever mounts it can

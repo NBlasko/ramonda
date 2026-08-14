@@ -149,8 +149,8 @@ Three pieces, each solving something a plain `vitest --coverage` gets wrong here
   right on real input and be wrong here.
 - **`turbo.json`** declares `coverage/**` and `coverage-prod/**` as outputs of `test`.
 
-Whole-repository result today: **95.72% of lines, 4294 of 4486, across 109 files**
-(core 73, query 13, testing-library 7, router 6, lens 6, devtools 4).
+Whole-repository result today: **95.51% of lines, 6325 of 6622, across 145 files**
+(core 83, query 14, devtools 13, form 11, router 10, lens 7, testing-library 7).
 
 `create-ramonda` is deliberately absent. Its tests import the **built** `dist/index.js`
 on purpose — they check that what gets published scaffolds a working project — so

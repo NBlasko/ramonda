@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
+import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 
 /**
  * The docs app's tests guard the two things this app IS: the examples, and the build.
@@ -35,5 +36,12 @@ export default defineConfig({
       "@ramonda/devtools": resolve(__dirname, "./devtools-stub.ts"),
     },
   },
-  test: { globals: true, environment: "jsdom", include: ["src/__tests__/*.test.{ts,tsx}"] },
+  // `ProdAppBuild.test.ts` shells out to esbuild, which is the slowest thing any test here does.
+  test: {
+    globals: true,
+    environment: "jsdom",
+    include: ["src/__tests__/*.test.{ts,tsx}"],
+    testTimeout,
+    hookTimeout,
+  },
 });

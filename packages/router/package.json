@@ -40,10 +40,10 @@
     "dist"
   ],
   "ramonda": {
-    "graph": "./dist/graph.json"
+    "graph": "./dist/ramonda-graph.json"
   },
   "scripts": {
-    "build": "tsup && ramonda-check tsconfig.json --graph dist/graph.json && ramonda-check-bundle dist",
+    "build": "tsup && ramonda-check tsconfig.json --graph dist/ramonda-graph.json && ramonda-check-bundle dist",
     "dev": "tsup --watch",
     "test": "vitest run --coverage",
     "test:watch": "vitest",

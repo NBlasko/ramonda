@@ -4,6 +4,6 @@
   "private": true,
   "types": "published/index.d.ts",
   "ramonda": {
-    "graph": "./published/graph.json"
+    "graph": "./published/ramonda-graph.json"
   }
 }
