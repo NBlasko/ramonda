@@ -1,4 +1,4 @@
-import { Component, Head, Host, state } from "@ramonda/core";
+import { Component, Head, Host, Portal, created, list, portalTarget, state } from "@ramonda/core";
 import { Router, RouteOutlet, createRouter, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ProductsPage } from "./ProductsPage";
@@ -24,6 +24,81 @@ class Counter extends Component {
           clicked {this.clicks} times
         </button>
       </p>
+    );
+  }
+}
+
+/**
+ * A portal target OUTSIDE the app's root, named rather than pointed at.
+ *
+ * The whole reason a name exists: on the server the shell is a string assembled AFTER the render,
+ * so the `<div>` this wants to live in does not exist while the tree is being built. The server
+ * collects into a detached container per name; the shell emits a container carrying the name; the
+ * client adopts what is inside it.
+ */
+const noticesTarget = portalTarget("notices");
+
+@Host("li")
+class Notice extends Component<{ text: string }> {
+  render() {
+    return <span className="notice">{this.props.text}</span>;
+  }
+}
+
+/**
+ * What this playground could not answer before: is a portalled subtree really indistinguishable
+ * from a normally-mounted one, in a REAL browser against a REAL server render?
+ *
+ * Three claims at once, each readable from the page without clicking anything:
+ *
+ * - **SSR into a named target.** These nodes are outside `#app`, so they exist only if the server
+ *   collected the block and the shell emitted a container for it.
+ * - **State restored, not rebuilt.** `origin` is set by a SERVER-only `@created`, so a client that
+ *   rebuilt this component instead of hydrating it would show `client` — the value the field
+ *   initialises to. It is rendered into the page rather than logged, so the smoke test and a person
+ *   read the same thing.
+ * - **`list()` in a hook's children.** The rows come from a real region reconcile, not a positional
+ *   fallback: a reorder MOVES them, which is what the adoption count below proves.
+ */
+@Host("div")
+class NoticeStack extends Component {
+  /** What a REBUILD would leave behind. The server overwrites it; nothing on the client does. */
+  @state origin = "client";
+  @state items = [
+    { id: "a", text: "Served from the edge" },
+    { id: "b", text: "Adopted on hydration" },
+  ];
+
+  @created({ env: "server" })
+  markServerRender(): void {
+    this.origin = "server";
+  }
+
+  /**
+   * Reverses the rows, so the smoke test can ask the question `list()` exists to answer: does a
+   * reorder MOVE the rows, or rewrite them?
+   *
+   * A positional fallback produces the same TEXT either way — that is exactly why it is a trap —
+   * so the check compares the row elements by identity across the reorder. Bound, not an arrow:
+   * an arrow in a class field is a new function every render and RMD022 says so.
+   */
+  reverse(): void {
+    this.items = [...this.items].reverse();
+  }
+
+  render() {
+    return (
+      <ul id="notices">
+        <li id="notice-origin">{this.origin}</li>
+        <li>
+          <button id="reverse-notices" onClick={this.reverse}>
+            reverse
+          </button>
+        </li>
+        {list(this.items, (item) => (
+          <Notice text={item.text} />
+        ))}
+      </ul>
     );
   }
 }
@@ -129,6 +204,12 @@ export class App extends Component {
    * The layout's defaults. Every page below overrides some of these and leaves the
    * rest alone — which is the thing to watch in the tab title and in view-source.
    */
+  /**
+   * Mounted on the layout, so it is present on every route — which is what makes it a check of the
+   * PIPELINE rather than of one page. A static route, an ISR route and a dynamic one all have to
+   * carry it.
+   */
+  notices = this.use(Portal, { children: <NoticeStack />, target: noticesTarget });
   head = this.use(Head, () => ({
     title: "Ramonda SSR playground",
     description: "The layout's description, shown when a page sets none.",

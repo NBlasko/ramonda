@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { PORTAL_TARGET_ATTR } from "../document";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,5 +70,31 @@ describe("what the package imports, an install of it provides", () => {
     // compatibility flag, if they allow it at all.
     const builtins = imports().filter(({ from }) => from.startsWith("node:"));
     expect(builtins, `${builtins.map((b) => `src/${b.file} imports ${b.from}`).join(", ")}`).toEqual([]);
+  });
+});
+
+/**
+ * The one string this package and `@ramonda/core` must agree on.
+ *
+ * A named portal target is a PROTOCOL between three parties: core's server render collects into a
+ * container, this package writes the container into the shell, and core's client resolves the name
+ * against it. The attribute is how the third step finds the first, and it is written out in two
+ * packages because this one does not depend on core at runtime.
+ *
+ * Two copies of a protocol constant with nothing comparing them is how a rename ships: the server
+ * writes one attribute, the client looks for another, finds nothing, and builds the subtree a
+ * second time. The page looks right. Nothing throws.
+ */
+describe("the attribute a portal target is found by", () => {
+  test("is the same string core writes and looks for", () => {
+    // Read from core's SOURCE rather than imported: importing `@ramonda/core` needs a DOM, and a
+    // guard that has to boot a document to check a string constant is a guard people delete. If
+    // the file or the declaration moves, this fails loudly, which is the right answer — an
+    // unverifiable protocol is what it exists to prevent.
+    const source = readFileSync(join(root, "../core/src/base/portalTarget.ts"), "utf8");
+    const declared = /export const PORTAL_TARGET_ATTR = "([^"]+)"/.exec(source)?.[1];
+
+    expect(declared, "could not read PORTAL_TARGET_ATTR from @ramonda/core's source").toBeDefined();
+    expect(PORTAL_TARGET_ATTR, "this package and @ramonda/core disagree on the portal target attribute").toBe(declared);
   });
 });

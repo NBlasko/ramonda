@@ -400,3 +400,57 @@ describe("renderToString is unchanged", () => {
     expect(html).not.toContain("<meta");
   });
 });
+
+/**
+ * `meta` and `link` arrive as fresh array literals on every evaluation of a call site's callback,
+ * and every prop is a signal comparing by reference. The class declares them values with
+ * `@StableProps`, and that declaration is what keeps the head from republishing on renders that
+ * changed nothing it owns.
+ *
+ * Written because the alternative is silent: remove the declaration and every test above still
+ * passes — the head ends up CORRECT, just rebuilt on every render of whatever mounted it.
+ */
+describe("a render that changed nothing the head owns", () => {
+  test("does not republish, even though the arrays are rebuilt", async () => {
+    let applies = 0;
+    const seen = new Set<string>();
+
+    class Page extends Component {
+      @state tick = 0;
+      head = this.use(Head, (self: Page) => {
+        // Read a value the head does NOT own, so the callback re-evaluates on every render the
+        // way a real page's does — a title built from props, a description from a signal.
+        void self.tick;
+        return {
+          title: "Fixed",
+          meta: [{ name: "robots", content: "index,follow" }],
+          link: [{ rel: "icon", href: "/favicon.ico" }],
+        };
+      });
+      render() {
+        return <span>{this.tick}</span>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+
+    // The observable effect of a republish: the title element is written again. Counting writes
+    // rather than internal calls, so this stays a test of behaviour.
+    const title = document.querySelector("title");
+    const observer = new MutationObserver((records) => {
+      applies += records.length;
+      for (const r of records) seen.add(r.type);
+    });
+    if (title) observer.observe(title, { childList: true, characterData: true, subtree: true });
+    observer.observe(document.head, { childList: true });
+
+    for (let i = 1; i <= 5; i++) {
+      instance.tick = i;
+      await settle();
+    }
+    observer.disconnect();
+
+    expect(applies, `head was touched ${applies} time(s) by renders that changed nothing`).toBe(0);
+    expect(document.title).toBe("Fixed");
+  });
+});

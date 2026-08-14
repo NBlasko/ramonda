@@ -21,9 +21,9 @@ in one place — it publishes, and a second pin there could drift.
 ## Running the gate locally: `pnpm check`
 
 ```
-pnpm check      # preflight-node + check-workflows + ramonda-check, then lint,
-                # format:check, turbo run check-types test build, and finally
-                # check-examples
+pnpm check      # preflight-node + frozen-lockfile install + check-workflows +
+                # ramonda-check, then lint, format:check, turbo run check-types
+                # test build, and finally check-examples
 ```
 
 `test` carries `--coverage`, so this also leaves an lcov report under each package —
@@ -36,6 +36,11 @@ scripts that turbo never sees:
   `lint` script, so `turbo run lint` covers `packages/` only — a lint error in a
   playground or in the docs app is invisible to turbo and fatal in CI.
 - `pnpm format:check` is not a turbo task at all.
+- `pnpm install --frozen-lockfile` is the FIRST thing CI does, and it was the one CI step the
+  local gate did not have. Editing a `package.json` without reinstalling leaves the lockfile
+  behind, everything local keeps passing — `pnpm check` never installs — and the push fails on
+  `ERR_PNPM_OUTDATED_LOCKFILE` before a single test has run. It costs 1.3s when the two agree,
+  and it goes first so it fails in seconds rather than after the build.
 - `scripts/check-workflows.mjs` lints the **workflows themselves**: a job that runs
   a package script directly skips that task's `dependsOn`, which is how the docs
   deploy came to build nothing while every other check was green. It reads

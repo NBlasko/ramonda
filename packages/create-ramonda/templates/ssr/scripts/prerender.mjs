@@ -32,7 +32,7 @@ console.log(`Prerendering ${paths.length} static route(s): ${paths.join(", ") ||
 let blocked = 0;
 for (const path of paths) {
   installDom(`${origin}${path}`); // point the DOM at this path so the router matches it
-  const { html, blockedBy } = await prerender(path);
+  const { html, title, head, portals, blockedBy } = await prerender(path);
 
   if (blockedBy !== undefined) {
     console.error(`  ✗ ${path} — reads the request (${blockedBy}); cannot be prerendered.`);
@@ -42,7 +42,7 @@ for (const path of paths) {
 
   const file = path === "/" ? join(OUT, "index.html") : join(OUT, path, "index.html");
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, fillDocument({ template, html }));
+  await writeFile(file, fillDocument({ template, html, title, head, portals }));
   console.log(`  ✓ ${path}`);
 }
 

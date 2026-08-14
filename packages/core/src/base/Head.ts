@@ -1,7 +1,7 @@
 import { Hook } from "./Hook";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { queueAfterCommit } from "../core/commit";
-import { created, destroyed, watchProp } from "./decorators";
+import { StableProps, created, destroyed, watchProp } from "./decorators";
 import { PORTAL_ATTR } from "../helpers/constants";
 import { diagnose } from "../debug/diagnostics";
 
@@ -136,7 +136,12 @@ export interface HeadOptions {
  *
  * Reactive: pass a callback (`this.use(Head, () => ({ title: this.pageTitle }))`)
  * and the head follows the value.
+ *
+ * `meta` and `link` are declared VALUES: a call site writes them as an array literal inside the
+ * callback, so a fresh one arrives on every evaluation and every prop is a signal comparing by
+ * reference. Without this the head republished on every render of the owner, whatever it changed.
  */
+@StableProps("meta", "link")
 export class Head extends Hook<HeadOptions> {
   /** This hook's node in the tree, and the proof it has published — see `publish`. */
   private node: HeadNode | undefined;
@@ -225,12 +230,19 @@ export class Head extends Hook<HeadOptions> {
   /**
    * The reactive half, client only: re-applies when the options actually change.
    *
-   * ## Why `@watchProp` with a selector that returns a STRING
+   * ## One selector per option, and why that is safe here
    *
-   * The selector reads all four options, so every one of them is a dependency, and it
-   * hands back a serialized form — which `@watchProp` then compares by value, because a
-   * string does. So this runs exactly when the options moved, and never for a render that
-   * changed something else. No snapshot field to keep, and no comparison of its own.
+   * Every option is its own dependency, so this runs when one of them moved and never for a
+   * render that changed something else — and `previous[i] === next[i]` says WHICH moved, which a
+   * single value cannot.
+   *
+   * It was one selector returning `JSON.stringify([...])` until the class declared `meta` and
+   * `link` stable. That was not a flourish: `@watchProp` compares with `Object.is`, a call site
+   * writes those two as array literals inside its callback, and a fresh array is never equal to
+   * the last one. Measured over five re-renders with identical contents — the serialized form
+   * fired 0 times, plain selectors fired 5, and plain selectors with `@StableProps` fire 0. The
+   * comparison moved to where it belongs: the hook says the arrays are values, so every consumer
+   * of them gets that, not only this watcher.
    *
    * ## Why the re-apply is a `@watchProp` rather than an effect
    *
@@ -245,7 +257,12 @@ export class Head extends Hook<HeadOptions> {
    * **does not fire on mount at all** — so the first application belongs to `@created`, later
    * ones to this, and the deeper Head wins in both. The guard field went with the effect.
    */
-  @watchProp((props) => JSON.stringify([props.title, props.description, props.meta, props.link]))
+  @watchProp(
+    (props) => props.title,
+    (props) => props.description,
+    (props) => props.meta,
+    (props) => props.link,
+  )
   republishOnChange(): void {
     if (this.node === undefined || this.registry === undefined) return;
     // Just the raw options — resolution flattens the whole tree on apply.

@@ -33,14 +33,14 @@ builds another — losing the caret, the selection, and any scroll inside it. `m
 and the id together, in one operation.
 
 Out of range is a no-op, and so is a move to the same index: a reorder that did not happen must not
-cost every row its `list()` key.
+cost every row its identity.
 
 ## Rendering rows
 
 ```tsx
 <ul>
   {list(f.tags.$.rows, (row) => (
-    <li key={row.id}>
+    <li>
       <input {...row.field.$.bind} />
       {row.field.$.error ? <em>{row.field.$.error}</em> : null}
     </li>
@@ -48,11 +48,15 @@ cost every row its `list()` key.
 </ul>
 ```
 
-`key={row.id}` is the whole point. A row object is rebuilt whenever its position changes, so
-the object alone cannot say which row is which after an insert or a remove — the id can. It is
-generated when the row appears and stays with it, so the reconciler keeps that row's element,
-and with it whatever the browser was holding: the caret position, the selection, an open
-datalist.
+**No key.** A row object *is* rebuilt whenever its position changes, so the object alone cannot
+say which row is which after an insert or a remove. `row.id` can — it is generated when the row
+appears and stays with it — and [`list()`](/lists) finds it on its own: the incoming rows are
+aligned against the ones on screen by what they still have in common, and the id is the thing
+they have in common. `row.index` restates the position, so it is deliberately ignored.
+
+The reconciler therefore keeps each surviving row's element, and with it whatever the browser was
+holding: the caret position, the selection, an open datalist. Writing `key={row.id}` is still
+allowed and does no harm; it is simply not needed here.
 
 `row.field` is a field node like any other, so everything from [Fields](/forms/fields) applies:
 `$.value`, `$.error`, `$.bind`, and further property access when the row is an object.

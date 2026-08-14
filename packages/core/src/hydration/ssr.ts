@@ -219,6 +219,15 @@ export interface StaticRender {
    * to everyone — so the build must fail or fall the route back to per-request rendering.
    */
   blockedBy?: string;
+  /**
+   * What each named portal target collected, the same map `renderPage` returns — and absent for
+   * the same reason `html` is.
+   *
+   * It was missing, and only a real static build could show it: a baked page dropped every named
+   * portal block, so the file looked correct and the client built the modal a SECOND time on
+   * hydration because there was no container to adopt.
+   */
+  portals?: Record<string, string>;
 }
 
 /**
@@ -237,12 +246,15 @@ export async function renderStatic(vnode: ComponentChild, url: URL): Promise<Sta
   // Cleared before, so this page starts from an empty head rather than inheriting the
   // last route the build baked — a build renders every page into one document.
   resetHead();
+  // Portals reset here for the same reason the head does, and it was missing: a build renders
+  // every page into one document, so the page before this one's containers were still standing.
+  resetPortalTargets();
   try {
     const html = await renderToString(vnode);
     // A read inside an async @mounted throws into the drain's allSettled and is swallowed, so the
     // recorded field — not the throw — is the authority here.
     const blockedBy = getBuildRead(scope);
-    return blockedBy !== undefined ? { blockedBy } : { html, ...collectHead() };
+    return blockedBy !== undefined ? { blockedBy } : { html, ...collectHead(), portals: collectPortals() };
   } catch (e) {
     // A synchronous read (render / @created / sync @mounted) throws straight out.
     if (e instanceof RequestReadDuringBuild) return { blockedBy: e.field };
@@ -317,7 +329,13 @@ export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOpt
     // so left its head tags behind) does not leak them into the next request. The
     // reset above is the one that guarantees correctness; this keeps a long-lived
     // server process from carrying a rendered page's tags between requests.
+    //
+    // Portals for the same reason, and they were missing it — measured, a container still held
+    // the last page's markup after this returned. They matter MORE than the head here: a head
+    // block is a few tags, a portal container holds a whole DOM subtree, and it stayed reachable
+    // until the next request happened to arrive.
     resetHead();
+    resetPortalTargets();
   }
 }
 
