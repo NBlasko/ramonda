@@ -58,6 +58,13 @@ describe("fillDocument escapes the title", () => {
   test("no title given leaves the shell's own", () => {
     expect(fillDocument({ template: SHELL, html: "" })).toContain("<title>App</title>");
   });
+
+  test("an EMPTY title leaves the shell's own, because empty means nobody set one", () => {
+    // `renderPage` returns `title: ""` when no `Head` in the tree set one, and that is a report of
+    // absence rather than a title. Taking it literally emptied the shell's own `<title>` — measured
+    // on a scaffolded project, which shipped `<title></title>` where its shell said otherwise.
+    expect(fillDocument({ template: SHELL, html: "", title: "" })).toContain("<title>App</title>");
+  });
 });
 
 describe("fillDocument on a shell that is missing its markers", () => {

@@ -80,12 +80,12 @@ async function renderDev(req, res) {
     const template = await vite.transformIndexHtml(url, rawHtml);
     const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
 
-    const { html, redirect } = await render();
+    const { html, title, head, portals, redirect } = await render();
     if (redirect) return sendRedirect(res, redirect);
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/html");
-    res.end(fillDocument({ template, html }));
+    res.end(fillDocument({ template, html, title, head, portals }));
   } catch (error) {
     // Rewrites the stack to your source, not the transformed module.
     vite.ssrFixStacktrace(error);
@@ -95,20 +95,28 @@ async function renderDev(req, res) {
   }
 }
 
-function sendHtml(res, html, mode) {
+/**
+ * Sends a whole document.
+ *
+ * The FULL document is what goes in the ISR cache, head included — caching the body alone and
+ * filling the shell at send time works until the shell changes under a cached page, and the head is
+ * what would silently go stale: page A's cached entry served with whatever title the last render
+ * happened to leave.
+ */
+function sendHtml(res, document, mode) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
-  res.end(fillDocument({ template: prodTemplate, html }));
+  res.end(document);
 }
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
 async function bakeShared(path) {
   const dom = installDom(`${origin}${path}`);
   try {
-    const { html, blockedBy } = await prodPrerender(path);
+    const { html, title, head, portals, blockedBy } = await prodPrerender(path);
     if (blockedBy !== undefined) throw new Error(`Route ${path} is cached but read the request (${blockedBy}).`);
-    return html;
+    return fillDocument({ template: prodTemplate, html, title, head, portals });
   } finally {
     dom.close();
   }
@@ -152,9 +160,12 @@ async function renderProd(req, res) {
 
     // 3. DYNAMIC — render per request (url + cookies for requestContext).
     installDom(`${origin}${url}`);
-    const { html, redirect } = await prodRender({ url: new URL(url, origin), cookies: parseCookies(req.headers.cookie) });
+    const { html, title, head, portals, redirect } = await prodRender({
+      url: new URL(url, origin),
+      cookies: parseCookies(req.headers.cookie),
+    });
     if (redirect) return sendRedirect(res, redirect);
-    sendHtml(res, html, "dynamic");
+    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, portals }), "dynamic");
   } catch (error) {
     res.statusCode = 500;
     res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);

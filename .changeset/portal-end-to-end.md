@@ -36,3 +36,23 @@ browser.
 
 The markup matches `renderDocument` exactly — same attribute, same escaping, same position after
 the app root — because the two disagreeing is itself a way to make hydration rebuild.
+
+**A scaffolded SSR project ships the head it renders, and has somewhere to put a portal.**
+
+It rendered with `renderToString`, which hands back the body and nothing else — no title, no meta,
+no portal blocks. A generated project that added a `<Head>` therefore shipped pages with **no title
+and no description**, invisible to exactly the crawlers server rendering exists for. Measured on a
+scaffolded project, not inferred. It now renders with `renderPage`, and the shell carries
+`<!--head-->` and `<!--portals-->`.
+
+The portals marker is there before anything uses one, on purpose: `fillDocument` refuses a render
+that collected blocks with no marker, so without it the first `<Portal target={portalTarget(…)}>`
+someone writes breaks their build, and the fix is one line in a file they had no reason to open.
+
+Its ISR entries now cache the **whole document** rather than the body. Filling the shell at send
+time works until the shell changes under a cached page — and with a head collected per page, the
+head is what goes stale first: one page's cached entry served with another's title.
+
+`fillDocument` also stops taking an EMPTY title literally. `renderPage` returns `""` when no `Head`
+set one, which is a report of absence; writing it emptied the shell's own `<title>`, and a
+scaffolded project shipped `<title></title>`. Found by building one.

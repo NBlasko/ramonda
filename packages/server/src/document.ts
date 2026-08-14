@@ -65,12 +65,17 @@ export interface Document {
  * back from `document.title`. A page that sets its title from a product name or a search term
  * therefore decides what lands in the document, and `</title><script>` is a short string.
  *
- * A shell missing a marker is returned as it is. It is a mistake, but a server that throws answers
- * 500 on every route, and a page with no app in it is the more diagnosable of the two.
+ * A shell missing `<!--ssr-->` or `<!--head-->` is returned as it is. It is a mistake, but a server
+ * that throws answers 500 on every route, and a page with no app in it is the more diagnosable of
+ * the two. `<!--portals-->` is the exception and throws — see below for why that one cannot be
+ * quiet.
  */
 export function fillDocument({ template, html, title, head, portals }: Document): string {
   let out = template.replace("<!--ssr-->", () => html ?? "");
-  if (title !== undefined) {
+  // An EMPTY title is a report that nothing set one — `renderPage` returns `""` when no `Head` in
+  // the tree spoke — and not a title of "". Writing it emptied the shell's own `<title>`, which a
+  // scaffolded project with no `Head` shipped as `<title></title>`.
+  if (title) {
     out = out.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(title)}</title>`);
   }
   out = out.replace("<!--head-->", () => head ?? "");
