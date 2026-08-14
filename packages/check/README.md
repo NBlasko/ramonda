@@ -571,14 +571,20 @@ hooks and the contexts they need used to vanish at the package boundary, silentl
 that by publishing its own graph, and saying where it is:
 
 ```json
-{ "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+{ "name": "@acme/ui", "ramonda": { "graph": "./dist/ramonda-graph.json" } }
 ```
 
 Emit it in the package's build, after the declarations are written:
 
 ```bash
-ramonda-check tsconfig.json --graph dist/graph.json
+ramonda-check tsconfig.json --graph dist/ramonda-graph.json
 ```
+
+**The path is declared, never guessed**, so any name works and a package already built to another
+one keeps working. The name above is the convention for a reason worth stating: this file is
+published. It sits in a stranger's `node_modules/@acme/ui/dist/` beside whatever their bundler
+wrote, where `graph.json` says neither whose it is nor what it is for. An app writing its own graph
+has no such problem — it picks the path, and nobody else ever reads the file.
 
 A package has no root, so its graph comes out with `"scope": "library"` — nothing in it can be
 judged, because "unreachable" and "no provider above" are questions only whoever mounts it can
