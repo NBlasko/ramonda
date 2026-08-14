@@ -118,15 +118,24 @@ this.use(Portal, () => ({ children: <Dialog />, target: modals }));
 ```
 
 The server collects that target's content and hands it back on `page.portals`, keyed by the
-name. [`renderDocument`](/ssr/render) emits a container per entry, after the app root — so
-a modal is outside the stacking context it is trying to escape. A hand-rolled shell places
-them itself:
+name — from `renderPage` for a per-request render and from `renderStatic` for a baked one.
+[`renderDocument`](/ssr/render) emits a container per entry, after the app root, so a modal is
+outside the stacking context it is trying to escape.
 
-```tsx
-const page = await renderPage(<App />);
+If you assemble your own shell, mark where they go and `fillDocument` fills it:
 
-`<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals ?? ""}</div>`;
+```html
+<div id="app"><!--ssr--></div>
+<!--portals-->
 ```
+
+```js
+res.end(fillDocument({ template, html, title, head, portals }));
+```
+
+A shell that collected blocks and has no `<!--portals-->` is refused, naming the targets. That
+one is not a quiet failure on purpose: a page missing its app announces itself, while a dropped
+portal renders a page that looks correct and then builds the subtree a second time in the browser.
 
 On the client the name resolves to that container, and the block inside it is adopted rather
 than built again. With no server render at all — a client-only app — the container is created
