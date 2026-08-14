@@ -13,6 +13,9 @@
   "bugs": {
     "url": "https://github.com/NBlasko/ramonda/issues"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "keywords": [
     "ramonda",
     "vite",
