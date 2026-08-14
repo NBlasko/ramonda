@@ -78,7 +78,10 @@ nav {
   flex: 0 0 220px;
   position: sticky;
   top: calc(var(--masthead-h) + 24px);
+  /* Same reason as the drawer's height below: the breakpoint is 860px, so a phone in landscape and
+     a small tablet get THIS layout, and there `100vh` is still the height with the URL bar gone. */
   max-height: calc(100vh - var(--masthead-h) - 48px);
+  max-height: calc(100dvh - var(--masthead-h) - 48px);
   overflow-y: auto;
   overscroll-behavior: contain;
   /* Room for the scrollbar, so it never sits on top of a link. */
@@ -752,7 +755,14 @@ article pre.shiki {
     left: 0;
     z-index: 60;
     width: min(280px, 82vw);
+    /* `dvh`, not `vh`: on a phone `100vh` is the LARGE viewport — the height with the URL bar
+       retracted — so while the bar is showing, the bottom of the drawer sits below the screen and
+       the last link in the list cannot be reached. It appeared only after scrolling the page
+       behind the drawer, which is what retracts the bar. `dvh` is the height that is actually
+       visible, and it follows the bar. The `vh` line above it is the fallback for a browser that
+       does not know the unit, where the old behaviour is no worse than it was. */
     height: 100vh;
+    height: 100dvh;
     /* The desktop rule caps the sidebar below the masthead, and the drawer is not below anything —
        it covers the screen. Left in place it cut the drawer short by exactly the masthead's height
        and left a gap under the links. */
