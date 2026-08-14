@@ -33,7 +33,7 @@ builds another — losing the caret, the selection, and any scroll inside it. `m
 and the id together, in one operation.
 
 Out of range is a no-op, and so is a move to the same index: a reorder that did not happen must not
-cost every row its `list()` key.
+cost every row its identity.
 
 ## Rendering rows
 
