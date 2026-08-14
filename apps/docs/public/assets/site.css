@@ -868,12 +868,21 @@ article pre.shiki {
   /*
    * The page behind an open drawer does not move.
    *
-   * Set from `App`'s `@updated`, so the class always says what `menuOpen` says. Scoped inside this
-   * breakpoint on purpose: the drawer only exists here, and a class left behind by a resize must
-   * not be able to lock a desktop page that has no drawer to explain it.
+   * Read from the class the RENDER already writes. `.body.nav-open` is `App`'s own markup — the
+   * drawer's state, expressed where every other piece of it is expressed — and `:has()` is what
+   * lets the document act on a class held by a descendant. Nothing writes to `documentElement`, so
+   * there is no second copy of `menuOpen` to keep in step, no cleanup to forget on unmount, and no
+   * class left behind when the component goes away.
+   *
+   * Inside this breakpoint on purpose: the drawer exists only here, so a wide window cannot lock a
+   * page that has no drawer to explain it.
+   *
+   * `:has()` is Chrome 105, Safari 15.4 and Firefox 121. Older than that and the lock simply does
+   * not apply — the drawer still opens, closes and scrolls; the page behind it moves as it did
+   * before.
    */
-  html.nav-locked,
-  html.nav-locked body {
+  html:has(.body.nav-open),
+  html:has(.body.nav-open) body {
     overflow: hidden;
   }
   /* The search modal fills the screen instead of floating in a card. */

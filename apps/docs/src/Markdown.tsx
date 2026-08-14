@@ -1,4 +1,4 @@
-import { Component, Host, __h, mounted, updated } from "@ramonda/core";
+import { Component, Host, __h, mounted } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
@@ -26,20 +26,20 @@ interface MarkdownProps {
  * component per `<em>` would be thousands of instances per page, each with its
  * own runtime, for markup that never changes independently.
  */
-@Host("div")
+/**
+ * The host takes the click handler, so a link to a section of THIS page is handled where the click
+ * lands rather than by watching the URL for it.
+ */
+@Host("div", (self: Markdown) => ({ onClick: self.onLinkClick }))
 export class Markdown extends Component<MarkdownProps> {
   /**
    * The route, read from the ROUTER rather than from `window.location`.
    *
-   * The router owns this state, so the URL is not the place to ask — and a hash tag already carries
-   * the distinction a raw string would have to be sniffed for: `#tab=film` is route state and
-   * arrives with a `value`, while `#a-field-in-its-own-component` names an element and arrives
-   * without one.
+   * Read once, in `@mounted`, and never subscribed to: a lifecycle callback tracks nothing, which
+   * is exactly right here — the value is wanted at one instant, when this page's markup first
+   * exists.
    */
   private route = this.use(Navigator);
-
-  /** The last section arrived at, so an unrelated re-render does not move the page again. */
-  private lastSection = "";
 
   /**
    * A link to a section arrives at that section.
@@ -48,52 +48,42 @@ export class Markdown extends Component<MarkdownProps> {
    * click is intercepted, history is pushed, and nothing tells the page to move. 70 links in this
    * site name a section, and every one of them landed at the top.
    *
-   * **Here and not in the shell, because this is where the content is.** `App` deliberately reads
-   * nothing from the route — that is what keeps the sidebar from being rebuilt on every navigation
-   * — so it never re-renders when the URL changes; and `DocPage` renders an `AsyncLoad`, so it is
-   * on screen a whole chunk-load before the page is. `Markdown` renders the content itself, so by
-   * the time this runs the heading exists.
+   * **Two arrivals, and neither needs the component to watch the URL.** A link from another page
+   * mounts a new `Markdown`, and `@mounted` reads where it landed. A link to a section of the page
+   * you are already on remounts nothing — so it is handled at the click, where the destination is
+   * written in the link itself and no subscription is required to learn it.
    *
-   * Both `@mounted` and `@updated`, because both happen: a new page mounts a new `Markdown`, while
-   * a link to a section of the page you are already on only updates the one already there — and
-   * that second half needs the read in `render()` below to happen at all.
+   * The one arrival not covered is `back`/`forward` onto a fragment, which is neither a mount nor a
+   * click here.
    */
   @mounted({ env: "client" })
   arriveOnMount(): void {
-    this.arriveAtSection();
+    const named = this.route.hashTags.find((tag) => tag.value === "");
+    if (named) show(named.key);
   }
 
-  @updated
-  arriveOnUpdate(): void {
-    this.arriveAtSection();
-  }
-
-  private arriveAtSection(): void {
-    const id = this.route.hashTags.find((tag) => tag.value === "")?.key ?? "";
-    // Keyed on the path too: the same section name on two pages is a move, not a repeat.
-    const here = `${this.route.pathname}#${id}`;
-    if (here === this.lastSection) return;
-    this.lastSection = here;
-    if (id) document.getElementById(id)?.scrollIntoView();
+  /**
+   * Delegated on the host, the way the sidebar delegates its own — one handler, and it fires only
+   * when the click landed on a link rather than on the prose around it.
+   */
+  onLinkClick(event: MouseEvent): void {
+    const link = (event.target as HTMLElement).closest("a");
+    const href = link?.getAttribute("href") ?? "";
+    const at = href.indexOf("#");
+    // A fragment with an `=` in it is route state (`#tab=film`), not the name of an element.
+    if (at === -1) return;
+    const id = href.slice(at + 1);
+    if (id && !id.includes("=")) show(id);
   }
 
   render(): RamondaNode {
-    /**
-     * Read here so the subscription EXISTS.
-     *
-     * `@updated` tracks nothing — `decorators.ts` says so outright, "No dependencies. Nothing is
-     * tracked while it runs" — so reading the route only inside a lifecycle callback subscribes to
-     * nothing, and this component never hears a hash-only navigation. `@mounted` still covers a
-     * link to another page, which is why every one of the 70 links in this site happened to work;
-     * a link to a section of the page you are ALREADY on would have done nothing at all.
-     *
-     * `hashTags` alone, not `pathname`: the context subscribes per key on read, so this wakes on a
-     * hash change and stays asleep through an ordinary navigation, which remounts this component
-     * anyway.
-     */
-    void this.route.hashTags;
     return this.props.tree.map(toVNode) as RamondaNode;
   }
+}
+
+/** The one imperative thing here, and it has no declarative form: telling the viewport to move. */
+function show(id: string): void {
+  document.getElementById(id)?.scrollIntoView();
 }
 
 export function toVNode(node: ContentNode): ComponentChild {
