@@ -368,6 +368,17 @@ interface HeadRegistry {
    */
   roots: Set<HeadNode>;
   managed: Map<string, Element>;
+  /**
+   * For an element the registry ADOPTED rather than created: the attributes it had before, to put
+   * back when no page asks for it any more.
+   *
+   * Absent for one the registry built, which is the whole distinction — a tag nothing in the
+   * document had must not outlive the page that asked for it, and a tag the page author wrote must
+   * not be deleted by a page that merely borrowed it. `title` had this from the start
+   * (`originalTitle`); the tags did not, so a hand-written `<meta name="description">` in
+   * `index.html` was taken over and then removed for good.
+   */
+  adopted: Map<string, Record<string, string>>;
   /** What the document's title was before any `Head` published, to go back to. */
   originalTitle: string;
   /**
@@ -391,6 +402,7 @@ function registryForDocument(): HeadRegistry {
     registry = {
       roots: new Set(),
       managed: new Map(),
+      adopted: new Map(),
       originalTitle: document.title,
       appliedTitle: undefined,
     };
@@ -556,17 +568,53 @@ function dropUnwantedAttributes(element: Element, wanted: Record<string, string>
   }
 }
 
-function elementFor(selector: string, tagName: string): Element {
+/**
+ * The element for a selector, and whether it was ALREADY THERE.
+ *
+ * The second half is the caller's whole reason for asking: a tag the PAGE AUTHOR wrote is
+ * borrowed and goes back when no page wants it, while one Ramonda wrote belongs to the page and
+ * goes with it. That cannot be worked out afterwards, because the first thing done to either is to
+ * mark it.
+ *
+ * **Already carrying the marker is not the author's.** That is a tag this framework wrote on the
+ * SERVER, which the client adopts on hydration — the whole reason `collectHead` uses the same
+ * marker to find them. Restoring one of those would leave a server-rendered description standing
+ * after the page that asked for it unmounted, which is what two hydration tests say and they are
+ * right.
+ */
+function elementFor(selector: string, tagName: string): { element: Element; adopted: boolean } {
   const existing = document.head.querySelector(selector);
   if (existing) {
+    const ours = existing.hasAttribute(PORTAL_ATTR);
     existing.setAttribute(PORTAL_ATTR, "");
-    return existing;
+    return { element: existing, adopted: !ours };
   }
 
   const created = document.createElement(tagName);
   created.setAttribute(PORTAL_ATTR, "");
   document.head.appendChild(created);
-  return created;
+  return { element: created, adopted: false };
+}
+
+/** Every attribute an element carries, less the marker, which is this module's own bookkeeping. */
+function attributesOf(element: Element): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { name, value } of element.attributes) {
+    if (name !== PORTAL_ATTR) out[name] = value;
+  }
+  return out;
+}
+
+/**
+ * Puts a borrowed element back the way it was found, and hands it back to the document.
+ *
+ * The marker goes too: the element stops being the registry's, and leaving it would offer the
+ * author's tag to whatever adopts next.
+ */
+function restore(element: Element, original: Record<string, string>): void {
+  dropUnwantedAttributes(element, original);
+  for (const name in original) element.setAttribute(name, original[name]);
+  element.removeAttribute(PORTAL_ATTR);
 }
 
 /**
@@ -612,7 +660,17 @@ function applyRegistry(registry: HeadRegistry): void {
   const { title, tags } = resolve(registry.roots);
 
   for (const [selector, spec] of tags) {
-    const element = live(registry.managed.get(selector)) ?? elementFor(selector, spec.tagName);
+    const known = live(registry.managed.get(selector));
+    let element = known;
+    if (element === undefined) {
+      const found = elementFor(selector, spec.tagName);
+      element = found.element;
+      // Recorded once, and only on the first adoption: a later pass would read back the attributes
+      // this registry itself wrote and "restore" the page's own values.
+      if (found.adopted && !registry.adopted.has(selector)) {
+        registry.adopted.set(selector, attributesOf(element));
+      }
+    }
     // setAttribute, never innerHTML: the DOM escapes the value, so a title or
     // description carrying a quote cannot break out of the attribute.
     for (const name in spec.attributes) element.setAttribute(name, spec.attributes[name]);
@@ -622,8 +680,13 @@ function applyRegistry(registry: HeadRegistry): void {
 
   for (const [selector, element] of [...registry.managed]) {
     if (tags.has(selector)) continue;
-    element.remove();
+
+    const original = registry.adopted.get(selector);
+    if (original === undefined) element.remove();
+    else restore(element, original);
+
     registry.managed.delete(selector);
+    registry.adopted.delete(selector);
   }
 
   /**
