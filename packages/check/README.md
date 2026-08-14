@@ -424,7 +424,7 @@ mount which.** `--graph` writes it out.
 
 ```bash
 $ ramonda-check tsconfig.json --graph .ramonda/graph.json
-[ramonda-check] graph written to .ramonda/graph.json — 155 nodes, 64 edges, 3 of them unresolved
+[ramonda-check] graph written to .ramonda/graph.json — 161 nodes, 255 edges, 7 of them unresolved
 ```
 
 It holds facts, not conclusions — nodes and edges, each edge with the place it was written:
@@ -472,7 +472,7 @@ module with a string literal, `namedExport` names the class, and both are read: 
 in the JSX, one hop away in a static field — which is where `RMD020` pushes it — or in a literal
 registry indexed at runtime, which contributes the union of its values. What cannot be read is a
 specifier built at runtime, and a bundler cannot split that either, so it was never going to be a
-chunk. In the documentation site 76 of 140 edges arrive this way.
+chunk. In the documentation site 76 of 255 edges arrive this way.
 
 **A component handed over as a prop** is two halves that meet at the walk. A node declares which
 prop paths take a component — a PATH, so a slot at depth five is the same mechanism as one at depth

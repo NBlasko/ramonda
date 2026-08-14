@@ -389,9 +389,9 @@ interface ComponentNode {
    * sharing one set of providers, consumers and children. Measured: 146 component and hook classes
    * reported as 72.
    *
-   * Everything that names a component — a JSX tag, `list({ as })`, a route table, `bootstrap` — is
-   * resolved to its symbol and looked up here, so a tag also has to be in scope to match, which a
-   * name lookup never checked.
+   * Everything that names a component — a JSX tag, `__h(X, …)`, a route table, a `lazy` loader,
+   * `bootstrap` — is resolved to its symbol and looked up here, so a tag also has to be in scope to
+   * match, which a name lookup never checked.
    */
   id: string;
   /**
