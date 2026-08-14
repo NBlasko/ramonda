@@ -1,4 +1,4 @@
-import { Component, Host, __h } from "@ramonda/core";
+import { Component, Host, __h, mounted, updated } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
@@ -7,7 +7,7 @@ import { CodeBlock } from "./CodeBlock";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
-import { Link } from "./routes";
+import { Link, Navigator } from "./routes";
 
 interface MarkdownProps {
   tree: readonly ContentNode[];
@@ -28,6 +28,54 @@ interface MarkdownProps {
  */
 @Host("div")
 export class Markdown extends Component<MarkdownProps> {
+  /**
+   * The route, read from the ROUTER rather than from `window.location`.
+   *
+   * The router owns this state, so the URL is not the place to ask — and a hash tag already carries
+   * the distinction a raw string would have to be sniffed for: `#tab=film` is route state and
+   * arrives with a `value`, while `#a-field-in-its-own-component` names an element and arrives
+   * without one.
+   */
+  private route = this.use(Navigator);
+
+  /** The last section arrived at, so an unrelated re-render does not move the page again. */
+  private lastSection = "";
+
+  /**
+   * A link to a section arrives at that section.
+   *
+   * The browser does this for a document it loaded, and a client-side navigation is not one: the
+   * click is intercepted, history is pushed, and nothing tells the page to move. 70 links in this
+   * site name a section, and every one of them landed at the top.
+   *
+   * **Here and not in the shell, because this is where the content is.** `App` deliberately reads
+   * nothing from the route — that is what keeps the sidebar from being rebuilt on every navigation
+   * — so it never re-renders when the URL changes; and `DocPage` renders an `AsyncLoad`, so it is
+   * on screen a whole chunk-load before the page is. `Markdown` renders the content itself, so by
+   * the time this runs the heading exists.
+   *
+   * Both `@mounted` and `@updated`, because both happen: a new page mounts a new `Markdown`, while
+   * a link to a section of the page you are already on only updates the one already there.
+   */
+  @mounted({ env: "client" })
+  arriveOnMount(): void {
+    this.arriveAtSection();
+  }
+
+  @updated
+  arriveOnUpdate(): void {
+    this.arriveAtSection();
+  }
+
+  private arriveAtSection(): void {
+    const id = this.route.hashTags.find((tag) => tag.value === "")?.key ?? "";
+    // Keyed on the path too: the same section name on two pages is a move, not a repeat.
+    const here = `${this.route.pathname}#${id}`;
+    if (here === this.lastSection) return;
+    this.lastSection = here;
+    if (id) document.getElementById(id)?.scrollIntoView();
+  }
+
   render(): RamondaNode {
     return this.props.tree.map(toVNode) as RamondaNode;
   }

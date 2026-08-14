@@ -35,10 +35,9 @@ class TaskRow extends Component<{ item: Task }> {
 }
 ```
 
-A shorthand that took the component directly — `list(this.tasks, TaskRow)` — used to
-exist. It read well and left nowhere to put a key, since the element is built by the
-component rather than by you, so it was the one form that could not say which row is
-which. One form now, and it is the one that can express everything.
+The callback is where the key goes, and that is why `list()` always takes one. Hand it
+a component and the element would be built inside that component, out of your reach —
+leaving nothing to say which row is which.
 
 ## There is no index
 

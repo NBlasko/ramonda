@@ -153,6 +153,15 @@ article h1 {
   margin: 0 0 0.6em;
   letter-spacing: -0.02em;
 }
+/* A heading arrived at from a link stops BELOW the masthead, which is sticky and would otherwise
+   cover it. The number is the bar's height plus a little air; `--masthead-h` keeps the two in step.
+   Set on everything that carries an id, because that is what a fragment can name. */
+article h1,
+article h2,
+article h3,
+article h4 {
+  scroll-margin-top: calc(var(--masthead-h) + 16px);
+}
 article h2 {
   font-size: 1.4rem;
   margin: 2em 0 0.6em;

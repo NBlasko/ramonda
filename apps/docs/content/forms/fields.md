@@ -231,9 +231,10 @@ declare its own to restyle it.
 ### One keystroke, one field
 
 Because the subscription is per path, an edit wakes the fields that changed and no others. Measured
-over 300 rows through `list()`, one keystroke: **every row rebuilt, 45 ms**, before this existed;
-**one row** after. Inside a list the node arrives already — `list(rows, (item) => <Row item={item} />)` hands each row its own —
-so a row component is the same shape:
+over 300 rows, one keystroke rebuilds **one row**; without a per-field subscription the same
+keystroke rebuilds all 300, at **45 ms**. Inside a list the node arrives already —
+`list(rows, (item) => <Row item={item} />)` hands each row its own — so a row component is the same
+shape:
 
 ```tsx
 import { Field, type Row } from "@ramonda/form";
