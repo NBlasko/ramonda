@@ -10,7 +10,7 @@ order: 71
 To let people move between pages, use `<Link>`:
 
 ```tsx
-const { Link, Navigator, route } = createRouter(routes);
+import { Link } from "./routes";
 
 <Link href="/players/9" className="navlink">Player 9</Link>;
 ```
@@ -53,7 +53,7 @@ Sometimes a navigation is the result of an action, not a link someone clicks —
 redirect after saving. For that, use the router's `push` (next page):
 
 ```tsx
-const { Link, Navigator, route } = createRouter(routes);
+import { Navigator } from "./routes";
 
 export class SaveButton extends Component<{ onSave: () => Promise<void> }> {
   route = this.use(Navigator);

@@ -1210,6 +1210,31 @@ describe("a component kit destructured out of a factory", () => {
 });
 
 /**
+ * A kit whose members the package does not export — the ordinary case, since the factory is the
+ * door — and what happens when one of those names answers to two classes.
+ *
+ * The exported half of `splice` already refuses that: two exported classes sharing a name are
+ * dropped and noted, "refused rather than resolved to whichever came last". The internal half kept
+ * the FIRST and said nothing, and internal names collide far more often than exported ones — this
+ * repository's own documentation app declares `class Page` seventy-five times. A kit member bound
+ * to an arbitrary class puts every edge below it under the wrong component, which is a wrong ANSWER
+ * rather than a missing one.
+ */
+describe("a kit member the package never exported", () => {
+  test("resolves when the package declares it once", () => {
+    expect(edgesOf("kit-ambiguous")).toContain("app.tsx#Shell -> @acme/kit/src/Sidebar.tsx#Sidebar (renders/tag)");
+  });
+
+  test("resolves to NOTHING when the name answers to two classes", () => {
+    const edges = edgesOf("kit-ambiguous");
+    expect(edges).not.toContain("app.tsx#Shell -> @acme/kit/src/panels/left.tsx#Panel (renders/tag)");
+    expect(edges).not.toContain("app.tsx#Shell -> @acme/kit/src/panels/right.tsx#Panel (renders/tag)");
+    // Reported as the hole it is, which is the honest outcome and already an error.
+    expect(run("kit-ambiguous").unresolved.map((u) => u.why)).toContainEqual(expect.stringContaining("Panel"));
+  });
+});
+
+/**
  * The same kit, with the factory in THIS program rather than an installed package.
  *
  * The fragment-only version of this passed every fixture here and still failed the documentation

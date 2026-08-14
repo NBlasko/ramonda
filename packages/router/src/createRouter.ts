@@ -67,13 +67,22 @@ type Hash = `#${string}`;
  * expanding them, so the table's size enters linearly.
  */
 type Located<P extends string> = P | `${P}${Search}` | `${P}${Hash}` | `${P}${Search}${Hash}`;
-export type AnyHref<C extends RouteConfig> = Located<StaticPath<C> | Filled<ParamPath<C>>> | Href | `${Href}${Search}`;
+/**
+ * `Located` over BOTH halves, including the `Href` that `route()` builds.
+ *
+ * Written out by hand the second half read `Href | \`${Href}${Search}\``, which let a built href
+ * take a query but not a fragment — so `` href={`${route("/u/:id", { id })}#top`} `` was refused
+ * while `href="/about#top"` was fine. An anchor into a section of a parameterised page is the
+ * ordinary reason to write one, and there was no argument for the asymmetry; it was an omission.
+ */
+export type AnyHref<C extends RouteConfig> = Located<StaticPath<C> | Filled<ParamPath<C>> | Href>;
 
 /**
- * `<Link>` props, typed to one route table. `href` is the PLAIN path union or an `Href`
- * from `route()` — a static path goes in directly, a `:param` path must come through
- * `route()`. (Benchmarked: a plain union is the TS-cheap choice; excluding param paths
- * cost check time for no gain, since `route()` is the only thing that produces an `Href`.)
+ * `<Link>` props, typed to one route table — `href` is an `AnyHref` for that table.
+ *
+ * A path the table names, filled in if it takes parameters, optionally with a query and a
+ * fragment; or an `Href` from `route()`, which is still the way to build one programmatically but
+ * no longer the only way to write one.
  */
 export interface TypedLinkProps<P extends string> {
   href?: P;
@@ -110,7 +119,7 @@ export interface TypedRouterKit<C extends RouteConfig> {
   RouteOutlet: typeof RouteOutlet;
   /** `this.use(Navigator)` — reads the URL + navigates, with `push`/`replace` typed to this table. */
   Navigator: NoPropsHookClass<TypedNavigator<AnyHref<C>>>;
-  /** `<Link href="/…">` — `href` is a static path or an `Href` from `route()` (raw `:param` patterns rejected). */
+  /** `<Link href="/…">` — `href` is any path this table names, filled in, or an `Href` from `route()`. */
   Link: ComponentClassKind<TypedLinkProps<AnyHref<C>>>;
   /**
    * Build an href for a `:param` pattern: `route("/u/:id", { id })`. The only thing that makes

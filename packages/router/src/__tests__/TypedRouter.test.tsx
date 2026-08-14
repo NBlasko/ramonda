@@ -120,6 +120,15 @@ function _typeChecks() {
   void (<Link href="/about" />);
   // valid — an Href built by route()
   void (<Link href={route("/u/:id", { id: "x" })} />);
+  /**
+   * A built href takes a query and a fragment, exactly as a written path does.
+   *
+   * The fragment used to be refused here while `href="/about#top"` was accepted — the two halves of
+   * the union were not given the same treatment. An anchor into a section of a parameterised page is
+   * the ordinary reason to write one.
+   */
+  void (<Link href={`${route("/u/:id", { id: "x" })}#top`} />);
+  void (<Link href={`${route("/u/:id", { id: "x" })}?tab=2#top`} />);
 
   // @ts-expect-error — "/nope" is not a declared route
   void (<Link href="/nope" />);

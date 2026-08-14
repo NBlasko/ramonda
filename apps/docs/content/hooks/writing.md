@@ -87,7 +87,7 @@ can't linger.)
 A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
-const { Navigator } = createRouter(routes);
+import { Navigator } from "./routes";
 
 export class Pagination extends Hook<PaginationProps> {
   private route = this.use(Navigator);

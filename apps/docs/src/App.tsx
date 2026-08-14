@@ -1,8 +1,7 @@
 import { Component, Host, list, state } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "@ramonda/router";
-import { Navigator, Link } from "./routes";
-import { routes, pages } from "./routes";
+import { Navigator, Link, routes, pages } from "./routes";
 import { Search } from "./Search";
 
 interface SidebarProps {

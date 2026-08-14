@@ -901,27 +901,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   // ── collection ──────────────────────────────────────────────────────────────────────────────
 
   /**
-   * `const { Router, RouteOutlet, Link } = createRouter(routes)` — a kit of components handed back
-   * by a factory, destructured once and used as tags everywhere after.
+   * A cheap shape test: `const { … } = someCall()`. Recorded during the walk and answered later.
    *
-   * This is the shape `npm create ramonda` scaffolds and the routing documentation teaches, and
-   * every tag written from it used to be a hole. A hole is an ERROR here, so a scaffolded routed
-   * project could not build at all — and nothing BELOW an unresolved tag is judged, so most of the
-   * app went unexamined with it.
-   *
-   * **Nothing is guessed.** `componentAt` already answers a direct import from an installed package
-   * by taking the symbol's name to that package's fragment — `splicedFor(symbol).components.get(name)`.
-   * The same two facts are present here, one step apart: the CALLEE is declared in the package, and
-   * the destructured KEY is the name. So this follows a name, exactly as everything else does.
-   *
-   * It has to work off the fragment rather than the factory's return type, because the type is where
-   * the answer stops being there: `@ramonda/router` publishes `Router: typeof Router` for two members
-   * and `Link: ComponentClassKind<TypedLinkProps<…>>` for the others, the second having gone through
-   * `as unknown as` in the implementation. Half the kit names its class and half does not, so a
-   * type-directed version would resolve two of four and leave the two most used.
-   *
-   * Only EXPORTED members match. A fragment carries a package's internals too, and a key that
-   * happens to share a name with one of them is not a component the package handed anybody.
+   * It says nothing about WHICH factory, on purpose — that question needs every class in the
+   * program to have been collected first, and this runs while they are still being collected.
+   * `resolveKitDestructure` is where a candidate becomes a kit or stays nothing.
    */
   function isKitDestructure(node: ts.Node): node is ts.VariableDeclaration {
     return (
@@ -1643,6 +1627,12 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const here: SplicedPackage = { components: new Map(), contexts: new Map(), internals: new Map() };
     const byId = new Map<string, ComponentNode>();
     const ambiguous = new Set<string>();
+    /**
+     * Kept apart from `ambiguous` because the two are different namespaces: a package may well
+     * export a `Panel` and declare another one privately, and neither should make the other
+     * unanswerable.
+     */
+    const ambiguousInternals = new Set<string>();
 
     for (const node of fragment.graph.nodes) {
       if (node.kind === "component" || node.kind === "hook" || node.kind === "helper") {
@@ -1682,7 +1672,18 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             here.components.delete(made.name);
             ambiguous.add(made.name);
           } else if (!ambiguous.has(made.name)) here.components.set(made.name, made);
-        } else if (!here.internals.has(made.name)) {
+        } else if (here.internals.has(made.name)) {
+          // Refused for the same reason the exported branch above refuses: a kit member bound to
+          // whichever class came first puts every edge below it under an arbitrary component, and a
+          // wrong answer is worse than a missing one. The tag then reports as the hole it is.
+          //
+          // No note, unlike the exported branch. Internal names collide often — this repository's
+          // documentation app declares `class Page` seventy-five times — and almost none of them is
+          // ever reached by a factory's destructured key. A note per collision would bury the runs
+          // where it matters; the unresolved edge says it at the one place it does.
+          here.internals.delete(made.name);
+          ambiguousInternals.add(made.name);
+        } else if (!ambiguousInternals.has(made.name)) {
           here.internals.set(made.name, made);
         }
       } else if (node.kind === "context") {
