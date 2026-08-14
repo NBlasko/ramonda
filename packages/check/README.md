@@ -323,6 +323,32 @@ word. A whole section of a site can be gone without one error anywhere.
 The pages themselves are not reported as dead code: a page is exported, and an exported declaration
 is a way in.
 
+## The browser's URL, where the router knows it
+
+A component that reads `window.location` in a project with a router is asking the browser a
+question its own router already answers:
+
+```
+[ramonda-check] 1 component(s) reading the browser's URL, not the router's:
+
+  src/Article.tsx:31:20
+    <Article> reads `window.location.hash` — the router answers this with `hashTags`.
+```
+
+The two are the same fact from two sources, and only one is reactive: read from the router, a
+component re-renders when the route moves; read from `window`, it is a snapshot taken once and
+never corrected, so the page quietly goes out of date. The router also keeps a distinction the URL
+hands over as one string — `#tab=film` is route state and `#a-section` names an element, so a hash
+tag with a `value` is the first and one without is the second.
+
+**Only where there is a router.** Without one, `location` is the only place the answer lives, and a
+rule that reports the only thing you could have written is a rule people switch off. A local
+variable called `location` is not the global either, and telling them apart costs no type: this
+runs with no lib, so the browser's name resolves to nothing while yours resolves where you wrote it.
+
+This is a **warning** today and an error in a later version, which is the rule for adding a rule
+here.
+
 ## A component it cannot follow is an error
 
 The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a

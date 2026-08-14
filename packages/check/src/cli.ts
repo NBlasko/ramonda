@@ -64,6 +64,7 @@ if (diffAgainst && !existsSync(resolve(diffAgainst))) {
 const {
   issues,
   arrowFields,
+  browserUrlReads,
   duplicateDecorators,
   unwatchedFields,
   unresolved,
@@ -214,6 +215,31 @@ if (annotated.length > 0) {
     console.warn(`    ${site.what} — ${site.reason}`);
   }
   console.warn("");
+}
+
+/**
+ * A component asking the browser where it is, where the router already knows.
+ *
+ * A WARNING and not a failure, which is the rule for a new rule here: one version that says so,
+ * the next that refuses. It is printed above the verdict and counts for nothing in it.
+ */
+if (browserUrlReads.length > 0) {
+  console.warn(`\n${TAG} ${browserUrlReads.length} component(s) reading the browser's URL, not the router's:\n`);
+  for (const read of browserUrlReads) {
+    console.warn(`  ${read.file}:${read.line}:${read.column}`);
+    console.warn(
+      `    <${read.component}> reads \`${read.read}\`` +
+        (read.instead ? ` — the router answers this with \`${read.instead}\`.` : "."),
+    );
+  }
+  console.warn(
+    `\nThe two are the same fact from two sources, and only one of them is reactive: read from the\n` +
+      `router, a component re-renders when the route moves; read from \`window\`, it is a snapshot\n` +
+      `taken once and never corrected, so the page quietly goes out of date. The router also keeps a\n` +
+      `distinction the URL hands over as one string — \`#tab=film\` is route state, \`#a-section\` names\n` +
+      `an element — so a hash tag with no value is a section and one with a value is not.\n\n` +
+      `This is a warning today and an error in a later version.\n`,
+  );
 }
 
 if (

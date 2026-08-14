@@ -44,6 +44,31 @@ export interface ContextIssue {
  * that one is legitimate, because a wrapper cannot be expressed as a method. Only the source can
  * tell a function LITERAL from a call that returns one.
  */
+/**
+ * A component or hook asking the BROWSER where it is, in a project whose router already knows.
+ *
+ * `window.location.pathname` and the router's `pathname` are the same fact from two sources, and
+ * only one of them is reactive: read from the router, a component re-renders when the route moves;
+ * read from `window`, it is a snapshot taken once and never corrected. The bug that follows is
+ * quiet — the page is simply out of date — and it is what makes this worth reporting rather than
+ * leaving to taste.
+ *
+ * The router also answers questions the URL does not: `#tab=film` is route state and
+ * `#a-section` names an element, a distinction `location.hash` hands over as one string to be
+ * sniffed.
+ */
+export interface BrowserUrlIssue {
+  /** The class that reads it. */
+  component: string;
+  /** What was written — `window.location.pathname`, `location.hash`. */
+  read: string;
+  /** The member of the router that answers the same question, when one obviously does. */
+  instead?: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface ArrowFieldIssue {
   /** The class the field is on. */
   component: string;
@@ -298,6 +323,8 @@ export interface AnalyzeResult {
   issues: ContextIssue[];
   /** Function literals held in class fields — see `ArrowFieldIssue`. */
   arrowFields: ArrowFieldIssue[];
+  /** Components reading the browser's URL in a project that has a router — see `BrowserUrlIssue`. */
+  browserUrlReads: BrowserUrlIssue[];
   /** Single-use decorators declared twice on one class — see `DuplicateDecoratorIssue`. */
   duplicateDecorators: DuplicateDecoratorIssue[];
   /** Form fields read by a component that does not watch them — see `UnwatchedFieldIssue`. */
@@ -456,6 +483,22 @@ interface ComponentNode {
  * provider above it". Nothing had been walked. An app entered only from a server — no client entry
  * at all — was judged as a library, and a library is judged not at all.
  */
+/**
+ * The member of the router that answers the same question as a piece of `location`.
+ *
+ * Only where one obviously does: `location.origin` has no router answer and gets none invented for
+ * it, so the report names what was read and stops there.
+ *
+ * At module scope because the function that reads it is hoisted and runs during pass 2 — as a
+ * `const` inside `analyzeProject` it sat in its temporal dead zone and the run died with
+ * `Cannot access 'ROUTER_ANSWER' before initialization`.
+ */
+const ROUTER_ANSWER: Record<string, string> = {
+  pathname: "pathname",
+  search: "searchParams",
+  hash: "hashTags",
+};
+
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "renderPage", "renderStatic"]);
 
 /**
@@ -607,6 +650,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   /** `const { Link } = createRouter(routes)` sites, resolved once the classes are all in. */
   const kitDestructures: ts.VariableDeclaration[] = [];
   const arrowFields: ArrowFieldIssue[] = [];
+  const browserUrlReads: BrowserUrlIssue[] = [];
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
@@ -823,6 +867,24 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         !isTest(relative(projectRoot, f.fileName).split(sep).join("/")),
     );
 
+  /**
+   * Whether this project has a router at all, decided by whether anything imports one.
+   *
+   * The rule below needs it: without a router, `location` is the only place the answer lives, and
+   * reporting it would be reporting the only thing a reader could have written. An import and not a
+   * mounted `<Router>`, because a kit hides the mount — an app imports `@ramonda/router` in one
+   * file, builds `Navigator` and `Link` there, and every component sees those instead.
+   */
+  const usesRouter = sources.some((file) =>
+    file.statements.some(
+      (statement) =>
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        (statement.moduleSpecifier.text === "@ramonda/router" ||
+          statement.moduleSpecifier.text.startsWith("@ramonda/router/")),
+    ),
+  );
+
   // ── Pass 1: the context pairs, the route tables, and every component class by symbol ────────
   for (const file of sources) {
     ts.forEachChild(file, function visit(node) {
@@ -859,6 +921,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         if (self) {
           readClassBody(node, self);
           readArrowFields(node, self.name);
+          readBrowserUrl(node, self);
           readDuplicateDecorators(node, self.name);
           readUnwatchedFields(node, self.name);
         }
@@ -913,6 +976,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   return {
     issues,
     arrowFields,
+    browserUrlReads,
     duplicateDecorators,
     unwatchedFields,
     unresolved,
@@ -3055,6 +3119,55 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       at = at.expression;
     }
     return false;
+  }
+
+  /**
+   * A component or hook reading the browser's URL, where the router already holds it.
+   *
+   * **Only in a project that HAS a router.** Without one, `location` is the only place the answer
+   * lives and reporting it would be reporting the only thing a reader could have written. The
+   * router's own package is left alone for the same reason from the other side: it is where the
+   * reading has to happen, and `urlUtils.ts` is the file that does it.
+   *
+   * Reported as a WARNING and not a build failure, which is this repository's rule for a new rule:
+   * one version that says so, the next that refuses. Nothing in this repository trips it today —
+   * measured — so the first version costs nobody a red build while it is being tried.
+   */
+  function readBrowserUrl(cls: ts.ClassDeclaration, self: ComponentNode): void {
+    if (!usesRouter || self.id.startsWith("@ramonda/router/")) return;
+
+    ts.forEachChild(cls, function look(node) {
+      if (ts.isPropertyAccessExpression(node)) {
+        const member = node.name.text;
+        const base = node.expression;
+        /**
+         * `window.location.x`, `globalThis.location.x`, `document.location.x` and a bare
+         * `location.x`.
+         *
+         * A bare name counts only when it resolves to NOTHING. The program is built with
+         * `noLib` and no `@types`, so the browser's own `location` has no declaration to find —
+         * while `const location = …` written in the source does. That is what tells the global
+         * from a local of the same name, and it costs no type.
+         */
+        const onLocation =
+          (ts.isPropertyAccessExpression(base) &&
+            base.name.text === "location" &&
+            ts.isIdentifier(base.expression) &&
+            ["window", "globalThis", "document"].includes(base.expression.text)) ||
+          (ts.isIdentifier(base) && base.text === "location" && resolve(base) === undefined);
+
+        if (onLocation) {
+          const at = positionOf(node);
+          browserUrlReads.push({
+            component: self.name,
+            read: node.getText(),
+            ...(ROUTER_ANSWER[member] ? { instead: ROUTER_ANSWER[member] } : {}),
+            ...at,
+          });
+        }
+      }
+      ts.forEachChild(node, look);
+    });
   }
 
   function readArrowFields(cls: ts.ClassDeclaration, owner: string): void {

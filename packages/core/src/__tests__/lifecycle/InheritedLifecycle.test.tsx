@@ -2,7 +2,7 @@ import { test, expect, beforeEach } from "vitest";
 import { getDOM } from "../../test/setup";
 import { created, mounted, destroyed } from "../../base/decorators";
 import { Component } from "../../base/Component";
-import type { RamondaNode } from "../../types";
+import type { RamondaNode } from "../../types/vdom";
 
 /**
  * What inheritance does to a lifecycle callback, which the documentation makes a claim about.
