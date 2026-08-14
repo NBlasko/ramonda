@@ -1,0 +1,85 @@
+import { describe, expect, test } from "vitest";
+import { escapeHtml, fillDocument } from "../document";
+
+/**
+ * Filling the shell — the step every server render and every prerender ends with, and the one that
+ * had the same two bugs in three files.
+ *
+ * Both were found once and fixed in ONE of the copies. The scaffolded template still shipped them,
+ * which is the argument for this package in a sentence: a fix that has to be applied by hand to
+ * every app is a fix that reaches one of them.
+ */
+
+const SHELL = `<!doctype html><html><head><title>App</title><!--head--></head><body><!--ssr--></body></html>`;
+
+describe("fillDocument puts rendered HTML into the shell", () => {
+  test("a `$` sequence in the body survives", () => {
+    // `String.prototype.replace` reads `$&` in the REPLACEMENT as "the matched text", so a page
+    // rendering it swapped the marker back into its own output. "Save $$ today" is a price, not an
+    // edge case, and the corruption is silent — the page still returns 200.
+    const html = "<p>Save $& today</p>";
+    const out = fillDocument({ template: SHELL, html });
+
+    expect(out).toContain("<p>Save $& today</p>");
+    expect(out).not.toContain("<!--ssr-->");
+  });
+
+  test("every `$` form, not just the one that was noticed", () => {
+    const html = "<p>$$ $& $` $' $1</p>";
+    expect(fillDocument({ template: SHELL, html })).toContain("<p>$$ $& $` $' $1</p>");
+  });
+
+  test("a `$` sequence in the head survives too", () => {
+    const head = `<meta name="description" content="Save $& now">`;
+    expect(fillDocument({ template: SHELL, html: "", head })).toContain(head);
+  });
+});
+
+describe("fillDocument escapes the title", () => {
+  test("markup in a title cannot break out of the element", () => {
+    // The title is RAW TEXT read back from `document.title`, unlike the head's `<meta>`/`<link>`,
+    // which arrive already escaped as `outerHTML`. A page that sets its title from a product name
+    // or a search term therefore decides what markup lands in the document.
+    const out = fillDocument({ template: SHELL, html: "", title: `</title><script>alert(1)</script>` });
+
+    expect(out).not.toContain("<script>alert(1)</script>");
+    expect(out).toContain("&lt;/title&gt;&lt;script&gt;");
+  });
+
+  test("a `$` sequence in a title survives, with its `&` escaped as HTML demands", () => {
+    // Two different jobs on one string, and the test pins both: `$` must not be read as a replace
+    // pattern, while `&` must still become an entity. "Save $& today" is the case where getting
+    // one right and the other wrong looks almost identical.
+    expect(fillDocument({ template: SHELL, html: "", title: "Save $& today" })).toContain(
+      "<title>Save $&amp; today</title>",
+    );
+  });
+
+  test("no title given leaves the shell's own", () => {
+    expect(fillDocument({ template: SHELL, html: "" })).toContain("<title>App</title>");
+  });
+});
+
+describe("fillDocument on a shell that is missing its markers", () => {
+  test("returns the shell rather than throwing", () => {
+    // A shell with no `<!--ssr-->` is a mistake, but a server that throws on it answers 500 for
+    // every route — the emptier page is the more diagnosable failure.
+    const bare = "<!doctype html><html><body></body></html>";
+    expect(fillDocument({ template: bare, html: "<p>x</p>" })).toBe(bare);
+  });
+});
+
+describe("escapeHtml", () => {
+  test("escapes the three characters that break out of an element", () => {
+    expect(escapeHtml(`<a href="x">&</a>`)).toBe(`&lt;a href="x"&gt;&amp;&lt;/a&gt;`);
+  });
+
+  test("escapes `&` first, so an escape is not escaped twice", () => {
+    expect(escapeHtml("&lt;")).toBe("&amp;lt;");
+  });
+
+  test("takes anything, since an error message is not always a string", () => {
+    expect(escapeHtml(undefined)).toBe("undefined");
+    expect(escapeHtml(new Error("<boom>"))).toContain("&lt;boom&gt;");
+  });
+});

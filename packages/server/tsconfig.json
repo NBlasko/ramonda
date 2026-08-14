@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    // `node` for `node:path`, and `dom` because the tests assert against the document this
+    // installs — the globals it puts in place are the whole point of the module.
+    "lib": ["ESNext", "DOM"],
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src"]
+}

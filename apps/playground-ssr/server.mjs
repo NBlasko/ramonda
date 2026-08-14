@@ -2,8 +2,8 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { existsSync, createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, extname, resolve } from "node:path";
-import { installDom } from "./installDom.mjs";
+import { dirname, resolve } from "node:path";
+import { escapeHtml, fillDocument, installDom, mimeFor, parseCookies } from "@ramonda/server";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -25,25 +25,9 @@ const CLIENT = resolve(here, "dist/client");
  * does transform them, so the server runs built output.
  */
 
-/**
- * Escape the three characters that let text break out of an HTML text/`<pre>` context. An error
- * message can carry parts of the request (a bad URL, a header), so writing it into the page raw
- * is a reflected-XSS hole — contextual encoding closes it.
- */
-function escapeHtml(text) {
-  return String(text).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
-}
-
-const MIME = {
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-};
-
 // The DOM has to exist before the app module is evaluated: class fields and
 // decorators run at import time and some of them touch `window`.
-await installDom(`http://localhost:${PORT}/`);
+installDom(`http://localhost:${PORT}/`);
 const { render, plan, prerender } = await import("./dist/server/entry-server.js");
 const template = await readFile(resolve(CLIENT, "index.html"), "utf-8");
 
@@ -67,18 +51,6 @@ const isr = createIsrCache({
 
 const origin = `http://localhost:${PORT}`;
 
-/** Parse a Cookie header into the Map `requestContext` reads. */
-function parseCookies(header) {
-  const out = new Map();
-  if (!header) return out;
-  for (const pair of header.split(";")) {
-    const i = pair.indexOf("=");
-    if (i === -1) continue;
-    out.set(pair.slice(0, i).trim(), decodeURIComponent(pair.slice(i + 1).trim()));
-  }
-  return out;
-}
-
 function sendHtml(res, document, mode) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html");
@@ -94,21 +66,11 @@ function sendHtml(res, document, mode) {
  * document with a fallback, it is a document a crawler reads the first of. A page
  * that set none keeps the shell's.
  */
-function fillTemplate({ html, title, head }) {
-  // Function replacements, never string ones: a `$&`, `$$` or `` $` `` in the body,
-  // title or head (e.g. a description reading "Save $$ today") is a special pattern
-  // to String.prototype.replace and would corrupt the output. And the title is
-  // ESCAPED — it is raw text from `document.title`, so a title carrying markup would
-  // otherwise break out of the element (the head <meta>/<link> are already escaped,
-  // they come from outerHTML).
-  let out = template.replace("<!--ssr-->", () => html ?? "");
-  if (title) out = out.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(title)}</title>`);
-  return out.replace("<!--head-->", () => head ?? "");
-}
+const fillTemplate = ({ html, title, head }) => fillDocument({ template, html, title, head });
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
 async function bakeShared(path) {
-  const dom = await installDom(`${origin}${path}`);
+  const dom = installDom(`${origin}${path}`);
   try {
     const { html, title, head, blockedBy } = await prerender(path);
     if (blockedBy !== undefined) {
@@ -208,7 +170,7 @@ const server = createServer(async (req, res) => {
 
   const asset = resolve(CLIENT, "." + url);
   if (url !== "/" && asset.startsWith(CLIENT) && existsSync(asset)) {
-    res.setHeader("Content-Type", MIME[extname(asset)] ?? "application/octet-stream");
+    res.setHeader("Content-Type", mimeFor(asset));
     createReadStream(asset).pipe(res);
     return;
   }
@@ -242,7 +204,7 @@ const server = createServer(async (req, res) => {
 
     // 3. DYNAMIC — rendered per request. The request context (url + cookies) is what a route
     //    reads for auth / per-user output; the router reads the URL off the shimmed `window`.
-    const dom = await installDom(`${origin}${url}`);
+    const dom = installDom(`${origin}${url}`);
     const started = process.hrtime.bigint();
     const { html, title, head, redirect } = await render({
       url: new URL(url, origin),

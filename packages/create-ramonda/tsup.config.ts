@@ -16,7 +16,18 @@ import { defineConfig } from "tsup";
  * version on disk is the one about to go to npm.
  */
 const ranges: Record<string, string> = {};
-for (const folder of ["core", "router", "query", "form", "lens", "devtools", "testing-library", "check", "build"]) {
+for (const folder of [
+  "core",
+  "router",
+  "query",
+  "form",
+  "lens",
+  "devtools",
+  "testing-library",
+  "check",
+  "build",
+  "server",
+]) {
   const pkg = JSON.parse(readFileSync(new URL(`../${folder}/package.json`, import.meta.url), "utf8")) as {
     name: string;
     version: string;
@@ -43,8 +54,6 @@ function toolRanges(): Record<string, string> {
     vitest: "../core",
     vite: "../core",
     jsdom: "../core",
-    // From the SSR playground, which is the app that proved it: its whole smoke suite runs on it.
-    linkedom: "../../apps/playground-ssr",
     "@types/node": "../core",
     typescript: "../../package.json",
     "@biomejs/biome": "../../package.json",

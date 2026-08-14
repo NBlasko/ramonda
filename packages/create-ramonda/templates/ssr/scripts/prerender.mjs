@@ -5,13 +5,12 @@
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { installDom } from "../installDom.mjs";
+import { fillDocument, installDom } from "@ramonda/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const OUT = resolve(root, "dist/static");
 const origin = "http://localhost:5173";
-
 
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
 installDom(`${origin}/`);
@@ -43,7 +42,7 @@ for (const path of paths) {
 
   const file = path === "/" ? join(OUT, "index.html") : join(OUT, path, "index.html");
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, template.replace("<!--ssr-->", html));
+  await writeFile(file, fillDocument({ template, html }));
   console.log(`  ✓ ${path}`);
 }
 
