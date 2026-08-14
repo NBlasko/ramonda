@@ -529,3 +529,62 @@ describe("a head tag the document already had", () => {
     expect(document.head.querySelector('meta[property="og:title"]')).toBeNull();
   });
 });
+
+/**
+ * The two ways giving a tag back can go wrong, both found reviewing the change that added it.
+ *
+ * `title` guards against the first and says why: the document's title may have been set by
+ * something that is not a `Head` at all — an analytics script, a notification counter — and
+ * "restoring" over that undoes a live value nobody asked us to touch. A tag is no different, and
+ * the first version of the restore carried only half of the title's logic.
+ */
+describe("giving a tag back, when the document moved underneath", () => {
+  test("does not overwrite a value something else wrote", async () => {
+    resetHeadRegistry();
+    document.head.innerHTML = '<meta name="description" content="from index.html">';
+
+    class Page extends Component {
+      head = this.use(Head, () => ({ description: "set by the page" }));
+      render() {
+        return <span>x</span>;
+      }
+    }
+    const { unmount } = await getDOM<Page>(<Page />);
+
+    // Not a Head: a script that owns this tag now.
+    document.head.querySelector("meta[name=description]")?.setAttribute("content", "written by someone else");
+
+    unmount?.();
+    await Promise.resolve();
+
+    // Left alone. Handing back what the document had would undo a live value.
+    expect(document.head.querySelector("meta[name=description]")?.getAttribute("content")).toBe(
+      "written by someone else",
+    );
+  });
+
+  test("a tag REBUILT after an external delete is removed, not handed to the author", async () => {
+    // The element the author wrote is gone — something deleted it. What stands in its place was
+    // built by this registry, so it belongs to the page and must go with it. Restoring the old
+    // attributes onto it would leave a tag in the document that nothing put there.
+    resetHeadRegistry();
+    document.head.innerHTML = '<meta name="description" content="from index.html">';
+
+    class Page extends Component {
+      head = this.use(Head, () => ({ description: "set by the page" }));
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    const first = await getDOM<Page>(<Page />);
+    document.head.querySelector("meta[name=description]")?.remove();
+
+    const second = await getDOM<Page>(<Page />);
+    first.unmount?.();
+    second.unmount?.();
+    await Promise.resolve();
+
+    expect(document.head.querySelector("meta[name=description]")).toBeNull();
+  });
+});

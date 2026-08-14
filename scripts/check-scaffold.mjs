@@ -32,7 +32,7 @@
  * Usage: node scripts/check-scaffold.mjs [spa|ssr]
  */
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,8 +91,7 @@ function fail(what, detail) {
  * read versus a live render — and only the second one needs the DOM, the router and everything a
  * production install might have dropped.
  */
-async function serves() {
-  const port = 5100 + Math.floor(Math.random() * 400);
+async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0) {
   const server = spawn(process.execPath, ["server.mjs", "--prod"], {
     cwd: app,
     env: { ...process.env, PORT: String(port) },
@@ -106,8 +105,13 @@ async function serves() {
     const get = async (path) => {
       // Waits for the port rather than sleeping: a cold Node start on a loaded CI runner is not
       // fast, and a fixed sleep is either flaky or wasteful.
-      for (let attempt = 0; attempt < 100; attempt++) {
-        if (server.exitCode !== null) fail(`the generated server exited with ${server.exitCode} before answering`, log);
+      for (let tries = 0; tries < 100; tries++) {
+        if (server.exitCode !== null) {
+          // A port this machine was already using is not a fault in the generated project. Twice,
+          // then it is something else and worth reporting.
+          if (log.includes("EADDRINUSE") && attempt < 2) return "retry";
+          fail(`the generated server exited with ${server.exitCode} before answering`, log);
+        }
         try {
           const response = await fetch(`http://localhost:${port}${path}`);
           return { status: response.status, body: await response.text() };
@@ -119,7 +123,9 @@ async function serves() {
     };
 
     for (const path of ["/", "/hello/world"]) {
-      const { status, body } = await get(path);
+      const answer = await get(path);
+      if (answer === "retry") return "retry";
+      const { status, body } = answer;
       if (status !== 200) fail(`the generated server answered ${status} for ${path}`, log);
 
       // The head on the LIVE path too, not only in the baked file. They are rendered by different
@@ -136,12 +142,22 @@ async function serves() {
     // And the dynamic route's title is ITS OWN, not the layout's — which is what says the head a
     // per-request render produced actually travelled.
     const greeting = await get("/hello/world");
+    if (greeting === "retry") return "retry";
     if (!/<title>[^<]*world[^<]*<\/title>/.test(greeting.body)) {
       fail("the dynamic route was served without its own title", greeting.body.slice(0, 400));
     }
   } finally {
     server.kill("SIGTERM");
   }
+  return "served";
+}
+
+/** Retries once on a port this machine was already using; anything else is the project's fault. */
+async function servesSomewhere() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if ((await serves(undefined, attempt)) === "served") return;
+  }
+  fail("could not find a free port to serve the generated project on");
 }
 
 const work = mkdtempSync(join(tmpdir(), "ramonda-scaffold-check-"));
@@ -152,15 +168,17 @@ try {
   /* ── 1. pack the working tree ─────────────────────────────────────────────────────────────── */
   // `npm pack` reads `files`, so this is the exact tarball a publish would push — including the
   // mistake of forgetting to list a file, which is itself a fault this can catch.
-  run("mkdir", ["-p", packed]);
+  mkdirSync(packed, { recursive: true });
   const tarballs = new Map();
   for (const name of FIRST_PARTY) {
     const dir = join(repo, "packages", name);
-    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-    run("npm", ["pack", "--pack-destination", packed], { cwd: dir });
-    const file = readdirSync(packed).find((f) => f.startsWith(`${pkg.name.replace("@", "").replace("/", "-")}-`));
-    if (!file) fail(`npm pack produced no tarball for ${pkg.name}`);
-    tarballs.set(pkg.name, join(packed, file));
+    // `--json`, so the filename is REPORTED rather than reconstructed from the package name. The
+    // scoped-name mangling npm does is its business, not something to reimplement here and get
+    // subtly wrong the day it changes.
+    const packedJson = JSON.parse(run("npm", ["pack", "--json", "--pack-destination", packed], { cwd: dir }));
+    const file = packedJson[0]?.filename;
+    if (!file) fail(`npm pack produced no tarball in ${dir}`);
+    tarballs.set(packedJson[0].name, join(packed, file));
   }
 
   /* ── 2. scaffold, with the scaffolder this tree builds ────────────────────────────────────── */
@@ -260,7 +278,7 @@ try {
         String(error.stdout ?? error.stderr ?? error),
       );
     }
-    await serves();
+    await servesSomewhere();
     checks.push("a production install that serves");
   }
 

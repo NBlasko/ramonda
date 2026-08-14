@@ -378,7 +378,7 @@ interface HeadRegistry {
    * (`originalTitle`); the tags did not, so a hand-written `<meta name="description">` in
    * `index.html` was taken over and then removed for good.
    */
-  adopted: Map<string, Record<string, string>>;
+  adopted: Map<string, { original: Record<string, string>; applied: Record<string, string> }>;
   /** What the document's title was before any `Head` published, to go back to. */
   originalTitle: string;
   /**
@@ -606,6 +606,20 @@ function attributesOf(element: Element): Record<string, string> {
 }
 
 /**
+ * Whether the element still carries what this registry last wrote.
+ *
+ * The guard `title` has, for a tag: a script that is not a `Head` may own this element by now — a
+ * live counter, an analytics tag rewriting a description — and handing the author's old values
+ * back would undo a value nobody asked us to touch.
+ */
+function stillOurs(element: Element, applied: Record<string, string>): boolean {
+  for (const name in applied) {
+    if (element.getAttribute(name) !== applied[name]) return false;
+  }
+  return true;
+}
+
+/**
  * Puts a borrowed element back the way it was found, and hands it back to the document.
  *
  * The marker goes too: the element stops being the registry's, and leaving it would offer the
@@ -667,8 +681,17 @@ function applyRegistry(registry: HeadRegistry): void {
       element = found.element;
       // Recorded once, and only on the first adoption: a later pass would read back the attributes
       // this registry itself wrote and "restore" the page's own values.
-      if (found.adopted && !registry.adopted.has(selector)) {
-        registry.adopted.set(selector, attributesOf(element));
+      if (found.adopted) {
+        // Only on the FIRST adoption: a later pass would read back the attributes this registry
+        // itself wrote and hand the page's own values over as if they were the author's.
+        if (!registry.adopted.has(selector)) {
+          registry.adopted.set(selector, { original: attributesOf(element), applied: {} });
+        }
+      } else {
+        // Built here, so it is the page's — and any note about a PREVIOUS element under this
+        // selector is stale. Something removed the author's tag; what stands in its place is ours
+        // and must go with the page rather than be handed to an author who no longer has one.
+        registry.adopted.delete(selector);
       }
     }
     // setAttribute, never innerHTML: the DOM escapes the value, so a title or
@@ -676,14 +699,19 @@ function applyRegistry(registry: HeadRegistry): void {
     for (const name in spec.attributes) element.setAttribute(name, spec.attributes[name]);
     dropUnwantedAttributes(element, spec.attributes);
     registry.managed.set(selector, element);
+    // What was written, so the restore can tell "still ours" from "someone else's" — the same
+    // question `title` asks, for the same reason.
+    const borrowed = registry.adopted.get(selector);
+    if (borrowed !== undefined) borrowed.applied = spec.attributes;
   }
 
   for (const [selector, element] of [...registry.managed]) {
     if (tags.has(selector)) continue;
 
-    const original = registry.adopted.get(selector);
-    if (original === undefined) element.remove();
-    else restore(element, original);
+    const borrowed = registry.adopted.get(selector);
+    if (borrowed === undefined) element.remove();
+    else if (stillOurs(element, borrowed.applied)) restore(element, borrowed.original);
+    // else: something else owns this tag now. Left exactly as it is.
 
     registry.managed.delete(selector);
     registry.adopted.delete(selector);
