@@ -65,6 +65,7 @@ const {
   issues,
   arrowFields,
   browserUrlReads,
+  domWrites,
   duplicateDecorators,
   unwatchedFields,
   unresolved,
@@ -244,6 +245,34 @@ if (browserUrlReads.length > 0) {
       `taken once and never corrected, so the page quietly goes out of date. The router also keeps a\n` +
       `distinction the URL hands over as one string — \`#tab=film\` is route state, \`#a-section\` names\n` +
       `an element — so a hash tag with no value is a section and one with a value is not.\n\n` +
+      `This is a warning today and an error in a later version.\n`,
+  );
+}
+
+/**
+ * A component writing the document instead of rendering it.
+ *
+ * A WARNING beside the one above, and for the same reason: a new rule says so before it refuses.
+ */
+if (domWrites.length > 0) {
+  const guilty = new Set(domWrites.map((write) => write.component)).size;
+  console.warn(
+    `\n${TAG} ${guilty} component(s) writing the document instead of rendering it` +
+      `${domWrites.length === guilty ? "" : ` — ${domWrites.length} writes`}:\n`,
+  );
+  for (const write of domWrites) {
+    console.warn(`  ${write.file}:${write.line}:${write.column}`);
+    console.warn(`    <${write.component}> writes \`${write.wrote}\`.`);
+  }
+  console.warn(
+    `\nA class, an attribute or a piece of text written this way is a SECOND copy of state the\n` +
+      `component already holds: it has to be kept in step by hand, cleaned up when the component\n` +
+      `goes away, and remembered by whoever adds the next handler that touches it. Say it in\n` +
+      `\`render()\` and let the stylesheet read it — \`html:has(.drawer-open)\` reaches the document\n` +
+      `from a class a descendant renders, so even the page itself can be styled from state.\n\n` +
+      `A COMMAND is not this and is not reported: \`scrollIntoView()\`, \`focus()\`, \`select()\` and\n` +
+      `\`getBoundingClientRect()\` have no declarative form. Nor is an element you created yourself,\n` +
+      `or one held in a \`ref\` — that one is your own.\n\n` +
       `This is a warning today and an error in a later version.\n`,
   );
 }

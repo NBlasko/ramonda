@@ -6,6 +6,7 @@ export type {
   AnalyzeResult,
   ArrowFieldIssue,
   BrowserUrlIssue,
+  DomWriteIssue,
   ContextIssue,
   DuplicateDecoratorIssue,
   UnwatchedFieldIssue,

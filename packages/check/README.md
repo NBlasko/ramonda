@@ -349,6 +349,35 @@ runs with no lib, so the browser's name resolves to nothing while yours resolves
 This is a **warning** today and an error in a later version, which is the rule for adding a rule
 here.
 
+## Rendering, done imperatively
+
+A component that writes a class, an attribute or a piece of text onto the document is keeping a
+**second copy** of state it already holds:
+
+```
+[ramonda-check] 1 component(s) writing the document instead of rendering it — 2 writes:
+
+  src/App.tsx:96:5
+    <App> writes `document.documentElement.classList.toggle`.
+  src/App.tsx:101:5
+    <App> writes `document.body.style.overflow`.
+```
+
+That copy has to be kept in step by hand, cleaned up when the component goes away, and remembered
+by whoever adds the next handler that touches the same state. Say it in `render()` instead and let
+the stylesheet read it — `html:has(.drawer-open)` reaches the document from a class a descendant
+renders, so even the page itself can be styled from state the component owns.
+
+**A COMMAND is not this, and the difference is the whole rule.** `scrollIntoView()`, `focus()`,
+`select()` and `getBoundingClientRect()` have no declarative form: they tell the browser to do
+something rather than describing what it should look like. They are never reported.
+
+Nor is an element you made yourself — `document.createElement("style")` and then filling it in is
+your own element — or one held in a `ref`. What is reported is the document, its `body`, its
+`documentElement`, and whatever a global query hands back: elements the component did not render.
+
+This is a **warning** today and an error in a later version.
+
 ## A component it cannot follow is an error
 
 The walk goes quiet below a name it cannot resolve, so everything under that name is unjudged and a
