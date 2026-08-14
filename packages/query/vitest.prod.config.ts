@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
+import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 import { resolve } from "node:path";
 
 /**
@@ -41,6 +42,8 @@ export default defineConfig({
   },
   test: {
     coverage,
+    testTimeout,
+    hookTimeout,
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

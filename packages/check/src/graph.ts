@@ -158,11 +158,20 @@ export interface ComponentGraph {
  * How an app finds a package's fragment: the `ramonda.graph` field of its `package.json`.
  *
  * A field rather than a fixed path in `dist`, because an `exports` map already differs from
- * package to package — one place both a tool and a person read.
+ * package to package — one place both a tool and a person read. Nothing here is a convention a
+ * reader has to know: a package built to any other path keeps working, because the path is
+ * declared rather than guessed.
  *
  * ```json
- * { "name": "@acme/ui", "ramonda": { "graph": "./dist/graph.json" } }
+ * { "name": "@acme/ui", "ramonda": { "graph": "./dist/ramonda-graph.json" } }
  * ```
+ *
+ * **The name carries the framework's, and the reason is where the file ends up.** `dist` belongs to
+ * whatever tool wrote it last, and this one is PUBLISHED — it sits in a stranger's `node_modules`,
+ * where `graph.json` says neither whose it is nor what it is for. Same argument as the two
+ * binaries being `ramonda-check` and `ramonda-check-bundle` rather than `check` and `check-bundle`.
+ * An app writing its own graph has no such problem and needs no prefix: it chooses the path, the
+ * file goes nowhere, and nobody else reads it.
  */
 export interface PackageGraphField {
   ramonda?: { graph?: string };

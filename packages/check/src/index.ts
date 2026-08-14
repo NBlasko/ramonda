@@ -5,6 +5,7 @@ export { analyzeProject } from "./analyze";
 export type {
   AnalyzeResult,
   ArrowFieldIssue,
+  BrowserUrlIssue,
   ContextIssue,
   DuplicateDecoratorIssue,
   UnwatchedFieldIssue,
