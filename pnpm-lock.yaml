@@ -435,6 +435,9 @@ importers:
       '@ramonda/check':
         specifier: workspace:^
         version: link:../check
+      '@ramonda/core':
+        specifier: workspace:^
+        version: link:../core
       '@types/node':
         specifier: ^26.1.2
         version: 26.1.2
