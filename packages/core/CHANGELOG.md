@@ -1,5 +1,81 @@
 # @ramonda/core
 
+## 0.18.0
+
+### Minor Changes
+
+- c542e07: The published graph is `dist/ramonda-graph.json`.
+
+  It used to be `dist/graph.json`. Nothing resolves it by name — an app reads the `ramonda.graph`
+  field of the package's `package.json` — so **a package already built to any other path keeps
+  working**, and there is nothing to migrate.
+
+  The name changed for where the file ends up. It is PUBLISHED: it sits in a stranger's
+  `node_modules/@ramonda/core/dist/` beside whatever their bundler wrote, and `graph.json` there says
+  neither whose it is nor what it is for. Same argument as the binaries being `ramonda-check` and
+  `ramonda-check-bundle` rather than `check` and `check-bundle`. An app writing its own graph needs no
+  prefix and does not get one: it picks the path, and nobody else ever reads the file.
+
+  Collision was never a correctness risk and this does not fix one — a foreign `graph.json` in `dist`
+  would have been refused out loud rather than believed, because the loader checks `schema`, `scope`,
+  the package name and the declaration-file hash before anything is spliced. What it removes is the
+  chance of two tools quietly overwriting each other in the one directory every tool treats as its
+  own.
+
+  Verified end to end rather than assumed: the four packages emit to the new path, `npm pack` carries
+  `dist/ramonda-graph.json`, and `apps/playground-core` — the one project here that resolves a Ramonda
+  package through `node_modules` rather than a tsconfig path — still splices `Form`, `Field`,
+  `FormProvider` and `FormState` out of `@ramonda/form`'s fragment.
+
+- c0e7552: `render` takes no decorator, and says so where the class is defined.
+
+  `render` is the one member Ramonda reserves, and it was reserved only by TypeScript's `abstract` —
+  a build with no types refused nothing. The two worst outcomes said nothing either. Measured, one
+  class per decorator:
+
+  - **`@compute get render()`** turns the method into a cached property, so the framework's
+    `component.render()` dies with `TypeError: component.render is not a function` — before a page
+    appears, out of the framework, with no diagnostic at all.
+  - **`@memoizedHandler render()`** is worse, because it does not throw. The render is memoised on
+    arguments it does not have, and the component **never updates again**: measured `"0" -> "0"`
+    after a state write that should have shown `1`. A frozen page, in silence.
+  - `@created`, `@mounted`, `@updated` and `@destroyed` register the render as a lifecycle callback,
+    so it runs outside the render pass as well as inside it.
+  - `@catchError` makes the render the handler for errors thrown by its own subtree.
+  - `@state` and `@persist` mean "serialise me", which a render is not.
+
+  **TypeScript catches exactly one of these, and it is the wrong one.** A getter cannot override a
+  method, so `@compute get render()` is refused by the type system — and that is the case that throws
+  loudly anyway. `@memoizedHandler render()`, which freezes the page in silence, type-checks
+  perfectly.
+
+  None of those is a shade of wrong, so the rule is total rather than a list: no decorator goes on
+  `render`. The check sits in the three shared asserts every member decorator already calls, so it
+  covers all eleven of them and any that arrive later — and it is DEV-only, like the rest of that
+  file, because a decorator is fixed at the source and the cheapest moment to refuse it is the moment
+  the class is defined.
+
+  Put the behaviour on a member of its own and call it from `render`.
+
+### Patch Changes
+
+- bc85ac6: `Head` gives back a tag the page author wrote, instead of deleting it.
+
+  The registry adopts a matching element rather than adding a second one beside it — which is right,
+  and the reason a page whose `index.html` already has a `<meta name="description">` does not end up
+  with two. But it then **removed** that element when no page asked for it any more, whether it had
+  created it or merely borrowed it. The author's tag was gone from the document for good.
+
+  `title` never did this: the registry captures `originalTitle` when it is made and puts it back. The
+  tags simply never got the same treatment, which is what makes this a fault rather than a design —
+  measured, a `<title>` came back as `from index.html` while the description beside it was gone.
+
+  An element is the author's when it does **not** already carry Ramonda's marker. One that does was
+  written by this framework on the server and adopted on hydration — the marker is how `collectHead`
+  found it to serialize — so it belongs to the page and still goes when the page does. Two hydration
+  tests say exactly that, and they were right; what was wrong was that one of them stripped the marker
+  its own server render emits.
+
 ## 0.17.2
 
 ### Patch Changes

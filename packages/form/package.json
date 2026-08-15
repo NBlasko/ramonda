@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/form",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Forms for Ramonda: typed field paths, Standard Schema validation, and rows that keep their identity.",
   "license": "MIT",
   "author": "Nikola Blagojević",
