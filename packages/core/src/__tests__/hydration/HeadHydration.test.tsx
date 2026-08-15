@@ -62,8 +62,19 @@ describe("hydration: the Head owns what the server wrote", () => {
     const meta = document.createElement("meta");
     meta.setAttribute("name", "description");
     meta.setAttribute("content", "everything we sell");
+    // WITH the marker, because that is what shipped HTML carries. Measured: `renderPage` hands
+    // back `<meta data-ramonda-portal="" content="…" name="description">`, and the marker is how
+    // `collectHead` found the tag to serialize in the first place.
+    meta.setAttribute(PORTAL_ATTR, "");
     document.head.appendChild(meta);
-    for (const tag of headTags()) tag.removeAttribute(PORTAL_ATTR);
+    // The marker STAYS. Measured on the real thing — `renderPage` hands back
+    // `<meta data-ramonda-portal="" content="D" name="description">` — and it is how `collectHead`
+    // found the tag in the first place, so a page that reached a browser carries it.
+    //
+    // It matters here because it is now the difference between a tag Ramonda wrote and one the
+    // page author put in `index.html`: the first is the page's and goes with it, the second is
+    // borrowed and is given back. Stripping it made this test ask for the author's tag to be
+    // deleted, which is the fault the restore was written for.
 
     const container = document.createElement("div");
     document.body.appendChild(container);
