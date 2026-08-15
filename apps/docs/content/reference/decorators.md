@@ -82,7 +82,10 @@ answers. A component's props come from the parent's JSX and are compared by the 
 
 ## `render` takes none
 
-Not one decorator goes on `render`, and each one is refused where the class is defined.
+Not one decorator goes on `render`, and each one is refused **in development**, where the class is
+defined. Unlike the three refusals above — which hold in every build — this check lives with the
+other decorator-argument checks, all of which are compiled out of production. The mistake is fixed
+at the source, so the moment you write it is the only moment worth refusing it.
 
 They are not shades of wrong. Measured, one class per decorator:
 

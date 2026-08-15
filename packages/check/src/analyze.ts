@@ -513,34 +513,43 @@ interface ComponentNode {
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "renderPage", "renderStatic"]);
 
 /**
+ * Every static table this file switches on lives HERE, at module scope, and the reason is a crash
+ * that has now happened three times: a `const` inside `analyzeProject` is in its temporal dead zone
+ * when one of the hoisted `read*` functions reaches it during a pass, and the run dies with
+ * `Cannot access 'X' before initialization`. A table is not per-run state; it has no business in
+ * the closure. The same goes for a helper — write it as a `function`, which hoists.
+ */
+
+/**
  * The member of the router that answers the same question as a piece of `location`.
  *
  * Only where one obviously does: `location.origin` has no router answer and gets none invented for
  * it, so the report names what was read and stops there.
- *
- * At module scope because the function that reads it is hoisted and runs during pass 2 — as a
- * `const` inside `analyzeProject` it sat in its temporal dead zone and the run died with
- * `Cannot access 'ROUTER_ANSWER' before initialization`.
  */
+
 /**
  * Members whose assignment IS rendering — what an element looks like, said imperatively.
  *
- * `id` is here because it is what a fragment link resolves against, and a component that writes
- * one has put half of its markup outside `render()`.
- */
-/**
- * Every static table this file switches on lives HERE, at module scope, and the reason is a crash
- * that has now happened twice: a `const` inside `analyzeProject` is in its temporal dead zone when
- * one of the hoisted `read*` functions reaches it during a pass, and the run dies with
- * `Cannot access 'X' before initialization`. A table is not per-run state; it has no business in
- * the closure.
+ * `id` is here because it is what a fragment link resolves against, and a component that writes one
+ * has put half of its markup outside `render()`.
  */
 const RENDERED_BY_ASSIGNMENT = new Set(["className", "textContent", "innerHTML", "innerText", "id"]);
 
-/** Methods that write what an element looks like. `classList` gets its own set below. */
+/** Methods that write what an element looks like. `classList` and `style` get their own below. */
 const RENDERING_METHODS = new Set(["setAttribute", "removeAttribute", "toggleAttribute", "insertAdjacentHTML"]);
+
+/** `classList.add("x")` — the same write as `className`, through the API made for it. */
 const CLASS_LIST_METHODS = new Set(["add", "remove", "toggle", "replace"]);
 
+/** Writing a style through a call rather than a property — how a CSS custom property is set. */
+const STYLE_METHODS = new Set(["setProperty", "removeProperty"]);
+
+/**
+ * The member of the router that answers the same question as a piece of `location`.
+ *
+ * Only where one obviously does: `location.origin` has no router answer and gets none invented for
+ * it, so the report names what was read and stops there.
+ */
 const ROUTER_ANSWER: Record<string, string> = {
   pathname: "pathname",
   search: "searchParams",
@@ -3242,8 +3251,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function notOursToWrite(node: ts.Node): boolean {
     let at: ts.Node = node;
-    // `document.body.style.overflow` → walk down to `document.body`.
-    while (ts.isPropertyAccessExpression(at)) {
+    // `document.body.style.overflow` → walk down to `document.body`. Element access is walked too,
+    // because `style["overflow"]` and `style.overflow` are one write through two spellings.
+    while (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
       const owner = at.expression;
       /**
        * The NAME `document`, without asking whether it resolves.
@@ -3267,27 +3277,11 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (ts.isCallExpression(at) && ts.isPropertyAccessExpression(at.expression)) {
       const called = at.expression.name.text;
       if (["getElementById", "querySelector", "querySelectorAll"].includes(called)) {
-        return notOursToWrite(at.expression) || isDocumentRoot(at.expression.expression);
+        return notOursToWrite(at.expression);
       }
     }
     if (ts.isNonNullExpression(at) || ts.isParenthesizedExpression(at)) return notOursToWrite(at.expression);
     return false;
-  }
-
-  /**
-   * A `function` and not a `const` arrow, which is not style: an arrow is in its temporal dead zone
-   * when a hoisted caller reaches it, and this file calls its helpers from passes that run before
-   * the closure has finished initialising. Measured twice, both times as
-   * `Cannot access 'X' before initialization` out of a real run.
-   */
-  function isDocumentRoot(node: ts.Node): boolean {
-    return (
-      (ts.isIdentifier(node) && node.text === "document") ||
-      (ts.isPropertyAccessExpression(node) &&
-        node.name.text === "document" &&
-        ts.isIdentifier(node.expression) &&
-        ["window", "globalThis"].includes(node.expression.text))
-    );
   }
 
   /**
@@ -3305,27 +3299,45 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     };
 
     ts.forEachChild(cls, function look(node) {
-      // `document.body.className = "x"`, `document.documentElement.style.overflow = "hidden"`
+      /**
+       * `document.body.className = "x"`, and `+=` with it.
+       *
+       * ANY assignment operator, not just `=`. `className += " open"` is the most idiomatic
+       * imperative class write there is, and matching only `EqualsToken` left the rule silent on
+       * the very case it exists for — measured, it reported nothing while the plain assignment on
+       * the next line was reported.
+       */
       if (
         ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isPropertyAccessExpression(node.left)
+        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
       ) {
+        // `style.overflow = …` and `style["overflow"] = …` are the same write through two
+        // spellings, and a computed key is how a CSS custom property is usually reached.
         const left = node.left;
-        const styled = ts.isPropertyAccessExpression(left.expression) && left.expression.name.text === "style";
-        if ((styled || RENDERED_BY_ASSIGNMENT.has(left.name.text)) && notOursToWrite(left)) {
-          report(left, left.getText());
+        const written = ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left);
+        if (written) {
+          const owner = left.expression;
+          const styled = ts.isPropertyAccessExpression(owner) && owner.name.text === "style";
+          const named = ts.isPropertyAccessExpression(left) ? left.name.text : "";
+          if ((styled || RENDERED_BY_ASSIGNMENT.has(named)) && notOursToWrite(left)) {
+            report(left, left.getText());
+          }
         }
       }
 
-      // `document.body.classList.add("x")`, `document.documentElement.setAttribute(…)`
+      // `document.body.classList.add("x")`, `document.documentElement.setAttribute(…)`,
+      // `document.body.style.setProperty("--accent", …)`.
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
         const called = node.expression;
+        const owner = called.expression;
         const onClassList =
-          ts.isPropertyAccessExpression(called.expression) &&
-          called.expression.name.text === "classList" &&
+          ts.isPropertyAccessExpression(owner) &&
+          owner.name.text === "classList" &&
           CLASS_LIST_METHODS.has(called.name.text);
-        if ((onClassList || RENDERING_METHODS.has(called.name.text)) && notOursToWrite(called)) {
+        const onStyle =
+          ts.isPropertyAccessExpression(owner) && owner.name.text === "style" && STYLE_METHODS.has(called.name.text);
+        if ((onClassList || onStyle || RENDERING_METHODS.has(called.name.text)) && notOursToWrite(called)) {
           report(called, called.getText());
         }
       }

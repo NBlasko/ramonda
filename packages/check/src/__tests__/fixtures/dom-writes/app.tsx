@@ -1,8 +1,12 @@
 import { Component, bootstrap, state } from "../framework";
 
 declare const document: {
-  body: { className: string; classList: DOMTokenList; style: Record<string, string> };
-  documentElement: { classList: DOMTokenList; style: Record<string, string> };
+  body: {
+    className: string;
+    classList: DOMTokenList;
+    style: Record<string, string> & { setProperty(k: string, v: string): void };
+  };
+  documentElement: { classList: DOMTokenList; style: Record<string, string>; innerHTML: string };
   getElementById(id: string): HTMLElement | null;
   querySelector(css: string): HTMLElement | null;
   createElement(tag: string): HTMLElement;
@@ -33,6 +37,11 @@ class Astray extends Component {
     document.body.style.overflow = "hidden";
     document.getElementById("panel")?.setAttribute("aria-hidden", "true");
     document.querySelector(".badge")!.textContent = "9";
+    // Any assignment operator, not just `=`: `+=` on a class is the commonest spelling of all.
+    document.body.className += " open";
+    document.body.style.setProperty("--accent", "red");
+    document.body.style["overflow"] = "hidden";
+    document.documentElement.innerHTML += "<i></i>";
   }
 
   render() {

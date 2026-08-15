@@ -11,10 +11,12 @@ touches the same state. Said in `render()` it cannot drift, because there is onl
 `html:has(.drawer-open)` reaches the document from a class a descendant renders, so even the page
 itself can be styled from state a component owns.
 
-Reported: an assignment to `className`, `textContent`, `innerHTML`, `innerText`, `id` or anything
-under `style`, and a call to `setAttribute`, `removeAttribute`, `toggleAttribute`,
-`insertAdjacentHTML` or a `classList` method — on `document`, `document.body`,
-`document.documentElement`, or whatever a global query hands back.
+Reported: an assignment — with ANY assignment operator, because `className += " open"` is how this
+is usually spelled — to `className`, `textContent`, `innerHTML`, `innerText`, `id` or anything under
+`style`, whether reached by name or by a computed key; and a call to `setAttribute`,
+`removeAttribute`, `toggleAttribute`, `insertAdjacentHTML`, a `classList` method or
+`style.setProperty`, which is how a component usually pushes theme state onto the document. On
+`document`, `document.body`, `document.documentElement`, or whatever a global query hands back.
 
 **A COMMAND is not this, and the difference is the whole rule.** `scrollIntoView()`, `focus()`,
 `select()` and `getBoundingClientRect()` have no declarative form — they tell the browser to do

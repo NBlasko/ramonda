@@ -13,6 +13,13 @@ const run = () => analyzeProject(join(here, "fixtures", "dom-writes", "tsconfig.
  * only one of it.
  */
 describe("a component writing the document instead of rendering it", () => {
+  /**
+   * Four of these nine were invisible when the rule was first written, and the first of them is the
+   * one it most exists for: `className += " open"` is how an imperative class write is usually
+   * spelled, and matching only `=` left the rule silent on it. A style reached through a call or a
+   * computed key was the other half — `setProperty("--accent", …)` is how a component pushes theme
+   * state onto the document.
+   */
   test("every shape of write is reported", () => {
     expect(run().domWrites.map((w) => w.wrote)).toEqual([
       "document.documentElement.classList.toggle",
@@ -20,6 +27,10 @@ describe("a component writing the document instead of rendering it", () => {
       "document.body.style.overflow",
       'document.getElementById("panel")?.setAttribute',
       'document.querySelector(".badge")!.textContent',
+      "document.body.className",
+      "document.body.style.setProperty",
+      'document.body.style["overflow"]',
+      "document.documentElement.innerHTML",
     ]);
   });
 
