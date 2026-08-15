@@ -81,6 +81,31 @@ export interface BrowserUrlIssue {
 }
 
 /**
+ * A component writing to the DOM what its own `render()` could say.
+ *
+ * `document.documentElement.classList.toggle("nav-locked", this.menuOpen)` is RENDERING, done
+ * imperatively. The class it writes is a second copy of a field the component already holds: it has
+ * to be kept in step by hand, cleaned up when the component goes away, and remembered by whoever
+ * adds the next handler that touches the same state. The declarative form exists — write the class
+ * in `render()` and let the stylesheet read it — and it cannot drift, because there is only one of
+ * it.
+ *
+ * **A COMMAND is not this, and the difference is the whole rule.** `scrollIntoView()`, `focus()`,
+ * `select()` and `getBoundingClientRect()` have no declarative form: they are things you tell the
+ * browser to do, not state the framework owns. They stay allowed, and a rule that caught them would
+ * be a rule people switch off.
+ */
+export interface DomWriteIssue {
+  /** The class doing the writing. */
+  component: string;
+  /** What was written — `document.body.classList.add`, `document.documentElement.style.overflow`. */
+  wrote: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
  * A decorator that answers a question with ONE answer, declared more than once on the same class.
  *
  * `@catchError` ("who handles an error from below?"), `@Host` ("which element am I?"),
@@ -325,6 +350,8 @@ export interface AnalyzeResult {
   arrowFields: ArrowFieldIssue[];
   /** Components reading the browser's URL in a project that has a router — see `BrowserUrlIssue`. */
   browserUrlReads: BrowserUrlIssue[];
+  /** Components writing to the document what a render could say — see `DomWriteIssue`. */
+  domWrites: DomWriteIssue[];
   /** Single-use decorators declared twice on one class — see `DuplicateDecoratorIssue`. */
   duplicateDecorators: DuplicateDecoratorIssue[];
   /** Form fields read by a component that does not watch them — see `UnwatchedFieldIssue`. */
@@ -486,14 +513,42 @@ interface ComponentNode {
 const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "renderPage", "renderStatic"]);
 
 /**
+ * Every static table this file switches on lives HERE, at module scope, and the reason is a crash
+ * that has now happened three times: a `const` inside `analyzeProject` is in its temporal dead zone
+ * when one of the hoisted `read*` functions reaches it during a pass, and the run dies with
+ * `Cannot access 'X' before initialization`. A table is not per-run state; it has no business in
+ * the closure. The same goes for a helper — write it as a `function`, which hoists.
+ */
+
+/**
  * The member of the router that answers the same question as a piece of `location`.
  *
  * Only where one obviously does: `location.origin` has no router answer and gets none invented for
  * it, so the report names what was read and stops there.
+ */
+
+/**
+ * Members whose assignment IS rendering — what an element looks like, said imperatively.
  *
- * At module scope because the function that reads it is hoisted and runs during pass 2 — as a
- * `const` inside `analyzeProject` it sat in its temporal dead zone and the run died with
- * `Cannot access 'ROUTER_ANSWER' before initialization`.
+ * `id` is here because it is what a fragment link resolves against, and a component that writes one
+ * has put half of its markup outside `render()`.
+ */
+const RENDERED_BY_ASSIGNMENT = new Set(["className", "textContent", "innerHTML", "innerText", "id"]);
+
+/** Methods that write what an element looks like. `classList` and `style` get their own below. */
+const RENDERING_METHODS = new Set(["setAttribute", "removeAttribute", "toggleAttribute", "insertAdjacentHTML"]);
+
+/** `classList.add("x")` — the same write as `className`, through the API made for it. */
+const CLASS_LIST_METHODS = new Set(["add", "remove", "toggle", "replace"]);
+
+/** Writing a style through a call rather than a property — how a CSS custom property is set. */
+const STYLE_METHODS = new Set(["setProperty", "removeProperty"]);
+
+/**
+ * The member of the router that answers the same question as a piece of `location`.
+ *
+ * Only where one obviously does: `location.origin` has no router answer and gets none invented for
+ * it, so the report names what was read and stops there.
  */
 const ROUTER_ANSWER: Record<string, string> = {
   pathname: "pathname",
@@ -651,6 +706,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const kitDestructures: ts.VariableDeclaration[] = [];
   const arrowFields: ArrowFieldIssue[] = [];
   const browserUrlReads: BrowserUrlIssue[] = [];
+  const domWrites: DomWriteIssue[] = [];
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
@@ -922,6 +978,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
           readClassBody(node, self);
           readArrowFields(node, self.name);
           readBrowserUrl(node, self);
+          readDomWrites(node, self);
           readDuplicateDecorators(node, self.name);
           readUnwatchedFields(node, self.name);
         }
@@ -977,6 +1034,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     issues,
     arrowFields,
     browserUrlReads,
+    domWrites,
     duplicateDecorators,
     unwatchedFields,
     unresolved,
@@ -3177,6 +3235,110 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
             ...(ROUTER_ANSWER[member] ? { instead: ROUTER_ANSWER[member] } : {}),
             ...at,
           });
+        }
+      }
+      ts.forEachChild(node, look);
+    });
+  }
+
+  /**
+   * Whether an expression names an element the component did NOT render.
+   *
+   * The three roots of the document, and whatever a global query returns. Anything reached through
+   * a local variable is deliberately outside this: reading what that variable holds is dataflow,
+   * which this resolver refuses by decision — and an element the component CREATED is a local, so
+   * building one and filling it in is left alone, which is right.
+   */
+  function notOursToWrite(node: ts.Node): boolean {
+    let at: ts.Node = node;
+    // `document.body.style.overflow` → walk down to `document.body`. Element access is walked too,
+    // because `style["overflow"]` and `style.overflow` are one write through two spellings.
+    while (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
+      const owner = at.expression;
+      /**
+       * The NAME `document`, without asking whether it resolves.
+       *
+       * The sibling rule treats `window.location` the same way and reserves the resolve check for a
+       * BARE `location`, which is the form a local can plausibly shadow. A prefix cannot: nobody
+       * writes `const document = …` and then reaches for `.body.classList`. Requiring it to be
+       * unresolvable also made the rule depend on the run having no lib — true here, and a silent
+       * trap for anyone who declares the global themselves, which is exactly what this fixture does.
+       */
+      const isDocument = ts.isIdentifier(owner) && owner.text === "document";
+      const viaWindow =
+        ts.isPropertyAccessExpression(owner) &&
+        owner.name.text === "document" &&
+        ts.isIdentifier(owner.expression) &&
+        ["window", "globalThis"].includes(owner.expression.text);
+      if (isDocument || viaWindow) return true;
+      at = owner;
+    }
+    // `document.getElementById("x").classList` — the chain bottoms out in the query itself.
+    if (ts.isCallExpression(at) && ts.isPropertyAccessExpression(at.expression)) {
+      const called = at.expression.name.text;
+      if (["getElementById", "querySelector", "querySelectorAll"].includes(called)) {
+        return notOursToWrite(at.expression);
+      }
+    }
+    if (ts.isNonNullExpression(at) || ts.isParenthesizedExpression(at)) return notOursToWrite(at.expression);
+    return false;
+  }
+
+  /**
+   * A component writing the document instead of rendering it.
+   *
+   * Reported as a WARNING, which is the rule here for a new rule: one version that says so, the
+   * next that refuses. Measured across this repository when it was written: zero reports. What
+   * looked like violations were a custom element (`@ramonda/devtools` is an `HTMLElement`, not a
+   * component), a READ of `textContent`, and a `<style>` element built at module scope — none of
+   * them a component writing what it could have rendered.
+   */
+  function readDomWrites(cls: ts.ClassDeclaration, self: ComponentNode): void {
+    const report = (target: ts.Node, wrote: string): void => {
+      domWrites.push({ component: self.name, wrote, ...positionOf(target) });
+    };
+
+    ts.forEachChild(cls, function look(node) {
+      /**
+       * `document.body.className = "x"`, and `+=` with it.
+       *
+       * ANY assignment operator, not just `=`. `className += " open"` is the most idiomatic
+       * imperative class write there is, and matching only `EqualsToken` left the rule silent on
+       * the very case it exists for — measured, it reported nothing while the plain assignment on
+       * the next line was reported.
+       */
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      ) {
+        // `style.overflow = …` and `style["overflow"] = …` are the same write through two
+        // spellings, and a computed key is how a CSS custom property is usually reached.
+        const left = node.left;
+        const written = ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left);
+        if (written) {
+          const owner = left.expression;
+          const styled = ts.isPropertyAccessExpression(owner) && owner.name.text === "style";
+          const named = ts.isPropertyAccessExpression(left) ? left.name.text : "";
+          if ((styled || RENDERED_BY_ASSIGNMENT.has(named)) && notOursToWrite(left)) {
+            report(left, left.getText());
+          }
+        }
+      }
+
+      // `document.body.classList.add("x")`, `document.documentElement.setAttribute(…)`,
+      // `document.body.style.setProperty("--accent", …)`.
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        const called = node.expression;
+        const owner = called.expression;
+        const onClassList =
+          ts.isPropertyAccessExpression(owner) &&
+          owner.name.text === "classList" &&
+          CLASS_LIST_METHODS.has(called.name.text);
+        const onStyle =
+          ts.isPropertyAccessExpression(owner) && owner.name.text === "style" && STYLE_METHODS.has(called.name.text);
+        if ((onClassList || onStyle || RENDERING_METHODS.has(called.name.text)) && notOursToWrite(called)) {
+          report(called, called.getText());
         }
       }
       ts.forEachChild(node, look);
