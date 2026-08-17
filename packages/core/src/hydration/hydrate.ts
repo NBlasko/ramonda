@@ -9,10 +9,10 @@ import {
   applyRefFromProps,
   diffAndMerge,
   filterVirtualChild,
-  isListNode,
   listHostFor,
   unmountNodeInPlace,
 } from "../core/DiffAndMerge";
+import { isListNode } from "../vdom/guards";
 import { buildLazyList, isLazyList, type ListEngine, type LazyListNode, type ListHost } from "../helpers/listEngine";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { restoreComponentTree } from "./restore";

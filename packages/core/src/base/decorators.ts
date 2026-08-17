@@ -1,6 +1,7 @@
 import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS, PROPS_GATE } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
+import { displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
 import { trackerContainer, trackDependency } from "../reactivity/tracker";
@@ -913,7 +914,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
        * object is standing in for.
        */
       if (__DEV__) {
-        const owner = (this as { constructor: { name: string } }).constructor.name;
+        const owner = displayName(this);
         /**
          * Reported AND thrown, the way a props write is (RMD004, RMD015).
          *
@@ -953,7 +954,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
       // with the handler, so it is frozen for every later call.
       const previousMemoPhase = __DEV__ ? memoPhase.label : undefined;
       if (__DEV__) {
-        memoPhase.label = `${(this as { constructor: { name: string } }).constructor.name}.${String(context.name)}`;
+        memoPhase.label = `${displayName(this)}.${String(context.name)}`;
       }
 
       let fn: unknown;
@@ -1519,9 +1520,7 @@ export function compute<T, R>(
           // the tracker, so a nested read unwinds back to the outer compute.
           const prevComputePhase = __DEV__ ? computePhase.label : undefined;
           if (__DEV__) {
-            computePhase.label = `${
-              (this as { constructor: { name: string } }).constructor.name
-            }.${String(context.name)}`;
+            computePhase.label = `${displayName(this)}.${String(context.name)}`;
           }
 
           try {

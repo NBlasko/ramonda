@@ -1,16 +1,8 @@
 import { createRamonda } from "../vdom/CreateRamonda";
 import type { ComponentChild, ComponentKind, ComponentClassKind, UnsupportedTagFn, VNode } from "../types/vdom";
-import {
-  svgElements,
-  COMPONENT_TYPE,
-  TEXT_TYPE,
-  IS_SVG,
-  HOST_TAG,
-  IS_LIST,
-  HAS_LIST,
-  OWN_CHILDREN,
-} from "../helpers/constants";
+import { svgElements, IS_SVG, HOST_TAG, IS_LIST, HAS_LIST, OWN_CHILDREN } from "../helpers/constants";
 import { isArray } from "../helpers/utils";
+import { isListNode, isVNode } from "./guards";
 import { diagnose } from "../debug/diagnostics";
 import { currentOrigin } from "../core/origin";
 import { renderingOwner } from "../debug/renderPhase";
@@ -62,18 +54,14 @@ function checkUnkeyedArrayChildren(children: unknown[]): void {
 
   const names: string[] = [];
   for (const child of children) {
-    if (child === null || typeof child !== "object") continue;
-    const vnode = child as { type?: unknown; name?: unknown; attributes?: { key?: unknown } };
     // Only real elements. A nested array or a `list()` is its own region and is
     // matched as one child, so a key on it would be answering a question nobody
     // asked here.
-    if (vnode.type !== COMPONENT_TYPE && vnode.type !== TEXT_TYPE) continue;
+    if (!isVNode(child)) continue;
     // One keyed child means the app is managing identity, and this does not
     // second-guess that.
-    if (vnode.attributes?.key !== undefined) return;
-    names.push(
-      typeof vnode.name === "function" ? `<${(vnode.name as { name: string }).name} />` : `<${String(vnode.name)}>`,
-    );
+    if (child.attributes?.key !== undefined) return;
+    names.push(typeof child.name === "function" ? `<${child.name.name} />` : `<${String(child.name)}>`);
   }
 
   if (names.length > 0) reportUnkeyedArrayChildren(names);
@@ -111,7 +99,7 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
 
       // Already exactly one group or list — `{this.props.children}` where the
       // caller passed a list. Wrapping it again would add a pointless level.
-      if (inner.length === 1 && isListLike(inner[0])) {
+      if (inner.length === 1 && isListNode(inner[0])) {
         result.push(inner[0]);
         hasList = true;
         continue;
@@ -127,7 +115,7 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
         clean: [],
       });
       hasList = true;
-    } else if (el !== null && typeof el === "object" && (el as { [IS_LIST]?: true })[IS_LIST]) {
+    } else if (isListNode(el)) {
       // A list stays ONE child. Splicing its vnodes in here is exactly what let
       // two lists share the parent's key index and swap each other's nodes
       // ("two `For` instances in one parent mint the same ids").
@@ -138,17 +126,17 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
       // stable for a piece of JSX, call order is not — `{cond && list(a)}` stops
       // being the first call the moment `cond` is false, and the region (with
       // its state) would go to the wrong list.
-      const listChild = el as { owner?: unknown };
-      if (listChild.owner === undefined) listChild.owner = regionOwner(index, originId);
+      // The cast defeats `readonly` and nothing else — `owner` is declared
+      // immutable because nobody but this line may stamp it, and this is that
+      // line. The READ beside it is typed.
+      if (el.owner === undefined) (el as { owner: unknown }).owner = regionOwner(index, originId);
 
       result.push(el);
       hasList = true;
     } else if (el !== null && typeof el === "object") {
-      // A valid vnode is one of exactly two shapes (TEXT_TYPE or COMPONENT_TYPE).
-      // @ts-ignore
-      const isVNode = el.type === TEXT_TYPE || el.type === COMPONENT_TYPE;
-
-      if (isVNode) {
+      // A valid vnode is one of exactly two shapes (TEXT_TYPE or COMPONENT_TYPE) —
+      // which is what `isVNode` asks, so the `@ts-ignore` this line carried is gone.
+      if (isVNode(el)) {
         result.push(el);
       } else {
         if (__DEV__) {
@@ -236,10 +224,6 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
  */
 function regionOwner(index: number, originId: number): string {
   return `${originId}:g${index}`;
-}
-
-function isListLike(value: unknown): boolean {
-  return value !== null && typeof value === "object" && (value as { [IS_LIST]?: true })[IS_LIST] === true;
 }
 
 /**

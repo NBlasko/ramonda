@@ -1,16 +1,13 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { CHILD_HOOKS } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { displayName } from "../helpers/utils";
 import type { SerializedNode } from "./serialize";
 
 interface RestorableInstance {
   [STATE_KEYS]?: Set<string>;
   [PERSIST_KEYS]?: Set<string>;
   [CHILD_HOOKS]?: RestorableInstance[];
-}
-
-function instanceName(instance: RestorableInstance): string {
-  return (instance as { constructor?: { name?: string } }).constructor?.name ?? "Unknown";
 }
 
 function restoreState(instance: RestorableInstance, state: Record<string, unknown>): void {
@@ -41,9 +38,9 @@ function restoreNode(instance: RestorableInstance, node: SerializedNode): void {
   if (__DEV__ && childHooks.length !== serializedHooks.length) {
     diagnose(
       "RMD035",
-      instanceName(instance),
-      `<${instanceName(instance)}> built ${childHooks.length} hook(s) and the server serialized ${serializedHooks.length}.`,
-      { component: instanceName(instance), client: childHooks.length, server: serializedHooks.length },
+      displayName(instance),
+      `<${displayName(instance)}> built ${childHooks.length} hook(s) and the server serialized ${serializedHooks.length}.`,
+      { component: displayName(instance), client: childHooks.length, server: serializedHooks.length },
     );
   }
 

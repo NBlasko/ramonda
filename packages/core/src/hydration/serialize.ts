@@ -1,6 +1,7 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { CHILD_HOOKS } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { displayName } from "../helpers/utils";
 
 /**
  * One node of serialized state: a component's (or hook's) own `@state` + `@persist`
@@ -16,10 +17,6 @@ interface SerializableInstance {
   [STATE_KEYS]?: Set<string>;
   [PERSIST_KEYS]?: Set<string>;
   [CHILD_HOOKS]?: SerializableInstance[];
-}
-
-function componentName(instance: SerializableInstance): string {
-  return (instance as { constructor?: { name?: string } }).constructor?.name ?? "Unknown";
 }
 
 function warnIfNotSerializable(name: string, key: string, value: unknown): void {
@@ -40,7 +37,7 @@ function warnIfNotSerializable(name: string, key: string, value: unknown): void 
 
 function readState(instance: SerializableInstance): Record<string, unknown> {
   const values = instance as unknown as Record<string, unknown>;
-  const name = __DEV__ ? componentName(instance) : "";
+  const name = __DEV__ ? displayName(instance) : "";
   const out: Record<string, unknown> = {};
 
   const collect = (keys: Set<string> | undefined) => {
