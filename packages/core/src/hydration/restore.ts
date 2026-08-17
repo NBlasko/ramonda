@@ -10,8 +10,9 @@ interface RestorableInstance {
   [CHILD_HOOKS]?: RestorableInstance[];
 }
 
-function restoreState(instance: RestorableInstance, state: Record<string, unknown>): void {
+function restoreState(instance: RestorableInstance, node: SerializedNode): void {
   const target = instance as unknown as Record<string, unknown>;
+  const declared = new Set<string>();
 
   // Only restore keys this instance actually declares (@state / @persist), so a
   // stale or tampered blob can't inject arbitrary properties. Writing a @state
@@ -19,18 +20,31 @@ function restoreState(instance: RestorableInstance, state: Record<string, unknow
   const apply = (keys: Set<string> | undefined) => {
     if (!keys) return;
     for (const key of keys) {
-      if (Object.prototype.hasOwnProperty.call(state, key)) {
-        target[key] = state[key];
+      declared.add(key);
+      if (Object.prototype.hasOwnProperty.call(node.state, key)) {
+        target[key] = node.state[key];
       }
     }
   };
 
   apply(instance[STATE_KEYS]);
   apply(instance[PERSIST_KEYS]);
+
+  // Keys the server EMPTIED. They travel apart from `state` because JSON cannot carry `undefined`
+  // (`JSON.stringify({ x: undefined })` is `{}`), so without this a field the server cleared is
+  // indistinguishable from one it never touched — and the browser's own initializer puts the old
+  // value back. Measured before the fix: a `@state name = "Ada"` cleared on the server came up
+  // "Ada" again in the browser.
+  //
+  // Filtered through the same declared set as everything else: a tampered blob must not be able to
+  // name a property this instance never declared.
+  for (const key of node.cleared ?? []) {
+    if (declared.has(key)) target[key] = undefined;
+  }
 }
 
 function restoreNode(instance: RestorableInstance, node: SerializedNode): void {
-  restoreState(instance, node.state);
+  restoreState(instance, node);
 
   const childHooks = instance[CHILD_HOOKS] ?? [];
   const serializedHooks = node.hooks ?? [];

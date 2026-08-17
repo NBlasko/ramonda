@@ -93,6 +93,45 @@ describe("hydration: client restore", () => {
     expect(target.instance.b).toBe("y");
   });
 
+  /**
+   * The client half of the emptied-field case: the browser's initializer runs first and produces
+   * the default, so restoring has to actively put it back to `undefined`. A blob that merely
+   * OMITTED the key would leave the default standing, which is the bug this exists for.
+   */
+  test("a cleared key is emptied on the client, not left at its default", async () => {
+    class Widget extends Component {
+      @state name: string | undefined = "Ada";
+      render() {
+        return <div>{this.name ?? "(none)"}</div>;
+      }
+    }
+
+    const app = await getDOM<Widget>(<Widget />);
+    expect(app.instance.name).toBe("Ada");
+
+    restoreComponentTree(app.instance, { state: {}, cleared: ["name"] });
+    expect(app.instance.name).toBeUndefined();
+  });
+
+  /**
+   * The same filter every other restored key goes through. A blob is markup, and markup can be
+   * tampered with — naming a property the instance never declared must not create one.
+   */
+  test("a cleared key the instance never declared is ignored", async () => {
+    class Widget extends Component {
+      @state name: string | undefined = "Ada";
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const app = await getDOM<Widget>(<Widget />);
+    restoreComponentTree(app.instance, { state: {}, cleared: ["nothingLikeThis"] });
+
+    expect((app.instance as unknown as Record<string, unknown>).nothingLikeThis).toBeUndefined();
+    expect("nothingLikeThis" in app.instance).toBe(false);
+  });
+
   test("ignores unknown keys and tolerates a hook-count mismatch", async () => {
     class H extends Hook {
       @state v = 0;
@@ -144,12 +183,20 @@ describe("hydration: a hook labelled in its use() metadata", () => {
 
     const app = await getDOM<Page>(<Page />);
 
+    // Moved off their initial values first: an untouched primitive is left out of the blob
+    // (see Serialize.test.tsx), and two EMPTY hook blobs would look identical whether the label
+    // was invisible or serialization had stopped working altogether.
+    app.instance.top = 9;
+    app.instance.named.value = 91;
+    app.instance.plain.value = 92;
+    await app.settle();
+
     // The SERVER's half: the blob a labelled hook produces is the shape the client expects, and the
     // label is nowhere in it — it is a development label, not application state.
     const blob = serializeComponentToJSON(app.instance);
     expect(JSON.parse(blob)).toEqual({
-      state: { top: 0 },
-      hooks: [{ state: { value: 1 } }, { state: { value: 2 } }],
+      state: { top: 9 },
+      hooks: [{ state: { value: 91 } }, { state: { value: 92 } }],
     });
     expect(blob).not.toContain("signup");
 

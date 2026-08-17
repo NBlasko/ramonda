@@ -183,6 +183,23 @@ export const CONTEXT_READS = Symbol("contextReads");
 
 export const PERSIST_KEYS = Symbol("persistKeys");
 
+/**
+ * Per instance: the PRIMITIVE value each serialized field's own initializer produced.
+ *
+ * Read by the serializer, which leaves a field out of the hydration blob when it still holds that
+ * value — the client's initializer produces it again, so restoring it is a no-op and the bytes buy
+ * nothing. Measured on a form of five rows: 942 of 1935 bytes were hydration state, nearly all of
+ * it `{"version":0}` from the subscription counters.
+ *
+ * **Primitives only, and that is a correctness bound rather than a saving.** An in-place mutation
+ * (`this.rows.push(…)`) keeps the object the initializer produced, so an identity test would call
+ * a filled array untouched and empty it on hydration — measured: the mutated array reaches the blob
+ * today, RMD005 and all. A primitive cannot be mutated in place, so the question cannot arise.
+ *
+ * Not behind `__DEV__`: what it saves is bytes a production page ships.
+ */
+export const INITIAL_PRIMITIVES = Symbol("initialPrimitives");
+
 // Attribute on a component's carrier element holding its serialized state blob.
 export const STATE_ATTR = "data-ramonda-state";
 

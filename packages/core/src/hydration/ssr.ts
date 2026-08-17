@@ -2,7 +2,7 @@ import { mountNode } from "../core/DiffAndMerge";
 import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
-import { serializeComponentToJSON } from "./serialize";
+import { serializeComponentToBlob } from "./serialize";
 import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
@@ -81,7 +81,10 @@ async function drainServerWork(work: ServerWork): Promise<void> {
 function stampBlobs(node: Node): void {
   const el = node as { _componentInstance?: object } & Element;
   if (el._componentInstance && typeof el.setAttribute === "function") {
-    el.setAttribute(STATE_ATTR, serializeComponentToJSON(el._componentInstance));
+    // Nothing at all when nothing has moved off its initial value: an empty tree of shells is
+    // around 90 bytes per component that the client would read and then do nothing with.
+    const blob = serializeComponentToBlob(el._componentInstance);
+    if (blob !== undefined) el.setAttribute(STATE_ATTR, blob);
   }
   node.childNodes.forEach(stampBlobs);
 }

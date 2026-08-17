@@ -1,4 +1,13 @@
-import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS, PROPS_GATE } from "../helpers/constants";
+import {
+  attach,
+  detach,
+  HOST_META,
+  HOST_TAG,
+  STATE_KEYS,
+  PERSIST_KEYS,
+  PROPS_GATE,
+  INITIAL_PRIMITIVES,
+} from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import { displayName } from "../helpers/utils";
@@ -253,6 +262,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
     const self = this as any;
     if (!self[STATE_KEYS]) self[STATE_KEYS] = new Set();
     self[STATE_KEYS].add(contextName);
+    rememberInitialPrimitive(this, contextName, initialValue);
 
     // Two capabilities, because `@state` gives a field both: a signal, and a place in the hydration
     // blob. Claiming the second is what lets `@persist` beside it be recognised as adding nothing.
@@ -978,6 +988,24 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
  * (and be restored from) the hydration JSON. Use it for set-once, render-relevant
  * state that isn't a signal. Must hold a JSON-serializable value.
  */
+/**
+ * Remembers what a serialized field's own initializer produced, so the serializer can leave it out
+ * of the hydration blob while it still holds that value.
+ *
+ * Only a PRIMITIVE is remembered, and the reason is correctness rather than thrift: an in-place
+ * mutation keeps the very object the initializer produced, so an identity test on an object would
+ * call a filled array untouched and hand the client an empty one. Measured — `this.rows.push(…)`
+ * reaches the blob today, RMD005 and all. A primitive has no in-place to mutate.
+ *
+ * The record is one plain object per instance, and only for instances that have primitive state.
+ * It buys markup bytes on every page the server sends, which is why it is not behind `__DEV__`.
+ */
+function rememberInitialPrimitive(instance: object, key: string, value: unknown): void {
+  if (value !== null && (typeof value === "object" || typeof value === "function")) return;
+  const holder = instance as { [INITIAL_PRIMITIVES]?: Record<string, unknown> };
+  (holder[INITIAL_PRIMITIVES] ??= {})[key] = value;
+}
+
 export function persist(_value: unknown, context: EnhancedClassFieldDecoratorContext) {
   if (__DEV__) {
     // Same silent failure as @state on a method, with less to notice: the name
@@ -991,6 +1019,7 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
     const self = this as unknown as { [PERSIST_KEYS]?: Set<string> };
     if (!self[PERSIST_KEYS]) self[PERSIST_KEYS] = new Set();
     self[PERSIST_KEYS].add(contextName);
+    rememberInitialPrimitive(this, contextName, (this as unknown as Record<string, unknown>)[contextName]);
 
     // The same capability `@state` claims, which is the whole point: on a field that is already
     // `@state`, this adds nothing.

@@ -13,10 +13,22 @@
  * One `window.` added to the record path would pass every suite in the repository and break every
  * SSR consumer, in development, which is the only place diagnostics exist at all.
  */
-import { Component, Hook, renderToString, state, type RamondaNode } from "@ramonda/core";
+import { Component, created, Hook, renderToString, state, type RamondaNode } from "@ramonda/core";
 
 class Store extends Hook<{ seed: number }> {
   @state value = this.props.seed;
+
+  /**
+   * Moved off what the initializer produced, on purpose.
+   *
+   * Core leaves a field out of the hydration blob while it still holds its initial primitive, so a
+   * `value` left at its seed would serialize to `{"state":{}}` — and the assertion below, that a
+   * LABELLED hook's blob looks like any other, would be comparing two empty objects and proving
+   * nothing about the label.
+   */
+  @created bump() {
+    this.value = this.props.seed * 10;
+  }
 }
 
 export class Faulty extends Component {
