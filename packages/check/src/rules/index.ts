@@ -2,6 +2,8 @@ import type ts from "typescript";
 import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
 import { contextFor } from "./element";
 import { unnamedImage } from "./unnamed-image";
+import { interactiveInsideInteractive } from "./interactive-inside-interactive";
+import { tagNeedsItsParent } from "./tag-needs-its-parent";
 import { unknownAriaAttribute } from "./unknown-aria-attribute";
 import { unknownRole } from "./unknown-role";
 import { ariaWithNoSubject } from "./aria-with-no-subject";
@@ -28,6 +30,9 @@ export type {
 } from "./rule";
 
 export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
+export { interactiveInsideInteractive, type InteractiveInsideInteractiveIssue } from "./interactive-inside-interactive";
+export { tagNeedsItsParent, type TagNeedsItsParentIssue } from "./tag-needs-its-parent";
+export { NEEDS_PARENT, NOT_INSIDE_ITSELF } from "./html";
 export { unknownAriaAttribute, type UnknownAriaAttributeIssue } from "./unknown-aria-attribute";
 export { unknownRole, type UnknownRoleIssue } from "./unknown-role";
 export { ariaWithNoSubject, type AriaWithNoSubjectIssue } from "./aria-with-no-subject";
@@ -63,6 +68,8 @@ export const MODULE_RULES = [unsplittableImport] as const;
  * sit together: a reader fixing one is usually about to fix the other.
  */
 export const ELEMENT_RULES = [
+  tagNeedsItsParent,
+  interactiveInsideInteractive,
   unnamedImage,
   unknownAriaAttribute,
   unknownRole,
