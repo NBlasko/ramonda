@@ -4,7 +4,16 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import { activate, applyClass, applyModule, CLASS_RULES, emptyFindings, MODULE_RULES } from "./rules";
+import {
+  activate,
+  applyClass,
+  applyElement,
+  applyModule,
+  CLASS_RULES,
+  ELEMENT_RULES,
+  emptyFindings,
+  MODULE_RULES,
+} from "./rules";
 
 /**
  * The per-class rules, re-exported so that moving them behind `./rules` changed no import anywhere
@@ -12,7 +21,11 @@ import { activate, applyClass, applyModule, CLASS_RULES, emptyFindings, MODULE_R
  * the shape of a finding is part of the rule, not of the analyzer that collects it.
  */
 import type {
+  UnnamedImageIssue,
+  EmptyHeadingOrLinkIssue,
   Findings,
+  UnnamedFrameIssue,
+  PositiveTabIndexIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
   DomWriteIssue,
@@ -21,7 +34,7 @@ import type {
   UnwatchedFieldIssue,
 } from "./rules";
 
-export type { Findings };
+export type { UnnamedImageIssue, EmptyHeadingOrLinkIssue, Findings, UnnamedFrameIssue, PositiveTabIndexIssue };
 export type {
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -713,9 +726,27 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * pass over the files is also the cheapest shape — a rule sees each file once, however many
    * components are in it.
    */
+  /**
+   * The per-ELEMENT rules, run from the same pass as the per-file ones.
+   *
+   * Every JSX element in the project, host tags and components alike — the rules themselves decide
+   * which tag they are about, and a component tag answers `undefined` to that question. Walking
+   * from the file rather than from a component is deliberate: markup written in a plain helper
+   * function is markup all the same, and an accessibility fault does not become acceptable for
+   * having been written outside a class.
+   */
+  const elementRules = activate(ELEMENT_RULES, imported);
+
+  const readElements = (node: ts.Node): void => {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings);
+    ts.forEachChild(node, readElements);
+  };
+
   const moduleRules = activate(MODULE_RULES, imported);
 
   for (const file of sources) {
+    if (elementRules.length > 0) readElements(file);
+
     applyModule(
       moduleRules,
       file,

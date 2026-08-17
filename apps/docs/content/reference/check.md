@@ -174,6 +174,33 @@ fifty-six components that now arrive with the first page.
 
 Both flags describe. Neither fails a build.
 
+## Markup nothing can announce
+
+Four rules read your JSX one element at a time, and all four are about the same thing: an element
+that assistive technology cannot name.
+
+| | |
+|---|---|
+| `alt-text` | An `img`, `area`, image `input` or empty `object` with no `alt`, `aria-label`, `aria-labelledby` or `title`. |
+| `empty-landmarks` | A heading or a link with nothing inside it — a row in the screen reader's list of headings, or of links, with no label. |
+| `frame-title` | An `iframe` with no `title`. |
+| `positive-tabindex` | A `tabIndex` above zero, which does not move one element but reorders the whole document. |
+
+```
+[ramonda-check] 1 image(s) with nothing to announce them by:
+
+  src/Brand.tsx:12:7
+    <img> has no `alt`, and no `aria-label`, `aria-labelledby` or `title` either.
+```
+
+**`alt=""` is an answer and is never reported.** It is the documented way to say "this image is
+decoration, skip it", and a rule that demanded text there would push you into describing spacers.
+
+**An element that spreads props is left alone entirely.** `<img {...rest} />` may carry the very
+attribute the rule is about, and nothing static can say whether it does — so none of these four is
+even asked about it. The same goes for content a rule cannot read: `<h2>{title}</h2>` may well have
+text, and being unable to prove otherwise is not evidence.
+
 ## A split point that was meant, and is not there
 
 The same fact from the other side. A bundler splits at a dynamic import and **only when it can read

@@ -3,13 +3,18 @@ export { analyzeProject } from "./analyze";
 // against `analyzeProject` — which the reference tells people to write — could type a variable holding a
 // context issue but not one holding a duplicate decorator.
 export type {
+  UnnamedImageIssue,
   AnalyzeResult,
   ArrowFieldIssue,
   BrowserUrlIssue,
-  DomWriteIssue,
   ContextIssue,
+  DomWriteIssue,
   DuplicateDecoratorIssue,
   UnsplittableImportIssue,
+  EmptyHeadingOrLinkIssue,
+  Findings,
+  UnnamedFrameIssue,
+  PositiveTabIndexIssue,
   UnwatchedFieldIssue,
 } from "./analyze";
 // The composition graph the issues are computed from. A FORMAT rather than an API: it is versioned

@@ -1,5 +1,10 @@
 import type ts from "typescript";
-import type { ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
+import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
+import { contextFor } from "./element";
+import { unnamedImage } from "./unnamed-image";
+import { emptyHeadingOrLink } from "./empty-heading-or-link";
+import { unnamedFrame } from "./unnamed-frame";
+import { positiveTabIndex } from "./positive-tabindex";
 import { arrowFields } from "./arrow-fields";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
@@ -7,7 +12,22 @@ import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
 
-export type { ModuleContext, ModuleRule, Report, Rule, RuleContext, RuleSubject } from "./rule";
+export type {
+  ElementContext,
+  ElementRule,
+  JsxElementLike,
+  ModuleContext,
+  ModuleRule,
+  Report,
+  Rule,
+  RuleContext,
+  RuleSubject,
+} from "./rule";
+
+export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
+export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
+export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
+export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
@@ -29,13 +49,28 @@ export const CLASS_RULES = [arrowFields, browserUrl, domWrites, duplicateDecorat
 /** Every rule that reads a FILE. Same arrangement, different subject. */
 export const MODULE_RULES = [unsplittableImport] as const;
 
-/** Both families, which is what the CLI prints from and what {@link Findings} is keyed by. */
-export const RULES = [...CLASS_RULES, ...MODULE_RULES] as const;
+/**
+ * Every rule that reads one JSX ELEMENT — where accessibility lives.
+ *
+ * The order here is the order their sections print in, which is why the two about a missing NAME
+ * sit together: a reader fixing one is usually about to fix the other.
+ */
+export const ELEMENT_RULES = [unnamedImage, emptyHeadingOrLink, unnamedFrame, positiveTabIndex] as const;
+
+/** All three families, which is what the CLI prints from and what {@link Findings} is keyed by. */
+export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES] as const;
 
 export type AnyRule = (typeof RULES)[number];
 
 /** The issue type a rule produces, read off the rule rather than written down twice. */
-type IssueOf<R> = R extends Rule<infer Issue> ? Issue : R extends ModuleRule<infer Issue> ? Issue : never;
+type IssueOf<R> =
+  R extends Rule<infer Issue>
+    ? Issue
+    : R extends ModuleRule<infer Issue>
+      ? Issue
+      : R extends ElementRule<infer Issue>
+        ? Issue
+        : never;
 
 /**
  * What every rule found, keyed by its id and typed as that rule's own issue.
@@ -131,6 +166,27 @@ export function applyClass(
  * may find has to be recorded against something, and the only honest name for it is the rule that
  * would otherwise have reported the site.
  */
+/**
+ * Every active element rule over one JSX element.
+ *
+ * **A spreading element is handed to nobody.** `<img {...rest} />` may carry the very attribute a
+ * rule is about, and nothing static can say whether it does — so the silence contract applies to
+ * the whole family at once, here, rather than being remembered by each of forty rules. It is the
+ * same argument as `needs` and `exempt`: a guard every rule needs is a guard a rule can forget.
+ *
+ * The context is built ONCE and shared. Forty rules asking "is there an `alt`" would otherwise walk
+ * the same attribute list forty times.
+ */
+export function applyElement(
+  active: readonly (typeof ELEMENT_RULES)[number][],
+  element: JsxElementLike,
+  findings: Findings,
+): void {
+  const context = contextFor(element);
+  if (context.spreads) return;
+  for (const rule of active) collect(findings, rule, rule.read(element, context));
+}
+
 export function applyModule(
   active: readonly (typeof MODULE_RULES)[number][],
   file: ts.SourceFile,

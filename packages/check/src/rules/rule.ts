@@ -120,6 +120,64 @@ export interface ModuleRule<Issue> {
   read(file: ts.SourceFile, context: ModuleContext): Issue[];
 }
 
+/** A JSX element as written — self-closing or with children. */
+export type JsxElementLike = ts.JsxElement | ts.JsxSelfClosingElement;
+
+/**
+ * A rule that reads one JSX ELEMENT.
+ *
+ * The third family, and the one accessibility needs. `alt` on an `<img>`, `title` on an `<iframe>`,
+ * a `tabIndex` that is positive — none of those is a question about a class or about a module. They
+ * are questions about a tag, and there are dozens of them, so they get a subject of their own
+ * rather than dozens of walks.
+ *
+ * One walk serves all of them: the analyzer visits each element once, builds the context below
+ * once, and hands the pair to every active rule. A rule that walked the tree itself would be the
+ * fortieth walk of the same source.
+ */
+export interface ElementRule<Issue> {
+  id: string;
+  report: Report<Issue>;
+  needs?: string;
+  read(element: JsxElementLike, context: ElementContext): Issue[];
+}
+
+export interface ElementContext {
+  /**
+   * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.
+   *
+   * `undefined` for a COMPONENT (`<Panel />`, `<screens.reader />`). An accessibility rule is about
+   * markup, and a component is not markup yet: what `<Panel />` renders is decided inside `Panel`,
+   * where this rule will meet it again as the tag it really is.
+   */
+  tag: string | undefined;
+
+  /** Whether an attribute is written at all, whatever its value. Case-insensitive. */
+  has(name: string): boolean;
+
+  /**
+   * An attribute's value when it is a plain string literal, and `undefined` otherwise.
+   *
+   * `undefined` covers two different things on purpose — not written, and written as an expression
+   * this cannot read. Both mean the same to a rule that may only report what it can prove.
+   */
+  attr(name: string): string | undefined;
+
+  /**
+   * Whether the element spreads props — `<img {...rest} />`.
+   *
+   * **The silence contract, in one flag.** A spread may carry the very attribute a rule is about,
+   * and nothing here can say whether it does. Every rule in this family has to go quiet on a
+   * spreading element, so the runner does it for them: a spreading element is never handed to a
+   * rule at all. It is on the context anyway because a rule may want to say something about the
+   * spread itself one day, and because a flag nobody can see is a decision nobody can find.
+   */
+  spreads: boolean;
+
+  /** The element's children, for the rules about what is INSIDE a tag rather than on it. */
+  children: readonly ts.JsxChild[];
+}
+
 export interface ModuleContext {
   /**
    * Builds an issue, unless the author has already written down why this site is the way it is.
