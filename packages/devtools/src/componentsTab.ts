@@ -28,6 +28,8 @@ interface InspectedNode {
   detail?: Record<string, unknown>;
   /** A context consumer's reads — the keys it subscribed to, and the ones it never touched. */
   reads?: Record<string, unknown>;
+  /** Per `@compute`: reads the cache answered, and reads that ran the body. */
+  computes?: Record<string, { hits: number; misses: number }>;
   /** Where the class is defined, when core could tell. */
   source?: SourceLocation;
   hooks: InspectedNode[];
@@ -141,6 +143,32 @@ const shortFile = (source: SourceLocation): string => {
  * It watches only while the panel is open AND this tab is active. Entering that state tells core to
  * start emitting ticks; leaving it tells core to stop, which is what keeps a closed panel free.
  */
+/**
+ * Turns a compute's two counters into the sentence the reader actually wants.
+ *
+ * A `@compute` is a claim that a value is worth caching. The panel's job here is to show whether
+ * the claim held — and to stop short of calling it wrong, because it may not be: a compute whose
+ * dependencies genuinely move on every pass never hits, and a plain getter would be no cheaper. So
+ * the never-cached row SAYS never cached and leaves the judgement to whoever wrote it.
+ *
+ * The numbers are kept beside the phrase rather than replaced by it: "18 of 53" is what tells you
+ * whether a low rate is a pattern or three unlucky reads.
+ *
+ * `undefined` in, `undefined` out — a component with no `@compute`, or one whose computes nobody
+ * has read yet, gets no section rather than an empty one.
+ */
+function cacheSummary(
+  computes: Record<string, { hits: number; misses: number }> | undefined,
+): Record<string, string> | undefined {
+  if (!computes) return undefined;
+  let out: Record<string, string> | undefined;
+  for (const [member, { hits, misses }] of Object.entries(computes)) {
+    const reads = hits + misses;
+    (out ??= {})[member] = hits === 0 ? `never cached — ran on all ${reads} reads` : `${hits} of ${reads} reads cached`;
+  }
+  return out;
+}
+
 export class ComponentsTab {
   constructor(
     private readonly host: HTMLElement,
@@ -418,6 +446,9 @@ export class ComponentsTab {
       // A consumer holds no state and no props, so this is the only block it has — and it is the
       // interesting one: which keys it actually reads is what decides when it re-renders.
       const readsHtml = this.renderValueBlock("Reads from context", n.reads, path, "r", acc);
+      // Read-only, and phrased rather than tabulated: two raw numbers make the reader do the
+      // division, and the answer they want is "is this cache doing anything".
+      const computesHtml = this.renderValueBlock("Computed", cacheSummary(n.computes), path, "c", acc);
 
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);
@@ -446,7 +477,7 @@ export class ComponentsTab {
           ? `<span style="color:var(--rmd-hook-text)">${escapeHtml(n.name)}</span>`
           : `<span style="color:var(--rmd-brand-light)">&lt;${escapeHtml(n.name)} /&gt;</span>`;
 
-      const body = `${propsHtml}${stateHtml}${detailHtml}${optionsHtml}${readsHtml}${hooksHtml}${childrenHtml}`;
+      const body = `${propsHtml}${stateHtml}${detailHtml}${optionsHtml}${readsHtml}${computesHtml}${hooksHtml}${childrenHtml}`;
 
       // Collapsed is the reader's decision, so it survives a rebuild — the default is open.
       const openAttr = this.collapsed.has(path) ? "" : " open";

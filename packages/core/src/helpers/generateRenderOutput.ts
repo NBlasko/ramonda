@@ -4,7 +4,8 @@ import { resolveHostTag } from "./hostTag";
 import type { HostMeta } from "../types/commonTypes";
 import { createRamonda } from "../vdom/CreateRamonda";
 import { isArray } from "./utils";
-import { HOST_META, hostStyle, HOST_TAG, IS_LIST, HAS_LIST } from "./constants";
+import { HOST_META, hostStyle, HOST_TAG, HAS_LIST } from "./constants";
+import { isListNode } from "../vdom/guards";
 import { renderPhase } from "../debug/renderPhase";
 import { checkRenderStability, isStrictRender } from "../debug/renderStability";
 import { currentOrigin } from "../core/origin";
@@ -104,7 +105,7 @@ function buildRenderOutput(component: BaseComponent) {
   // components.
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
-    if (child !== null && typeof child === "object" && (child as { [IS_LIST]?: true })[IS_LIST]) {
+    if (isListNode(child)) {
       (children as { [HAS_LIST]?: boolean })[HAS_LIST] = true;
 
       // A `list()` descriptor returned STRAIGHT from render() — `return
@@ -126,8 +127,9 @@ function buildRenderOutput(component: BaseComponent) {
       // host, so nothing ever misbehaved; it simply was not the identity the
       // comment claimed, and `h.ts` stamps the live origin — the component's id —
       // for the wrapped `<ul>{list()}</ul>` form. Now the two agree.
-      const listChild = child as { owner?: unknown };
-      if (listChild.owner === undefined) listChild.owner = `${component[GLOBAL_RUNTIME].id}:g${i}`;
+      // As in `h.ts`: the cast defeats `readonly` and nothing else, because this
+      // and that one are the only two lines allowed to stamp an owner.
+      if (child.owner === undefined) (child as { owner: unknown }).owner = `${component[GLOBAL_RUNTIME].id}:g${i}`;
       // No `break`: with several lists each needs its own position.
     }
   }

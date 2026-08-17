@@ -12,7 +12,6 @@ import type {
   MaybeComponent,
   VNodeString,
   EnhancedSVGElement,
-  ListNode,
   ListRegion,
   RecordEntry,
 } from "../types/vdom";
@@ -26,7 +25,6 @@ import {
   IS_SVG,
   KEY_SYM,
   SLOT_SYM,
-  IS_LIST,
   HAS_LIST,
   CHILD_RECORD,
   ORIGIN_SYM,
@@ -34,6 +32,7 @@ import {
   PROPS_GATE,
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
+import { isListNode } from "../vdom/guards";
 import { hostTagMatches } from "../helpers/hostTag";
 import { queuePostCommit, flushAfterCommit } from "./commit";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
@@ -476,10 +475,6 @@ function findIndexOfSlot(
   if (sawStamp) return -1;
 
   return findIndexOfSimilarNodes(vchild, cloneChildren, preferredIndex, low);
-}
-
-export function isListNode(value: unknown): value is ListNode {
-  return value !== null && typeof value === "object" && (value as ListNode)[IS_LIST] === true;
 }
 
 /** A record entry is either a DOM node or a region; only the region has `owner`. */

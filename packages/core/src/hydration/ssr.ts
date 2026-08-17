@@ -2,7 +2,7 @@ import { mountNode } from "../core/DiffAndMerge";
 import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
-import { serializeComponentToJSON } from "./serialize";
+import { serializeComponentToBlob } from "./serialize";
 import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
 import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
@@ -23,6 +23,7 @@ import {
   RequestReadDuringBuild,
   setRequestScope,
 } from "./requestContext";
+import type { RequestKey } from "./requestContext";
 
 /** What `createRequestScope` hands back — opaque here; only requestContext.ts reads inside it. */
 type RequestScopeHandle = ReturnType<typeof createRequestScope> | undefined;
@@ -80,7 +81,10 @@ async function drainServerWork(work: ServerWork): Promise<void> {
 function stampBlobs(node: Node): void {
   const el = node as { _componentInstance?: object } & Element;
   if (el._componentInstance && typeof el.setAttribute === "function") {
-    el.setAttribute(STATE_ATTR, serializeComponentToJSON(el._componentInstance));
+    // Nothing at all when nothing has moved off its initial value: an empty tree of shells is
+    // around 90 bytes per component that the client would read and then do nothing with.
+    const blob = serializeComponentToBlob(el._componentInstance);
+    if (blob !== undefined) el.setAttribute(STATE_ATTR, blob);
   }
   node.childNodes.forEach(stampBlobs);
 }
@@ -107,8 +111,32 @@ export interface ServerRequestInit {
   cookies?: Map<string, string>;
   /** Request headers. */
   headers?: Headers;
-  /** Pre-resolved per-request values keyed by a `requestKey`'s label — e.g. the signed-in user. */
-  values?: Map<string, unknown>;
+  /**
+   * Pre-resolved per-request values — e.g. the signed-in user — keyed by the `requestKey` ITSELF.
+   *
+   * Not by its label, and the difference is the whole point. A label is a string the server writes
+   * and the app writes again, separately, with nothing relating the two: measured, seeding
+   * `"currentUsr"` against a key declared `"currentUser"` renders `undefined` into the page on the
+   * SERVER, with no diagnostic anywhere — the read is legitimately allowed to find nothing, because
+   * an anonymous visitor has no user, so nothing can tell the two apart. Naming the key removes the
+   * category.
+   *
+   * It is also what tells the serializer that a value may travel: `exposeToClient` is read from the
+   * key handed in here, so a page exposes what it was given rather than what some module happened to
+   * have declared by then.
+   *
+   * **An iterable of pairs rather than a `Map`, and that is not cosmetic.** A real request seeds
+   * several keys of different types at once, and `new Map([[user, …], [seats, 3]])` does not
+   * type-check: the constructor infers `K` and `V` from the first entry and then refuses the rest.
+   * An array literal is contextually typed entry by entry, so the natural spelling works — and a
+   * `Map` still assigns when it is annotated, since a `Map` is an iterable of its pairs.
+   *
+   * One limit, stated rather than worked around: the entries are heterogeneous, so TypeScript
+   * checks that each one IS a key but cannot tie each value to its own key's type.
+   * `seedRequest(key, value)` does, and is the door for anything resolved once the render is under
+   * way.
+   */
+  values?: Iterable<readonly [RequestKey<unknown>, unknown]>;
 }
 
 export interface RenderToStringOptions {

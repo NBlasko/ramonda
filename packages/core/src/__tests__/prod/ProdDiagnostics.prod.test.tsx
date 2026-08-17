@@ -200,7 +200,7 @@ describe("production diagnostics", () => {
     queueAfterCommit(() => ran.push("after"));
     flushAfterCommit();
 
-    const record = captured.records.find((r) => r.code === "RMD053");
+    const record = captured.records.find((r) => r.code === "RMD054");
     expect(record).toBeDefined();
     // The isolation this sits inside: one failure must not stop the rest of the pass.
     expect(ran).toEqual(["after"]);

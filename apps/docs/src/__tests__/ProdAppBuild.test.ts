@@ -174,7 +174,7 @@ async function build(mode: Mode): Promise<Build> {
  * - `RMD009` — production has its own blunt update-loop stop, a counter that throws
  *   before the tab freezes, and its message points at the development diagnostic that
  *   names the actual component. That pointer is the value of the message.
- * - `RMD017` / `RMD047` / `RMD053` — reported through `reportFault`, which exists so that
+ * - `RMD017` / `RMD047` / `RMD054` — reported through `reportFault`, which exists so that
  *   the few faults needing the world to go wrong can reach a collector the app installed.
  *   They ship as a code and a short sentence and nothing else; see `debug/fault.ts`.
  *
@@ -195,7 +195,7 @@ const ALLOWED_CODES: Record<string, string> = {
   RMD015: "read-only",
   RMD017: "never resumed",
   RMD047: "not memoised",
-  RMD053: "swallowed",
+  RMD054: "swallowed",
 };
 
 /** What must never reach a production build, with a name for the failure message. */

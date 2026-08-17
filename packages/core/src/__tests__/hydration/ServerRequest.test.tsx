@@ -27,7 +27,7 @@ describe("renderToString with a request", () => {
     }
 
     const html = await renderToString(<Greeting />, {
-      request: { url: new URL("https://example.com/"), values: new Map([["currentUser", { name: "Ada" }]]) },
+      request: { url: new URL("https://example.com/"), values: new Map([[currentUser, { name: "Ada" }] as const]) },
     });
     expect(html).toContain("Hello Ada");
   });
@@ -69,5 +69,43 @@ describe("without a request", () => {
     }
     const html = await renderToString(<Plain />);
     expect(html).toContain("Plain");
+  });
+
+  /**
+   * The shape a REAL server writes: several keys, of different types, seeded together.
+   *
+   * It is asserted because the obvious spelling does not work. `new Map([[user, …], [seats, 3]])`
+   * infers `K` and `V` from the first entry and then refuses every other one — so `values` takes an
+   * ITERABLE of pairs, which an array literal satisfies entry by entry. A `Map` still assigns when
+   * it is annotated. Nothing else in the suite seeds more than one key, so nothing else would
+   * notice this going back to a `Map`.
+   */
+  test("several keys of different types are seeded together", async () => {
+    const seats = requestKey<number>("seats");
+    const role = requestKey<string>("role");
+
+    @Host("main")
+    class Account extends Component {
+      render() {
+        const context = requestContext();
+        return (
+          <p>
+            {context.get(currentUser)?.name}/{String(context.get(role))}/{String(context.get(seats))}
+          </p>
+        );
+      }
+    }
+
+    const html = await renderToString(<Account />, {
+      request: {
+        url: new URL("https://example.com/"),
+        values: [
+          [currentUser, { name: "Ada" }],
+          [role, "admin"],
+          [seats, 3],
+        ],
+      },
+    });
+    expect(html).toContain("Ada/admin/3");
   });
 });

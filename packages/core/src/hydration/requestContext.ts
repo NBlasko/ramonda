@@ -54,17 +54,17 @@ export interface RequestKeyOptions {
 }
 
 /**
- * Labels declared with `exposeToClient`. Module-level because key declarations are static (module
- * scope, like a `@state` field's name), not per-request — so this registry says nothing about any
- * one visitor and cannot leak across concurrent requests. The serializer consults it to decide
- * what may travel.
+ * Declares a slot. Pure: the key it returns IS the declaration, and nothing is registered anywhere.
+ *
+ * There used to be a module-level `exposedLabels` set that this added to, which the serializer then
+ * consulted to decide what could travel. Measured, and the reason it is gone: the set was populated
+ * as a SIDE EFFECT of this call, so what a page exposed depended on whether the module declaring
+ * the key had been imported yet. The same render with the same seeded value emitted no client blob
+ * before the declaration ran and a full one after — and a key declared in a lazily-loaded route is
+ * exactly the case that loses. Exposure is read off the key now, so there is no registry to be late.
  */
-const exposedLabels = new Set<string>();
-
 export function requestKey<T>(label: string, options: RequestKeyOptions = {}): RequestKey<T> {
-  const exposeToClient = options.exposeToClient === true;
-  if (exposeToClient) exposedLabels.add(label);
-  return { label, exposeToClient };
+  return { label, exposeToClient: options.exposeToClient === true };
 }
 
 /** Read-only cookies. `get`/`has` THROW during a static build (they are per-request). */
@@ -90,6 +90,11 @@ interface RequestScope {
   cookies: Map<string, string>;
   headers: Headers;
   values: Map<string, unknown>;
+  /**
+   * The labels among `values` whose key opted into `exposeToClient` — decided when the scope is
+   * built, from the keys themselves, rather than looked up in a registry when the page is stamped.
+   */
+  exposed: Set<string>;
   /**
    * In "build" mode: the first per-request field that was read, or `undefined` if none.
    * Recorded IN ADDITION to throwing, because a read inside an async `@mounted` throws into the
@@ -119,16 +124,24 @@ export interface RequestScopeInit {
   url: URL;
   cookies?: Map<string, string>;
   headers?: Headers;
-  values?: Map<string, unknown>;
+  /** Pairs of KEY and value, not label and value — see `ServerRequestInit.values` for why. */
+  values?: Iterable<readonly [RequestKey<unknown>, unknown]>;
 }
 
 export function createRequestScope(init: RequestScopeInit): RequestScope {
+  const values = new Map<string, unknown>();
+  const exposed = new Set<string>();
+  for (const [key, value] of init.values ?? []) {
+    values.set(key.label, value);
+    if (key.exposeToClient) exposed.add(key.label);
+  }
   return {
     mode: init.mode,
     url: init.url,
     cookies: init.cookies ?? new Map(),
     headers: init.headers ?? new Headers(),
-    values: init.values ?? new Map(),
+    values,
+    exposed,
   };
 }
 
@@ -141,7 +154,7 @@ export function collectExposedRequest(scope: RequestScope | undefined): Record<s
   if (!scope) return undefined;
   let out: Record<string, unknown> | undefined;
   for (const [label, value] of scope.values) {
-    if (!exposedLabels.has(label)) continue;
+    if (!scope.exposed.has(label)) continue;
     (out ??= {})[label] = value;
   }
   return out;
@@ -164,6 +177,10 @@ export function installClientRequestScope(values: Record<string, unknown> | unde
     cookies: new Map(),
     headers: new Headers(),
     values: new Map(Object.entries(values ?? {})),
+    // Everything in the page's blob is there BECAUSE it was exposed, so the browser's copy has
+    // nothing left to decide. It is filled anyway rather than left empty: the field means "may
+    // travel", and a scope where it disagreed with `values` would be a lie waiting to be read.
+    exposed: new Set(Object.keys(values ?? {})),
   };
 }
 
@@ -187,12 +204,33 @@ export class RequestReadDuringBuild extends Error {
   }
 }
 
-function requireScope(): RequestScope {
+/**
+ * The scope, or a throw — and a RECORD beside the throw, for the same reason `guardBuild` keeps
+ * one: the throw does not always arrive anywhere.
+ *
+ * Measured on 2026-08-17, a read below the first `await` of an async `@mounted` with no
+ * `try`/`catch` around it: `renderToString` **resolves normally**, the page is served, and
+ * `console.error` is called zero times. The rejection goes into the server drain's `allSettled`
+ * and is swallowed, so the visitor gets a page missing its per-request data and nothing anywhere
+ * says so. The record survives that, which is the whole point of emitting one.
+ *
+ * Production still swallows it: every `diagnose` call site in this package is behind `__DEV__` and
+ * this is not the place to change that rule. Development is where a missing read is caught.
+ *
+ * Deduped on the FIELD rather than on the reading component, and not by preference — by the time
+ * this fires the render is over, so `renderingOwner()` is already empty and there is no component
+ * to name. `get("currentUser")` is the most specific thing in hand.
+ */
+function requireScope(field: string): RequestScope {
   if (!current) {
+    if (__DEV__) {
+      diagnose("RMD053", field, `\`requestContext().${field}\` was read with no request scope installed.`, { field });
+    }
     throw new Error(
       "[Ramonda] requestContext() was called outside a render. It is available while a page is " +
         "being rendered on the server or at build, and in the browser after `hydrateRoot`/" +
-        "`bootstrap` has started the app — not at module top level.",
+        "`bootstrap` has started the app — not at module top level. On the server it is also " +
+        "cleared before the render's first `await`, so a read below one arrives here too.",
     );
   }
   return current;
@@ -230,7 +268,7 @@ function guardBuild(field: string): void {
 export function requestContext(): RequestContext {
   return {
     get url(): URL {
-      const scope = requireScope();
+      const scope = requireScope("url");
       // Read live in the browser, so a client navigation does not leave a stale URL behind.
       if (scope.mode === "client" && typeof location !== "undefined") return new URL(location.href);
       return scope.url;
@@ -239,7 +277,7 @@ export function requestContext(): RequestContext {
       return {
         get(name: string): string | undefined {
           guardBuild(`cookies.get("${name}")`);
-          const scope = requireScope();
+          const scope = requireScope(`cookies.get("${name}")`);
           // Never exposed: a cookie is the server's, and an httpOnly one is invisible to JS anyway.
           if (scope.mode === "client") {
             reportClientRead(`cookies.get("${name}")`);
@@ -249,7 +287,7 @@ export function requestContext(): RequestContext {
         },
         has(name: string): boolean {
           guardBuild(`cookies.has("${name}")`);
-          const scope = requireScope();
+          const scope = requireScope(`cookies.has("${name}")`);
           if (scope.mode === "client") {
             reportClientRead(`cookies.has("${name}")`);
             return false;
@@ -260,7 +298,7 @@ export function requestContext(): RequestContext {
     },
     get headers(): Headers {
       guardBuild("headers");
-      const scope = requireScope();
+      const scope = requireScope("headers");
       if (scope.mode === "client") {
         reportClientRead("headers");
         return new Headers();
@@ -269,7 +307,7 @@ export function requestContext(): RequestContext {
     },
     get<T>(key: RequestKey<T>): T {
       guardBuild(`get("${key.label}")`);
-      const scope = requireScope();
+      const scope = requireScope(`get("${key.label}")`);
       if (scope.mode === "client" && !scope.values.has(key.label)) {
         // Either the key never opted into `exposeToClient`, or the server never seeded it.
         reportClientRead(`get("${key.label}")`);
@@ -287,5 +325,9 @@ export function requestContext(): RequestContext {
  * — a value that exists per request cannot exist at build.
  */
 export function seedRequest<T>(key: RequestKey<T>, value: T): void {
-  requireScope().values.set(key.label, value);
+  const scope = requireScope(`seedRequest("${key.label}")`);
+  scope.values.set(key.label, value);
+  // Read off the key, like `createRequestScope` does. Seeded mid-render used to depend on the same
+  // registry, and inherited the same lateness.
+  if (key.exposeToClient) scope.exposed.add(key.label);
 }

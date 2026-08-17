@@ -25,6 +25,19 @@ goes too.
 Compute these in `@created({ env: "server" })` and mark them [`@persist`](/ssr/env) so
 the client restores rather than recomputes — or use the client-only pattern below.
 
+The blob does not rescue the first spelling, and it is worth knowing why. A field still
+holding the primitive its own initializer produced is left out of the page: the browser
+runs the same initializer and arrives at the same value, so writing it down would be bytes
+for nothing. `Date.now()` is exactly where "the same initializer" stops being the same
+value — the browser's call answers later, and there is no server number in the page to
+overrule it. Computing in `@created({ env: "server" })` is what puts a real value in the
+blob, because a computed value is not the one the initializer produced.
+
+**A value the server EMPTIES does travel.** `this.user = undefined`, where the initializer
+gave something else, is carried as a *cleared* field rather than an absent one, so the
+browser does not put the default back. That distinction is deliberate: `undefined` cannot
+ride in JSON, and without it a signed-out visitor would see the signed-in name.
+
 **Branching on the environment in `render()`.**
 
 ```tsx

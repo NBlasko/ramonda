@@ -4,6 +4,7 @@ import { inspectPhase } from "./renderPhase";
 import { definitionOf, type SourceLocation } from "./sourceLocation";
 import { HOOK_META, type HookMeta } from "../types/HookTypes";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
+import { computeStatsOf } from "./computeStats";
 
 export interface InspectedNode {
   /**
@@ -28,6 +29,15 @@ export interface InspectedNode {
    * never read named as such. Only a consumer has this — see `CONTEXT_READS`.
    */
   reads?: Record<string, unknown>;
+  /**
+   * Per `@compute`: how many reads the cache answered, and how many ran the body.
+   *
+   * A measurement rather than a verdict. A compute that never hits may be perfectly reasonable —
+   * its dependencies may genuinely move on every pass — but the gap between "cache this" and
+   * "nothing was ever cached" is worth being able to see. Only members that have been read at all
+   * appear. See `debug/computeStats.ts`.
+   */
+  computes?: Record<string, { hits: number; misses: number }>;
   /**
    * What the instance says it holds, from its own `[INSPECT]()`.
    *
@@ -232,6 +242,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
     detail: readDetail(hook),
     options: readOptions(hook),
     reads: readContextReads(hook),
+    computes: computeStatsOf(hook),
     source: definitionOf(hook.constructor),
     hooks: readHooks(hook),
     children: [],
@@ -266,6 +277,7 @@ export function scanComponentTree(node: Node = document.body, depth = 0): Inspec
         state: readState(instance),
         detail: readDetail(instance),
         props: readProps(instance),
+        computes: computeStatsOf(instance),
         source: definitionOf(instance.constructor),
         hooks: readHooks(instance),
         children: scanComponentTree(enhanced, depth + 1),

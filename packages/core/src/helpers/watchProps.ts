@@ -1,6 +1,7 @@
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, HOOK_RUNTIME } from "../core/runtime";
 import type { BaseComponent, WatchPropEntry } from "../types/vdom";
 import { diagnose } from "../debug/diagnostics";
+import { displayName } from "./utils";
 
 /**
  * The props the entry's own owner was given.
@@ -36,10 +37,6 @@ function readWatchedProps(entry: WatchPropEntry): unknown {
   return owner[HOOK_RUNTIME]?.rawProps;
 }
 
-function ownerName(entry: WatchPropEntry): string {
-  return (entry.owner as { constructor?: { name?: string } }).constructor?.name ?? "Unknown";
-}
-
 /**
  * A selector may reach deep into props (`p => p.foo[5].bar`). If it asks for a
  * value that is not there, the access throws — caught here and turned into
@@ -61,8 +58,8 @@ function safeSelect(entry: WatchPropEntry, selector: (props: unknown) => unknown
        * that alive. So `reason` is the text a record can carry and `error` is for the console, which
        * has held live objects all along.
        */
-      diagnose("RMD038", ownerName(entry), `The selector in <${ownerName(entry)} /> threw.`, {
-        component: ownerName(entry),
+      diagnose("RMD038", displayName(entry.owner), `The selector in <${displayName(entry.owner)} /> threw.`, {
+        component: displayName(entry.owner),
         reason: e instanceof Error ? e.message : String(e),
         error: e,
       });

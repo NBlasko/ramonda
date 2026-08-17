@@ -1,6 +1,6 @@
 import { devFlags } from "../config";
 import { isPlainObject, valueEqual } from "../helpers/valueEqual";
-import { IS_LIST } from "../helpers/constants";
+import { isListNode } from "../vdom/guards";
 import type { BaseComponent } from "../types/vdom";
 import { diagnose } from "./diagnostics";
 
@@ -64,6 +64,7 @@ const MAX_NODES = 500;
 type Attributes = Record<string, unknown>;
 
 interface VNodeLike {
+  type?: unknown;
   name?: unknown;
   attributes?: Attributes;
   children?: unknown[];
@@ -109,10 +110,18 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
   return bothPrimitive ? "nondeterministic" : undefined;
 }
 
-/** A built vnode: `createRamonda` stamps every one with a `type` and a `name`. */
+/**
+ * Looks enough like a vnode to keep comparing — `type` and `name` present, and
+ * deliberately NOT `vdom/guards.ts`'s `isVNode`, which demands one of the two
+ * real `type` values.
+ *
+ * This walks two arbitrary render outputs looking for instability, so a thing
+ * that merely resembles a node is still worth descending into; the vdom's guard
+ * decides what may reach the diff, which is a promise this cannot make.
+ */
 function isVNode(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
-  const node = value as { type?: unknown; name?: unknown };
+  const node = value as VNodeLike;
   return node.type !== undefined && node.name !== undefined;
 }
 
@@ -186,9 +195,7 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
   // A `list()` descriptor. Its mapper has not run, so there is nothing deep to
   // compare — but `each` is the interesting part: rebuilt items are how a list
   // silently loses every row's identity.
-  const aList = (a as { [IS_LIST]?: true })?.[IS_LIST];
-  const bList = (b as { [IS_LIST]?: true })?.[IS_LIST];
-  if (aList && bList) {
+  if (isListNode(a) && isListNode(b)) {
     // `each` only — the BUILDER is declared inline by design, and a fresh one
     // costs nothing: an item scope is reused on `existing.item === item &&
     // !existing.dirty` (listEngine.ts), so the mapper's identity is never

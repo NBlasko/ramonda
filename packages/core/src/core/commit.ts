@@ -239,7 +239,7 @@ export function flushAfterCommit(): void {
          * included: it is written by whatever threw, which may be the app or a library it uses, and
          * a record leaving the process is the wrong place to find that out for the first time.
          */
-        reportFault("RMD053", "post-commit", "A post-commit callback threw, and the failure was swallowed.");
+        reportFault("RMD054", "post-commit", "A post-commit callback threw, and the failure was swallowed.");
       }
     }
   }

@@ -18,7 +18,7 @@ and until now nothing said a word about them afterwards either:
 - **RMD047** — `@memoizedHandler` with an argument it cannot key on. Development throws; a build
   whose affected path nobody ran rebuilds the handler on every render instead, and everything it is
   passed to re-renders with it, for the life of the page.
-- **RMD053** — a post-commit callback threw and the failure was swallowed. New code, production
+- **RMD054** — a post-commit callback threw and the failure was swallowed. New code, production
   only: in development the same failure goes to the console with the error object, which is more
   than a record can carry.
 

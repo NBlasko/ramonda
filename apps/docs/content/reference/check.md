@@ -97,6 +97,76 @@ They are not alternatives — each catches what the other cannot.
 The static one is the only one that can speak about a branch nobody has opened yet. The runtime one
 is the only one that sees a tree assembled at runtime.
 
+## Everything it reports
+
+The provider check is what the tool exists for, but it is not the only thing the walk can see —
+once the graph is built, several other questions are free to ask.
+
+**Errors.** These fail the run.
+
+| | reported when |
+|---|---|
+| A consumer with no provider above it | the whole reason above |
+| A place naming a component that cannot be followed | resolution failed and no reason was written beside it |
+| A declaration no root reaches | nothing mounts it, from any entry point |
+| A route table whose views can never appear | the table is built but its outlet is unreachable |
+| A second provider for a context that allows one | `createContext(…, { single: true })` — only `Router` sets it |
+| A ring of mounts that nothing can skip | A mounts B mounts A, with no lazy boundary to break it |
+| A component named among children | `{Panel}` where `<Panel />` was meant — also [`RMD052`](/reference/diagnostics) |
+| A class field holding a function literal | a fresh function every instance, which defeats props comparison |
+| A single-use decorator declared twice | `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange`, `@StableProps` |
+| A component reading a form field it does not watch | it will not re-render when that field changes |
+
+**Warnings.** These print and the run still passes.
+
+| | reported when |
+|---|---|
+| Reading the browser's URL rather than the router's | `window.location.pathname` in a project that has a router |
+| Writing the document instead of rendering it | `document.body.classList.add(…)` and its family |
+| Reading the request after the render yielded | `requestContext()` below an `await` — also [`RMD053`](/reference/diagnostics) |
+
+The declarative answers to the last one are on their own page:
+[reaching the document](/composition/document). A *command* — `scrollIntoView()`, `focus()`,
+`getBoundingClientRect()` — has no declarative form and is never reported.
+
+### Why a rule arrives as a warning first
+
+A new rule prints for one version and refuses in the next. A rule that is wrong about your code is
+a rule you switch off, and switching one off is how a whole tool stops being run — so a rule gets a
+version in the open, against real projects, before it is allowed to fail a build.
+
+Each of the three above was measured against every app in the Ramonda repository when it was
+written, and each reported **zero**. That is the bar: a rule that already has something to say
+about correct code is not ready.
+
+### Reading the request after the render yielded
+
+The one worth spelling out here, because its runtime half cannot always be heard.
+
+`requestContext()` is live only while the render is running. On the server that is the
+**synchronous** section — the scope is installed, the tree is mounted, and it is cleared before the
+render's first `await`. That clearing is a safety property, not an oversight: it is one value
+shared by every request the server is handling at once, and the synchronous section being atomic is
+what stops one visitor's render from reading another's user. A read below a yield finds nothing.
+
+```tsx
+@mounted async load() {
+  this.posts = await fetchPosts();
+  const user = requestContext().get(currentUser); // ✗ reported
+}
+```
+
+Taking the object early does not help — every member of it is a getter over the current request, so
+`const ctx = requestContext()` above an `await` and `ctx.get(key)` below it is the same late read,
+and is reported too. What carries a value across a yield is `@state`. The full shape is in
+[reading the request](/ssr/request#read-it-synchronously).
+
+Two things the rule deliberately leaves alone. A read **above** the first `await` is correct and
+common — an async `@created` that reads the user and then goes fetching — and so is a read inside
+an await's own operand, since `await requestContext().get(key)` evaluates before it suspends. And a
+nested callback starts a clean timeline: whether it runs before or after the enclosing yield is not
+something the source can say.
+
 ## Using it directly
 
 The analyzer is a normal export, if you want it in a script of your own:

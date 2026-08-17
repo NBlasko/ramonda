@@ -1,6 +1,7 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { HOOK_RUNTIME } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { displayName } from "../helpers/utils";
 
 interface PropSnapshot {
   value: unknown;
@@ -58,7 +59,7 @@ export function lintUnpersistedState(instance: object, before: Map<string, PropS
   const stateKeys = (instance as { [STATE_KEYS]?: Set<string> })[STATE_KEYS];
   const persistKeys = (instance as { [PERSIST_KEYS]?: Set<string> })[PERSIST_KEYS];
   const obj = instance as Record<string, unknown>;
-  const name = (instance as { constructor?: { name?: string } }).constructor?.name ?? "Unknown";
+  const name = displayName(instance);
 
   for (const key of Object.keys(obj)) {
     const value = obj[key];

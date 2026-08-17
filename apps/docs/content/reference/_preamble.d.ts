@@ -17,4 +17,7 @@ declare global {
   /** A module path the reader computed, for the dynamic-import examples on the check page. */
   const specifier: string;
   const sessionKey: RequestKey<unknown>;
+  /** The reader's own request key and their own loader, for the RMD053 examples. */
+  const currentUser: RequestKey<string>;
+  const fetchPosts: () => Promise<unknown[]>;
 }
