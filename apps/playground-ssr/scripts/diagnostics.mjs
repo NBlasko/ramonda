@@ -89,7 +89,9 @@ const blob = /data-ramonda-state="([^"]*)"/.exec(html);
 if (!blob) fail("No hydration blob in the rendered HTML, so the assertion below would prove nothing.");
 
 const decoded = blob[1].replace(/&quot;/g, '"');
-const EXPECTED_BLOB = '{"state":{},"hooks":[{"state":{"value":1}}]}';
+// `value` is 10 rather than the seed: the hook moves it in `@created`, because core omits a field
+// still holding its initial primitive and two EMPTY blobs would prove nothing about the label.
+const EXPECTED_BLOB = '{"state":{},"hooks":[{"state":{"value":10}}]}';
 if (decoded !== EXPECTED_BLOB) {
   fail(`The blob is ${decoded}, expected ${EXPECTED_BLOB} — a labelled hook must serialize like any other.`);
 }

@@ -1,6 +1,7 @@
 import { STATE_KEYS, PERSIST_KEYS } from "../helpers/constants";
 import { CHILD_HOOKS } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { displayName } from "../helpers/utils";
 import type { SerializedNode } from "./serialize";
 
 interface RestorableInstance {
@@ -9,11 +10,7 @@ interface RestorableInstance {
   [CHILD_HOOKS]?: RestorableInstance[];
 }
 
-function instanceName(instance: RestorableInstance): string {
-  return (instance as { constructor?: { name?: string } }).constructor?.name ?? "Unknown";
-}
-
-function restoreState(instance: RestorableInstance, state: Record<string, unknown>): void {
+function restoreState(instance: RestorableInstance, node: SerializedNode): void {
   const target = instance as unknown as Record<string, unknown>;
 
   // Only restore keys this instance actually declares (@state / @persist), so a
@@ -22,18 +19,31 @@ function restoreState(instance: RestorableInstance, state: Record<string, unknow
   const apply = (keys: Set<string> | undefined) => {
     if (!keys) return;
     for (const key of keys) {
-      if (Object.prototype.hasOwnProperty.call(state, key)) {
-        target[key] = state[key];
+      if (Object.prototype.hasOwnProperty.call(node.state, key)) {
+        target[key] = node.state[key];
       }
     }
   };
 
   apply(instance[STATE_KEYS]);
   apply(instance[PERSIST_KEYS]);
+
+  // Keys the server EMPTIED. They travel apart from `state` because JSON cannot carry `undefined`
+  // (`JSON.stringify({ x: undefined })` is `{}`), so without this a field the server cleared is
+  // indistinguishable from one it never touched — and the browser's own initializer puts the old
+  // value back. Measured before the fix: a `@state name = "Ada"` cleared on the server came up
+  // "Ada" again in the browser.
+  //
+  // Asked of the SAME two sets the writes above go through, rather than collected into one while
+  // walking them: a page where nothing was cleared — which is nearly every page — must not pay for
+  // a Set it never reads. Hydration is the one pass a visitor waits through.
+  for (const key of node.cleared ?? []) {
+    if (instance[STATE_KEYS]?.has(key) || instance[PERSIST_KEYS]?.has(key)) target[key] = undefined;
+  }
 }
 
 function restoreNode(instance: RestorableInstance, node: SerializedNode): void {
-  restoreState(instance, node.state);
+  restoreState(instance, node);
 
   const childHooks = instance[CHILD_HOOKS] ?? [];
   const serializedHooks = node.hooks ?? [];
@@ -41,9 +51,9 @@ function restoreNode(instance: RestorableInstance, node: SerializedNode): void {
   if (__DEV__ && childHooks.length !== serializedHooks.length) {
     diagnose(
       "RMD035",
-      instanceName(instance),
-      `<${instanceName(instance)}> built ${childHooks.length} hook(s) and the server serialized ${serializedHooks.length}.`,
-      { component: instanceName(instance), client: childHooks.length, server: serializedHooks.length },
+      displayName(instance),
+      `<${displayName(instance)}> built ${childHooks.length} hook(s) and the server serialized ${serializedHooks.length}.`,
+      { component: displayName(instance), client: childHooks.length, server: serializedHooks.length },
     );
   }
 

@@ -1,5 +1,6 @@
 import type { VNode, ListNode } from "../types/vdom";
 import { IS_LIST, attach, detach } from "../helpers/constants";
+import { isListNode } from "../vdom/guards";
 import { trackerContainer } from "../reactivity/tracker";
 import type { State } from "../reactivity/State";
 import { diagnose } from "../debug/diagnostics";
@@ -19,9 +20,7 @@ let scopeSequence = 0;
  */
 function describe(value: unknown): string {
   if (Array.isArray(value)) return "an array";
-  if (value !== null && typeof value === "object" && (value as { [IS_LIST]?: true })[IS_LIST]) {
-    return "a nested `list()`";
-  }
+  if (isListNode(value)) return "a nested `list()`";
   return `a ${typeof value}`;
 }
 

@@ -1,6 +1,6 @@
 import { diagnose } from "./diagnostics";
 import type { MaybeComponent } from "../types/vdom";
-import { IS_LIST } from "../helpers/constants";
+import { isListNode, isVNode } from "../vdom/guards";
 
 /**
  * Checks a child list for key mistakes reconciliation cannot recover from.
@@ -24,15 +24,16 @@ function scanKeys(vnodeChildren: unknown[], owner: MaybeComponent): void {
   let seen: Set<string> | undefined;
 
   for (const rawChild of vnodeChildren) {
-    if (rawChild == null || typeof rawChild !== "object") continue;
-
-    const list = rawChild as { [IS_LIST]?: true; vnodes?: unknown[] };
-    if (list[IS_LIST] && list.vnodes) {
-      scanKeys(list.vnodes, owner);
+    // A built list is its own key space, so it is scanned as one. A descriptor
+    // whose items have not been built yet has no `vnodes` and nothing to scan.
+    if (isListNode(rawChild)) {
+      if (rawChild.vnodes) scanKeys(rawChild.vnodes, owner);
       continue;
     }
 
-    const key = (rawChild as { attributes?: { key?: unknown } }).attributes?.key;
+    if (!isVNode(rawChild)) continue;
+
+    const key = rawChild.attributes?.key;
     if (key == null) continue;
 
     const asString = String(key);

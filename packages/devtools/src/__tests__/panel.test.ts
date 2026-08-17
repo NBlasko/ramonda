@@ -22,6 +22,8 @@ interface Node {
   detail?: Record<string, unknown>;
   props?: Record<string, unknown>;
   options?: Record<string, unknown>;
+  /** Per `@compute`: reads the cache answered, and reads that ran the body. */
+  computes?: Record<string, { hits: number; misses: number }>;
   hooks: Node[];
   children: Node[];
   node?: unknown;
@@ -2194,5 +2196,61 @@ describe("what an instance holds", () => {
     const panel = mount(() => [node("App", "component", { detail: { rows: 3 }, children: [] })]);
 
     expect(blockKeys(panel, "Holds")).toEqual(["rows"]);
+  });
+});
+
+describe("what a @compute's cache did", () => {
+  /**
+   * A `@compute` claims a value is worth caching. The claim can be false in a way nothing else
+   * reports — the compute is invalidated by something that moves on every pass, so every read runs
+   * the body and the cache is pure overhead, with a correct answer and nothing looking wrong.
+   *
+   * The panel SHOWS it and stops short of calling it wrong, because it may not be: a compute whose
+   * dependencies genuinely move every time would be no cheaper as a plain getter. The reader is the
+   * one who can tell, and the row gives them the numbers to tell with.
+   */
+  it("says when a cache was never used, and keeps the numbers beside it", () => {
+    const panel = mount(() => [
+      node("App", "component", {
+        computes: { total: { hits: 0, misses: 41 }, label: { hits: 18, misses: 3 } },
+      }),
+    ]);
+
+    const text = panel.shadowRoot.textContent ?? "";
+    expect(text).toContain("never cached — ran on all 41 reads");
+    expect(text).toContain("18 of 21 reads cached");
+    // The heading is the neutral one. It was nearly "Wasted computes", which is a verdict the
+    // panel is not entitled to: a compute whose dependencies genuinely move every time is
+    // correct code and would have been sitting under that word.
+    expect(text).toContain("Computed");
+  });
+
+  /**
+   * The numbers move on a tick without the tree being rebuilt.
+   *
+   * They have to arrive through the VALUE path rather than the signature path: the signature is
+   * built from key names only, so a hit count changing is invisible to it — by design, because a
+   * counter that ticked four times a second would rebuild the whole tree four times a second and
+   * take the reader's open rows, selection and scroll with it. If the numbers ever stop updating,
+   * this is the test that says so.
+   */
+  it("updates the numbers in place, without rebuilding the tree", () => {
+    let hits = 0;
+    const panel = mount(() => [node("App", "component", { computes: { total: { hits, misses: 5 } } })]);
+
+    const row = panel.shadowRoot.querySelector(".comp-summary");
+    expect(panel.shadowRoot.textContent).toContain("never cached — ran on all 5 reads");
+
+    hits = 7;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(panel.shadowRoot.textContent).toContain("7 of 12 reads cached");
+    // The same element: an in-place value write, not a rebuild.
+    expect(panel.shadowRoot.querySelector(".comp-summary")).toBe(row);
+  });
+
+  it("shows no section for a component with no computes", () => {
+    const panel = mount(() => [node("App", "component", {})]);
+    expect(panel.shadowRoot.textContent ?? "").not.toContain("Computed");
   });
 });

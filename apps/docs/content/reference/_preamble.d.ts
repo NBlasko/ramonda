@@ -15,4 +15,7 @@ declare global {
   /** The reader's own lookup, for the async-validation examples. */
   const taken: (value: string) => Promise<boolean>;
   const sessionKey: RequestKey<unknown>;
+  /** The reader's own request key and their own loader, for the RMD053 examples. */
+  const currentUser: RequestKey<string>;
+  const fetchPosts: () => Promise<unknown[]>;
 }

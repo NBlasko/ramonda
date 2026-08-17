@@ -94,28 +94,31 @@ describe("on the server", () => {
     expect(html).not.toContain("required");
   });
 
-  test("every watched component ships a counter it does not need", async () => {
+  test("a watched component ships no hydration blob at all", async () => {
     /**
-     * The cost of the design, written down rather than discovered later.
+     * What the design used to cost, and no longer does.
      *
-     * The subscription is a `@state` counter, because that is the only thing that attaches the owning
-     * component's rebuild — and `@state` MEANS "serialize me into the hydration blob". So every watched
-     * field puts `{"version":0}` in the markup: always zero on the server, and restoring zero is a
-     * no-op, so the bytes buy nothing.
+     * The subscription is a `@state` counter, because that is the only thing that attaches the
+     * owning component's rebuild — and `@state` MEANS "serialize me into the hydration blob". So
+     * every watched field used to put `{"version":0}` in the markup: always zero on the server, and
+     * restoring zero is a no-op, so the bytes bought nothing. Measured here on 2026-08-17 before the
+     * fix: **8 blobs, 942 of 1935 bytes** of this page were hydration state. At 300 rows that was
+     * around 17 KB of markup saying nothing.
      *
-     * Measured here rather than asserted as a limit: what a threshold would pin is the serializer's
-     * format, which is not this package's to promise. The number is the point — at 300 rows it is
-     * around 17 KB of markup saying nothing, and the fix belongs in core, where a `@state` still holding
-     * its initial value could be left out of the blob entirely.
+     * Core leaves a field out of the blob while it still holds the primitive its own initializer
+     * produced (`hydration/serialize.ts`), so this page now ships none — every piece of state on it
+     * is untouched on the server. The counter is still there and still does its job; it simply is
+     * not written down.
+     *
+     * Asserted as ZERO rather than as a threshold: a number would pin the serializer's format, which
+     * is not this package's to promise, while "nothing on this page has moved, so nothing is
+     * written" is a claim about behaviour.
      */
     const html = await renderToString(<Page />);
     const blobs = html.match(/data-ramonda-state="[^"]*"/g) ?? [];
-    const bytes = blobs.reduce((total, blob) => total + blob.length, 0);
 
-    // One per watched component, plus the page: the form, the email field, five rows, the button.
-    expect(blobs.length).toBe(ROWS + 3);
-    expect(blobs.filter((blob) => blob.includes("version"))).toHaveLength(ROWS + 3);
-    console.log(`[form] SSR: ${blobs.length} blobs, ${bytes} of ${html.length} bytes are hydration state`);
+    expect(blobs).toHaveLength(0);
+    console.log(`[form] SSR: ${blobs.length} blobs, ${html.length} bytes of markup`);
   });
 });
 

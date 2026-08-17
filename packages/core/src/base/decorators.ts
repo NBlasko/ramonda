@@ -1,6 +1,16 @@
-import { attach, detach, HOST_META, HOST_TAG, STATE_KEYS, PERSIST_KEYS, PROPS_GATE } from "../helpers/constants";
+import {
+  attach,
+  detach,
+  HOST_META,
+  HOST_TAG,
+  STATE_KEYS,
+  PERSIST_KEYS,
+  PROPS_GATE,
+  INITIAL_PRIMITIVES,
+} from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
+import { displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
 import { trackerContainer, trackDependency } from "../reactivity/tracker";
@@ -12,6 +22,7 @@ import { claimMember } from "../debug/claimMember";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
+import { registerCompute, type ComputeCounters } from "../debug/computeStats";
 import { STABLE_PROPS } from "../helpers/constants";
 import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
 import {
@@ -252,6 +263,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
     const self = this as any;
     if (!self[STATE_KEYS]) self[STATE_KEYS] = new Set();
     self[STATE_KEYS].add(contextName);
+    rememberInitialPrimitive(this, contextName, initialValue);
 
     // Two capabilities, because `@state` gives a field both: a signal, and a place in the hydration
     // blob. Claiming the second is what lets `@persist` beside it be recognised as adding nothing.
@@ -913,7 +925,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
        * object is standing in for.
        */
       if (__DEV__) {
-        const owner = (this as { constructor: { name: string } }).constructor.name;
+        const owner = displayName(this);
         /**
          * Reported AND thrown, the way a props write is (RMD004, RMD015).
          *
@@ -953,7 +965,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
       // with the handler, so it is frozen for every later call.
       const previousMemoPhase = __DEV__ ? memoPhase.label : undefined;
       if (__DEV__) {
-        memoPhase.label = `${(this as { constructor: { name: string } }).constructor.name}.${String(context.name)}`;
+        memoPhase.label = `${displayName(this)}.${String(context.name)}`;
       }
 
       let fn: unknown;
@@ -977,6 +989,24 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
  * (and be restored from) the hydration JSON. Use it for set-once, render-relevant
  * state that isn't a signal. Must hold a JSON-serializable value.
  */
+/**
+ * Remembers what a serialized field's own initializer produced, so the serializer can leave it out
+ * of the hydration blob while it still holds that value.
+ *
+ * Only a PRIMITIVE is remembered, and the reason is correctness rather than thrift: an in-place
+ * mutation keeps the very object the initializer produced, so an identity test on an object would
+ * call a filled array untouched and hand the client an empty one. Measured — `this.rows.push(…)`
+ * reaches the blob today, RMD005 and all. A primitive has no in-place to mutate.
+ *
+ * The record is one plain object per instance, and only for instances that have primitive state.
+ * It buys markup bytes on every page the server sends, which is why it is not behind `__DEV__`.
+ */
+function rememberInitialPrimitive(instance: object, key: string, value: unknown): void {
+  if (value !== null && (typeof value === "object" || typeof value === "function")) return;
+  const holder = instance as { [INITIAL_PRIMITIVES]?: Record<string, unknown> };
+  (holder[INITIAL_PRIMITIVES] ??= {})[key] = value;
+}
+
 export function persist(_value: unknown, context: EnhancedClassFieldDecoratorContext) {
   if (__DEV__) {
     // Same silent failure as @state on a method, with less to notice: the name
@@ -990,6 +1020,7 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
     const self = this as unknown as { [PERSIST_KEYS]?: Set<string> };
     if (!self[PERSIST_KEYS]) self[PERSIST_KEYS] = new Set();
     self[PERSIST_KEYS].add(contextName);
+    rememberInitialPrimitive(this, contextName, (this as unknown as Record<string, unknown>)[contextName]);
 
     // The same capability `@state` claims, which is the whole point: on a field that is already
     // `@state`, this adds nothing.
@@ -1497,12 +1528,39 @@ export function compute<T, R>(
       },
     };
 
+    /**
+     * Development only, and read by the devtools panel: how many reads this cache answered, and how
+     * many ran the body.
+     *
+     * A closure variable rather than two fields on `cache`, and rather than a WeakMap keyed by
+     * instance. On `cache` they cost 16 bytes of production bundle and two hidden-class slots per
+     * compute per instance, measured, for something no production build can read; in a WeakMap they
+     * would put a lookup on the hot path of every compute read, which is the path being measured.
+     * **Every use is guarded by `__DEV__` FIRST, and that ordering is load-bearing.** Written as
+     * `const counters = __DEV__ ? {…} : undefined` with a later `if (counters)`, esbuild folded the
+     * ternary but did NOT propagate the constant into the branch — measured, the counters and both
+     * increments shipped to production. With the literal leading each guard, the minifier sees
+     * `if (false)` and deletes the block.
+     */
+    let counters: ComputeCounters | undefined;
+    if (__DEV__) {
+      counters = { hits: 0, misses: 0 };
+      registerCompute(this, String(context.name), counters);
+    }
+
     const invalidate = () => {
       cache.isDirty = true;
     };
 
     Object.defineProperty(this, context.name, {
       get() {
+        if (__DEV__ && counters) {
+          // Counted at the top, before the branch clears the flag. A compute whose reads are all
+          // misses is paying for a cache it never uses — not necessarily wrong, which is why this
+          // is a number in the panel rather than a diagnostic. See `debug/computeStats.ts`.
+          if (cache.isDirty) counters.misses++;
+          else counters.hits++;
+        }
         if (cache.isDirty) {
           // Synchronously detach from the old State dependencies.
           for (const dep of cache.deps) {
@@ -1519,9 +1577,7 @@ export function compute<T, R>(
           // the tracker, so a nested read unwinds back to the outer compute.
           const prevComputePhase = __DEV__ ? computePhase.label : undefined;
           if (__DEV__) {
-            computePhase.label = `${
-              (this as { constructor: { name: string } }).constructor.name
-            }.${String(context.name)}`;
+            computePhase.label = `${displayName(this)}.${String(context.name)}`;
           }
 
           try {

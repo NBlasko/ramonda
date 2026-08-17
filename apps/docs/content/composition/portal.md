@@ -147,3 +147,6 @@ the "inline" case above.
 ## Next
 
 - [Head and metadata](/ssr/head) — the portal you will reach for most.
+
+A portal is one of three ways to affect the page outside your own subtree — see
+[reaching the document](/composition/document) for which to reach for when.

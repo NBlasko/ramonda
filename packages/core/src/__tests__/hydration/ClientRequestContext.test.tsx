@@ -4,7 +4,13 @@ import { Host, state, created } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { bootstrap } from "../../index";
-import { requestContext, requestKey, setRequestScope } from "../../hydration/requestContext";
+import {
+  requestContext,
+  requestKey,
+  seedRequest,
+  setRequestScope,
+  type RequestKey,
+} from "../../hydration/requestContext";
 import { resetDiagnostics } from "../../debug/diagnostics";
 import { REQUEST_ATTR } from "../../helpers/constants";
 
@@ -47,13 +53,17 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const request = (values: [string, unknown][]) => ({
+// Seeded by the KEY. A label cannot be written here at all now — that is the point of the type.
+const request = (values: [RequestKey<unknown>, unknown][]) => ({
   url: new URL("https://example.com/account"),
   cookies: new Map([["session", "secret-cookie"]]),
   values: new Map(values),
 });
 
-async function serverThenHydrate(vnode: Parameters<typeof renderToString>[0], values: [string, unknown][]) {
+async function serverThenHydrate(
+  vnode: Parameters<typeof renderToString>[0],
+  values: [RequestKey<unknown>, unknown][],
+) {
   const html = await renderToString(vnode, { request: request(values) });
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -71,8 +81,8 @@ describe("the server sends only what opted in", () => {
     }
 
     const { html } = await serverThenHydrate(<Page />, [
-      ["currentUser", { name: "Ada" }],
-      ["sessionId", "s-123"],
+      [currentUser, { name: "Ada" }],
+      [sessionId, "s-123"],
     ]);
 
     expect(html).toContain(REQUEST_ATTR);
@@ -88,8 +98,81 @@ describe("the server sends only what opted in", () => {
         return <p>x</p>;
       }
     }
-    const { html } = await serverThenHydrate(<Page />, [["sessionId", "s-123"]]);
+    const { html } = await serverThenHydrate(<Page />, [[sessionId, "s-123"]]);
     expect(html).not.toContain(REQUEST_ATTR);
+  });
+
+  /**
+   * The lateness that used to be possible, and why it cannot happen now.
+   *
+   * `exposedLabels` was a module-level set that `requestKey` added to as a side effect, and the
+   * serializer consulted it when stamping the page — so what a page exposed depended on whether
+   * the module declaring the key had been IMPORTED yet. Measured against the old code: the same
+   * render with the same seeded value emitted no blob before the declaration ran and a full one
+   * after, which is what a key declared in a lazily-loaded route would have hit.
+   *
+   * **What closed it is the seed taking the KEY**, not exposure moving off the registry: you
+   * cannot seed without holding the key, and holding it means `requestKey` has already run. The
+   * registry became unreachable rather than wrong, and was deleted because dead state is worth
+   * deleting. So this test asserts the property that survives — a key declared at any point is
+   * exposed on the strength of itself — and deliberately does NOT claim to catch the old bug,
+   * which no test can reach through this door any more.
+   */
+  test("exposure rides the key, whenever it was declared", async () => {
+    const lateKey = requestKey<string>("declaredLate", { exposeToClient: true });
+
+    @Host("main")
+    class Page extends Component {
+      render() {
+        return <p>x</p>;
+      }
+    }
+    const { html } = await serverThenHydrate(<Page />, [[lateKey, "carried"]]);
+    expect(html).toContain(REQUEST_ATTR);
+    expect(html).toContain("carried");
+  });
+
+  /**
+   * A value seeded DURING the render travels too, and this one is a real guard.
+   *
+   * `seedRequest` is the door for anything resolved once the render is under way, and it used to
+   * lean on the same module-level registry for exposure. Moving exposure onto the scope meant this
+   * call had to start marking it itself — and planting the missing line is caught by exactly this
+   * test and nothing else in the suite, which is why it is here.
+   */
+  test("a value seeded mid-render is exposed on the strength of its own key", async () => {
+    const midRender = requestKey<string>("midRender", { exposeToClient: true });
+    const midRenderPrivate = requestKey<string>("midRenderPrivate");
+
+    @Host("main")
+    class Page extends Component {
+      @created init() {
+        seedRequest(midRender, "resolved-late");
+        seedRequest(midRenderPrivate, "server-only");
+      }
+      render() {
+        return <p>x</p>;
+      }
+    }
+    const { html } = await serverThenHydrate(<Page />, []);
+    expect(html).toContain("resolved-late");
+    expect(html).not.toContain("server-only");
+  });
+
+  test("a label cannot be seeded at all — only a key", async () => {
+    @Host("main")
+    class Page extends Component {
+      render() {
+        return <p>x</p>;
+      }
+    }
+    const { html } = await serverThenHydrate(<Page />, [
+      // @ts-expect-error a label is not a key, which is the whole point of the type
+      ["currentUser", { name: "Ada" }],
+    ]);
+    // It still renders — the guard is the type, not a runtime refusal, because at runtime a
+    // string simply never matches a key and there is nothing to report.
+    expect(html).toContain("x");
   });
 
   test("a cookie is never exposed, even when read during the render", async () => {
@@ -103,7 +186,7 @@ describe("the server sends only what opted in", () => {
         return <p>ok</p>;
       }
     }
-    const { html } = await serverThenHydrate(<Page />, [["currentUser", { name: "Ada" }]]);
+    const { html } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
     // It reached the server render (the @state proves the read worked) but is not in the blob.
     expect(html).toContain("secret-cookie"); // via @state, which the app chose to keep
     const root = document.body.querySelector(`[${REQUEST_ATTR}]`);
@@ -119,7 +202,7 @@ describe("the browser reads what was exposed", () => {
         return <p>x</p>;
       }
     }
-    const { container } = await serverThenHydrate(<Page />, [["currentUser", { name: "Ada" }]]);
+    const { container } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
 
     hydrateRoot(<Page />, container);
     expect(requestContext().get(currentUser)).toEqual({ name: "Ada" });
@@ -134,7 +217,7 @@ describe("the browser reads what was exposed", () => {
       }
     }
 
-    const { html, container } = await serverThenHydrate(<Greeting />, [["currentUser", { name: "Ada" }]]);
+    const { html, container } = await serverThenHydrate(<Greeting />, [[currentUser, { name: "Ada" }]]);
     expect(html).toContain("Hello ");
     expect(html).toContain("Ada");
 
@@ -150,7 +233,7 @@ describe("the browser reads what was exposed", () => {
         return <p>x</p>;
       }
     }
-    const { container } = await serverThenHydrate(<Page />, [["currentUser", { name: "Ada" }]]);
+    const { container } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
     hydrateRoot(<Page />, container);
     expect(requestContext().url.href).toBe(window.location.href);
   });
@@ -164,7 +247,7 @@ describe("what was not exposed reports instead of throwing", () => {
         return <p>x</p>;
       }
     }
-    const { container } = await serverThenHydrate(<Page />, [["sessionId", "s-123"]]);
+    const { container } = await serverThenHydrate(<Page />, [[sessionId, "s-123"]]);
     hydrateRoot(<Page />, container);
 
     expect(requestContext().get(sessionId)).toBeUndefined();
@@ -178,7 +261,7 @@ describe("what was not exposed reports instead of throwing", () => {
         return <p>x</p>;
       }
     }
-    const { container } = await serverThenHydrate(<Page />, [["currentUser", { name: "Ada" }]]);
+    const { container } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
     hydrateRoot(<Page />, container);
 
     expect(requestContext().cookies.get("session")).toBeUndefined();
