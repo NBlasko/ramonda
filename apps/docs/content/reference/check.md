@@ -104,7 +104,18 @@ The analyzer is a normal export, if you want it in a script of your own:
 ```ts
 import { analyzeProject } from "@ramonda/check";
 
-const { issues, counts } = analyzeProject("tsconfig.json");
+const { issues, counts, findings } = analyzeProject("tsconfig.json");
+```
+
+`issues` is the context check — the one this page opened with. `findings` is every other rule's,
+keyed by the rule's name and typed as that rule's own issue:
+
+```ts
+const { findings } = analyzeProject("tsconfig.json");
+
+for (const field of findings["arrow-fields"]) {
+  console.log(`${field.file}:${field.line} — ${field.component}.${field.field}`);
+}
 ```
 
 `typescript` is a peer dependency: the analyzer uses **your** compiler, so it reads your syntax and

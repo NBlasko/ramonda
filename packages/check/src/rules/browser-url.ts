@@ -47,10 +47,35 @@ const ROUTER_ANSWER: Record<string, string> = {
  * one version that says so, the next that refuses. Nothing in this repository trips it today —
  * measured — so the first version costs nobody a red build while it is being tried.
  */
-export const browserUrl: Rule<BrowserUrlIssue> = {
+export const browserUrl = {
   id: "browser-url",
   needs: "@ramonda/router",
   exempt: "@ramonda/router/",
+
+  report: {
+    severity: "warn",
+    // Components, not reads — four reads in one class is one component with a habit, and saying
+    // "4 component(s)" of a file that has one is a count nobody can reconcile with what follows.
+    heading: (found) => {
+      const guilty = new Set(found.map((read) => read.component)).size;
+      return (
+        `${guilty} component(s) reading the browser's URL, not the router's` +
+        `${found.length === guilty ? "" : ` — ${found.length} reads`}:`
+      );
+    },
+    lines: (read) => [
+      `  ${read.file}:${read.line}:${read.column}`,
+      `    <${read.component}> reads \`${read.read}\`` +
+        (read.instead ? ` — the router answers this with \`${read.instead}\`.` : "."),
+    ],
+    advice:
+      "The two are the same fact from two sources, and only one of them is reactive: read from the\n" +
+      "router, a component re-renders when the route moves; read from `window`, it is a snapshot\n" +
+      "taken once and never corrected, so the page quietly goes out of date. The router also keeps a\n" +
+      "distinction the URL hands over as one string — `#tab=film` is route state, `#a-section` names\n" +
+      "an element — so a hash tag with no value is a section and one with a value is not.\n\n" +
+      "This is a warning today and an error in a later version.",
+  },
 
   read(cls, { self, resolve }) {
     const found: BrowserUrlIssue[] = [];
@@ -102,4 +127,4 @@ export const browserUrl: Rule<BrowserUrlIssue> = {
 
     return found;
   },
-};
+} as const satisfies Rule<BrowserUrlIssue>;

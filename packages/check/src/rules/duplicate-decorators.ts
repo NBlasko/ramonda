@@ -113,8 +113,71 @@ function decoratorName(decorator: ts.Decorator): string | undefined {
   return ts.isIdentifier(expression) ? expression.text : undefined;
 }
 
-export const duplicateDecorators: Rule<DuplicateDecoratorIssue> = {
+/**
+ * Which declaration is in effect, said per decorator KIND, because the two are opposite.
+ *
+ * The rule is the same for both — the last one APPLIED stands — but a member decorator initialises
+ * top-to-bottom while a class decorator applies bottom-up, so "last applied" is the lowest
+ * declaration in one case and the highest in the other. Measured in core's
+ * `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`. Naming the wrong one is worse
+ * than naming neither: it points at the line that works.
+ */
+const inEffect = (kind: DuplicateDecoratorIssue["kind"]): string =>
+  kind === "member"
+    ? "the LOWEST is the one that runs (members initialise top to bottom, so it is applied last)"
+    : "the HIGHEST is the one that runs (class decorators apply bottom-up, so it is applied last)";
+
+/**
+ * One sentence per EFFECT, because "one of them never runs" is true of `@catchError` and false of
+ * the other three.
+ *
+ * `@Host` throws, so there is no live line to find. `@StableProps` merges, so nothing was lost.
+ * A doubled `@state` behaves exactly like a single one — measured, one render per write and the
+ * right value. Sending a reader after a difference that is not there is worse than saying less.
+ * One report, four faults, four pieces of advice.
+ */
+const said = (issue: DuplicateDecoratorIssue): string => {
+  if (issue.effect === "refuses") {
+    return (
+      "it THROWS — the class never loads, so there is no live declaration to look for.\n    " +
+      "Two answers to what it asks have no union. Keep the one you meant."
+    );
+  }
+  if (issue.effect === "displaces") {
+    return `there is one answer to what it asks, so ${inEffect(issue.kind)}\n    and the rest never run. Keep one and combine what they do.`;
+  }
+  if (issue.effect === "merges") {
+    return (
+      "they MERGE — both take effect and the result is the union, so nothing is lost.\n    " + "Write them as one call."
+    );
+  }
+  return (
+    "applying it twice changes nothing. The behaviour is identical to one, so this is a\n    " +
+    "mistaken belief rather than a broken program. Delete the extras."
+  );
+};
+
+export const duplicateDecorators = {
   id: "duplicate-decorators",
+
+  report: {
+    severity: "error",
+    heading: (found) => `${found.length} class(es) declaring a single-use decorator twice:`,
+    lines: (issue) => {
+      // The member is named for a `redundant` report, because that count is per member: without it,
+      // "declares @state 2 times" reads like a claim about the class, which is a different fault.
+      const where = issue.member === undefined ? `<${issue.component}>` : `${issue.component}.${issue.member} carries`;
+      return [
+        `  ${issue.file}:${issue.line}:${issue.column}`,
+        `    ${where}${issue.member === undefined ? " declares" : ""} @${issue.decorator} ` +
+          `${issue.count} times — ${said(issue)}`,
+        "",
+      ];
+    },
+    advice:
+      "A SUBCLASS declaring its own is an override, not a duplicate — only declarations on one\n" +
+      "class body are counted here.",
+  },
 
   read(cls, { self }) {
     const found: DuplicateDecoratorIssue[] = [];
@@ -184,4 +247,4 @@ export const duplicateDecorators: Rule<DuplicateDecoratorIssue> = {
 
     return found;
   },
-};
+} as const satisfies Rule<DuplicateDecoratorIssue>;

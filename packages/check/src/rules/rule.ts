@@ -29,9 +29,43 @@ import type ts from "typescript";
  * that one question and the whole of it — `browser-url` uses "resolves to nothing" to tell the
  * browser's `location` from a local of the same name, which costs no type at all.
  */
+/**
+ * How a rule says what it found.
+ *
+ * On the rule rather than in the CLI, and that is the point of it. The reporting was fourteen
+ * hand-written blocks in `cli.ts`, each with its own heading, its own per-issue line and its own
+ * closing paragraph — twenty-odd lines of prose per rule, in a file that knows nothing about the
+ * rule. The prose has to live somewhere; beside the rule it explains is the only place where the
+ * two can be read together and where changing one makes the other obviously stale.
+ *
+ * What that buys is that `cli.ts` stops growing. Adding a rule adds a file; it adds no line to the
+ * command that prints it, and no clause to the sentence that says everything is fine.
+ */
+export interface Report<Issue> {
+  /**
+   * `warn` says so and lets the build through; `error` fails it.
+   *
+   * A new rule is a warning first and an error in a later version — the repository's rule, and the
+   * README's argument: a gate that fails a build on something nobody has seen yet is a gate people
+   * switch off. It also decides the stream, so a warning cannot be mistaken for a failure in a log.
+   */
+  severity: "warn" | "error";
+
+  /** The line that opens the section, given everything this rule found. */
+  heading(found: readonly Issue[]): string;
+
+  /** The lines for ONE finding — the place, then what was found there. */
+  lines(issue: Issue): string[];
+
+  /** What to do about it, printed once under the list rather than once per finding. */
+  advice: string;
+}
+
 export interface Rule<Issue> {
   /** Stable name, used in messages and in tests. Kebab-case, like the file. */
   id: string;
+
+  report: Report<Issue>;
 
   /**
    * A package the project must import before this rule means anything.
@@ -81,6 +115,7 @@ export interface RuleSubject {
  */
 export interface ModuleRule<Issue> {
   id: string;
+  report: Report<Issue>;
   needs?: string;
   read(file: ts.SourceFile, context: ModuleContext): Issue[];
 }

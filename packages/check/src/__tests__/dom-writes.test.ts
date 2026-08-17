@@ -21,7 +21,7 @@ describe("a component writing the document instead of rendering it", () => {
    * state onto the document.
    */
   test("every shape of write is reported", () => {
-    expect(run().domWrites.map((w) => w.wrote)).toEqual([
+    expect(run().findings["dom-writes"].map((w) => w.wrote)).toEqual([
       "document.documentElement.classList.toggle",
       "document.body.className",
       "document.body.style.overflow",
@@ -40,7 +40,7 @@ describe("a component writing the document instead of rendering it", () => {
    * would be a rule people switch off, and it would be wrong: there is nothing else to write.
    */
   test("a command is not a write", () => {
-    expect(run().domWrites.some((w) => w.component === "Commanding")).toBe(false);
+    expect(run().findings["dom-writes"].some((w) => w.component === "Commanding")).toBe(false);
   });
 
   /**
@@ -49,7 +49,7 @@ describe("a component writing the document instead of rendering it", () => {
    * rather than needing a case of its own.
    */
   test("an element the component built itself is left alone", () => {
-    expect(run().domWrites.some((w) => w.component === "Building")).toBe(false);
+    expect(run().findings["dom-writes"].some((w) => w.component === "Building")).toBe(false);
   });
 
   /**
@@ -58,7 +58,7 @@ describe("a component writing the document instead of rendering it", () => {
    */
   test("it does not fail the run", () => {
     const result = run();
-    expect(result.domWrites.length).toBeGreaterThan(0);
+    expect(result.findings["dom-writes"].length).toBeGreaterThan(0);
     expect(result.issues).toEqual([]);
     expect(result.unresolved).toEqual([]);
   });

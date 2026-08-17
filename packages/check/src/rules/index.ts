@@ -1,7 +1,13 @@
 import type ts from "typescript";
 import type { ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
+import { arrowFields } from "./arrow-fields";
+import { browserUrl } from "./browser-url";
+import { domWrites } from "./dom-writes";
+import { duplicateDecorators } from "./duplicate-decorators";
+import { unsplittableImport } from "./unsplittable-import";
+import { unwatchedFields } from "./unwatched-fields";
 
-export type { ModuleContext, ModuleRule, Rule, RuleContext, RuleSubject } from "./rule";
+export type { ModuleContext, ModuleRule, Report, Rule, RuleContext, RuleSubject } from "./rule";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
@@ -11,61 +17,110 @@ export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 
 /**
- * A rule paired with the list its findings go into.
+ * Every rule that reads a CLASS, in the order their sections are printed.
  *
- * The analyzer keeps one named array per rule because `AnalyzeResult` publishes them that way, and
- * a rule returns its own issue type — so something has to hold the two together without erasing
- * either. This does, and the two casts are the whole of the untyped surface: they are sound because
- * a `Bound` can only be built by {@link bind}, which sees both halves at once and proves they match.
+ * A tuple rather than an array, and `as const` rather than an annotation, because both are
+ * load-bearing: the ids stay literal, and {@link Findings} below is derived from them. Annotate
+ * this `Rule<unknown>[]` and every id collapses to `string`, the findings type collapses with it,
+ * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
  */
-export interface Bound {
-  rule: Rule<unknown>;
-  drain(issues: readonly unknown[]): void;
+export const CLASS_RULES = [arrowFields, browserUrl, domWrites, duplicateDecorators, unwatchedFields] as const;
+
+/** Every rule that reads a FILE. Same arrangement, different subject. */
+export const MODULE_RULES = [unsplittableImport] as const;
+
+/** Both families, which is what the CLI prints from and what {@link Findings} is keyed by. */
+export const RULES = [...CLASS_RULES, ...MODULE_RULES] as const;
+
+export type AnyRule = (typeof RULES)[number];
+
+/** The issue type a rule produces, read off the rule rather than written down twice. */
+type IssueOf<R> = R extends Rule<infer Issue> ? Issue : R extends ModuleRule<infer Issue> ? Issue : never;
+
+/**
+ * What every rule found, keyed by its id and typed as that rule's own issue.
+ *
+ * This replaced one named field per rule on `AnalyzeResult`. The field was fine at five rules and
+ * is not at the number this package is heading for: each one is a line in the published interface,
+ * a line in the CLI's destructure, and a clause in the sentence that says everything is fine. Here,
+ * adding a rule adds a member to this type by adding it to the tuple above, and nothing else.
+ *
+ * It is a mapped type rather than a hand-written interface for the same reason the ids are literal:
+ * a hand-written one is a second list to keep in step, and this whole package exists because those
+ * drift.
+ */
+export type Findings = {
+  [R in AnyRule as R["id"]]: IssueOf<R>[];
+};
+
+/**
+ * The rules that FAILED this run — the ones with `severity: "error"` that found something.
+ *
+ * Here rather than in `cli.ts` because it is a fact about the rules, and because it is the one
+ * piece of the command that must not be got wrong quietly. It was a list written by hand, a clause
+ * per rule inside the condition that prints "everything is fine": a rule added without its clause
+ * makes that line print directly above its own report, and the run exits 0 with a real fault in it.
+ *
+ * Demonstrated rather than argued: with this replaced by an empty list, `fixtures/only-a-rule` — a
+ * project whose single fault is a doubled decorator — prints the all-clear and exits 0, and the
+ * report is never reached because the all-clear exits first.
+ */
+export function failingRules(findings: Findings): AnyRule[] {
+  return RULES.filter((rule) => rule.report.severity === "error" && findings[rule.id].length > 0);
 }
 
-export function bind<Issue>(rule: Rule<Issue>, into: Issue[]): Bound {
-  return {
-    rule: rule as Rule<unknown>,
-    drain: (issues) => into.push(...(issues as readonly Issue[])),
-  };
-}
-
-/** The same pairing for the per-file family. */
-export interface BoundModule {
-  rule: ModuleRule<unknown>;
-  drain(issues: readonly unknown[]): void;
-}
-
-export function bindModule<Issue>(rule: ModuleRule<Issue>, into: Issue[]): BoundModule {
-  return {
-    rule: rule as ModuleRule<unknown>,
-    drain: (issues) => into.push(...(issues as readonly Issue[])),
-  };
+/** An empty finding list per rule, for the analyzer to fill. */
+export function emptyFindings(): Findings {
+  // `fromEntries` answers `{ [k: string]: never[] }` — it cannot know the keys are exactly the ids,
+  // and the tuple above is what knows. The hop through `unknown` says so out loud rather than
+  // pretending the two types overlap.
+  return Object.fromEntries(RULES.map((rule) => [rule.id, []])) as unknown as Findings;
 }
 
 /**
  * The rules this project is even running, decided once from what its source imports.
  *
  * A rule with `needs` is not "skipped quietly" — it is not part of the run at all, which is the
- * honest shape: an app with no router is not passing the browser-url rule, it is not being asked the
- * question. Deciding it here rather than inside each rule means the answer is computed once for the
- * whole project instead of once per class, and that a new rule cannot forget to ask.
+ * honest shape: an app with no router is not passing the browser-url rule, it is not being asked
+ * the question. Deciding it here rather than inside each rule means the answer is computed once for
+ * the whole project instead of once per class, and that a new rule cannot forget to ask.
  */
-export function activate<T extends Bound | BoundModule>(all: readonly T[], imported: ReadonlySet<string>): T[] {
-  return all.filter(({ rule }) => rule.needs === undefined || imported.has(rule.needs));
+export function activate<R extends { id: string }>(all: readonly R[], imported: ReadonlySet<string>): R[] {
+  // `"needs" in rule` rather than `rule.needs`: these are the rules' own inferred types, and a rule
+  // that declares no `needs` has no such property to read. Narrowing asks the question the optional
+  // field was meant to ask, without widening every rule to `Rule<unknown>` and losing its id.
+  return all.filter((rule) => !("needs" in rule) || rule.needs === undefined || imported.has(rule.needs as string));
 }
 
 /**
- * Every active rule over one class.
+ * Pushes what a rule found into its own list.
+ *
+ * The one cast in the file. `findings[rule.id]` is a union of every rule's array type, because
+ * `rule` is a union of every rule — so nothing can be pushed into it without saying, once, that the
+ * pair came from the same rule. It did: both sides are read from the same object.
+ */
+function collect(findings: Findings, rule: AnyRule, issues: readonly unknown[]): void {
+  (findings[rule.id] as unknown[]).push(...issues);
+}
+
+/**
+ * Every active per-class rule over one class.
  *
  * `exempt` is applied here and not in {@link activate} because it is a fact about the CLASS rather
  * than about the project: a rule about reaching past an abstraction is right everywhere except
  * inside the package that implements it, and both of those classes are in the same run.
  */
-export function apply(active: readonly Bound[], cls: ts.ClassDeclaration, context: RuleContext): void {
-  for (const { rule, drain } of active) {
-    if (rule.exempt !== undefined && context.self.id.startsWith(rule.exempt)) continue;
-    drain(rule.read(cls, context));
+export function applyClass(
+  active: readonly (typeof CLASS_RULES)[number][],
+  cls: ts.ClassDeclaration,
+  context: RuleContext,
+  findings: Findings,
+): void {
+  for (const rule of active) {
+    // Same narrowing as `activate` uses for `needs`, and for the same reason.
+    const exempt = "exempt" in rule ? (rule.exempt as string) : undefined;
+    if (exempt !== undefined && context.self.id.startsWith(exempt)) continue;
+    collect(findings, rule, rule.read(cls, context));
   }
 }
 
@@ -77,9 +132,10 @@ export function apply(active: readonly Bound[], cls: ts.ClassDeclaration, contex
  * would otherwise have reported the site.
  */
 export function applyModule(
-  active: readonly BoundModule[],
+  active: readonly (typeof MODULE_RULES)[number][],
   file: ts.SourceFile,
   contextFor: (ruleId: string) => ModuleContext,
+  findings: Findings,
 ): void {
-  for (const { rule, drain } of active) drain(rule.read(file, contextFor(rule.id)));
+  for (const rule of active) collect(findings, rule, rule.read(file, contextFor(rule.id)));
 }

@@ -96,8 +96,33 @@ function notOursToWrite(node: ts.Node): boolean {
  * component), a READ of `textContent`, and a `<style>` element built at module scope — none of
  * them a component writing what it could have rendered.
  */
-export const domWrites: Rule<DomWriteIssue> = {
+export const domWrites = {
   id: "dom-writes",
+
+  report: {
+    severity: "warn",
+    heading: (found) => {
+      const guilty = new Set(found.map((write) => write.component)).size;
+      return (
+        `${guilty} component(s) writing the document instead of rendering it` +
+        `${found.length === guilty ? "" : ` — ${found.length} writes`}:`
+      );
+    },
+    lines: (write) => [
+      `  ${write.file}:${write.line}:${write.column}`,
+      `    <${write.component}> writes \`${write.wrote}\`.`,
+    ],
+    advice:
+      "A class, an attribute or a piece of text written this way is a SECOND copy of state the\n" +
+      "component already holds: it has to be kept in step by hand, cleaned up when the component\n" +
+      "goes away, and remembered by whoever adds the next handler that touches it. Say it in\n" +
+      "`render()` and let the stylesheet read it — `html:has(.drawer-open)` reaches the document\n" +
+      "from a class a descendant renders, so even the page itself can be styled from state.\n\n" +
+      "A COMMAND is not this and is not reported: `scrollIntoView()`, `focus()`, `select()` and\n" +
+      "`getBoundingClientRect()` have no declarative form. Nor is an element you created yourself,\n" +
+      "or one held in a `ref` — that one is your own.\n\n" +
+      "This is a warning today and an error in a later version.",
+  },
 
   read(cls, { self }) {
     const found: DomWriteIssue[] = [];
@@ -153,4 +178,4 @@ export const domWrites: Rule<DomWriteIssue> = {
 
     return found;
   },
-};
+} as const satisfies Rule<DomWriteIssue>;

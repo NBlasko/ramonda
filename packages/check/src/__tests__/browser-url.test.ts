@@ -16,7 +16,7 @@ const run = (name: string) => analyzeProject(join(here, "fixtures", name, "tscon
  */
 describe("a component reading the browser's URL", () => {
   test("is reported, with the router's answer where there is one", () => {
-    const { browserUrlReads } = run("browser-url");
+    const browserUrlReads = run("browser-url").findings["browser-url"];
     expect(browserUrlReads.map((r) => `${r.read} -> ${r.instead ?? "—"}`)).toEqual([
       "window.location.pathname -> pathname",
       "location.hash -> hashTags",
@@ -33,7 +33,7 @@ describe("a component reading the browser's URL", () => {
    * one written in the source resolves where it is written.
    */
   test("a local called `location` is left alone", () => {
-    const { browserUrlReads } = run("browser-url");
+    const browserUrlReads = run("browser-url").findings["browser-url"];
     expect(browserUrlReads.some((r) => r.component === "Careful")).toBe(false);
   });
 
@@ -43,7 +43,7 @@ describe("a component reading the browser's URL", () => {
    * reported as "reads", both would be advice to do something impossible.
    */
   test("a write and a method call are not reads", () => {
-    const { browserUrlReads } = run("browser-url");
+    const browserUrlReads = run("browser-url").findings["browser-url"];
     expect(browserUrlReads.some((r) => r.component === "Leaving")).toBe(false);
   });
 
@@ -54,7 +54,7 @@ describe("a component reading the browser's URL", () => {
   test("a project with no router is not reported at all", () => {
     // The same read as above, in a project that imports no router. Asserted against a fixture that
     // HAS the read: pointed at one without it, this test passes whatever the rule does.
-    expect(run("browser-url-no-router").browserUrlReads).toEqual([]);
+    expect(run("browser-url-no-router").findings["browser-url"]).toEqual([]);
   });
 
   /**
@@ -76,7 +76,7 @@ describe("a component reading the browser's URL", () => {
     const result = run("inside-router");
     // The read is really there and really inside the router: without both, this passes vacuously.
     expect(result.counts.components).toBeGreaterThan(0);
-    expect(result.browserUrlReads).toEqual([]);
+    expect(result.findings["browser-url"]).toEqual([]);
   });
 
   /**
@@ -85,7 +85,7 @@ describe("a component reading the browser's URL", () => {
    */
   test("it does not fail the run", () => {
     const result = run("browser-url");
-    expect(result.browserUrlReads.length).toBeGreaterThan(0);
+    expect(result.findings["browser-url"].length).toBeGreaterThan(0);
     expect(result.issues).toEqual([]);
     expect(result.unresolved).toEqual([]);
   });

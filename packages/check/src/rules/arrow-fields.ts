@@ -33,8 +33,26 @@ export interface ArrowFieldIssue {
  * call — `debounce(this.save, 200)`, `memoize(fn)` — is left alone, because a wrapper has nowhere
  * else to live and the value is a function only after the call has run.
  */
-export const arrowFields: Rule<ArrowFieldIssue> = {
+export const arrowFields = {
   id: "arrow-fields",
+
+  report: {
+    severity: "error",
+    heading: (found) => `${found.length} class field(s) holding a function literal:`,
+    lines: (field) => [
+      `  ${field.file}:${field.line}:${field.column}`,
+      `    ${field.component}.${field.field} — ` +
+        (field.readsThis
+          ? "write it as a method. Ramonda binds every method to its instance, so it keeps `this`\n" +
+            "    when it is passed to an element, and one function is shared by every instance."
+          : "it does not read `this`, so move it out of the class — a module constant is built once\n" +
+            "    rather than once per instance."),
+      "",
+    ],
+    advice:
+      "A field initialised from a CALL is a different thing and is not reported: `debounce(this.save, 200)`\n" +
+      "has nowhere else to live. This is about a function written in the field itself.",
+  },
 
   read(cls, { self }) {
     const found: ArrowFieldIssue[] = [];
@@ -68,4 +86,4 @@ export const arrowFields: Rule<ArrowFieldIssue> = {
 
     return found;
   },
-};
+} as const satisfies Rule<ArrowFieldIssue>;

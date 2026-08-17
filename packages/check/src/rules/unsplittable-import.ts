@@ -50,8 +50,27 @@ function bundlerTold(call: ts.CallExpression): boolean {
   return BUNDLER_IGNORE.test(call.getText());
 }
 
-export const unsplittableImport: ModuleRule<UnsplittableImportIssue> = {
+export const unsplittableImport = {
   id: "unsplittable-import",
+
+  report: {
+    severity: "warn",
+    heading: (found) => `${found.length} dynamic import(s) the bundler cannot split:`,
+    lines: (site) => [
+      `  ${site.file}:${site.line}:${site.column}`,
+      `    import(${site.path}) — the path is not a literal.`,
+    ],
+    advice:
+      "A bundler splits at a dynamic import and nowhere else, and only when it can read the path\n" +
+      "at build time. Written as a variable there is no chunk: the module is pulled into the\n" +
+      "caller's chunk, or left out of the build entirely and looked for at run time — which works\n" +
+      "in dev, where the server serves source, and 404s in production, where nothing emitted it.\n\n" +
+      'Write the path as a plain string: `import("./feature/heavy.js")`. For one of several, a\n' +
+      "literal per branch splits each of them; a variable splits none.\n\n" +
+      "If it is deliberate, say so and this stops reporting it — either the bundler's own marker,\n" +
+      "`import(/* @vite-ignore */ name)`, or `// ramonda-check-ignore why` on the line above.\n\n" +
+      "This is a warning today and an error in a later version.",
+  },
 
   read(file, { unlessAnnotated }) {
     const found: UnsplittableImportIssue[] = [];
@@ -73,4 +92,4 @@ export const unsplittableImport: ModuleRule<UnsplittableImportIssue> = {
 
     return found;
   },
-};
+} as const satisfies ModuleRule<UnsplittableImportIssue>;

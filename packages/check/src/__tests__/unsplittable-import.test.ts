@@ -20,7 +20,7 @@ const run = (name: string) => analyzeProject(join(here, "fixtures", name, "tscon
  */
 describe("a dynamic import whose path is not a literal", () => {
   test("is reported, and a literal path is not", () => {
-    const { dynamicImportPaths } = run("dynamic-import");
+    const dynamicImportPaths = run("dynamic-import").findings["unsplittable-import"];
     expect(dynamicImportPaths.map((s) => s.path)).toEqual(["name", "`./pages/${name}.js`"]);
   });
 
@@ -30,7 +30,7 @@ describe("a dynamic import whose path is not a literal", () => {
    * project is a report nobody can act on.
    */
   test("the bundler's own marker silences it", () => {
-    const { dynamicImportPaths } = run("dynamic-import");
+    const dynamicImportPaths = run("dynamic-import").findings["unsplittable-import"];
     // FOUR sites in the fixture write `import(name)` — one plain, one marked `@vite-ignore`, one
     // annotated, one with an empty directive. Exactly the plain one is reported, and counting is
     // what says so: a line number would pass while the wrong three were silenced.

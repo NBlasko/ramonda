@@ -89,8 +89,27 @@ function handedOver(node: ts.Expression): boolean {
  * `@ramonda/form` would undo the paragraph above: the re-export it is written to survive is exactly
  * the case where the app does not import the package by name.
  */
-export const unwatchedFields: Rule<UnwatchedFieldIssue> = {
+export const unwatchedFields = {
   id: "unwatched-fields",
+
+  report: {
+    severity: "error",
+    heading: (found) => `${found.length} component(s) reading a form field they do not watch:`,
+    lines: (issue) => [
+      `  ${issue.file}:${issue.line}:${issue.column}`,
+      `    <${issue.component}> reads \`${issue.member}\` from a field in its props, so it will\n` +
+        `    never show a change to it — the component does not re-render at all.`,
+      "",
+    ],
+    advice:
+      "Two deliberate things make that so: a field node is ONE object for the life of the form, so the\n" +
+      "props diff has nothing to notice and skips the component; and a hook's state belongs to whoever\n" +
+      "used the hook, so the form's counter wakes the form's owner and nobody else.\n\n" +
+      "Watch the field, and the component wakes when that one field changes:\n\n" +
+      "    f = this.use(Field<string>, () => ({ of: this.props.of }));\n" +
+      "    render() { return <input {...this.f.bind} />; }\n\n" +
+      "A component that only WRITES through a field is correct as written and is not reported.",
+  },
 
   read(cls, { self }) {
     let watches = false;
@@ -142,4 +161,4 @@ export const unwatchedFields: Rule<UnwatchedFieldIssue> = {
 
     return found;
   },
-};
+} as const satisfies Rule<UnwatchedFieldIssue>;

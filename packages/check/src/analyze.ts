@@ -4,19 +4,7 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import {
-  activate,
-  apply,
-  applyModule,
-  arrowFields as arrowFieldsRule,
-  bind,
-  bindModule,
-  browserUrl as browserUrlRule,
-  domWrites as domWritesRule,
-  duplicateDecorators as duplicateDecoratorsRule,
-  unsplittableImport as dynamicImportPathRule,
-  unwatchedFields as unwatchedFieldsRule,
-} from "./rules";
+import { activate, applyClass, applyModule, CLASS_RULES, emptyFindings, MODULE_RULES } from "./rules";
 
 /**
  * The per-class rules, re-exported so that moving them behind `./rules` changed no import anywhere
@@ -24,6 +12,7 @@ import {
  * the shape of a finding is part of the rule, not of the analyzer that collects it.
  */
 import type {
+  Findings,
   ArrowFieldIssue,
   BrowserUrlIssue,
   DomWriteIssue,
@@ -32,6 +21,7 @@ import type {
   UnwatchedFieldIssue,
 } from "./rules";
 
+export type { Findings };
 export type {
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -216,18 +206,19 @@ export interface ClassAsChildIssue {
 
 export interface AnalyzeResult {
   issues: ContextIssue[];
-  /** Function literals held in class fields — see `ArrowFieldIssue`. */
-  arrowFields: ArrowFieldIssue[];
-  /** Components reading the browser's URL in a project that has a router — see `BrowserUrlIssue`. */
-  browserUrlReads: BrowserUrlIssue[];
-  /** Components writing to the document what a render could say — see `DomWriteIssue`. */
-  domWrites: DomWriteIssue[];
-  /** Single-use decorators declared twice on one class — see `DuplicateDecoratorIssue`. */
-  duplicateDecorators: DuplicateDecoratorIssue[];
-  /** Form fields read by a component that does not watch them — see `UnwatchedFieldIssue`. */
-  unwatchedFields: UnwatchedFieldIssue[];
-  /** Dynamic imports the bundler cannot split, because it cannot read the path — see `UnsplittableImportIssue`. */
-  dynamicImportPaths: UnsplittableImportIssue[];
+  /**
+   * What each rule found, keyed by its id — `findings["arrow-fields"]`, `findings["browser-url"]`.
+   *
+   * This was one named field per rule, and the field was the right shape at five of them. It is not
+   * at the number this package is heading for: each rule cost a line in this interface, a line in
+   * the CLI's destructure, a report block written by hand, and a clause in the sentence that says
+   * everything is fine. Now a rule costs a file.
+   *
+   * Nothing is lost by the change but the spelling. Each list is still typed as that rule's own
+   * issue — `Findings` is derived from the rule registry, so the key and the element type are read
+   * off the rule rather than declared a second time here.
+   */
+  findings: Findings;
   /** Places that name a component this cannot follow — see `UnresolvedIssue`. */
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
@@ -465,12 +456,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const components = new Map<ts.Symbol, ComponentNode>();
   /** `const { Link } = createRouter(routes)` sites, resolved once the classes are all in. */
   const kitDestructures: ts.VariableDeclaration[] = [];
-  const arrowFields: ArrowFieldIssue[] = [];
-  const browserUrlReads: BrowserUrlIssue[] = [];
-  const domWrites: DomWriteIssue[] = [];
-  const duplicateDecorators: DuplicateDecoratorIssue[] = [];
-  const unwatchedFields: UnwatchedFieldIssue[] = [];
-  const dynamicImportPaths: UnsplittableImportIssue[] = [];
+  /** What every rule found, one list per rule id. See `Findings`. */
+  const findings = emptyFindings();
   const unresolved: UnresolvedIssue[] = [];
   const secondProviders: SecondProviderIssue[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
@@ -710,22 +697,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   }
 
   /**
-   * The rules, each paired with the list its findings go into, filtered to what this project runs.
+   * The per-class rules this project runs.
    *
-   * Built once rather than per class: `needs` is a fact about the project, and asking it 68 times
-   * for one component would be the same answer 68 times. `exempt` is per class and is applied by
-   * `apply` — see the note on it.
+   * Filtered once rather than per class: `needs` is a fact about the project, and asking it 68
+   * times for one component would be the same answer 68 times. `exempt` is per class and is applied
+   * by `applyClass` — see the note on it.
    */
-  const rules = activate(
-    [
-      bind(arrowFieldsRule, arrowFields),
-      bind(browserUrlRule, browserUrlReads),
-      bind(domWritesRule, domWrites),
-      bind(duplicateDecoratorsRule, duplicateDecorators),
-      bind(unwatchedFieldsRule, unwatchedFields),
-    ],
-    imported,
-  );
+  const rules = activate(CLASS_RULES, imported);
 
   /**
    * The per-FILE rules, and one pass over the sources to run them.
@@ -735,19 +713,25 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * pass over the files is also the cheapest shape — a rule sees each file once, however many
    * components are in it.
    */
-  const moduleRules = activate([bindModule(dynamicImportPathRule, dynamicImportPaths)], imported);
+  const moduleRules = activate(MODULE_RULES, imported);
 
   for (const file of sources) {
-    applyModule(moduleRules, file, (ruleId) => ({
-      unlessAnnotated: (site, make) => {
-        const written = directiveAt(site);
-        if (written === undefined) return make();
-        // Recorded rather than dropped: a site that stops being reported must not take its written
-        // reason down with it, and an EMPTY directive is refused here exactly as it is everywhere.
-        readDirective(site, ruleId);
-        return undefined;
-      },
-    }));
+    applyModule(
+      moduleRules,
+      file,
+      (ruleId) => ({
+        unlessAnnotated: (site, make) => {
+          const written = directiveAt(site);
+          if (written === undefined) return make();
+          // Recorded rather than dropped: a site that stops being reported must not take its
+          // written reason down with it, and an EMPTY directive is refused here exactly as it is
+          // everywhere else in this package.
+          readDirective(site, ruleId);
+          return undefined;
+        },
+      }),
+      findings,
+    );
   }
 
   // ── Pass 1: the context pairs, the route tables, and every component class by symbol ────────
@@ -785,7 +769,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          apply(rules, node, { self, resolve });
+          applyClass(rules, node, { self, resolve }, findings);
         }
       }
       collectRoot(node);
@@ -837,12 +821,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   return {
     issues,
-    arrowFields,
-    browserUrlReads,
-    domWrites,
-    duplicateDecorators,
-    unwatchedFields,
-    dynamicImportPaths,
+    findings,
     unresolved,
     annotated,
     unreachable,
