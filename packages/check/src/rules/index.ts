@@ -13,6 +13,8 @@ import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
 import { arrowFields } from "./arrow-fields";
+import { clockReadWhileRendering } from "./clock-read-while-rendering";
+import { stateWrittenWhileRendering } from "./state-written-while-rendering";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
@@ -46,6 +48,8 @@ export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
+export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
+export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
@@ -60,7 +64,15 @@ export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
  * this `Rule<unknown>[]` and every id collapses to `string`, the findings type collapses with it,
  * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
  */
-export const CLASS_RULES = [arrowFields, browserUrl, domWrites, duplicateDecorators, unwatchedFields] as const;
+export const CLASS_RULES = [
+  stateWrittenWhileRendering,
+  clockReadWhileRendering,
+  arrowFields,
+  browserUrl,
+  domWrites,
+  duplicateDecorators,
+  unwatchedFields,
+] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
 export const MODULE_RULES = [unsplittableImport] as const;
