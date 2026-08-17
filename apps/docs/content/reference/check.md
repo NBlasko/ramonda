@@ -125,11 +125,9 @@ once the graph is built, several other questions are free to ask.
 | Writing the document instead of rendering it | `document.body.classList.add(…)` and its family |
 | Reading the request after the render yielded | `requestContext()` below an `await` — also [`RMD053`](/reference/diagnostics) |
 
-The declarative answers to the last one are already there: a class your own `render()` writes, read
-by the stylesheet with `:has()`; the [`Head`](/ssr/head) hook for anything in `<head>`;
-[`Portal`](/composition/portal) for content that must live elsewhere in the DOM. A *command* —
-`scrollIntoView()`, `focus()`, `getBoundingClientRect()` — has no declarative form and is never
-reported.
+The declarative answers to the last one are on their own page:
+[reaching the document](/composition/document). A *command* — `scrollIntoView()`, `focus()`,
+`getBoundingClientRect()` — has no declarative form and is never reported.
 
 ### Why a rule arrives as a warning first
 
