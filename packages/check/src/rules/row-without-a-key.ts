@@ -82,7 +82,19 @@ export const rowWithoutAKey = {
 
   report: {
     severity: "warn",
-    heading: (found) => `${found.length} row(s) built from data with no \`key\`:`,
+    /**
+     * The heading names WHICH way the rows were built, when they were all built one way.
+     *
+     * Read against this repository, every one of the seven reports was a `list()` — and the advice
+     * below has to cover both, so it opens with the other case. A heading that said only "rows
+     * built from data" left a reader matching a paragraph about position-matching against seven
+     * reports none of which is about it.
+     */
+    heading: (found) => {
+      const kinds = new Set(found.map((issue) => issue.via));
+      const built = kinds.size === 1 ? ` built by \`${[...kinds][0]}\`` : " built from data";
+      return `${found.length} row(s)${built} with no \`key\`:`;
+    },
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       issue.via === "map"
@@ -92,15 +104,13 @@ export const rowWithoutAKey = {
     advice:
       "Give each row a `key` from your data — an id. Not the array index, which IS the position and\n" +
       "so says nothing a position did not already say.\n\n" +
-      "From a `map` there is no identity without it: rows are matched by position, so inserting or\n" +
-      "removing anywhere but the end hands every row below it the previous row's state and DOM — a\n" +
-      "half-typed input, an open menu, a scroll position, all one row off, while the page still\n" +
-      "looks right.\n\n" +
-      "From a `list` the framework infers one from what makes a row different from its siblings, and\n" +
-      "a key you write wins over it. That inference can fail: a row whose every field is nested or\n" +
-      "shared with its siblings has nothing to be told apart by. And the case it matters most in is\n" +
-      "the commonest one — data that arrives fresh from a refetch, where every object is new and\n" +
-      "there is no reference left to recognise.\n\n" +
+      "Each line above says which of the two you are looking at, and they fail differently.\n\n" +
+      "`map` has no identity without a key at all: rows are matched by position, so inserting or\n" +
+      "removing anywhere but the end hands every row below it the previous row's state and DOM.\n\n" +
+      "`list` infers one from what makes a row different from its siblings, and a key you write\n" +
+      "wins over it. The inference can fail — a row whose every field is nested or shared with its\n" +
+      "siblings has nothing to be told apart by — and it matters most in the commonest case of all:\n" +
+      "data that arrives fresh, where every object is new and no reference is left to recognise.\n\n" +
       "This is a warning today and an error in a later version.",
   },
 
