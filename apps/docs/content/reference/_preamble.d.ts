@@ -14,5 +14,7 @@ declare global {
   const register: (...args: any[]) => any;
   /** The reader's own lookup, for the async-validation examples. */
   const taken: (value: string) => Promise<boolean>;
+  /** A module path the reader computed, for the dynamic-import examples on the check page. */
+  const specifier: string;
   const sessionKey: RequestKey<unknown>;
 }

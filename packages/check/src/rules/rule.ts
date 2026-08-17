@@ -67,6 +67,41 @@ export interface RuleSubject {
   id: string;
 }
 
+/**
+ * A rule that reads one FILE rather than one class.
+ *
+ * The second family, and it arrived at the sixth rule rather than the sixtieth — which is the
+ * argument for having found it now. A question about imports, about module scope, about what the
+ * bundler can see, has no class to hang off: `import(path)` in a service module belongs to no
+ * component, and asking every class about it would ask the same file once per class it contains.
+ *
+ * `needs` means what it does on {@link Rule}. There is no `exempt`, because that gate is about the
+ * subject a rule is reading and this family's subject is a file — if a package needs excluding, it
+ * is not in `sources` to begin with.
+ */
+export interface ModuleRule<Issue> {
+  id: string;
+  needs?: string;
+  read(file: ts.SourceFile, context: ModuleContext): Issue[];
+}
+
+export interface ModuleContext {
+  /**
+   * Builds an issue, unless the author has already written down why this site is the way it is.
+   *
+   * Supplied by the analyzer rather than written per rule, for the same reason `needs` and `exempt`
+   * are declared rather than coded: a guard every rule needs is a guard a rule can forget. Calling
+   * it is also the shorter way to write the rule, which is what keeps it from being skipped.
+   *
+   * Two annotations count, and they are not the same claim. `ramonda-check-ignore <reason>` is this
+   * package's own, and the reason it carries stays visible in every run — an empty one is itself
+   * reported, because a silence is not a record. `/* @vite-ignore *\/` is the BUNDLER's marker on
+   * the very same construct: a rule whose premise is "nothing tells you when you defeat splitting"
+   * has no premise left at a site where the bundler told the author and the author answered.
+   */
+  unlessAnnotated<Issue>(site: ts.Node, make: () => Issue): Issue | undefined;
+}
+
 export interface RuleContext {
   self: RuleSubject;
   /**

@@ -163,6 +163,40 @@ fifty-six components that now arrive with the first page.
 
 Both flags describe. Neither fails a build.
 
+## A split point that was meant, and is not there
+
+The same fact from the other side. A bundler splits at a dynamic import and **only when it can read
+the path at build time** — so `import(specifier)` is not a split point at all:
+
+```
+[ramonda-check] 1 dynamic import(s) the bundler cannot split:
+
+  src/Search.tsx:103:30
+    import(specifier) — the path is not a literal.
+```
+
+There is no chunk. The module is pulled into the caller's chunk, or left out of the build entirely
+and looked for at run time — which works on a dev server, where the source is served as it sits, and
+404s in production, where nothing emitted it. The build says nothing either way.
+
+If it is deliberate, say so and the report stops. Either the bundler's own marker, which you
+probably already need for the build to be quiet:
+
+```ts
+const load = () => import(/* @vite-ignore */ specifier);
+```
+
+or this package's annotation, which also keeps the reason where the next reader will find it:
+
+```ts
+// ramonda-check-ignore the panel's specifier is built, so the build cannot follow it
+const load = () => import(specifier);
+```
+
+Measured across this repository when the rule was written: 88 dynamic imports with a literal path
+and 3 without, every one of the three already marked. A rule that reported those would have opened
+by crying wolf at three deliberate decisions.
+
 ## The bundle that did not parse
 
 `@state`, `@compute` and the rest are TC39 decorators, which no engine can parse. Your bundler has

@@ -68,6 +68,7 @@ const {
   domWrites,
   duplicateDecorators,
   unwatchedFields,
+  dynamicImportPaths,
   unresolved,
   annotated,
   unreachable,
@@ -273,6 +274,25 @@ if (domWrites.length > 0) {
       `A COMMAND is not this and is not reported: \`scrollIntoView()\`, \`focus()\`, \`select()\` and\n` +
       `\`getBoundingClientRect()\` have no declarative form. Nor is an element you created yourself,\n` +
       `or one held in a \`ref\` — that one is your own.\n\n` +
+      `This is a warning today and an error in a later version.\n`,
+  );
+}
+
+if (dynamicImportPaths.length > 0) {
+  console.warn(`\n${TAG} ${dynamicImportPaths.length} dynamic import(s) the bundler cannot split:\n`);
+  for (const site of dynamicImportPaths) {
+    console.warn(`  ${site.file}:${site.line}:${site.column}`);
+    console.warn(`    import(${site.path}) — the path is not a literal.`);
+  }
+  console.warn(
+    `\nA bundler splits at a dynamic import and nowhere else, and only when it can read the path\n` +
+      `at build time. Written as a variable there is no chunk: the module is pulled into the\n` +
+      `caller's chunk, or left out of the build entirely and looked for at run time — which works\n` +
+      `in dev, where the server serves source, and 404s in production, where nothing emitted it.\n\n` +
+      `Write the path as a plain string: \`import("./feature/heavy.js")\`. For one of several, a\n` +
+      `literal per branch splits each of them; a variable splits none.\n\n` +
+      `If it is deliberate, say so and this stops reporting it — either the bundler's own marker,\n` +
+      `\`import(/* @vite-ignore */ name)\`, or \`// ramonda-check-ignore why\` on the line above.\n\n` +
       `This is a warning today and an error in a later version.\n`,
   );
 }

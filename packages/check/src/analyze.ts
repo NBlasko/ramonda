@@ -7,11 +7,14 @@ import { hookNamed, isThisUse, positionOf } from "./syntax";
 import {
   activate,
   apply,
+  applyModule,
   arrowFields as arrowFieldsRule,
   bind,
+  bindModule,
   browserUrl as browserUrlRule,
   domWrites as domWritesRule,
   duplicateDecorators as duplicateDecoratorsRule,
+  unsplittableImport as dynamicImportPathRule,
   unwatchedFields as unwatchedFieldsRule,
 } from "./rules";
 
@@ -25,10 +28,18 @@ import type {
   BrowserUrlIssue,
   DomWriteIssue,
   DuplicateDecoratorIssue,
+  UnsplittableImportIssue,
   UnwatchedFieldIssue,
 } from "./rules";
 
-export type { ArrowFieldIssue, BrowserUrlIssue, DomWriteIssue, DuplicateDecoratorIssue, UnwatchedFieldIssue };
+export type {
+  ArrowFieldIssue,
+  BrowserUrlIssue,
+  DomWriteIssue,
+  DuplicateDecoratorIssue,
+  UnsplittableImportIssue,
+  UnwatchedFieldIssue,
+};
 
 /**
  * Proves, before the app is ever opened, that every context consumer has a matching provider
@@ -215,6 +226,8 @@ export interface AnalyzeResult {
   duplicateDecorators: DuplicateDecoratorIssue[];
   /** Form fields read by a component that does not watch them — see `UnwatchedFieldIssue`. */
   unwatchedFields: UnwatchedFieldIssue[];
+  /** Dynamic imports the bundler cannot split, because it cannot read the path — see `UnsplittableImportIssue`. */
+  dynamicImportPaths: UnsplittableImportIssue[];
   /** Places that name a component this cannot follow — see `UnresolvedIssue`. */
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
@@ -457,6 +470,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const domWrites: DomWriteIssue[] = [];
   const duplicateDecorators: DuplicateDecoratorIssue[] = [];
   const unwatchedFields: UnwatchedFieldIssue[] = [];
+  const dynamicImportPaths: UnsplittableImportIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
   const secondProviders: SecondProviderIssue[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
@@ -713,6 +727,29 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     imported,
   );
 
+  /**
+   * The per-FILE rules, and one pass over the sources to run them.
+   *
+   * Their own loop rather than a line inside one of the passes below: those walk looking for
+   * classes and roots, and a question about what a module imports has no class to hang off. One
+   * pass over the files is also the cheapest shape — a rule sees each file once, however many
+   * components are in it.
+   */
+  const moduleRules = activate([bindModule(dynamicImportPathRule, dynamicImportPaths)], imported);
+
+  for (const file of sources) {
+    applyModule(moduleRules, file, (ruleId) => ({
+      unlessAnnotated: (site, make) => {
+        const written = directiveAt(site);
+        if (written === undefined) return make();
+        // Recorded rather than dropped: a site that stops being reported must not take its written
+        // reason down with it, and an EMPTY directive is refused here exactly as it is everywhere.
+        readDirective(site, ruleId);
+        return undefined;
+      },
+    }));
+  }
+
   // ── Pass 1: the context pairs, the route tables, and every component class by symbol ────────
   for (const file of sources) {
     ts.forEachChild(file, function visit(node) {
@@ -805,6 +842,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     domWrites,
     duplicateDecorators,
     unwatchedFields,
+    dynamicImportPaths,
     unresolved,
     annotated,
     unreachable,

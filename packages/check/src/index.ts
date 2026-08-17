@@ -9,6 +9,7 @@ export type {
   DomWriteIssue,
   ContextIssue,
   DuplicateDecoratorIssue,
+  UnsplittableImportIssue,
   UnwatchedFieldIssue,
 } from "./analyze";
 // The composition graph the issues are computed from. A FORMAT rather than an API: it is versioned

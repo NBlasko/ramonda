@@ -1,12 +1,13 @@
 import type ts from "typescript";
-import type { Rule, RuleContext } from "./rule";
+import type { ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
 
-export type { Rule, RuleContext, RuleSubject } from "./rule";
+export type { ModuleContext, ModuleRule, Rule, RuleContext, RuleSubject } from "./rule";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
+export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 
 /**
@@ -29,6 +30,19 @@ export function bind<Issue>(rule: Rule<Issue>, into: Issue[]): Bound {
   };
 }
 
+/** The same pairing for the per-file family. */
+export interface BoundModule {
+  rule: ModuleRule<unknown>;
+  drain(issues: readonly unknown[]): void;
+}
+
+export function bindModule<Issue>(rule: ModuleRule<Issue>, into: Issue[]): BoundModule {
+  return {
+    rule: rule as ModuleRule<unknown>,
+    drain: (issues) => into.push(...(issues as readonly Issue[])),
+  };
+}
+
 /**
  * The rules this project is even running, decided once from what its source imports.
  *
@@ -37,7 +51,7 @@ export function bind<Issue>(rule: Rule<Issue>, into: Issue[]): Bound {
  * question. Deciding it here rather than inside each rule means the answer is computed once for the
  * whole project instead of once per class, and that a new rule cannot forget to ask.
  */
-export function activate(all: readonly Bound[], imported: ReadonlySet<string>): Bound[] {
+export function activate<T extends Bound | BoundModule>(all: readonly T[], imported: ReadonlySet<string>): T[] {
   return all.filter(({ rule }) => rule.needs === undefined || imported.has(rule.needs));
 }
 
@@ -53,4 +67,19 @@ export function apply(active: readonly Bound[], cls: ts.ClassDeclaration, contex
     if (rule.exempt !== undefined && context.self.id.startsWith(rule.exempt)) continue;
     drain(rule.read(cls, context));
   }
+}
+
+/**
+ * Every active per-file rule over one source file.
+ *
+ * The context is built PER RULE rather than handed in ready-made, because the annotation the rule
+ * may find has to be recorded against something, and the only honest name for it is the rule that
+ * would otherwise have reported the site.
+ */
+export function applyModule(
+  active: readonly BoundModule[],
+  file: ts.SourceFile,
+  contextFor: (ruleId: string) => ModuleContext,
+): void {
+  for (const { rule, drain } of active) drain(rule.read(file, contextFor(rule.id)));
 }
