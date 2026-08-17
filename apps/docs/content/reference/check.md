@@ -124,6 +124,15 @@ once the graph is built, several other questions are free to ask.
 | Reading the browser's URL rather than the router's | `window.location.pathname` in a project that has a router |
 | Writing the document instead of rendering it | `document.body.classList.add(…)` and its family |
 | Reading the request after the render yielded | `requestContext()` below an `await` — also [`RMD053`](/reference/diagnostics) |
+| State written by something a render reaches | `this.count = …` in `render()`, in a helper it calls, or three files away |
+| A clock or a random number reached from a render | `Date.now()`, `new Date()`, `Math.random()` — also [`RMD021`](/reference/diagnostics) |
+| A row built from data with no `key` | from a `map` or a `list()` — also [`RMD023`](/reference/diagnostics) |
+| Two siblings claiming the same `key` | written as literals — also [`RMD002`](/reference/diagnostics) |
+| `class` where `className` was meant | also [`RMD039`](/reference/diagnostics) |
+| A dynamic import the bundler cannot split | the path is not a literal, so no chunk is emitted |
+| A tag outside the parent it needs | `<tr>` with no table above it, `<option>` with no select |
+| An element nested inside another of the same kind | a link in a link, a button in a button, a form in a form |
+| Markup nothing can announce | see [below](#markup-nothing-can-announce) — five accessibility rules |
 
 The declarative answers to the last one are on their own page:
 [reaching the document](/composition/document). A *command* — `scrollIntoView()`, `focus()`,
@@ -135,9 +144,18 @@ A new rule prints for one version and refuses in the next. A rule that is wrong 
 a rule you switch off, and switching one off is how a whole tool stops being run — so a rule gets a
 version in the open, against real projects, before it is allowed to fail a build.
 
-Each of the three above was measured against every app in the Ramonda repository when it was
-written, and each reported **zero**. That is the bar: a rule that already has something to say
-about correct code is not ready.
+Every rule above was measured against every app and package in the Ramonda repository when it was
+written. **Twenty of the twenty-one report zero.** That is the bar, and it is deliberately hard to
+clear: a rule that already has something to say about correct code is not ready.
+
+The exception is worth naming, because a bar with an unexplained exception is not a bar. **A row
+built by `list()` with no `key` is reported, and there are seventeen of them here.** They are not
+mistakes — `list()` infers an identity from what makes a row different from its siblings, and every
+one of these relies on that inference and gets a correct answer. The rule reports them anyway,
+because an inferred identity is one that can fail and a written one cannot: a row whose every field
+is nested or shared with its siblings has nothing to be told apart by, which is what
+[`RMD051`](/reference/diagnostics) exists to say. It stays a warning for as long as that is the
+only argument for it.
 
 ### Reading the request after the render yielded
 
