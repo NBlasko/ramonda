@@ -16,8 +16,8 @@ npm create ramonda@latest my-app
 ```
 
 It asks a couple of questions — a client-side app or a server-rendered one, and which
-packages and tooling to add (router, lens, testing, [devtools](/devtools), and Biome for
-lint + format) — then:
+packages and tooling to add ([router](/routing), [lens](/lens), [testing](/testing),
+[devtools](/devtools), and Biome for lint + format) — then:
 
 ```
 cd my-app
@@ -87,8 +87,8 @@ does comes down to `target`. esbuild lowers for every target except `esnext`, an
 So a build that says nothing about a target has already chosen the one value that
 breaks, and nothing tells you: it succeeds, prints no warning, and emits a file that
 dies with `SyntaxError: Invalid or unexpected token` the first time a browser reads
-it. A dev server can look perfectly fine meanwhile, because Chrome parses decorators
-natively.
+it. The build and the browser are the two ends of that gap — everything in between
+looks like it worked.
 
 That shipped here once. It is why the settings live in a package rather than in a
 paragraph asking you to copy three lines correctly, in every bundler config, forever.

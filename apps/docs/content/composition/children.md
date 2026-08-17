@@ -77,8 +77,22 @@ The fix is the caller's, and it is [`list()`](/lists) instead of `.map()`:
 <Panel>{list(items, (item) => <Item item={item} />)}</Panel>
 ```
 
-`list()` gives each item a stable identity, so nothing around it can be confused for
-part of it.
+`list()` keeps the rows as one child rather than letting them mix with the panel's own
+markup, so nothing around them can be confused for part of the list.
+
+It identifies a row by what sets that row apart from its siblings — which works while your
+objects are the ones you built, and stops working the moment the data is replaced from
+outside: a refetch or a `JSON.parse` hands over objects nothing has seen, so every row is
+rebuilt and whatever it was holding goes with it. When that happens, say which field names a
+row where the data arrives:
+
+```tsx
+this.rows = merge(this.rows, await api.getRows(), (row) => row.id);
+```
+
+Said once, at the boundary, rather than on every list that renders those rows.
+[`RMD051`](/reference/diagnostics) reports a row that carries nothing to tell it apart, and
+[lists](/lists#which-row-is-which) has the whole story.
 
 ## Next
 

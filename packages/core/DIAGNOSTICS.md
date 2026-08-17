@@ -473,9 +473,9 @@ opinion:
 #### State and lifecycle with no markup of your own
 
 The table above is the view from the parent. The other half is the view from the
-component: *how do I keep a piece with its own state and lifecycle — React's
-`useEffect`-only component, the stateful fragment — when every Ramonda component
-is an element?*
+component: *how do I keep a piece that has its own state and lifecycle but no markup
+of its own — a tracker, a subscription, a keyboard listener — when every Ramonda
+component is an element?*
 
 **Most of the time the question dissolves: just write the component.** Let
 `render()` return `null`. It keeps `@state`, `@created`, `@watchProp`, `@onWindow`,
