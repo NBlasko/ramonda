@@ -22,6 +22,7 @@ import { claimMember } from "../debug/claimMember";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
+import { registerCompute, type ComputeCounters } from "../debug/computeStats";
 import { STABLE_PROPS } from "../helpers/constants";
 import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
 import {
@@ -1527,12 +1528,39 @@ export function compute<T, R>(
       },
     };
 
+    /**
+     * Development only, and read by the devtools panel: how many reads this cache answered, and how
+     * many ran the body.
+     *
+     * A closure variable rather than two fields on `cache`, and rather than a WeakMap keyed by
+     * instance. On `cache` they cost 16 bytes of production bundle and two hidden-class slots per
+     * compute per instance, measured, for something no production build can read; in a WeakMap they
+     * would put a lookup on the hot path of every compute read, which is the path being measured.
+     * **Every use is guarded by `__DEV__` FIRST, and that ordering is load-bearing.** Written as
+     * `const counters = __DEV__ ? {…} : undefined` with a later `if (counters)`, esbuild folded the
+     * ternary but did NOT propagate the constant into the branch — measured, the counters and both
+     * increments shipped to production. With the literal leading each guard, the minifier sees
+     * `if (false)` and deletes the block.
+     */
+    let counters: ComputeCounters | undefined;
+    if (__DEV__) {
+      counters = { hits: 0, misses: 0 };
+      registerCompute(this, String(context.name), counters);
+    }
+
     const invalidate = () => {
       cache.isDirty = true;
     };
 
     Object.defineProperty(this, context.name, {
       get() {
+        if (__DEV__ && counters) {
+          // Counted at the top, before the branch clears the flag. A compute whose reads are all
+          // misses is paying for a cache it never uses — not necessarily wrong, which is why this
+          // is a number in the panel rather than a diagnostic. See `debug/computeStats.ts`.
+          if (cache.isDirty) counters.misses++;
+          else counters.hits++;
+        }
         if (cache.isDirty) {
           // Synchronously detach from the old State dependencies.
           for (const dep of cache.deps) {
