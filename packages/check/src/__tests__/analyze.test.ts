@@ -151,7 +151,7 @@ describe("a class is a component only if its heritage chain reaches one", () => 
  * and `debounce(this.save, 200)` is a function there too. Only one of them is a mistake.
  */
 describe("function literals held in class fields", () => {
-  const found = () => run("arrows").arrowFields;
+  const found = () => run("arrows").findings["arrow-fields"];
 
   test("reports an arrow, a function expression, and nothing else", () => {
     expect(found().map((f) => `${f.component}.${f.field}`)).toEqual([
@@ -203,7 +203,7 @@ describe("function literals held in class fields", () => {
 
   test("the other fixtures have none, so the check is silent on ordinary code", () => {
     for (const name of ["ok", "missing", "reorder", "children"]) {
-      expect(run(name).arrowFields, name).toEqual([]);
+      expect(run(name).findings["arrow-fields"], name).toEqual([]);
     }
   });
 });
@@ -218,7 +218,7 @@ describe("function literals held in class fields", () => {
  * to delete the line doing the work.
  */
 describe("single-use decorators declared twice", () => {
-  const found = () => run("duplicate-decorators").duplicateDecorators;
+  const found = () => run("duplicate-decorators").findings["duplicate-decorators"];
 
   test("reports a method decorator and a class decorator, once each", () => {
     expect(found().map((d) => `${d.component}.@${d.decorator}x${d.count}`)).toEqual([
@@ -339,7 +339,7 @@ describe("a form field read by a component that does not watch it", () => {
    * Nothing at runtime can report it — the form cannot see who is rendering — so this is the gate.
    */
   test("reports the read, however it is written", () => {
-    const { unwatchedFields } = run("unwatched-field");
+    const unwatchedFields = run("unwatched-field").findings["unwatched-fields"];
     expect(unwatchedFields.map((issue) => issue.component).sort()).toEqual(["Broken", "BrokenViaLocal"]);
   });
 
@@ -347,14 +347,14 @@ describe("a form field read by a component that does not watch it", () => {
     // Named in the negative on purpose: each of these is a false positive waiting to happen, and the
     // fixture holds one of each — the watcher, the write-only handler, the layout that only passes the
     // field down, and the owner reading its own fields.
-    const reported = new Set(run("unwatched-field").unwatchedFields.map((issue) => issue.component));
+    const reported = new Set(run("unwatched-field").findings["unwatched-fields"].map((issue) => issue.component));
     for (const quiet of ["Watched", "WriteOnly", "Layout", "Page"]) {
       expect(reported.has(quiet)).toBe(false);
     }
   });
 
   test("says which member would never update, and where", () => {
-    const { unwatchedFields } = run("unwatched-field");
+    const unwatchedFields = run("unwatched-field").findings["unwatched-fields"];
     const broken = unwatchedFields.find((issue) => issue.component === "Broken");
     expect(broken?.member).toBe("bind");
     expect(broken?.line).toBeGreaterThan(0);

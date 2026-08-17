@@ -18,6 +18,7 @@ import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { reportFault } from "../debug/fault";
 import { claimMember } from "../debug/claimMember";
 import { computePhase } from "../debug/renderPhase";
 import { memoPhase } from "../debug/purityGuard";
@@ -948,6 +949,22 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
             `it is passed to would re-render with it. Pass the primitive the object stands for (\`row.id\` rather ` +
             `than \`row\`) and read the rest inside the handler. In production this call is not memoised and the ` +
             `page keeps working.`,
+        );
+      } else {
+        /**
+         * The same fault, reported rather than thrown.
+         *
+         * Development throws because the throw is what stops the mistake being shipped. Once it HAS
+         * shipped — a build nobody ran the affected path on — throwing would take down a page that
+         * otherwise works, so it degrades instead: the handler is rebuilt on every render, and
+         * everything it is passed to re-renders with it, for the life of the page. That is a
+         * performance fault with no symptom anyone can name, which is exactly what a collector is
+         * for.
+         */
+        reportFault(
+          "RMD047",
+          `${(this as { constructor: { name: string } }).constructor.name}:${String(context.name)}`,
+          "@memoizedHandler was called with an argument it cannot build a cache key from, so it is not memoised.",
         );
       }
       return originalMethod.call(this, ...args);

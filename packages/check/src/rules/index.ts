@@ -1,0 +1,240 @@
+import type ts from "typescript";
+import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
+import { contextFor } from "./element";
+import { unnamedImage } from "./unnamed-image";
+import { classInsteadOfClassName } from "./class-instead-of-classname";
+import { duplicateKeyAmongSiblings } from "./duplicate-key-among-siblings";
+import { rowWithoutAKey } from "./row-without-a-key";
+import { interactiveInsideInteractive } from "./interactive-inside-interactive";
+import { tagNeedsItsParent } from "./tag-needs-its-parent";
+import { unknownAriaAttribute } from "./unknown-aria-attribute";
+import { unknownRole } from "./unknown-role";
+import { ariaWithNoSubject } from "./aria-with-no-subject";
+import { emptyHeadingOrLink } from "./empty-heading-or-link";
+import { unnamedFrame } from "./unnamed-frame";
+import { positiveTabIndex } from "./positive-tabindex";
+import { arrowFields } from "./arrow-fields";
+import { clockReadWhileRendering } from "./clock-read-while-rendering";
+import { stateWrittenWhileRendering } from "./state-written-while-rendering";
+import { browserUrl } from "./browser-url";
+import { domWrites } from "./dom-writes";
+import { duplicateDecorators } from "./duplicate-decorators";
+import { unsplittableImport } from "./unsplittable-import";
+import { unwatchedFields } from "./unwatched-fields";
+
+export type {
+  ElementContext,
+  ElementRule,
+  JsxElementLike,
+  ModuleContext,
+  ModuleRule,
+  Report,
+  Rule,
+  RuleContext,
+  RuleSubject,
+} from "./rule";
+
+export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
+export { classInsteadOfClassName, type ClassInsteadOfClassNameIssue } from "./class-instead-of-classname";
+export { duplicateKeyAmongSiblings, type DuplicateKeyAmongSiblingsIssue } from "./duplicate-key-among-siblings";
+export { rowWithoutAKey, type RowWithoutAKeyIssue } from "./row-without-a-key";
+export { interactiveInsideInteractive, type InteractiveInsideInteractiveIssue } from "./interactive-inside-interactive";
+export { tagNeedsItsParent, type TagNeedsItsParentIssue } from "./tag-needs-its-parent";
+export { NEEDS_PARENT, NOT_INSIDE_ITSELF } from "./html";
+export { unknownAriaAttribute, type UnknownAriaAttributeIssue } from "./unknown-aria-attribute";
+export { unknownRole, type UnknownRoleIssue } from "./unknown-role";
+export { ariaWithNoSubject, type AriaWithNoSubjectIssue } from "./aria-with-no-subject";
+export { ABSTRACT_ROLES, ARIA_ATTRIBUTES, NO_ARIA, ROLES } from "./aria";
+export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
+export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
+export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
+
+export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
+export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
+export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
+export { browserUrl, type BrowserUrlIssue } from "./browser-url";
+export { domWrites, type DomWriteIssue } from "./dom-writes";
+export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
+export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
+export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
+
+/**
+ * Every rule that reads a CLASS, in the order their sections are printed.
+ *
+ * A tuple rather than an array, and `as const` rather than an annotation, because both are
+ * load-bearing: the ids stay literal, and {@link Findings} below is derived from them. Annotate
+ * this `Rule<unknown>[]` and every id collapses to `string`, the findings type collapses with it,
+ * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
+ */
+export const CLASS_RULES = [
+  stateWrittenWhileRendering,
+  clockReadWhileRendering,
+  arrowFields,
+  browserUrl,
+  domWrites,
+  duplicateDecorators,
+  unwatchedFields,
+] as const;
+
+/** Every rule that reads a FILE. Same arrangement, different subject. */
+export const MODULE_RULES = [unsplittableImport] as const;
+
+/**
+ * Every rule that reads one JSX ELEMENT — where accessibility lives.
+ *
+ * The order here is the order their sections print in, which is why the two about a missing NAME
+ * sit together: a reader fixing one is usually about to fix the other.
+ */
+export const ELEMENT_RULES = [
+  duplicateKeyAmongSiblings,
+  rowWithoutAKey,
+  classInsteadOfClassName,
+  tagNeedsItsParent,
+  interactiveInsideInteractive,
+  unnamedImage,
+  unknownAriaAttribute,
+  unknownRole,
+  ariaWithNoSubject,
+  emptyHeadingOrLink,
+  unnamedFrame,
+  positiveTabIndex,
+] as const;
+
+/** All three families, which is what the CLI prints from and what {@link Findings} is keyed by. */
+export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES] as const;
+
+export type AnyRule = (typeof RULES)[number];
+
+/** The issue type a rule produces, read off the rule rather than written down twice. */
+type IssueOf<R> =
+  R extends Rule<infer Issue>
+    ? Issue
+    : R extends ModuleRule<infer Issue>
+      ? Issue
+      : R extends ElementRule<infer Issue>
+        ? Issue
+        : never;
+
+/**
+ * What every rule found, keyed by its id and typed as that rule's own issue.
+ *
+ * This replaced one named field per rule on `AnalyzeResult`. The field was fine at five rules and
+ * is not at the number this package is heading for: each one is a line in the published interface,
+ * a line in the CLI's destructure, and a clause in the sentence that says everything is fine. Here,
+ * adding a rule adds a member to this type by adding it to the tuple above, and nothing else.
+ *
+ * It is a mapped type rather than a hand-written interface for the same reason the ids are literal:
+ * a hand-written one is a second list to keep in step, and this whole package exists because those
+ * drift.
+ */
+export type Findings = {
+  [R in AnyRule as R["id"]]: IssueOf<R>[];
+};
+
+/**
+ * The rules that FAILED this run — the ones with `severity: "error"` that found something.
+ *
+ * Here rather than in `cli.ts` because it is a fact about the rules, and because it is the one
+ * piece of the command that must not be got wrong quietly. It was a list written by hand, a clause
+ * per rule inside the condition that prints "everything is fine": a rule added without its clause
+ * makes that line print directly above its own report, and the run exits 0 with a real fault in it.
+ *
+ * Demonstrated rather than argued: with this replaced by an empty list, `fixtures/only-a-rule` — a
+ * project whose single fault is a doubled decorator — prints the all-clear and exits 0, and the
+ * report is never reached because the all-clear exits first.
+ */
+export function failingRules(findings: Findings): AnyRule[] {
+  return RULES.filter((rule) => rule.report.severity === "error" && findings[rule.id].length > 0);
+}
+
+/** An empty finding list per rule, for the analyzer to fill. */
+export function emptyFindings(): Findings {
+  // `fromEntries` answers `{ [k: string]: never[] }` — it cannot know the keys are exactly the ids,
+  // and the tuple above is what knows. The hop through `unknown` says so out loud rather than
+  // pretending the two types overlap.
+  return Object.fromEntries(RULES.map((rule) => [rule.id, []])) as unknown as Findings;
+}
+
+/**
+ * The rules this project is even running, decided once from what its source imports.
+ *
+ * A rule with `needs` is not "skipped quietly" — it is not part of the run at all, which is the
+ * honest shape: an app with no router is not passing the browser-url rule, it is not being asked
+ * the question. Deciding it here rather than inside each rule means the answer is computed once for
+ * the whole project instead of once per class, and that a new rule cannot forget to ask.
+ */
+export function activate<R extends { id: string }>(all: readonly R[], imported: ReadonlySet<string>): R[] {
+  // `"needs" in rule` rather than `rule.needs`: these are the rules' own inferred types, and a rule
+  // that declares no `needs` has no such property to read. Narrowing asks the question the optional
+  // field was meant to ask, without widening every rule to `Rule<unknown>` and losing its id.
+  return all.filter((rule) => !("needs" in rule) || rule.needs === undefined || imported.has(rule.needs as string));
+}
+
+/**
+ * Pushes what a rule found into its own list.
+ *
+ * The one cast in the file. `findings[rule.id]` is a union of every rule's array type, because
+ * `rule` is a union of every rule — so nothing can be pushed into it without saying, once, that the
+ * pair came from the same rule. It did: both sides are read from the same object.
+ */
+function collect(findings: Findings, rule: AnyRule, issues: readonly unknown[]): void {
+  (findings[rule.id] as unknown[]).push(...issues);
+}
+
+/**
+ * Every active per-class rule over one class.
+ *
+ * `exempt` is applied here and not in {@link activate} because it is a fact about the CLASS rather
+ * than about the project: a rule about reaching past an abstraction is right everywhere except
+ * inside the package that implements it, and both of those classes are in the same run.
+ */
+export function applyClass(
+  active: readonly (typeof CLASS_RULES)[number][],
+  cls: ts.ClassDeclaration,
+  context: RuleContext,
+  findings: Findings,
+): void {
+  for (const rule of active) {
+    // Same narrowing as `activate` uses for `needs`, and for the same reason.
+    const exempt = "exempt" in rule ? (rule.exempt as string) : undefined;
+    if (exempt !== undefined && context.self.id.startsWith(exempt)) continue;
+    collect(findings, rule, rule.read(cls, context));
+  }
+}
+
+/**
+ * Every active per-file rule over one source file.
+ *
+ * The context is built PER RULE rather than handed in ready-made, because the annotation the rule
+ * may find has to be recorded against something, and the only honest name for it is the rule that
+ * would otherwise have reported the site.
+ */
+/**
+ * Every active element rule over one JSX element.
+ *
+ * **A spreading element is handed to nobody.** `<img {...rest} />` may carry the very attribute a
+ * rule is about, and nothing static can say whether it does — so the silence contract applies to
+ * the whole family at once, here, rather than being remembered by each of forty rules. It is the
+ * same argument as `needs` and `exempt`: a guard every rule needs is a guard a rule can forget.
+ *
+ * The context is built ONCE and shared. Forty rules asking "is there an `alt`" would otherwise walk
+ * the same attribute list forty times.
+ */
+export function applyElement(
+  active: readonly (typeof ELEMENT_RULES)[number][],
+  element: JsxElementLike,
+  findings: Findings,
+): void {
+  const context = contextFor(element);
+  if (context.spreads) return;
+  for (const rule of active) collect(findings, rule, rule.read(element, context));
+}
+
+export function applyModule(
+  active: readonly (typeof MODULE_RULES)[number][],
+  file: ts.SourceFile,
+  contextFor: (ruleId: string) => ModuleContext,
+  findings: Findings,
+): void {
+  for (const rule of active) collect(findings, rule, rule.read(file, contextFor(rule.id)));
+}

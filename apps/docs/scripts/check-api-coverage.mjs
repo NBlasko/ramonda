@@ -20,6 +20,46 @@ const root = join(here, "..");
 const packages = join(root, "..", "..", "packages");
 
 /**
+ * A quoted export name in one of the lists below.
+ *
+ * The underscore is the whole point. This was `[A-Za-z][A-Za-z0-9]*`, which cannot match a name
+ * containing one and cannot match a name starting with one — so `SAME_ITEM`, `PORTAL_TARGET_ATTR`
+ * and `__h` were dropped from the expected list, silently, and were never checked against the
+ * reference at all. Two of the three happened to be documented anyway; `__h` was not, and had been
+ * public and absent from the API reference for as long as this check has existed.
+ *
+ * Nothing could have noticed. `atLeast` guards the list against coming back EMPTY, which is the
+ * failure it was written for, and a list that comes back three names short is exactly as green.
+ */
+const NAME = /"([A-Za-z_][A-Za-z0-9_]*)"/g;
+
+/**
+ * Every quoted string in the slice, whether {@link NAME} could read it or not.
+ *
+ * The bug above was invisible because the parser had no way to say it had skipped something: it
+ * matched what it could and returned a shorter list, and a shorter list is a passing build. So the
+ * two counts are compared, and a name the reader cannot spell is a failure with the name in it.
+ *
+ * This is the check that would have caught the original, and it does not depend on knowing which
+ * character was the problem next time.
+ */
+function readNames(slice, where) {
+  const names = (slice.match(NAME) ?? []).map((quoted) => quoted.slice(1, -1));
+  const quoted = (slice.match(/"[^"]*"/g) ?? []).map((token) => token.slice(1, -1));
+  const dropped = quoted.filter((token) => !names.includes(token));
+
+  if (dropped.length > 0) {
+    throw new Error(
+      `[docs] ${where} lists ${dropped.length} name(s) this script cannot read:\n` +
+        dropped.map((name) => `        ${name}`).join("\n") +
+        `\n\n        They would be skipped rather than checked, so the build would pass without\n` +
+        `        ever asking whether they are documented. Widen NAME in check-api-coverage.mjs.`,
+    );
+  }
+  return names;
+}
+
+/**
  * Reads one package's declared public surface.
  *
  * `atLeast` is not decoration. The list is read by slicing between two markers,
@@ -32,11 +72,7 @@ function publicSurfaceOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   const start = surface.indexOf("const EXPECTED");
   const end = surface.indexOf("/**", start);
 
-  const names =
-    surface
-      .slice(start, end)
-      .match(/"([A-Za-z][A-Za-z0-9]*)"/g)
-      ?.map((quoted) => quoted.slice(1, -1)) ?? [];
+  const names = readNames(surface.slice(start, end), `${pkg}'s EXPECTED in ${fileName}`);
 
   if (names.length < atLeast) {
     throw new Error(
@@ -62,11 +98,7 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   if (start === -1) throw new Error(`[docs] ${pkg} declares no EXPECTED_TYPES list.`);
   const end = surface.indexOf("];", start);
 
-  const names =
-    surface
-      .slice(start, end)
-      .match(/"([A-Za-z][A-Za-z0-9]*)"/g)
-      ?.map((quoted) => quoted.slice(1, -1)) ?? [];
+  const names = readNames(surface.slice(start, end), `${pkg}'s EXPECTED_TYPES in ${fileName}`);
 
   if (names.length < atLeast) {
     throw new Error(
@@ -95,6 +127,12 @@ const expected = [
   // exports were documented by hand and guarded by nothing until this line.
   ...publicSurfaceOf("form", 2, "BguardSurface.test.ts"),
   ...publicTypesOf("form", 2, "BguardSurface.test.ts"),
+  // `@ramonda/build`'s main entry. Its two adapters export a factory called `ramonda`, and that name
+  // is deliberately NOT listed here: the matcher below allows a leading `@`, so `ramonda` is found
+  // by any line that writes `@ramonda/anything` — every page on the site would satisfy it, and a
+  // check that cannot fail is worse than no check. The adapters are guarded by their own surface
+  // tests instead, and documented on /reference/build.
+  ...publicSurfaceOf("build", 2),
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
@@ -183,16 +221,60 @@ function tsFilesIn(dir) {
 const raised = new Set();
 const misprefixed = [];
 
+/**
+ * A code being DEFINED — a key in one of the `SPECS` tables, `RMD044: {`.
+ *
+ * Kept apart from `codeInSource` because the two answer different questions: that one asks where a
+ * code is used, this one asks where it is given a meaning. A code may be raised from a dozen
+ * places; it may be defined exactly once.
+ */
+const codeDefinedInSource = /^\s+(RM[A-Z]\d{3}): \{/gm;
+
+/** Every place a code is given a meaning, so a second one can be reported rather than silently win. */
+const defined = new Map();
+
 for (const [pkg, prefix] of Object.entries(PREFIX_OF)) {
   for (const file of tsFilesIn(join(packages, pkg, "src"))) {
     // Only where a code is REPORTED, not where a test asserts one: a test naming a retired code would
     // otherwise demand a section for something that no longer exists.
     if (file.includes("__tests__")) continue;
-    for (const [, code] of readFileSync(file, "utf8").matchAll(codeInSource)) {
+    const text = readFileSync(file, "utf8");
+    for (const [, code] of text.matchAll(codeInSource)) {
       raised.add(code);
       if (!code.startsWith(prefix)) misprefixed.push({ code, pkg, prefix, file: relative(root, file) });
     }
+    for (const [, code] of text.matchAll(codeDefinedInSource)) {
+      if (!defined.has(code)) defined.set(code, []);
+      defined.get(code).push(relative(root, file));
+    }
   }
+}
+
+/**
+ * A code defined twice, which JavaScript will not tell you about.
+ *
+ * `SPECS` is an object literal, so `RMD053: { … }` written twice is not an error and not a warning
+ * — the second silently replaces the first, and a diagnostic that somebody wrote, documented and
+ * tested simply stops existing. Nothing downstream notices: the code is still raised, still has a
+ * section, and still reports. It reports the OTHER fault.
+ *
+ * This exists because it happened. Two branches minted `RMD053` for two different faults on the
+ * same day — one for a request read with no scope installed, one for a swallowed post-commit
+ * failure — and the only thing that caught it was a person reading a merge conflict. The next
+ * collision will not come with a conflict to read, because the two halves will be in different
+ * files.
+ */
+if (selftesting("twice")) defined.set("RMD001", ["(selftest) a.ts", "(selftest) b.ts"]);
+
+const twice = [...defined].filter(([, files]) => files.length > 1 || new Set(files).size > 1);
+
+if (twice.length > 0) {
+  throw new Error(
+    `[docs] These diagnostic codes are defined more than once:\n` +
+      twice.map(([code, files]) => `        ${code} — ${[...new Set(files)].join(", ")}`).join("\n") +
+      `\n\n        A code names one fault. Two definitions means one of them silently wins and the\n` +
+      `        other diagnostic stops existing. Give the newer fault the next free code.`,
+  );
 }
 
 if (selftesting("prefix")) {
@@ -238,6 +320,30 @@ if (undocumented.length > 0) {
  * looks for.
  */
 const documented = [...diagnostics.matchAll(/^## (RM[A-Z]\d{3})(.*)$/gm)];
+
+/**
+ * The same rule from the reference's side: one section per code.
+ *
+ * The check above reads the source, and this reads the page, because a collision can arrive on
+ * either — and the one that actually happened arrived here. Two branches each wrote a `## RMD053`
+ * section for a different fault; the page rendered both, one under the other, and the only thing
+ * between that and a release was somebody reading a merge conflict.
+ */
+const sections = new Map();
+for (const [, code] of documented) sections.set(code, (sections.get(code) ?? 0) + 1);
+if (selftesting("sections")) sections.set("RMD002", 2);
+
+const repeated = [...sections].filter(([, times]) => times > 1).map(([code]) => code);
+
+if (repeated.length > 0) {
+  throw new Error(
+    `[docs] These diagnostics have more than one section in the reference:\n` +
+      repeated.map((code) => `        ${code}`).join("\n") +
+      `\n\n        One code, one section. Two means two faults are wearing the same name, and a\n` +
+      `        reader sent to look one up finds the other first.`,
+  );
+}
+
 const stale = documented
   .filter(([, code]) => !raised.has(code))
   .filter(([, , rest]) => !/retired/i.test(rest))

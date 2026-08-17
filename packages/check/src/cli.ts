@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { analyzeProject } from "./analyze";
 import { diffGraphs, refuseToDiff } from "./diff";
 import type { ComponentGraph } from "./graph";
+import { failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
 
 /**
@@ -63,12 +64,8 @@ if (diffAgainst && !existsSync(resolve(diffAgainst))) {
 
 const {
   issues,
-  arrowFields,
-  browserUrlReads,
-  domWrites,
+  findings,
   lateRequestReads,
-  duplicateDecorators,
-  unwatchedFields,
   unresolved,
   annotated,
   unreachable,
@@ -225,58 +222,34 @@ if (annotated.length > 0) {
  * A WARNING and not a failure, which is the rule for a new rule here: one version that says so,
  * the next that refuses. It is printed above the verdict and counts for nothing in it.
  */
-if (browserUrlReads.length > 0) {
-  // Components, not reads — four reads in one class is one component with a habit, and saying
-  // "4 component(s)" of a file that has one is a count nobody can reconcile with what follows.
-  const guilty = new Set(browserUrlReads.map((read) => read.component)).size;
-  console.warn(
-    `\n${TAG} ${guilty} component(s) reading the browser's URL, not the router's` +
-      `${browserUrlReads.length === guilty ? "" : ` — ${browserUrlReads.length} reads`}:\n`,
-  );
-  for (const read of browserUrlReads) {
-    console.warn(`  ${read.file}:${read.line}:${read.column}`);
-    console.warn(
-      `    <${read.component}> reads \`${read.read}\`` +
-        (read.instead ? ` — the router answers this with \`${read.instead}\`.` : "."),
-    );
-  }
-  console.warn(
-    `\nThe two are the same fact from two sources, and only one of them is reactive: read from the\n` +
-      `router, a component re-renders when the route moves; read from \`window\`, it is a snapshot\n` +
-      `taken once and never corrected, so the page quietly goes out of date. The router also keeps a\n` +
-      `distinction the URL hands over as one string — \`#tab=film\` is route state, \`#a-section\` names\n` +
-      `an element — so a hash tag with no value is a section and one with a value is not.\n\n` +
-      `This is a warning today and an error in a later version.\n`,
-  );
+/**
+ * Every rule that WARNS, printed from what the rule itself says.
+ *
+ * The sections below this used to be one hand-written block per rule — a heading, a loop, and a
+ * closing paragraph, twenty-odd lines each, in a file that knew nothing about the rule it was
+ * printing. They are on the rules now, so this loop is the whole of it and adding a rule adds no
+ * line here.
+ */
+for (const rule of RULES) {
+  if (rule.report.severity !== "warn") continue;
+  const found = findings[rule.id];
+  if (found.length === 0) continue;
+  console.warn(`\n${TAG} ${rule.report.heading(found as never)}\n`);
+  for (const issue of found) for (const line of rule.report.lines(issue as never)) console.warn(line);
+  console.warn(`\n${rule.report.advice}\n`);
 }
 
 /**
  * A component writing the document instead of rendering it.
+/**
+ * Whether anything below would fail the run.
  *
- * A WARNING beside the one above, and for the same reason: a new rule says so before it refuses.
+ * The rule half is DERIVED rather than listed. It was a clause per rule — `arrowFields.length === 0
+ * && duplicateDecorators.length === 0 && …` — and a rule added without its clause would have made
+ * this print "everything is fine" above its own report. That is the worst shape a bug in a checker
+ * can take, and the list is the only thing that made it possible.
  */
-if (domWrites.length > 0) {
-  const guilty = new Set(domWrites.map((write) => write.component)).size;
-  console.warn(
-    `\n${TAG} ${guilty} component(s) writing the document instead of rendering it` +
-      `${domWrites.length === guilty ? "" : ` — ${domWrites.length} writes`}:\n`,
-  );
-  for (const write of domWrites) {
-    console.warn(`  ${write.file}:${write.line}:${write.column}`);
-    console.warn(`    <${write.component}> writes \`${write.wrote}\`.`);
-  }
-  console.warn(
-    `\nA class, an attribute or a piece of text written this way is a SECOND copy of state the\n` +
-      `component already holds: it has to be kept in step by hand, cleaned up when the component\n` +
-      `goes away, and remembered by whoever adds the next handler that touches it. Say it in\n` +
-      `\`render()\` and let the stylesheet read it — \`html:has(.drawer-open)\` reaches the document\n` +
-      `from a class a descendant renders, so even the page itself can be styled from state.\n\n` +
-      `A COMMAND is not this and is not reported: \`scrollIntoView()\`, \`focus()\`, \`select()\` and\n` +
-      `\`getBoundingClientRect()\` have no declarative form. Nor is an element you created yourself,\n` +
-      `or one held in a \`ref\` — that one is your own.\n\n` +
-      `This is a warning today and an error in a later version.\n`,
-  );
-}
+const failing = failingRules(findings);
 
 /**
  * `requestContext()` read below an `await`.
@@ -316,9 +289,7 @@ if (lateRequestReads.length > 0) {
 
 if (
   issues.length === 0 &&
-  arrowFields.length === 0 &&
-  duplicateDecorators.length === 0 &&
-  unwatchedFields.length === 0 &&
+  failing.length === 0 &&
   unresolved.length === 0 &&
   unreachable.length === 0 &&
   unreachableRoutes.length === 0 &&
@@ -328,8 +299,7 @@ if (
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
-      `every consumer has a provider above it, no class field holds a function literal, no ` +
-      `single-use decorator is declared twice, and every component reading a form field watches it.`,
+      `every consumer has a provider above it, and every rule that can fail this run is quiet.`,
   );
   process.exit(0);
 }
@@ -471,104 +441,19 @@ if (issues.length > 0) {
   );
 }
 
-if (arrowFields.length > 0) {
-  console.error(`\n${TAG} ${arrowFields.length} class field(s) holding a function literal:\n`);
-  for (const field of arrowFields) {
-    console.error(`  ${field.file}:${field.line}:${field.column}`);
-    console.error(
-      `    ${field.component}.${field.field} — ` +
-        (field.readsThis
-          ? "write it as a method. Ramonda binds every method to its instance, so it keeps `this`\n" +
-            "    when it is passed to an element, and one function is shared by every instance."
-          : "it does not read `this`, so move it out of the class — a module constant is built once\n" +
-            "    rather than once per instance."),
-    );
-    console.error("");
-  }
-  console.error(
-    `A field initialised from a CALL is a different thing and is not reported: ` +
-      `\`debounce(this.save, 200)\`\nhas nowhere else to live. This is about a function written in ` +
-      `the field itself.\n`,
-  );
-}
-
-if (duplicateDecorators.length > 0) {
-  console.error(`\n${TAG} ${duplicateDecorators.length} class(es) declaring a single-use decorator twice:\n`);
-  for (const duplicate of duplicateDecorators) {
-    /**
-     * Which declaration is in effect, said per decorator KIND, because the two are opposite.
-     *
-     * The rule is the same for both — the last one APPLIED stands — but a member decorator
-     * initialises top-to-bottom while a class decorator applies bottom-up, so "last applied" is the
-     * lowest declaration in one case and the highest in the other. Measured in core's
-     * `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`. Naming the wrong one is
-     * worse than naming neither: it points at the line that works.
-     */
-    const inEffect =
-      duplicate.kind === "member"
-        ? "the LOWEST is the one that runs (members initialise top to bottom, so it is applied last)"
-        : "the HIGHEST is the one that runs (class decorators apply bottom-up, so it is applied last)";
-
-    /**
-     * One sentence per EFFECT, because "one of them never runs" is true of `@catchError` and false of
-     * the other three.
-     *
-     * `@Host` throws, so there is no live line to find. `@StableProps` merges, so nothing was lost.
-     * A doubled `@state` behaves exactly like a single one — measured, one render per write and the
-     * right value. Sending a reader after a difference that is not there is worse than saying less.
-     * One report, four faults, four pieces of advice.
-     */
-    const said =
-      duplicate.effect === "refuses"
-        ? `it THROWS — the class never loads, so there is no live declaration to look for.\n    ` +
-          `Two answers to what it asks have no union. Keep the one you meant.`
-        : duplicate.effect === "displaces"
-          ? `there is one answer to what it asks, so ${inEffect}\n    and the rest never run. Keep one and combine what they do.`
-          : duplicate.effect === "merges"
-            ? `they MERGE — both take effect and the result is the union, so nothing is lost.\n    ` +
-              `Write them as one call.`
-            : `applying it twice changes nothing. The behaviour is identical to one, so this is a\n    ` +
-              `mistaken belief rather than a broken program. Delete the extras.`;
-
-    // The member is named for a `redundant` report, because that count is per member: without it,
-    // "declares @state 2 times" reads like a claim about the class, which is a different fault.
-    const where =
-      duplicate.member === undefined
-        ? `<${duplicate.component}>`
-        : `${duplicate.component}.${duplicate.member} carries`;
-
-    console.error(`  ${duplicate.file}:${duplicate.line}:${duplicate.column}`);
-    console.error(
-      `    ${where}${duplicate.member === undefined ? " declares" : ""} @${duplicate.decorator} ` +
-        `${duplicate.count} times — ${said}`,
-    );
-    console.error("");
-  }
-  console.error(
-    `${TAG} A SUBCLASS declaring its own is an override, not a duplicate — only declarations on one\n` +
-      `        class body are counted here.\n`,
-  );
-}
-
-if (unwatchedFields.length > 0) {
-  console.error(`\n${TAG} ${unwatchedFields.length} component(s) reading a form field they do not watch:\n`);
-  for (const unwatched of unwatchedFields) {
-    console.error(`  ${unwatched.file}:${unwatched.line}:${unwatched.column}`);
-    console.error(
-      `    <${unwatched.component}> reads \`${unwatched.member}\` from a field in its props, so it will\n` +
-        `    never show a change to it — the component does not re-render at all.`,
-    );
-    console.error("");
-  }
-  console.error(
-    `Two deliberate things make that so: a field node is ONE object for the life of the form, so the\n` +
-      `props diff has nothing to notice and skips the component; and a hook's state belongs to whoever\n` +
-      `used the hook, so the form's counter wakes the form's owner and nobody else.\n\n` +
-      `Watch the field, and the component wakes when that one field changes:\n\n` +
-      `    f = this.use(Field<string>, () => ({ of: this.props.of }));\n` +
-      `    render() { return <input {...this.f.bind} />; }\n\n` +
-      `A component that only WRITES through a field is correct as written and is not reported.\n`,
-  );
+/**
+ * Every rule that FAILS the run. The same loop as the warnings, one stream over.
+ *
+ * After the graph's own errors rather than before them, because a missing provider is a fact about
+ * the whole app and one of these is a fact about one class: the reader wants the first one first.
+ */
+for (const rule of RULES) {
+  if (rule.report.severity !== "error") continue;
+  const found = findings[rule.id];
+  if (found.length === 0) continue;
+  console.error(`\n${TAG} ${rule.report.heading(found as never)}\n`);
+  for (const issue of found) for (const line of rule.report.lines(issue as never)) console.error(line);
+  console.error(`${rule.report.advice}\n`);
 }
 
 process.exit(1);

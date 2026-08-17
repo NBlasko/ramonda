@@ -66,7 +66,12 @@ A few ideas set Ramonda apart:
 | [`@ramonda/query`](packages/query) | Async state: cached, deduped, race-free queries and mutations |
 | [`@ramonda/form`](packages/form) | Forms: typed field paths, Standard Schema validation, stable array rows |
 | [`@ramonda/lens`](packages/lens) | Immutable deep updates by path, via structural sharing |
+| [`@ramonda/server`](packages/server) | The DOM and request plumbing an SSR server needs |
+| [`@ramonda/build`](packages/build) | The three bundler settings an app needs, as a Vite and an esbuild plugin |
+| [`@ramonda/check`](packages/check) | Static checks over your source, and over what your build emitted |
+| [`@ramonda/devtools`](packages/devtools) | The in-page inspector panel |
 | [`@ramonda/testing-library`](packages/testing-library) | Testing utilities, built on `@testing-library/dom` |
+| [`create-ramonda`](packages/create-ramonda) | The scaffolder — `npm create ramonda` |
 
 ## Developing
 

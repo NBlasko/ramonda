@@ -18,6 +18,7 @@ import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
 import { diagnose } from "../debug/diagnostics";
+import { reportFault } from "../debug/fault";
 import { isThenable } from "../core/serverWork";
 import {
   reportTextMismatch,
@@ -269,7 +270,11 @@ function hydrateComponent(
     adoptHost(component, existingHostNode, vnode);
     component[COMPONENT_RUNTIME].hydrationPending = true;
 
-    if (__DEV__) watchForStalledHydration(component);
+    // Armed in development always, and in production only when the app installed a collector — so
+    // an app with no sink pays nothing for this, not even the timer. A subtree that never resumes
+    // is one of the few faults that cannot be found before shipping: it needs a dynamic import
+    // that neither settles nor rejects, which is a network, not a mistake in the code.
+    if (__DEV__ || globalThis.__RAMONDA_DIAGNOSTICS__) watchForStalledHydration(component);
 
     // `finally`, not `then`: a rejected promise still has to release the
     // subtree. `AsyncLoad` renders its own error fallback in that case, and a
@@ -596,15 +601,24 @@ function watchForStalledHydration(component: BaseComponent): void {
     if (!componentRuntime.hydrationPending) return;
     if (componentRuntime.isDestroyed) return;
 
-    diagnose(
-      "RMD017",
-      `stalled-hydration:${component.constructor.name}`,
-      `<${component.constructor.name} /> deferred its hydration and never resumed. ` +
-        `The server's markup is still on screen, so the page looks finished — but this subtree ` +
-        `has no listeners and no state, and nothing in it responds. The promise returned by ` +
-        `deferHydration() has not settled after ${STALLED_HYDRATION_MS / 1000}s; a failed dynamic ` +
-        `import that never rejects is the usual cause.`,
-    );
+    const dedupKey = `stalled-hydration:${component.constructor.name}`;
+
+    if (__DEV__) {
+      diagnose(
+        "RMD017",
+        dedupKey,
+        `<${component.constructor.name} /> deferred its hydration and never resumed. ` +
+          `The server's markup is still on screen, so the page looks finished — but this subtree ` +
+          `has no listeners and no state, and nothing in it responds. The promise returned by ` +
+          `deferHydration() has not settled after ${STALLED_HYDRATION_MS / 1000}s; a failed dynamic ` +
+          `import that never rejects is the usual cause.`,
+      );
+    } else {
+      // The same fault without the advice: what happened is machine data and can ship, while what
+      // to do about it is prose for whoever is holding the keyboard. No component name — a
+      // production build has minified it, so it would name something that is not in the source.
+      reportFault("RMD017", dedupKey, "A subtree deferred its hydration and never resumed.");
+    }
   }, STALLED_HYDRATION_MS);
 
   // Do not hold a Node process (or a test run) open waiting for a diagnostic.

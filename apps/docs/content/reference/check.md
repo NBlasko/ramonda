@@ -124,6 +124,15 @@ once the graph is built, several other questions are free to ask.
 | Reading the browser's URL rather than the router's | `window.location.pathname` in a project that has a router |
 | Writing the document instead of rendering it | `document.body.classList.add(…)` and its family |
 | Reading the request after the render yielded | `requestContext()` below an `await` — also [`RMD053`](/reference/diagnostics) |
+| State written by something a render reaches | `this.count = …` in `render()`, in a helper it calls, or three files away |
+| A clock or a random number reached from a render | `Date.now()`, `new Date()`, `Math.random()` — also [`RMD021`](/reference/diagnostics) |
+| A row built from data with no `key` | from a `map` or a `list()` — also [`RMD023`](/reference/diagnostics) |
+| Two siblings claiming the same `key` | written as literals — also [`RMD002`](/reference/diagnostics) |
+| `class` where `className` was meant | also [`RMD039`](/reference/diagnostics) |
+| A dynamic import the bundler cannot split | the path is not a literal, so no chunk is emitted |
+| A tag outside the parent it needs | `<tr>` with no table above it, `<option>` with no select |
+| An element nested inside another of the same kind | a link in a link, a button in a button, a form in a form |
+| Markup nothing can announce | see [below](#markup-nothing-can-announce) — five accessibility rules |
 
 The declarative answers to the last one are on their own page:
 [reaching the document](/composition/document). A *command* — `scrollIntoView()`, `focus()`,
@@ -135,9 +144,18 @@ A new rule prints for one version and refuses in the next. A rule that is wrong 
 a rule you switch off, and switching one off is how a whole tool stops being run — so a rule gets a
 version in the open, against real projects, before it is allowed to fail a build.
 
-Each of the three above was measured against every app in the Ramonda repository when it was
-written, and each reported **zero**. That is the bar: a rule that already has something to say
-about correct code is not ready.
+Every rule above was measured against every app and package in the Ramonda repository when it was
+written. **Twenty of the twenty-one report zero.** That is the bar, and it is deliberately hard to
+clear: a rule that already has something to say about correct code is not ready.
+
+The exception is worth naming, because a bar with an unexplained exception is not a bar. **A row
+built by `list()` with no `key` is reported, and there are seventeen of them here.** They are not
+mistakes — `list()` infers an identity from what makes a row different from its siblings, and every
+one of these relies on that inference and gets a correct answer. The rule reports them anyway,
+because an inferred identity is one that can fail and a written one cannot: a row whose every field
+is nested or shared with its siblings has nothing to be told apart by, which is what
+[`RMD051`](/reference/diagnostics) exists to say. It stays a warning for as long as that is the
+only argument for it.
 
 ### Reading the request after the render yielded
 
@@ -174,7 +192,18 @@ The analyzer is a normal export, if you want it in a script of your own:
 ```ts
 import { analyzeProject } from "@ramonda/check";
 
-const { issues, counts } = analyzeProject("tsconfig.json");
+const { issues, counts, findings } = analyzeProject("tsconfig.json");
+```
+
+`issues` is the context check — the one this page opened with. `findings` is every other rule's,
+keyed by the rule's name and typed as that rule's own issue:
+
+```ts
+const { findings } = analyzeProject("tsconfig.json");
+
+for (const field of findings["arrow-fields"]) {
+  console.log(`${field.file}:${field.line} — ${field.component}.${field.field}`);
+}
 ```
 
 `typescript` is a peer dependency: the analyzer uses **your** compiler, so it reads your syntax and
@@ -233,6 +262,67 @@ fifty-six components that now arrive with the first page.
 
 Both flags describe. Neither fails a build.
 
+## Markup nothing can announce
+
+Four rules read your JSX one element at a time, and all four are about the same thing: an element
+that assistive technology cannot name.
+
+| | |
+|---|---|
+| `unnamed-image` | An `img`, `area`, image `input` or empty `object` with no `alt`, `aria-label`, `aria-labelledby` or `title`. |
+| `empty-heading-or-link` | A heading or a link with nothing inside it — a row in the screen reader's list of headings, or of links, with no label. |
+| `unnamed-frame` | An `iframe` with no `title`. |
+| `positive-tabindex` | A `tabIndex` above zero, which does not move one element but reorders the whole document. |
+
+```
+[ramonda-check] 1 image(s) with nothing to announce them by:
+
+  src/Brand.tsx:12:7
+    <img> has no `alt`, and no `aria-label`, `aria-labelledby` or `title` either.
+```
+
+**`alt=""` is an answer and is never reported.** It is the documented way to say "this image is
+decoration, skip it", and a rule that demanded text there would push you into describing spacers.
+
+**An element that spreads props is left alone entirely.** `<img {...rest} />` may carry the very
+attribute the rule is about, and nothing static can say whether it does — so none of these four is
+even asked about it. The same goes for content a rule cannot read: `<h2>{title}</h2>` may well have
+text, and being unable to prove otherwise is not evidence.
+
+## A split point that was meant, and is not there
+
+The same fact from the other side. A bundler splits at a dynamic import and **only when it can read
+the path at build time** — so `import(specifier)` is not a split point at all:
+
+```
+[ramonda-check] 1 dynamic import(s) the bundler cannot split:
+
+  src/Search.tsx:103:30
+    import(specifier) — the path is not a literal.
+```
+
+There is no chunk. The module is pulled into the caller's chunk, or left out of the build entirely
+and looked for at run time — which works on a dev server, where the source is served as it sits, and
+404s in production, where nothing emitted it. The build says nothing either way.
+
+If it is deliberate, say so and the report stops. Either the bundler's own marker, which you
+probably already need for the build to be quiet:
+
+```ts
+const load = () => import(/* @vite-ignore */ specifier);
+```
+
+or this package's annotation, which also keeps the reason where the next reader will find it:
+
+```ts
+// ramonda-check-ignore the panel's specifier is built, so the build cannot follow it
+const load = () => import(specifier);
+```
+
+Measured across this repository when the rule was written: 88 dynamic imports with a literal path
+and 3 without, every one of the three already marked. A rule that reported those would have opened
+by crying wolf at three deliberate decisions.
+
 ## The bundle that did not parse
 
 `@state`, `@compute` and the rest are TC39 decorators, which no engine can parse. Your bundler has
@@ -275,10 +365,10 @@ this", and that is the engine.
 Look at your bundler's `target`. Every value below `esnext` compiles the decorators away; `esnext`
 itself, which is also esbuild's default, is the one that does not.
 
-A scaffolded project does not set it by hand at all — `@ramonda/build` carries it, along with `jsx`
-and `jsxImportSource`, into both the Vite config and the esbuild build. If you configure the
-transform yourself, that package is the shorter way to get it right, and it refuses a `target` that
-would bring you back to this error instead of letting the build proceed.
+A scaffolded project does not set it by hand at all — [`@ramonda/build`](/reference/build) carries
+it, along with `jsx` and `jsxImportSource`, into both the Vite config and the esbuild build. If you
+configure the transform yourself, that package is the shorter way to get it right, and it refuses a
+`target` that would bring you back to this error instead of letting the build proceed.
 
 ## Next
 

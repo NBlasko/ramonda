@@ -143,4 +143,4 @@ something else, run `ramonda-check-bundle` over the output and let the artifact 
 
 ## Docs
 
-**https://ramonda.pages.dev/reference/check**
+**https://ramonda.pages.dev/reference/build**

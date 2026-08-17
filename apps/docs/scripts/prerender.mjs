@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync, cpSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { JSDOM } from "jsdom";
-import { installWindow } from "@ramonda/server";
+import { installDom } from "@ramonda/server";
 
 /**
  * Writes the whole site to `dist/` as static HTML.
@@ -14,14 +13,33 @@ import { installWindow } from "@ramonda/server";
  * server render is the same code as the client render, which is the only reason
  * hydration can adopt what it produces. So Node gets a DOM.
  *
- * ## One DOM, not one per page
+ * ## One DOM per page, the same as a server does per request
  *
- * `apps/playground-ssr/server.mjs` builds a fresh JSDOM per REQUEST, because
- * concurrent requests would otherwise share one `window.location`. A build loop
- * is sequential, so it does not need that — the URL is changed with `pushState`
- * between pages and each one comes out correct. Measured in
- * `packages/router/src/__tests__/Prerender.test.tsx`, including that two
- * consecutive builds are byte-for-byte identical.
+ * This used to build its own jsdom and walk the whole site on that ONE document,
+ * moving between pages with `pushState` — which needed `navigation: "dom"` from
+ * `installWindow`, a mode that exists because jsdom's `location` follows a
+ * `pushState` and linkedom has no `location` at all.
+ *
+ * The reason for the single document was cost, and the cost is gone. A jsdom
+ * document takes 4.8 ms to build, so 77 of them is a third of a second;
+ * `installDom` uses linkedom, at 0.018 ms, which is 1.4 ms for the whole site.
+ * What that buys is the ordinary arrangement instead of a special one: the URL
+ * is where the DOM was seeded, exactly as on a server, rather than somewhere the
+ * render navigated to. `apps/playground-ssr/server.mjs` and this script now do
+ * the identical thing.
+ *
+ * The output was compared before and after as parsed TREES rather than as text.
+ * The shape is identical on every page — same nodes, same children, same
+ * attribute values. Two things about the bytes changed, and both are a
+ * serializer's opinion rather than a render's: attribute ORDER, which no reader
+ * of HTML can observe, and `style="display: contents;"` losing its semicolon,
+ * because jsdom's CSSOM ends a declaration with one and linkedom's does not.
+ * Hydration never compares `style`, and a browser computes the same thing from
+ * either.
+ *
+ * Three pages differ between two consecutive builds, before this change and
+ * after it: `/ssr/env`, `/composition/lazy` and `/examples` each render a clock
+ * to demonstrate that they were prerendered. That is the demo working.
  *
  * ## Why it imports a BUILT bundle
  *
@@ -35,18 +53,8 @@ const root = join(here, "..");
 const dist = join(root, "dist");
 const serverBundle = join(root, ".build", "entry-server.js");
 
-function installDom(url) {
-  const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", { url });
-  /**
-   * `navigation: "dom"` — jsdom's own `location`/`history`, not a pair built from the URL.
-   *
-   * This loop walks the whole site on ONE document, moving between pages with `pushState`, and only
-   * jsdom's location follows that. The default builds a frozen location from the URL it was given,
-   * which is right for a server answering one request and would pin every page here to the first.
-   */
-  installWindow(url, dom.window, { navigation: "dom" });
-  return dom;
-}
+/** The origin the DOM is seeded at. Nothing is served from it; the router reads only the path. */
+const ORIGIN = "http://localhost";
 
 /**
  * `/` → `dist/index.html`; `/guide/installation` → `dist/guide/installation.html`.
@@ -69,15 +77,37 @@ if (!existsSync(serverBundle)) {
   );
 }
 
-installDom("http://localhost/");
+/**
+ * A DOM before the bundle is imported, because importing it is already a render's worth of work:
+ * modules that name `document` at the top level run here, and there has to be one for them to name.
+ * The per-page DOMs below replace it.
+ */
+installDom(`${ORIGIN}/`);
 
 const { paths, renderOne } = await import(pathToFileURL(serverBundle).href);
 
 const routePaths = paths();
 let bytes = 0;
 
+/**
+ * One page, on a DOM seeded at its URL — which is where the router reads the path from.
+ *
+ * `renderOne` is told the path as well, and that is not the same fact twice: the router needs a
+ * `location` to match against, while the page needs the path as a STRING for its canonical and
+ * `og:url` tags. Deriving the second from the first would mean reading a global back to learn
+ * something the caller already knows.
+ */
+async function render(routePath) {
+  const dom = installDom(new URL(routePath, ORIGIN).href);
+  try {
+    return await renderOne(routePath);
+  } finally {
+    dom.close();
+  }
+}
+
 for (const routePath of routePaths) {
-  const html = await renderOne(routePath);
+  const html = await render(routePath);
   const file = outputPath(routePath);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, html);
@@ -91,7 +121,7 @@ for (const routePath of routePaths) {
 // site and hydrates into a working app. The not-found body carries no path, so
 // the same file is correct whatever URL the host serves it at, and the client
 // re-derives the real one from `window.location` on hydration.
-const notFoundHtml = await renderOne("/404");
+const notFoundHtml = await render("/404");
 writeFileSync(join(dist, "404.html"), notFoundHtml);
 bytes += Buffer.byteLength(notFoundHtml);
 console.log(`[docs] ${"(not found)".padEnd(24)} → dist/404.html  ${Buffer.byteLength(notFoundHtml)} B`);

@@ -2,6 +2,7 @@ import type { BaseComponent } from "../types/vdom";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
 import { errorHandler } from "./errorHandler";
 import { addServerWork, isThenable } from "./serverWork";
+import { reportFault } from "../debug/fault";
 
 interface PendingMount {
   component: BaseComponent;
@@ -222,7 +223,24 @@ export function flushAfterCommit(): void {
        * a throw would REPLACE whatever error the commit was already unwinding with,
        * and losing a component's real failure to a metadata one is the worse trade.
        */
-      if (__DEV__) console.error("[Ramonda] Post-commit work failed:", e);
+      if (__DEV__) {
+        console.error("[Ramonda] Post-commit work failed:", e);
+      } else {
+        /**
+         * The one place the framework swallows an exception outright.
+         *
+         * Everything above explains why it is neither rethrown nor handed to `errorHandler`, and
+         * none of that changes — but the consequence is that a production build has no way to say
+         * this happened at all, and the work that failed is the work with no component to blame.
+         * Nothing renders differently, nothing logs, and whoever wrote the callback has no way to
+         * learn it never ran.
+         *
+         * So it goes to a collector if the app installed one. The error's own `message` is not
+         * included: it is written by whatever threw, which may be the app or a library it uses, and
+         * a record leaving the process is the wrong place to find that out for the first time.
+         */
+        reportFault("RMD054", "post-commit", "A post-commit callback threw, and the failure was swallowed.");
+      }
     }
   }
 }
