@@ -3,6 +3,32 @@ import { dirname, relative, sep } from "node:path";
 import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
+import { hookNamed, isThisUse, positionOf } from "./syntax";
+import {
+  activate,
+  apply,
+  arrowFields as arrowFieldsRule,
+  bind,
+  browserUrl as browserUrlRule,
+  domWrites as domWritesRule,
+  duplicateDecorators as duplicateDecoratorsRule,
+  unwatchedFields as unwatchedFieldsRule,
+} from "./rules";
+
+/**
+ * The per-class rules, re-exported so that moving them behind `./rules` changed no import anywhere
+ * else. Each interface is declared beside the rule that produces it, which is where it belongs —
+ * the shape of a finding is part of the rule, not of the analyzer that collects it.
+ */
+import type {
+  ArrowFieldIssue,
+  BrowserUrlIssue,
+  DomWriteIssue,
+  DuplicateDecoratorIssue,
+  UnwatchedFieldIssue,
+} from "./rules";
+
+export type { ArrowFieldIssue, BrowserUrlIssue, DomWriteIssue, DuplicateDecoratorIssue, UnwatchedFieldIssue };
 
 /**
  * Proves, before the app is ever opened, that every context consumer has a matching provider
@@ -29,173 +55,6 @@ export interface ContextIssue {
   column: number;
   /** Root → … → consumer: the path that has no provider on it. */
   path: string[];
-}
-
-/**
- * A class field holding a function literal.
- *
- * Ramonda binds every method to its instance, so `onPick = (id) => this.select(id)` buys exactly
- * nothing over `onPick(id) { this.select(id) }` — and costs one closure per instance, which for a
- * list of a thousand rows is a thousand closures.
- *
- * The check is syntactic on purpose. At runtime the two are indistinguishable: by the time anything
- * could look, `bindInstanceMethods` has already written a bound function onto the instance under
- * every method's name, and a field holding `debounce(this.save, 200)` is a function there too — and
- * that one is legitimate, because a wrapper cannot be expressed as a method. Only the source can
- * tell a function LITERAL from a call that returns one.
- */
-export interface ArrowFieldIssue {
-  /** The class the field is on. */
-  component: string;
-  field: string;
-  file: string;
-  line: number;
-  column: number;
-  /** Whether the body mentions `this` — which decides whether it becomes a method or leaves the class. */
-  readsThis: boolean;
-}
-
-/**
- * A component or hook asking the BROWSER where it is, in a project whose router already knows.
- *
- * `window.location.pathname` and the router's `pathname` are the same fact from two sources, and
- * only one of them is reactive: read from the router, a component re-renders when the route moves;
- * read from `window`, it is a snapshot taken once and never corrected. The bug that follows is
- * quiet — the page is simply out of date — and it is what makes this worth reporting rather than
- * leaving to taste.
- *
- * The router also answers questions the URL does not: `#tab=film` is route state and
- * `#a-section` names an element, a distinction `location.hash` hands over as one string to be
- * sniffed.
- */
-export interface BrowserUrlIssue {
-  /** The class that reads it. */
-  component: string;
-  /** What was written — `window.location.pathname`, `location.hash`. */
-  read: string;
-  /** The member of the router that answers the same question, when one obviously does. */
-  instead?: string;
-  file: string;
-  line: number;
-  column: number;
-}
-
-/**
- * A component writing to the DOM what its own `render()` could say.
- *
- * `document.documentElement.classList.toggle("nav-locked", this.menuOpen)` is RENDERING, done
- * imperatively. The class it writes is a second copy of a field the component already holds: it has
- * to be kept in step by hand, cleaned up when the component goes away, and remembered by whoever
- * adds the next handler that touches the same state. The declarative form exists — write the class
- * in `render()` and let the stylesheet read it — and it cannot drift, because there is only one of
- * it.
- *
- * **A COMMAND is not this, and the difference is the whole rule.** `scrollIntoView()`, `focus()`,
- * `select()` and `getBoundingClientRect()` have no declarative form: they are things you tell the
- * browser to do, not state the framework owns. They stay allowed, and a rule that caught them would
- * be a rule people switch off.
- */
-export interface DomWriteIssue {
-  /** The class doing the writing. */
-  component: string;
-  /** What was written — `document.body.classList.add`, `document.documentElement.style.overflow`. */
-  wrote: string;
-  file: string;
-  line: number;
-  column: number;
-}
-
-/**
- * A decorator that answers a question with ONE answer, declared more than once on the same class.
- *
- * `@catchError` ("who handles an error from below?"), `@Host` ("which element am I?"),
- * `@ShouldUpdateOnPropsChange` ("take these props?") and `@StableProps` are each single. Declared
- * twice, one of them wins and the others never run — silently, and the one being read may be the dead
- * one. The framework reports what it can at runtime (RMD032 for `@catchError`, RMD040 for
- * `@ShouldUpdateOnPropsChange`), but only once the class is reached; a class behind a condition nobody
- * clicked ships with the fault.
- *
- * **Which one wins depends on the KIND of decorator, and the two are opposite.** One rule underneath
- * both: the last declaration APPLIED is the one that stands. A member decorator initialises
- * top-to-bottom, so the LOWEST is applied last and wins. A class decorator is applied bottom-up, so the
- * HIGHEST wins. Measured in core, in `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`
- * — which is why `kind` is on this issue: without it a report cannot name the declaration that is
- * actually in effect, and naming the wrong one sends a reader to delete the line that works.
- *
- * A SUBCLASS declaring its own is not this. That is an override — the way a role is specialised —
- * so only declarations on one class body are counted.
- */
-export interface DuplicateDecoratorIssue {
-  /** The class the duplicates are on. */
-  component: string;
-  /** The decorator's name, without the `@`. */
-  decorator: string;
-  /** How many times it appears on this class. */
-  count: number;
-  /**
-   * Where the decorator sits, which decides which of the duplicates is in effect — see above.
-   *
-   * Taken from the node it was found on rather than from a table of names, so it stays true when a
-   * decorator changes form (`@ShouldUpdateOnPropsChange` was a member decorator before it was a class
-   * one). A pair split across both kinds cannot arise: a decorator's own type refuses the position it
-   * was not written for.
-   */
-  kind: "class" | "member";
-  /**
-   * What the second declaration DOES, which decides what advice makes sense.
-   *
-   * Four, one per behaviour core actually has, because the advice differs for each and naming the wrong
-   * one sends a reader somewhere there is nothing to find:
-   *
-   * - `refuses` — it THROWS (`@Host`, RMD045). Nothing runs, so there is no live line to hunt for.
-   * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
-   *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
-   * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). Nothing is lost;
-   *   the spelling is redundant.
-   * - `redundant` — the second changes nothing at all (`@state`, `@compute`, `@persist`,
-   *   `@memoizedHandler`). No dead code and no behaviour to look for; delete the extras.
-   */
-  effect: "refuses" | "displaces" | "merges" | "redundant";
-  /**
-   * The member the duplicates sit on, for a `redundant` report — `n` in `@state @state n = 1`.
-   *
-   * Absent for `displaces`, where the count is per class and naming one member would be misleading:
-   * two `@catchError` are on two different methods, and the fault is that the class has two answers.
-   */
-  member?: string;
-  file: string;
-  line: number;
-  column: number;
-}
-
-/**
- * A component that READS a form field it was handed, without watching it.
- *
- * Such a component never re-renders. Two things have to be true at once for that, and both are
- * deliberate: a field node is ONE cached object for the life of the form — a fresh one per access
- * means a fresh `bind.onInput` per access, which RMD020 reports — so the component's props never
- * change and the props diff skips it; and a hook's `@state` belongs to the component that used the
- * hook, so the form's counter wakes the form's OWNER and nobody else. The fix is `Field`, the hook
- * that subscribes the component to that one path.
- *
- * **Why this cannot be a runtime diagnostic.** The form would have to know who is rendering, and it
- * cannot: core's render phase is internal to core. Nothing in the running page can tell "the owner is
- * reading its own field" from "a child is reading a field it will never hear about again". Statically
- * it is plain, which is why it lives here — and it is the one silent failure the form package has
- * left, so it is worth a build gate rather than a note in the docs.
- *
- * **Only a READ counts.** A component that only WRITES through a field it was handed — `set` from a
- * click handler — is correct as written: writing needs no subscription, and the component showing the
- * value is somebody else. Reporting those would be reporting working code.
- */
-export interface UnwatchedFieldIssue {
-  /** The component doing the reading. */
-  component: string;
-  /** The member it read — `value`, `error`, `bind`, … — which is what would never update. */
-  member: string;
-  file: string;
-  line: number;
-  column: number;
 }
 
 /**
@@ -521,42 +380,6 @@ const CORE_ROOTS = new Set(["bootstrap", "hydrateRoot", "renderToString", "rende
  */
 
 /**
- * The member of the router that answers the same question as a piece of `location`.
- *
- * Only where one obviously does: `location.origin` has no router answer and gets none invented for
- * it, so the report names what was read and stops there.
- */
-
-/**
- * Members whose assignment IS rendering — what an element looks like, said imperatively.
- *
- * `id` is here because it is what a fragment link resolves against, and a component that writes one
- * has put half of its markup outside `render()`.
- */
-const RENDERED_BY_ASSIGNMENT = new Set(["className", "textContent", "innerHTML", "innerText", "id"]);
-
-/** Methods that write what an element looks like. `classList` and `style` get their own below. */
-const RENDERING_METHODS = new Set(["setAttribute", "removeAttribute", "toggleAttribute", "insertAdjacentHTML"]);
-
-/** `classList.add("x")` — the same write as `className`, through the API made for it. */
-const CLASS_LIST_METHODS = new Set(["add", "remove", "toggle", "replace"]);
-
-/** Writing a style through a call rather than a property — how a CSS custom property is set. */
-const STYLE_METHODS = new Set(["setProperty", "removeProperty"]);
-
-/**
- * The member of the router that answers the same question as a piece of `location`.
- *
- * Only where one obviously does: `location.origin` has no router answer and gets none invented for
- * it, so the report names what was read and stops there.
- */
-const ROUTER_ANSWER: Record<string, string> = {
-  pathname: "pathname",
-  search: "searchParams",
-  hash: "hashTags",
-};
-
-/**
  * A test, as the PROJECT sees it — the path is relative to the directory holding the tsconfig.
  *
  * Relative and not absolute, because a project can live inside another project's test tree: this
@@ -605,81 +428,6 @@ const NOT_A_SLOT = new Set([
   "EnhancedElement",
   "ListNode",
 ]);
-
-/**
- * A second declaration REFUSES the program: it throws, so nothing runs at all.
- *
- * `@Host` only. Two element names have no union and no winner worth picking, so core raises `RMD045` and
- * throws in every build. Reporting it as "one of them wins" would be worse than saying nothing — the
- * reader would go looking for which line is live when the answer is that the class never loads.
- */
-const REFUSING = new Set(["Host"]);
-
-/**
- * A second declaration DISPLACES the first: one wins, the rest never run, and the program carries on
- * wrongly. That is what a runtime code without a throw is for — `RMD032` and `RMD040`.
- *
- * Counted per CLASS BODY, so a subclass declaring its own — an override — is not a duplicate.
- */
-const DISPLACING = new Set(["catchError", "ShouldUpdateOnPropsChange"]);
-
-/**
- * A second declaration MERGES with the first, so both take effect and the result is the union.
- *
- * `@StableProps` only, and it follows from what the decorator IS: it names a set, and it already merges
- * along the class chain. Nothing is displaced and nothing is wasted — the author asked for the union and
- * got it, spelled twice. Core reports `RMD046`, a warning.
- */
-const MERGING = new Set(["StableProps"]);
-
-/**
- * The decorators where a second application changes NOTHING — a different fault, and worth its own
- * sentence, because telling somebody "one of them never runs" here would send them looking for a
- * behaviour difference that does not exist.
- *
- * Measured in core rather than assumed: `@state @state n = 1` renders once per write with the right
- * value, `@compute @compute` runs its body once for two reads, and `@persist` and `@memoizedHandler`
- * behave identically doubled. So it is redundancy, which is why it reads as a warning rather than a
- * broken program — the author believed something that is not so, and nothing downstream is wrong.
- *
- * `@watchProp` is deliberately NOT here: several on one method is the supported way for one handler to
- * follow several props, and each application does real work. See `DecoratorReach.test.tsx`, which pins
- * that it runs once per changed prop.
- */
-const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoizedHandler"]);
-
-/**
- * The members of a field's API whose answer MOVES, which is what makes reading one a subscription.
- *
- * `set`, `reset`, `append`, `insert`, `remove` and `move` are absent on purpose: a component that only
- * writes through a field it was handed is correct as written, because writing needs no subscription.
- * `path` and `name` are absent because they are fixed for the life of the field — a component reading
- * only the `name` to label something has nothing to hear about.
- */
-const FIELD_READS = new Set(["value", "error", "errors", "touched", "dirty", "bind", "rows", "length"]);
-
-/** The hook that watches one field. Named rather than resolved — see `readUnwatchedFields`. */
-const WATCH_HOOK = "Field";
-
-/** The name of a decorator, whether it is bare (`@catchError`) or called (`@Host("div")`). */
-/**
- * The hook a `this.use(...)` names, looking through a type argument list.
- *
- * `this.use(Form<typeof schema>, …)` is an INSTANTIATION EXPRESSION, not an identifier — and every
- * generic hook in the framework is documented to be written that way when the call site cannot infer:
- * `Form<typeof schema>`, `Query<Todo>`, `Field<string>`. Read as an identifier only, none of them
- * resolved, so the owning component was marked opaque and **every consumer below it stopped being
- * judged**. Proved by the `pinned-hook` fixture: with the pin unwrapped the missing provider is
- * reported, and without it the report is silence.
- */
-function hookNamed(arg: ts.Expression): ts.Expression {
-  return ts.isExpressionWithTypeArguments(arg) ? arg.expression : arg;
-}
-
-function decoratorName(decorator: ts.Decorator): string | undefined {
-  const expression = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
-  return ts.isIdentifier(expression) ? expression.text : undefined;
-}
 
 export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const { program, notes } = createProgram(tsconfigPath);
@@ -924,21 +672,45 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     );
 
   /**
-   * Whether this project has a router at all, decided by whether anything imports one.
+   * Which Ramonda packages this project imports at all, read once from the source.
    *
-   * The rule below needs it: without a router, `location` is the only place the answer lives, and
-   * reporting it would be reporting the only thing a reader could have written. An import and not a
-   * mounted `<Router>`, because a kit hides the mount — an app imports `@ramonda/router` in one
-   * file, builds `Navigator` and `Link` there, and every component sees those instead.
+   * A rule declaring `needs` is dropped from the run unless its package is in here. That was one
+   * boolean — `usesRouter` — written for the one rule that had the question, and the reason it is
+   * a set now is that the question is not special: a rule about a form, a query or a lens will ask
+   * the same thing, and each would otherwise arrive with its own scan and its own `if`.
+   *
+   * **An IMPORT and not a mounted component,** because a kit hides the mount: an app imports
+   * `@ramonda/router` in one file, builds `Navigator` and `Link` there, and every component sees
+   * those instead. A subpath counts as the package — `@ramonda/router/server` means the router is
+   * present just as plainly.
    */
-  const usesRouter = sources.some((file) =>
-    file.statements.some(
-      (statement) =>
-        ts.isImportDeclaration(statement) &&
-        ts.isStringLiteral(statement.moduleSpecifier) &&
-        (statement.moduleSpecifier.text === "@ramonda/router" ||
-          statement.moduleSpecifier.text.startsWith("@ramonda/router/")),
-    ),
+  const imported = new Set<string>();
+  for (const file of sources) {
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const specifier = statement.moduleSpecifier.text;
+      if (!specifier.startsWith("@ramonda/")) continue;
+      const [scope, name] = specifier.split("/");
+      imported.add(`${scope}/${name}`);
+    }
+  }
+
+  /**
+   * The rules, each paired with the list its findings go into, filtered to what this project runs.
+   *
+   * Built once rather than per class: `needs` is a fact about the project, and asking it 68 times
+   * for one component would be the same answer 68 times. `exempt` is per class and is applied by
+   * `apply` — see the note on it.
+   */
+  const rules = activate(
+    [
+      bind(arrowFieldsRule, arrowFields),
+      bind(browserUrlRule, browserUrlReads),
+      bind(domWritesRule, domWrites),
+      bind(duplicateDecoratorsRule, duplicateDecorators),
+      bind(unwatchedFieldsRule, unwatchedFields),
+    ],
+    imported,
   );
 
   // ── Pass 1: the context pairs, the route tables, and every component class by symbol ────────
@@ -976,11 +748,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          readArrowFields(node, self.name);
-          readBrowserUrl(node, self);
-          readDomWrites(node, self);
-          readDuplicateDecorators(node, self.name);
-          readUnwatchedFields(node, self.name);
+          apply(rules, node, { self, resolve });
         }
       }
       collectRoot(node);
@@ -3016,373 +2784,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         }),
     };
   }
-
-  /**
-   * Function literals held in fields, on a class this analyzer already calls a component.
-   *
-   * Deliberately narrow: an arrow or a `function` written IN the field. A field initialised from a
-   * call — `debounce(this.save, 200)`, `memoize(fn)` — is left alone, because a wrapper has nowhere
-   * else to live and the value is a function only after the call has run.
-   */
-  function readDuplicateDecorators(cls: ts.ClassDeclaration, owner: string): void {
-    /**
-     * The two classes of fault are counted at two different LEVELS, and getting that wrong is not a
-     * near miss — it is a false positive on ordinary code.
-     *
-     * A `displacing` decorator answers a question the CLASS asks ("who handles an error from below?"),
-     * so two anywhere in the body is the fault. A `redundant` one is about one MEMBER: five fields each
-     * carrying `@state` is what every component looks like, and counting `@state` per class reported
-     * `<Search> declares @state 5 times` — measured, against this repository's own documentation app,
-     * which is how the mistake surfaced.
-     */
-    const perClass = new Map<string, { count: number; at: ts.Node; kind: "class" | "member" }>();
-    const perMember = new Map<string, { count: number; at: ts.Node; member: string }>();
-
-    const count = (node: ts.Node, kind: "class" | "member", member?: string): void => {
-      for (const decorator of ts.getDecorators(node as ts.HasDecorators) ?? []) {
-        const name = decoratorName(decorator);
-        if (name === undefined) continue;
-
-        if (REFUSING.has(name) || DISPLACING.has(name) || MERGING.has(name)) {
-          const previous = perClass.get(name);
-          if (previous) previous.count += 1;
-          else perClass.set(name, { count: 1, at: decorator, kind });
-          continue;
-        }
-
-        if (REDUNDANT_TWICE.has(name) && member !== undefined) {
-          const key = `${member} ${name}`;
-          const previous = perMember.get(key);
-          if (previous) previous.count += 1;
-          else perMember.set(key, { count: 1, at: decorator, member });
-        }
-      }
-    };
-
-    count(cls, "class");
-    for (const member of cls.members) count(member, "member", member.name?.getText());
-
-    for (const [decorator, { count: times, at, kind }] of perClass) {
-      if (times < 2) continue;
-      const effect = REFUSING.has(decorator) ? "refuses" : MERGING.has(decorator) ? "merges" : "displaces";
-      duplicateDecorators.push({
-        component: owner,
-        decorator,
-        count: times,
-        kind,
-        effect,
-        ...positionOf(at),
-      });
-    }
-
-    for (const [key, { count: times, at, member }] of perMember) {
-      if (times < 2) continue;
-      duplicateDecorators.push({
-        component: owner,
-        decorator: key.split(" ")[1],
-        count: times,
-        kind: "member",
-        effect: "redundant",
-        member,
-        ...positionOf(at),
-      });
-    }
-  }
-
-  /**
-   * A form field read by a component that does not watch it — see `UnwatchedFieldIssue`.
-   *
-   * The shape looked for is a property chain that starts at `this.props`, passes through `$`, and ends
-   * at a member whose answer moves. Two passes, because the `use` may be written below the read:
-   * the first asks whether this class watches anything and which locals hold a field it was handed, the
-   * second looks for the reads.
-   *
-   * **The hook is matched by NAME rather than resolved to `@ramonda/form`.** Resolving it would be
-   * stricter, and it would also make the check silent for a re-export — an app's own
-   * `export { Field } from "@ramonda/form"`, or a wrapper hook named `Field` that uses it. A local class
-   * of that name is the cost, and the direction of the mistake is what settles it: a false negative here
-   * is the silent never-re-renders bug shipping, and a false positive is a line of advice about a name
-   * somebody chose.
-   */
-  function readUnwatchedFields(cls: ts.ClassDeclaration, owner: string): void {
-    let watches = false;
-    /** Locals holding a handle the component was handed — `const f = this.props.of.$`. */
-    const held = new Set<string>();
-
-    ts.forEachChild(cls, function first(node) {
-      if (ts.isCallExpression(node) && isThisUse(node)) {
-        const arg = node.arguments[0];
-        const named = arg === undefined ? undefined : hookNamed(arg);
-        if (named !== undefined && ts.isIdentifier(named) && named.text === WATCH_HOOK) watches = true;
-      }
-
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined &&
-        handedOver(node.initializer)
-      ) {
-        held.add(node.name.text);
-      }
-
-      ts.forEachChild(node, first);
-    });
-
-    if (watches) return;
-
-    // One report per component: every read has the same cause and the same fix, and a component showing
-    // a field reads three or four of them — `value`, `error`, `bind`. A list of them would say one thing
-    // four times and bury the next component.
-    let reported = false;
-
-    ts.forEachChild(cls, function second(node) {
-      if (reported) return;
-
-      if (ts.isPropertyAccessExpression(node) && FIELD_READS.has(node.name.text)) {
-        const from = node.expression;
-        const throughProps = ts.isPropertyAccessExpression(from) && from.name.text === "$" && rootedInProps(from);
-        const throughLocal = ts.isIdentifier(from) && held.has(from.text);
-
-        if (throughProps || throughLocal) {
-          unwatchedFields.push({ component: owner, member: node.name.text, ...positionOf(node) });
-          reported = true;
-          return;
-        }
-      }
-
-      ts.forEachChild(node, second);
-    });
-  }
-
-  /** Whether an expression is a `$` reached from `this.props` — the handle of a field handed over. */
-  function handedOver(node: ts.Expression): boolean {
-    return ts.isPropertyAccessExpression(node) && node.name.text === "$" && rootedInProps(node);
-  }
-
-  /**
-   * Whether a property chain starts at `this.props`.
-   *
-   * Element access is walked too, so `this.props.rows[0].v.$` is seen for what it is.
-   */
-  function rootedInProps(node: ts.Node): boolean {
-    let at: ts.Node = node;
-    while (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
-      if (
-        ts.isPropertyAccessExpression(at) &&
-        at.name.text === "props" &&
-        at.expression.kind === ts.SyntaxKind.ThisKeyword
-      ) {
-        return true;
-      }
-      at = at.expression;
-    }
-    return false;
-  }
-
-  /**
-   * A component or hook reading the browser's URL, where the router already holds it.
-   *
-   * **Only in a project that HAS a router.** Without one, `location` is the only place the answer
-   * lives and reporting it would be reporting the only thing a reader could have written. The
-   * router's own package is left alone for the same reason from the other side: it is where the
-   * reading has to happen, and `urlUtils.ts` is the file that does it.
-   *
-   * Reported as a WARNING and not a build failure, which is this repository's rule for a new rule:
-   * one version that says so, the next that refuses. Nothing in this repository trips it today —
-   * measured — so the first version costs nobody a red build while it is being tried.
-   */
-  function readBrowserUrl(cls: ts.ClassDeclaration, self: ComponentNode): void {
-    if (!usesRouter || self.id.startsWith("@ramonda/router/")) return;
-
-    ts.forEachChild(cls, function look(node) {
-      if (ts.isPropertyAccessExpression(node)) {
-        const member = node.name.text;
-        const base = node.expression;
-        /**
-         * `window.location.x`, `globalThis.location.x`, `document.location.x` and a bare
-         * `location.x`.
-         *
-         * A bare name counts only when it resolves to NOTHING. The program is built with
-         * `noLib` and no `@types`, so the browser's own `location` has no declaration to find —
-         * while `const location = …` written in the source does. That is what tells the global
-         * from a local of the same name, and it costs no type.
-         */
-        const onLocation =
-          (ts.isPropertyAccessExpression(base) &&
-            base.name.text === "location" &&
-            ts.isIdentifier(base.expression) &&
-            ["window", "globalThis", "document"].includes(base.expression.text)) ||
-          (ts.isIdentifier(base) && base.text === "location" && resolve(base) === undefined);
-
-        /**
-         * A READ, and only a read. Reported without this guard: `window.location.href = "…"`,
-         * `location.assign("/x")` and `location.reload()` — measured, all three came out as
-         * "reads", and a reload is the one thing the router cannot replace. A write is a different
-         * fault with a different answer, and this rule is about asking the wrong source a question
-         * the router already answers.
-         */
-        const written =
-          ts.isBinaryExpression(node.parent) &&
-          node.parent.left === node &&
-          node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
-        const called = ts.isCallExpression(node.parent) && node.parent.expression === node;
-
-        if (onLocation && !written && !called) {
-          const at = positionOf(node);
-          browserUrlReads.push({
-            component: self.name,
-            read: node.getText(),
-            ...(ROUTER_ANSWER[member] ? { instead: ROUTER_ANSWER[member] } : {}),
-            ...at,
-          });
-        }
-      }
-      ts.forEachChild(node, look);
-    });
-  }
-
-  /**
-   * Whether an expression names an element the component did NOT render.
-   *
-   * The three roots of the document, and whatever a global query returns. Anything reached through
-   * a local variable is deliberately outside this: reading what that variable holds is dataflow,
-   * which this resolver refuses by decision — and an element the component CREATED is a local, so
-   * building one and filling it in is left alone, which is right.
-   */
-  function notOursToWrite(node: ts.Node): boolean {
-    let at: ts.Node = node;
-    // `document.body.style.overflow` → walk down to `document.body`. Element access is walked too,
-    // because `style["overflow"]` and `style.overflow` are one write through two spellings.
-    while (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
-      const owner = at.expression;
-      /**
-       * The NAME `document`, without asking whether it resolves.
-       *
-       * The sibling rule treats `window.location` the same way and reserves the resolve check for a
-       * BARE `location`, which is the form a local can plausibly shadow. A prefix cannot: nobody
-       * writes `const document = …` and then reaches for `.body.classList`. Requiring it to be
-       * unresolvable also made the rule depend on the run having no lib — true here, and a silent
-       * trap for anyone who declares the global themselves, which is exactly what this fixture does.
-       */
-      const isDocument = ts.isIdentifier(owner) && owner.text === "document";
-      const viaWindow =
-        ts.isPropertyAccessExpression(owner) &&
-        owner.name.text === "document" &&
-        ts.isIdentifier(owner.expression) &&
-        ["window", "globalThis"].includes(owner.expression.text);
-      if (isDocument || viaWindow) return true;
-      at = owner;
-    }
-    // `document.getElementById("x").classList` — the chain bottoms out in the query itself.
-    if (ts.isCallExpression(at) && ts.isPropertyAccessExpression(at.expression)) {
-      const called = at.expression.name.text;
-      if (["getElementById", "querySelector", "querySelectorAll"].includes(called)) {
-        return notOursToWrite(at.expression);
-      }
-    }
-    if (ts.isNonNullExpression(at) || ts.isParenthesizedExpression(at)) return notOursToWrite(at.expression);
-    return false;
-  }
-
-  /**
-   * A component writing the document instead of rendering it.
-   *
-   * Reported as a WARNING, which is the rule here for a new rule: one version that says so, the
-   * next that refuses. Measured across this repository when it was written: zero reports. What
-   * looked like violations were a custom element (`@ramonda/devtools` is an `HTMLElement`, not a
-   * component), a READ of `textContent`, and a `<style>` element built at module scope — none of
-   * them a component writing what it could have rendered.
-   */
-  function readDomWrites(cls: ts.ClassDeclaration, self: ComponentNode): void {
-    const report = (target: ts.Node, wrote: string): void => {
-      domWrites.push({ component: self.name, wrote, ...positionOf(target) });
-    };
-
-    ts.forEachChild(cls, function look(node) {
-      /**
-       * `document.body.className = "x"`, and `+=` with it.
-       *
-       * ANY assignment operator, not just `=`. `className += " open"` is the most idiomatic
-       * imperative class write there is, and matching only `EqualsToken` left the rule silent on
-       * the very case it exists for — measured, it reported nothing while the plain assignment on
-       * the next line was reported.
-       */
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-      ) {
-        // `style.overflow = …` and `style["overflow"] = …` are the same write through two
-        // spellings, and a computed key is how a CSS custom property is usually reached.
-        const left = node.left;
-        const written = ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left);
-        if (written) {
-          const owner = left.expression;
-          const styled = ts.isPropertyAccessExpression(owner) && owner.name.text === "style";
-          const named = ts.isPropertyAccessExpression(left) ? left.name.text : "";
-          if ((styled || RENDERED_BY_ASSIGNMENT.has(named)) && notOursToWrite(left)) {
-            report(left, left.getText());
-          }
-        }
-      }
-
-      // `document.body.classList.add("x")`, `document.documentElement.setAttribute(…)`,
-      // `document.body.style.setProperty("--accent", …)`.
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        const called = node.expression;
-        const owner = called.expression;
-        const onClassList =
-          ts.isPropertyAccessExpression(owner) &&
-          owner.name.text === "classList" &&
-          CLASS_LIST_METHODS.has(called.name.text);
-        const onStyle =
-          ts.isPropertyAccessExpression(owner) && owner.name.text === "style" && STYLE_METHODS.has(called.name.text);
-        if ((onClassList || onStyle || RENDERING_METHODS.has(called.name.text)) && notOursToWrite(called)) {
-          report(called, called.getText());
-        }
-      }
-      ts.forEachChild(node, look);
-    });
-  }
-
-  function readArrowFields(cls: ts.ClassDeclaration, owner: string): void {
-    for (const member of cls.members) {
-      if (!ts.isPropertyDeclaration(member) || !member.initializer) continue;
-      // `static` is not an instance member: it exists once per class, so there is no closure per
-      // instance to save and nothing for method binding to have done. A static arrow is a plain
-      // constant that happens to be callable.
-      if (member.modifiers?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword)) continue;
-      const value = member.initializer;
-      if (!ts.isArrowFunction(value) && !ts.isFunctionExpression(value)) continue;
-
-      let readsThis = false;
-      const look = (n: ts.Node): void => {
-        if (n.kind === ts.SyntaxKind.ThisKeyword) readsThis = true;
-        // A nested class or a `function` re-binds `this`, so what is inside one says nothing
-        // about whether THIS field needs the instance.
-        if (ts.isClassDeclaration(n) || ts.isClassExpression(n) || ts.isFunctionDeclaration(n)) return;
-        if (!readsThis) ts.forEachChild(n, look);
-      };
-      ts.forEachChild(value, look);
-
-      arrowFields.push({
-        component: owner,
-        field: member.name.getText(),
-        ...positionOf(member.name),
-        readsThis,
-      });
-    }
-  }
-
-  function positionOf(node: ts.Node): {
-    file: string;
-    line: number;
-    column: number;
-  } {
-    const file = node.getSourceFile();
-    const { line, character } = file.getLineAndCharacterOfPosition(node.getStart());
-    return { file: file.fileName, line: line + 1, column: character + 1 };
-  }
 }
 
 // ── module-level helpers (no checker needed) ──────────────────────────────────────────────────
@@ -3391,14 +2792,6 @@ function calleeName(call: ts.CallExpression): string | undefined {
   if (ts.isIdentifier(call.expression)) return call.expression.text;
   if (ts.isPropertyAccessExpression(call.expression)) return call.expression.name.text;
   return undefined;
-}
-
-function isThisUse(call: ts.CallExpression): boolean {
-  return (
-    ts.isPropertyAccessExpression(call.expression) &&
-    call.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
-    call.expression.name.text === "use"
-  );
 }
 
 function labelOf(call: ts.CallExpression): string | undefined {

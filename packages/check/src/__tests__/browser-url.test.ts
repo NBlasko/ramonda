@@ -58,6 +58,28 @@ describe("a component reading the browser's URL", () => {
   });
 
   /**
+   * The router's OWN code is left alone, which is the other side of the same argument.
+   *
+   * Somewhere inside the router, something has to read `window.location` or the router would have
+   * nothing to tell anybody. A rule about reaching past an abstraction is always wrong about the
+   * code that implements it.
+   *
+   * **This fixture exists because the guard was unreachable and nothing said so.** The exemption
+   * had been written by hand inside the rule since it was added, and deleting it failed no test —
+   * measured. The reason is that the other gate fires first: a rule with `needs` only runs in a
+   * project that IMPORTS the package, and `@ramonda/router` does not import itself, so the rule
+   * never reached its own source to be exempted from. This fixture is a package that does both —
+   * it is named `@ramonda/router` and it reaches for itself by name — which is the shape a
+   * workspace self-reference actually takes, and the only shape in which the guard can speak.
+   */
+  test("the router's own package is not reported, even reaching for itself by name", () => {
+    const result = run("inside-router");
+    // The read is really there and really inside the router: without both, this passes vacuously.
+    expect(result.counts.components).toBeGreaterThan(0);
+    expect(result.browserUrlReads).toEqual([]);
+  });
+
+  /**
    * It is a WARNING for now, which is this repository's rule for a new rule: one version that says
    * so, the next that refuses. Nothing must fail a build on it yet.
    */
