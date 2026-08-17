@@ -3,6 +3,7 @@ import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, Rule
 import { contextFor } from "./element";
 import { unnamedImage } from "./unnamed-image";
 import { classInsteadOfClassName } from "./class-instead-of-classname";
+import { duplicateKeyAmongSiblings } from "./duplicate-key-among-siblings";
 import { rowWithoutAKey } from "./row-without-a-key";
 import { interactiveInsideInteractive } from "./interactive-inside-interactive";
 import { tagNeedsItsParent } from "./tag-needs-its-parent";
@@ -35,6 +36,7 @@ export type {
 
 export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
 export { classInsteadOfClassName, type ClassInsteadOfClassNameIssue } from "./class-instead-of-classname";
+export { duplicateKeyAmongSiblings, type DuplicateKeyAmongSiblingsIssue } from "./duplicate-key-among-siblings";
 export { rowWithoutAKey, type RowWithoutAKeyIssue } from "./row-without-a-key";
 export { interactiveInsideInteractive, type InteractiveInsideInteractiveIssue } from "./interactive-inside-interactive";
 export { tagNeedsItsParent, type TagNeedsItsParentIssue } from "./tag-needs-its-parent";
@@ -84,6 +86,7 @@ export const MODULE_RULES = [unsplittableImport] as const;
  * sit together: a reader fixing one is usually about to fix the other.
  */
 export const ELEMENT_RULES = [
+  duplicateKeyAmongSiblings,
   rowWithoutAKey,
   classInsteadOfClassName,
   tagNeedsItsParent,

@@ -59,9 +59,26 @@ describe("`class` where `className` was meant", () => {
   });
 });
 
-test("neither fails the run", () => {
+describe("two siblings claiming the same key", () => {
+  test("the second is reported, and a literal number compares like a string", () => {
+    const found = run().findings["duplicate-key-among-siblings"];
+    expect(found.map((issue) => `${issue.tag} ${issue.key}`)).toEqual(['li "a"', "li 1"]);
+  });
+
+  /**
+   * The two silences that make "among siblings" exact rather than approximate: a key under a
+   * DIFFERENT parent is a different key, and a key this cannot read is never compared at all —
+   * `key={row.id}` may well collide, and deciding that needs the data.
+   */
+  test("a nested namesake and a key it cannot read are left alone", () => {
+    expect(run().findings["duplicate-key-among-siblings"]).toHaveLength(2);
+  });
+});
+
+test("none of them fails the run", () => {
   const result = run();
-  expect(result.findings["row-without-a-key"].length).toBeGreaterThan(0);
-  expect(result.findings["class-instead-of-classname"].length).toBeGreaterThan(0);
+  for (const id of ["row-without-a-key", "class-instead-of-classname", "duplicate-key-among-siblings"] as const) {
+    expect(result.findings[id].length, id).toBeGreaterThan(0);
+  }
   expect(result.issues).toEqual([]);
 });

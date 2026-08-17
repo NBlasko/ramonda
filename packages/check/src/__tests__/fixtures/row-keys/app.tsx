@@ -87,3 +87,33 @@ class Styles extends Component {
 
 bootstrap(<Rows />, null);
 bootstrap(<Styles />, null);
+
+@Host("ul")
+class Sibling extends Component {
+  render() {
+    return (
+      <ul>
+        {/* Not reported: the first of each key. */}
+        <li key="a">one</li>
+        {/* REPORTED — a sibling already claims "a". */}
+        <li key="a">two</li>
+        {/* Not reported: a key of its own. */}
+        <li key="b">three</li>
+        {/* REPORTED — numbers compare too. */}
+        <li key={1}>four</li>
+        <li key={1}>five</li>
+        {/* Not reported: nothing here can read either of these. */}
+        <li key={rows[0].id}>six</li>
+        <li key={rows[1].id}>seven</li>
+        {/* Not reported: the same key under a DIFFERENT parent is a different key. */}
+        <li key="c">
+          <ul>
+            <li key="a">nested</li>
+          </ul>
+        </li>
+      </ul>
+    );
+  }
+}
+
+bootstrap(<Sibling />, null);
