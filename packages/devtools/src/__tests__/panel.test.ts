@@ -2225,6 +2225,30 @@ describe("what a @compute's cache did", () => {
     expect(text).toContain("Computed");
   });
 
+  /**
+   * The numbers move on a tick without the tree being rebuilt.
+   *
+   * They have to arrive through the VALUE path rather than the signature path: the signature is
+   * built from key names only, so a hit count changing is invisible to it — by design, because a
+   * counter that ticked four times a second would rebuild the whole tree four times a second and
+   * take the reader's open rows, selection and scroll with it. If the numbers ever stop updating,
+   * this is the test that says so.
+   */
+  it("updates the numbers in place, without rebuilding the tree", () => {
+    let hits = 0;
+    const panel = mount(() => [node("App", "component", { computes: { total: { hits, misses: 5 } } })]);
+
+    const row = panel.shadowRoot.querySelector(".comp-summary");
+    expect(panel.shadowRoot.textContent).toContain("never cached — ran on all 5 reads");
+
+    hits = 7;
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(panel.shadowRoot.textContent).toContain("7 of 12 reads cached");
+    // The same element: an in-place value write, not a rebuild.
+    expect(panel.shadowRoot.querySelector(".comp-summary")).toBe(row);
+  });
+
   it("shows no section for a component with no computes", () => {
     const panel = mount(() => [node("App", "component", {})]);
     expect(panel.shadowRoot.textContent ?? "").not.toContain("Computed");

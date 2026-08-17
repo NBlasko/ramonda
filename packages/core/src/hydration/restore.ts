@@ -12,7 +12,6 @@ interface RestorableInstance {
 
 function restoreState(instance: RestorableInstance, node: SerializedNode): void {
   const target = instance as unknown as Record<string, unknown>;
-  const declared = new Set<string>();
 
   // Only restore keys this instance actually declares (@state / @persist), so a
   // stale or tampered blob can't inject arbitrary properties. Writing a @state
@@ -20,7 +19,6 @@ function restoreState(instance: RestorableInstance, node: SerializedNode): void 
   const apply = (keys: Set<string> | undefined) => {
     if (!keys) return;
     for (const key of keys) {
-      declared.add(key);
       if (Object.prototype.hasOwnProperty.call(node.state, key)) {
         target[key] = node.state[key];
       }
@@ -36,10 +34,11 @@ function restoreState(instance: RestorableInstance, node: SerializedNode): void 
   // value back. Measured before the fix: a `@state name = "Ada"` cleared on the server came up
   // "Ada" again in the browser.
   //
-  // Filtered through the same declared set as everything else: a tampered blob must not be able to
-  // name a property this instance never declared.
+  // Asked of the SAME two sets the writes above go through, rather than collected into one while
+  // walking them: a page where nothing was cleared — which is nearly every page — must not pay for
+  // a Set it never reads. Hydration is the one pass a visitor waits through.
   for (const key of node.cleared ?? []) {
-    if (declared.has(key)) target[key] = undefined;
+    if (instance[STATE_KEYS]?.has(key) || instance[PERSIST_KEYS]?.has(key)) target[key] = undefined;
   }
 }
 

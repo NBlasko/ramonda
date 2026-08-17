@@ -75,7 +75,12 @@ function warnIfNotSerializable(name: string, key: string, value: unknown): void 
  */
 function unchangedFromInitial(instance: SerializableInstance, key: string, value: unknown): boolean {
   const initial = instance[INITIAL_PRIMITIVES];
-  return initial !== undefined && key in initial && Object.is(initial[key], value);
+  // `Object.hasOwn`, not `key in`: the record is a plain object, so `in` walks `Object.prototype`
+  // and answers yes for a field named `constructor`, `toString` or `valueOf`. It would then compare
+  // against an inherited function and correctly decline — but only by accident, and this repository
+  // refuses `__proto__`/`constructor` as keys elsewhere for the same reason rather than relying on
+  // the accident.
+  return initial !== undefined && Object.hasOwn(initial, key) && Object.is(initial[key], value);
 }
 
 function readState(instance: SerializableInstance): { state: Record<string, unknown>; cleared?: string[] } {
