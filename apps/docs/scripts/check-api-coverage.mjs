@@ -221,16 +221,60 @@ function tsFilesIn(dir) {
 const raised = new Set();
 const misprefixed = [];
 
+/**
+ * A code being DEFINED — a key in one of the `SPECS` tables, `RMD044: {`.
+ *
+ * Kept apart from `codeInSource` because the two answer different questions: that one asks where a
+ * code is used, this one asks where it is given a meaning. A code may be raised from a dozen
+ * places; it may be defined exactly once.
+ */
+const codeDefinedInSource = /^\s+(RM[A-Z]\d{3}): \{/gm;
+
+/** Every place a code is given a meaning, so a second one can be reported rather than silently win. */
+const defined = new Map();
+
 for (const [pkg, prefix] of Object.entries(PREFIX_OF)) {
   for (const file of tsFilesIn(join(packages, pkg, "src"))) {
     // Only where a code is REPORTED, not where a test asserts one: a test naming a retired code would
     // otherwise demand a section for something that no longer exists.
     if (file.includes("__tests__")) continue;
-    for (const [, code] of readFileSync(file, "utf8").matchAll(codeInSource)) {
+    const text = readFileSync(file, "utf8");
+    for (const [, code] of text.matchAll(codeInSource)) {
       raised.add(code);
       if (!code.startsWith(prefix)) misprefixed.push({ code, pkg, prefix, file: relative(root, file) });
     }
+    for (const [, code] of text.matchAll(codeDefinedInSource)) {
+      if (!defined.has(code)) defined.set(code, []);
+      defined.get(code).push(relative(root, file));
+    }
   }
+}
+
+/**
+ * A code defined twice, which JavaScript will not tell you about.
+ *
+ * `SPECS` is an object literal, so `RMD053: { … }` written twice is not an error and not a warning
+ * — the second silently replaces the first, and a diagnostic that somebody wrote, documented and
+ * tested simply stops existing. Nothing downstream notices: the code is still raised, still has a
+ * section, and still reports. It reports the OTHER fault.
+ *
+ * This exists because it happened. Two branches minted `RMD053` for two different faults on the
+ * same day — one for a request read with no scope installed, one for a swallowed post-commit
+ * failure — and the only thing that caught it was a person reading a merge conflict. The next
+ * collision will not come with a conflict to read, because the two halves will be in different
+ * files.
+ */
+if (selftesting("twice")) defined.set("RMD001", ["(selftest) a.ts", "(selftest) b.ts"]);
+
+const twice = [...defined].filter(([, files]) => files.length > 1 || new Set(files).size > 1);
+
+if (twice.length > 0) {
+  throw new Error(
+    `[docs] These diagnostic codes are defined more than once:\n` +
+      twice.map(([code, files]) => `        ${code} — ${[...new Set(files)].join(", ")}`).join("\n") +
+      `\n\n        A code names one fault. Two definitions means one of them silently wins and the\n` +
+      `        other diagnostic stops existing. Give the newer fault the next free code.`,
+  );
 }
 
 if (selftesting("prefix")) {
@@ -276,6 +320,30 @@ if (undocumented.length > 0) {
  * looks for.
  */
 const documented = [...diagnostics.matchAll(/^## (RM[A-Z]\d{3})(.*)$/gm)];
+
+/**
+ * The same rule from the reference's side: one section per code.
+ *
+ * The check above reads the source, and this reads the page, because a collision can arrive on
+ * either — and the one that actually happened arrived here. Two branches each wrote a `## RMD053`
+ * section for a different fault; the page rendered both, one under the other, and the only thing
+ * between that and a release was somebody reading a merge conflict.
+ */
+const sections = new Map();
+for (const [, code] of documented) sections.set(code, (sections.get(code) ?? 0) + 1);
+if (selftesting("sections")) sections.set("RMD002", 2);
+
+const repeated = [...sections].filter(([, times]) => times > 1).map(([code]) => code);
+
+if (repeated.length > 0) {
+  throw new Error(
+    `[docs] These diagnostics have more than one section in the reference:\n` +
+      repeated.map((code) => `        ${code}`).join("\n") +
+      `\n\n        One code, one section. Two means two faults are wearing the same name, and a\n` +
+      `        reader sent to look one up finds the other first.`,
+  );
+}
+
 const stale = documented
   .filter(([, code]) => !raised.has(code))
   .filter(([, , rest]) => !/retired/i.test(rest))
