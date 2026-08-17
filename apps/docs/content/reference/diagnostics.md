@@ -1406,3 +1406,23 @@ passes it as a prop, and that is a different thing entirely.
 
 [`ramonda-check`](/reference/check) reports the same mistake from the source, before anything
 renders.
+
+## RMD053 — A post-commit callback threw, and the failure was swallowed
+
+**This one is reported only from a production build**, and it is the only code on this page that is.
+In development the same failure goes to the console with the error object attached, which is more
+than a record can carry and better to read.
+
+Commit-level work is isolated the way a `@mounted` is: one piece of it must not stop the rest. It
+has no component to hand a failure to — that is what makes it commit-level rather than a lifecycle
+callback — and it is not rethrown, because it runs while a commit may already be unwinding and a
+throw there would replace the real error with a metadata one.
+
+The consequence is a swallowed exception, and in production nothing said so. Nothing renders
+differently, nothing logs, and whoever wrote the callback has no way to learn it never ran. So if
+your app has [installed a collector](#capturing-them), the fault is reported to it.
+
+The record carries the code and nothing from the error. The message on a thrown error is written by
+whatever threw — your code, or a library inside it — and a record that may leave the process is the
+wrong place to discover what is in it for the first time. If you want the detail, catch it in the
+callback, where you know what you are looking at.

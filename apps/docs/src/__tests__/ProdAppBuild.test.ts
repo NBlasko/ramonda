@@ -165,7 +165,7 @@ async function build(mode: Mode): Promise<Build> {
 /**
  * The codes a production build MAY carry, each with the text it must appear inside.
  *
- * All three are deliberate, and they are deliberate for two different reasons:
+ * Every one is deliberate, for three different reasons:
  *
  * - `RMD004` / `RMD015` — writing to props THROWS in every build, not only in
  *   development. Read-only inputs are a rule, not a warning, so the error and its code
@@ -174,17 +174,28 @@ async function build(mode: Mode): Promise<Build> {
  * - `RMD009` — production has its own blunt update-loop stop, a counter that throws
  *   before the tab freezes, and its message points at the development diagnostic that
  *   names the actual component. That pointer is the value of the message.
+ * - `RMD017` / `RMD047` / `RMD053` — reported through `reportFault`, which exists so that
+ *   the few faults needing the world to go wrong can reach a collector the app installed.
+ *   They ship as a code and a short sentence and nothing else; see `debug/fault.ts`.
  *
  * Anything else appearing is a leak: it means a spec object — and therefore `diagnose`
  * and every diagnostic's title and fix text — is reachable. Not hypothetical: writing a
  * DEV gate as `if (!__DEV__) return …` with the checks after it, rather than wrapping
  * them in `if (__DEV__) { … }`, left `checkPropsStability` referenced and pulled all 21
  * specs into the bundle. This test is what found it.
+ *
+ * The `context` string is what makes the distinction real. A code sitting in a spec would
+ * satisfy the list above while meaning the opposite of what it says, so each one has to be
+ * found next to the words it is supposed to travel with — and for the three faults those
+ * words are the short production sentence, never the development prose.
  */
 const ALLOWED_CODES: Record<string, string> = {
   RMD004: "read-only",
   RMD009: "development build",
   RMD015: "read-only",
+  RMD017: "never resumed",
+  RMD047: "not memoised",
+  RMD053: "swallowed",
 };
 
 /** What must never reach a production build, with a name for the failure message. */
