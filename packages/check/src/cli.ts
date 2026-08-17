@@ -66,6 +66,7 @@ const {
   arrowFields,
   browserUrlReads,
   domWrites,
+  lateRequestReads,
   duplicateDecorators,
   unwatchedFields,
   unresolved,
@@ -273,6 +274,42 @@ if (domWrites.length > 0) {
       `A COMMAND is not this and is not reported: \`scrollIntoView()\`, \`focus()\`, \`select()\` and\n` +
       `\`getBoundingClientRect()\` have no declarative form. Nor is an element you created yourself,\n` +
       `or one held in a \`ref\` — that one is your own.\n\n` +
+      `This is a warning today and an error in a later version.\n`,
+  );
+}
+
+/**
+ * `requestContext()` read below an `await`.
+ *
+ * A WARNING beside the two above, on the same rule for a new rule. Unlike them it has a runtime
+ * counterpart (RMD053), and the pair is deliberate rather than redundant: this one speaks before
+ * anything runs, including for a path nobody exercised, while RMD053 catches the read that left
+ * this rule's reach through a variable.
+ */
+if (lateRequestReads.length > 0) {
+  const guilty = new Set(lateRequestReads.map((read) => read.component)).size;
+  console.warn(
+    `\n${TAG} ${guilty} component(s) reading the request after the render yielded` +
+      `${lateRequestReads.length === guilty ? "" : ` — ${lateRequestReads.length} reads`}:\n`,
+  );
+  for (const read of lateRequestReads) {
+    console.warn(`  ${read.file}:${read.line}:${read.column}`);
+    console.warn(
+      `    <${read.component}>.${read.member} reads \`${read.read}\`` +
+        (read.via === "local" ? " through a context taken before the await." : " below an await."),
+    );
+  }
+  console.warn(
+    `\nThe request is live only while the render is running. On the server that is the SYNCHRONOUS\n` +
+      `section: the scope is installed, the tree is mounted, and it is cleared before the render's\n` +
+      `first \`await\` — which is what makes ONE module-level value safe for a server rendering many\n` +
+      `requests at once. A read below a yield finds nothing.\n\n` +
+      `Read it in \`render()\`, in \`@created\`, or above the first \`await\` of an async lifecycle\n` +
+      `method, and keep what you need in \`@state\` — that is what carries a value across the yield.\n` +
+      `Holding the object does not: every member of it is a getter over the current request.\n\n` +
+      `The framework reports the same read as RMD053 when the line actually runs. It cannot always\n` +
+      `be heard — inside an async \`@mounted\` the throw beside it goes into the server's work drain\n` +
+      `and is swallowed, and the page is served complete and quietly missing the value.\n\n` +
       `This is a warning today and an error in a later version.\n`,
   );
 }

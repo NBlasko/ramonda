@@ -7,6 +7,7 @@ export type {
   ArrowFieldIssue,
   BrowserUrlIssue,
   DomWriteIssue,
+  LateRequestReadIssue,
   ContextIssue,
   DuplicateDecoratorIssue,
   UnwatchedFieldIssue,

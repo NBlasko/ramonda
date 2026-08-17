@@ -47,3 +47,16 @@ export declare class Field<T> {
   bind: Record<string, unknown>;
   set(next: T): void;
 }
+
+/** Per-request data. Live only while the render is running — see the late-request rule. */
+export interface RequestKey<T> {
+  readonly label: string;
+  readonly __type?: T;
+}
+export declare function requestKey<T>(label: string): RequestKey<T>;
+export declare function requestContext(): {
+  readonly url: { pathname: string };
+  readonly headers: { get(name: string): string | null };
+  readonly cookies: { get(name: string): string | undefined };
+  get<T>(key: RequestKey<T>): T;
+};
