@@ -4,8 +4,8 @@
 
 Four accessibility rules, reading your JSX one element at a time.
 
-`alt-text` — an `img`, `area`, image `input` or empty `object` that nothing can announce.
-`empty-landmarks` — a heading or a link with nothing inside it. `frame-title` — an `iframe` with no
+`unnamed-image` — an `img`, `area`, image `input` or empty `object` that nothing can announce.
+`empty-heading-or-link` — a heading or a link with nothing inside it. `unnamed-frame` — an `iframe` with no
 name. `positive-tabindex` — a `tabIndex` above zero, which does not move one element but creates a
 second tab order running before the whole document's.
 
@@ -23,6 +23,6 @@ attribute in question and nothing static can say whether it does, so the silence
 once for the whole family rather than remembered by each rule. `alt=""` is likewise never reported:
 it is the documented way to mark an image decorative.
 
-`AnalyzeResult.findings` gains `alt-text`, `empty-landmarks`, `frame-title` and `positive-tabindex`,
+`AnalyzeResult.findings` gains `unnamed-image`, `empty-heading-or-link`, `unnamed-frame` and `positive-tabindex`,
 with `UnnamedImageIssue`, `EmptyHeadingOrLinkIssue`, `UnnamedFrameIssue` and `PositiveTabIndexIssue` exported
 alongside.

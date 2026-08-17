@@ -4,11 +4,11 @@
 
 Three rules over the ARIA vocabulary.
 
-`aria-props` — an `aria-*` attribute the specification does not have, and it names the one that was
+`unknown-aria-attribute` — an `aria-*` attribute the specification does not have, and it names the one that was
 meant when that is certain. The fault worth catching is not the invented name but the CASE:
 `aria-labelledBy` looks right, is a different attribute from `aria-labelledby`, and does nothing at
-all. `aria-role` — a `role` that is not one, told apart from an ABSTRACT role, which is somebody
-reading the spec's inheritance diagram and taking a branch for a leaf. `aria-unsupported` — `role`
+all. `unknown-role` — a `role` that is not one, told apart from an ABSTRACT role, which is somebody
+reading the spec's inheritance diagram and taking a branch for a leaf. `aria-with-no-subject` — `role`
 or `aria-*` on an element with no accessibility tree node to describe, where the attribute does not
 do a little, it does nothing.
 

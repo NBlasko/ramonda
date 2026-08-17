@@ -181,9 +181,9 @@ that assistive technology cannot name.
 
 | | |
 |---|---|
-| `alt-text` | An `img`, `area`, image `input` or empty `object` with no `alt`, `aria-label`, `aria-labelledby` or `title`. |
-| `empty-landmarks` | A heading or a link with nothing inside it — a row in the screen reader's list of headings, or of links, with no label. |
-| `frame-title` | An `iframe` with no `title`. |
+| `unnamed-image` | An `img`, `area`, image `input` or empty `object` with no `alt`, `aria-label`, `aria-labelledby` or `title`. |
+| `empty-heading-or-link` | A heading or a link with nothing inside it — a row in the screen reader's list of headings, or of links, with no label. |
+| `unnamed-frame` | An `iframe` with no `title`. |
 | `positive-tabindex` | A `tabIndex` above zero, which does not move one element but reorders the whole document. |
 
 ```

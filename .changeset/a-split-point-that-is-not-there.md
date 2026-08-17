@@ -19,6 +19,6 @@ Measured across this repository before the rule was written: 88 dynamic imports 
 3 without, and all three already marked. It reports nothing here, and reports the fault the moment a
 marker is taken off — both checked.
 
-`AnalyzeResult` gains `dynamicImportPaths`, and `UnsplittableImportIssue` is exported alongside it.
+`AnalyzeResult.findings` gains `unsplittable-import`, and `UnsplittableImportIssue` is exported alongside it.
 This is the first rule that reads a FILE rather than a class: a question about what a module imports
 has no class to hang off.

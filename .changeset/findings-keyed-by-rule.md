@@ -5,7 +5,7 @@
 **Breaking:** `AnalyzeResult`'s per-rule lists are now one `findings` object keyed by rule name.
 
 `result.arrowFields` becomes `result.findings["arrow-fields"]`, and the same for `browserUrlReads`,
-`domWrites`, `duplicateDecorators`, `unwatchedFields` and `dynamicImportPaths`. Nothing else on the
+`domWrites`, `duplicateDecorators` and `unwatchedFields`. Nothing else on the
 result moved: `issues`, `counts`, `graph`, `unresolved`, `annotated` and the graph's own checks are
 where they were.
 
