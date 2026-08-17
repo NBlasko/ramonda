@@ -1406,3 +1406,61 @@ passes it as a prop, and that is a different thing entirely.
 
 [`ramonda-check`](/reference/check) reports the same mistake from the source, before anything
 renders.
+
+## RMD053 — The request was read with no request scope installed
+
+```tsx
+@mounted async load() {
+  const posts = await fetchPosts();
+  const user = requestContext().get(currentUser); // ✗ below the await
+}
+```
+
+`requestContext()` is live only while the page is being rendered. On the server that means the
+**synchronous** section: the scope is installed, the tree is mounted, and it is cleared before the
+render's first `await`. A read below one arrives after it is gone.
+
+The scope is cleared that early on purpose. It is one module-level value shared by every request the
+server is handling at once, and holding it across a yield is what would let one visitor's render read
+another visitor's user. Reading synchronously is the rule that makes the shared value safe.
+
+Read it where the render is still running, and keep what you need:
+
+```tsx
+@state user = "";
+
+@created init() {
+  this.user = requestContext().get(currentUser); // ✓ synchronous
+}
+
+@mounted async load() {
+  const posts = await fetchPosts();
+  console.log(this.user); // the value travelled in @state
+}
+```
+
+An `async` lifecycle method is fine **above** its first `await` — that part still runs inside the
+synchronous section.
+
+Holding the object does not help:
+
+```tsx
+const context = requestContext(); // ✓ called in time
+await fetchPosts();
+context.get(currentUser); // ✗ still a late read
+```
+
+Every member of what `requestContext()` returns is a getter over the current request, so the object
+is a door rather than a copy. `@state` is what carries a value across a yield.
+
+The other way to arrive here is calling `requestContext()` at module top level, before any render has
+started.
+
+This is **reported as well as thrown**, because the throw does not always arrive anywhere: inside an
+async `@mounted` it goes into the server's work drain and is swallowed, so the page is served,
+complete, and quietly missing the value. The report is what survives that. In a production build
+there is no report — diagnostics are development-only — which is another reason to read the request
+where the framework can see you do it.
+
+Reading per-request data during a **static build** is a different thing and reports separately: see
+[`renderStatic`](/ssr/static), where the read is what marks the route un-bakeable.

@@ -62,6 +62,39 @@ const user = requestContext().get(currentUser);
 The validation — the cookie, the database, the secret — stays on the server. The page only sees
 the value you chose to seed.
 
+Values already resolved before the render starts go straight to `renderToString`, and they are
+keyed **by the key itself**:
+
+```tsx
+const html = await renderToString(<App />, {
+  request: {
+    url: new URL(req.url ?? "/", "https://example.com"),
+    cookies: new Map([["session", req.headers.cookie ?? ""]]),
+    values: [[currentUser, await resolveUser(req)]],
+  },
+});
+```
+
+Naming the key rather than its label is what keeps the two sides of the slot together. A label
+written twice — once where the slot is declared, once where the server fills it — is two strings
+with nothing relating them, and a mismatch reads as "this visitor has no user", which is a real
+answer for an anonymous visitor and therefore indistinguishable from a typo. With the key there is
+no second spelling to get wrong.
+
+Seed as many as the page needs — the pairs are checked one by one, so each value is checked against
+its own key:
+
+```tsx
+values: [
+  [currentUser, await resolveUser(req)],
+  [role, "admin"],
+  [seats, 3],
+],
+```
+
+`seedRequest` is the door for anything resolved once the render is already under way; it takes the
+same key, and ties the value's type to it.
+
 ## Read it synchronously
 
 `requestContext()`'s per-request values are available during the render's **synchronous** work
@@ -73,6 +106,27 @@ The idiomatic shape needs nothing more: **read the request in `@created`, store 
 `@state`.** On the server that runs and the value lands in the HTML; on the client, `@created` is
 skipped and the `@state` is restored from the page — so the browser never re-reads the request,
 and there is no mismatch.
+
+Taking the object early is not a way around it. Every member of what `requestContext()` returns is a
+getter over the *current* request, so this is the same late read:
+
+```tsx
+const context = requestContext(); // in time
+await fetchPosts();
+context.get(currentUser); // too late
+```
+
+Why it is cleared that early, since a page is one request and this looks like caution for its own
+sake: it is **one** value, shared by every request the server is rendering at once. The synchronous
+section runs to completion with nothing able to interrupt it, and that is what stops one visitor's
+render from reading another visitor's user. Reading synchronously is what makes the shared value
+safe.
+
+Two things say so when you break it. [`RMD053`](/reference/diagnostics) reports the read when the
+line runs — and it reports as well as throwing, because inside an async `@mounted` the throw goes
+into the server's work drain and is swallowed, so the page would otherwise be served complete and
+quietly missing the value. [`ramonda-check`](/reference/check) reports it from the source, before
+anything runs at all.
 
 ## The guard, up close
 

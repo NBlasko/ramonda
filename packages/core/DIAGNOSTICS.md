@@ -86,6 +86,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD050` | warning | A decorator whose effect this member already has |
 | `RMD051` | warning | A list row cannot be told apart from its siblings |
 | `RMD052` | error | A component among JSX children, where an element was meant |
+| `RMD053` | error | The request was read with no request scope installed |
 
 ### RMD052 — A component among JSX children, where an element was meant
 
@@ -108,6 +109,45 @@ there instead would change no page — the report is the part that was missing.
 
 Handing a component to something else is an attribute rather than a child: `<Slot view={Panel} />`
 passes it as a prop, and that is a different thing entirely.
+
+### RMD053 — The request was read with no request scope installed
+
+```tsx
+@mounted async load() {
+  this.posts = await fetchPosts();
+  const user = requestContext().get(currentUser); // ✗ the request is gone
+}
+```
+
+`requestContext()` is live only while the render is running. On the server that is the
+**synchronous** section: `renderToString` installs the scope, mounts the tree, and clears it in a
+`finally` before its first `await`.
+
+The clearing is the safety property, not an oversight. `hydration/requestContext.ts` keeps ONE
+module-level scope, shared by every request the server is handling at once; what stops one visitor's
+render from reading another's user is that the window is atomic — Node runs the synchronous section
+to completion, so no second request can be inside it. Reading synchronously is what makes a shared
+value safe, and it is measured in `__tests__/hydration/RequestConcurrency.test.tsx`: delete the
+clear and two concurrent renders both read the second one's user.
+
+Read it in `render()`, in `@created`, or above the first `await` of an async lifecycle method, and
+keep what you need in `@state` — that is what carries a value across the yield. Holding the object
+does not: every member of what `requestContext()` returns is a getter over the current request, so
+`const ctx = requestContext()` above an `await` and `ctx.get(key)` below it is the same late read.
+
+**This is reported as well as thrown, and that is the whole point of the code.** Measured with no
+`try`/`catch` around the read, which is what an app actually writes: `renderToString` resolves
+normally, the page is served complete, and `console.error` is called zero times. The rejection goes
+into the server's work drain and is swallowed. The record is the only thing that survives it — the
+same reasoning `guardBuild` uses for build mode, which writes onto the scope in addition to throwing.
+
+A production build reports nothing, because diagnostics are development-only. `ramonda-check`
+reports the same read from the source, before anything runs, and the two are not redundant: the
+static rule speaks for a branch nobody has opened, while this one catches the read that left the
+analyzer's reach through a variable or a build with no types.
+
+The other way to arrive here is calling `requestContext()` at module top level, before any render
+has started.
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 

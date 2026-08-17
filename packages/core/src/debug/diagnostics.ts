@@ -81,7 +81,8 @@ export type DiagnosticCode =
   | "RMD049"
   | "RMD050"
   | "RMD051"
-  | "RMD052";
+  | "RMD052"
+  | "RMD053";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -383,6 +384,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A component among JSX children, where an element was meant",
     fix: "`{Panel}` names the component instead of rendering it — write `<Panel />`. A class is a function rather than a vnode, so it is dropped and the page comes up without it, and until now nothing said so: the check beside this one looks for an OBJECT among children, and a function never reaches it. Handing a component to something else is an attribute — `<Slot view={Panel} />` — and that is a prop, not a child.",
+  },
+  RMD053: {
+    // error, not warning: the read returned nothing, so whatever it was for is missing from the page.
+    severity: "error",
+    title: "The request was read with no request scope installed",
+    fix: "`requestContext()` is live only while the page is being rendered — on the server that is the SYNCHRONOUS section, and the scope is cleared before the render's first `await`, so a read below one arrives here. Read it in `render()`, in `@created`, or above the first `await` of an async lifecycle method, and keep what you need in `@state`. Holding the object does not help: every member of it is a getter over the current request, so `const ctx = requestContext()` above an `await` and `ctx.get(key)` below it is the same late read. The other way to arrive here is calling it at module top level, before any render has started. This is reported as well as thrown because the throw does not always arrive anywhere: inside an async `@mounted` it goes into the server drain and is swallowed, and the page is served, complete and quietly missing this value.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

@@ -56,6 +56,8 @@ declare global {
   const defineServer: (...args: any[]) => any;
   const server: any;
   const req: { url?: string; headers: Record<string, string | undefined> };
+  /** The reader's own loader, for the late-read example. */
+  const fetchPosts: () => Promise<unknown[]>;
   const write: any;
   const extra: any;
   const needsData: any;
