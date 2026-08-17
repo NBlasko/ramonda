@@ -67,8 +67,11 @@ export function paths(): readonly string[] {
   return paths;
 }
 
+/**
+ * One page. The DOM the caller installed is already seeded at this path, so nothing navigates here
+ * — `path` is wanted as a string, for the canonical and `og:url` tags.
+ */
 export async function renderOne(path: string): Promise<string> {
-  window.history.pushState(null, "", path);
   const page = await renderPage(<App />);
   return renderDocument(page, {
     lang: "en",
