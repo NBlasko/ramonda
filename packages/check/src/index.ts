@@ -5,6 +5,9 @@ export { analyzeProject } from "./analyze";
 export type {
   UnnamedImageIssue,
   AnalyzeResult,
+  UnknownAriaAttributeIssue,
+  UnknownRoleIssue,
+  AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
   ContextIssue,

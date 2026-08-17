@@ -2,6 +2,9 @@ import type ts from "typescript";
 import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
 import { contextFor } from "./element";
 import { unnamedImage } from "./unnamed-image";
+import { unknownAriaAttribute } from "./unknown-aria-attribute";
+import { unknownRole } from "./unknown-role";
+import { ariaWithNoSubject } from "./aria-with-no-subject";
 import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
@@ -25,6 +28,10 @@ export type {
 } from "./rule";
 
 export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
+export { unknownAriaAttribute, type UnknownAriaAttributeIssue } from "./unknown-aria-attribute";
+export { unknownRole, type UnknownRoleIssue } from "./unknown-role";
+export { ariaWithNoSubject, type AriaWithNoSubjectIssue } from "./aria-with-no-subject";
+export { ABSTRACT_ROLES, ARIA_ATTRIBUTES, NO_ARIA, ROLES } from "./aria";
 export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
@@ -55,7 +62,15 @@ export const MODULE_RULES = [unsplittableImport] as const;
  * The order here is the order their sections print in, which is why the two about a missing NAME
  * sit together: a reader fixing one is usually about to fix the other.
  */
-export const ELEMENT_RULES = [unnamedImage, emptyHeadingOrLink, unnamedFrame, positiveTabIndex] as const;
+export const ELEMENT_RULES = [
+  unnamedImage,
+  unknownAriaAttribute,
+  unknownRole,
+  ariaWithNoSubject,
+  emptyHeadingOrLink,
+  unnamedFrame,
+  positiveTabIndex,
+] as const;
 
 /** All three families, which is what the CLI prints from and what {@link Findings} is keyed by. */
 export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES] as const;

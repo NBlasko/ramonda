@@ -6,6 +6,17 @@ import { analyzeProject } from "../analyze";
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "a11y", "tsconfig.json"));
 
+/** Every rule this fixture is written to trip, so "none of them fails the run" cannot go stale. */
+const RULE_IDS = [
+  "unnamed-image",
+  "unknown-aria-attribute",
+  "unknown-role",
+  "aria-with-no-subject",
+  "empty-heading-or-link",
+  "unnamed-frame",
+  "positive-tabindex",
+] as const;
+
 /**
  * The rules that read one JSX ELEMENT — the third family, and the one accessibility needs.
  *
@@ -59,14 +70,53 @@ describe("accessibility rules over JSX elements", () => {
   });
 
   /**
-   * None of the four fails a build yet — the repository's rule for a new rule, and the README's
+   * None of them fails a build yet — the repository's rule for a new rule, and the README's
    * argument: one version that says so, the next that refuses.
    */
   test("none of them fails the run", () => {
     const result = run();
-    for (const id of ["unnamed-image", "empty-heading-or-link", "unnamed-frame", "positive-tabindex"] as const) {
-      expect(result.findings[id].length, id).toBeGreaterThan(0);
-    }
+    for (const id of RULE_IDS) expect(result.findings[id].length, id).toBeGreaterThan(0);
     expect(result.issues).toEqual([]);
+  });
+});
+
+/**
+ * The ARIA vocabulary rules, which are the ones with a table behind them.
+ *
+ * The table can only be wrong in one direction that matters: short by a name, it reports correct
+ * markup. That is why these tests assert what is NOT reported at least as carefully as what is.
+ */
+describe("the ARIA vocabulary", () => {
+  test("an attribute the specification does not have is reported", () => {
+    const found = run().findings["unknown-aria-attribute"];
+    expect(found.map((issue) => issue.attribute)).toEqual(["aria-labelledBy", "aria-requred", "aria-sparkle"]);
+  });
+
+  /**
+   * The case fault is the one worth naming, because it is invisible: `aria-labelledBy` looks right
+   * and is a different attribute. Saying which one was meant is what turns a report into a fix.
+   */
+  test("it says which attribute was meant, when that is certain", () => {
+    const found = run().findings["unknown-aria-attribute"];
+    expect(found.map((issue) => issue.meant)).toEqual(["aria-labelledby", "aria-required", undefined]);
+  });
+
+  test("an unknown role and an abstract one are told apart", () => {
+    const found = run().findings["unknown-role"];
+    expect(found.map((issue) => `${issue.role}:${issue.kind}`)).toEqual(["tabpane:unknown", "widget:abstract"]);
+  });
+
+  /**
+   * A fallback chain of real roles, and a role written as an expression. Reporting either would be
+   * reporting correct code — the first because the spec allows a list, the second because nothing
+   * here can read it.
+   */
+  test("a real role, a chain of them, and one it cannot read are all left alone", () => {
+    expect(run().findings["unknown-role"]).toHaveLength(2);
+  });
+
+  test("role and aria-* on an element with no accessibility node are reported, one per attribute", () => {
+    const found = run().findings["aria-with-no-subject"];
+    expect(found.map((issue) => `${issue.tag}:${issue.attribute}`)).toEqual(["title:role", "title:aria-hidden"]);
   });
 });

@@ -22,6 +22,9 @@ import {
  */
 import type {
   UnnamedImageIssue,
+  UnknownAriaAttributeIssue,
+  UnknownRoleIssue,
+  AriaWithNoSubjectIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
   UnnamedFrameIssue,
@@ -34,7 +37,16 @@ import type {
   UnwatchedFieldIssue,
 } from "./rules";
 
-export type { UnnamedImageIssue, EmptyHeadingOrLinkIssue, Findings, UnnamedFrameIssue, PositiveTabIndexIssue };
+export type {
+  UnnamedImageIssue,
+  UnknownAriaAttributeIssue,
+  UnknownRoleIssue,
+  AriaWithNoSubjectIssue,
+  EmptyHeadingOrLinkIssue,
+  Findings,
+  UnnamedFrameIssue,
+  PositiveTabIndexIssue,
+};
 export type {
   ArrowFieldIssue,
   BrowserUrlIssue,
