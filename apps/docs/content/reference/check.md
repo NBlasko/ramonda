@@ -205,10 +205,10 @@ this", and that is the engine.
 Look at your bundler's `target`. Every value below `esnext` compiles the decorators away; `esnext`
 itself, which is also esbuild's default, is the one that does not.
 
-A scaffolded project does not set it by hand at all — `@ramonda/build` carries it, along with `jsx`
-and `jsxImportSource`, into both the Vite config and the esbuild build. If you configure the
-transform yourself, that package is the shorter way to get it right, and it refuses a `target` that
-would bring you back to this error instead of letting the build proceed.
+A scaffolded project does not set it by hand at all — [`@ramonda/build`](/reference/build) carries
+it, along with `jsx` and `jsxImportSource`, into both the Vite config and the esbuild build. If you
+configure the transform yourself, that package is the shorter way to get it right, and it refuses a
+`target` that would bring you back to this error instead of letting the build proceed.
 
 ## Next
 

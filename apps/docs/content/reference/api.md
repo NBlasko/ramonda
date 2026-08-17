@@ -12,7 +12,7 @@ order: 111
 `@watchProp`. Nothing else distinguishes them at a glance, and the two groups are used in
 different places, so the convention carries its weight.
 
-Everything the three packages export. Each entry links to the page that explains it.
+Everything every package exports. Each entry links to the page that explains it.
 
 ---
 
@@ -42,7 +42,7 @@ Everything the three packages export. Each entry links to the page that explains
 |---|---|
 | `bootstrap(vnode, element)` | Mounts an app. |
 | `unmount(element)` | Tears down everything `bootstrap` mounted, running `@destroyed` throughout. Removing the element is **not** a substitute. |
-| `h(tag, props, ...children)` | What JSX compiles to. Callable directly for a tag that is a value. [JSX](/concepts/jsx) |
+| `__h(tag, props, ...children)` | The vnode factory, for a tag that is a value or children you have to spread. Compiled JSX does **not** call it — that goes through the `@ramonda/core/jsx-runtime` import the compiler writes. [JSX](/concepts/jsx) |
 
 ### Server rendering
 
@@ -299,6 +299,31 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 | `.values()` | Every focused value. |
 
 Types: `Focus` · `FocusCommon` · `FocusArray` · `ElementOf` · `KeepSymbols`
+
+---
+
+## `@ramonda/build`
+
+The three bundler settings an app needs, so the app names none of them. [Configuring your
+build](/reference/build)
+
+| | |
+|---|---|
+| `RAMONDA_TRANSFORM` | The three settings themselves — `jsx`, `jsxImportSource`, `target` — for a bundler with no adapter here. |
+| `lowersDecorators(target)` | Whether a target compiles the decorators away. A list lowers if even one entry is something other than `esnext`. |
+
+### `@ramonda/build/vite`
+
+| | |
+|---|---|
+| `ramonda()` | The Vite plugin. Fills in what the config left unsaid, and refuses what disagrees. |
+
+### `@ramonda/build/esbuild`
+
+| | |
+|---|---|
+| `ramondaOptions` | The settings, ready to spread into a build you call yourself. |
+| `ramonda()` | The same settings as a plugin, for a build assembled somewhere you cannot reach. |
 
 ---
 

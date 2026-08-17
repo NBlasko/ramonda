@@ -39,7 +39,7 @@ npm install -D @ramonda/build
 ```
 
 Ramonda has no runtime dependencies. It needs three settings from your bundler, and
-`@ramonda/build` carries them so you name none:
+[`@ramonda/build`](/reference/build) carries them so you name none:
 
 ```js
 // vite.config.ts

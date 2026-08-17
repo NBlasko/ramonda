@@ -20,6 +20,46 @@ const root = join(here, "..");
 const packages = join(root, "..", "..", "packages");
 
 /**
+ * A quoted export name in one of the lists below.
+ *
+ * The underscore is the whole point. This was `[A-Za-z][A-Za-z0-9]*`, which cannot match a name
+ * containing one and cannot match a name starting with one — so `SAME_ITEM`, `PORTAL_TARGET_ATTR`
+ * and `__h` were dropped from the expected list, silently, and were never checked against the
+ * reference at all. Two of the three happened to be documented anyway; `__h` was not, and had been
+ * public and absent from the API reference for as long as this check has existed.
+ *
+ * Nothing could have noticed. `atLeast` guards the list against coming back EMPTY, which is the
+ * failure it was written for, and a list that comes back three names short is exactly as green.
+ */
+const NAME = /"([A-Za-z_][A-Za-z0-9_]*)"/g;
+
+/**
+ * Every quoted string in the slice, whether {@link NAME} could read it or not.
+ *
+ * The bug above was invisible because the parser had no way to say it had skipped something: it
+ * matched what it could and returned a shorter list, and a shorter list is a passing build. So the
+ * two counts are compared, and a name the reader cannot spell is a failure with the name in it.
+ *
+ * This is the check that would have caught the original, and it does not depend on knowing which
+ * character was the problem next time.
+ */
+function readNames(slice, where) {
+  const names = (slice.match(NAME) ?? []).map((quoted) => quoted.slice(1, -1));
+  const quoted = (slice.match(/"[^"]*"/g) ?? []).map((token) => token.slice(1, -1));
+  const dropped = quoted.filter((token) => !names.includes(token));
+
+  if (dropped.length > 0) {
+    throw new Error(
+      `[docs] ${where} lists ${dropped.length} name(s) this script cannot read:\n` +
+        dropped.map((name) => `        ${name}`).join("\n") +
+        `\n\n        They would be skipped rather than checked, so the build would pass without\n` +
+        `        ever asking whether they are documented. Widen NAME in check-api-coverage.mjs.`,
+    );
+  }
+  return names;
+}
+
+/**
  * Reads one package's declared public surface.
  *
  * `atLeast` is not decoration. The list is read by slicing between two markers,
@@ -32,11 +72,7 @@ function publicSurfaceOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   const start = surface.indexOf("const EXPECTED");
   const end = surface.indexOf("/**", start);
 
-  const names =
-    surface
-      .slice(start, end)
-      .match(/"([A-Za-z][A-Za-z0-9]*)"/g)
-      ?.map((quoted) => quoted.slice(1, -1)) ?? [];
+  const names = readNames(surface.slice(start, end), `${pkg}'s EXPECTED in ${fileName}`);
 
   if (names.length < atLeast) {
     throw new Error(
@@ -62,11 +98,7 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   if (start === -1) throw new Error(`[docs] ${pkg} declares no EXPECTED_TYPES list.`);
   const end = surface.indexOf("];", start);
 
-  const names =
-    surface
-      .slice(start, end)
-      .match(/"([A-Za-z][A-Za-z0-9]*)"/g)
-      ?.map((quoted) => quoted.slice(1, -1)) ?? [];
+  const names = readNames(surface.slice(start, end), `${pkg}'s EXPECTED_TYPES in ${fileName}`);
 
   if (names.length < atLeast) {
     throw new Error(
@@ -95,6 +127,12 @@ const expected = [
   // exports were documented by hand and guarded by nothing until this line.
   ...publicSurfaceOf("form", 2, "BguardSurface.test.ts"),
   ...publicTypesOf("form", 2, "BguardSurface.test.ts"),
+  // `@ramonda/build`'s main entry. Its two adapters export a factory called `ramonda`, and that name
+  // is deliberately NOT listed here: the matcher below allows a leading `@`, so `ramonda` is found
+  // by any line that writes `@ramonda/anything` — every page on the site would satisfy it, and a
+  // check that cannot fail is worse than no check. The adapters are guarded by their own surface
+  // tests instead, and documented on /reference/build.
+  ...publicSurfaceOf("build", 2),
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
