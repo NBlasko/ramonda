@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { hookNamed, isThisUse, positionOf } from "../syntax";
-import { importedFromCore } from "./core-import";
-import type { Rule, RuleContext } from "./rule";
+import { type ContextHalf, contextHalfOf } from "./context-pair";
+import type { Rule } from "./rule";
 
 /**
  * A context consumed on a line ABOVE the Provider that publishes it on the same component.
@@ -47,71 +47,6 @@ export interface ContextConsumedAboveItsProviderIssue {
   column: number;
 }
 
-/** One half of a `createContext` pair, as this rule can prove it. */
-interface Half {
-  /** The `VariableDeclaration` the pair was destructured from — two halves of one context share it. */
-  pair: ts.VariableDeclaration;
-  /** 0 is the Provider, 1 is the Consumer. Nothing else is a half. */
-  index: number;
-  /** The binding's own name, which is what a report calls it. */
-  name: string;
-  /** `createContext(…, { label })`, when the author gave one. */
-  label?: string;
-}
-
-/** The `label` in `createContext(default, { label: "Theme" })`, when it is a plain string. */
-function labelOf(call: ts.CallExpression): string | undefined {
-  const options = call.arguments[1];
-  if (options === undefined || !ts.isObjectLiteralExpression(options)) return undefined;
-  for (const property of options.properties) {
-    if (!ts.isPropertyAssignment(property)) continue;
-    const key = property.name;
-    const named = ts.isIdentifier(key) || ts.isStringLiteral(key) ? key.text : undefined;
-    if (named !== "label") continue;
-    const value = property.initializer;
-    return ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value) ? value.text : undefined;
-  }
-  return undefined;
-}
-
-/**
- * Which half of which context a name refers to, or `undefined` when that cannot be proved.
- *
- * Through the DECLARATION rather than the name, which is the whole reason this is provable: the pair
- * is usually declared in another file and imported, and `resolve` follows the alias to the
- * `BindingElement` it came from. Two names refer to one context when they share the
- * `VariableDeclaration` — not when they spell the same word, and not when they are the same shape.
- *
- * Everything else goes quiet, by the rule this package is held to. `const pair = createContext(…)`
- * read as `pair[0]` has no binding element; a Provider wrapped in a hook class is a class and not a
- * binding at all. Neither is judged here.
- */
-function halfOf(name: ts.Expression, context: RuleContext): Half | undefined {
-  if (!ts.isIdentifier(name)) return undefined;
-  const declaration = context.resolve(name)?.declarations?.[0];
-  if (declaration === undefined || !ts.isBindingElement(declaration)) return undefined;
-
-  const pattern = declaration.parent;
-  if (!ts.isArrayBindingPattern(pattern)) return undefined;
-  const variable = pattern.parent;
-  if (!ts.isVariableDeclaration(variable)) return undefined;
-
-  const initializer = variable.initializer;
-  if (initializer === undefined || !ts.isCallExpression(initializer)) return undefined;
-
-  // `createContext` by the module it came from, not by its name — an app is entitled to a function
-  // of its own called that, and reporting it would be reporting the reader's own code.
-  const callee = initializer.expression;
-  if (!importedFromCore(callee, context.resolveLocal)) return undefined;
-  if (!ts.isIdentifier(callee) || callee.text !== "createContext") return undefined;
-
-  const index = pattern.elements.indexOf(declaration);
-  if (index !== 0 && index !== 1) return undefined;
-
-  const label = labelOf(initializer);
-  return { pair: variable, index, name: name.text, ...(label === undefined ? {} : { label }) };
-}
-
 export const contextConsumedAboveItsProvider = {
   id: "context-consumed-above-its-provider",
 
@@ -151,7 +86,7 @@ export const contextConsumedAboveItsProvider = {
     const found: ContextConsumedAboveItsProviderIssue[] = [];
 
     /** Per context, the first half of each kind this class declares, and the FIELD that declared it. */
-    type Declared = Half & { at: ts.PropertyDeclaration };
+    type Declared = ContextHalf & { at: ts.PropertyDeclaration };
     const seen = new Map<ts.VariableDeclaration, { provider?: Declared; consumer?: Declared }>();
 
     /**
@@ -165,7 +100,7 @@ export const contextConsumedAboveItsProvider = {
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node) && isThisUse(node)) {
           const named = node.arguments[0];
-          const half = named === undefined ? undefined : halfOf(hookNamed(named), context);
+          const half = named === undefined ? undefined : contextHalfOf(hookNamed(named), context);
           if (half !== undefined) {
             const entry = seen.get(half.pair) ?? {};
             // The FIRST of each kind. A second provider on one component is its own fault (RMD056),

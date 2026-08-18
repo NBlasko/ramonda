@@ -228,40 +228,97 @@ describe("DEV diagnostics", () => {
     expect(captured.codes).not.toContain("RMD003");
   });
 
-  test("RMD056: reports one context provided twice by the same component, and the second wins", async () => {
-    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
-
-    class Reader extends Component {
-      ctx = this.use(ThemeConsumer);
-      render() {
-        return <span id="read">{this.ctx.theme}</span>;
-      }
-    }
+  /**
+   * One Provider of a context per component, REFUSED rather than reported.
+   *
+   * The second publish would replace the first and hand every descendant the second whichever part
+   * of the tree it is in, while the component itself could still read both — a wrong value that is
+   * invisible from the one place that made it. There is no reading of two the framework could
+   * honour, so it throws in every build, like a write to props (RMD004/RMD015) and a plain-object
+   * props bag (RMD055).
+   */
+  test("RMD056: a second Provider of one context on one component is refused", () => {
+    const [ThemeProvider] = createContext({ theme: "light" }, { label: "Theme" });
 
     class Twice extends Component {
       first = this.use(ThemeProvider, () => ({ theme: "first" }));
       second = this.use(ThemeProvider, () => ({ theme: "second" }));
       render() {
+        return <span>twice</span>;
+      }
+    }
+
+    // Constructed directly: the throw happens while the field initialisers run, so it does not need
+    // a render to arrive, and asserting on `new` keeps the failure out of the diff's error handling.
+    expect(() => new Twice({}, Object.create(null))).toThrow(/\[RMD056\]/);
+    expect(() => new Twice({}, Object.create(null))).toThrow(/mounts ThemeProvider twice/);
+    // The way out is in the message, not only in the docs.
+    expect(() => new Twice({}, Object.create(null))).toThrow(/this\.props\.children/);
+  });
+
+  test("RMD056: the development report explains the throw, and names the component", async () => {
+    const [ThemeProvider] = createContext({ theme: "light" }, { label: "Theme" });
+
+    class Twice extends Component {
+      first = this.use(ThemeProvider, () => ({ theme: "first" }));
+      second = this.use(ThemeProvider, () => ({ theme: "second" }));
+      render() {
+        return <span>twice</span>;
+      }
+    }
+
+    // The report is raised beside the throw, so it is on the channel even though nothing rendered.
+    expect(() => new Twice({}, Object.create(null))).toThrow();
+    expect(captured.codes).toContain("RMD056");
+    expect(captured.messages.find((m) => m.includes("RMD056"))).toContain("<Twice /> uses ThemeProvider twice");
+    await Promise.resolve();
+  });
+
+  /**
+   * The arrangement that replaces it: one Provider per component, each handed the subtree it is for.
+   *
+   * This is React's Provider in Ramonda's terms, and it works because a context object is created
+   * from the component that RENDERS a node — so a child passed as `children` inherits the wrapper's
+   * context rather than the context of whoever wrote the JSX. Measured here rather than asserted in
+   * prose, because the whole refusal above rests on it.
+   */
+  test("RMD056: two scopes side by side are two contexts, with nothing passed down", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    class Reader extends Component {
+      ctx = this.use(ThemeConsumer);
+      render() {
+        return <i class="read">{this.ctx.theme}</i>;
+      }
+    }
+
+    class Scope extends Component<{ theme: string; children?: unknown }> {
+      ctx = this.use(ThemeProvider, () => ({ theme: this.props.theme }));
+      render() {
+        return this.props.children as never;
+      }
+    }
+
+    class App extends Component {
+      render() {
         return (
           <div>
-            <Reader />
+            <Scope theme="left">
+              <Reader />
+            </Scope>
+            <Scope theme="right">
+              <Reader />
+            </Scope>
           </div>
         );
       }
     }
 
-    const app = await getDOM<Twice>(<Twice />);
+    const app = await getDOM<App>(<App />);
     await app.settle();
 
-    expect(captured.codes).toContain("RMD056");
-    expect(captured.messages.find((m) => m.includes("RMD056"))).toContain("<Twice /> uses ThemeProvider twice");
-
-    // What the report CLAIMS, measured rather than described: the descendant gets the second, and
-    // the first is still readable through its own hook — which is what makes the fault look fine
-    // from inside the component that made it.
-    expect(document.getElementById("read")?.textContent).toBe("second");
-    expect((app.instance.first as unknown as { theme: string }).theme).toBe("first");
-    expect((app.instance.second as unknown as { theme: string }).theme).toBe("second");
+    expect([...document.querySelectorAll(".read")].map((node) => node.textContent)).toEqual(["left", "right"]);
+    expect(captured.codes).not.toContain("RMD056");
   });
 
   test("RMD056: stays quiet for a NESTED provider, which is the ordinary case", async () => {

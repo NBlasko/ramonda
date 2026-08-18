@@ -176,13 +176,12 @@ describe("focus after a failed submit", () => {
   test("stays inside the form it was submitted from", () => {
     // Two forms on one page. Focus must not land in the other one, which is what a document-wide
     // query would have done.
-    class Page extends Component {
-      private first = this.use(Form<typeof schema>, () => ({
-        schema,
-        defaultValues: { email: "no", nick: "no", age: 0 },
-        onSubmit: () => {},
-      }));
-      private second = this.use(Form<typeof schema>, () => ({
+    //
+    // ONE form per component, which is the only arrangement there is: a component publishes a
+    // context on one object, so a second Form on the same one is refused (RMD056). It costs nothing
+    // here and it is what an app writes anyway — each form owns its own piece of markup.
+    class OneForm extends Component<{ id: string; input: string }> {
+      private form = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { email: "no", nick: "no", age: 0 },
         onSubmit: () => {},
@@ -190,13 +189,19 @@ describe("focus after a failed submit", () => {
 
       render(): RamondaNode {
         return (
+          <form id={this.props.id} onSubmit={this.form.submit}>
+            <input id={this.props.input} {...this.form.fields.email.$.bind} />
+          </form>
+        );
+      }
+    }
+
+    class Page extends Component {
+      render(): RamondaNode {
+        return (
           <div>
-            <form id="first" onSubmit={this.first.submit}>
-              <input id="a" {...this.first.fields.email.$.bind} />
-            </form>
-            <form id="second" onSubmit={this.second.submit}>
-              <input id="b" {...this.second.fields.email.$.bind} />
-            </form>
+            <OneForm id="first" input="a" />
+            <OneForm id="second" input="b" />
           </div>
         );
       }

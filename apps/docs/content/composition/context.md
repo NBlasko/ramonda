@@ -180,6 +180,57 @@ have rather than that you are wrong.
 Between components there is nothing to think about: an ancestor is always constructed before its
 descendants.
 
+## Two of one context: a scope per subtree
+
+One component publishes a context **once**. A second Provider of the same context on the same
+component throws
+([`RMD056`](/reference/diagnostics#rmd056-one-context-provided-twice-by-the-same-component)), and not
+as a matter of taste: a component has one context object, so the second would replace the first and
+hand every descendant the second whichever part of the tree it is in — while the component itself
+could still read both through its own hooks. The one place that made the mistake is the one place it
+looks fine.
+
+So when you want two, give each one its own component and hand it the subtree it is for. A component
+that renders `this.props.children` scopes its context to what is inside it:
+
+```tsx
+class Scope extends Component<{ theme: string; children?: RamondaNode }> {
+  provider = this.use(ThemeProvider, () => ({ theme: this.props.theme, accent: "pink" }));
+  render() {
+    return this.props.children;
+  }
+}
+
+class Page extends Component {
+  render() {
+    return (
+      <div>
+        <Scope theme="light">
+          <Badge />
+        </Scope>
+        <Scope theme="dark">
+          <Badge />
+        </Scope>
+      </div>
+    );
+  }
+}
+```
+
+Both `Badge`es use a plain `this.use(ThemeConsumer)` and each reads its own scope, with nothing passed
+down. If you have written React, this is the `<Provider>` element you already know — Ramonda spells it
+as a component because the framework is 1-1 and has no fragments, so the wrapper is one real element
+rather than none.
+
+**Why it works is worth knowing**, because it is not obvious from the JSX. A context object is created
+from the component that **renders** a node, not from the one whose source contains it — so a child
+handed in as `children` inherits the wrapper's context. `<Badge />` is written inside `Page`, and it
+reads `Scope`'s value.
+
+**Nesting needs none of this.** A Provider on a descendant shadows the one above it for its own
+branch, which is the ordinary arrangement — a theme override inside a panel, a form inside a form.
+Only two on the *same* component are refused.
+
 ## Being told before you run the app
 
 Mounting is enough to be checked, but a component that never mounts is never checked. To be told
