@@ -12,8 +12,13 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * nothing regressed — not that a converted call site fires, names the right code, or builds a
  * sensible dedup key. Each of these is the real path: a component, a render, an event.
  *
- * The four hydration codes are not here. They need a server render and a blob to hydrate from, which
- * `src/__tests__/hydration/` already sets up — this file covers the six a single mount reaches.
+ * The hydration codes are not here — they need a server render and a blob to hydrate from, and this
+ * file covers the six a single mount reaches.
+ *
+ * They are in `DiagnosticReach.test.tsx`. This note used to send a reader to
+ * `src/__tests__/hydration/`, which was where they were MEANT to go and never did: that directory
+ * names `RMD025` and nothing else, so `RMD034`, `RMD035` and `RMD036` sat unproved behind a comment
+ * saying they were covered. Found by crossing what `SPECS` declares against what any test names.
  */
 
 let records: RamondaDiagnostic[] = [];

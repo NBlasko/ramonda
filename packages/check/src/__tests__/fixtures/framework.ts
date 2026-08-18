@@ -69,10 +69,25 @@ export declare function requestContext(): {
  *
  * `env` is the whole point of the three at the top for `client-only-request-read`: the lifecycle
  * family defaults to `shared` and runs on both sides, and only `{ env: "client" }` narrows it.
+ *
+ * Each of the three is DUAL-CALLABLE, matching the real decorator, because both spellings are
+ * already in use across these fixtures: `render-purity` and `async-lifecycle` write the bare
+ * `@mounted`/`@created` form, `client-request` writes the explicit `@mounted()` factory form to
+ * name the env. A single-signature declaration only satisfies one of the two — measured, the
+ * factory-only shape refused every bare use in the repo the moment this landed.
  */
-export declare function created(options?: { env?: "shared" | "client" | "server" }): (...args: unknown[]) => void;
-export declare function mounted(options?: { env?: "shared" | "client" | "server" }): (...args: unknown[]) => void;
-export declare function destroyed(options?: { env?: "shared" | "client" | "server" }): (...args: unknown[]) => void;
+export declare function created(options?: {
+  env?: "shared" | "client" | "server";
+}): (value: unknown, context: unknown) => void;
+export declare function created(value: unknown, context: unknown): void;
+export declare function mounted(options?: {
+  env?: "shared" | "client" | "server";
+}): (value: unknown, context: unknown) => void;
+export declare function mounted(value: unknown, context: unknown): void;
+export declare function destroyed(options?: {
+  env?: "shared" | "client" | "server";
+}): (value: unknown, context: unknown) => void;
+export declare function destroyed(value: unknown, context: unknown): void;
 export declare function updated(value: unknown, context: unknown): void;
 export declare function deferHydration(value: unknown, context: unknown): void;
 export declare function interval(ms: string | number): (...args: unknown[]) => void;
@@ -80,3 +95,4 @@ export declare function timeout(ms: string | number): (...args: unknown[]) => vo
 export declare function onWindow(type: string): (...args: unknown[]) => void;
 export declare function onDocument(type: string): (...args: unknown[]) => void;
 export declare function onElement(type: string): (...args: unknown[]) => void;
+export declare function fetch(url: string): Promise<unknown>;

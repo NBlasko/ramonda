@@ -1641,3 +1641,61 @@ Deduped per context and owning component, so a component that mounts a thousand 
 ([RMD055](#rmd055-a-hooks-props-passed-as-a-plain-object)). There, a shipped bundle would go on serving a value
 nobody set; here the page has one deterministic reading, and refusing it would break an app that has
 been living with the first Provider being ignored. A later version can refuse.
+
+## RMD058 — The request blob could not be read
+
+```tsx
+// The server stamps what the page opted into onto the root element:
+//   <main data-ramonda-request='{"review-sid":"s-123"}'>
+// and `hydrateRoot` reads it back. If that string does not parse, nothing is restored.
+const sid = requestKey<string>("sid", { exposeToClient: true });
+requestContext().get(sid); // undefined on the client, for every exposed key
+```
+
+The blob is ignored rather than fatal — a page that renders with a value missing beats a page that
+does not render, which is the same stance [`RMD036`](#rmd036-the-state-blob-could-not-be-read) takes
+for the state blob.
+
+**What makes this worth its own code is what you see instead.** Two other diagnostics fire in its
+place and both point away from the cause: [`RMD025`](#rmd025-per-request-data-read-in-the-browser) says a key was not exposed — it was —
+and [`RMD007`](#rmd007-server-and-client-rendered-different-output) reports the render mismatch that follows, whose advice is about clocks and
+random numbers. The page looks correct throughout, because the server's markup is still on screen.
+
+The blob is JSON on the root element, so something between the server writing it and the browser
+parsing it altered it: an HTML transform, a proxy rewriting markup, or a value that did not
+serialize cleanly.
+
+## RMD059 — An async lifecycle rejected
+
+```tsx
+@state posts: unknown[] = [];
+
+@mounted async load() {
+  this.posts = await fetchPosts();   // ✗ if this throws, nothing tells anyone
+}
+```
+
+**An error boundary does not catch this, and that is deliberate.** The rejection arrives at an
+arbitrary later moment — the page is already on screen and interactive, and there is no render left
+to fail. Replacing what the reader is using with a fallback at that point is the worse outcome.
+
+What follows is why the report exists. The page renders exactly as though the method had succeeded:
+`posts` is still `[]`, the empty state shows, and the only trace is an unhandled rejection in a
+console nobody is watching.
+
+Handle it where it happens, and put the failure somewhere the render can see:
+
+```tsx
+@state error = "";
+
+@mounted async load() {
+  try { this.posts = await fetchPosts(); }
+  catch (e) { this.error = String(e); }
+}
+```
+
+If the failure really should take the page down, re-throw it from `render()` — that **is** a render,
+and a boundary can see it.
+
+`ramonda-check` reports the same method before it ships, as
+[`unguarded-async-lifecycle`](/reference/check).

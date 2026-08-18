@@ -27,6 +27,7 @@ import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
+import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
 import { duplicateId } from "./duplicate-id";
 import { headingSkipsALevel } from "./heading-skips-a-level";
 import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-provider";
@@ -86,6 +87,7 @@ export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
+export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
 export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
@@ -113,6 +115,7 @@ export const CLASS_RULES = [
   unwatchedFields,
   lateRequestRead,
   headTagsCollide,
+  unguardedAsyncLifecycle,
   contextConsumedAboveItsProvider,
   clientOnlyRequestRead,
 ] as const;

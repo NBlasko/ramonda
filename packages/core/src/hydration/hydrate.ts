@@ -69,16 +69,30 @@ export function hydrateRoot(vnode: ComponentChild, container: HTMLElement): void
 }
 
 /**
- * Reads the exposed request blob the server stamped on the root element. A corrupt one is
- * ignored rather than fatal — the same stance the state blob takes: a page that renders with a
- * value missing beats a page that does not render.
+ * Reads the exposed request blob the server stamped on the root element.
+ *
+ * A corrupt one is ignored rather than fatal — the same stance the state blob takes: a page that
+ * renders with a value missing beats a page that does not render. **And it is REPORTED, which is
+ * the other half of that stance and was missing.** The state blob has `RMD036` for exactly this;
+ * this one used to return `undefined` in silence.
+ *
+ * Silence was expensive here, because two other diagnostics fire in its place and both point the
+ * wrong way. Measured on a page whose blob was mangled after it was served: the reader gets
+ * `RMD025`, which says a key was not exposed — it was — and `RMD007`, a hydration mismatch, whose
+ * advice is about clocks and random numbers. Neither mentions the blob, and the page looks correct
+ * because the server's markup is still on screen.
  */
 function readExposedRequest(container: HTMLElement): Record<string, unknown> | undefined {
   const raw = container.firstElementChild?.getAttribute(REQUEST_ATTR);
   if (!raw) return undefined;
   try {
     return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
+  } catch (e) {
+    if (__DEV__) {
+      diagnose("RMD058", "request-blob", "The request blob on the root element could not be parsed.", {
+        reason: e instanceof Error ? e.message : String(e),
+      });
+    }
     return undefined;
   }
 }

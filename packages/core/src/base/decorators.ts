@@ -661,6 +661,68 @@ function isDecoratorContext(value: unknown): value is DecoratorContext {
   return typeof value === "object" && value !== null && "kind" in value;
 }
 
+/**
+ * Reports a lifecycle whose promise rejected, without taking the rejection away from anyone.
+ *
+ * An `async @mounted` that throws never reaches an error boundary. That is deliberate — the
+ * rejection arrives at an arbitrary later moment, when the page is already interactive and there is
+ * no render left to fail, so swapping the page for a fallback then is the worse outcome. What was
+ * wrong is that it happened in SILENCE: measured before this existed, a rejecting `async @mounted`
+ * left the page rendering as though it had succeeded, with no diagnostic and nothing but an
+ * unhandled rejection in the console to say otherwise.
+ *
+ * ## `__DEV__`-only, and the SHAPE of that guard is load-bearing
+ *
+ * The first version guarded only the report, and that was a bug worth naming because it made
+ * production **worse than doing nothing**. Attaching `.then(undefined, handler)` marks a promise as
+ * HANDLED, which suppresses the `unhandledRejection` the runtime would otherwise raise — measured,
+ * not assumed. So a production build attached a handler that reported nothing and, in exchange,
+ * deleted the only evidence the app had. Guarded here, production is byte-identical to the code
+ * this replaced: nothing attaches, and the rejection surfaces exactly as it always did.
+ *
+ * The second version guarded it as `if (!__DEV__) return result;` with the body after it, and that
+ * is the anti-pattern `helpers/common.ts` already documents: an early return leaves the rest
+ * REACHABLE as far as esbuild's dead-code pass is concerned, so `diagnose` stayed referenced and
+ * dragged every diagnostic's title and fix text into the application bundle. `ProdAppBuild.test.ts`
+ * caught it — all fifty-five specs, where three codes are allowed. So the body is wrapped in
+ * `if (__DEV__) { … }`, which is the form that actually strips.
+ *
+ * ## In development it DOES consume the rejection, and nothing is lost by that
+ *
+ * The raw `unhandledRejection` carried one thing this does not: the error itself, with its stack.
+ * So the error is passed as `data`, and `diagnose` hands `data` straight to the console beside the
+ * message — a browser expands an `Error` there with the full stack. What the developer sees is
+ * therefore strictly more than before: the stack they had, plus the component, the member, the
+ * lifecycle, and the fix text, all attributed to a fault the raw rejection could not name.
+ *
+ * Re-throwing to keep the runtime's own report as well was tried and rejected: it produces two
+ * reports of one fault, and the second carries nothing the first does not.
+ *
+ * The original promise is returned untouched either way, so the server's work drain sees what it
+ * always saw.
+ */
+function reportIfRejected(result: unknown, owner: object, member: string, decoratorName: string): unknown {
+  if (__DEV__) {
+    if (typeof (result as { then?: unknown })?.then === "function") {
+      (result as Promise<unknown>).then(undefined, (error: unknown) => {
+        const name = displayName(owner);
+        diagnose(
+          "RMD059",
+          `${name}.${member}`,
+          `<${name} />'s @${decoratorName} \`${member}\` rejected: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          // `error` is here for the console: `diagnose` logs `data` raw, so the stack the unhandled
+          // rejection used to print is still one expand away.
+          { component: name, member, phase: decoratorName, error },
+        );
+      });
+    }
+  }
+
+  return result;
+}
+
 function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) {
   const register = (context: EnhancedClassMethodDecoratorContext, env: LifecycleEnv) => {
     if (__DEV__) {
@@ -668,9 +730,14 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
     }
     const contextName = ensureStringContextName(context.name, decoratorName);
     context.addInitializer(function (this) {
+      const bound = this[contextName].bind(this);
+      const self = this;
       this[GLOBAL_RUNTIME][phase].push({
         id: createId(),
-        cb: this[contextName].bind(this),
+        // Wrapped rather than called raw, so a promise that rejects says so. The wrapper returns
+        // whatever the method returned — including the promise itself — so every caller behaves
+        // exactly as before.
+        cb: (...args: unknown[]) => reportIfRejected(bound(...args), self, contextName, decoratorName),
         env,
       });
     });

@@ -85,7 +85,9 @@ export type DiagnosticCode =
   | "RMD053"
   | "RMD055"
   | "RMD056"
-  | "RMD057";
+  | "RMD057"
+  | "RMD058"
+  | "RMD059";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -393,6 +395,20 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "The request was read with no request scope installed",
     fix: "`requestContext()` is live only while the page is being rendered — on the server that is the SYNCHRONOUS section, and the scope is cleared before the render's first `await`, so a read below one arrives here. Read it in `render()`, in `@created`, or above the first `await` of an async lifecycle method, and keep what you need in `@state`. Holding the object does not help: every member of it is a getter over the current request, so `const ctx = requestContext()` above an `await` and `ctx.get(key)` below it is the same late read. The other way to arrive here is calling it at module top level, before any render has started. This is reported as well as thrown because the throw does not always arrive anywhere: inside an async `@mounted` it goes into the server drain and is swallowed, and the page is served, complete and quietly missing this value.",
+  },
+  RMD058: {
+    // warning, not error: the page renders and every value is simply missing, which is the same
+    // stance RMD036 takes for the state blob. Taking a page down over a blob is the worse failure.
+    severity: "warning",
+    title: "The request blob could not be read",
+    fix: "The server stamps the values a page opted into onto the root element, and `hydrateRoot` reads them back. This one did not parse, so NOTHING was restored — every `requestContext().get(key)` on the client answers `undefined`, including keys that were exposed correctly. What you will see beside this is misleading on its own: `RMD025` says a key was not exposed, which is not what happened, and `RMD007` reports the render mismatch that follows and sends you looking for a clock. This is the report that says what actually went wrong. The blob is JSON on the root element; something between the server writing it and the browser parsing it altered it — an HTML transform, a proxy rewriting the markup, or a value that could not be serialized cleanly.",
+  },
+  RMD059: {
+    // warning: the page is fine and the failure is the app's own, in its own method. What was
+    // wrong was that nothing said the method had failed at all.
+    severity: "warning",
+    title: "An async lifecycle rejected",
+    fix: "An `async` `@created`, `@mounted` or `@destroyed` that rejects is NOT caught by an error boundary, and that is deliberate: the rejection arrives at an arbitrary later moment, when the page is already interactive and there is no render left to fail — replacing it with a fallback then is the worse outcome. So the page keeps running and this says what happened, which is the part that used to be missing. Handle it where it happens: wrap the body in `try`/`catch` and put the failure in `@state` — an `error` field the render can show — which is also the only way to tell the reader anything. If the work must take the page down, re-throw from `render()` rather than from the lifecycle, because that IS a render and a boundary can see it. `ramonda-check` reports the same method before it ships, as `unguarded-async-lifecycle`.",
   },
   RMD055: {
     severity: "error",

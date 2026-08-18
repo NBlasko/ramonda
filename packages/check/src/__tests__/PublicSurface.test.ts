@@ -57,6 +57,7 @@ const EXPECTED_TYPES = [
   "SplitPoint",
   "StateWrittenWhileRenderingIssue",
   "TagNeedsItsParentIssue",
+  "UnguardedAsyncLifecycleIssue",
   "UnknownAriaAttributeIssue",
   "UnknownRoleIssue",
   "UnnamedFrameIssue",
