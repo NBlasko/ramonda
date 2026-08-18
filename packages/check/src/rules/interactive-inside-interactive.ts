@@ -47,6 +47,9 @@ export const interactiveInsideInteractive = {
 
   report: {
     severity: "warn",
+    reportedWhen:
+      "an interactive element is nested inside another of the same kind: a link in a " +
+      "link, a button in a button, a form in a form",
     heading: (found) => `${found.length} element(s) nested inside another of the same kind:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

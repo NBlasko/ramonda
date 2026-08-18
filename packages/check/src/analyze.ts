@@ -9,12 +9,16 @@ import {
   applyClass,
   applyElement,
   applyModule,
+  applyTree,
   CLASS_RULES,
   ELEMENT_RULES,
   emptyFindings,
   MODULE_RULES,
+  rootsIn,
+  TREE_RULES,
 } from "./rules";
 import type {
+  AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -23,10 +27,16 @@ import type {
   DomWriteIssue,
   DuplicateDecoratorIssue,
   DuplicateKeyAmongSiblingsIssue,
+  DuplicateIdIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
+  HeadingSkipsALevelIssue,
+  HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
+  LateRequestReadIssue,
   PositiveTabIndexIssue,
+  RoleMissingRequiredAriaIssue,
+  RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
@@ -45,6 +55,7 @@ import type {
  */
 
 export type {
+  AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -53,10 +64,16 @@ export type {
   DomWriteIssue,
   DuplicateDecoratorIssue,
   DuplicateKeyAmongSiblingsIssue,
+  DuplicateIdIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
+  HeadingSkipsALevelIssue,
+  HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
+  LateRequestReadIssue,
   PositiveTabIndexIssue,
+  RoleMissingRequiredAriaIssue,
+  RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
@@ -241,40 +258,6 @@ export interface ClassAsChildIssue {
   column: number;
 }
 
-/**
- * `requestContext()` read below an `await` — after the request it names is gone.
- *
- * The scope is one module-level value shared by every request the server is handling at once, and
- * `renderToString` clears it before its first `await`. That is what makes the shared value safe:
- * the synchronous section is atomic in Node, so no second request can be inside it. A read below a
- * yield therefore finds nothing, and the framework raises RMD053.
- *
- * **Why a static rule as well as the code.** The runtime report only fires on a path that RUNS —
- * an `@mounted` behind a condition nobody met ships with the fault — and, worse, the throw beside
- * it goes into the server's work drain and is swallowed, so the page is served complete and quietly
- * missing the value. This says it before anything runs. The two are not redundant and are not
- * symmetric: this sees only what it is pointed at and only a direct call or a same-scope local,
- * while RMD053 catches the read a variable carried out of this rule's reach.
- *
- * **What is deliberately NOT reported.** A read ABOVE the first `await` is correct and common —
- * an async `@created` may read the request and then go fetch. A nested callback is left alone
- * whatever encloses it: whether it runs before or after the yield is dataflow, which this analyzer
- * refuses by decision, and guessing would report the safe form.
- */
-export interface LateRequestReadIssue {
-  /** The class the read is in. */
-  component: string;
-  /** The method or field holding it. */
-  member: string;
-  /** What was written — `requestContext().get(currentUser)`, `context.headers`. */
-  read: string;
-  /** How the request was reached: called on the spot, or through a local taken earlier. */
-  via: "call" | "local";
-  file: string;
-  line: number;
-  column: number;
-}
-
 export interface AnalyzeResult {
   issues: ContextIssue[];
   /**
@@ -290,16 +273,6 @@ export interface AnalyzeResult {
    * off the rule rather than declared a second time here.
    */
   findings: Findings;
-  /**
-   * `requestContext()` read below an `await` — see `LateRequestReadIssue`.
-   *
-   * A named field rather than an entry in `findings` above, and deliberately so for now: it is
-   * the one per-class check that needs a symbol the rule context does not hand out — the LOCAL
-   * one, unaliased, which is how it tells the framework's `requestContext` from an app's own
-   * helper of that name. Folding it in means widening the context, which is a change to make on
-   * purpose rather than in a merge.
-   */
-  lateRequestReads: LateRequestReadIssue[];
   /** Places that name a component this cannot follow — see `UnresolvedIssue`. */
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
@@ -539,7 +512,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const kitDestructures: ts.VariableDeclaration[] = [];
   /** What every rule found, one list per rule id. See `Findings`. */
   const findings = emptyFindings();
-  const lateRequestReads: LateRequestReadIssue[] = [];
   const unresolved: UnresolvedIssue[] = [];
   const secondProviders: SecondProviderIssue[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
@@ -813,8 +785,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   const moduleRules = activate(MODULE_RULES, imported);
 
+  /**
+   * The per-RENDER rules, from the same pass again.
+   *
+   * A render is one top-level JSX tree in the source, so the subjects are found by walking the file
+   * and stopping at the first markup on each path — everything below a root belongs to that root.
+   * From the FILE rather than from a class, for the same reason the element rules do: markup
+   * written in a plain helper function is markup all the same.
+   */
+  const treeRules = activate(TREE_RULES, imported);
+
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
+    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings);
 
     applyModule(
       moduleRules,
@@ -869,8 +852,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          applyClass(rules, node, { self, resolve }, findings);
-          readLateRequestReads(node, self);
+          applyClass(rules, node, { self, resolve, resolveLocal }, findings);
         }
       }
       collectRoot(node);
@@ -923,7 +905,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   return {
     issues,
     findings,
-    lateRequestReads,
     unresolved,
     annotated,
     unreachable,
@@ -2368,6 +2349,18 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return symbol;
   }
 
+  /**
+   * The symbol as WRITTEN, alias unfollowed — the other half of `resolve`.
+   *
+   * `late-request-read` is the rule that needs it: an app is entitled to its own function called
+   * `requestContext`, so identity is the module specifier the reader typed, and reaching that means
+   * holding the local symbol whose declaration is the `ImportSpecifier` itself. Followed through
+   * the alias, the declaration is core's and says nothing about how this file reached it.
+   */
+  function resolveLocal(id: ts.Node): ts.Symbol | undefined {
+    return checker.getSymbolAtLocation(id);
+  }
+
   function bindingSymbol(element: ts.ArrayBindingElement | undefined): ts.Symbol | undefined {
     if (!element || !ts.isBindingElement(element) || !ts.isIdentifier(element.name)) return undefined;
     return checker.getSymbolAtLocation(element.name);
@@ -2903,150 +2896,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         }),
     };
   }
-
-  /**
-   * A `requestContext()` read below the first `await` of the function it is in.
-   *
-   * Reported as a WARNING, which is this repository's rule for a new rule: one version that says
-   * so, the next that refuses.
-   *
-   * **What counts as "the request", and why it is not a name match.** The identifier must resolve
-   * to the export `@ramonda/core` declares — `resolve` follows the alias, so an import renamed
-   * `import { requestContext as ctx }` is still it, and an app's own helper called
-   * `requestContext` is not. That is the same test the rest of this file applies to a component
-   * class, rather than the looser name check the `document` rule uses, because here a same-named
-   * local is a thing somebody plausibly writes.
-   *
-   * **Await state is per FUNCTION, and nested functions start clean.** An arrow inside a method is
-   * not judged by what its enclosing body did: whether it runs before or after the yield is
-   * dataflow. Reporting it would flag the correct form — `items.map((item) => …)` called
-   * synchronously above the await — which is how a rule earns being switched off.
-   */
-  function readLateRequestReads(cls: ts.ClassDeclaration, self: ComponentNode): void {
-    for (const member of cls.members) {
-      const body = bodyOfMember(member);
-      if (!body) continue;
-      const name = member.name && ts.isIdentifier(member.name) ? member.name.text : "(anonymous)";
-      walkForLateReads(body, self.name, name);
-    }
-  }
-
-  /**
-   * One function body, in source order, carrying whether an `await` has been passed.
-   *
-   * Source order is what an `await` divides, so the walk is ordered rather than a
-   * `forEachChild` sweep: `ts.forEachChild` visits a node's children in order, and the flag only
-   * ever moves from false to true within one body.
-   */
-  function walkForLateReads(body: ts.Node, component: string, member: string): void {
-    // The locals this body took from `requestContext()` before yielding — `const ctx =
-    // requestContext()` above the await, used below it. One hop and one scope: reading what a
-    // local holds is not the general dataflow this analyzer refuses, it is the declaration
-    // sitting in the same function.
-    const held = new Set<ts.Symbol>();
-    let yielded = false;
-
-    (function look(node: ts.Node): void {
-      // A nested function is its own timeline — see the rule's docstring.
-      if (node !== body && isFunctionLike(node)) return;
-
-      if (ts.isAwaitExpression(node)) {
-        ts.forEachChild(node, look);
-        yielded = true;
-        return;
-      }
-      // `for await (… of …)` yields on every step, and it is a ForOfStatement rather than an
-      // AwaitExpression, so the check above never sees it.
-      if (ts.isForOfStatement(node) && node.awaitModifier !== undefined) yielded = true;
-
-      // Only a local taken BEFORE the yield is worth following. Taken after one, the call itself is
-      // the failure and is reported on its own line — following it as well would put a second report
-      // on a line that never runs, and send the reader to the wrong one of the two.
-      if (!yielded && ts.isVariableDeclaration(node) && node.initializer && isRequestContextCall(node.initializer)) {
-        const symbol = ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
-        if (symbol) held.add(symbol);
-      }
-
-      if (yielded) {
-        if (ts.isCallExpression(node) && isRequestContextCall(node)) {
-          report(node, "call");
-          return;
-        }
-        if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
-          const symbol = checker.getSymbolAtLocation(node.expression);
-          if (symbol && held.has(symbol)) {
-            report(node, "local");
-            return;
-          }
-        }
-      }
-
-      ts.forEachChild(node, look);
-    })(body);
-
-    function report(node: ts.Node, via: "call" | "local"): void {
-      // The whole read, not the bare call: `requestContext().get(currentUser)` is what the reader
-      // wrote and what they will search for.
-      let outermost: ts.Node = node;
-      while (
-        ts.isPropertyAccessExpression(outermost.parent) ||
-        (ts.isCallExpression(outermost.parent) && outermost.parent.expression === outermost)
-      ) {
-        outermost = outermost.parent;
-      }
-      lateRequestReads.push({
-        component,
-        member,
-        read: outermost.getText(),
-        via,
-        ...positionOf(node),
-      });
-    }
-  }
-
-  /** `requestContext()` — the export `@ramonda/core` declares, not any function with that name. */
-  function isRequestContextCall(node: ts.Node): node is ts.CallExpression {
-    if (!ts.isCallExpression(node)) return false;
-    const callee = node.expression;
-    const id = ts.isIdentifier(callee) ? callee : ts.isPropertyAccessExpression(callee) ? callee.name : undefined;
-    if (!id || id.text !== "requestContext") return false;
-    return importedFromCore(ts.isPropertyAccessExpression(callee) ? callee.expression : id);
-  }
-
-  /**
-   * Whether an identifier was imported from `@ramonda/core`.
-   *
-   * By the written module SPECIFIER, not by where the declaration file sits on disk. Every project
-   * here aliases `@ramonda/core` to `packages/core/src` so the analyzer reads sources rather than
-   * `dist` — a path test would answer on the alias's target, which differs per project, while the
-   * specifier is the same string the reader typed.
-   *
-   * Deliberately NOT a name match, unlike the `document` rule two functions down. Nobody writes
-   * `const document = …` and reaches for `.body`, but an app having its own `requestContext`
-   * helper is entirely plausible, and reporting inside it would be reporting the reader's own code
-   * for the framework's rule.
-   *
-   * `import { requestContext as ctx }` and `import * as core from "@ramonda/core"` both arrive
-   * here: the first through its `ImportSpecifier`, the second through the namespace identifier.
-   */
-  function importedFromCore(id: ts.Node): boolean {
-    if (!ts.isIdentifier(id)) return false;
-    const local = checker.getSymbolAtLocation(id);
-    return (local?.declarations ?? []).some((declaration) => {
-      const clause =
-        ts.isImportSpecifier(declaration) || ts.isNamespaceImport(declaration)
-          ? declaration.parent.parent
-          : ts.isImportClause(declaration)
-            ? declaration
-            : undefined;
-      const statement = clause?.parent;
-      if (!statement || !ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
-        return false;
-      }
-      const from = statement.moduleSpecifier.text;
-      return from === "@ramonda/core" || from.startsWith("@ramonda/core/");
-    });
-  }
 }
 
 // ── module-level helpers (no checker needed) ──────────────────────────────────────────────────
@@ -3233,31 +3082,4 @@ function createProgram(tsconfigPath: string): {
     options: { ...parsed.options, noLib: true, types: [] },
   });
   return { program, notes };
-}
-
-/**
- * The body of a class member that HOLDS code: a method, or a field initialised with a function.
- * `@created async init() {}` and `handler = async () => {}` are the two spellings, and the late-read
- * rule has to judge both.
- */
-function bodyOfMember(member: ts.ClassElement): ts.Node | undefined {
-  if (ts.isMethodDeclaration(member) && member.body) return member.body;
-  if (ts.isGetAccessorDeclaration(member) && member.body) return member.body;
-  if (ts.isPropertyDeclaration(member) && member.initializer && isFunctionLike(member.initializer)) {
-    const fn = member.initializer as ts.ArrowFunction | ts.FunctionExpression;
-    return fn.body;
-  }
-  return undefined;
-}
-
-/** Anything that opens a new `await` timeline. */
-function isFunctionLike(node: ts.Node): boolean {
-  return (
-    ts.isArrowFunction(node) ||
-    ts.isFunctionExpression(node) ||
-    ts.isFunctionDeclaration(node) ||
-    ts.isMethodDeclaration(node) ||
-    ts.isGetAccessorDeclaration(node) ||
-    ts.isSetAccessorDeclaration(node)
-  );
 }

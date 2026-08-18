@@ -101,6 +101,24 @@ describe("the ARIA vocabulary", () => {
     expect(found.map((issue) => issue.meant)).toEqual(["aria-labelledby", "aria-required", undefined]);
   });
 
+  /**
+   * A wrong CASE is a fault only inside SVG, and that was measured rather than argued.
+   *
+   * This rule shipped saying the opposite — that `aria-labelledBy` reaches the DOM as a different
+   * attribute. Rendered through `renderToString`, an HTML element's attributes go through
+   * `setAttribute`, which the specification lowercases, so it arrives spelled correctly and works;
+   * an SVG element's go through `setAttributeNS(null, name)`, which does not. Reporting the HTML
+   * one was reporting correct markup.
+   *
+   * The fixture holds both spellings of the same name, one in each namespace, so this cannot pass
+   * by finding the wrong one.
+   */
+  test("a wrong case is reported in SVG and nowhere else", () => {
+    const cased = run().findings["unknown-aria-attribute"].filter((issue) => issue.attribute === "aria-labelledBy");
+    expect(cased).toHaveLength(1);
+    expect(cased[0].line).toBeGreaterThan(20);
+  });
+
   test("an unknown role and an abstract one are told apart", () => {
     const found = run().findings["unknown-role"];
     expect(found.map((issue) => `${issue.role}:${issue.kind}`)).toEqual(["tabpane:unknown", "widget:abstract"]);
@@ -118,5 +136,180 @@ describe("the ARIA vocabulary", () => {
   test("role and aria-* on an element with no accessibility node are reported, one per attribute", () => {
     const found = run().findings["aria-with-no-subject"];
     expect(found.map((issue) => `${issue.tag}:${issue.attribute}`)).toEqual(["title:role", "title:aria-hidden"]);
+  });
+});
+
+/**
+ * The value half of the ARIA vocabulary. The names in these are all correct — the sibling rule has
+ * nothing to say about them — and the browser keeps every one, because an attribute is a string. It
+ * is the MEANING that does not happen: `aria-hidden="yes"` leaves the element in the accessibility
+ * tree, and it looks exactly like an element that was hidden.
+ */
+describe("an aria value the specification does not permit", () => {
+  const found = () => run().findings["aria-value"];
+
+  test("every kind of wrong value is reported, with what it takes", () => {
+    expect(found().map((issue) => `${issue.attribute}="${issue.value}" wants ${issue.wants}`)).toEqual([
+      'aria-hidden="yes" wants `true`, `false` or `undefined`',
+      'aria-atomic="1" wants `true` or `false`',
+      'aria-selected="mixed" wants `true`, `false` or `undefined`',
+      'aria-live="loud" wants one of `assertive`, `off`, `polite`',
+      'aria-current="yes" wants one of `date`, `false`, `location`, `page`, `step`, `time`, `true`',
+      'aria-level="two" wants a whole number',
+      'aria-valuenow="40%" wants a number',
+    ]);
+  });
+
+  /**
+   * `false` is a value, not an absence — `aria-hidden="false"` says the element is exposed, which
+   * is not what leaving the attribute off says. A rule that reported it would be reporting the
+   * documented way to write the thing.
+   */
+  test("false, undefined and mixed are values where the spec allows them", () => {
+    const permitted = ['aria-hidden="false"', 'aria-expanded="undefined"', 'aria-checked="mixed"'];
+    expect(found().some((issue) => permitted.includes(`${issue.attribute}="${issue.value}"`))).toBe(false);
+  });
+
+  test("a negative integer and a decimal are still a number", () => {
+    expect(found().some((issue) => ["-1", "0.5", "1e3"].includes(issue.value))).toBe(false);
+  });
+
+  /** An expression is not a value this can read, and guessing at one is what the package refuses. */
+  test("an expression is not judged", () => {
+    expect(found().every((issue) => issue.value.length > 0)).toBe(true);
+  });
+
+  /**
+   * A label takes any string and an id reference is any non-empty name, so there is no table for
+   * either — an attribute with no entry is one no rule has an opinion about.
+   */
+  test("an attribute whose every value is well formed has no entry and is never reported", () => {
+    expect(found().some((issue) => issue.attribute === "aria-label" || issue.attribute === "aria-labelledby")).toBe(
+      false,
+    );
+  });
+
+  test("a component's prop is not markup yet", () => {
+    expect(found().every((issue) => issue.line < 40)).toBe(true);
+  });
+});
+
+/**
+ * The other half of the ARIA tables: what a role does not work without. Every role in the fixture
+ * is real, so the vocabulary rule is satisfied and nothing else has anything to say — the page
+ * works for everyone who can see it, and a screen reader announces a control in a state it cannot
+ * report.
+ */
+describe("a role missing what the specification requires of it", () => {
+  const found = () => run().findings["role-missing-required-aria"];
+
+  test("every incomplete role is reported, with what it is missing", () => {
+    expect(found().map((issue) => `${issue.role} needs ${issue.missing.join(" + ")}`)).toEqual([
+      "checkbox needs aria-checked",
+      "switch needs aria-checked",
+      "menuitemradio needs aria-checked",
+      "heading needs aria-level",
+      "slider needs aria-valuenow",
+      "scrollbar needs aria-controls + aria-valuenow",
+      "combobox needs aria-expanded",
+    ]);
+  });
+
+  /**
+   * `has`, not the value: `aria-checked={checked}` IS written, and whether the expression holds
+   * something the spec permits is the value rule's question, asked on the same element.
+   */
+  test("an attribute written as an expression counts as present", () => {
+    expect(found().filter((issue) => issue.role === "checkbox")).toHaveLength(1);
+  });
+
+  test("a role with nothing required of it is never reported", () => {
+    expect(found().some((issue) => issue.role === "button" || issue.role === "note")).toBe(false);
+  });
+
+  /**
+   * `<input type="checkbox">` carries its checked-ness natively, and `<h2>` its level. Judging a
+   * host language's own role would report every correct heading there is.
+   */
+  test("an element that supplies the state itself is left alone", () => {
+    expect(found().some((issue) => issue.tag === "input" || issue.tag === "h2")).toBe(false);
+  });
+
+  test("a fallback chain is not one claim", () => {
+    expect(found().some((issue) => issue.role.includes(" "))).toBe(false);
+  });
+
+  test("a role this cannot read is not judged", () => {
+    expect(found().every((issue) => issue.role.length > 0)).toBe(true);
+  });
+
+  test("the report carries a position a reader can open", () => {
+    const first = found()[0];
+    expect(first.file).toContain("roles");
+    expect(first.line).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The slice of the role-by-property matrix worth having. A name is not a tooltip: it is the
+ * accessible NAME of a thing in the accessibility tree, and the specification says which roles may
+ * have one. A `<div>` is `generic` — the role for an element with no meaning — so there is nothing
+ * for a name to name, and the attribute does nothing at all.
+ */
+describe("a name on a role that takes none", () => {
+  const found = () => run().findings["role-takes-no-name"];
+
+  test("every name that does nothing is reported, with the role that forbids it", () => {
+    expect(found().map((issue) => `${issue.tag}/${issue.role}: ${issue.attribute}`)).toEqual([
+      "div/generic: aria-label",
+      "span/generic: aria-labelledby",
+      "div/presentation: aria-label",
+      "div/none: aria-label",
+      "p/paragraph: aria-label",
+      "div/generic: aria-label",
+      "div/generic: aria-labelledby",
+    ]);
+  });
+
+  /**
+   * A written role wins over the tag's own, which is the whole reason this is safe to report.
+   * `<div role="region" aria-label="Filters">` is correct and extremely common.
+   */
+  test("a written role that takes a name silences the tag's own", () => {
+    expect(found().some((issue) => issue.role === "region")).toBe(false);
+  });
+
+  /**
+   * `<section>` maps to `region` WHEN IT HAS A NAME, so naming it is not merely allowed — it is the
+   * documented way to write one. A table that listed `section` would report the correct form.
+   */
+  test("section, nav and main are named exactly this way and are never reported", () => {
+    expect(found().some((issue) => ["section", "nav", "main", "button"].includes(issue.tag))).toBe(false);
+  });
+
+  test("a role this cannot read may be one that takes a name", () => {
+    expect(found().every((issue) => issue.role !== "")).toBe(true);
+  });
+
+  /**
+   * Attribute names are matched case-INSENSITIVELY, and that was measured rather than assumed.
+   *
+   * The first version compared them as written, on the neighbouring rule's claim that
+   * `aria-labelledBy` reaches the DOM as a different attribute. Rendered through
+   * `renderToString`, that is false for an HTML element — `setAttribute` lowercases, so the
+   * attribute arrives as `aria-labelledby` and is a name like any other. It IS true inside SVG,
+   * where `setAttributeNS(null, name)` writes the name verbatim; every tag this rule consults is
+   * an HTML tag, so that case cannot reach it.
+   *
+   * `aria.tsx` therefore carries a `role` on its wrong-case span, so that line stays about one
+   * fault.
+   */
+  test("this rule reads only names, and leaves the vocabulary to its own rule", () => {
+    expect(found().some((issue) => issue.file.endsWith("aria.tsx"))).toBe(false);
+  });
+
+  test("it says whether the role was written or came from the tag", () => {
+    expect(found().filter((issue) => issue.from === "role")).toHaveLength(2);
+    expect(found().filter((issue) => issue.from === "tag")).toHaveLength(5);
   });
 });

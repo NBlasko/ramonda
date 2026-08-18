@@ -51,6 +51,32 @@ export interface Report<Issue> {
    */
   severity: "warn" | "error";
 
+  /**
+   * The one-line condition the reference prints, in the rule's own words.
+   *
+   * Here rather than in the documentation, and that is the whole point of the field. The reference
+   * page had two tables of these, typed by hand, and they were nine rows stale the day the rules
+   * they describe landed beside them — because nothing connected the two. Now the table is
+   * GENERATED from this, so a rule cannot be added without its row and a row cannot describe a rule
+   * that no longer works that way.
+   *
+   * A clause, not a sentence: it is printed after the rule's id in a "reported when" column, so it
+   * reads as the completion of that phrase. Plain text — the diagnostic link is {@link
+   * alsoReportedAs}, so nothing here has to know what the documentation site is built with.
+   */
+  reportedWhen: string;
+
+  /**
+   * The runtime diagnostic that reports the same fault once the line actually runs.
+   *
+   * Several rules have one, and the pair is deliberate rather than redundant: the rule speaks
+   * before anything runs, including for a branch nobody has opened, and the diagnostic catches what
+   * left the rule's reach. Naming the code here lets the reference link the two without a second
+   * list to keep in step — and lets the generator refuse a code the diagnostics page does not
+   * document.
+   */
+  alsoReportedAs?: string;
+
   /** The line that opens the section, given everything this rule found. */
   heading(found: readonly Issue[]): string;
 
@@ -142,6 +168,63 @@ export interface ElementRule<Issue> {
   read(element: JsxElementLike, context: ElementContext): Issue[];
 }
 
+/**
+ * A rule that reads one RENDER as a whole — every element in it, in document order.
+ *
+ * The fourth family, and the one the other three cannot cover between them. An element rule sees
+ * one element and its ancestors, which is enough for "is this `<tr>` inside a table" and not enough
+ * for anything about two elements that are not related: two ids that are the same, a heading level
+ * that jumps, two of a landmark there may be only one of. Those are questions about a whole
+ * markup tree, and nothing here had a subject that size.
+ *
+ * ## Why it is a family and not three more per-class rules
+ *
+ * A per-class rule could walk the JSX itself — the walk is not what is shared. What is shared is
+ * the hard part: deciding whether two elements are ever really BOTH there. `{open ? <a/> : <b/>}`
+ * is two elements in the source and one on the page, and a rule that missed that would report
+ * correct markup, which is how a rule earns being switched off. {@link TreeNode.alwaysPresent} is
+ * computed once, here, so that no rule in this family can forget it — the same argument that put
+ * `spreads` on the element family and `needs` on the class one.
+ */
+export interface TreeRule<Issue> {
+  id: string;
+  report: Report<Issue>;
+  needs?: string;
+  read(tree: TreeContext): Issue[];
+}
+
+/** One element inside a render, as a tree rule reads it. */
+export interface TreeNode extends ElementContext {
+  /** The element itself, for a report that has to point at it. */
+  element: JsxElementLike;
+
+  /**
+   * Whether this element is on the page whenever this render runs.
+   *
+   * `false` for anything under a `?:`, a `&&`, an `if`, or a callback — a row inside a `map`, a
+   * branch of a ternary, the right half of a guard. Those may or may not be there, and a rule that
+   * assumed they were would report `{editing ? <input id="x"/> : <span id="x"/>}`, which is one
+   * element on the page and correct.
+   *
+   * A rule about two elements meeting each other may only compare two of these that are `true`.
+   * That is the whole reason this family exists, and it is computed here so no rule can forget it.
+   */
+  alwaysPresent: boolean;
+}
+
+/**
+ * One render's markup: everything in it, in the order it appears.
+ *
+ * A "render" is one top-level JSX tree in the source — the thing a `render()` returns, or a helper
+ * builds. Deliberately not the COMPOSED tree, which would mean following `<Panel />` into whatever
+ * it renders: that depends on props, on state and on what a slot was filled with, and guessing at
+ * it is exactly the thing this package refuses to do.
+ */
+export interface TreeContext {
+  /** Every element in this render, in document order. */
+  elements: readonly TreeNode[];
+}
+
 export interface ElementContext {
   /**
    * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.
@@ -176,6 +259,25 @@ export interface ElementContext {
 
   /** The element's children, for the rules about what is INSIDE a tag rather than on it. */
   children: readonly ts.JsxChild[];
+
+  /**
+   * Whether this element goes into the SVG namespace, which decides whether an attribute NAME
+   * survives as written.
+   *
+   * An HTML element is given its attributes through `setAttribute`, which the HTML specification
+   * lowercases — so `aria-labelledBy` arrives as `aria-labelledby` and works. An SVG element is
+   * given them through `setAttributeNS(null, name)`, which writes the name verbatim, so the same
+   * spelling is a different attribute that nothing reads. Measured through `renderToString`, not
+   * assumed: the two halves came out opposite, and a rule that believed the wrong one reported
+   * correct markup.
+   *
+   * On the context rather than in each rule because two already need it and a third will: it is a
+   * fact about the element, and working it out per rule is how the two would disagree.
+   *
+   * By TAG NAME, because that is how the framework decides it — `<circle>` is SVG wherever it is
+   * written, and a `<div>` inside a `<foreignObject>` is HTML.
+   */
+  inSvg: boolean;
 }
 
 export interface ModuleContext {
@@ -205,4 +307,23 @@ export interface RuleContext {
    * name the browser owns resolves to nothing, while `const location = …` in the source resolves.
    */
   resolve(id: ts.Node): ts.Symbol | undefined;
+
+  /**
+   * The symbol as WRITTEN, with an import alias left unfollowed.
+   *
+   * The other half of the question above, and it is a different question rather than a weaker one.
+   * `resolve` answers "what is this?", which is what a rule wants when it is looking for a
+   * particular declaration; this answers "how did this file get it?", which is what a rule wants
+   * when the import STATEMENT is the evidence.
+   *
+   * `late-request-read` is why it exists. An app is entitled to its own function called
+   * `requestContext`, so that rule cannot go by name — it goes by the module specifier the reader
+   * typed, and reaching that means holding the local symbol whose declaration is the
+   * `ImportSpecifier`. Followed through the alias, the declaration is in core and says nothing
+   * about how this file reached it.
+   *
+   * Not the default, because every OTHER rule wants the thing an import points at: keeping the two
+   * apart is what stops a rule from silently answering the wrong one.
+   */
+  resolveLocal(id: ts.Node): ts.Symbol | undefined;
 }

@@ -162,6 +162,9 @@ export const duplicateDecorators = {
 
   report: {
     severity: "error",
+    reportedWhen:
+      "a single-use decorator is written twice: `@Host`, `@catchError`, " +
+      "`@ShouldUpdateOnPropsChange` or `@StableProps`",
     heading: (found) => `${found.length} class(es) declaring a single-use decorator twice:`,
     lines: (issue) => {
       // The member is named for a `redundant` report, because that count is per member: without it,

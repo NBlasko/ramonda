@@ -220,3 +220,204 @@ export const NO_ARIA: ReadonlySet<string> = new Set([
   "template",
   "title",
 ]);
+
+/**
+ * What kind of value each `aria-*` attribute takes.
+ *
+ * Source: **WAI-ARIA 1.2**, the "Characteristics" table under each state and property, where every
+ * one of them declares its value type. The types below are that list collapsed to the ones a
+ * static reader can actually judge.
+ *
+ * ## The types this deliberately does NOT carry
+ *
+ * `ID reference` and `ID reference list` — `aria-labelledby`, `aria-controls`, `aria-owns` and the
+ * rest. Any non-empty string is a well-formed id, so there is nothing to judge without the
+ * document; whether the id EXISTS is a different question and a different rule.
+ *
+ * `string` is absent for the same reason from the other side: `aria-label` takes any string, so
+ * every value is correct and a table entry would say nothing.
+ *
+ * ## Which way it is allowed to be wrong
+ *
+ * The same way the tables above are. A rule reading this reports a value that is NOT permitted, so
+ * a token list short by one reports correct markup — the fatal kind of mistake. Short lists are
+ * therefore left out entirely rather than guessed at: an attribute with no entry here is one no
+ * rule will judge.
+ */
+export type AriaValueKind = "boolean" | "boolean-or-undefined" | "tristate" | "integer" | "number" | "token";
+
+export interface AriaValue {
+  kind: AriaValueKind;
+  /** For `token`, every value the specification permits. Absent for every other kind. */
+  tokens?: ReadonlySet<string>;
+}
+
+export const ARIA_VALUES: ReadonlyMap<string, AriaValue> = new Map<string, AriaValue>([
+  // true/false.
+  ["aria-atomic", { kind: "boolean" }],
+  ["aria-busy", { kind: "boolean" }],
+  ["aria-disabled", { kind: "boolean" }],
+  ["aria-modal", { kind: "boolean" }],
+  ["aria-multiline", { kind: "boolean" }],
+  ["aria-multiselectable", { kind: "boolean" }],
+  ["aria-readonly", { kind: "boolean" }],
+  ["aria-required", { kind: "boolean" }],
+
+  // true/false/undefined — where "undefined" is a value you may write, meaning "not applicable".
+  ["aria-expanded", { kind: "boolean-or-undefined" }],
+  ["aria-grabbed", { kind: "boolean-or-undefined" }],
+  ["aria-hidden", { kind: "boolean-or-undefined" }],
+  ["aria-selected", { kind: "boolean-or-undefined" }],
+
+  // tristate: true/false/mixed/undefined.
+  ["aria-checked", { kind: "tristate" }],
+  ["aria-pressed", { kind: "tristate" }],
+
+  // integer.
+  ["aria-colcount", { kind: "integer" }],
+  ["aria-colindex", { kind: "integer" }],
+  ["aria-colspan", { kind: "integer" }],
+  ["aria-level", { kind: "integer" }],
+  ["aria-posinset", { kind: "integer" }],
+  ["aria-rowcount", { kind: "integer" }],
+  ["aria-rowindex", { kind: "integer" }],
+  ["aria-rowspan", { kind: "integer" }],
+  ["aria-setsize", { kind: "integer" }],
+
+  // number — a decimal is permitted, and is the point of a slider.
+  ["aria-valuemax", { kind: "number" }],
+  ["aria-valuemin", { kind: "number" }],
+  ["aria-valuenow", { kind: "number" }],
+
+  // token: one of a closed list.
+  ["aria-autocomplete", { kind: "token", tokens: new Set(["both", "inline", "list", "none"]) }],
+  ["aria-current", { kind: "token", tokens: new Set(["date", "false", "location", "page", "step", "time", "true"]) }],
+  ["aria-haspopup", { kind: "token", tokens: new Set(["dialog", "false", "grid", "listbox", "menu", "tree", "true"]) }],
+  ["aria-invalid", { kind: "token", tokens: new Set(["false", "grammar", "spelling", "true"]) }],
+  ["aria-live", { kind: "token", tokens: new Set(["assertive", "off", "polite"]) }],
+  ["aria-orientation", { kind: "token", tokens: new Set(["horizontal", "undefined", "vertical"]) }],
+  ["aria-sort", { kind: "token", tokens: new Set(["ascending", "descending", "none", "other"]) }],
+]);
+
+/**
+ * What a role does not work without — ARIA's "required states and properties".
+ *
+ * Source: **WAI-ARIA 1.2**, the "Required States and Properties" line in each role's
+ * characteristics table.
+ *
+ * ## This table leans the OTHER way from the ones above, and it has to
+ *
+ * Everything above is a vocabulary, and a rule reads it to report a name that is NOT in it — so a
+ * short list reports correct markup and a long one misses a typo. Here the reading is inverted: a
+ * rule reports an entry that IS in the table and missing from the element, so an entry that should
+ * not be here reports correct markup directly.
+ *
+ * So this is deliberately SHORT. Every role whose requirement is conditional in the specification
+ * is left out — `separator` needs `aria-valuenow` only when it is focusable, and nothing static can
+ * say whether it is. So is every role whose requirement moved between 1.1 and 1.2, `option` and
+ * `spinbutton` among them: a requirement people disagree about is not one to fail a build over.
+ *
+ * What is left is the set where a role without the attribute has no meaning at all — a checkbox
+ * that cannot say whether it is checked, a heading with no level, a slider with no value.
+ */
+export const ROLE_REQUIRES: ReadonlyMap<string, readonly string[]> = new Map([
+  // A checked-ness with nowhere to live: the role promises a state the element never carries.
+  ["checkbox", ["aria-checked"]],
+  ["radio", ["aria-checked"]],
+  ["switch", ["aria-checked"]],
+  ["menuitemcheckbox", ["aria-checked"]],
+  ["menuitemradio", ["aria-checked"]],
+
+  // A heading's level IS its place in the outline; without one there is no outline entry.
+  ["heading", ["aria-level"]],
+
+  // A value with no value.
+  ["meter", ["aria-valuenow"]],
+  ["slider", ["aria-valuenow"]],
+  ["scrollbar", ["aria-controls", "aria-valuenow"]],
+
+  // A combobox that cannot say whether it is open is a text field with a decoration.
+  ["combobox", ["aria-expanded"]],
+]);
+
+/**
+ * Elements whose own markup already supplies the state a role asks for.
+ *
+ * `<input type="checkbox" role="checkbox">` carries its checked-ness natively — the accessibility
+ * tree reads the element's own state, and an `aria-checked` beside it would be a second copy to
+ * keep in step. The role is redundant there rather than incomplete, which is a different thing and
+ * not this rule's business.
+ */
+export const STATE_FROM_THE_ELEMENT: ReadonlySet<string> = new Set(["input", "meter", "progress", "select", "option"]);
+
+/**
+ * Roles the specification forbids giving a name to.
+ *
+ * Source: **WAI-ARIA 1.2**, where each role's characteristics table says whether *Name From
+ * author* is permitted, and these say **prohibited**.
+ *
+ * ## Why this slice of the role matrix and not the whole thing
+ *
+ * The full matrix — which `aria-*` each of ninety roles supports — is the most dangerous table this
+ * package could carry. It is read to report an attribute that is NOT supported, so every entry
+ * missing from it reports correct markup, and there are thousands of cells. Naming is the one part
+ * of it that is unambiguous, short, and worth having: a name on one of these does not do a little
+ * less, it does nothing at all.
+ *
+ * `presentation` and `none` are here for a different reason from the rest — they remove the element
+ * from the accessibility tree entirely, so there is nothing left to be named.
+ */
+export const NAME_PROHIBITED: ReadonlySet<string> = new Set([
+  "caption",
+  "code",
+  "deletion",
+  "emphasis",
+  "generic",
+  "insertion",
+  "mark",
+  "none",
+  "paragraph",
+  "presentation",
+  "strong",
+  "subscript",
+  "superscript",
+  "time",
+]);
+
+/**
+ * Elements whose own role forbids a name, and what that role is.
+ *
+ * From *ARIA in HTML*, and kept to the ones whose mapping is unconditional. `section` is the
+ * counter-example this exists to avoid: it maps to `region` **when it has an accessible name**, so
+ * `<section aria-label="Filters">` is not merely allowed, it is the documented way to write a named
+ * region. Anything whose role depends on its attributes or its ancestors is left out for the same
+ * reason, and so is `<s>`, whose mapping has moved.
+ *
+ * The role is carried rather than derived because the report needs it: telling a reader that "a
+ * `<div>` is `div`, which takes no name" explains nothing, and `generic` is the word that does.
+ */
+export const NAME_PROHIBITED_TAGS: ReadonlyMap<string, string> = new Map([
+  ["b", "generic"],
+  ["bdi", "generic"],
+  ["bdo", "generic"],
+  ["data", "generic"],
+  ["div", "generic"],
+  ["i", "generic"],
+  ["pre", "generic"],
+  ["q", "generic"],
+  ["small", "generic"],
+  ["span", "generic"],
+  ["u", "generic"],
+
+  ["caption", "caption"],
+  ["code", "code"],
+  ["del", "deletion"],
+  ["em", "emphasis"],
+  ["ins", "insertion"],
+  ["mark", "mark"],
+  ["p", "paragraph"],
+  ["strong", "strong"],
+  ["sub", "subscript"],
+  ["sup", "superscript"],
+  ["time", "time"],
+]);

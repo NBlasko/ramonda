@@ -1,6 +1,7 @@
 import type ts from "typescript";
-import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
+import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext, TreeRule } from "./rule";
 import { contextFor } from "./element";
+import { treeFor } from "./tree";
 import { unnamedImage } from "./unnamed-image";
 import { classInsteadOfClassName } from "./class-instead-of-classname";
 import { duplicateKeyAmongSiblings } from "./duplicate-key-among-siblings";
@@ -9,6 +10,9 @@ import { interactiveInsideInteractive } from "./interactive-inside-interactive";
 import { tagNeedsItsParent } from "./tag-needs-its-parent";
 import { unknownAriaAttribute } from "./unknown-aria-attribute";
 import { unknownRole } from "./unknown-role";
+import { ariaValue } from "./aria-value";
+import { roleMissingRequiredAria } from "./role-missing-required-aria";
+import { roleTakesNoName } from "./role-takes-no-name";
 import { ariaWithNoSubject } from "./aria-with-no-subject";
 import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
@@ -21,6 +25,10 @@ import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
+import { lateRequestRead } from "./late-request-read";
+import { headTagsCollide } from "./head-tags-collide";
+import { duplicateId } from "./duplicate-id";
+import { headingSkipsALevel } from "./heading-skips-a-level";
 
 export type {
   ElementContext,
@@ -32,6 +40,9 @@ export type {
   Rule,
   RuleContext,
   RuleSubject,
+  TreeContext,
+  TreeNode,
+  TreeRule,
 } from "./rule";
 
 export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
@@ -44,7 +55,21 @@ export { NEEDS_PARENT, NOT_INSIDE_ITSELF } from "./html";
 export { unknownAriaAttribute, type UnknownAriaAttributeIssue } from "./unknown-aria-attribute";
 export { unknownRole, type UnknownRoleIssue } from "./unknown-role";
 export { ariaWithNoSubject, type AriaWithNoSubjectIssue } from "./aria-with-no-subject";
-export { ABSTRACT_ROLES, ARIA_ATTRIBUTES, NO_ARIA, ROLES } from "./aria";
+export {
+  ABSTRACT_ROLES,
+  ARIA_ATTRIBUTES,
+  ARIA_VALUES,
+  NAME_PROHIBITED,
+  NAME_PROHIBITED_TAGS,
+  NO_ARIA,
+  ROLE_REQUIRES,
+  ROLES,
+  STATE_FROM_THE_ELEMENT,
+} from "./aria";
+export type { AriaValue, AriaValueKind } from "./aria";
+export { ariaValue, type AriaValueIssue } from "./aria-value";
+export { roleMissingRequiredAria, type RoleMissingRequiredAriaIssue } from "./role-missing-required-aria";
+export { roleTakesNoName, type RoleTakesNoNameIssue } from "./role-takes-no-name";
 export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
@@ -57,6 +82,11 @@ export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
+export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
+export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
+export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
+export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
+export { rootsIn, treeFor } from "./tree";
 
 /**
  * Every rule that reads a CLASS, in the order their sections are printed.
@@ -74,6 +104,8 @@ export const CLASS_RULES = [
   domWrites,
   duplicateDecorators,
   unwatchedFields,
+  lateRequestRead,
+  headTagsCollide,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
@@ -94,14 +126,27 @@ export const ELEMENT_RULES = [
   unnamedImage,
   unknownAriaAttribute,
   unknownRole,
+  roleMissingRequiredAria,
+  roleTakesNoName,
+  ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,
   unnamedFrame,
   positiveTabIndex,
 ] as const;
 
-/** All three families, which is what the CLI prints from and what {@link Findings} is keyed by. */
-export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES] as const;
+/**
+ * Every rule that reads one RENDER — the whole markup tree, in document order.
+ *
+ * The fourth family. What it answers that the element family cannot is anything about two elements
+ * meeting each other: two ids that are the same, a heading level that jumps. Those need a subject
+ * the size of a render, and the guard they all need — whether an element is really on the page at
+ * all — is computed once for them in `tree.ts`.
+ */
+export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
+
+/** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
+export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES] as const;
 
 export type AnyRule = (typeof RULES)[number];
 
@@ -113,7 +158,9 @@ type IssueOf<R> =
       ? Issue
       : R extends ElementRule<infer Issue>
         ? Issue
-        : never;
+        : R extends TreeRule<infer Issue>
+          ? Issue
+          : never;
 
 /**
  * What every rule found, keyed by its id and typed as that rule's own issue.
@@ -145,6 +192,46 @@ export type Findings = {
  */
 export function failingRules(findings: Findings): AnyRule[] {
   return RULES.filter((rule) => rule.report.severity === "error" && findings[rule.id].length > 0);
+}
+
+/**
+ * One rule, as something that is not this package needs to describe it.
+ *
+ * The documentation site is the consumer this exists for: its reference page used to carry two
+ * tables of these typed by hand, and they went stale the day new rules landed beside them. A
+ * summary is now READ from the rules, so the page cannot list a rule that does not exist or miss
+ * one that does.
+ *
+ * Deliberately not the rule itself. A rule carries functions over its own issue type, which is of
+ * no use to a generator and would tie anything that touched it to this package's internals; this
+ * is four strings.
+ */
+export interface RuleSummary {
+  /** The id, which is also the key in `findings`. */
+  id: string;
+  /** `error` fails a run; `warn` prints and lets it through. */
+  severity: "warn" | "error";
+  /** The condition, as a clause completing "reported when". */
+  reportedWhen: string;
+  /** The runtime diagnostic reporting the same fault, for the rules that have one. */
+  alsoReportedAs?: string;
+}
+
+/**
+ * Every rule this package runs, in the order their reports are printed.
+ *
+ * Order is part of the answer rather than incidental: it is the order a reader meets the sections
+ * in, so a generated table that sorted them would disagree with the command.
+ */
+export function ruleCatalogue(): RuleSummary[] {
+  return RULES.map((rule) => ({
+    id: rule.id,
+    severity: rule.report.severity,
+    reportedWhen: rule.report.reportedWhen,
+    ...("alsoReportedAs" in rule.report && rule.report.alsoReportedAs !== undefined
+      ? { alsoReportedAs: rule.report.alsoReportedAs as string }
+      : {}),
+  }));
 }
 
 /** An empty finding list per rule, for the analyzer to fill. */
@@ -237,4 +324,17 @@ export function applyModule(
   findings: Findings,
 ): void {
   for (const rule of active) collect(findings, rule, rule.read(file, contextFor(rule.id)));
+}
+
+/**
+ * Every active tree rule over one render.
+ *
+ * The context is built ONCE and shared, as it is for elements — and it costs more to build here,
+ * because it walks the whole tree and decides for every element whether it is really on the page.
+ * A rule doing that itself would be doing it again for every other rule in the family.
+ */
+export function applyTree(active: readonly (typeof TREE_RULES)[number][], root: ts.Node, findings: Findings): void {
+  if (active.length === 0) return;
+  const tree = treeFor(root);
+  for (const rule of active) collect(findings, rule, rule.read(tree));
 }

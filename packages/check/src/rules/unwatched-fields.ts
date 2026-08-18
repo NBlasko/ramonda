@@ -94,6 +94,8 @@ export const unwatchedFields = {
 
   report: {
     severity: "error",
+    reportedWhen:
+      "a component reads a form field it does not watch, so it never re-renders when that " + "field changes",
     heading: (found) => `${found.length} component(s) reading a form field they do not watch:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

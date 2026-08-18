@@ -7,13 +7,26 @@ import type { ElementRule } from "./rule";
 /**
  * An `aria-*` attribute the specification does not have.
  *
- * The interesting half of this rule is not the invented name — it is the CASE. HTML attribute names
- * are lowercase; JSX writes down what you typed. So `aria-labelledBy` reaches the DOM as an
- * attribute called `aria-labelledby`-but-not-quite, assistive technology never looks at it, and
- * nothing anywhere says a word. It looks right in the source, which is the whole problem.
+ * The plain typo is most of it — `aria-require`, `aria-checkd`, `aria-descibedby` — and it fails
+ * silently: the browser keeps any attribute you write, so the name is visible in the inspector and
+ * assistive technology never looks at it.
  *
- * The other half is the plain typo — `aria-require`, `aria-checkd`, `aria-descibedby` — which fails
- * the same way and just as quietly.
+ * ## The CASE half, and why it is now only reported inside SVG
+ *
+ * This rule shipped saying that a wrong case was the interesting half — that `aria-labelledBy`
+ * reaches the DOM as a different attribute from `aria-labelledby`. **Measured through
+ * `renderToString`, that is false for an HTML element.** Attributes there go through
+ * `setAttribute`, which the HTML specification lowercases, so the attribute arrives correctly
+ * spelled and works. Reporting it was reporting correct markup, which is the one kind of mistake
+ * this package treats as fatal to its own usefulness.
+ *
+ * It is true inside SVG. Those attributes go through `setAttributeNS(null, name)`, which writes the
+ * name verbatim — measured the same way, on the same render — so a case-only difference there
+ * really is an attribute nothing reads. That is where the rule keeps it, and `inSvg` on the element
+ * context is what tells the two apart.
+ *
+ * A name that is wrong in more than its case is still reported everywhere: `aria-labeledBy` is not
+ * `aria-labelledby` in any namespace.
  */
 export interface UnknownAriaAttributeIssue {
   /** What was written, exactly as written. */
@@ -70,6 +83,7 @@ export const unknownAriaAttribute = {
 
   report: {
     severity: "warn",
+    reportedWhen: "an `aria-*` attribute is not a name the ARIA specification has",
     heading: (found) => `${found.length} \`aria-*\` attribute(s) that do not exist:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -85,7 +99,7 @@ export const unknownAriaAttribute = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
+  read(element, { tag, inSvg }) {
     // Components too: `<Panel aria-lablled="x" />` is a prop with a name, and the mistake is the
     // same one whether the tag is markup or a class that will pass it through.
     void tag;
@@ -96,6 +110,15 @@ export const unknownAriaAttribute = {
       const written = attribute.name.getText();
       if (!written.toLowerCase().startsWith("aria-")) continue;
       if (ARIA_ATTRIBUTES.has(written)) continue;
+
+      /**
+       * A difference of CASE ALONE, on anything that is not an SVG element, is not a fault.
+       *
+       * `setAttribute` lowercases for HTML, so the attribute arrives correctly spelled and does
+       * its job — measured, not assumed. A component falls here too: whatever it passes the prop
+       * to, it reaches the DOM through the same call.
+       */
+      if (!inSvg && ARIA_ATTRIBUTES.has(written.toLowerCase())) continue;
 
       const meant = probably(written);
       found.push({ attribute: written, ...(meant ? { meant } : {}), ...positionOf(attribute) });

@@ -1,9 +1,14 @@
 export { analyzeProject } from "./analyze";
+// Every rule this package runs, as four strings each — what a generator needs to describe them.
+// The documentation site's rule tables are built from this, so they cannot drift from the rules.
+export { ruleCatalogue } from "./rules";
+export type { RuleSummary } from "./rules";
 // Every issue `AnalyzeResult` carries, nameable. Two were once missing, so a script written
 // against `analyzeProject` — which the reference tells people to write — could type a variable holding a
 // context issue but not one holding a duplicate decorator.
 export type {
   AnalyzeResult,
+  AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -12,12 +17,17 @@ export type {
   ContextIssue,
   DomWriteIssue,
   DuplicateDecoratorIssue,
+  DuplicateIdIssue,
   DuplicateKeyAmongSiblingsIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
+  HeadingSkipsALevelIssue,
+  HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,
+  RoleMissingRequiredAriaIssue,
+  RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
