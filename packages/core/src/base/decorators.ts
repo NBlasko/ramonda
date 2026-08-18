@@ -10,6 +10,7 @@ import {
 } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
+import { isComponentClass } from "../vdom/guards";
 import { displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
@@ -242,7 +243,7 @@ export function createSubscriptionDecorator<
   };
 }
 
-export function state(_value: any, context: EnhancedClassFieldDecoratorContext) {
+export function state(_value: unknown, context: EnhancedClassFieldDecoratorContext) {
   if (__DEV__) {
     // On a METHOD this used to be silent, and the silence was the problem: the
     // method still worked (the signal held the function), so nothing looked
@@ -290,7 +291,7 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
       get() {
         return state.get();
       },
-      set(value: any) {
+      set(value: unknown) {
         if (__DEV__) reportNonSerializableState(value, contextName, owner);
         state.set(value);
       },
@@ -614,7 +615,7 @@ export function ShouldUpdateOnPropsChange<
     // component update path that consults this rule never runs for one — so on a
     // hook it would be a silent no-op. Thrown in every build, like @Host's; the
     // TYPE already refuses it, so this is for the build that has no types.
-    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent !== true) {
+    if (!isComponentClass(ctor)) {
       throw new Error(
         `[Ramonda] @ShouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
           `this.use() callback and refresh on every owner render — there is no parent-driven prop update to gate. ` +
@@ -681,7 +682,7 @@ function reportIfRejected(result: unknown, owner: object, member: string, decora
     if (__DEV__) {
       const name = displayName(owner);
       diagnose(
-        "RMD057",
+        "RMD059",
         `${name}.${member}`,
         `<${name} />'s @${decoratorName} \`${member}\` rejected: ${
           error instanceof Error ? error.message : String(error)
@@ -902,7 +903,7 @@ export function watchProp<
  * renders. Now the caller decides: development throws with a message that names
  * the method and the argument, production goes on without memoising that call.
  */
-function buildKey(args: any[]): string | undefined {
+function buildKey(args: unknown[]): string | undefined {
   let key = "";
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -915,7 +916,7 @@ function buildKey(args: any[]): string | undefined {
 }
 
 /** Names the argument in the way that helps: its position, its type, and what it looked like. */
-function describeUnkeyableArgs(args: any[]): string {
+function describeUnkeyableArgs(args: unknown[]): string {
   const bad = args
     .map((arg, index) => ({ arg, index }))
     .filter(({ arg }) => {
@@ -926,7 +927,7 @@ function describeUnkeyableArgs(args: any[]): string {
   return bad.join(", ");
 }
 
-const memoMap = new WeakMap<any, Map<string, { fn: (...args: any[]) => any; used: boolean }>>();
+const memoMap = new WeakMap<object, Map<string, { fn: (...args: any[]) => any; used: boolean }>>();
 const cleanUp = (instanceMap: Map<string, { fn: (...args: any[]) => any; used: boolean }>) => {
   for (const [key, entry] of instanceMap.entries()) {
     if (entry.used) {
@@ -937,7 +938,10 @@ const cleanUp = (instanceMap: Map<string, { fn: (...args: any[]) => any; used: b
   }
 };
 
-export function memoizedHandler<T extends (...args: any[]) => any>(target: T, context: ClassMethodDecoratorContext): T {
+export function memoizedHandler<T extends (...args: any[]) => any>(
+  target: T,
+  context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime }, T>,
+): T {
   if (__DEV__) {
     // On a field this already failed, but as `Cannot read properties of
     // undefined (reading 'get')` from inside the framework — an error that names
@@ -947,7 +951,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(target: T, co
 
   const originalMethod = target;
 
-  context.addInitializer(function (this: any) {
+  context.addInitializer(function () {
     if (__DEV__) claimMember(this, String(context.name), "memoizedHandler", "memoized");
 
     let instanceMap = memoMap.get(this);
@@ -1142,7 +1146,7 @@ export function Host<C extends (new (...args: any[]) => object) & { readonly __i
     // either: the meta was written to a class no render path ever asks about, and the tag was
     // silently ignored. Thrown in every build, like the other two component-only decorators;
     // the TYPE already refuses it, so this is for the build that has no types.
-    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent !== true) {
+    if (!isComponentClass(ctor)) {
       throw new Error(
         `[Ramonda] @Host is for components, not hooks. It names the element a component IS, and a ` +
           `hook adds no element — that is the point of a hook. Put @Host on the component that uses ` +
@@ -1319,7 +1323,7 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
             "@StableProps was given a name that is not a prop of this hook": K[number];
           }),
   ) => {
-    if ((ctor as unknown as { __isComponent?: boolean }).__isComponent) {
+    if (isComponentClass(ctor)) {
       throw new Error(
         `[Ramonda] @StableProps is for hooks, not components. A component's props come from the parent's ` +
           `JSX and are compared by the diff — use @ShouldUpdateOnPropsChange to control that. Move the ` +
@@ -1587,9 +1591,9 @@ export function compute<T, R>(
     const cache = {
       value: null as R | null,
       isDirty: true,
-      deps: new Set<State<any>>(),
+      deps: new Set<State<unknown>>(),
       // Called directly by State.get() while this compute is the tracker.
-      addDep(s: State<any>) {
+      addDep(s: State<unknown>) {
         this.deps.add(s);
       },
     };

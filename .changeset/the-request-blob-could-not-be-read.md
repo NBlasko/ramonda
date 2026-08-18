@@ -2,7 +2,7 @@
 "@ramonda/core": minor
 ---
 
-`RMD056` — the request blob could not be read.
+`RMD058` — the request blob could not be read.
 
 `hydrateRoot` reads the values a page opted into from an attribute the server stamped on the root
 element. When that string does not parse, nothing is restored: every `requestContext().get(key)` on
@@ -17,7 +17,7 @@ that follows, whose advice is about clocks and random numbers. The page looks co
 because the server's markup is still on screen. A reader is sent to add `exposeToClient` to a key
 that already has it, and then to hunt non-determinism that is not there.
 
-`RMD056` is the one that says what actually happened. Its test asserts the other two beside it —
+`RMD058` is the one that says what actually happened. Its test asserts the other two beside it —
 neither is a bug, each is right about what it can see, and this is the code that explains them.
 
 A warning rather than an error, matching `RMD036`.

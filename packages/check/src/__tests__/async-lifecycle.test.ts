@@ -14,7 +14,7 @@ const found = () => run().findings["unguarded-async-lifecycle"];
  * `@state` it meant to fill is still at its initial value, and the only trace is an unhandled
  * rejection in a console nobody is watching.
  *
- * `RMD057` says so once the path has run. This says it before it ships, including for the failure
+ * `RMD059` says so once the path has run. This says it before it ships, including for the failure
  * nobody has provoked yet — which is the half a runtime diagnostic can never cover.
  */
 describe("an async lifecycle whose failure nothing would report", () => {

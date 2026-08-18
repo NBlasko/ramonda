@@ -7,14 +7,14 @@ import { reactivityScope } from "./tracker";
 export interface Effect {
   id: number;
   effect: () => undefined | (() => void);
-  deps: Set<State<any>>;
+  deps: Set<State<unknown>>;
   shouldRebuild: boolean;
   cleanup: (() => void) | null;
   alwaysRebuild: boolean;
   mutated: Set<State<unknown>>;
 }
 
-export function runComponentEffects(component: BaseComponent<any>) {
+export function runComponentEffects(component: BaseComponent<unknown>) {
   // Effects are client-only — never run them during a server render. Read off
   // the component, not the module-level env: this also runs from the task queue,
   // long after the server render has yielded and reset that.

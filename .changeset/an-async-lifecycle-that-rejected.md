@@ -23,7 +23,7 @@ arbitrary later moment, when the page is already interactive and there is no ren
 replacing what the reader is using with a fallback then is the worse outcome. What changed is the
 silence.
 
-- **`RMD057`** reports it at runtime, naming the component, the member and the phase. The handler
+- **`RMD059`** reports it at runtime, naming the component, the member and the phase. The handler
   is attached to a separate branch and the original promise is returned untouched, so the server's
   work drain sees exactly what it saw before and nothing is swallowed — the rejection is still
   unhandled, which is honest, and now it arrives with an explanation.

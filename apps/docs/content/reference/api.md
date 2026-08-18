@@ -360,7 +360,9 @@ your config rather than guessing at them.
 
 Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
 `AriaValueIssue`, `AriaWithNoSubjectIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
-`ClockReadWhileRenderingIssue`, `DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`,
+`ClientOnlyRequestReadIssue`, `ClockReadWhileRenderingIssue`,
+`ContextConsumedAboveItsProviderIssue`, `DomWriteIssue`,
+`DuplicateDecoratorIssue`, `DuplicateIdIssue`,
 `DuplicateKeyAmongSiblingsIssue`, `EmptyHeadingOrLinkIssue`, `HeadTagsCollideIssue`,
 `HeadingSkipsALevelIssue`, `InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`,
 `PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,

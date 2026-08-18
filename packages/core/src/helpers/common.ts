@@ -12,6 +12,18 @@ import type { State } from "../reactivity/State";
 import { createId } from "./createId";
 
 /**
+ * A props bag as this file handles it: keys the hook's author chose, values it cannot know.
+ *
+ * `unknown` rather than `any` because nothing here reads INTO a value — the bag is built, compared,
+ * cached and handed on, and every one of those is done by key. The one type argument the outside
+ * world sees is still the hook's own `Q`; this is the shape the machinery in between works in.
+ */
+type Bag = Record<string, unknown>;
+
+/** Stands in for a cache that has not built yet. Shared, and never read — see `PropsCache.bag`. */
+const NO_BAG: Bag = {};
+
+/**
  * Calls the props callback, and in a development build holds it to the same two standards
  * `render()` is held to — the phase is marked, so randomness read while building a bag is
  * attributed to the bag (RMD021), and under a strict render it is called twice and the two
@@ -27,12 +39,12 @@ function buildProps(
   hookProps: unknown,
   declared: readonly string[] | undefined,
   site?: PropsCache,
-): any {
+): Bag {
   // `undefined` is the whole of the other case: a bag passed as a plain object is refused by
   // `useCommon` before anything is built (RMD055), so nothing else reaches here.
   if (hookProps === undefined) return {};
 
-  const build = hookProps as (bag: unknown) => any;
+  const build = hookProps as (owner: unknown) => Bag;
 
   // `if (__DEV__) { … }` around the whole thing, not `if (!__DEV__) return build(that)`
   // with the checks after it. The two read the same but bundle differently: an early
@@ -85,11 +97,11 @@ function buildProps(
  *
  * The phase marker stays, so RMD021 still attributes randomness read here to the bag.
  */
-function probeProps(that: object, hookName: string, hookProps: unknown): any {
+function probeProps(that: object, hookName: string, hookProps: unknown): Bag {
   const previous = propsPhase.label;
   propsPhase.label = `${that.constructor.name} → ${hookName}`;
   try {
-    return (hookProps as (bag: unknown) => any)(that);
+    return (hookProps as (owner: unknown) => Bag)(that);
   } finally {
     propsPhase.label = previous;
   }
@@ -103,10 +115,10 @@ function probeProps(that: object, hookName: string, hookProps: unknown): any {
  * the diagnostic that recommends it is separate. A hook that declared nothing skips the whole
  * loop, which is the common case.
  */
-function resolveStable(next: any, prev: Record<string, any> | undefined, declared: readonly string[] | undefined): any {
+function resolveStable(next: Bag, prev: Bag | undefined, declared: readonly string[] | undefined): Bag {
   if (declared === undefined) return next;
 
-  let resolved: Record<string, any> | undefined;
+  let resolved: Bag | undefined;
 
   for (const key in next) {
     if (!declared.includes(key)) continue;
@@ -170,16 +182,25 @@ const STABLE_DEPTH = 5;
  * nothing about. Only the CALL and the prop diff are skipped.
  */
 interface PropsCache {
-  bag: any;
+  /**
+   * The bag from the last build — meaningful only while `isDirty` is false, which is the same
+   * thing that is already true of a stale one, so there is one rule and not two.
+   *
+   * Starts as the shared `NO_BAG`, because `isDirty` starts true and the first `readProps` builds
+   * before anything can read this. One object for every hook in the app rather than one per use,
+   * and typing it as a bag rather than as possibly-absent is what keeps the read at the bottom of
+   * `readProps` free of an assertion.
+   */
+  bag: Bag;
   isDirty: boolean;
-  deps: Set<State<any>>;
-  addDep(s: State<any>): void;
+  deps: Set<State<unknown>>;
+  addDep(s: State<unknown>): void;
 }
 
 export function useCommon<T extends BaseHook<any>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
   hook: HookClassKind<T, any>,
-  hookProps?: any,
+  hookProps?: unknown,
   meta?: HookMeta,
 ): T {
   /**
@@ -237,10 +258,10 @@ export function useCommon<T extends BaseHook<any>, P>(
   const cacheId = isFactory ? createId() : 0;
   const cache: PropsCache | undefined = isFactory
     ? {
-        bag: undefined,
+        bag: NO_BAG,
         isDirty: true,
-        deps: new Set<State<any>>(),
-        addDep(s: State<any>) {
+        deps: new Set<State<unknown>>(),
+        addDep(s: State<unknown>) {
           this.deps.add(s);
         },
       }
@@ -262,7 +283,7 @@ export function useCommon<T extends BaseHook<any>, P>(
    * jobs: the cache stops the call, the declaration stops the churn inside a call that had to
    * happen anyway.
    */
-  const readProps = (prevProps: Record<string, any> | undefined): any => {
+  const readProps = (prevProps: Bag | undefined): Bag => {
     if (!cache) return resolveStable(buildProps(that, hook.name, hookProps, declaredStable), prevProps, declaredStable);
 
     if (cache.isDirty) {
@@ -275,7 +296,7 @@ export function useCommon<T extends BaseHook<any>, P>(
       const prevTracker = trackerContainer.current;
       trackerContainer.current = cache;
 
-      let raw: any;
+      let raw: Bag;
       try {
         raw = buildProps(that, hook.name, hookProps, declaredStable, cache);
       } finally {

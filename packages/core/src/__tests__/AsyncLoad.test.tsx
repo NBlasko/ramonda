@@ -44,7 +44,7 @@ describe("AsyncLoad", () => {
   });
 
   test("shows the loading fallback, then the module", async () => {
-    let resolveIt: (value: unknown) => void = () => {};
+    let resolveIt: (value: Record<string, unknown>) => void = () => {};
 
     @Host("div")
     class App extends Component {
@@ -95,7 +95,7 @@ describe("AsyncLoad", () => {
   });
 
   test("unmounting before the import lands writes nothing", async () => {
-    let resolveIt: (value: unknown) => void = () => {};
+    let resolveIt: (value: Record<string, unknown>) => void = () => {};
 
     @Host("div")
     class App extends Component {

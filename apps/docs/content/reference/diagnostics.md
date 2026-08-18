@@ -1493,64 +1493,6 @@ whatever threw — your code, or a library inside it — and a record that may l
 wrong place to discover what is in it for the first time. If you want the detail, catch it in the
 callback, where you know what you are looking at.
 
-## RMD057 — An async lifecycle rejected
-
-```tsx
-@state posts: unknown[] = [];
-
-@mounted async load() {
-  this.posts = await fetchPosts();   // ✗ if this throws, nothing tells anyone
-}
-```
-
-**An error boundary does not catch this, and that is deliberate.** The rejection arrives at an
-arbitrary later moment — the page is already on screen and interactive, and there is no render left
-to fail. Replacing what the reader is using with a fallback at that point is the worse outcome.
-
-What follows is why the report exists. The page renders exactly as though the method had succeeded:
-`posts` is still `[]`, the empty state shows, and the only trace is an unhandled rejection in a
-console nobody is watching.
-
-Handle it where it happens, and put the failure somewhere the render can see:
-
-```tsx
-@state error = "";
-
-@mounted async load() {
-  try { this.posts = await fetchPosts(); }
-  catch (e) { this.error = String(e); }
-}
-```
-
-If the failure really should take the page down, re-throw it from `render()` — that **is** a render,
-and a boundary can see it.
-
-`ramonda-check` reports the same method before it ships, as
-[`unguarded-async-lifecycle`](/reference/check).
-
-## RMD056 — The request blob could not be read
-
-```tsx
-// The server stamps what the page opted into onto the root element:
-//   <main data-ramonda-request='{"review-sid":"s-123"}'>
-// and `hydrateRoot` reads it back. If that string does not parse, nothing is restored.
-const sid = requestKey<string>("sid", { exposeToClient: true });
-requestContext().get(sid); // undefined on the client, for every exposed key
-```
-
-The blob is ignored rather than fatal — a page that renders with a value missing beats a page that
-does not render, which is the same stance [`RMD036`](#rmd036-the-state-blob-could-not-be-read) takes
-for the state blob.
-
-**What makes this worth its own code is what you see instead.** Two other diagnostics fire in its
-place and both point away from the cause: [`RMD025`](#rmd025-per-request-data-read-in-the-browser) says a key was not exposed — it was —
-and [`RMD007`](#rmd007-server-and-client-rendered-different-output) reports the render mismatch that follows, whose advice is about clocks and
-random numbers. The page looks correct throughout, because the server's markup is still on screen.
-
-The blob is JSON on the root element, so something between the server writing it and the browser
-parsing it altered it: an HTML transform, a proxy rewriting markup, or a value that did not
-serialize cleanly.
-
 ## RMD055 — A hook's props passed as a plain object
 
 ```tsx expect-error
@@ -1594,3 +1536,166 @@ names the owner, the hook, and the keys the object carried.
 The mistake cannot be found from inside `use()`, which is handed a finished object with no way to tell
 `{ start: this.count }` from `{ start: 1 }`. The FORM is the visible half, so the form is what the
 framework holds you to.
+
+## RMD056 — One context provided twice by the same component
+
+```tsx
+const [ThemeProvider, ThemeConsumer] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Panel extends Component {
+  // ✗ two Providers of one context, on one component
+  base = this.use(ThemeProvider, () => ({ color: "slate" }));
+  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <Card />;
+  }
+}
+```
+
+A component publishes a context on one object — its own — so the second Provider replaces the first
+under the same key. Every descendant reads `"amber"`, and `base` is unreachable from below.
+
+What hides it is that `base` still works *here*: a Provider reads as well as provides, so
+`this.base.color` is `"slate"` inside `Panel` while every component under it sees `"amber"`. The
+component that made the mistake is the one place the mistake is invisible.
+
+There is no reading of this the framework could honour, so keep the one you meant and delete the other.
+If both values are needed below, they are two contexts — call `createContext` twice, and each gets a
+key of its own. If the second was meant to win for part of the tree, that is a **nested** Provider:
+
+```tsx
+const [ThemeProvider] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Highlight extends Component {
+  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <Card />;
+  }
+}
+```
+
+On its own component it publishes on its own object, so it shadows the one above for its own branch
+and leaves the rest of the tree reading `"slate"`. That is the ordinary arrangement and nothing is
+reported for it — the report asks whether this component *already* published the key itself, which a
+Provider above it never makes true.
+
+## RMD057 — A context consumed above the provider on the same component
+
+```tsx
+const [ThemeProvider, ThemeConsumer] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Section extends Component {
+  // ✗ resolves before the provider on the line below it exists
+  outer = this.use(ThemeConsumer);
+  own = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <Card />;
+  }
+}
+```
+
+A consumer resolves its channel **once**, when it is constructed, and hooks are constructed in
+field-declaration order. So this one looked before its own component had published anything, and reads
+the nearest provider on an **ancestor** — or the context's default, if there is none. Swapping the two
+field declarations changes what the page shows.
+
+If this component's own value was meant, read it through the **provider** hook. A Provider reads as
+well as provides, so `this.own.color` always means this component's value and does not rest on which
+line came first:
+
+```tsx
+const [ThemeProvider] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Section extends Component {
+  own = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <p>{this.own.color}</p>;
+  }
+}
+```
+
+If the value from **above** was meant — reading the outer theme to derive an inner one — then the
+example at the top is that arrangement working, and the order it needs is the order it has. Nothing in
+the source says which of the two it is, which is why this is a **warning** rather than an error and why
+the panel does not raise its alert for it.
+
+**The other order is not reported.** `this.use(QueryClientProvider)` followed by
+`this.use(Query, …)` — mount a client, then query on it — is the arrangement `@ramonda/query` and
+`@ramonda/router` are built around, and reporting it fired fourteen times across query's own tests.
+
+`@ramonda/check`'s `context-consumed-above-its-provider` reports the same thing before anything runs,
+including for a component down a branch nobody has opened. The two reach different cases on purpose:
+the rule sees only a pair written directly — `const [P, C] = createContext(…)` with both halves handed
+to `this.use` in one class — while a provider wrapped in a hook of its own, the way
+`QueryClientProvider` wraps one, is invisible to it and is what this catches.
+
+Deduped per context and owning component.
+
+Deduped per context and owning component, so a component that mounts a thousand times says it once.
+
+**It reports rather than throwing**, unlike a plain-object props bag
+([RMD055](#rmd055-a-hooks-props-passed-as-a-plain-object)). There, a shipped bundle would go on serving a value
+nobody set; here the page has one deterministic reading, and refusing it would break an app that has
+been living with the first Provider being ignored. A later version can refuse.
+
+## RMD058 — The request blob could not be read
+
+```tsx
+// The server stamps what the page opted into onto the root element:
+//   <main data-ramonda-request='{"review-sid":"s-123"}'>
+// and `hydrateRoot` reads it back. If that string does not parse, nothing is restored.
+const sid = requestKey<string>("sid", { exposeToClient: true });
+requestContext().get(sid); // undefined on the client, for every exposed key
+```
+
+The blob is ignored rather than fatal — a page that renders with a value missing beats a page that
+does not render, which is the same stance [`RMD036`](#rmd036-the-state-blob-could-not-be-read) takes
+for the state blob.
+
+**What makes this worth its own code is what you see instead.** Two other diagnostics fire in its
+place and both point away from the cause: [`RMD025`](#rmd025-per-request-data-read-in-the-browser) says a key was not exposed — it was —
+and [`RMD007`](#rmd007-server-and-client-rendered-different-output) reports the render mismatch that follows, whose advice is about clocks and
+random numbers. The page looks correct throughout, because the server's markup is still on screen.
+
+The blob is JSON on the root element, so something between the server writing it and the browser
+parsing it altered it: an HTML transform, a proxy rewriting markup, or a value that did not
+serialize cleanly.
+
+## RMD059 — An async lifecycle rejected
+
+```tsx
+@state posts: unknown[] = [];
+
+@mounted async load() {
+  this.posts = await fetchPosts();   // ✗ if this throws, nothing tells anyone
+}
+```
+
+**An error boundary does not catch this, and that is deliberate.** The rejection arrives at an
+arbitrary later moment — the page is already on screen and interactive, and there is no render left
+to fail. Replacing what the reader is using with a fallback at that point is the worse outcome.
+
+What follows is why the report exists. The page renders exactly as though the method had succeeded:
+`posts` is still `[]`, the empty state shows, and the only trace is an unhandled rejection in a
+console nobody is watching.
+
+Handle it where it happens, and put the failure somewhere the render can see:
+
+```tsx
+@state error = "";
+
+@mounted async load() {
+  try { this.posts = await fetchPosts(); }
+  catch (e) { this.error = String(e); }
+}
+```
+
+If the failure really should take the page down, re-throw it from `render()` — that **is** a render,
+and a boundary can see it.
+
+`ramonda-check` reports the same method before it ships, as
+[`unguarded-async-lifecycle`](/reference/check).

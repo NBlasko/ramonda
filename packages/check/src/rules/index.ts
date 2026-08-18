@@ -30,6 +30,8 @@ import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
 import { duplicateId } from "./duplicate-id";
 import { headingSkipsALevel } from "./heading-skips-a-level";
+import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-provider";
+import { clientOnlyRequestRead } from "./client-only-request-read";
 
 export type {
   ElementContext,
@@ -88,6 +90,11 @@ export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide"
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
 export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
+export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
+export {
+  contextConsumedAboveItsProvider,
+  type ContextConsumedAboveItsProviderIssue,
+} from "./context-consumed-above-its-provider";
 export { rootsIn, treeFor } from "./tree";
 
 /**
@@ -109,6 +116,8 @@ export const CLASS_RULES = [
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
+  contextConsumedAboveItsProvider,
+  clientOnlyRequestRead,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */

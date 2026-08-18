@@ -12,7 +12,7 @@ import type { Rule } from "./rule";
  *
  * What follows from that is the part worth reporting. The page renders as though the method
  * succeeded — the fetch that failed simply left its `@state` at the initial value — and the only
- * trace is an unhandled rejection in a console nobody is looking at. `RMD057` says so at runtime,
+ * trace is an unhandled rejection in a console nobody is looking at. `RMD059` says so at runtime,
  * once the path has actually run; this says it before it ships, including for the failure nobody
  * has provoked yet.
  *
@@ -102,7 +102,7 @@ export const unguardedAsyncLifecycle = {
   report: {
     severity: "warn",
     reportedWhen: "an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure",
-    alsoReportedAs: "RMD057",
+    alsoReportedAs: "RMD059",
     heading: (found) => `${found.length} async lifecycle(s) whose failure nothing would report:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

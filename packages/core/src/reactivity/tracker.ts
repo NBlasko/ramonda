@@ -8,7 +8,7 @@ export const reactivityScope: {
 };
 
 export const trackerContainer: {
-  current: { addDep: (s: State<any>) => void } | null;
+  current: { addDep: (s: State<unknown>) => void } | null;
 } = {
   current: null,
 };
@@ -29,7 +29,7 @@ export const trackerContainer: {
  * since render fills the cache and effects flush after the commit. Both callers
  * now go through here, so the two scopes cannot be served unevenly again.
  */
-export function trackDependency(signal: State<any>): void {
+export function trackDependency(signal: State<unknown>): void {
   // Not recorded if the effect WROTE this signal during this run: an effect that
   // depended on what it just set would re-trigger itself forever.
   const currentEffect = reactivityScope.currentEffect;

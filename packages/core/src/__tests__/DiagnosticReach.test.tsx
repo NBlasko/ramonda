@@ -199,9 +199,9 @@ describe("the codes that no test reached", () => {
    * throughout, because the server's markup is still on screen.
    *
    * So this test asserts the misleading pair as well. They are not bugs — each is right about what
-   * it can see — and `RMD056` is the one that explains them.
+   * it can see — and `RMD058` is the one that explains them.
    */
-  test("RMD056 — a request blob that could not be read", async () => {
+  test("RMD058 — a request blob that could not be read", async () => {
     const sid = requestKey<string>("review-sid", { exposeToClient: true });
 
     @Host("main")
@@ -229,10 +229,10 @@ describe("the codes that no test reached", () => {
     hydrateRoot(<Page />, container);
     await Promise.resolve();
 
-    expect(codes()).toContain("RMD056");
-    expect(of("RMD056")?.data).toMatchObject({ reason: expect.any(String) });
+    expect(codes()).toContain("RMD058");
+    expect(of("RMD058")?.data).toMatchObject({ reason: expect.any(String) });
 
-    // The two that used to be the only thing a reader got, and why RMD056 has to be there.
+    // The two that used to be the only thing a reader got, and why RMD058 has to be there.
     expect(codes()).toContain("RMD025");
     expect(codes()).toContain("RMD007");
   });
@@ -252,7 +252,7 @@ describe("the codes that no test reached", () => {
    * The handler is on a separate branch and the original promise is untouched, so the rejection is
    * still unhandled — which is the honest outcome — and now it arrives with an explanation.
    */
-  test("RMD057 — an async lifecycle that rejected", async () => {
+  test("RMD059 — an async lifecycle that rejected", async () => {
     @Host("div")
     class Boom extends Component {
       @mounted async load() {
@@ -267,10 +267,10 @@ describe("the codes that no test reached", () => {
     await dom.settle();
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    expect(codes()).toContain("RMD057");
-    expect(of("RMD057")?.data).toMatchObject({ component: "Boom", member: "load", phase: "mounted" });
+    expect(codes()).toContain("RMD059");
+    expect(of("RMD059")?.data).toMatchObject({ component: "Boom", member: "load", phase: "mounted" });
     // The failure is named, not guessed at.
-    expect(of("RMD057")?.message).toContain("fetch failed");
+    expect(of("RMD059")?.message).toContain("fetch failed");
     // The page is untouched: this reports, it does not take anything down.
     expect(dom.container.textContent).toBe("ok");
     dom.unmount();

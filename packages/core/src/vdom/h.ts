@@ -290,6 +290,12 @@ export function __h(
   // threw a TypeError from inside the JSX factory before the report at the bottom could be reached.
   // In production, where there is no report at all, that TypeError took the whole render down for a
   // fault this function is written to survive: the last line renders an empty host instead.
+  //
+  // Not `isComponentClass` from `vdom/guards`, which is the same probe: `name` is
+  // `ComponentKind | UnsupportedTagFn`, and `UnsupportedTagFn` is `(props: never) => RamondaNode`,
+  // which TypeScript cannot tell apart from a construct signature — so the predicate narrows to a
+  // union of the two and the cast comes straight back. Measured; the other four callers of that
+  // predicate have no such union.
   if (name !== undefined && name !== null && (name as ComponentClassKind).__isComponent) {
     return createRamonda(name as ComponentClassKind, attributes, parsedChildren);
   }

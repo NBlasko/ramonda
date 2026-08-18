@@ -89,7 +89,7 @@ function readExposedRequest(container: HTMLElement): Record<string, unknown> | u
     return JSON.parse(raw) as Record<string, unknown>;
   } catch (e) {
     if (__DEV__) {
-      diagnose("RMD056", "request-blob", "The request blob on the root element could not be parsed.", {
+      diagnose("RMD058", "request-blob", "The request blob on the root element could not be parsed.", {
         reason: e instanceof Error ? e.message : String(e),
       });
     }

@@ -1192,7 +1192,7 @@ function createComponent(
 ): EnhancedHTMLNode | EnhancedChildNode {
   const placeholderComponentRuntime = placeholderComponent?.[COMPONENT_RUNTIME];
   const parentContext = placeholderComponent?.[GLOBAL_RUNTIME].context;
-  const currentContext = Object.create(parentContext || null);
+  const currentContext = Object.create(parentContext || null) as Context;
 
   const component = componentFactory(vnode.name, vnode.attributes, currentContext);
   const componentRuntime = component[COMPONENT_RUNTIME];
@@ -1350,6 +1350,6 @@ export function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
   next?.setCurrent(node);
 }
 
-function componentFactory(component: ComponentClassKind, props: any, ctx: Context): BaseComponent {
+function componentFactory(component: ComponentClassKind, props: Record<string, unknown>, ctx: Context): BaseComponent {
   return new component(props, ctx);
 }

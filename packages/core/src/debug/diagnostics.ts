@@ -85,7 +85,9 @@ export type DiagnosticCode =
   | "RMD053"
   | "RMD055"
   | "RMD056"
-  | "RMD057";
+  | "RMD057"
+  | "RMD058"
+  | "RMD059";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -394,14 +396,14 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "The request was read with no request scope installed",
     fix: "`requestContext()` is live only while the page is being rendered — on the server that is the SYNCHRONOUS section, and the scope is cleared before the render's first `await`, so a read below one arrives here. Read it in `render()`, in `@created`, or above the first `await` of an async lifecycle method, and keep what you need in `@state`. Holding the object does not help: every member of it is a getter over the current request, so `const ctx = requestContext()` above an `await` and `ctx.get(key)` below it is the same late read. The other way to arrive here is calling it at module top level, before any render has started. This is reported as well as thrown because the throw does not always arrive anywhere: inside an async `@mounted` it goes into the server drain and is swallowed, and the page is served, complete and quietly missing this value.",
   },
-  RMD056: {
+  RMD058: {
     // warning, not error: the page renders and every value is simply missing, which is the same
     // stance RMD036 takes for the state blob. Taking a page down over a blob is the worse failure.
     severity: "warning",
     title: "The request blob could not be read",
     fix: "The server stamps the values a page opted into onto the root element, and `hydrateRoot` reads them back. This one did not parse, so NOTHING was restored — every `requestContext().get(key)` on the client answers `undefined`, including keys that were exposed correctly. What you will see beside this is misleading on its own: `RMD025` says a key was not exposed, which is not what happened, and `RMD007` reports the render mismatch that follows and sends you looking for a clock. This is the report that says what actually went wrong. The blob is JSON on the root element; something between the server writing it and the browser parsing it altered it — an HTML transform, a proxy rewriting the markup, or a value that could not be serialized cleanly.",
   },
-  RMD057: {
+  RMD059: {
     // warning: the page is fine and the failure is the app's own, in its own method. What was
     // wrong was that nothing said the method had failed at all.
     severity: "warning",
@@ -412,6 +414,26 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A hook's props passed as a plain object",
     fix: "Pass a callback instead: `this.use(Hook, () => ({ ... }))`. An object literal in a field initializer is evaluated ONCE, while the owner is being constructed, so every value in it is frozen at that moment — a later `this.count` never reaches the hook, and nothing reports the stale value. A callback that reads no signal costs nothing: it runs once, at mount, and never again, and the inline functions in it keep their identity. (A development build calls it again to check it, and keeps nothing from those calls.)",
+  },
+  RMD056: {
+    // error, not warning, for RMD003's reason: the panel raises its alert on `error`, and this is a
+    // fault that otherwise ships. The page renders, one of the two providers supplies every
+    // descendant, and the other one looks mounted from the outside.
+    severity: "error",
+    title: "One context provided twice by the same component",
+    fix: "A component publishes a context on ONE object — its own — so the second Provider replaces the first under the same key, and every descendant reads the second. The first is still readable by this component through its own hook, which is what makes the mistake look like it worked. There is no reading of two Providers of one context that the framework could honour, so keep the one you meant and delete the other. If both values are genuinely needed below, they are two contexts: call createContext twice. If the second was meant to override the first for part of the tree, that is a NESTED Provider — put it on the component that renders that part, where it publishes on its own object and shadows this one for its own branch only.",
+  },
+  RMD057: {
+    // A WARNING rather than an error, and the reason is what the check can prove. This arrangement
+    // has one legitimate reading — read the value from above and provide a derived one below, which
+    // only works in this order — and one mistake, a consumer meant to read this component's own
+    // value that was written a line too early. Nothing here can tell them apart, so it says what it
+    // found rather than raising the panel's alert. The other order is not reported at all: a
+    // component that provides and then uses its own value is `QueryClientProvider` followed by
+    // `Query`, which is the arrangement the packages are built around.
+    severity: "warning",
+    title: "A context consumed above the provider on the same component",
+    fix: "A consumer resolves its channel ONCE, when it is constructed, and hooks are constructed in field-declaration order — so this consumer looked before the provider on its own component existed, and reads the nearest provider on an ANCESTOR instead (or the context's default, if there is none). If this component's own value was meant, the provider has to be declared first, or read it through the provider hook itself — `this.theme.color`, where `theme` is the Provider, which always means this component's value and does not depend on the order. If the value from above was meant — reading the outer theme to derive an inner one — then this is that arrangement working, and the order it needs is the one it has.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */
