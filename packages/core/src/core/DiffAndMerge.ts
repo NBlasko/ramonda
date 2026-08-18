@@ -185,7 +185,7 @@ function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
   return node;
 }
 
-export function filterVirtualChild(rawChild: any): ComponentChild | undefined {
+export function filterVirtualChild(rawChild: unknown): ComponentChild | undefined {
   const typeofChild = typeof rawChild;
   if (
     // Loose on purpose: one check for both null and undefined.
@@ -195,7 +195,9 @@ export function filterVirtualChild(rawChild: any): ComponentChild | undefined {
   )
     return;
   if (typeofChild !== "string" && typeofChild !== "object") {
-    rawChild = rawChild.toString();
+    // A number, a bigint or a symbol: everything left here has a `toString`, which the
+    // `typeof` above is what establishes.
+    return String(rawChild) as ComponentChild;
   }
   return rawChild as ComponentChild;
 }

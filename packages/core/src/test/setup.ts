@@ -61,8 +61,11 @@ export async function getDOM<T = any>(component: ComponentChild) {
   bootstrap(component, div);
   await Promise.resolve();
 
-  const findInstance = (node: Node): any => {
-    if ((node as any)._componentInstance) return (node as any)._componentInstance;
+  const findInstance = (node: Node): unknown => {
+    // The instance is parked on the DOM node by the renderer, so the property is the untyped
+    // part — not the node.
+    const carrier = node as Node & { _componentInstance?: unknown };
+    if (carrier._componentInstance) return carrier._componentInstance;
     for (const child of Array.from(node.childNodes)) {
       const found = findInstance(child);
       if (found) return found;

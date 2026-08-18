@@ -137,7 +137,7 @@ export const INTERNAL_HOOKS = Symbol("internalHooks");
 // tree used to serialize/restore state across the server→client boundary.
 export const CHILD_HOOKS = Symbol("childHooks");
 
-export const createRuntime = (that: any, context: Context): Runtime => {
+export const createRuntime = (that: BaseComponent<any>, context: Context): Runtime => {
   const runtime: Runtime = {
     reBuild: () => addTaskToQueue(that),
     mounts: [],

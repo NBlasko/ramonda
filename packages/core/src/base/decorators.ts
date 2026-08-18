@@ -80,6 +80,16 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * from a click handler stayed silent, then fired on an unrelated `@state` change.
  * That is why every decorator here registers from `addInitializer`.
  */
+/**
+ * `(...args: any[]) => any` on a decorator's `value`, and `unknown[]` is not an option.
+ *
+ * Measured: a method declared with a parameter — `@updated after(n: number)` — is assignable to
+ * `(...args: any[]) => void` and NOT to `(...args: unknown[]) => void`, which fails as TS1241,
+ * "unable to resolve signature of method decorator". Narrowing it type-checks across this whole
+ * repository, because nothing here declares a parameter on such a method; it would refuse the first
+ * application that did. Whether these lifecycles should take no parameters at all is a separate
+ * question about the API, not about this annotation.
+ */
 function attachEffect(instance: { [GLOBAL_RUNTIME]: Runtime }, value: (...args: any[]) => any, alwaysRebuild: boolean) {
   const effectId = createId();
 
@@ -261,7 +271,9 @@ export function state(_value: any, context: EnhancedClassFieldDecoratorContext) 
     });
 
     // Register as serializable state (used by hydration) — always, not dev-only.
-    const self = this as any;
+    // The cast names the ONE property being written rather than opening the whole instance:
+    // `this` is a decorator's `this`, which has no declaration for the framework's own symbol.
+    const self = this as { [STATE_KEYS]?: Set<string> };
     if (!self[STATE_KEYS]) self[STATE_KEYS] = new Set();
     self[STATE_KEYS].add(contextName);
     rememberInitialPrimitive(this, contextName, initialValue);

@@ -106,7 +106,7 @@ export class State<T> {
     // Records this read against the effect or the tracker that is running, if
     // either is — see trackDependency, which a @compute calls too so that a
     // cache hit subscribes its reader to exactly what a miss would have.
-    trackDependency(this as any);
+    trackDependency(this);
 
     if (__DEV__) {
       // Arrays go out behind a guard that reports in-place mutation (RMD005).
@@ -157,7 +157,7 @@ export class State<T> {
 
     // If we're inside an effect run, mark that THIS effect mutated THIS signal.
     if (reactivityScope.currentEffect) {
-      reactivityScope.currentEffect.mutated.add(this as any);
+      reactivityScope.currentEffect.mutated.add(this);
     }
 
     // Note: state changes are intentionally NOT logged. They're high-frequency

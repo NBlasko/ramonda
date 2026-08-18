@@ -148,6 +148,13 @@ function attachNextOnenhancedNode(
   }
 }
 
+/**
+ * `value: any` and it stays. This function branches on what the attribute IS — a `ref` object, a
+ * listener, a string, a boolean — and each branch hands the value to a DOM API with its own type.
+ * Measured: `unknown` here is 11 narrowing casts, one per branch, which moves the looseness rather
+ * than removing it. What would actually delete it is a discriminated value, which is a redesign of
+ * how a vnode carries attributes.
+ */
 function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, value: any, onServer: boolean) {
   // Here rather than at vnode creation, because this is where the value is FINAL — anything that
   // was going to normalise it already has.
@@ -305,7 +312,7 @@ function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
   const nodeAttributes: Record<string, any> = {};
 
   if (enhancedNode._listeners) {
-    Object.entries(enhancedNode._listeners).forEach(([key, val]: any) => {
+    Object.entries(enhancedNode._listeners).forEach(([key, val]) => {
       const upperCaseKey = `on${key.charAt(0).toUpperCase() + key.slice(1)}`;
       nodeAttributes[upperCaseKey] = val;
     });
