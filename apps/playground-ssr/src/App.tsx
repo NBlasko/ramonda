@@ -138,13 +138,13 @@ class AboutPage extends Component {
 class UserPage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
-    title: `User ${this.route.params<{ id: string }>().id} — Ramonda SSR`,
-    description: `Everything about user ${this.route.params<{ id: string }>().id}.`,
+    title: `User ${this.route.params("/users/:id").id} — Ramonda SSR`,
+    description: `Everything about user ${this.route.params("/users/:id").id}.`,
     // Overrides the layout's robots, and only that one.
     meta: [{ name: "robots", content: "noindex" }],
   }));
   render() {
-    const id = this.route.params<{ id: string }>().id;
+    const id = this.route.params("/users/:id").id;
     return (
       <div className="page">
         <h2>User {id}</h2>

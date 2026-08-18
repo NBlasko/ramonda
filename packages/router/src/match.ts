@@ -2,6 +2,60 @@ import type { VNode } from "@ramonda/core";
 
 export type RouteParams = Record<string, string>;
 
+/**
+ * The `:param` names a pattern declares, at the type level.
+ *
+ * Here rather than in `createRouter.ts` because BOTH sides need it now and `createRouter` imports
+ * from `Router.tsx`, so a type living there could not travel back. `match.ts` is the leaf: it owns
+ * `RouteParams` and `compilePattern`, which is the runtime half of exactly this question.
+ */
+export type ParamNames<P extends string> = P extends `${string}:${infer Name}/${infer Rest}`
+  ? Name | ParamNames<`/${Rest}`>
+  : P extends `${string}:${infer Name}`
+    ? Name
+    : never;
+
+/** A pattern's params object — `"/u/:id"` → `{ id: string }`. */
+export type ParamsOf<P extends string> = { [K in ParamNames<P>]: string };
+
+/**
+ * Holds a pattern named at a READ site to what the outlet above actually matched.
+ *
+ * The mirror of the throw in `route()`, which refuses to build `/u/undefined` when a param is
+ * missing. Naming a pattern is a claim about which route this component stands on, and an unchecked
+ * claim would hand back `undefined` typed as `string`.
+ *
+ * Deliberately NOT an equality check on the key. A component rendered by both `/users/:id` and
+ * `/people/:id` names one and is correct on both, because what it asked for is satisfied on both —
+ * the claim is about the params, not the spelling.
+ */
+export function assertPattern(pattern: string, params: RouteParams, matchedKey: string | undefined): void {
+  const wanted = paramNamesOf(pattern);
+  const missing = wanted.filter((name) => !(name in params));
+  if (missing.length === 0) return;
+
+  const named = missing.map((name) => `\`:${name}\``).join(", ");
+  if (matchedKey === undefined) {
+    throw new Error(
+      `[Ramonda Router] params("${pattern}") was read with no <RouteOutlet> above this component, so ` +
+        `there is no matched route and no ${named}. Params are published by the outlet that matched, ` +
+        `which is why chrome beside the outlet — a nav bar, a header — has a pathname but no params. ` +
+        `Move the read inside the routed page, or use \`pathname\` if this component is not part of a route.`,
+    );
+  }
+  throw new Error(
+    `[Ramonda Router] params("${pattern}") names ${named}, and the route this component is on — ` +
+      `"${matchedKey}" — does not supply it. Reading it would give \`undefined\` where the type says ` +
+      `\`string\`. Name the pattern this component is actually rendered by, or drop the argument and ` +
+      `use \`params<T>()\` if it is rendered by routes that do not agree on their params.`,
+  );
+}
+
+/** The `:param` names in a pattern, at runtime — the same scan `compilePattern` does. */
+function paramNamesOf(pattern: string): string[] {
+  return (pattern.match(/:\w+/g) ?? []).map((name) => name.slice(1));
+}
+
 // --- One-off string matching (convenience / tests) -------------------------
 
 /**

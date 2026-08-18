@@ -11,7 +11,7 @@ import {
 } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
 import { parseUrl } from "./urlUtils";
-import { matchCompiled, type RouteConfig, type RouteParams } from "./match";
+import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
 import type { HashTag, HashTagsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
 /**
@@ -34,6 +34,14 @@ interface RouteContextValue {
 /** Published by <RouteOutlet>, because that is what does the matching. */
 interface ParamsContextValue {
   params: RouteParams;
+  /**
+   * The route key that matched — `/users/:id`, not `/users/9`.
+   *
+   * Carried so `params(pattern)` can say WHICH route it is standing on when the pattern names a
+   * param that route does not supply. `undefined` means no outlet above at all, which is a different
+   * message and a legitimate arrangement: a nav bar beside the outlet has no matched route.
+   */
+  key: string | undefined;
 }
 
 const EMPTY_STATE: RouterState = {
@@ -70,7 +78,7 @@ const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
  * arrangement the router documents.
  */
 const [ParamsProvider, ParamsConsumer] = createContext<ParamsContextValue>(
-  { params: {} },
+  { params: {}, key: undefined },
   { label: "RouteParams", optional: true },
 );
 
@@ -279,6 +287,7 @@ export class RouteOutlet extends Component<RouteOutletProps> {
 
   private paramsProvider = this.use(ParamsProvider, () => ({
     params: this.match.params,
+    key: this.match.key,
   }));
 
   render() {
@@ -310,9 +319,43 @@ export class Navigator extends Hook {
     return this.ctx.hashTags;
   }
 
-  /** The matched route's :params. Needs a <RouteOutlet> above. */
-  params<T extends RouteParams = RouteParams>(): T {
-    return this.paramsCtx.params as T;
+  /**
+   * The matched route's `:params`. Needs a `<RouteOutlet>` above.
+   *
+   * ## Two doors, and the typed one is the default
+   *
+   * `params("/users/:id")` names the pattern and the type comes OUT of it — `{ id: string }` — with
+   * no annotation to keep in step with the route table. That is the same `ParamNames` machinery
+   * `route("/users/:id", { id })` has always used for building an href, pointed the other way: the
+   * writing side has been typed from the pattern since the kit existed, and this is the reading side
+   * catching up.
+   *
+   * `params<T>()` still works and stays. Params come out of a URL and are genuinely `string`s of
+   * unknown shape when a component is not written against one route, and a door for that is worth
+   * having.
+   *
+   * ## Why the pattern is CHECKED rather than trusted
+   *
+   * A named pattern is a claim about which route this component is standing on, and a claim nothing
+   * verifies is the shape of fault this router already refuses on the other side:
+   * `route("/u/:id", {})` throws for a missing param rather than building `/u/undefined`. The mirror
+   * of that is a component naming `"/users/:id"` while the outlet above it matched a route with no
+   * `id` — `.id` would be `undefined` typed as `string`, and it would travel.
+   *
+   * So each `:name` in the pattern must be present in what the outlet matched. Note what that does
+   * NOT do: it does not demand the pattern EQUAL the matched key. A component rendered by both
+   * `/users/:id` and `/people/:id` names one of them and is right on both, because the type it asks
+   * for is satisfied on both — the check is about the params, not about the spelling.
+   *
+   * It throws in every build, like its counterpart above it in `createRouter.ts`, and for the same
+   * reason: the read is broken either way, and a development-only report would let it ship.
+   */
+  params<T extends RouteParams = RouteParams>(): T;
+  params<Pat extends string>(pattern: Pat): ParamsOf<Pat>;
+  params(pattern?: string): RouteParams {
+    const params = this.paramsCtx.params;
+    if (pattern !== undefined) assertPattern(pattern, params, this.paramsCtx.key);
+    return params;
   }
 
   push(href: string, opts?: { scroll?: boolean }): void {
