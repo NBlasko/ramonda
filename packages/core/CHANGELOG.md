@@ -1,5 +1,448 @@
 # @ramonda/core
 
+## 0.19.0
+
+### Minor Changes
+
+- 3d59d25: A page that has not moved ships no hydration state.
+
+  A field still holding the primitive its own initializer produced is left out of the blob. The
+  browser runs the same initializer and arrives at the same value, so writing it down was bytes for
+  nothing — and a component whose whole tree carries nothing now gets no `data-ramonda-state`
+  attribute at all.
+
+  What it was costing, measured on `@ramonda/form`'s five-row SSR page: **942 of 1935 bytes** were
+  hydration state, and nearly all of it was `{"version":0}` — the subscription counter every watched
+  component carries, always zero on the server, because a `@state` counter is the only thing that
+  attaches the owning component's rebuild and `@state` MEANS "serialize me". At 300 rows that was
+  around 17 KB of markup saying nothing.
+
+  After: **985 bytes and zero blobs** on that page, and the SSR playground's own `/` went from 13488
+  to 12704 bytes. The framework pays 239 bytes gzipped once (22544 → 22783); every server-rendered
+  page collects.
+
+  **Primitives only, and that bound is correctness rather than thrift.** An in-place mutation keeps
+  the very object the initializer produced, so an identity test on an object would call a filled value
+  untouched and hand the client an empty one — measured, `this.rows.push(…)` does reach the blob
+  today, RMD005 and all. A primitive has no in-place to mutate.
+
+  **A field the server EMPTIES now travels as such.** This was already broken and is fixed here:
+  `JSON.stringify({ name: undefined })` is `{}`, so a field cleared on the server was indistinguishable
+  from one never touched, and the browser's own initializer put the old value back — a signed-out
+  visitor got the signed-in name. Cleared keys ride in their own list on the node and are applied on
+  restore, through the same declared-keys filter every other restored value passes, so a tampered blob
+  still cannot name a property the instance never declared. `null` is untouched and deliberately not
+  folded in: JSON carries it, and conflating the two would make an explicit `null` unrepresentable.
+
+  **What this does break is already documented as a mistake.** A non-deterministic primitive
+  initializer — `@state now = Date.now()` — used to survive because the blob carried the server's
+  number; measured, 101 on the server now becomes 103 after hydration. `/ssr/mismatches` already marks
+  that spelling wrong and prescribes computing in `@created({ env: "server" })`, and that prescription
+  is untouched, because a computed value is not the one the initializer produced. The page now says
+  why the blob does not rescue it.
+
+  Four faults planted, and the fourth is the one worth carrying. Removing the primitives-only guard
+  was NOT caught at first: `mutationGuard` hands out a proxy in development, so `this.rows` never
+  matched the raw array and the identity test could not fire — the test passed while the fault would
+  have shipped to production, where there is no proxy. The test uses a class instance instead, which
+  the guard leaves alone, so identity is the same on both sides.
+
+  The tests that asserted the old format were rewritten to write their values first rather than to
+  expect the smaller blob: a suite that asserted `{}` everywhere would pass just as well if
+  serialization stopped working.
+
+- 01a0628: A hook's props are a callback. The plain-object form is refused, in every build.
+
+  `this.use(Counter, { start: this.count })` reads as if it passes `count`, and it does — once. A field
+  initializer runs while the owner is being constructed, so the object holds what was true at that
+  moment and holds it for the life of the hook. Measured with `{ seed: this.n }` and `n` moved 1 → 7:
+  the hook reads **1** forever, the callback form reads **7**, the owner reads **7**, and nothing
+  reported the difference.
+
+  Nothing could report it. `use()` is handed a finished object with no way to tell `{ seed: this.n }`
+  from `{ seed: 1 }`, so no runtime check exists that is not a heuristic — which leaves the FORM as the
+  only visible half, and the form is now what the framework holds you to. `@ramonda/check` cannot cover
+  for it either: a value reaching the bag through a helper or a build with no types is past what any
+  static rule sees.
+
+  **The migration is `() => ({ … })`,** and it costs nothing where the object looked cheapest. A
+  callback that reads no signal is called **once, at mount, and never again**, and the inline functions
+  in it keep their identity across every render of the owner — so a bag of constants and closures
+  (`fetch`, `retryDelay`) is built exactly as many times as the object was, with no churn for RMD022 to
+  report. `core/__tests__/PropsBagRuns.test.tsx` pins both halves, and the mirror beside them: a bag
+  that DOES read a signal re-runs, with fresh functions each time, which is what `@StableProps` is for.
+
+  A development build calls it more than that, and keeps none of it: twice at mount, so RMD022 can
+  compare the two bags, and once per render of the owner, so RMD027 can check the cache has not gone
+  stale. Both counts are measured in that file's second suite, with `strictRender` on as it is by
+  default. The hook is handed the one bag in either build.
+
+  **It throws rather than warns,** the same rule as a write to props (RMD004, RMD015), and outside
+  `if (__DEV__)` so a shipped bundle cannot go on serving one stale value for the life of the page.
+  Development adds the explanation and a record naming the owner, the hook and the keys the object
+  carried; production carries the code and one sentence. Production core grows **63 bytes gzipped**
+  (23,609 → 23,672; raw +334), and `apps/docs`'s production-build tripwire now names `RMD055` among
+  the codes a production bundle may carry.
+
+  The types refuse it first: the `props: Q` overload is gone from `Component.use` and `Hook.use`, so the
+  mistake is a compile error before it is ever a thrown one.
+
+  `RMD055` is the code, on [the diagnostics reference](https://ramonda.pages.dev/reference/diagnostics#rmd055-a-hooks-props-passed-as-a-plain-object).
+
+  **126 call sites moved** across this repository — 9 in the example apps, 95 in tests, the rest in
+  documentation and JSDoc. Two comments went with them: both defended the object form with churn a
+  callback would supposedly cause, and neither was true, since a bag that reads no signal is not
+  rebuilt.
+
+- 17aba74: A per-request slot is named by its key, not by a string written twice.
+
+  `renderToString(vnode, { request })` took its pre-resolved values as `Map<string, unknown>` — a
+  label the server writes, and the same label written again where the slot is declared, with nothing
+  relating the two. It is now `Map<RequestKey<unknown>, unknown>`: the key itself.
+
+  **Why a type and not a check.** Measured before the change: seeding `"currentUsr"` against a key
+  declared `"currentUser"` renders `undefined` into the page **on the server**, silently. No
+  diagnostic could have caught it either, and that is the interesting part — a read is legitimately
+  allowed to find nothing, because an anonymous visitor has no user, so at runtime a typo and an
+  absent value are the same event. The only place to refuse it is where the two spellings meet, and
+  naming the key means there is only one.
+
+  **`exposedLabels` is gone.** It was a module-level set that `requestKey` added to as a side effect,
+  and the serializer consulted it when stamping the page — so what a page exposed depended on whether
+  the module declaring the key had been **imported** yet. Measured: the same render with the same
+  seeded value emitted no client blob before the declaration ran and a full one after, which is what a
+  key declared in a lazily-loaded route would have hit. Exposure is read from the key now and kept on
+  the request scope.
+
+  Worth stating precisely, because the two are easy to confuse: what closes the lateness is the seed
+  taking a **key**, not exposure moving off the registry. You cannot seed without holding the key, and
+  holding it means `requestKey` has already run. The registry became unreachable rather than wrong,
+  and was deleted because dead state is worth deleting.
+
+  Migration is mechanical, and the compiler names every site:
+
+  ```diff
+  - values: new Map([["currentUser", user]]),
+  + values: new Map([[currentUser, user] as const]),
+  ```
+
+  `seedRequest(key, value)` is unchanged and remains the door for anything resolved once the render is
+  under way — it also ties each value's type to its own key, which a heterogeneous map cannot: the map
+  checks that every entry IS a key, and stops there.
+
+  Two tests came out of planting rather than out of writing. `seedRequest` had leaned on the same
+  registry for exposure and had to start marking it itself — a regression this change introduced, that
+  none of the 165 hydration tests caught. And the first test written for the lateness claimed to catch
+  the old bug while passing either way, because the old bug is no longer reachable through the new
+  door; it now asserts only the property that survives.
+
+- 01d5913: A production build can now report three faults to a collector, where it previously reported nothing
+  at all.
+
+  Every `diagnose()` call is behind `if (__DEV__)`, so production emits nothing — which is right for
+  most of what it catches. A mistake in code fires deterministically, on the first render, on the
+  machine of whoever made it; shipping those would cost every app bytes to be told something
+  development already said.
+
+  Three are not like that. They need the world to go wrong, so they cannot be found before shipping,
+  and until now nothing said a word about them afterwards either:
+
+  - **RMD017** — a deferred hydration that never resumed. The server's markup is still on screen, so
+    the page looks finished; the subtree has no listeners and answers nothing.
+  - **RMD047** — `@memoizedHandler` with an argument it cannot key on. Development throws; a build
+    whose affected path nobody ran rebuilds the handler on every render instead, and everything it is
+    passed to re-renders with it, for the life of the page.
+  - **RMD054** — a post-commit callback threw and the failure was swallowed. New code, production
+    only: in development the same failure goes to the console with the error object, which is more
+    than a record can carry.
+
+  It is opt-in with nothing to configure. The record goes to `__RAMONDA_DIAGNOSTICS__` and nowhere
+  else, so an app that installs no collector behaves exactly as before — including the cost: the
+  stall watchdog is not even armed without one. The framework sends nothing anywhere; what leaves the
+  process is the app's decision, made in the collector it wrote.
+
+  The records carry what happened and not how to fix it — no `fix` prose, no `data`, no value from the
+  app, and never the message of a thrown error. Nothing throws to deliver one.
+
+  Production core grows 402 bytes gzipped (22,489 → 22,891), and `apps/docs`'s production-build
+  tripwire now names these three as codes a production bundle may carry.
+
+- dddac5f: The request is live only while you render, and now two things say so.
+
+  **The question first, because the answer is the reassuring half.** Can `requestContext()` hand one
+  visitor another visitor's data? No — and it is not the variable that saves it. The scope IS one
+  module-level value shared by every request the server is handling at once. What makes it safe is the
+  WINDOW: `renderToString` installs it, mounts synchronously, and clears it in a `finally` before its
+  first `await`. Node runs that section to completion, so no second request can be inside it.
+
+  Measured rather than argued, and now pinned by
+  `packages/core/src/__tests__/hydration/RequestConcurrency.test.tsx`: ten interleaved renders each
+  read their own user, two concurrent ones never see each other's. Delete the one line that clears the
+  scope and both requests read `["read:bob","read:bob"]` — Ada's component serving Bob's user. Three of
+  the tests fail on it. There was no test for any of this before.
+
+  **The defect that came out of it: breaking the rule was silent.** A read below the first `await`
+  throws, but the throw does not always arrive anywhere. Measured with no `try`/`catch`, which is what
+  an app actually writes: `renderToString` **resolves normally**, the page is served, `console.error`
+  is called **zero** times, and the component is quietly missing its value. The rejection goes into the
+  server's work drain and is swallowed — exactly what `RequestScope.read`'s docstring already says
+  happens in build mode, which is why `guardBuild` records IN ADDITION to throwing. Server mode had no
+  counterpart.
+
+  **`RMD053`** is that counterpart. `requireScope()` now reports before it throws, so the record
+  survives the swallowed rejection, and the throw's message says the third way to arrive: a read below
+  a yield, not only a call at module top level. Deduped on the FIELD rather than the component, and not
+  by preference — by the time it fires the render is over and `renderingOwner()` is already empty.
+  Production is unchanged: every `diagnose` call site in the package is behind `__DEV__`.
+
+  **`ramonda-check` reports the same read from the source**, as `findings["late-request-read"]`, a
+  WARNING under this repository's rule for a new rule. Zero reports across all three apps; verified not to be
+  silently dead by planting a real late read into a real component in `playground-ssr` and watching the
+  CLI name it through the repo's own source alias.
+
+  The two are not redundant and not symmetric, which is the same shape the duplicate-decorator work
+  settled. The static rule speaks before anything runs, including for a branch nobody has opened.
+  `RMD053` catches the read that left the static rule's reach — through a variable, a helper, or a
+  build with no types.
+
+  What the rule judges, each half planted and caught:
+
+  - **A late read through a same-scope local** (`const ctx = requestContext()` above the await, used
+    below) is reported. One hop in one function is a declaration, not the general dataflow this
+    analyzer refuses.
+  - **`for await`** raises the flag too. It is a `ForOfStatement` carrying an await token, so the
+    check for an `AwaitExpression` never sees it.
+  - **A read inside the await's own operand** — `await requestContext().get(key)` — is NOT late. The
+    operand is evaluated before the suspension, so the walk descends into an await before raising its
+    flag.
+  - **A nested callback starts a clean timeline.** Whether it runs before or after the enclosing yield
+    is dataflow, and guessing would report `items.map(…)` called synchronously above the await.
+  - **One mistake gets one report.** A context TAKEN below the await is the failure — that line
+    throws, so the line reading through the local never runs. Only a local taken before the yield is
+    followed, or the reader would be sent to the second of two reports, on dead code.
+  - **Identity is the import specifier, not the name.** An app is entitled to its own function called
+    `requestContext`. This is stricter than the sibling `document` rule on purpose: nobody writes
+    `const document = …` and reaches for `.body`, but a same-named local here is plausible.
+
+  Two fixture gaps were found the same way and are worth recording, because both tests passed while
+  proving nothing: the "app's own helper" case had been written as `requestContext2`, so the NAME check
+  rejected it and the identity check was never reached; and nothing covered a read inside an await's
+  operand, so reversing the walk order went unnoticed.
+
+- 5b5f8ef: The panel says what each `@compute`'s cache actually did.
+
+  A `@compute` is a claim that a value is worth caching, and the claim can be false in a way nothing
+  else reports: the compute is invalidated by something that moves on every pass, so every read runs
+  the body, tears the dependency set down and builds it again. The answer is correct, so nothing looks
+  wrong.
+
+  The components tab now carries a **Computed** section per instance:
+
+  ```
+  Computed
+    total   never cached — ran on all 41 reads
+    label   18 of 21 reads cached
+  ```
+
+  **A measurement, not a verdict, and that is the design rather than caution.** A compute that never
+  hits may be perfectly reasonable — its dependencies may genuinely move every time, and a plain
+  getter would be no cheaper. What is worth showing is the gap between "cache this" and "nothing was
+  ever cached"; the person reading their own component is the one who can close it. The heading was
+  nearly "Wasted computes", which is a verdict the panel is not entitled to make, and correct code
+  would have been sitting under that word.
+
+  RMD024 is the neighbouring check and stays where it is: it catches the strictly narrower case that
+  IS a fault — recomputing to an equal value several times running. A compute that misses every time
+  and returns something different every time is invisible to it, correct, and still paying for a cache
+  it never uses.
+
+  Per instance, not per class: two rows of one component are two different questions, and one of them
+  never using its cache says nothing about the other. A compute nobody has read yet is left out
+  entirely rather than shown as `0/0`, which would read like a finding about a compute that has simply
+  not been asked for.
+
+  **The production cost is two bytes, and getting there took a measurement worth recording.** The
+  counters started as two fields on the compute's cache object: 16 bytes of production bundle and two
+  hidden-class slots per compute per instance, for something no production build can read. Moving them
+  to `const counters = __DEV__ ? { hits: 0, misses: 0 } : undefined` with a later `if (counters)` made
+  it **worse** — esbuild folded the ternary but did not propagate the constant into the branch, so the
+  counters and both increments shipped anyway. With `__DEV__` leading every guard the minifier sees
+  `if (false)` and deletes the block: `misses` appears nowhere in the production bundle and the raw
+  total moves 62160 → 62162.
+
+  Also worth carrying, having now seen it three times: the gzipped total across separately-compressed
+  chunks moves by ~100 bytes on a change worth 2, because the chunk boundaries shift. For a change
+  this size the raw total is the honest measure.
+
+### Patch Changes
+
+- 9f7f425: A cast that names one property, and the three places `any` was only ever looseness.
+
+  Counted first, over every published package's `src` with tests, comments and string literals
+  excluded: **126 uses of `any`, 7 of them `as any`**. After this pass, **111 and zero** — every
+  remaining one is a type annotation with a reason, and the reasons are now written beside them.
+
+  What went:
+
+  - **`State.get()` and the effect's mutation set** cast `this` to `any` to reach `State<any>`. Both
+    were vestigial: `this` is a `State<T>` and `State<T>` is assignable to `State<any>`. Two casts
+    deleted, nothing else changed.
+  - **The props proxy** read `rawProps as any` twice. It is `Record<symbol, unknown>` for the symbol
+    branch and `Record<string, unknown>` for the string one — the cast names the shape being indexed
+    rather than opening the object.
+  - **`@state`'s registration** wrote `this as any` to reach the framework's own `STATE_KEYS` symbol. It
+    is `{ [STATE_KEYS]?: Set<string> }`, so the cast covers the one property it writes.
+  - **`createRuntime(that: any)`** has exactly one call site, and it passes a component. It is
+    `BaseComponent<any>`.
+  - **`filterVirtualChild(rawChild: any)`** takes whatever JSX produced, which is `unknown` — the
+    function's whole job is to narrow it. The number-and-friends branch returns `String(rawChild)`
+    instead of reassigning the parameter.
+  - **The devtools panel's three listeners** were `(e: any)`. `WindowEventMap` is augmented with the
+    three channels core speaks on, so `e.detail` is typed at each one and the payloads are named in a
+    single place. `DevLogPayload.data` and core's log entry are `unknown`: both are printed or rendered
+    as JSON, never read into.
+  - **`Object.entries(...).forEach(([key, val]: any) => …)`** annotated the pattern, so both halves
+    were `any`. Removing the annotation types both from `_listeners`.
+
+  What stays, each measured rather than assumed:
+
+  - **A decorator's `value: (...args: any[]) => any`.** `unknown[]` type-checks across this entire
+    repository — and would refuse the first user who wrote `@updated after(n: number)`, with TS1241,
+    because a parameter is contravariant. Nothing here declares a parameter on such a method, which is
+    why the repo-wide check is a false green. The note is in `decorators.ts` so the next pass does not
+    repeat the experiment.
+  - **`setNextOnenhancedNode`'s `value: any`.** It branches on what the attribute is — a `ref`, a
+    listener, a string, a boolean — and hands each to a DOM API with its own type. `unknown` is 11
+    narrowing casts, measured, which moves the looseness rather than removing it. Deleting it means
+    making a vnode carry a discriminated attribute value, which is a redesign.
+  - **`Record<string, any>` on JSX attributes** carries the whole surface a host element accepts.
+
+  Behaviour is unchanged, and the one line that could have changed it is covered: breaking
+  `filterVirtualChild`'s coercion branch on purpose fails **98 of core's 1107 tests**.
+
+- b5ff5b3: A diagnostic compares to the end — RMD020, RMD022 and RMD027 stop reading a bound as a finding.
+
+  `valueEqual` is bounded at a depth of two and at fifty entries of an array, and past either it
+  answers "different". That is the right answer for `resolveStable`, which runs per declared prop per
+  render and only has to CHOOSE a reference: a fresh one is correct, merely not optimal. Three
+  diagnostics were reading that same answer as evidence, and each of them says something to an app.
+
+  Two of them were saying it falsely:
+
+  - **A JSX value in a props bag was reported as "does not come from state".** A two-level subtree —
+    `() => ({ children: <div><h2 /></div> })`, which is what a `Portal` is handed — is past the depth,
+    so RMD022 called two identical trees non-deterministic and put advice about `Math.random()`
+    underneath. RMD020 did the same for an element attribute holding a nested object.
+  - **RMD020's churn wording asserted contents it had not compared.** "Builds a new object with the
+    same contents, hold it in a `@compute`" is the wrong sentence for a value that is genuinely not a
+    function of state, and there is no run counter in front of RMD020 to soften it.
+
+  And two were silent where they should have spoken, both once an array passed fifty entries — the
+  width cap answers "different" without comparing a single element:
+
+  - **RMD027 stopped reporting a stale wide array**: `rows` held in a plain field, reassigned with no
+    signal write, is the shape its own documentation is written about, and a table with 51 rows was
+    past the cap.
+  - **RMD022 could not report a wide array that churned for real.** The cross-run gate needs the value
+    to compare EQUAL across runs to count a run; the cap made that impossible, so neither half of the
+    check could ever speak.
+
+  `valueEqualThorough` is the entry point for a caller that reports — depth 24, width 1000, the same
+  recursion. Measured per comparison: a two-level JSX tree **1.31 ns → 3.15 ns**, a sixty-row array
+  **0.55 ns → 34.88 ns**, where the cheap answer was the cap bailing out without looking. It is paid in
+  a development build, under the double render, on a pair already known to differ by reference.
+
+  Five cases are pinned now, in `PropsStability.test.tsx` and `RenderStability.test.tsx`. The one that
+  would have caught the JSX report is the plainest of them: mount a component with a JSX bag and assert
+  nothing is reported.
+
+  What a development build costs a props callback is measured rather than assumed, in
+  `PropsBagRuns.test.tsx`'s second suite: with `strictRender` on — the default, and off in core's own
+  test setup — a bag of constants is called **twice at mount** (RMD022's comparison) and **once per
+  render of the owner** (RMD027's freshness probe), and every one of those results is discarded. The
+  hook is handed one bag, and the functions in it keep one identity, in every build.
+
+- 8908555: A predicate narrows; a `boolean` does not — which is why one probe was written seven ways.
+
+  `vdom/h.ts` held a local whose only job was to hold a cast:
+
+  ```ts
+  const vnode = child as {
+    type?: unknown;
+    name?: unknown;
+    attributes?: { key?: unknown };
+  };
+  ```
+
+  Measured across the repository, non-test and non-dist: **76 `as { … }` casts, 42 of them bound to a
+  local `const`**. About half are legitimate and stay — `globalThis as { CSS?… }`,
+  `window as unknown as { __RAMONDA_INSPECT__ }`, `JSON.parse(raw) as { … }` are real boundaries with an
+  untyped host on the other side.
+
+  The rest were one fact spelled several ways, and the cause is worth naming: a helper that returns
+  `boolean` answers the question and narrows nothing, so the caller casts on the very next line anyway.
+  `isListLike` in `h.ts` and `isVNode` in `debug/renderStability.ts` were both that shape, and both had
+  an anonymous `as { … }` sitting under them.
+
+  `vdom/guards.ts` now holds the two predicates the vdom actually asks, as `value is ListNode` and
+  `value is VNode`. It is a leaf on purpose: `isListNode` used to live in `core/DiffAndMerge.ts`, which
+  imports `generateRenderOutput`, so half the callers could never have imported it back.
+
+  - **Seven hand-rolled `IS_LIST` probes become one call** — `h.ts` ×2, `helpers/listEngine.ts`,
+    `helpers/generateRenderOutput.ts`, `debug/renderStability.ts` ×2, `debug/lintChildren.ts`.
+  - **A `@ts-ignore` in `normalizeChildren` is gone**, because the line under it was asking exactly what
+    `isVNode` asks.
+  - **Four byte-identical copies of `constructor?.name ?? "Unknown"`** — `hydration/serialize.ts`,
+    `hydration/restore.ts`, `hydration/lint.ts`, `helpers/watchProps.ts` — plus three `this` casts in
+    `base/decorators.ts`, become `displayName`. `base/Context.ts` keeps its own: there `undefined` is an
+    answer the message branches on, and `"Unknown"` would change what RMD003 prints.
+  - The two remaining `owner` casts say what they do — they defeat `readonly`, because stamping an
+    owner is those two lines' job and nobody else's.
+
+  Left alone deliberately: `isLazyList` asks a different question (a descriptor, not a built list) and
+  was already a proper predicate; `debug/renderStability.ts` keeps a LOOSER local check, because it
+  walks two arbitrary render outputs looking for instability rather than deciding what may reach the
+  diff.
+
+  Measured, because a shared guard is a function call in a hot path: 1000 children × 20 000 passes over
+  a realistic mix of vnodes, lists and holes — the call is **0.80×–0.91× the inline probe** across five
+  rounds, under half a nanosecond per probe and if anything in the guard's favour. Production bundle:
+  raw **−58 bytes**, gzipped **+94** (22 450 → 22 544), the difference being chunk boundaries moving
+  rather than code being added.
+
+  Faults planted, and the second one is the reason this ships with a test. Loosening `isListNode` to
+  "any object" fails **908 of core's 1066 tests**. Loosening `isVNode` to the "has a `type` and a
+  `name`" spelling passed **all 1066** — nothing pinned the strictness at all, and a foreign object
+  carrying two very ordinary field names would have been waved past RMD037 and into the diff.
+  `src/__tests__/VNodeGuards.test.tsx` closes that, end to end as well as at the unit.
+
+- 99a5627: `@ramonda/dom-facts` — one list of SVG tags instead of two.
+
+  `@ramonda/core` decides how to build an element; `@ramonda/check` reads source and says what that
+  decision will be. Both need the same list of tags, and both had one. Written into the checker as a
+  first guess, its copy was **twenty-one tags short** — every filter primitive — and wrongly claimed
+  `title`, which the framework renders as HTML. A test that read core's source caught it, but a test
+  pinning two lists together is a confession that there are two lists.
+
+  So there is one, in a **private** package that publishes nothing and is a devDependency of both.
+  Both consumers bundle their own code and tsup inlines anything that is not a declared `dependency`,
+  so nothing about either published package changes:
+
+  - `@ramonda/core` ships the identical literal — 636 bytes, byte-for-byte — in the same chunk. Total
+    production output moved by **six bytes** raw and **one byte less** gzipped, all of it the
+    minifier renaming a variable because module order shifted. No import and no type in `dist`
+    mentions the private package; only the dev bundle's path comment does, which is how esbuild marks
+    an inlined module.
+  - `@ramonda/check` still publishes with **no runtime dependency at all**, which is the property that
+    lets it run first in a build. The list is inlined into its shared chunk.
+
+  `svgElements` is still exported from core's `constants.ts`, as a re-export, so nothing inside core
+  changed an import and `SvgNamespace.test.tsx` still pins the list to the SVG types in `global.ts`.
+
+  The package has a rule about what may go in it, written at the top: a fact about the DOM or HTML
+  that **both** packages need, and nothing else. A shared package with no such rule becomes the place
+  things go to avoid a decision.
+
 ## 0.18.0
 
 ### Minor Changes

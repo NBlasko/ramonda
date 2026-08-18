@@ -1,5 +1,533 @@
 # @ramonda/check
 
+## 0.9.0
+
+### Minor Changes
+
+- 5a11869: A fourth rule family: rules that read one RENDER, and the first two of them.
+
+  **What the other three could not answer.** A class rule sees a class, a module rule a file, an
+  element rule one element and its ancestors — enough for "is this `<tr>` inside a table", and nothing
+  at all about two elements that never meet. An `id` claimed twice and a heading level that jumps are
+  both questions about a whole markup tree, and no subject that size existed.
+
+  **`TreeRule`** takes one render — one top-level piece of JSX, with every element in it in document
+  order. Deliberately not the composed tree: what `<Panel />` renders depends on its props, its state
+  and what its slots were filled with, and this package does not guess.
+
+  **The family exists for one guard, not for the walk.** A per-class rule could have walked the JSX
+  itself. What cannot be left to each rule is deciding whether two elements are ever really both
+  there: `{editing ? <input id="x"/> : <span id="x"/>}` is two ids in the source and one in the
+  document. So every node carries `alwaysPresent`, computed once — anything under a condition, a
+  guard, a `switch` or a callback is `false`. Proved load-bearing: forcing it to `true` fails four
+  tests, every one of them a piece of correct markup being reported.
+
+  The two rules on it, both warnings and both silent across every app and package here:
+
+  - **`duplicate-id`** — two always-present elements in one render with the same literal `id`. Nothing
+    fails loudly when this happens, which is why it is worth reporting: `getElementById` and `#x`
+    answer with the first and never mention the second, `<label for>` labels the first — so the other
+    control is nameless in the accessibility tree, not merely visually — and `aria-labelledby`,
+    `aria-describedby` and a fragment link resolve the same way.
+  - **`heading-skips-a-level`** — a heading more than one level below the one before it. Headings are
+    the document's outline, exposed to a screen reader as a navigable list, so `h1` then `h3`
+    announces a section nested inside one that does not exist. Going back UP is not reported: `h3`
+    then `h2` is one section ending and another beginning.
+
+  A heading that may not be there **breaks the chain** rather than being skipped over — found by
+  running it, not by reading it: `<h1>`, `{detailed && <h2>}`, `<h3>` was reported as a skip, and that
+  markup is correct whenever `detailed` is true.
+
+  Both were proved not to be silently dead by planting them into `DocPage`, the docs' own page
+  component, and watching the CLI name each one.
+
+- 62758d6: `duplicate-key-among-siblings` — two children of the same parent written with the same `key`.
+
+  A key is how the diff decides that the node it is looking at is the node it saw last time. Two
+  children claiming the same one means only one can be matched: the other is treated as new, so its
+  state and its DOM land on a node that is not it, while the page still looks right.
+
+  Read from the PARENT, because the fault belongs to neither child on its own — each is a good
+  element with a good key, and what is wrong is that they are siblings. That is also what makes "among
+  siblings" exact: the same key under a different parent is a different key and is never reported.
+
+  Keys written as literals only, strings and numbers alike. `key={row.id}` may well collide at run
+  time and deciding that needs the data, which is what `RMD002` is for.
+
+  A warning for now, and an error in a later version — the rule for a new rule here, kept even though
+  a duplicate literal key is not a judgement call.
+
+- 278ca1e: `role-takes-no-name` — an `aria-label` written on something the specification forbids naming. This
+  is the last of the ARIA tables, and it is deliberately a **slice** of the role matrix rather than
+  the matrix.
+
+  An `aria-label` is not a tooltip and not a comment: it is the accessible NAME of a thing in the
+  accessibility tree, and each role's characteristics say whether it may have one. A `<div>` is
+  `generic` — the role for an element that carries no meaning — so there is nothing for a name to
+  name. `<div aria-label="Filters">` does not label a region. It does nothing: the attribute is in the
+  DOM, visible in the inspector, and a screen reader announces the children exactly as it would have
+  without it. `role="presentation"` is stronger still and removes the element from the tree entirely.
+
+  **Why not the whole matrix.** Which of the ninety-odd roles supports which `aria-*` would be the
+  most dangerous table this package could carry: it is read to report an attribute that is NOT
+  supported, so every cell missing from it reports correct markup, and there are thousands of cells.
+  Naming is the part that is unambiguous, short, and worth having on its own. The rest of the matrix
+  is not planned.
+
+  A written `role` always wins over the tag's own, which is what makes this safe: `<div role="region"
+aria-label="Filters">` is correct and common, and a role this cannot read silences the element.
+  `<section>` is left out of the tag table for the sharpest version of the same point — it maps to
+  `region` **when it has an accessible name**, so naming it is not merely allowed, it is the
+  documented way to write one.
+
+  An attribute whose case is wrong is not a name. `aria-labelledBy` reaches the DOM as a different
+  attribute from `aria-labelledby`, so it is `unknown-aria-attribute`'s business — matching it here
+  would report that the name does nothing, for the wrong reason. Found by running the rule over the
+  fixtures that already existed, where it also turned up two lines written as "not reported" that
+  really were faults.
+
+  Zero reports across every app and package here. Both directions proved on real code: `aria-label` on
+  the docs' existing menu **button** reports nothing, and the same attribute on a `<div>` reports.
+
+- 0ba2fa9: `role-missing-required-aria` — a role written without the states and properties it cannot work
+  without.
+
+  The ARIA rules so far all read one direction: is this name in the vocabulary, is this value in the
+  list. This reads the other. Every role in the fixture is real, every attribute present is spelled
+  right, and the markup is still broken — because some roles mean nothing on their own.
+
+  A `div` has no checked-ness, no level and no value. So `role="checkbox"` with no `aria-checked`
+  announces a checkbox in a state nothing can report, which is worse than the plain `div` would have
+  been: at least a `div` reads as what it is. `role="heading"` with no `aria-level` has no place in
+  the outline; `role="slider"` with no `aria-valuenow` is a slider at no value.
+
+  `ROLE_REQUIRES` is the "Required States and Properties" line from **WAI-ARIA 1.2**, and it is the
+  first table in this file that has to lean **short** rather than long. The others are vocabularies,
+  read to report a name that is NOT in them — a short list there reports correct markup. This one is
+  read the opposite way, so an entry that should not be here reports correct markup directly. Left
+  out on purpose: every conditional requirement (`separator` needs `aria-valuenow` only when
+  focusable, and nothing static can say whether it is) and every requirement that moved between ARIA
+  1.1 and 1.2, `option` and `spinbutton` among them. A requirement people disagree about is not one
+  to fail a build over.
+
+  Only an **explicit** role is judged. A native element's role is the host language's and the host
+  language supplies what it needs — judging those would report every correct `<h2>` there is — and
+  `STATE_FROM_THE_ELEMENT` covers the case from the other side, where `<input type="checkbox"
+role="checkbox">` carries its state natively. Nor is a fallback chain judged: `role="switch
+checkbox"` is a list of alternatives, not one claim.
+
+  The attribute counts as present when it is written at all, expression or not. Whether
+  `aria-checked={checked}` holds something the spec permits is `aria-value`'s question, asked on the
+  same element.
+
+  Zero reports across every app and package here. Both halves proved on a real component: with
+  `role="combobox"` planted beside the docs' existing `aria-expanded` there is no report, and with
+  `role="checkbox"` there is one.
+
+- d6044a4: Two rules the framework already reports at runtime, now provable before anything runs.
+
+  `row-without-a-key` — a row built from data with no `key`, from a `map` or from `list()`. From a
+  `map` there is no identity at all: rows are matched by position, so inserting anywhere but the end
+  hands every row below it the previous row's state and DOM. From a `list()` the framework infers an
+  identity from what makes a row different from its siblings, and a key you write wins over it — so a
+  key is the difference between an identity you chose and one that was inferred, and inference can
+  fail (a row whose every field is nested or shared with its siblings has nothing to be told apart
+  by). It matters most in the commonest case: data that arrives fresh, where every object is new and
+  there is no reference left to recognise.
+
+  Only the element a row-building callback RETURNS is asked for a key — in
+  `rows.map((row) => <tr><td /></tr>)` the `<tr>` is the row and the `<td>` is not. A component row is
+  asked too, unlike every other element rule, because the component is what holds the state that goes
+  to the wrong row.
+
+  `class-instead-of-classname` — `class` where Ramonda reads `className`, so the styling it names
+  never applies. It fails invisibly: the element renders, the class string is in the DOM, and the hunt
+  starts in the stylesheet, which is the one place the fault is not. Host elements only; on a
+  component `class` is a prop that component declared.
+
+  Both are warnings. `class-instead-of-classname` is quiet across this repository;
+  `row-without-a-key` reports 17 places, every one of them a `list()` relying on inferred identity.
+
+- 21ef6bf: `ramonda-check` reports a dynamic import the bundler cannot split.
+
+  A bundler splits at a dynamic import and nowhere else, and only when it can read the path at build
+  time. `import(specifier)` is therefore not a split point: the module is pulled into the caller's
+  chunk, or left out of the build entirely and looked for at run time — which works on a dev server,
+  where the source is served as it sits, and 404s in production, where nothing emitted it. Nothing
+  says so today.
+
+  It is silenced by either annotation, and both are honoured for different reasons.
+  `import(/* @vite-ignore */ name)` is the bundler's own marker: the rule's premise is that nothing
+  tells you, and at a site carrying that one the bundler told the author and the author answered.
+  `// ramonda-check-ignore why` is this package's own, and it keeps the reason visible in every run.
+
+  Measured across this repository before the rule was written: 88 dynamic imports with a literal path,
+  3 without, and all three already marked. It reports nothing here, and reports the fault the moment a
+  marker is taken off — both checked.
+
+  `AnalyzeResult.findings` gains `unsplittable-import`, and `UnsplittableImportIssue` is exported alongside it.
+  This is the first rule that reads a FILE rather than a class: a question about what a module imports
+  has no class to hang off.
+
+- 69e4133: `unknown-aria-attribute` reported correct markup, and now reports a wrong case only inside SVG.
+
+  The rule shipped saying that a wrong CASE was its interesting half — that `aria-labelledBy` "reaches
+  the DOM as an attribute called `aria-labelledby`-but-not-quite, assistive technology never looks at
+  it, and nothing anywhere says a word".
+
+  **Measured through `renderToString` rather than argued about, and it is false for an HTML element.**
+  Attributes there are written with `setAttribute`, which the HTML specification lowercases, so
+  `aria-labelledBy` arrives as `aria-labelledby` and works exactly as intended. Reporting it was
+  reporting correct code — the one kind of mistake this package treats as fatal to its own
+  usefulness, and it was in the rule's own headline.
+
+  It is true inside SVG. Those attributes go through `setAttributeNS(null, name)`, which writes the
+  name verbatim — the same render, the opposite result — so a case-only difference there really is an
+  attribute nothing reads. That is where the rule keeps it.
+
+  Everything else is unchanged. A plain typo is still reported everywhere, and so is a name wrong in
+  more than its case: `aria-labeledBy` is not `aria-labelledby` in any namespace.
+
+  `ElementContext` gains `inSvg` to tell the two apart, decided **by tag name**, because that is how
+  the framework decides it — `<circle>` is SVG wherever it is written, and a `<div>` inside a
+  `<foreignObject>` is HTML. The tag list comes from `@ramonda/dom-facts` (see the changeset beside
+  this one); written as a first guess instead, it was twenty-one tags short — every filter primitive —
+  and wrongly claimed `title`, which the framework renders as HTML.
+
+  The fixture holds both spellings of the same name, one in each namespace, so neither half can pass
+  by finding the other.
+
+- ca7c7e3: `aria-value` — an `aria-*` attribute carrying a value its specification does not permit.
+
+  The third of the ARIA tables, and the one with the most to catch. Its two siblings judge NAMES: is
+  this a real attribute, is this a real role. Neither has anything to say about `aria-hidden="yes"`,
+  because the name is perfect.
+
+  **The browser keeps it.** An attribute is a string, so a wrong value survives to the inspector
+  looking exactly as healthy as a right one. What does not happen is the meaning: the element stays in
+  the accessibility tree, an `aria-live="loud"` region announces nothing, `aria-level="two"` gives a
+  heading no level at all. Only a screen reader disagrees, and only for the people who need it.
+
+  `ARIA_VALUES` is the value type of every state and property that HAS one, written from the
+  Characteristics table in **WAI-ARIA 1.2** — booleans, the three that also take `undefined`, the two
+  tristates, the integers, the numbers, and the seven closed token lists.
+
+  The types deliberately NOT in it are the ones with nothing to judge. An id reference is any
+  non-empty name and a label is any string, so every value is well formed and a table entry would only
+  create the chance of reporting correct markup. An attribute with no entry is one no rule has an
+  opinion about.
+
+  `false` is never reported: `aria-hidden="false"` is the documented way to say an element is exposed,
+  which is not what leaving the attribute off says. Nor is an expression — `aria-hidden={hidden}` is
+  not a value this can read, and guessing is what the package refuses.
+
+  Zero reports across every app and package here. Proved not silently dead by corrupting a real
+  `aria-expanded` in the docs' own menu button and watching the CLI name it.
+
+  The token wording came from reading the printed report, not the code: the bare list said `it takes
+\`assertive\`, \`off\`, \`polite\``, and it says `one of` now.
+
+- c26b359: **Breaking:** `AnalyzeResult`'s per-rule lists are now one `findings` object keyed by rule name.
+
+  `result.arrowFields` becomes `result.findings["arrow-fields"]`, and the same for `browserUrlReads`,
+  `domWrites`, `duplicateDecorators` and `unwatchedFields`. Nothing else on the
+  result moved: `issues`, `counts`, `graph`, `unresolved`, `annotated` and the graph's own checks are
+  where they were.
+
+  Nothing is lost but the spelling. Each list is still typed as that rule's own issue — `findings` is
+  derived from the rule registry, so the key and the element type are read off the rule rather than
+  declared a second time.
+
+  The reason is what a rule used to cost. Each one meant a line in the published interface, a line in
+  the CLI's destructure, a report block written by hand, and a clause in the sentence that says
+  everything is fine — and that last one is the sharp edge: a rule added without its clause would have
+  printed "everything is fine" directly above its own report. That condition is derived now, so it
+  cannot be forgotten.
+
+  How a rule says what it found moved onto the rule as well, so `ramonda-check`'s output for a given
+  finding is unchanged. Two lines of wording did change, both deliberately: the all-clear sentence no
+  longer lists the rules by name (it grew with every one), and the duplicate-decorator advice no
+  longer carries a `[ramonda-check]` prefix that no other rule's advice had.
+
+- 31dcb8e: Four accessibility rules, reading your JSX one element at a time.
+
+  `unnamed-image` — an `img`, `area`, image `input` or empty `object` that nothing can announce.
+  `empty-heading-or-link` — a heading or a link with nothing inside it. `unnamed-frame` — an `iframe` with no
+  name. `positive-tabindex` — a `tabIndex` above zero, which does not move one element but creates a
+  second tab order running before the whole document's.
+
+  All four are warnings, and all four are quiet across this repository — measured on `apps/docs`,
+  `playground-core`, `devtools` and `core`, and checked by taking the `alt=""` off a real `<img>` and
+  watching the report appear at its line.
+
+  They are the first rules that read a JSX ELEMENT, so `ElementRule` joins `Rule` and `ModuleRule`:
+  `alt` on an `<img>` is a question about a tag, not about a class or a module, and there are dozens
+  more of them coming. One walk serves all of them — the analyzer visits each element once, builds
+  the context once, and hands the pair to every active rule.
+
+  **An element that spreads props is handed to no rule at all.** `<img {...rest} />` may carry the
+  attribute in question and nothing static can say whether it does, so the silence contract is applied
+  once for the whole family rather than remembered by each rule. `alt=""` is likewise never reported:
+  it is the documented way to mark an image decorative.
+
+  `AnalyzeResult.findings` gains `unnamed-image`, `empty-heading-or-link`, `unnamed-frame` and `positive-tabindex`,
+  with `UnnamedImageIssue`, `EmptyHeadingOrLinkIssue`, `UnnamedFrameIssue` and `PositiveTabIndexIssue` exported
+  alongside.
+
+- 4274296: Two rules over markup the HTML parser will not keep where it was written.
+
+  `tag-needs-its-parent` — a `<tr>` outside a table, an `<option>` outside a select, a `<summary>`
+  outside a details. The parser moves these, or drops them, or closes the element it was in the
+  middle of, so the tree the browser builds is not the tree in the source.
+
+  `interactive-inside-interactive` — a link inside a link, a button inside a button, a form inside a
+  form, a label inside a label. Meeting the second the parser closes the first, so the inner one
+  becomes a SIBLING of the outer and the failure is behavioural rather than visual.
+
+  JSX has no content model — it nests whatever you nest — so neither is something the compiler can
+  see. The framework watches a narrower version at runtime (`RMD010`, for a component's default host
+  in a parent that will not take it) and only once the markup renders; on a server-rendered page a
+  bad nesting also surfaces as a hydration MISMATCH, whose advice is about clocks and random numbers.
+
+  Both walk through a callback: `<tbody>{rows.map((row) => <tr />)}</tbody>` is how every table is
+  written, and a version that stopped at the arrow would be silent about tables. Both go quiet when a
+  component is in the way, because what it renders is decided inside it.
+
+  Warnings, and quiet across this repository.
+
+- 0e2ff52: Three rules over the ARIA vocabulary.
+
+  `unknown-aria-attribute` — an `aria-*` attribute the specification does not have, and it names the one that was
+  meant when that is certain. The fault worth catching is not the invented name but the CASE:
+  `aria-labelledBy` looks right, is a different attribute from `aria-labelledby`, and does nothing at
+  all. `unknown-role` — a `role` that is not one, told apart from an ABSTRACT role, which is somebody
+  reading the spec's inheritance diagram and taking a branch for a leaf. `aria-with-no-subject` — `role`
+  or `aria-*` on an element with no accessibility tree node to describe, where the attribute does not
+  do a little, it does nothing.
+
+  The vocabulary ships as data in `src/rules/aria.ts`, from WAI-ARIA 1.2 with the 1.3 role additions,
+  and _ARIA in HTML_ for the element table. The tables lean LONG on purpose: short by a name they
+  would report correct markup, which is the one kind of mistake this package treats as fatal to its
+  own usefulness.
+
+  All three are warnings and all three are quiet across this repository. Checked by changing one real
+  `aria-label` to `aria-Label` in the docs app and watching the report name it, with the fix.
+
+- dddac5f: The request is live only while you render, and now two things say so.
+
+  **The question first, because the answer is the reassuring half.** Can `requestContext()` hand one
+  visitor another visitor's data? No — and it is not the variable that saves it. The scope IS one
+  module-level value shared by every request the server is handling at once. What makes it safe is the
+  WINDOW: `renderToString` installs it, mounts synchronously, and clears it in a `finally` before its
+  first `await`. Node runs that section to completion, so no second request can be inside it.
+
+  Measured rather than argued, and now pinned by
+  `packages/core/src/__tests__/hydration/RequestConcurrency.test.tsx`: ten interleaved renders each
+  read their own user, two concurrent ones never see each other's. Delete the one line that clears the
+  scope and both requests read `["read:bob","read:bob"]` — Ada's component serving Bob's user. Three of
+  the tests fail on it. There was no test for any of this before.
+
+  **The defect that came out of it: breaking the rule was silent.** A read below the first `await`
+  throws, but the throw does not always arrive anywhere. Measured with no `try`/`catch`, which is what
+  an app actually writes: `renderToString` **resolves normally**, the page is served, `console.error`
+  is called **zero** times, and the component is quietly missing its value. The rejection goes into the
+  server's work drain and is swallowed — exactly what `RequestScope.read`'s docstring already says
+  happens in build mode, which is why `guardBuild` records IN ADDITION to throwing. Server mode had no
+  counterpart.
+
+  **`RMD053`** is that counterpart. `requireScope()` now reports before it throws, so the record
+  survives the swallowed rejection, and the throw's message says the third way to arrive: a read below
+  a yield, not only a call at module top level. Deduped on the FIELD rather than the component, and not
+  by preference — by the time it fires the render is over and `renderingOwner()` is already empty.
+  Production is unchanged: every `diagnose` call site in the package is behind `__DEV__`.
+
+  **`ramonda-check` reports the same read from the source**, as `findings["late-request-read"]`, a
+  WARNING under this repository's rule for a new rule. Zero reports across all three apps; verified not to be
+  silently dead by planting a real late read into a real component in `playground-ssr` and watching the
+  CLI name it through the repo's own source alias.
+
+  The two are not redundant and not symmetric, which is the same shape the duplicate-decorator work
+  settled. The static rule speaks before anything runs, including for a branch nobody has opened.
+  `RMD053` catches the read that left the static rule's reach — through a variable, a helper, or a
+  build with no types.
+
+  What the rule judges, each half planted and caught:
+
+  - **A late read through a same-scope local** (`const ctx = requestContext()` above the await, used
+    below) is reported. One hop in one function is a declaration, not the general dataflow this
+    analyzer refuses.
+  - **`for await`** raises the flag too. It is a `ForOfStatement` carrying an await token, so the
+    check for an `AwaitExpression` never sees it.
+  - **A read inside the await's own operand** — `await requestContext().get(key)` — is NOT late. The
+    operand is evaluated before the suspension, so the walk descends into an await before raising its
+    flag.
+  - **A nested callback starts a clean timeline.** Whether it runs before or after the enclosing yield
+    is dataflow, and guessing would report `items.map(…)` called synchronously above the await.
+  - **One mistake gets one report.** A context TAKEN below the await is the failure — that line
+    throws, so the line reading through the local never runs. Only a local taken before the yield is
+    followed, or the reader would be sent to the second of two reports, on dead code.
+  - **Identity is the import specifier, not the name.** An app is entitled to its own function called
+    `requestContext`. This is stricter than the sibling `document` rule on purpose: nobody writes
+    `const document = …` and reaches for `.body`, but a same-named local here is plausible.
+
+  Two fixture gaps were found the same way and are worth recording, because both tests passed while
+  proving nothing: the "app's own helper" case had been written as `requestContext2`, so the NAME check
+  rejected it and the identity check was never reached; and nothing covered a read inside an await's
+  operand, so reversing the walk order went unnoticed.
+
+- 798afae: The reference's rule tables are generated from the rules, and `ruleCatalogue()` is what generates
+  them.
+
+  **The fault it fixes was already there and already silent.** The check reference carried two tables
+  of rules — errors and warnings — typed by hand, and the day nine rules landed beside them the tables
+  were nine rows short. Nothing noticed, because nothing connected the two. A reference that is
+  quietly incomplete is worse than one that says so: a rule missing from the page is a rule nobody
+  knows they are being judged by.
+
+  `Report` now carries the two facts a table needs and a rule did not say out loud:
+
+  - **`reportedWhen`** — the condition, as a clause completing "reported when". Beside the rule it
+    describes, which is the only place where changing one makes the other obviously stale.
+  - **`alsoReportedAs`** — the runtime diagnostic that reports the same fault once the line runs, for
+    the six rules that have one. A code rather than a link, so nothing in the package has to know what
+    the documentation site is built with.
+
+  **`ruleCatalogue()`** is the new export: every rule as four strings, in the order their reports are
+  printed. Deliberately not the rules themselves — a rule carries functions over its own issue type,
+  which is no use to a generator and would tie anything touching it to this package's internals.
+
+  `apps/docs` builds both tables from it and the docs build fails when the committed page does not
+  match, the same shape `build-theme.mjs --check` already had. Four failure modes, each planted and
+  watched: a stale table, a missing region, a rule naming a diagnostic the reference does not
+  document, and — the one a generator usually gets wrong — the region markers themselves. They are
+  link reference definitions rather than HTML comments, because the site renders markdown with
+  `html: false`, so a comment arrives at the reader as `<!-- … -->`. Measured, not assumed.
+
+- 251f0a4: `head-tags-collide` — two entries in one `Head` that are the same tag, so only the second is
+  written.
+
+  **The rule this replaced died first, and that is the point.** The backlog carried `RMD043` — a
+  `<meta>` with nothing to identify it — as the last runtime diagnostic that looked statically
+  provable. It is not: `MetaTag` is a union requiring `name`, `property` or `httpEquiv`, so `tsc`
+  answers `TS2769` on the tag that would trip it. Probed before anything was written, which is now the
+  third time a candidate has died that way.
+
+  The probe found a real one next door. `Head` keys the tags it writes by what identifies them — a
+  `<meta>` by `name`, `property` or `http-equiv`, a `<link>` by `rel` and `href` — so that an update
+  REPLACES a tag rather than appending a second copy. Two entries with one identity are therefore one
+  tag, and the later silently wins.
+
+  Measured end to end rather than reasoned about: ten tags written, four served. `description: "The
+real one."` came back as the second description, both `robots` collapsed to `noindex`, and the
+  16×16 icon left no trace. No type error, no diagnostic, no way to see it in the page that is served.
+
+  `description` is a shorthand for the meta tag of that name and is collected **first**, so writing
+  both loses the shorthand — the line that reads like the page's own description. The report points at
+  the entry that is lost and names the line that replaces it. That was the second design: the first
+  named both entries, and printing it showed `a meta name="robots" and a meta name="robots" are both
+name="robots"` — the same fact three times, and never the two lines.
+
+  What it stays quiet about: a computed identity, a spread inside a tag, a list held in a variable,
+  an app's own `Head` of the same name, and — the one that keeps it honest — two byte-identical
+  entries, which collapse to the tag they both describe and lose nothing.
+
+  Zero reports across every app and package here. Proved not to be silently dead by planting a real
+  collision into `DocPage`, the docs' own page component, and watching the CLI name it through the
+  factory spelling.
+
+- e03a67c: Two rules that follow what a render REACHES, not what it is written to contain.
+
+  `state-written-while-rendering` — a write to `@state` or `@persist` from anything `render()` or a
+  `@compute` can reach. `clock-read-while-rendering` — `Date.now()`, `new Date()`, `Math.random()` or
+  `performance.now()` reached the same way.
+
+  The walk is the rule. A fault is almost never in the body of `render()`: it is in a helper on the
+  class, in a utility imported from another file, or in the third branch of a chain of conditionals.
+  The report names the path — `render → decorate → stampedLabel` — which is the useful half, because a
+  clock three files away is baffling on its own and obvious once the path is written down.
+
+  A nested function is walked only when it is INVOKED during the render — an argument to `list(each,
+…)` or `.map(…)`, or a function called on the spot. Anything returned, assigned or handed to an
+  attribute runs later, and its body is exactly where writing state is correct. That distinction is
+  not decoration: the first version walked into everything that was not written directly as a JSX
+  attribute, and it reported five places in this repository, every one of them `@memoizedHandler` —
+  a first-class idiom of the framework.
+
+  `new Date(value)` is not reported; parsing a timestamp is deterministic. A write to a field that is
+  not state is not reported. A `@mounted` is not reported, because a render does not reach it.
+
+  Both are warnings, and both are quiet across this repository.
+
+### Patch Changes
+
+- 99a5627: `@ramonda/dom-facts` — one list of SVG tags instead of two.
+
+  `@ramonda/core` decides how to build an element; `@ramonda/check` reads source and says what that
+  decision will be. Both need the same list of tags, and both had one. Written into the checker as a
+  first guess, its copy was **twenty-one tags short** — every filter primitive — and wrongly claimed
+  `title`, which the framework renders as HTML. A test that read core's source caught it, but a test
+  pinning two lists together is a confession that there are two lists.
+
+  So there is one, in a **private** package that publishes nothing and is a devDependency of both.
+  Both consumers bundle their own code and tsup inlines anything that is not a declared `dependency`,
+  so nothing about either published package changes:
+
+  - `@ramonda/core` ships the identical literal — 636 bytes, byte-for-byte — in the same chunk. Total
+    production output moved by **six bytes** raw and **one byte less** gzipped, all of it the
+    minifier renaming a variable because module order shifted. No import and no type in `dist`
+    mentions the private package; only the dev bundle's path comment does, which is how esbuild marks
+    an inlined module.
+  - `@ramonda/check` still publishes with **no runtime dependency at all**, which is the property that
+    lets it run first in a build. The list is inlined into its shared chunk.
+
+  `svgElements` is still exported from core's `constants.ts`, as a re-export, so nothing inside core
+  changed an import and `SvgNamespace.test.tsx` still pins the list to the SVG types in `global.ts`.
+
+  The package has a rule about what may go in it, written at the top: a fact about the DOM or HTML
+  that **both** packages need, and nothing else. A shared package with no such rule becomes the place
+  things go to avoid a decision.
+
+- cafc061: Internal: the five per-class checks now live behind a rule interface, one file each, and the two
+  guards that decide whether a rule is honest are declared rather than written by hand.
+
+  `needs` names a package the project must import before a rule means anything — what `usesRouter` was
+  for `browser-url`, now a set read once for every rule that will want one. `exempt` names an id prefix
+  a rule never fires inside, because a rule about reaching past an abstraction is always wrong about
+  the code that implements it.
+
+  No behaviour change: `analyzeProject` and `AnalyzeResult` are unchanged, every issue type is
+  re-exported from where it was, and the graph a real project produces is byte-identical, hash
+  included.
+
+  The refactor also found that `exempt` had been unreachable since it was written — `needs` fires
+  first, and `@ramonda/router` does not import itself — so it now has a fixture that reaches it and a
+  test that fails without it.
+
+- b6bb397: `@ramonda/check` guards its own public surface, and three types that were never exported now are.
+
+  This package had no `PublicSurface.test.ts` and no line in the docs' `check-api-coverage.mjs`, so
+  neither of the two tripwires every other package has was watching it. In that time it went from five
+  rules to twenty-seven, each one adding a published issue type — and **`AriaValueIssue`,
+  `RoleMissingRequiredAriaIssue` and `RoleTakesNoNameIssue` were never exported at all**. They were
+  reachable through `findings` and unnameable in an annotation, which makes the documented way to use
+  this package — write a script against `analyzeProject` — impossible for three of its rules.
+
+  Nothing noticed, because nothing was looking. That is the entire argument for both files.
+
+  The surface test asserts what the entry exports and what it publishes as types, and adds a third
+  check the others do not have: **every rule in the registry has an exported issue type**, derived
+  from the rule's own id rather than from a second list. A rule added tomorrow brings its type with
+  it, and the four spellings where the type is not the id in PascalCase are listed beside their
+  reason.
+
+  It also asserts what is NOT reachable. `RULES`, the per-family registries and the `apply*` functions
+  stay internal: a rule carries functions over its own issue type and a `read` that takes a compiler
+  node, so publishing one would make this package's internals somebody's dependency and every change
+  to a rule's shape a breaking change. `ruleCatalogue()` is what a caller actually wants from them.
+
+  `/reference/api` gains a `@ramonda/check` section, and the docs build now fails when an export is
+  missing from it. Proved by deleting the section and watching the build name what went.
+
 ## 0.8.0
 
 ### Minor Changes
