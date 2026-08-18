@@ -231,3 +231,59 @@ describe("a role missing what the specification requires of it", () => {
     expect(first.line).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The slice of the role-by-property matrix worth having. A name is not a tooltip: it is the
+ * accessible NAME of a thing in the accessibility tree, and the specification says which roles may
+ * have one. A `<div>` is `generic` — the role for an element with no meaning — so there is nothing
+ * for a name to name, and the attribute does nothing at all.
+ */
+describe("a name on a role that takes none", () => {
+  const found = () => run().findings["role-takes-no-name"];
+
+  test("every name that does nothing is reported, with the role that forbids it", () => {
+    expect(found().map((issue) => `${issue.tag}/${issue.role}: ${issue.attribute}`)).toEqual([
+      "div/generic: aria-label",
+      "span/generic: aria-labelledby",
+      "div/presentation: aria-label",
+      "div/none: aria-label",
+      "p/paragraph: aria-label",
+      "div/generic: aria-label",
+      "div/generic: aria-labelledby",
+    ]);
+  });
+
+  /**
+   * A written role wins over the tag's own, which is the whole reason this is safe to report.
+   * `<div role="region" aria-label="Filters">` is correct and extremely common.
+   */
+  test("a written role that takes a name silences the tag's own", () => {
+    expect(found().some((issue) => issue.role === "region")).toBe(false);
+  });
+
+  /**
+   * `<section>` maps to `region` WHEN IT HAS A NAME, so naming it is not merely allowed — it is the
+   * documented way to write one. A table that listed `section` would report the correct form.
+   */
+  test("section, nav and main are named exactly this way and are never reported", () => {
+    expect(found().some((issue) => ["section", "nav", "main", "button"].includes(issue.tag))).toBe(false);
+  });
+
+  test("a role this cannot read may be one that takes a name", () => {
+    expect(found().every((issue) => issue.role !== "")).toBe(true);
+  });
+
+  /**
+   * `aria-labelledBy` reaches the DOM as a different attribute from `aria-labelledby`, so it is not
+   * a name at all — the vocabulary rule has that one, and reporting it here would say the name does
+   * nothing for the wrong reason. The wrong-case span lives in `aria.tsx`.
+   */
+  test("an attribute whose case is wrong is not a name", () => {
+    expect(found().some((issue) => issue.file.endsWith("aria.tsx"))).toBe(false);
+  });
+
+  test("it says whether the role was written or came from the tag", () => {
+    expect(found().filter((issue) => issue.from === "role")).toHaveLength(2);
+    expect(found().filter((issue) => issue.from === "tag")).toHaveLength(5);
+  });
+});

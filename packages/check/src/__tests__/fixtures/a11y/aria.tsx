@@ -17,8 +17,9 @@ class Vocabulary extends Component {
         <span aria-requred="true" />
         {/* REPORTED — not in the vocabulary at all, and near nothing. */}
         <span aria-sparkle="yes" />
-        {/* Not reported. */}
-        <span aria-labelledby="title" aria-hidden="true" />
+        {/* Not reported. The role is written because a `<span>` is `generic`, which takes no
+            name — that is a different rule, and this file is about the names of attributes. */}
+        <span role="note" aria-labelledby="title" aria-hidden="true" />
 
         {/* REPORTED — not a role. */}
         <div role="tabpane" />

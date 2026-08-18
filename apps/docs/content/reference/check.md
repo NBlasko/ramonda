@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 23 of them.
+**Warnings.** These print and the run still passes. 24 of them.
 
 | rule | reported when |
 |---|---|
@@ -155,6 +155,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |
 | `unknown-role` | a `role` names nothing, or names an abstract role that markup may not use |
 | `role-missing-required-aria` | an explicit `role` is written without the `aria-*` its specification requires |
+| `role-takes-no-name` | an `aria-label` or `aria-labelledby` is written on a role the specification forbids naming |
 | `aria-value` | an `aria-*` attribute carries a literal value its specification does not permit |
 | `aria-with-no-subject` | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
@@ -348,7 +349,7 @@ nothing to announce them by; `empty-heading-or-link` is a row in the screen read
 headings, or of links, with no label; `positive-tabindex` does not move one element, it reorders
 the whole document.
 
-Three more read the ARIA vocabulary itself, and they fail in a way worth naming: **the browser keeps
+Four more read the ARIA vocabulary itself, and they fail in a way worth naming: **the browser keeps
 whatever you write.** An attribute is a string, so a misspelled name, an invented role and a value
 outside the specification all survive to the inspector looking perfectly healthy — and none of them
 does anything. `unknown-aria-attribute` catches the name (a wrong CASE is the commonest, since JSX
@@ -359,7 +360,15 @@ accessibility tree.
 `false` is never reported. `aria-hidden="false"` says the element is exposed, which is not what
 leaving the attribute off says.
 
-A fourth reads the other direction — `role-missing-required-aria`, for the roles that mean nothing
+`role-takes-no-name` is the one most likely to surprise you. An `aria-label` is the accessible
+**name** of a thing in the accessibility tree, and the specification says which roles may have one —
+a `<div>` is `generic`, the role for an element carrying no meaning, so there is nothing for a name
+to name and the attribute does nothing at all. `role="presentation"` is stronger still: it removes
+the element from the tree. A written `role` always wins, so `<div role="region" aria-label="Filters">`
+is correct, and so is `<section aria-label="Filters">` — a `section` becomes a `region` precisely
+*because* it has a name.
+
+A fifth reads the other direction — `role-missing-required-aria`, for the roles that mean nothing
 on their own. A `div` has no checked-ness, no level and no value, so `role="checkbox"` without
 `aria-checked` announces a checkbox in a state nothing can report. The likeliest fix is not to add
 the attribute: a native element usually already **is** the thing the role is claiming, and brings

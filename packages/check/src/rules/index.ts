@@ -12,6 +12,7 @@ import { unknownAriaAttribute } from "./unknown-aria-attribute";
 import { unknownRole } from "./unknown-role";
 import { ariaValue } from "./aria-value";
 import { roleMissingRequiredAria } from "./role-missing-required-aria";
+import { roleTakesNoName } from "./role-takes-no-name";
 import { ariaWithNoSubject } from "./aria-with-no-subject";
 import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
@@ -58,6 +59,8 @@ export {
   ABSTRACT_ROLES,
   ARIA_ATTRIBUTES,
   ARIA_VALUES,
+  NAME_PROHIBITED,
+  NAME_PROHIBITED_TAGS,
   NO_ARIA,
   ROLE_REQUIRES,
   ROLES,
@@ -66,6 +69,7 @@ export {
 export type { AriaValue, AriaValueKind } from "./aria";
 export { ariaValue, type AriaValueIssue } from "./aria-value";
 export { roleMissingRequiredAria, type RoleMissingRequiredAriaIssue } from "./role-missing-required-aria";
+export { roleTakesNoName, type RoleTakesNoNameIssue } from "./role-takes-no-name";
 export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
@@ -123,6 +127,7 @@ export const ELEMENT_RULES = [
   unknownAriaAttribute,
   unknownRole,
   roleMissingRequiredAria,
+  roleTakesNoName,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

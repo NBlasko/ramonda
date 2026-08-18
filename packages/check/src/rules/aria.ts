@@ -349,3 +349,75 @@ export const ROLE_REQUIRES: ReadonlyMap<string, readonly string[]> = new Map([
  * not this rule's business.
  */
 export const STATE_FROM_THE_ELEMENT: ReadonlySet<string> = new Set(["input", "meter", "progress", "select", "option"]);
+
+/**
+ * Roles the specification forbids giving a name to.
+ *
+ * Source: **WAI-ARIA 1.2**, where each role's characteristics table says whether *Name From
+ * author* is permitted, and these say **prohibited**.
+ *
+ * ## Why this slice of the role matrix and not the whole thing
+ *
+ * The full matrix — which `aria-*` each of ninety roles supports — is the most dangerous table this
+ * package could carry. It is read to report an attribute that is NOT supported, so every entry
+ * missing from it reports correct markup, and there are thousands of cells. Naming is the one part
+ * of it that is unambiguous, short, and worth having: a name on one of these does not do a little
+ * less, it does nothing at all.
+ *
+ * `presentation` and `none` are here for a different reason from the rest — they remove the element
+ * from the accessibility tree entirely, so there is nothing left to be named.
+ */
+export const NAME_PROHIBITED: ReadonlySet<string> = new Set([
+  "caption",
+  "code",
+  "deletion",
+  "emphasis",
+  "generic",
+  "insertion",
+  "mark",
+  "none",
+  "paragraph",
+  "presentation",
+  "strong",
+  "subscript",
+  "superscript",
+  "time",
+]);
+
+/**
+ * Elements whose own role forbids a name, and what that role is.
+ *
+ * From *ARIA in HTML*, and kept to the ones whose mapping is unconditional. `section` is the
+ * counter-example this exists to avoid: it maps to `region` **when it has an accessible name**, so
+ * `<section aria-label="Filters">` is not merely allowed, it is the documented way to write a named
+ * region. Anything whose role depends on its attributes or its ancestors is left out for the same
+ * reason, and so is `<s>`, whose mapping has moved.
+ *
+ * The role is carried rather than derived because the report needs it: telling a reader that "a
+ * `<div>` is `div`, which takes no name" explains nothing, and `generic` is the word that does.
+ */
+export const NAME_PROHIBITED_TAGS: ReadonlyMap<string, string> = new Map([
+  ["b", "generic"],
+  ["bdi", "generic"],
+  ["bdo", "generic"],
+  ["data", "generic"],
+  ["div", "generic"],
+  ["i", "generic"],
+  ["pre", "generic"],
+  ["q", "generic"],
+  ["small", "generic"],
+  ["span", "generic"],
+  ["u", "generic"],
+
+  ["caption", "caption"],
+  ["code", "code"],
+  ["del", "deletion"],
+  ["em", "emphasis"],
+  ["ins", "insertion"],
+  ["mark", "mark"],
+  ["p", "paragraph"],
+  ["strong", "strong"],
+  ["sub", "subscript"],
+  ["sup", "superscript"],
+  ["time", "time"],
+]);

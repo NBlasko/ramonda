@@ -40,7 +40,7 @@ export class Values extends Component {
         {/* Not reported: nothing here can read what the expression holds. */}
         <span aria-hidden={this.hidden} />
         {/* Not reported: a label takes any string, so there is no value table for it. */}
-        <span aria-label="Anything at all" aria-labelledby="title" />
+        <span role="note" aria-label="Anything at all" aria-labelledby="title" />
         {/* Not reported: a component's prop is not markup yet. */}
         <Panel aria-hidden="yes" />
       </div>
