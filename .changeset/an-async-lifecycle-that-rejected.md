@@ -24,9 +24,11 @@ replacing what the reader is using with a fallback then is the worse outcome. Wh
 silence.
 
 - **`RMD059`** reports it at runtime, naming the component, the member and the phase. The handler
-  is attached to a separate branch and the original promise is returned untouched, so the server's
-  work drain sees exactly what it saw before and nothing is swallowed — the rejection is still
-  unhandled, which is honest, and now it arrives with an explanation.
+  is **development-only** and the original promise is returned untouched, so the server's work drain
+  sees exactly what it saw before. In development the report replaces the raw unhandled rejection
+  and carries more than it did: the component, the member, the lifecycle, the fix text, and the
+  error object itself — `diagnose` logs `data` raw, so the stack is one expand away. A production
+  build attaches nothing at all and the rejection surfaces exactly as it always has.
 - **`unguarded-async-lifecycle`** reports it before it ships: an `async` lifecycle that awaits with
   no `try` and no `.catch` anywhere in its body. Zero reports across every app and package here.
 

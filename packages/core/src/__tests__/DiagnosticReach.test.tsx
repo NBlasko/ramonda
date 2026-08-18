@@ -38,12 +38,15 @@ import type { ComponentChild, VNode } from "../types/vdom";
  */
 
 let records: RamondaDiagnostic[] = [];
+/** The console side of `diagnose`, which is where the raw `data` — and so the stack — arrives. */
+let logged: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   records = [];
   resetDiagnostics();
-  vi.spyOn(console, "log").mockImplementation(() => {});
+  logged = vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
 });
 
@@ -336,6 +339,58 @@ describe("the codes that no test reached", () => {
     serializeComponentToJSON((dom.container.firstElementChild as { _componentInstance?: object })._componentInstance!);
 
     expect(records.some((r) => r.code === "RMD033" && (r.data as { kind?: string })?.kind === "Date")).toBe(true);
+    dom.unmount();
+  });
+
+  /**
+   * The report must not cost the app the signal it already had — and the first version did.
+   *
+   * Attaching `.then(undefined, handler)` marks a promise as HANDLED, which suppresses the
+   * runtime's own `unhandledRejection`. That was guarded by `__DEV__` only around the `diagnose`
+   * call, so a PRODUCTION build attached a handler that reported nothing and deleted the evidence
+   * in exchange — strictly worse than the silence the whole thing was written to fix. Measured, not
+   * reasoned about.
+   *
+   * Two properties are pinned here. The error travels with the report, because `diagnose` logs
+   * `data` raw and that is where the stack the raw rejection used to print now lives; and the
+   * report names the fault, which the raw rejection never could.
+   */
+  test("RMD059 — the error itself travels with the report", async () => {
+    @Host("div")
+    class Detailed extends Component {
+      @mounted async load() {
+        throw new Error("the stack must survive");
+      }
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    const dom = await getDOM(<Detailed />);
+    await dom.settle();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const record = of("RMD059");
+    expect(record).toBeDefined();
+    // Named, which the unhandled rejection could not do.
+    expect(record?.data).toMatchObject({ component: "Detailed", member: "load", phase: "mounted" });
+
+    /**
+     * The RECORD carries no error, and that is right: `reportable` drops every object value
+     * because a record may be shipped somewhere and the framework cannot know what is in an app's
+     * error. The CONSOLE gets the raw `data`, which is where the stack lives.
+     */
+    expect((record?.data as { error?: unknown })?.error).toBeUndefined();
+
+    const calls = logged.mock.calls as unknown as unknown[][];
+    const call = calls.find((args) => args.some((argument) => String(argument).includes("RMD059")));
+    expect(call).toBeDefined();
+    const payload = call?.find(
+      (argument) => argument !== null && typeof argument === "object" && "error" in argument,
+    ) as { error?: unknown } | undefined;
+    const carried = payload?.error;
+    expect(carried).toBeInstanceOf(Error);
+    expect((carried as Error).message).toContain("the stack must survive");
     dom.unmount();
   });
 });
