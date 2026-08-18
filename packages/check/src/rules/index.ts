@@ -150,6 +150,46 @@ export function failingRules(findings: Findings): AnyRule[] {
   return RULES.filter((rule) => rule.report.severity === "error" && findings[rule.id].length > 0);
 }
 
+/**
+ * One rule, as something that is not this package needs to describe it.
+ *
+ * The documentation site is the consumer this exists for: its reference page used to carry two
+ * tables of these typed by hand, and they went stale the day new rules landed beside them. A
+ * summary is now READ from the rules, so the page cannot list a rule that does not exist or miss
+ * one that does.
+ *
+ * Deliberately not the rule itself. A rule carries functions over its own issue type, which is of
+ * no use to a generator and would tie anything that touched it to this package's internals; this
+ * is four strings.
+ */
+export interface RuleSummary {
+  /** The id, which is also the key in `findings`. */
+  id: string;
+  /** `error` fails a run; `warn` prints and lets it through. */
+  severity: "warn" | "error";
+  /** The condition, as a clause completing "reported when". */
+  reportedWhen: string;
+  /** The runtime diagnostic reporting the same fault, for the rules that have one. */
+  alsoReportedAs?: string;
+}
+
+/**
+ * Every rule this package runs, in the order their reports are printed.
+ *
+ * Order is part of the answer rather than incidental: it is the order a reader meets the sections
+ * in, so a generated table that sorted them would disagree with the command.
+ */
+export function ruleCatalogue(): RuleSummary[] {
+  return RULES.map((rule) => ({
+    id: rule.id,
+    severity: rule.report.severity,
+    reportedWhen: rule.report.reportedWhen,
+    ...("alsoReportedAs" in rule.report && rule.report.alsoReportedAs !== undefined
+      ? { alsoReportedAs: rule.report.alsoReportedAs as string }
+      : {}),
+  }));
+}
+
 /** An empty finding list per rule, for the analyzer to fill. */
 export function emptyFindings(): Findings {
   // `fromEntries` answers `{ [k: string]: never[] }` — it cannot know the keys are exactly the ids,

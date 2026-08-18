@@ -70,6 +70,7 @@ export const unknownAriaAttribute = {
 
   report: {
     severity: "warn",
+    reportedWhen: "an `aria-*` attribute is not a name the ARIA specification has",
     heading: (found) => `${found.length} \`aria-*\` attribute(s) that do not exist:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

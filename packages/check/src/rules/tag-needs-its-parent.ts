@@ -40,6 +40,8 @@ export const tagNeedsItsParent = {
 
   report: {
     severity: "warn",
+    reportedWhen:
+      "a tag is written outside the parent it requires — `<tr>` with no table above it, " + "`<option>` with no select",
     heading: (found) => `${found.length} tag(s) written outside the parent they need:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

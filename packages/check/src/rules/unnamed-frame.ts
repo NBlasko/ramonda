@@ -25,6 +25,7 @@ export const unnamedFrame = {
 
   report: {
     severity: "warn",
+    reportedWhen: "an `iframe` has no `title`",
     heading: (found) => `${found.length} frame(s) with no name:`,
     lines: (issue) => [`  ${issue.file}:${issue.line}:${issue.column}`, `    <iframe> has no \`title\`.`],
     advice:

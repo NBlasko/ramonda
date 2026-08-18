@@ -63,6 +63,8 @@ export const clockReadWhileRendering = {
 
   report: {
     severity: "warn",
+    reportedWhen: "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path",
+    alsoReportedAs: "RMD021",
     heading: (found) => `${found.length} clock or random read(s) reached from a render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

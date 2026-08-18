@@ -38,6 +38,9 @@ export const arrowFields = {
 
   report: {
     severity: "error",
+    reportedWhen:
+      "a class field holds a function literal, so every instance builds a fresh one and props " +
+      "comparison can never match",
     heading: (found) => `${found.length} class field(s) holding a function literal:`,
     lines: (field) => [
       `  ${field.file}:${field.line}:${field.column}`,

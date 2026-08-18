@@ -51,6 +51,32 @@ export interface Report<Issue> {
    */
   severity: "warn" | "error";
 
+  /**
+   * The one-line condition the reference prints, in the rule's own words.
+   *
+   * Here rather than in the documentation, and that is the whole point of the field. The reference
+   * page had two tables of these, typed by hand, and they were nine rows stale the day the rules
+   * they describe landed beside them — because nothing connected the two. Now the table is
+   * GENERATED from this, so a rule cannot be added without its row and a row cannot describe a rule
+   * that no longer works that way.
+   *
+   * A clause, not a sentence: it is printed after the rule's id in a "reported when" column, so it
+   * reads as the completion of that phrase. Plain text — the diagnostic link is {@link
+   * alsoReportedAs}, so nothing here has to know what the documentation site is built with.
+   */
+  reportedWhen: string;
+
+  /**
+   * The runtime diagnostic that reports the same fault once the line actually runs.
+   *
+   * Several rules have one, and the pair is deliberate rather than redundant: the rule speaks
+   * before anything runs, including for a branch nobody has opened, and the diagnostic catches what
+   * left the rule's reach. Naming the code here lets the reference link the two without a second
+   * list to keep in step — and lets the generator refuse a code the diagnostics page does not
+   * document.
+   */
+  alsoReportedAs?: string;
+
   /** The line that opens the section, given everything this rule found. */
   heading(found: readonly Issue[]): string;
 

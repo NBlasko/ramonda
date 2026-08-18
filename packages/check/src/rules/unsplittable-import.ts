@@ -55,6 +55,7 @@ export const unsplittableImport = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a dynamic import's path is not a literal, so no bundler can emit a chunk for it",
     heading: (found) => `${found.length} dynamic import(s) the bundler cannot split:`,
     lines: (site) => [
       `  ${site.file}:${site.line}:${site.column}`,

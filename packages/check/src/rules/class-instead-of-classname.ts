@@ -30,6 +30,8 @@ export const classInsteadOfClassName = {
 
   report: {
     severity: "warn",
+    reportedWhen: "an element carries `class` where `className` was meant, so it styles nothing",
+    alsoReportedAs: "RMD039",
     heading: (found) => `${found.length} element(s) with \`class\` where \`className\` was meant:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

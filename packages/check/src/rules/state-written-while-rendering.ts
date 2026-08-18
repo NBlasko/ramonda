@@ -60,6 +60,10 @@ export const stateWrittenWhileRendering = {
 
   report: {
     severity: "warn",
+    reportedWhen:
+      "a state write is reached from `render()` or a `@compute` — directly, through a " +
+      "helper it calls, or three files away",
+    alsoReportedAs: "RMD001",
     heading: (found) => `${found.length} state write(s) reached from a render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

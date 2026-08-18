@@ -54,6 +54,7 @@ export const browserUrl = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a component reads `window.location` in a project whose router already holds the answer",
     // Components, not reads — four reads in one class is one component with a habit, and saying
     // "4 component(s)" of a file that has one is a count nobody can reconcile with what follows.
     heading: (found) => {

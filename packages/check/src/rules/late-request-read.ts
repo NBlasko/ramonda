@@ -117,6 +117,8 @@ export const lateRequestRead = {
 
   report: {
     severity: "warn",
+    reportedWhen: "`requestContext()` is read below an `await`, after the request it names is gone",
+    alsoReportedAs: "RMD053",
     // Components, not reads — the same count the sibling rules print, for the same reason: four
     // late reads in one class is one component with a habit.
     heading: (found) => {
