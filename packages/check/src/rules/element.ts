@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { SVG_ELEMENTS } from "./html";
 import type { ElementContext, JsxElementLike } from "./rule";
 
 /**
@@ -43,8 +44,13 @@ export function contextFor(element: JsxElementLike): ElementContext {
     byName.set(attribute.name.getText().toLowerCase(), attribute);
   }
 
+  const tag = tagOf(element);
+
   return {
-    tag: tagOf(element),
+    tag,
+    // The tag as WRITTEN decides this, not the lowercased one: SVG tag names are case-sensitive,
+    // and `<clipPath>` is the SVG element while `<clippath>` is an unknown HTML one.
+    inSvg: SVG_ELEMENTS.has(openingOf(element).tagName.getText()),
     spreads,
     children: ts.isJsxElement(element) ? element.children : [],
     has: (name) => byName.has(name.toLowerCase()),

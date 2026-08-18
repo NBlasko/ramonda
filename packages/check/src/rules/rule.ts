@@ -259,6 +259,25 @@ export interface ElementContext {
 
   /** The element's children, for the rules about what is INSIDE a tag rather than on it. */
   children: readonly ts.JsxChild[];
+
+  /**
+   * Whether this element goes into the SVG namespace, which decides whether an attribute NAME
+   * survives as written.
+   *
+   * An HTML element is given its attributes through `setAttribute`, which the HTML specification
+   * lowercases — so `aria-labelledBy` arrives as `aria-labelledby` and works. An SVG element is
+   * given them through `setAttributeNS(null, name)`, which writes the name verbatim, so the same
+   * spelling is a different attribute that nothing reads. Measured through `renderToString`, not
+   * assumed: the two halves came out opposite, and a rule that believed the wrong one reported
+   * correct markup.
+   *
+   * On the context rather than in each rule because two already need it and a third will: it is a
+   * fact about the element, and working it out per rule is how the two would disagree.
+   *
+   * By TAG NAME, because that is how the framework decides it — `<circle>` is SVG wherever it is
+   * written, and a `<div>` inside a `<foreignObject>` is HTML.
+   */
+  inSvg: boolean;
 }
 
 export interface ModuleContext {

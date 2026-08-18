@@ -101,6 +101,24 @@ describe("the ARIA vocabulary", () => {
     expect(found.map((issue) => issue.meant)).toEqual(["aria-labelledby", "aria-required", undefined]);
   });
 
+  /**
+   * A wrong CASE is a fault only inside SVG, and that was measured rather than argued.
+   *
+   * This rule shipped saying the opposite — that `aria-labelledBy` reaches the DOM as a different
+   * attribute. Rendered through `renderToString`, an HTML element's attributes go through
+   * `setAttribute`, which the specification lowercases, so it arrives spelled correctly and works;
+   * an SVG element's go through `setAttributeNS(null, name)`, which does not. Reporting the HTML
+   * one was reporting correct markup.
+   *
+   * The fixture holds both spellings of the same name, one in each namespace, so this cannot pass
+   * by finding the wrong one.
+   */
+  test("a wrong case is reported in SVG and nowhere else", () => {
+    const cased = run().findings["unknown-aria-attribute"].filter((issue) => issue.attribute === "aria-labelledBy");
+    expect(cased).toHaveLength(1);
+    expect(cased[0].line).toBeGreaterThan(20);
+  });
+
   test("an unknown role and an abstract one are told apart", () => {
     const found = run().findings["unknown-role"];
     expect(found.map((issue) => `${issue.role}:${issue.kind}`)).toEqual(["tabpane:unknown", "widget:abstract"]);

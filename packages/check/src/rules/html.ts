@@ -92,3 +92,84 @@ export function enclosingTag(element: JsxElementLike): string | undefined {
   const enclosing = enclosingElement(element);
   return enclosing === undefined ? undefined : tagOf(enclosing);
 }
+
+/**
+ * The tags the framework renders into the SVG namespace.
+ *
+ * **A copy, and deliberately one.** `@ramonda/check` depends on nothing but the compiler — not on
+ * `@ramonda/core` — because a checker that dragged the framework in could not be run first in a
+ * build. So the list is duplicated, and `SvgList.test.ts` pins it to `svgElements` in
+ * `packages/core/src/helpers/constants.ts` by reading that file, in both directions. Two lists that
+ * have to agree is exactly the shape this package exists to complain about; the test is what makes
+ * it honest rather than hopeful.
+ *
+ * ## Why any rule cares
+ *
+ * It decides whether an attribute NAME survives as written. An HTML element is given its attributes
+ * through `setAttribute`, which the HTML specification lowercases — so `aria-labelledBy` arrives as
+ * `aria-labelledby` and works. An SVG element is given them through `setAttributeNS(null, name)`,
+ * which writes the name verbatim, so the same spelling is a different attribute that nothing reads.
+ *
+ * Measured through `renderToString` rather than assumed, and the two halves came out opposite.
+ *
+ * The framework decides this by TAG NAME, not by ancestry, so this does too — `<circle>` is SVG
+ * wherever it is written, and a `<div>` inside a `<foreignObject>` is HTML because `div` is not in
+ * this list.
+ */
+export const SVG_ELEMENTS: ReadonlySet<string> = new Set([
+  "svg",
+  "circle",
+  "rect",
+  "path",
+  "g",
+  "line",
+  "polyline",
+  "polygon",
+  "ellipse",
+  "image",
+  "text",
+  "tspan",
+  "textPath",
+  "foreignObject",
+  "switch",
+  "use",
+  "defs",
+  "desc",
+  "metadata",
+  "mpath",
+  "linearGradient",
+  "radialGradient",
+  "stop",
+  "pattern",
+  "mask",
+  "clipPath",
+  "symbol",
+  "marker",
+  "view",
+  "filter",
+  "feBlend",
+  "feColorMatrix",
+  "feComponentTransfer",
+  "feComposite",
+  "feConvolveMatrix",
+  "feDiffuseLighting",
+  "feDisplacementMap",
+  "feDistantLight",
+  "feDropShadow",
+  "feFlood",
+  "feFuncA",
+  "feFuncB",
+  "feFuncG",
+  "feFuncR",
+  "feGaussianBlur",
+  "feImage",
+  "feMerge",
+  "feMergeNode",
+  "feMorphology",
+  "feOffset",
+  "fePointLight",
+  "feSpecularLighting",
+  "feSpotLight",
+  "feTile",
+  "feTurbulence",
+]);

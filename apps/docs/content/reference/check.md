@@ -352,10 +352,15 @@ the whole document.
 Four more read the ARIA vocabulary itself, and they fail in a way worth naming: **the browser keeps
 whatever you write.** An attribute is a string, so a misspelled name, an invented role and a value
 outside the specification all survive to the inspector looking perfectly healthy — and none of them
-does anything. `unknown-aria-attribute` catches the name (a wrong CASE is the commonest, since JSX
-preserves what you type while HTML attributes are lowercase), `unknown-role` catches the role, and
+does anything. `unknown-aria-attribute` catches the name, `unknown-role` catches the role, and
 `aria-value` catches the value: `aria-hidden="yes"` is not `true`, so the element stays in the
 accessibility tree.
+
+A difference of **case alone** is reported only inside SVG, and the reason is worth knowing.
+Attributes on an HTML element are written with `setAttribute`, which lowercases — so
+`aria-labelledBy` arrives as `aria-labelledby` and works. Attributes on an SVG element go through
+`setAttributeNS`, which writes the name exactly as given, so there the same spelling is an
+attribute nothing reads.
 
 `false` is never reported. `aria-hidden="false"` says the element is exposed, which is not what
 leaving the attribute off says.
