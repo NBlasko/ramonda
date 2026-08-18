@@ -32,6 +32,7 @@ const EXPECTED_TYPES = [
   "ClassInsteadOfClassNameIssue",
   "ClockReadWhileRenderingIssue",
   "ComponentGraph",
+  "ContextConsumedAboveItsProviderIssue",
   "ContextIssue",
   "DomWriteIssue",
   "DuplicateDecoratorIssue",

@@ -6,6 +6,7 @@ import { Hook } from "./Hook";
 import type { State } from "../reactivity/State";
 import type { BaseHook } from "../types/HookTypes";
 import { diagnose } from "../debug/diagnostics";
+import { hasContextConsumer, recordContextConsumer, reportConsumedAboveProvider } from "../debug/contextPairing";
 
 /**
  * Internal payload published on a component's runtime context. It hands out one
@@ -163,6 +164,14 @@ export function createContext<T extends object>(
             { keys: contextKeys.join(", ") },
           );
         }
+
+        // RMD057, the other direction: a consumer of this context was constructed on this component
+        // BEFORE the provider, so it resolved the channel from above and this publish will never
+        // reach it. See `debug/contextPairing.ts` — the report is the same one either way round.
+        if (hasContextConsumer(owner, contextId)) {
+          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+          reportConsumedAboveProvider(contextId, holder, Provider.name, Consumer.name);
+        }
       }
 
       owner.context[contextId] = channel;
@@ -216,6 +225,14 @@ export function createContext<T extends object>(
             defaultValue,
           );
         }
+
+        /**
+         * Recorded so the PROVIDER can report RMD057 if one is published on this component after
+         * this line — see `debug/contextPairing.ts`. Nothing is reported from here: a consumer that
+         * finds this component's own publish already in place is the provide-then-use arrangement,
+         * which is what a component mounting a client and then querying with it does.
+         */
+        recordContextConsumer(owner, contextId);
       }
 
       for (const key of contextKeys) {

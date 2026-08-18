@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 24 of them.
+**Warnings.** These print and the run still passes. 25 of them.
 
 | rule | reported when |
 |---|---|
@@ -145,6 +145,7 @@ rules**, so a rule cannot be added without appearing here.
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
+| `context-consumed-above-its-provider` | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics) |
 | `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics) |

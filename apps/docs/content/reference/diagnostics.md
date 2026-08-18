@@ -1581,6 +1581,60 @@ and leaves the rest of the tree reading `"slate"`. That is the ordinary arrangem
 reported for it — the report asks whether this component *already* published the key itself, which a
 Provider above it never makes true.
 
+## RMD057 — A context consumed above the provider on the same component
+
+```tsx
+const [ThemeProvider, ThemeConsumer] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Section extends Component {
+  // ✗ resolves before the provider on the line below it exists
+  outer = this.use(ThemeConsumer);
+  own = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <Card />;
+  }
+}
+```
+
+A consumer resolves its channel **once**, when it is constructed, and hooks are constructed in
+field-declaration order. So this one looked before its own component had published anything, and reads
+the nearest provider on an **ancestor** — or the context's default, if there is none. Swapping the two
+field declarations changes what the page shows.
+
+If this component's own value was meant, read it through the **provider** hook. A Provider reads as
+well as provides, so `this.own.color` always means this component's value and does not rest on which
+line came first:
+
+```tsx
+const [ThemeProvider] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Section extends Component {
+  own = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <p>{this.own.color}</p>;
+  }
+}
+```
+
+If the value from **above** was meant — reading the outer theme to derive an inner one — then the
+example at the top is that arrangement working, and the order it needs is the order it has. Nothing in
+the source says which of the two it is, which is why this is a **warning** rather than an error and why
+the panel does not raise its alert for it.
+
+**The other order is not reported.** `this.use(QueryClientProvider)` followed by
+`this.use(Query, …)` — mount a client, then query on it — is the arrangement `@ramonda/query` and
+`@ramonda/router` are built around, and reporting it fired fourteen times across query's own tests.
+
+`@ramonda/check`'s `context-consumed-above-its-provider` reports the same thing before anything runs,
+including for a component down a branch nobody has opened. The two reach different cases on purpose:
+the rule sees only a pair written directly — `const [P, C] = createContext(…)` with both halves handed
+to `this.use` in one class — while a provider wrapped in a hook of its own, the way
+`QueryClientProvider` wraps one, is invisible to it and is what this catches.
+
+Deduped per context and owning component.
+
 Deduped per context and owning component, so a component that mounts a thousand times says it once.
 
 **It reports rather than throwing**, unlike a plain-object props bag

@@ -323,6 +323,104 @@ describe("DEV diagnostics", () => {
     expect(captured.codes).not.toContain("RMD056");
   });
 
+  test("RMD057: reports a consumer declared above the provider on its own component", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    /** Consumer FIRST, so it resolves before this component's own publish exists. */
+    class Middle extends Component {
+      before = this.use(ThemeConsumer);
+      own = this.use(ThemeProvider, () => ({ theme: "mine" }));
+      render() {
+        return <span id="before">{this.before.theme}</span>;
+      }
+    }
+
+    class App extends Component {
+      top = this.use(ThemeProvider, () => ({ theme: "ancestor" }));
+      render() {
+        return (
+          <div>
+            <Middle />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(captured.codes).toContain("RMD057");
+    expect(captured.messages.find((m) => m.includes("RMD057"))).toContain(
+      "<Middle /> uses ThemeConsumer above ThemeProvider",
+    );
+
+    // What the report claims, measured: the consumer read the ANCESTOR, not the provider a line below it.
+    expect(document.getElementById("before")?.textContent).toBe("ancestor");
+  });
+
+  test("RMD057: stays quiet for provide-then-use, which is what the packages are built around", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    /**
+     * Provider FIRST. This is `this.use(QueryClientProvider)` followed by `this.use(Query, …)` —
+     * mount a client, then query on it — and reporting it fired 14 times across query's own tests,
+     * every one of them on the documented arrangement.
+     */
+    class Middle extends Component {
+      own = this.use(ThemeProvider, () => ({ theme: "mine" }));
+      after = this.use(ThemeConsumer);
+      render() {
+        return <span id="after">{this.after.theme}</span>;
+      }
+    }
+
+    class App extends Component {
+      top = this.use(ThemeProvider, () => ({ theme: "ancestor" }));
+      render() {
+        return (
+          <div>
+            <Middle />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(captured.codes).not.toContain("RMD057");
+    // And the silence is about this order specifically: it reads its OWN value, which is the point.
+    expect(document.getElementById("after")?.textContent).toBe("mine");
+  });
+
+  test("RMD057: stays quiet when the consumer and the provider are on DIFFERENT components", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    class Reader extends Component {
+      ctx = this.use(ThemeConsumer);
+      render() {
+        return <span id="read">{this.ctx.theme}</span>;
+      }
+    }
+
+    class App extends Component {
+      top = this.use(ThemeProvider, () => ({ theme: "ancestor" }));
+      render() {
+        return (
+          <div>
+            <Reader />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(captured.codes).not.toContain("RMD057");
+    expect(document.getElementById("read")?.textContent).toBe("ancestor");
+  });
+
   test("RMD003: stays quiet when a provider is above", async () => {
     const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" });
 

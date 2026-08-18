@@ -14,6 +14,7 @@ export type {
   BrowserUrlIssue,
   ClassInsteadOfClassNameIssue,
   ClockReadWhileRenderingIssue,
+  ContextConsumedAboveItsProviderIssue,
   ContextIssue,
   DomWriteIssue,
   DuplicateDecoratorIssue,

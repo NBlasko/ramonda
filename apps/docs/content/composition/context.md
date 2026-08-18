@@ -160,9 +160,25 @@ class Panel extends Component {
 }
 ```
 
-Reversed, the consumer is constructed before the provider has published, reads the default forever,
-and says so with `RMD003`. Between components there is nothing to think about: an ancestor is always
-constructed before its descendants.
+Reversed, the consumer is constructed before the provider has published, and what it reads for the
+rest of its life depends on what is ABOVE this component. With no provider on any ancestor it reads
+the context's default and says so with
+[`RMD003`](/reference/diagnostics#rmd003-context-consumed-without-a-provider-above-it). With one, it
+reads that ancestor's value — quietly, and correctly as far as anything can tell, which is why
+[`RMD057`](/reference/diagnostics#rmd057-a-context-consumed-above-the-provider-on-the-same-component)
+exists: moving one of the two lines past the other changes the answer, and nothing else would say so.
+
+Reading it through the **provider** avoids the question altogether. A provider reads as well as
+publishes, so `this.theme.theme` is always this component's own value however the fields are ordered —
+and a consumer beside a provider on the same class is a second way of asking what the provider already
+answers.
+
+If the value from above is what you want — an outer theme you derive an inner one from — then the
+reversed order is the one that arrangement needs, and the report is telling you which of the two you
+have rather than that you are wrong.
+
+Between components there is nothing to think about: an ancestor is always constructed before its
+descendants.
 
 ## Being told before you run the app
 
