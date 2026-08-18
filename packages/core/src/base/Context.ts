@@ -6,6 +6,7 @@ import { Hook } from "./Hook";
 import type { State } from "../reactivity/State";
 import type { BaseHook } from "../types/HookTypes";
 import { diagnose } from "../debug/diagnostics";
+import { hasContextConsumer, recordContextConsumer, reportConsumedAboveProvider } from "../debug/contextPairing";
 
 /**
  * Internal payload published on a component's runtime context. It hands out one
@@ -137,7 +138,43 @@ export function createContext<T extends object>(
           return signals.get(key);
         },
       };
-      (owner.context as Record<string | number, unknown>)[contextId] = channel;
+      if (__DEV__) {
+        /**
+         * A SECOND Provider of this context on the SAME component.
+         *
+         * `Object.hasOwn` is the whole check, and it is exact for the same reason the publish is an
+         * own property at all — see the `Context` type. An ancestor that provides the same context
+         * leaves the key INHERITED on this object, which is ordinary and is how nesting works; only
+         * a second publish on one component makes it own, and the second one wins for every
+         * descendant.
+         *
+         * Reported rather than thrown, unlike a plain-object props bag (RMD055): there the shipped
+         * bundle would go on serving a value nobody set, while here the page has one deterministic
+         * reading — the second Provider's — and refusing it would break an app that has been
+         * quietly living with the first one being ignored. The report is what makes the choice
+         * visible; a later version can refuse.
+         */
+        if (Object.hasOwn(owner.context, contextId)) {
+          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+          diagnose(
+            "RMD056",
+            `${contextId}:${holder ?? "?"}`,
+            `${holder ? `<${holder} /> ` : ""}uses ${Provider.name} twice, so the second one replaces the ` +
+              `first for every descendant. The first is still readable here, through its own hook.`,
+            { keys: contextKeys.join(", ") },
+          );
+        }
+
+        // RMD057, the other direction: a consumer of this context was constructed on this component
+        // BEFORE the provider, so it resolved the channel from above and this publish will never
+        // reach it. See `debug/contextPairing.ts` — the report is the same one either way round.
+        if (hasContextConsumer(owner, contextId)) {
+          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+          reportConsumedAboveProvider(contextId, holder, Provider.name, Consumer.name);
+        }
+      }
+
+      owner.context[contextId] = channel;
 
       // Reactive reader for the providing component. It reads the options
       // directly — always fresh before render — so the providing component
@@ -158,7 +195,7 @@ export function createContext<T extends object>(
 
     constructor(owner: Runtime) {
       super(owner, undefined);
-      const channel = (owner.context as Record<string | number, unknown>)[contextId] as ContextChannel | undefined;
+      const channel = owner.context[contextId] as ContextChannel | undefined;
 
       if (__DEV__) {
         /**
@@ -188,6 +225,14 @@ export function createContext<T extends object>(
             defaultValue,
           );
         }
+
+        /**
+         * Recorded so the PROVIDER can report RMD057 if one is published on this component after
+         * this line — see `debug/contextPairing.ts`. Nothing is reported from here: a consumer that
+         * finds this component's own publish already in place is the provide-then-use arrangement,
+         * which is what a component mounting a client and then querying with it does.
+         */
+        recordContextConsumer(owner, contextId);
       }
 
       for (const key of contextKeys) {

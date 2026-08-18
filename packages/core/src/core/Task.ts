@@ -17,9 +17,9 @@ import {
 import { reportWriteAfterUnmount, reportOrphanedUpdate, isRunawayUpdate, startDrain } from "../debug/updateRules";
 import { beginCommit, endCommit, isRecording, recordBuild } from "../debug/profiler";
 
-const taskQueue: BaseComponent<any>[] = [];
+const taskQueue: BaseComponent<unknown>[] = [];
 
-export function addTaskToQueue(component: BaseComponent<any>) {
+export function addTaskToQueue(component: BaseComponent<unknown>) {
   const componentRuntime = component[COMPONENT_RUNTIME];
   if (!componentRuntime.isInitialized) return;
 
@@ -121,7 +121,7 @@ export function drainSync(maxRounds = 50): void {
  * past them did — so the queue is built in the same order it always was, and
  * nothing about the drain changes.
  */
-function insertTaskInQueue(component: BaseComponent<any>) {
+function insertTaskInQueue(component: BaseComponent<unknown>) {
   const oldLength = taskQueue.length;
   const depth = component[COMPONENT_RUNTIME].depth;
 
@@ -138,7 +138,7 @@ function insertTaskInQueue(component: BaseComponent<any>) {
   return oldLength;
 }
 
-function updateBuild(component: BaseComponent<any>) {
+function updateBuild(component: BaseComponent<unknown>) {
   if (component[INTERNAL_HOOKS]) {
     for (const update of component[INTERNAL_HOOKS]) {
       update();

@@ -16,7 +16,7 @@ import { discardPendingUpdates, discardPendingWork } from "../core/commit";
  * Reported rather than swallowed. A cleanup that throws is a defect worth
  * seeing, but not one worth leaking a subtree over.
  */
-function runCleanup(what: string, component: BaseComponent<any>, cb: () => void) {
+function runCleanup(what: string, component: BaseComponent<unknown>, cb: () => void) {
   try {
     cb();
   } catch (error) {
@@ -33,7 +33,7 @@ function runCleanup(what: string, component: BaseComponent<any>, cb: () => void)
   }
 }
 
-export function lifecycleCleanupManagement(component: BaseComponent<any>) {
+export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
   // Idempotent — an invariant, not a fix for a known bug. Measured: instrumented
   // to count teardowns per instance, the whole suite (374 core + 37 router) tears
   // every component down exactly once, with or without this line.

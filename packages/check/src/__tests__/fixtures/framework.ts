@@ -53,10 +53,30 @@ export interface RequestKey<T> {
   readonly label: string;
   readonly __type?: T;
 }
-export declare function requestKey<T>(label: string): RequestKey<T>;
+export declare function requestKey<T>(label: string, options?: { exposeToClient?: boolean }): RequestKey<T>;
 export declare function requestContext(): {
   readonly url: { pathname: string };
   readonly headers: { get(name: string): string | null };
-  readonly cookies: { get(name: string): string | undefined };
+  readonly cookies: { get(name: string): string | undefined; has(name: string): boolean };
   get<T>(key: RequestKey<T>): T;
 };
+
+/**
+ * The lifecycle and effect decorators, as much of them as a fixture needs.
+ *
+ * FUNCTIONS rather than classes, deliberately: `framework-head.ts` exists because adding a hook
+ * CLASS here moved three fixtures' component counts, and a declaration nothing constructs cannot.
+ *
+ * `env` is the whole point of the three at the top for `client-only-request-read`: the lifecycle
+ * family defaults to `shared` and runs on both sides, and only `{ env: "client" }` narrows it.
+ */
+export declare function created(options?: { env?: "shared" | "client" | "server" }): (...args: unknown[]) => void;
+export declare function mounted(options?: { env?: "shared" | "client" | "server" }): (...args: unknown[]) => void;
+export declare function destroyed(options?: { env?: "shared" | "client" | "server" }): (...args: unknown[]) => void;
+export declare function updated(value: unknown, context: unknown): void;
+export declare function deferHydration(value: unknown, context: unknown): void;
+export declare function interval(ms: string | number): (...args: unknown[]) => void;
+export declare function timeout(ms: string | number): (...args: unknown[]) => void;
+export declare function onWindow(type: string): (...args: unknown[]) => void;
+export declare function onDocument(type: string): (...args: unknown[]) => void;
+export declare function onElement(type: string): (...args: unknown[]) => void;

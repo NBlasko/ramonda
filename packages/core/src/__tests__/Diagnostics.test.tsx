@@ -228,6 +228,199 @@ describe("DEV diagnostics", () => {
     expect(captured.codes).not.toContain("RMD003");
   });
 
+  test("RMD056: reports one context provided twice by the same component, and the second wins", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    class Reader extends Component {
+      ctx = this.use(ThemeConsumer);
+      render() {
+        return <span id="read">{this.ctx.theme}</span>;
+      }
+    }
+
+    class Twice extends Component {
+      first = this.use(ThemeProvider, () => ({ theme: "first" }));
+      second = this.use(ThemeProvider, () => ({ theme: "second" }));
+      render() {
+        return (
+          <div>
+            <Reader />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Twice>(<Twice />);
+    await app.settle();
+
+    expect(captured.codes).toContain("RMD056");
+    expect(captured.messages.find((m) => m.includes("RMD056"))).toContain("<Twice /> uses ThemeProvider twice");
+
+    // What the report CLAIMS, measured rather than described: the descendant gets the second, and
+    // the first is still readable through its own hook — which is what makes the fault look fine
+    // from inside the component that made it.
+    expect(document.getElementById("read")?.textContent).toBe("second");
+    expect((app.instance.first as unknown as { theme: string }).theme).toBe("first");
+    expect((app.instance.second as unknown as { theme: string }).theme).toBe("second");
+  });
+
+  test("RMD056: stays quiet for a NESTED provider, which is the ordinary case", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    class Reader extends Component {
+      ctx = this.use(ThemeConsumer);
+      render() {
+        return <span class="read">{this.ctx.theme}</span>;
+      }
+    }
+
+    /** Publishes on its OWN object, so the outer key is inherited here and never own. */
+    class Inner extends Component {
+      ctx = this.use(ThemeProvider, () => ({ theme: "inner" }));
+      render() {
+        return (
+          <div>
+            <Reader />
+          </div>
+        );
+      }
+    }
+
+    class Outer extends Component {
+      ctx = this.use(ThemeProvider, () => ({ theme: "outer" }));
+      render() {
+        return (
+          <div>
+            <Inner />
+            <Reader />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Outer>(<Outer />);
+    await app.settle();
+
+    expect(captured.codes).not.toContain("RMD056");
+    // And it really is shadowing rather than replacing: each branch reads its nearest.
+    expect([...document.querySelectorAll(".read")].map((n) => n.textContent)).toEqual(["inner", "outer"]);
+  });
+
+  test("RMD056: stays quiet for two DIFFERENT contexts on one component", async () => {
+    const [AProvider] = createContext({ a: 1 }, { label: "A" });
+    const [BProvider] = createContext({ b: 2 }, { label: "B" });
+
+    class Both extends Component {
+      a = this.use(AProvider, () => ({ a: 1 }));
+      b = this.use(BProvider, () => ({ b: 2 }));
+      render() {
+        return <span>both</span>;
+      }
+    }
+
+    await getDOM<Both>(<Both />);
+
+    expect(captured.codes).not.toContain("RMD056");
+  });
+
+  test("RMD057: reports a consumer declared above the provider on its own component", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    /** Consumer FIRST, so it resolves before this component's own publish exists. */
+    class Middle extends Component {
+      before = this.use(ThemeConsumer);
+      own = this.use(ThemeProvider, () => ({ theme: "mine" }));
+      render() {
+        return <span id="before">{this.before.theme}</span>;
+      }
+    }
+
+    class App extends Component {
+      top = this.use(ThemeProvider, () => ({ theme: "ancestor" }));
+      render() {
+        return (
+          <div>
+            <Middle />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(captured.codes).toContain("RMD057");
+    expect(captured.messages.find((m) => m.includes("RMD057"))).toContain(
+      "<Middle /> uses ThemeConsumer above ThemeProvider",
+    );
+
+    // What the report claims, measured: the consumer read the ANCESTOR, not the provider a line below it.
+    expect(document.getElementById("before")?.textContent).toBe("ancestor");
+  });
+
+  test("RMD057: stays quiet for provide-then-use, which is what the packages are built around", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    /**
+     * Provider FIRST. This is `this.use(QueryClientProvider)` followed by `this.use(Query, …)` —
+     * mount a client, then query on it — and reporting it fired 14 times across query's own tests,
+     * every one of them on the documented arrangement.
+     */
+    class Middle extends Component {
+      own = this.use(ThemeProvider, () => ({ theme: "mine" }));
+      after = this.use(ThemeConsumer);
+      render() {
+        return <span id="after">{this.after.theme}</span>;
+      }
+    }
+
+    class App extends Component {
+      top = this.use(ThemeProvider, () => ({ theme: "ancestor" }));
+      render() {
+        return (
+          <div>
+            <Middle />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(captured.codes).not.toContain("RMD057");
+    // And the silence is about this order specifically: it reads its OWN value, which is the point.
+    expect(document.getElementById("after")?.textContent).toBe("mine");
+  });
+
+  test("RMD057: stays quiet when the consumer and the provider are on DIFFERENT components", async () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
+
+    class Reader extends Component {
+      ctx = this.use(ThemeConsumer);
+      render() {
+        return <span id="read">{this.ctx.theme}</span>;
+      }
+    }
+
+    class App extends Component {
+      top = this.use(ThemeProvider, () => ({ theme: "ancestor" }));
+      render() {
+        return (
+          <div>
+            <Reader />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(captured.codes).not.toContain("RMD057");
+    expect(document.getElementById("read")?.textContent).toBe("ancestor");
+  });
+
   test("RMD003: stays quiet when a provider is above", async () => {
     const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" });
 

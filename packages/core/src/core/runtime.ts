@@ -52,7 +52,7 @@ export interface Runtime {
    */
   updates: (() => void)[];
   clearReactives: ClearReactives;
-  hooksOptions: (() => any)[];
+  hooksOptions: (() => unknown)[];
   reBuild(): void;
 }
 
@@ -65,7 +65,7 @@ export interface ComponentRuntime {
    * one, and dispatched by name so a subclass override wins.
    */
   catchError?: (e: unknown) => unknown;
-  propsSignals: Map<string, State<any>>;
+  propsSignals: Map<string, State<unknown>>;
   parent?: BaseComponent;
   inBuildQueue?: boolean;
   isInitialized?: boolean;
@@ -137,7 +137,7 @@ export const INTERNAL_HOOKS = Symbol("internalHooks");
 // tree used to serialize/restore state across the server→client boundary.
 export const CHILD_HOOKS = Symbol("childHooks");
 
-export const createRuntime = (that: BaseComponent<any>, context: Context): Runtime => {
+export const createRuntime = (that: BaseComponent<unknown>, context: Context): Runtime => {
   const runtime: Runtime = {
     reBuild: () => addTaskToQueue(that),
     mounts: [],
@@ -168,7 +168,7 @@ export const createComponentRuntime = (rawProps: unknown, env: RenderEnv = "clie
   return {
     rawProps: rawProps ?? ({} as RenderableProps<any>),
     depth: 1,
-    propsSignals: new Map<string, State<any>>(),
+    propsSignals: new Map<string, State<unknown>>(),
     env,
   };
 };

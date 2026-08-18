@@ -83,7 +83,9 @@ export type DiagnosticCode =
   | "RMD051"
   | "RMD052"
   | "RMD053"
-  | "RMD055";
+  | "RMD055"
+  | "RMD056"
+  | "RMD057";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -396,6 +398,26 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "A hook's props passed as a plain object",
     fix: "Pass a callback instead: `this.use(Hook, () => ({ ... }))`. An object literal in a field initializer is evaluated ONCE, while the owner is being constructed, so every value in it is frozen at that moment — a later `this.count` never reaches the hook, and nothing reports the stale value. A callback that reads no signal costs nothing: it runs once, at mount, and never again, and the inline functions in it keep their identity. (A development build calls it again to check it, and keeps nothing from those calls.)",
+  },
+  RMD056: {
+    // error, not warning, for RMD003's reason: the panel raises its alert on `error`, and this is a
+    // fault that otherwise ships. The page renders, one of the two providers supplies every
+    // descendant, and the other one looks mounted from the outside.
+    severity: "error",
+    title: "One context provided twice by the same component",
+    fix: "A component publishes a context on ONE object — its own — so the second Provider replaces the first under the same key, and every descendant reads the second. The first is still readable by this component through its own hook, which is what makes the mistake look like it worked. There is no reading of two Providers of one context that the framework could honour, so keep the one you meant and delete the other. If both values are genuinely needed below, they are two contexts: call createContext twice. If the second was meant to override the first for part of the tree, that is a NESTED Provider — put it on the component that renders that part, where it publishes on its own object and shadows this one for its own branch only.",
+  },
+  RMD057: {
+    // A WARNING rather than an error, and the reason is what the check can prove. This arrangement
+    // has one legitimate reading — read the value from above and provide a derived one below, which
+    // only works in this order — and one mistake, a consumer meant to read this component's own
+    // value that was written a line too early. Nothing here can tell them apart, so it says what it
+    // found rather than raising the panel's alert. The other order is not reported at all: a
+    // component that provides and then uses its own value is `QueryClientProvider` followed by
+    // `Query`, which is the arrangement the packages are built around.
+    severity: "warning",
+    title: "A context consumed above the provider on the same component",
+    fix: "A consumer resolves its channel ONCE, when it is constructed, and hooks are constructed in field-declaration order — so this consumer looked before the provider on its own component existed, and reads the nearest provider on an ANCESTOR instead (or the context's default, if there is none). If this component's own value was meant, the provider has to be declared first, or read it through the provider hook itself — `this.theme.color`, where `theme` is the Provider, which always means this component's value and does not depend on the order. If the value from above was meant — reading the outer theme to derive an inner one — then this is that arrangement working, and the order it needs is the one it has.",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

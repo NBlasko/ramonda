@@ -88,6 +88,8 @@ so a component that misuses the same property on every render reports once.
 | `RMD052` | error | A component among JSX children, where an element was meant |
 | `RMD053` | error | The request was read with no request scope installed |
 | `RMD055` | error | A hook's props passed as a plain object |
+| `RMD056` | error | One context provided twice by the same component |
+| `RMD057` | warning | A context consumed above the provider on the same component |
 
 ### RMD052 — A component among JSX children, where an element was meant
 
@@ -246,6 +248,60 @@ is the one that does: a nav bar beside the outlet has no matched route above it.
 Deduped per context id + owning component, so each call site says it once
 however many instances mount, and two components missing the same context are
 two reports.
+
+### RMD056 — One context provided twice by the same component
+
+A component publishes a context on ONE object — its own — so a second Provider
+of the same context replaces the first under the same key, and every descendant
+reads the second.
+
+The check is `Object.hasOwn(owner.context, contextId)`, and own-ness is exactly
+the question. A context object is `Object.create(parentContext)`, so a Provider
+ABOVE this component leaves the key inherited here rather than own — which is
+nesting, is ordinary, and must stay silent. Only a second publish on one
+component makes the key own. Widening this to `in` reports every nested
+Provider, and core's tests fail if it is.
+
+It reports rather than throwing, unlike RMD055: the page has one deterministic
+reading — the second Provider's — so refusing it would break an app that has
+been living with the first one ignored.
+
+What hides the fault is that the first Provider still reads: a Provider provides
+AND reads, so the component that made the mistake is the one place it looks
+fine.
+
+### RMD057 — A context consumed above its provider
+
+A consumer resolves its channel ONCE, when it is constructed, and hooks are
+constructed in field-declaration order. So a consumer declared above the
+provider on its own component looked before that provider existed, and reads the
+nearest one on an ANCESTOR instead — or the context's default, if there is none.
+Moving one of the two field declarations past the other changes the answer.
+
+**Only that order is reported, and it is a measurement rather than a
+preference.** The other one — provider first, then consumer — is
+`this.use(QueryClientProvider)` followed by `this.use(Query, …)`, which is what
+`@ramonda/query` and `@ramonda/router` are built around. Reporting it fired 14
+times across query's own tests, every one on the documented pattern. Reporting
+only this order fires nowhere in the repository.
+
+**A warning rather than an error**, which is unusual for a wrong result and is
+about what the check can prove. The arrangement has a legitimate reading —
+read the outer value and provide a derived one, which works only in this order —
+as well as a mistake, and nothing can tell them apart. So it says what it found
+and leaves the panel's alert alone.
+
+The consumer's one-shot lookup is deliberate and is not what to change: it is
+what lets RMD003 report when the consumer MOUNTS rather than on its first read,
+including down a branch nobody clicked.
+
+Nested hooks are included. A hook is handed its OWNER's runtime, so a consumer
+inside a hook inside the providing component resolves on the same object. The
+report names the component, because the component's field order decides it.
+
+`@ramonda/check`'s `context-consumed-above-its-provider` reports the same
+arrangement before anything runs. It sees only a pair written directly, so a
+provider wrapped in a hook of its own is this diagnostic's to catch.
 
 ### RMD004 — Props mutated
 

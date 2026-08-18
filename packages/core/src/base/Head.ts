@@ -115,10 +115,9 @@ export interface HeadOptions {
  * `Head` out of it entirely. Component depth would have counted them, and then
  * wrapping a route in a guard, a provider or a presentational shell would have moved
  * it a level down and let it beat a page it is not nested under — which page owns
- * the title decided by incidental nesting. A component's context is
- * `Object.create(parentContext)`, so a `Head` writing itself onto its own context is
- * inherited by every descendant however many wrappers apart they are, and by no
- * sibling: two branches get two objects off the same ancestor.
+ * the title decided by incidental nesting. A `Head` that publishes itself is found by
+ * every descendant however many wrappers apart they are, and by no sibling — see
+ * `Context` for the two properties that buy that.
  *
  * Where two `Head`s DO share a parent, BOTH stay — they are siblings, and the head is
  * the merge of the tree per tag: their different tags coexist, and a genuine conflict
@@ -203,7 +202,7 @@ export class Head extends Hook<HeadOptions> {
     if (this.node !== undefined) return;
 
     const registry = registryForDocument();
-    const context = this[GLOBAL_RUNTIME].context as Record<symbol, unknown>;
+    const context = this[GLOBAL_RUNTIME].context;
     const parent = context[HEAD_PARENT] as HeadNode | undefined;
 
     // The raw options, NOT flattened: the node is the state, and the head is a
@@ -334,16 +333,15 @@ interface HeadNode {
 /**
  * Where a `Head` leaves itself for the `Head`s below it to find.
  *
- * On the CONTEXT, which is what makes the tree a tree of `Head`s rather than of
- * components: a component's context is `Object.create(parentContext)`, so a
- * descendant inherits whatever an ancestor wrote however many components apart they
- * are — and a wrapper, a guard or a provider in between is invisible, because it
- * writes nothing. Component depth would have counted those, so wrapping a route in
- * anything at all would have changed which page owns the title.
+ * On the CONTEXT — the mechanism is on `Context`, and this is one of the two keys published
+ * there — which is what makes the tree a tree of `Head`s rather than of components: a descendant
+ * finds whatever an ancestor published however many components apart they are, and a wrapper, a
+ * guard or a provider in between is invisible, because it publishes nothing. Component depth would
+ * have counted those, so wrapping a route in anything at all would have changed which page owns
+ * the title.
  *
- * Two branches get two context objects off the same parent, so neither sees the
- * other. Sibling isolation is not a rule anything has to enforce here; it is what
- * prototype inheritance already does.
+ * A symbol, so nothing else on that object can name it, which is what makes it safe to share the
+ * object with `createContext`. Sibling isolation is not a rule anything has to enforce here.
  */
 const HEAD_PARENT = Symbol("ramondaHeadParent");
 
