@@ -66,6 +66,13 @@ It is **not** an equality check on the route key. A component rendered by both `
 the claim is about the params, not the spelling. When two routes genuinely disagree about their params,
 that is what `params<T>()` is for.
 
+**Does naming the route make the component less reusable?** It names a coupling that was already there:
+`params<{ id: string }>()` needed a route supplying `id` just as much, it simply failed silently instead
+of saying so. And a component that is genuinely reusable should not be reading the URL at all — have the
+page read the param and pass it down, `<UserAvatar userId={id} />`, for the same reason a value one child
+needs is a prop rather than a context. If a component reads `params()`, it *is* part of a route; the
+pattern only writes that down.
+
 ## `params` needs an outlet
 
 `params()` comes from the `<RouteOutlet>` that matched, so it only means something
