@@ -1,6 +1,7 @@
 import type ts from "typescript";
-import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext } from "./rule";
+import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext, TreeRule } from "./rule";
 import { contextFor } from "./element";
+import { treeFor } from "./tree";
 import { unnamedImage } from "./unnamed-image";
 import { classInsteadOfClassName } from "./class-instead-of-classname";
 import { duplicateKeyAmongSiblings } from "./duplicate-key-among-siblings";
@@ -23,6 +24,8 @@ import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
+import { duplicateId } from "./duplicate-id";
+import { headingSkipsALevel } from "./heading-skips-a-level";
 
 export type {
   ElementContext,
@@ -34,6 +37,9 @@ export type {
   Rule,
   RuleContext,
   RuleSubject,
+  TreeContext,
+  TreeNode,
+  TreeRule,
 } from "./rule";
 
 export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
@@ -61,6 +67,9 @@ export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
+export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
+export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
+export { rootsIn, treeFor } from "./tree";
 
 /**
  * Every rule that reads a CLASS, in the order their sections are printed.
@@ -106,8 +115,18 @@ export const ELEMENT_RULES = [
   positiveTabIndex,
 ] as const;
 
-/** All three families, which is what the CLI prints from and what {@link Findings} is keyed by. */
-export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES] as const;
+/**
+ * Every rule that reads one RENDER — the whole markup tree, in document order.
+ *
+ * The fourth family. What it answers that the element family cannot is anything about two elements
+ * meeting each other: two ids that are the same, a heading level that jumps. Those need a subject
+ * the size of a render, and the guard they all need — whether an element is really on the page at
+ * all — is computed once for them in `tree.ts`.
+ */
+export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
+
+/** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
+export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES] as const;
 
 export type AnyRule = (typeof RULES)[number];
 
@@ -119,7 +138,9 @@ type IssueOf<R> =
       ? Issue
       : R extends ElementRule<infer Issue>
         ? Issue
-        : never;
+        : R extends TreeRule<infer Issue>
+          ? Issue
+          : never;
 
 /**
  * What every rule found, keyed by its id and typed as that rule's own issue.
@@ -283,4 +304,17 @@ export function applyModule(
   findings: Findings,
 ): void {
   for (const rule of active) collect(findings, rule, rule.read(file, contextFor(rule.id)));
+}
+
+/**
+ * Every active tree rule over one render.
+ *
+ * The context is built ONCE and shared, as it is for elements — and it costs more to build here,
+ * because it walks the whole tree and decides for every element whether it is really on the page.
+ * A rule doing that itself would be doing it again for every other rule in the family.
+ */
+export function applyTree(active: readonly (typeof TREE_RULES)[number][], root: ts.Node, findings: Findings): void {
+  if (active.length === 0) return;
+  const tree = treeFor(root);
+  for (const rule of active) collect(findings, rule, rule.read(tree));
 }

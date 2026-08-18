@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 19 of them.
+**Warnings.** These print and the run still passes. 21 of them.
 
 | rule | reported when |
 |---|---|
@@ -158,6 +158,8 @@ rules**, so a rule cannot be added without appearing here.
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
 | `unnamed-frame` | an `iframe` has no `title` |
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
+| `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
+| `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
 
 [rules:end]: #
 
@@ -211,6 +213,29 @@ common — an async `@created` that reads the user and then goes fetching — an
 an await's own operand, since `await requestContext().get(key)` evaluates before it suspends. And a
 nested callback starts a clean timeline: whether it runs before or after the enclosing yield is not
 something the source can say.
+
+### Two elements that were never meant to meet
+
+Some faults are not about one element but about two of them in the same markup: an `id` claimed
+twice, a heading level that jumps. Those rules read a whole **render** — every element in one
+top-level piece of JSX, in the order it is written.
+
+```tsx
+<article>
+  <h1>Title</h1>
+  <h3>A subsection of nothing</h3>   {/* ✗ the outline claims an h2 that is not there */}
+</article>
+```
+
+The thing that makes such a rule safe is knowing whether both elements are really on the page.
+`{editing ? <input id="x"/> : <span id="x"/>}` is two ids in the source and one in the document, so
+**anything under a condition, a guard or a callback is never compared** — including a heading, which
+breaks the chain rather than being skipped over. That is a report given up rather than a report
+that sends you to delete the line making the page correct.
+
+It reads one render at a time, not the composed tree. What `<Panel />` renders depends on its props,
+its state and what its slots were filled with, and this page's opening promise is that nothing here
+is guessed.
 
 ### Two head tags that are one tag
 

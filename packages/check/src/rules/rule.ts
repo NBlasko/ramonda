@@ -168,6 +168,63 @@ export interface ElementRule<Issue> {
   read(element: JsxElementLike, context: ElementContext): Issue[];
 }
 
+/**
+ * A rule that reads one RENDER as a whole — every element in it, in document order.
+ *
+ * The fourth family, and the one the other three cannot cover between them. An element rule sees
+ * one element and its ancestors, which is enough for "is this `<tr>` inside a table" and not enough
+ * for anything about two elements that are not related: two ids that are the same, a heading level
+ * that jumps, two of a landmark there may be only one of. Those are questions about a whole
+ * markup tree, and nothing here had a subject that size.
+ *
+ * ## Why it is a family and not three more per-class rules
+ *
+ * A per-class rule could walk the JSX itself — the walk is not what is shared. What is shared is
+ * the hard part: deciding whether two elements are ever really BOTH there. `{open ? <a/> : <b/>}`
+ * is two elements in the source and one on the page, and a rule that missed that would report
+ * correct markup, which is how a rule earns being switched off. {@link TreeNode.alwaysPresent} is
+ * computed once, here, so that no rule in this family can forget it — the same argument that put
+ * `spreads` on the element family and `needs` on the class one.
+ */
+export interface TreeRule<Issue> {
+  id: string;
+  report: Report<Issue>;
+  needs?: string;
+  read(tree: TreeContext): Issue[];
+}
+
+/** One element inside a render, as a tree rule reads it. */
+export interface TreeNode extends ElementContext {
+  /** The element itself, for a report that has to point at it. */
+  element: JsxElementLike;
+
+  /**
+   * Whether this element is on the page whenever this render runs.
+   *
+   * `false` for anything under a `?:`, a `&&`, an `if`, or a callback — a row inside a `map`, a
+   * branch of a ternary, the right half of a guard. Those may or may not be there, and a rule that
+   * assumed they were would report `{editing ? <input id="x"/> : <span id="x"/>}`, which is one
+   * element on the page and correct.
+   *
+   * A rule about two elements meeting each other may only compare two of these that are `true`.
+   * That is the whole reason this family exists, and it is computed here so no rule can forget it.
+   */
+  alwaysPresent: boolean;
+}
+
+/**
+ * One render's markup: everything in it, in the order it appears.
+ *
+ * A "render" is one top-level JSX tree in the source — the thing a `render()` returns, or a helper
+ * builds. Deliberately not the COMPOSED tree, which would mean following `<Panel />` into whatever
+ * it renders: that depends on props, on state and on what a slot was filled with, and guessing at
+ * it is exactly the thing this package refuses to do.
+ */
+export interface TreeContext {
+  /** Every element in this render, in document order. */
+  elements: readonly TreeNode[];
+}
+
 export interface ElementContext {
   /**
    * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.

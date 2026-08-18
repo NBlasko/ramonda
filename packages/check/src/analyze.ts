@@ -9,10 +9,13 @@ import {
   applyClass,
   applyElement,
   applyModule,
+  applyTree,
   CLASS_RULES,
   ELEMENT_RULES,
   emptyFindings,
   MODULE_RULES,
+  rootsIn,
+  TREE_RULES,
 } from "./rules";
 import type {
   AriaWithNoSubjectIssue,
@@ -23,8 +26,10 @@ import type {
   DomWriteIssue,
   DuplicateDecoratorIssue,
   DuplicateKeyAmongSiblingsIssue,
+  DuplicateIdIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
+  HeadingSkipsALevelIssue,
   HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
@@ -55,8 +60,10 @@ export type {
   DomWriteIssue,
   DuplicateDecoratorIssue,
   DuplicateKeyAmongSiblingsIssue,
+  DuplicateIdIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
+  HeadingSkipsALevelIssue,
   HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
@@ -772,8 +779,18 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   const moduleRules = activate(MODULE_RULES, imported);
 
+  /**
+   * The per-RENDER rules, from the same pass again.
+   *
+   * A render is one top-level JSX tree in the source, so the subject is found by walking the file
+   * for markup with no markup above it — the same reason the element rules walk from the file
+   * rather than from a class: markup written in a plain helper is markup all the same.
+   */
+  const treeRules = activate(TREE_RULES, imported);
+
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
+    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings);
 
     applyModule(
       moduleRules,
