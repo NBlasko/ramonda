@@ -19,7 +19,7 @@ const run = () => analyzeProject(join(here, "fixtures", "late-request", "tsconfi
 describe("requestContext() read below an await", () => {
   test("every late shape is reported, with the whole read named", () => {
     expect(
-      run().lateRequestReads.map((read) => `${read.component}.${read.member}: ${read.read} (${read.via})`),
+      run().findings["late-request-read"].map((read) => `${read.component}.${read.member}: ${read.read} (${read.via})`),
     ).toEqual([
       "LateDirect.load: requestContext().get(currentUser) (call)",
       'LateThroughLocal.load: context.headers.get("accept-language") (local)',
@@ -40,24 +40,24 @@ describe("requestContext() read below an await", () => {
    * put a second report on dead code and point at the wrong line of the two.
    */
   test("taking and using below the await is reported once, on the take", () => {
-    const reads = run().lateRequestReads.filter((read) => read.component === "BothBelowReportsOnce");
+    const reads = run().findings["late-request-read"].filter((read) => read.component === "BothBelowReportsOnce");
     expect(reads).toHaveLength(1);
     expect(reads[0].via).toBe("call");
   });
 
   test("a read above the await is not reported", () => {
-    expect(run().lateRequestReads.some((read) => read.component === "EarlyThenFetches")).toBe(false);
+    expect(run().findings["late-request-read"].some((read) => read.component === "EarlyThenFetches")).toBe(false);
   });
 
   test("a synchronous method cannot be late", () => {
-    expect(run().lateRequestReads.some((read) => read.component === "Synchronous")).toBe(false);
+    expect(run().findings["late-request-read"].some((read) => read.component === "Synchronous")).toBe(false);
   });
 
   test("a read inside the await's own operand is not late", () => {
     // `await requestContext().get(key)` evaluates the read and THEN suspends, so the request is
     // still installed. The walk has to descend into an await before raising its flag; doing it the
     // other way round reports this correct line.
-    expect(run().lateRequestReads.some((read) => read.component === "ReadsInsideTheAwait")).toBe(false);
+    expect(run().findings["late-request-read"].some((read) => read.component === "ReadsInsideTheAwait")).toBe(false);
   });
 
   /**
@@ -66,7 +66,7 @@ describe("requestContext() read below an await", () => {
    * report `items.map(…)` called synchronously, which is correct code.
    */
   test("a nested callback is its own timeline", () => {
-    expect(run().lateRequestReads.some((read) => read.component === "NestedCallback")).toBe(false);
+    expect(run().findings["late-request-read"].some((read) => read.component === "NestedCallback")).toBe(false);
   });
 
   /**
@@ -76,11 +76,11 @@ describe("requestContext() read below an await", () => {
    * because a same-named local here is plausible.
    */
   test("the app's own helper of the same name is left alone", () => {
-    expect(run().lateRequestReads.some((read) => read.component === "OwnHelper")).toBe(false);
+    expect(run().findings["late-request-read"].some((read) => read.component === "OwnHelper")).toBe(false);
   });
 
   test("the report carries a position a reader can open", () => {
-    const first = run().lateRequestReads[0];
+    const first = run().findings["late-request-read"][0];
     expect(first.file).toContain("late-request");
     expect(first.line).toBeGreaterThan(0);
     expect(first.column).toBeGreaterThan(0);

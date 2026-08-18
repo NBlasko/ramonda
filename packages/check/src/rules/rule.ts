@@ -205,4 +205,23 @@ export interface RuleContext {
    * name the browser owns resolves to nothing, while `const location = …` in the source resolves.
    */
   resolve(id: ts.Node): ts.Symbol | undefined;
+
+  /**
+   * The symbol as WRITTEN, with an import alias left unfollowed.
+   *
+   * The other half of the question above, and it is a different question rather than a weaker one.
+   * `resolve` answers "what is this?", which is what a rule wants when it is looking for a
+   * particular declaration; this answers "how did this file get it?", which is what a rule wants
+   * when the import STATEMENT is the evidence.
+   *
+   * `late-request-read` is why it exists. An app is entitled to its own function called
+   * `requestContext`, so that rule cannot go by name — it goes by the module specifier the reader
+   * typed, and reaching that means holding the local symbol whose declaration is the
+   * `ImportSpecifier`. Followed through the alias, the declaration is in core and says nothing
+   * about how this file reached it.
+   *
+   * Not the default, because every OTHER rule wants the thing an import points at: keeping the two
+   * apart is what stops a rule from silently answering the wrong one.
+   */
+  resolveLocal(id: ts.Node): ts.Symbol | undefined;
 }

@@ -21,6 +21,7 @@ import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
+import { lateRequestRead } from "./late-request-read";
 
 export type {
   ElementContext,
@@ -57,6 +58,7 @@ export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
+export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 
 /**
  * Every rule that reads a CLASS, in the order their sections are printed.
@@ -74,6 +76,7 @@ export const CLASS_RULES = [
   domWrites,
   duplicateDecorators,
   unwatchedFields,
+  lateRequestRead,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */

@@ -31,8 +31,8 @@ a yield, not only a call at module top level. Deduped on the FIELD rather than t
 by preference — by the time it fires the render is over and `renderingOwner()` is already empty.
 Production is unchanged: every `diagnose` call site in the package is behind `__DEV__`.
 
-**`ramonda-check` reports the same read from the source**, as `result.lateRequestReads`, a WARNING
-under this repository's rule for a new rule. Zero reports across all three apps; verified not to be
+**`ramonda-check` reports the same read from the source**, as `findings["late-request-read"]`, a
+WARNING under this repository's rule for a new rule. Zero reports across all three apps; verified not to be
 silently dead by planting a real late read into a real component in `playground-ssr` and watching the
 CLI name it through the repo's own source alias.
 
