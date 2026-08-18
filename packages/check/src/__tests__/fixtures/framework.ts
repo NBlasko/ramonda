@@ -1,9 +1,9 @@
 export declare class Component {
-  protected use<T>(hook: T): unknown;
+  protected use<T>(hook: T, options?: unknown): unknown;
   render(): unknown;
 }
 export declare class Hook {
-  protected use<T>(hook: T): unknown;
+  protected use<T>(hook: T, options?: unknown): unknown;
 }
 /** The type that says "a component goes here" — what a slot is declared with. */
 export interface ComponentClassKind<P = unknown> {

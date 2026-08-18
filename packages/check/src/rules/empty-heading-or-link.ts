@@ -33,6 +33,7 @@ export const emptyHeadingOrLink = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a heading or a link has nothing inside it to announce",
     heading: (found) => {
       const headings = found.filter((issue) => issue.kind === "heading").length;
       const links = found.length - headings;

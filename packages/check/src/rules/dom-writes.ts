@@ -101,6 +101,9 @@ export const domWrites = {
 
   report: {
     severity: "warn",
+    reportedWhen:
+      "a component writes the document — `document.body.classList.add(…)` and its family — " +
+      "where `render()` could have said it",
     heading: (found) => {
       const guilty = new Set(found.map((write) => write.component)).size;
       return (

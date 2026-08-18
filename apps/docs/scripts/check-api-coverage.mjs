@@ -133,6 +133,12 @@ const expected = [
   // check that cannot fail is worse than no check. The adapters are guarded by their own surface
   // tests instead, and documented on /reference/build.
   ...publicSurfaceOf("build", 2),
+  // `@ramonda/check`, and this line is the late one. While it was missing the package went from
+  // five rules to twenty-seven, each adding a published issue type — and three of those were never
+  // exported at all, reachable through `findings` and unnameable in an annotation. Nothing was
+  // looking, which is the whole argument for this file.
+  ...publicSurfaceOf("check", 5),
+  ...publicTypesOf("check", 30),
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");

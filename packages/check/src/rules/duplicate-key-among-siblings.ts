@@ -65,6 +65,8 @@ export const duplicateKeyAmongSiblings = {
      * version.
      */
     severity: "warn",
+    reportedWhen: "two children written side by side claim the same literal `key`",
+    alsoReportedAs: "RMD002",
     heading: (found) => `${found.length} child(ren) sharing a \`key\` with a sibling:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

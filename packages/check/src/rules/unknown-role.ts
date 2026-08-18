@@ -32,6 +32,7 @@ export const unknownRole = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a `role` names nothing, or names an abstract role that markup may not use",
     heading: (found) => `${found.length} \`role\` attribute(s) that do not name a usable role:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

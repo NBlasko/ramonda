@@ -31,6 +31,7 @@ export const ariaWithNoSubject = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a `role` or an `aria-*` sits on an element with no accessibility tree node to describe",
     heading: (found) => `${found.length} accessibility attribute(s) on an element that cannot carry one:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

@@ -82,6 +82,8 @@ export const rowWithoutAKey = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a row built by `map` or by `list()` has no `key`",
+    alsoReportedAs: "RMD023",
     /**
      * The heading names WHICH way the rows were built, when they were all built one way.
      *

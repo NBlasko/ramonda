@@ -330,6 +330,51 @@ build](/reference/build)
 
 ---
 
+## `@ramonda/check`
+
+The analyzer behind `ramonda-check`, as an import. [Checking your app](/reference/check)
+
+| | |
+|---|---|
+| `analyzeProject(tsconfig)` | Reads a project and answers with everything below — the context issues, every rule's findings, and the graph they are computed from. |
+| `ruleCatalogue()` | Every rule as four strings: its `id`, its severity, when it reports, and the runtime diagnostic that reports the same fault. The rule tables on the check page are built from this. |
+| `splitOf(graph)` | What loads before anything, what each split point brings, and what they share. |
+| `filesOf(declarations)` | How many files a set of declarations lives in. |
+| `diffGraphs(before, after)` | What moved between two graphs — nodes, edges, and the size of the first payload. |
+| `refuseToDiff(before, after)` | Why two graphs cannot be compared, or `undefined` when they can. |
+
+`typescript` is a peer dependency: the analyzer uses **your** compiler, so it reads your syntax and
+your config rather than guessing at them.
+
+### The types
+
+| | |
+|---|---|
+| `AnalyzeResult` | Everything one run found. |
+| `Findings` | What each rule found, keyed by the rule's id and typed as that rule's own issue. |
+| `RuleSummary` | One rule as `ruleCatalogue()` describes it. |
+| `ContextIssue` | A consumer with no provider above it — the check this package was written for. |
+| `ComponentGraph`, `GraphNode`, `GraphEdge`, `Where` | What can mount what, and where each fact was written. |
+| `Split`, `SplitPoint` | What `splitOf` answers. |
+| `GraphDiff` | What `diffGraphs` answers. |
+
+Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
+`AriaValueIssue`, `AriaWithNoSubjectIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
+`ClockReadWhileRenderingIssue`, `DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`,
+`DuplicateKeyAmongSiblingsIssue`, `EmptyHeadingOrLinkIssue`, `HeadTagsCollideIssue`,
+`HeadingSkipsALevelIssue`, `InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`,
+`PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
+`RowWithoutAKeyIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`.
+
+The rules themselves are **not** exported, and that is a decision. A rule carries functions over its
+own issue type and a `read` that takes a compiler node, so publishing one would make this package's
+internals somebody's dependency and every change to a rule's shape a breaking change.
+`ruleCatalogue()` is what a caller actually wants from them.
+
+---
+
 ## `@ramonda/testing-library`
 
 | | |

@@ -40,6 +40,8 @@ export const unnamedImage = {
 
   report: {
     severity: "warn",
+    reportedWhen:
+      "an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, " + "`aria-labelledby` or `title`",
     heading: (found) => `${found.length} image(s) with nothing to announce them by:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

@@ -29,75 +29,14 @@ export const hostStyle = "display: contents";
 export const svgNamespaceUri = "http://www.w3.org/2000/svg";
 
 /**
- * The tags built with `createElementNS(svgNamespaceUri, …)` instead of
- * `createElement`. SVG-ness is decided by NAME, not by tree context — which is why
- * HTML inside `<foreignObject>` comes out as HTML, as SVG requires.
+ * Re-exported so that everything in this package still imports it from here.
  *
- * It must hold every tag `global.ts` types as `SVGArgs<…>`. A name that is typed
- * but missing here fails silently: `createElement` accepts anything, so the tag
- * becomes an unknown HTML element that looks right in the DOM and never renders as
- * SVG. Eight of them were (`tspan`, `textPath`, `foreignObject`, `image`, `desc`,
- * `metadata`, `mpath`, `switch`) — the two lists live in different files and
- * neither imports the other, so nothing noticed. `SvgNamespace.test.tsx` now pins
- * them to each other in both directions.
+ * The list itself moved to `@ramonda/dom-facts`, because `@ramonda/check` needs the same one to say
+ * what this package will do with a tag — and two copies of it had already drifted by twenty-one
+ * names before a test caught them. That package publishes nothing and is bundled in, so this ships
+ * exactly the bytes it shipped before.
  */
-export const svgElements = new Set([
-  "svg",
-  "circle",
-  "rect",
-  "path",
-  "g",
-  "line",
-  "polyline",
-  "polygon",
-  "ellipse",
-  "image",
-  "text",
-  "tspan",
-  "textPath",
-  "foreignObject",
-  "switch",
-  "use",
-  "defs",
-  "desc",
-  "metadata",
-  "mpath",
-  "linearGradient",
-  "radialGradient",
-  "stop",
-  "pattern",
-  "mask",
-  "clipPath",
-  "symbol",
-  "marker",
-  "view",
-  "filter",
-  "feBlend",
-  "feColorMatrix",
-  "feComponentTransfer",
-  "feComposite",
-  "feConvolveMatrix",
-  "feDiffuseLighting",
-  "feDisplacementMap",
-  "feDistantLight",
-  "feDropShadow",
-  "feFlood",
-  "feFuncA",
-  "feFuncB",
-  "feFuncG",
-  "feFuncR",
-  "feGaussianBlur",
-  "feImage",
-  "feMerge",
-  "feMergeNode",
-  "feMorphology",
-  "feOffset",
-  "fePointLight",
-  "feSpecularLighting",
-  "feSpotLight",
-  "feTile",
-  "feTurbulence",
-]);
+export { svgElements } from "@ramonda/dom-facts";
 
 export const DONE = 5;
 export type DONE = 5;

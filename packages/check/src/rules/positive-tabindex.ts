@@ -30,6 +30,7 @@ export const positiveTabIndex = {
 
   report: {
     severity: "warn",
+    reportedWhen: "a `tabIndex` is above zero, which reorders the whole document rather than one element",
     heading: (found) => `${found.length} element(s) with a positive \`tabIndex\`:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
