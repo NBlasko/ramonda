@@ -8,6 +8,7 @@ export type { RuleSummary } from "./rules";
 // context issue but not one holding a duplicate decorator.
 export type {
   AnalyzeResult,
+  AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -25,6 +26,8 @@ export type {
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,
+  RoleMissingRequiredAriaIssue,
+  RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,

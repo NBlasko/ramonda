@@ -18,6 +18,7 @@ import {
   TREE_RULES,
 } from "./rules";
 import type {
+  AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -34,6 +35,8 @@ import type {
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,
+  RoleMissingRequiredAriaIssue,
+  RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
@@ -52,6 +55,7 @@ import type {
  */
 
 export type {
+  AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   BrowserUrlIssue,
@@ -68,6 +72,8 @@ export type {
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,
+  RoleMissingRequiredAriaIssue,
+  RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
