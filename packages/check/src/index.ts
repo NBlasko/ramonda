@@ -19,6 +19,7 @@ export type {
   DuplicateKeyAmongSiblingsIssue,
   EmptyHeadingOrLinkIssue,
   Findings,
+  HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,

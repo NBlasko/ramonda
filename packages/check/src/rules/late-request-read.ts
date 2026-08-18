@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { importedFromCore } from "./core-import";
 import type { Rule } from "./rule";
 
 /**
@@ -61,44 +62,6 @@ function isFunctionLike(node: ts.Node): boolean {
     ts.isGetAccessorDeclaration(node) ||
     ts.isSetAccessorDeclaration(node)
   );
-}
-
-/**
- * Whether an identifier was imported from `@ramonda/core`.
- *
- * By the written module SPECIFIER, not by where the declaration file sits on disk. Every project
- * here aliases `@ramonda/core` to `packages/core/src` so the analyzer reads sources rather than
- * `dist` — a path test would answer on the alias's target, which differs per project, while the
- * specifier is the same string the reader typed.
- *
- * Deliberately NOT a name match, unlike the `dom-writes` rule. Nobody writes `const document = …`
- * and reaches for `.body`, but an app having its own `requestContext` helper is entirely
- * plausible, and reporting inside it would be reporting the reader's own code for the framework's
- * rule.
- *
- * **This is what `resolveLocal` exists for.** The question is about the import STATEMENT, so the
- * symbol has to be the one written here, alias unfollowed — `resolve` would hand over the thing
- * the import points at, whose declaration is in core and says nothing about how this file reached
- * it. `import { requestContext as ctx }` and `import * as core from "@ramonda/core"` both arrive
- * here: the first through its `ImportSpecifier`, the second through the namespace identifier.
- */
-function importedFromCore(id: ts.Node, resolveLocal: (node: ts.Node) => ts.Symbol | undefined): boolean {
-  if (!ts.isIdentifier(id)) return false;
-  const local = resolveLocal(id);
-  return (local?.declarations ?? []).some((declaration) => {
-    const clause =
-      ts.isImportSpecifier(declaration) || ts.isNamespaceImport(declaration)
-        ? declaration.parent.parent
-        : ts.isImportClause(declaration)
-          ? declaration
-          : undefined;
-    const statement = clause?.parent;
-    if (!statement || !ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
-      return false;
-    }
-    const from = statement.moduleSpecifier.text;
-    return from === "@ramonda/core" || from.startsWith("@ramonda/core/");
-  });
 }
 
 /**

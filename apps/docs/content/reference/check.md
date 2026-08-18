@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 18 of them.
+**Warnings.** These print and the run still passes. 19 of them.
 
 | rule | reported when |
 |---|---|
@@ -144,6 +144,7 @@ rules**, so a rule cannot be added without appearing here.
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
+| `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
 | `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics) |
@@ -210,6 +211,30 @@ common — an async `@created` that reads the user and then goes fetching — an
 an await's own operand, since `await requestContext().get(key)` evaluates before it suspends. And a
 nested callback starts a clean timeline: whether it runs before or after the enclosing yield is not
 something the source can say.
+
+### Two head tags that are one tag
+
+`Head` matches the tags it has already written so an update replaces them rather than appending — a
+`<meta>` by `name`, `property` or `http-equiv`, a `<link>` by `rel` and `href`. Two entries with the
+same identity are therefore **one tag**, and the later one silently wins.
+
+```tsx
+head = this.use(Head, {
+  description: "What the page is about.",       // ✗ never reaches the page
+  meta: [{ name: "description", content: "…" }] // this replaces it
+});
+```
+
+`description` is a shorthand for the meta tag of that name, and it is collected **first** — so
+writing both loses the shorthand, which is usually the line that was meant. The report points at
+the entry that is lost and names the line that replaces it.
+
+Nothing else can tell you. The type permits it, `tsc` says nothing, and there is no runtime
+diagnostic: by the time the tags are collected the losing one has left no trace, and the page
+served looks exactly like a page whose author never wrote it.
+
+Two byte-identical entries are not reported — they collapse to the tag they both describe and
+nothing is lost.
 
 ## Using it directly
 

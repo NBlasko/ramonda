@@ -22,6 +22,7 @@ import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
 import { lateRequestRead } from "./late-request-read";
+import { headTagsCollide } from "./head-tags-collide";
 
 export type {
   ElementContext,
@@ -59,6 +60,7 @@ export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-d
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
+export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 
 /**
  * Every rule that reads a CLASS, in the order their sections are printed.
@@ -77,6 +79,7 @@ export const CLASS_RULES = [
   duplicateDecorators,
   unwatchedFields,
   lateRequestRead,
+  headTagsCollide,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
