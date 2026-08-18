@@ -1347,6 +1347,6 @@ export function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
   next?.setCurrent(node);
 }
 
-function componentFactory(component: ComponentClassKind, props: any, ctx: Context): BaseComponent {
+function componentFactory(component: ComponentClassKind, props: Record<string, unknown>, ctx: Context): BaseComponent {
   return new component(props, ctx);
 }

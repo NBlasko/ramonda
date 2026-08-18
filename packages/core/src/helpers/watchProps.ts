@@ -73,7 +73,7 @@ function safeSelect(entry: WatchPropEntry, selector: (props: unknown) => unknown
  * callback. `watchProp` reacts to changes, and mount is not one — there is no
  * previous value for the first one to differ from.
  */
-export function seedWatchProps(component: BaseComponent<any>) {
+export function seedWatchProps(component: BaseComponent<unknown>) {
   const watchProps = component[GLOBAL_RUNTIME].watchProps;
   if (!watchProps.length) return;
 
@@ -93,7 +93,7 @@ export function seedWatchProps(component: BaseComponent<any>) {
  * read the hook's own props: `useCommon` has already installed the new bag by then,
  * so a hook's selector sees this render's props rather than the last one's.
  */
-export function runWatchProps(component: BaseComponent<any>) {
+export function runWatchProps(component: BaseComponent<unknown>) {
   const watchProps = component[GLOBAL_RUNTIME].watchProps;
   if (!watchProps.length) return;
 

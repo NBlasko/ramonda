@@ -10,7 +10,7 @@ import type { RenderEnv } from "../core/renderEnv";
 export type { RenderEnv };
 
 interface EnhancedElement {
-  _componentInstance?: BaseComponent<any>;
+  _componentInstance?: BaseComponent<unknown>;
   _componentDefinition?: ComponentClassKind;
   _listeners?: Record<string, any>;
   value?: any;

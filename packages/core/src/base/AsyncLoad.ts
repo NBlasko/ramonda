@@ -1,11 +1,12 @@
 import { Component } from "..";
 import type { RamondaNode } from "../types/vdom";
 import { createRamonda } from "../vdom/CreateRamonda";
+import { isComponentClass } from "../vdom/guards";
 import { mounted, destroyed, state, created, deferHydration, watchProp } from "./decorators";
 import { addModulePreload } from "./Head";
 import { diagnose } from "../debug/diagnostics";
 
-export type Lazy = () => Promise<any>;
+export type Lazy = () => Promise<Record<string, unknown>>;
 
 /** What `errorFallback` receives when it is a function. */
 export interface AsyncLoadFailure {
@@ -145,10 +146,10 @@ function cacheKeyFor(props: AsyncLoadProps): string {
  * `createTemplate` inlined — it was the helper's last real use, and one arrow here
  * is cheaper than a public API for it.
  */
-function toRenderable(component: any): LoadedComponent {
-  return component.__isComponent
+function toRenderable(component: unknown): LoadedComponent {
+  return isComponentClass(component)
     ? (loadedProps?: unknown) => createRamonda(component, (loadedProps ?? {}) as Record<string, unknown>)
-    : component;
+    : (component as LoadedComponent);
 }
 
 /**
