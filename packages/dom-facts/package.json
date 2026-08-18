@@ -1,0 +1,35 @@
+{
+  "name": "@ramonda/dom-facts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Facts about the DOM that the framework and the checker have to agree on. Build-time only — every consumer bundles it.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/dom-facts"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "keywords": [
+    "ramonda",
+    "internal",
+    "dom"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -23,10 +23,9 @@ more than its case: `aria-labeledBy` is not `aria-labelledby` in any namespace.
 
 `ElementContext` gains `inSvg` to tell the two apart, decided **by tag name**, because that is how
 the framework decides it — `<circle>` is SVG wherever it is written, and a `<div>` inside a
-`<foreignObject>` is HTML. The tag list is a copy of core's, since this package deliberately depends
-on nothing but the compiler, and `SvgList.test.ts` pins the two to each other in both directions by
-reading core's source. Written as a first guess, that list was twenty-one tags short — every filter
-primitive — and wrongly claimed `title`, which the framework renders as HTML.
+`<foreignObject>` is HTML. The tag list comes from `@ramonda/dom-facts` (see the changeset beside
+this one); written as a first guess instead, it was twenty-one tags short — every filter primitive —
+and wrongly claimed `title`, which the framework renders as HTML.
 
 The fixture holds both spellings of the same name, one in each namespace, so neither half can pass
 by finding the other.
