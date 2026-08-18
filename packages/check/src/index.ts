@@ -13,6 +13,7 @@ export type {
   ArrowFieldIssue,
   BrowserUrlIssue,
   ClassInsteadOfClassNameIssue,
+  ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
   ContextConsumedAboveItsProviderIssue,
   ContextIssue,

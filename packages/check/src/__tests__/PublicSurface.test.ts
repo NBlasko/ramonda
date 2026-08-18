@@ -30,6 +30,7 @@ const EXPECTED_TYPES = [
   "ArrowFieldIssue",
   "BrowserUrlIssue",
   "ClassInsteadOfClassNameIssue",
+  "ClientOnlyRequestReadIssue",
   "ClockReadWhileRenderingIssue",
   "ComponentGraph",
   "ContextConsumedAboveItsProviderIssue",

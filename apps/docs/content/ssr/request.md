@@ -166,6 +166,16 @@ rendered a value where that read is, hydration reports the divergence too.
 already in the page as state. Reach for `exposeToClient` when several components read the same
 value directly from the context.
 
+**A read that only ever runs in the browser is caught before the app is opened.** `RMD025` fires when
+the line runs, and a line in a click handler runs only when someone clicks — so the page ships, and a
+static build cannot help either: the read never happens during the render, so nothing blocks the bake.
+[`ramonda-check`](/reference/check)'s `client-only-request-read` reads it off the source instead. It
+reports a `cookies` or `headers` read, or a key that did not opt in, from anywhere that cannot run on
+the server — an `@onElement`, `@onWindow`, `@interval` or `@timeout` method, an `@updated`, a
+`@deferHydration`, a lifecycle written `{ env: "client" }`, or a JSX event handler. A `shared`
+lifecycle is not one of those and is never reported: `@created` and `@mounted` run on both sides, which
+is what makes the shape above the answer.
+
 ## Telling a phone from a desktop
 
 `ctx.headers.get("user-agent")` is the header, and there is nothing else to it. What is worth
