@@ -55,14 +55,11 @@ function buildProps(
       // only for a hook taking no props at all, and that returned above — there is no callback to
       // run twice, so there is nothing for this check to be about.
       //
-      // The bag was built under the tracker just now, so `site.deps` is what this callback reads.
-      // An EMPTY set means nothing can ever mark the cache dirty, so this bag is the one the hook
-      // keeps for life — churn is impossible by construction, and the check is told so. It still
-      // runs: a callback that reads nothing reactive is exactly where a value that is not a
-      // function of state gets FROZEN rather than merely rebuilt, which is the worse fault.
-      if (isStrictRender() && site !== undefined) {
-        checkPropsStability(label, bag, build(that), declared, site, site.deps.size > 0);
-      }
+      // A callback that reads no signal needs no guard here, and it was measured for one: nothing
+      // can mark its cache dirty, so it is built exactly once, and the churn report needs four
+      // builds of the same callback before it speaks. What WAS reporting such a bag is the
+      // comparison behind the wording, which is thorough now — see `classify`.
+      if (isStrictRender() && site !== undefined) checkPropsStability(label, bag, build(that), declared, site);
 
       return bag;
     } finally {
@@ -291,12 +288,7 @@ export function useCommon<T extends BaseHook<any>, P>(
       // difference means it read something no signal backs, which is the one way this cache
       // can serve a stale bag. Untracked deliberately: this call is an observation, and letting
       // it record dependencies would make the check change the thing it is checking.
-      checkCachedProps(
-        `${that.constructor.name} → ${hook.name}`,
-        cache.bag,
-        probeProps(that, hook.name, hookProps),
-        STABLE_DEPTH,
-      );
+      checkCachedProps(`${that.constructor.name} → ${hook.name}`, cache.bag, probeProps(that, hook.name, hookProps));
     }
 
     // Whatever this callback read, an enclosing tracker read too. Without this a `use()` nested

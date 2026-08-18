@@ -1,5 +1,5 @@
 import { devFlags } from "../config";
-import { isPlainObject, valueEqual, type Bound } from "../helpers/valueEqual";
+import { isPlainObject, valueEqualThorough } from "../helpers/valueEqual";
 import { isListNode } from "../vdom/guards";
 import type { BaseComponent } from "../types/vdom";
 import { diagnose } from "./diagnostics";
@@ -89,26 +89,19 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
 
   if ((isPlainObject(a) && isPlainObject(b)) || (Array.isArray(a) && Array.isArray(b))) {
     /**
-     * `valueEqual` is bounded, and past a bound it answers "different" — the answer `resolveStable`
-     * needs, since it must never reuse a value whose contents moved. Here the same answer decides
-     * WORDING, and the two words are not interchangeable: "rebuilt with the same contents" asks the
-     * app to hold the value somewhere stable, while "not a function of state" tells it to move a
-     * `Math.random()` it may not have written.
+     * Compared THOROUGHLY, because the answer picks between two sentences that mean different
+     * things: "rebuilt with the same contents" asks the app to hold the value somewhere stable,
+     * while "not a function of state" tells it to go and find a `Math.random()`. Getting that wrong
+     * sends a reader looking for something they never wrote.
      *
-     * So a difference the comparison never reached is not evidence of non-determinism. A pair that
-     * stopped at the bound is called rebuilt, which is the half that IS established — the two
-     * identities differ. What that costs is a deep value which genuinely moves between two calls in
-     * one tick: it is reported as churn, through the run counter, rather than immediately. The
-     * usual sources of that are caught anyway and separately — randomness and a clock read while a
-     * bag is being built are RMD021, which is what `propsPhase` marks the phase for.
-     *
-     * Measured, on the shape that made this worth changing: `() => ({ children: <div><h2 /></div> })`
-     * is two levels past the default bound, so every JSX value handed to a hook was reported as
-     * "does not come from state", with advice about `Math.random()` beside it.
+     * `valueEqual`'s default bounds are sized for `resolveStable`, which runs per prop per render
+     * and only has to CHOOSE a reference — so past a bound it answers "different", which costs it a
+     * fresh reference and nothing more. Read as evidence here, that same answer was a verdict about
+     * contents nobody had looked at: measured, `() => ({ children: <div><h2 /></div> })` is two
+     * levels past the default depth, so every JSX value handed to a hook was reported as "does not
+     * come from state", with advice about randomness under it.
      */
-    const bound: Bound = { hit: false };
-    if (valueEqual(a, b, undefined, 0, bound)) return "object";
-    return bound.hit ? "object" : "nondeterministic";
+    return valueEqualThorough(a, b) ? "object" : "nondeterministic";
   }
 
   // Two primitives that differ between two calls in the same tick: the render is not

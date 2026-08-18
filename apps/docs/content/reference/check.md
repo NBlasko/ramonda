@@ -247,10 +247,10 @@ is guessed.
 same identity are therefore **one tag**, and the later one silently wins.
 
 ```tsx
-head = this.use(Head, {
+head = this.use(Head, () => ({
   description: "What the page is about.",       // ✗ never reaches the page
   meta: [{ name: "description", content: "…" }] // this replaces it
-});
+}));
 ```
 
 `description` is a shorthand for the meta tag of that name, and it is collected **first** — so

@@ -144,9 +144,10 @@ function listOf(options: ts.ObjectLiteralExpression, key: string): readonly ts.E
 /**
  * The options object a `this.use(Head, …)` was given.
  *
- * Two spellings are documented and both arrive here: the object written on the spot, and a factory
- * returning one. A factory with a block body is followed through its single `return`, because that
- * is what an author writes when the options need a line of setup first.
+ * The documented spelling is a factory returning one, and it is followed through a block body's single
+ * `return` too, because that is what an author writes when the options need a line of setup first. An
+ * object written on the spot is still read: it does not compile and it throws (RMD055), but this rule
+ * looks at source, and source under migration is exactly where a report is worth having.
  */
 function optionsOf(argument: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
   if (argument === undefined) return undefined;

@@ -7,12 +7,12 @@ import { Component, Hook } from "@ramonda/core";
 export class Head extends Hook {}
 
 export class OwnHead extends Component {
-  head = this.use(Head, {
+  head = this.use(Head, () => ({
     meta: [
       { name: "robots", content: "index" },
       { name: "robots", content: "noindex" },
     ],
-  });
+  }));
   render() {
     return <p>not ours</p>;
   }

@@ -787,3 +787,126 @@ describe("@StableProps is a property of the KIND, not of an instance", () => {
     expect(reported()).not.toContain("Panel → Base");
   });
 });
+
+/**
+ * What the comparison has to be able to PROVE, and the four shapes that proved it could not.
+ *
+ * `valueEqual`'s default bounds are sized for `resolveStable`: a depth of two, and fifty entries of
+ * an array. Past either it answers "different", which is the safe answer where a reference has to
+ * be CHOSEN — a fresh one is correct, merely not optimal. Both diagnostics here read that same
+ * answer as evidence, and every case below is a sentence said about contents nobody had compared:
+ * two of them false, two of them missing. `valueEqualThorough` is what they use now.
+ *
+ * Measured, per comparison, on the two shapes this is about: a two-level JSX tree 1.31 ns → 3.15 ns,
+ * a sixty-row array 0.55 ns → 34.88 ns, where the cheap answer was the width cap bailing out without
+ * looking. It is paid in a development build, on a pair already known to differ by reference.
+ */
+describe("a diagnostic compares to the end", () => {
+  class Sink extends Hook<Record<string, unknown>> {
+    get width() {
+      return Object.keys(this.props).length;
+    }
+  }
+
+  /** The report that started it: a JSX subtree is two levels past the default depth. */
+  test("a constant bag carrying JSX is not called non-deterministic", async () => {
+    class Page extends Component {
+      @state n = 1;
+      box = this.use(Sink, () => ({
+        children: (
+          <div>
+            <h2>Title</h2>
+          </div>
+        ),
+      }));
+      render() {
+        return <p>{String(this.n)}</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    for (let i = 0; i < 4; i++) {
+      app.instance.n = i;
+      await app.settle();
+    }
+    expect(reported()).not.toContain("RMD022");
+  });
+
+  /**
+   * A table's worth of rows, churning for real. The array cap answered "different" for two arrays it
+   * had not compared, so the cross-run gate reset on every run and neither half could ever speak.
+   */
+  test("a wide array that is rebuilt with the same contents is still reported", async () => {
+    class Page extends Component {
+      @state tick = 0;
+      @state items = Array.from({ length: 60 }, (_, i) => ({ id: i }));
+      probe = this.use(Sink, (self: Page) => ({ rows: self.items.map((row) => ({ ...row })), tick: self.tick }));
+      render() {
+        return <p>{String(this.probe.width)}</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    await churn(app);
+    expect(reported()).toContain("RMD022");
+  });
+
+  /**
+   * A value that is not a function of state, nested past the default depth. `performance.now()` is
+   * deliberate: `debug/purityGuard.ts` patches randomness and explains why it does NOT patch a
+   * clock, so RMD021 does not see this one and RMD007 needs a server render to disagree with.
+   */
+  test("non-determinism deeper than two levels is reported as non-determinism", async () => {
+    class Page extends Component {
+      probe = this.use(Sink, () => ({ meta: { stamp: { at: performance.now() } } }));
+      render() {
+        return <p>{String(this.probe.width)}</p>;
+      }
+    }
+
+    await getDOM<Page>(<Page />);
+    expect(reported()).toContain("does not come from state");
+  });
+
+  /** RMD027, on the shape its own documentation is written about — once the table has 51 rows. */
+  test("a wide array held in a plain field is still reported as stale", async () => {
+    class Page extends Component {
+      @state tick = 0;
+      rows = Array.from({ length: 60 }, (_, i) => ({ id: i, label: `r${i}` }));
+      probe = this.use(Sink, (self: Page) => ({ rows: self.rows }));
+      render() {
+        return <p>{String(this.tick)}</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    app.instance.rows = app.instance.rows.map((row) => ({ ...row, label: "moved" }));
+    app.instance.tick = 1;
+    await app.settle();
+    expect(reported()).toContain("RMD027");
+  });
+
+  /**
+   * One deep key must not silence a proven difference in the key beside it. The traversal used to
+   * share a single verdict across the whole prop, and `Object.keys` visits `view` first.
+   */
+  test("a deep sibling does not silence the stale value next to it", async () => {
+    class Page extends Component {
+      @state tick = 0;
+      rows = [{ id: 1, label: "one" }];
+      probe = this.use(Sink, (self: Page) => ({
+        view: { a: { b: { c: { d: { e: "deep" } } } } },
+        rows: self.rows,
+      }));
+      render() {
+        return <p>{String(this.tick)}</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    app.instance.rows = [{ id: 1, label: "moved" }];
+    app.instance.tick = 1;
+    await app.settle();
+    expect(reported()).toContain("RMD027");
+  });
+});

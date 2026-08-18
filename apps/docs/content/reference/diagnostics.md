@@ -431,11 +431,10 @@ reported for coincidences; the same threshold, for the same reason, as
 [RMD024](#rmd024-a-compute-recomputes-without-its-answer-changing).
 
 A corollary worth knowing: a callback that is never invalidated cannot be reported for churn. It
-runs once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
-and a value built once is not churn — so a callback whose dependency set is empty is exempt from
-the count, and the only rebuild left is the second call this check makes itself. The
-**different-contents** finding below is not exempt: that is where an untracked callback is at its
-worst, since the value is frozen into the cache rather than merely rebuilt.
+runs once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity), and
+a value built once is not churn — the count never leaves zero. The **different-contents** finding
+below still applies to it, and matters more there than anywhere: a value that is not a function of
+state is frozen into that cache at mount and served for the life of the hook.
 
 Three findings, three fixes:
 
@@ -453,12 +452,7 @@ Three findings, three fixes:
   needed. Nothing can hide this one; what is compared is the contents. **Reported on the
   first occurrence**, with no count in front of it: this is a fault rather than churn, and
   it is the one kind the cache makes worse — a `Math.random()` in the bag is now frozen
-  into the cached bag until something else invalidates it. This one asks for a difference the
-  comparison actually **found**: past its bounded depth, a pair is called rebuilt rather than
-  non-deterministic, because a comparison that stopped early has not established anything about
-  the contents. A JSX subtree in a bag is past that bound, and randomness at depth is
-  [RMD021](#rmd021-randomness-during-a-render-a-compute-a-memoised-handler-or-a-hooks-props)'s
-  to catch.
+  into the cached bag until something else invalidates it.
 
 A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
 answer when several are unstable together.
@@ -580,10 +574,11 @@ the renders where the callback does run.
 one closure held across renders keeps answering with the current value — a fresh identity there
 says nothing about staleness.
 
-**And so is a value the comparison could not finish.** It is bounded, and past the bound it answers
-"different" without having found a difference — which is the safe answer where a value has to be
-chosen, and no basis at all for telling you a prop is stale. A JSX subtree handed through a bag is
-past that bound and rebuilt by every call, so this stays quiet about it.
+**The comparison goes to the end.** The one the framework uses to CHOOSE a reference is bounded at a
+depth of two and at fifty array entries, because it runs on every render; past either it answers
+"different", which costs a fresh reference and nothing more. A report cannot be built on that answer,
+so this one compares thoroughly instead — deep enough for a JSX subtree passed through a bag, wide
+enough for a table's worth of rows, which is where it used to go quiet for having compared nothing.
 
 ## What is non-deterministic in JavaScript, and what catches it
 
