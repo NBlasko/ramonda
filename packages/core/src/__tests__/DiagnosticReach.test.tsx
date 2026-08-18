@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { created, Host, mounted, state } from "../base/decorators";
+import { created, Host, mounted, persist, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { serializeComponentToJSON } from "../hydration/serialize";
@@ -273,6 +273,69 @@ describe("the codes that no test reached", () => {
     expect(of("RMD057")?.message).toContain("fetch failed");
     // The page is untouched: this reports, it does not take anything down.
     expect(dom.container.textContent).toBe("ok");
+    dom.unmount();
+  });
+
+  /**
+   * `RMD033` catches what its own documentation says it catches.
+   *
+   * Found by round-tripping every common type through the blob during the review. The check was a
+   * `try`/`catch` around `JSON.stringify`, which only ever sees a THROW — and the cases the
+   * diagnostic's `fix` text names do not throw:
+   *
+   *     new Map([["k", 7]])  ->  "{}"           every entry gone
+   *     new Set([1, 2])      ->  "{}"           every entry gone
+   *     new Date(0)          ->  "1970-01-…"    a string, so `.getTime()` throws on the client
+   *
+   * Measured before the fix: all three crossed silently, with `codes: []`, and the page failed
+   * later with a `TypeError` on a method the value no longer has.
+   */
+  test("RMD033 — a Map, a Set and a Date are reported, and a plain object is not", async () => {
+    @Host("div")
+    class Holder extends Component {
+      @persist @state map = new Map<string, number>();
+      @persist @state when = new Date(0);
+      @persist @state plain: Record<string, unknown> = {};
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    const dom = await getDOM<Holder>(<Holder />);
+    dom.instance.map = new Map([["k", 7]]);
+    dom.instance.when = new Date("2020-01-02T03:04:05.000Z");
+    dom.instance.plain = { a: 1, nested: { b: [2] } };
+    await dom.settle();
+
+    records = [];
+    serializeComponentToJSON((dom.container.firstElementChild as { _componentInstance?: object })._componentInstance!);
+
+    const kinds = records.filter((r) => r.code === "RMD033").map((r) => (r.data as { kind?: string })?.kind);
+    expect(kinds).toContain("Map");
+    expect(kinds).toContain("Date");
+    // The one that must stay quiet: a plain object nested two deep travels perfectly.
+    expect(records.filter((r) => (r.data as { key?: string })?.key === "plain")).toEqual([]);
+    dom.unmount();
+  });
+
+  /** A `Date` inside a plain object is the commonest shape of all, and a shallow check misses it. */
+  test("RMD033 — a Date nested inside a plain object is still found", async () => {
+    @Host("div")
+    class Nested extends Component {
+      @persist @state row: Record<string, unknown> = {};
+      render() {
+        return <span>x</span>;
+      }
+    }
+
+    const dom = await getDOM<Nested>(<Nested />);
+    dom.instance.row = { id: 1, createdAt: new Date(0) };
+    await dom.settle();
+
+    records = [];
+    serializeComponentToJSON((dom.container.firstElementChild as { _componentInstance?: object })._componentInstance!);
+
+    expect(records.some((r) => r.code === "RMD033" && (r.data as { kind?: string })?.kind === "Date")).toBe(true);
     dom.unmount();
   });
 });

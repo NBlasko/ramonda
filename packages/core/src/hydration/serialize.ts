@@ -36,6 +36,44 @@ interface SerializableInstance {
   [CHILD_HOOKS]?: SerializableInstance[];
 }
 
+/**
+ * The kind of a value that survives `JSON.stringify` and still loses everything, or `undefined`.
+ *
+ * **This is the half the check was missing.** `JSON.stringify` only THROWS on a circular structure
+ * or a bigint; the cases `RMD033` is documented to catch do not throw at all — measured:
+ *
+ *     new Map([["k", 7]])  ->  "{}"          every entry gone
+ *     new Set([1, 2])      ->  "{}"          every entry gone
+ *     new Date(0)          ->  "1970-01-…"   a string, so `.getTime()` throws on the client
+ *
+ * So a `try`/`catch` around `stringify` could never see them, and the diagnostic's own `fix` text
+ * has been promising otherwise: "a function, a class instance, a Map or a Date is lost on the way".
+ *
+ * The test is the shape rather than a list of types: anything that is not a plain object, an array
+ * or a primitive comes back from the blob as a plain object, without its prototype and usually
+ * without its contents. That covers `Map`, `Set`, `Date`, `RegExp`, `URL` and any class instance —
+ * including the ones nobody thought to list.
+ */
+function lossyKind(value: unknown, depth = 0): string | undefined {
+  if (value === null || typeof value !== "object" || depth > 4) return undefined;
+
+  if (!Array.isArray(value)) {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      return (value as { constructor?: { name?: string } }).constructor?.name ?? "object";
+    }
+  }
+
+  // Nested, because the common shape is a plain object holding one: `{ createdAt: new Date() }`
+  // travels as an object whose date has quietly become a string. Bounded by `depth` — this runs
+  // once per state key per render, and only in a development build.
+  for (const nested of Array.isArray(value) ? value : Object.values(value as Record<string, unknown>)) {
+    const kind = lossyKind(nested, depth + 1);
+    if (kind !== undefined) return kind;
+  }
+  return undefined;
+}
+
 function warnIfNotSerializable(name: string, key: string, value: unknown): void {
   if (typeof value === "function") {
     diagnose("RMD033", `${name}.${key}`, `<${name}> state "${key}" is a function.`, { component: name, key });
@@ -49,6 +87,17 @@ function warnIfNotSerializable(name: string, key: string, value: unknown): void 
       key,
       reason: e instanceof Error ? e.message : String(e),
     });
+    return;
+  }
+
+  const kind = lossyKind(value);
+  if (kind !== undefined) {
+    diagnose(
+      "RMD033",
+      `${name}.${key}`,
+      `<${name}> state "${key}" holds a ${kind}, which survives JSON and arrives as a plain object.`,
+      { component: name, key, kind },
+    );
   }
 }
 
