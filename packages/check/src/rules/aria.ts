@@ -298,3 +298,54 @@ export const ARIA_VALUES: ReadonlyMap<string, AriaValue> = new Map<string, AriaV
   ["aria-orientation", { kind: "token", tokens: new Set(["horizontal", "undefined", "vertical"]) }],
   ["aria-sort", { kind: "token", tokens: new Set(["ascending", "descending", "none", "other"]) }],
 ]);
+
+/**
+ * What a role does not work without — ARIA's "required states and properties".
+ *
+ * Source: **WAI-ARIA 1.2**, the "Required States and Properties" line in each role's
+ * characteristics table.
+ *
+ * ## This table leans the OTHER way from the ones above, and it has to
+ *
+ * Everything above is a vocabulary, and a rule reads it to report a name that is NOT in it — so a
+ * short list reports correct markup and a long one misses a typo. Here the reading is inverted: a
+ * rule reports an entry that IS in the table and missing from the element, so an entry that should
+ * not be here reports correct markup directly.
+ *
+ * So this is deliberately SHORT. Every role whose requirement is conditional in the specification
+ * is left out — `separator` needs `aria-valuenow` only when it is focusable, and nothing static can
+ * say whether it is. So is every role whose requirement moved between 1.1 and 1.2, `option` and
+ * `spinbutton` among them: a requirement people disagree about is not one to fail a build over.
+ *
+ * What is left is the set where a role without the attribute has no meaning at all — a checkbox
+ * that cannot say whether it is checked, a heading with no level, a slider with no value.
+ */
+export const ROLE_REQUIRES: ReadonlyMap<string, readonly string[]> = new Map([
+  // A checked-ness with nowhere to live: the role promises a state the element never carries.
+  ["checkbox", ["aria-checked"]],
+  ["radio", ["aria-checked"]],
+  ["switch", ["aria-checked"]],
+  ["menuitemcheckbox", ["aria-checked"]],
+  ["menuitemradio", ["aria-checked"]],
+
+  // A heading's level IS its place in the outline; without one there is no outline entry.
+  ["heading", ["aria-level"]],
+
+  // A value with no value.
+  ["meter", ["aria-valuenow"]],
+  ["slider", ["aria-valuenow"]],
+  ["scrollbar", ["aria-controls", "aria-valuenow"]],
+
+  // A combobox that cannot say whether it is open is a text field with a decoration.
+  ["combobox", ["aria-expanded"]],
+]);
+
+/**
+ * Elements whose own markup already supplies the state a role asks for.
+ *
+ * `<input type="checkbox" role="checkbox">` carries its checked-ness natively — the accessibility
+ * tree reads the element's own state, and an `aria-checked` beside it would be a second copy to
+ * keep in step. The role is redundant there rather than incomplete, which is a different thing and
+ * not this rule's business.
+ */
+export const STATE_FROM_THE_ELEMENT: ReadonlySet<string> = new Set(["input", "meter", "progress", "select", "option"]);

@@ -11,6 +11,7 @@ import { tagNeedsItsParent } from "./tag-needs-its-parent";
 import { unknownAriaAttribute } from "./unknown-aria-attribute";
 import { unknownRole } from "./unknown-role";
 import { ariaValue } from "./aria-value";
+import { roleMissingRequiredAria } from "./role-missing-required-aria";
 import { ariaWithNoSubject } from "./aria-with-no-subject";
 import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
@@ -53,9 +54,18 @@ export { NEEDS_PARENT, NOT_INSIDE_ITSELF } from "./html";
 export { unknownAriaAttribute, type UnknownAriaAttributeIssue } from "./unknown-aria-attribute";
 export { unknownRole, type UnknownRoleIssue } from "./unknown-role";
 export { ariaWithNoSubject, type AriaWithNoSubjectIssue } from "./aria-with-no-subject";
-export { ABSTRACT_ROLES, ARIA_ATTRIBUTES, ARIA_VALUES, NO_ARIA, ROLES } from "./aria";
+export {
+  ABSTRACT_ROLES,
+  ARIA_ATTRIBUTES,
+  ARIA_VALUES,
+  NO_ARIA,
+  ROLE_REQUIRES,
+  ROLES,
+  STATE_FROM_THE_ELEMENT,
+} from "./aria";
 export type { AriaValue, AriaValueKind } from "./aria";
 export { ariaValue, type AriaValueIssue } from "./aria-value";
+export { roleMissingRequiredAria, type RoleMissingRequiredAriaIssue } from "./role-missing-required-aria";
 export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
@@ -112,6 +122,7 @@ export const ELEMENT_RULES = [
   unnamedImage,
   unknownAriaAttribute,
   unknownRole,
+  roleMissingRequiredAria,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

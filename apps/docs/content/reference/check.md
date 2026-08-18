@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 22 of them.
+**Warnings.** These print and the run still passes. 23 of them.
 
 | rule | reported when |
 |---|---|
@@ -154,6 +154,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
 | `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |
 | `unknown-role` | a `role` names nothing, or names an abstract role that markup may not use |
+| `role-missing-required-aria` | an explicit `role` is written without the `aria-*` its specification requires |
 | `aria-value` | an `aria-*` attribute carries a literal value its specification does not permit |
 | `aria-with-no-subject` | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
@@ -357,6 +358,13 @@ accessibility tree.
 
 `false` is never reported. `aria-hidden="false"` says the element is exposed, which is not what
 leaving the attribute off says.
+
+A fourth reads the other direction — `role-missing-required-aria`, for the roles that mean nothing
+on their own. A `div` has no checked-ness, no level and no value, so `role="checkbox"` without
+`aria-checked` announces a checkbox in a state nothing can report. The likeliest fix is not to add
+the attribute: a native element usually already **is** the thing the role is claiming, and brings
+the state, the keyboard behaviour and the focus handling with it. Only an explicit `role` is judged
+— `<h2>` and `<input type="checkbox">` supply what they need themselves.
 
 ```
 [ramonda-check] 1 image(s) with nothing to announce them by:

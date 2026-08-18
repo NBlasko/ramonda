@@ -175,3 +175,59 @@ describe("an aria value the specification does not permit", () => {
     expect(found().every((issue) => issue.line < 40)).toBe(true);
   });
 });
+
+/**
+ * The other half of the ARIA tables: what a role does not work without. Every role in the fixture
+ * is real, so the vocabulary rule is satisfied and nothing else has anything to say — the page
+ * works for everyone who can see it, and a screen reader announces a control in a state it cannot
+ * report.
+ */
+describe("a role missing what the specification requires of it", () => {
+  const found = () => run().findings["role-missing-required-aria"];
+
+  test("every incomplete role is reported, with what it is missing", () => {
+    expect(found().map((issue) => `${issue.role} needs ${issue.missing.join(" + ")}`)).toEqual([
+      "checkbox needs aria-checked",
+      "switch needs aria-checked",
+      "menuitemradio needs aria-checked",
+      "heading needs aria-level",
+      "slider needs aria-valuenow",
+      "scrollbar needs aria-controls + aria-valuenow",
+      "combobox needs aria-expanded",
+    ]);
+  });
+
+  /**
+   * `has`, not the value: `aria-checked={checked}` IS written, and whether the expression holds
+   * something the spec permits is the value rule's question, asked on the same element.
+   */
+  test("an attribute written as an expression counts as present", () => {
+    expect(found().filter((issue) => issue.role === "checkbox")).toHaveLength(1);
+  });
+
+  test("a role with nothing required of it is never reported", () => {
+    expect(found().some((issue) => issue.role === "button" || issue.role === "note")).toBe(false);
+  });
+
+  /**
+   * `<input type="checkbox">` carries its checked-ness natively, and `<h2>` its level. Judging a
+   * host language's own role would report every correct heading there is.
+   */
+  test("an element that supplies the state itself is left alone", () => {
+    expect(found().some((issue) => issue.tag === "input" || issue.tag === "h2")).toBe(false);
+  });
+
+  test("a fallback chain is not one claim", () => {
+    expect(found().some((issue) => issue.role.includes(" "))).toBe(false);
+  });
+
+  test("a role this cannot read is not judged", () => {
+    expect(found().every((issue) => issue.role.length > 0)).toBe(true);
+  });
+
+  test("the report carries a position a reader can open", () => {
+    const first = found()[0];
+    expect(first.file).toContain("roles");
+    expect(first.line).toBeGreaterThan(0);
+  });
+});
