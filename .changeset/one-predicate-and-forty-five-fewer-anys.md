@@ -1,6 +1,5 @@
 ---
 "@ramonda/core": minor
-"@ramonda/docs": patch
 ---
 
 A second pass over `any`, and the `__isComponent` probe written once.
