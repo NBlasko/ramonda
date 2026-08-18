@@ -57,7 +57,10 @@ import { diagnose } from "./diagnostics";
  *
  * In this module rather than beside the two call sites so that it does not exist at all in a
  * production build: both callers reach it only from inside `if (__DEV__)`, so the module has no live
- * reference left and goes with them.
+ * reference left and goes with them. Measured rather than assumed — bundling `base/Context.ts` with
+ * `--define:__DEV__=false` and the dead-code pass on leaves no `consumedBy`, neither probe, no report
+ * function, no `diagnose` and neither code. The only `WeakMap` and `hasOwn` in that output belong to
+ * `helpers/bindMethods.ts`.
  */
 const consumedBy = new WeakMap<object, Set<number>>();
 

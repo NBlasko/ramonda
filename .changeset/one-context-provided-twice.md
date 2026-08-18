@@ -25,5 +25,15 @@ would go on serving a value nobody set; here the page has one deterministic read
 would break an app that has been living with the first Provider ignored. Severity `error`, so the
 devtools panel raises its alert, and a later version can refuse.
 
-Deduped per context and owning component. DEV only — the check and its message are inside `__DEV__`
-and nothing new reaches a production bundle.
+**It fires twice on this repository, and both are real.** `@ramonda/form`'s tests mount two `Form`
+hooks on one component — `Focus.test.tsx` and `Validation.test.tsx` both do it deliberately — and a
+`Form` publishes itself on the form context so descendants can find it. So the second form replaces
+the first, and **a descendant that reaches its form through the context binds to the second one
+whichever form's markup it is in**. Measured: submit the first form and its own `submitCount` is 1
+while a descendant `FormState` reads 0. Form's own tests do not catch it because they all reach the
+forms directly, as `this.a` and `this.b`. That is `@ramonda/form`'s to fix and is not touched here;
+the diagnostic is what found it.
+
+Deduped per context and owning component. DEV only — the check and its message are inside `__DEV__`,
+and measured on a production bundle of `Context.ts`: `consumedBy`, both probes, the report function,
+`diagnose` and both codes are absent.

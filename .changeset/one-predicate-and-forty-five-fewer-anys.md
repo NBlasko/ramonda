@@ -1,5 +1,5 @@
 ---
-"@ramonda/core": patch
+"@ramonda/core": minor
 "@ramonda/docs": patch
 ---
 
@@ -56,5 +56,12 @@ true of `@memoizedHandler`'s returned handler, which has to stay assignable to t
 The rest are inference and constraint positions — `new (...args: any[]) => infer I`,
 `Record<string, any>` on JSX attributes and on a decorator context's instance type — where `unknown[]`
 is refused for the reason `decorators.ts` already records.
+
+**A MINOR rather than a patch, because two of these narrow a published type.** `Lazy` no longer
+accepts a promise of anything — a `lazy` that resolved the component itself rather than a module
+namespace stops type-checking, and it never worked at runtime either (`res[namedExport]` was
+`undefined` and threw "Missing named export"). And `@memoizedHandler`'s context now requires the class
+to carry the framework's runtime, which refuses the decorator on a class it never worked on. Neither
+changes behaviour, and both are refusals a build will show you.
 
 Behaviour is unchanged: 1122 of core's tests pass, and all 28 `check-types` tasks are green.

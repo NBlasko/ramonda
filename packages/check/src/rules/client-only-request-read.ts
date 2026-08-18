@@ -128,7 +128,20 @@ function clientOnlyBecause(member: ts.ClassElement, context: RuleContext): strin
   return undefined;
 }
 
-/** Whether a JSX attribute name is an event handler — `onClick`, `onInput`, `onPointerDown`. */
+/**
+ * Whether a JSX attribute name is an event handler — `onClick`, `onInput`, `onPointerDown`.
+ *
+ * The CAPITAL after `on` is required, and that is narrower than the runtime, which takes any
+ * `on…` and lowercases the rest (`Attribute.ts`: `name.startsWith("on")`, then
+ * `name.substring(2).toLowerCase()`). So `onclick={…}` works in an untyped project and is missed
+ * here.
+ *
+ * Kept narrow on purpose. The capital is what the TYPES offer — `RamondaArgs` maps events to
+ * `on${Capitalize<EventName>}` — so it is what a reader writes, and dropping it would make `only`
+ * and `once` read as event attributes. Those are ordinary prop names, and a rule that treated
+ * `only={() => …}` as browser-only would report correct code. A miss is the safe direction here; a
+ * false report is not.
+ */
 function isEventAttribute(name: string): boolean {
   return name.length > 2 && name.startsWith("on") && name[2] === name[2].toUpperCase();
 }
