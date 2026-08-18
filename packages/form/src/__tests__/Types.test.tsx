@@ -60,18 +60,18 @@ class Signup extends Component {
   }
 
   /** A. Direct object with a bound method. The bag is constant, so RMD022 never runs. */
-  form = this.use(Form, {
+  form = this.use(Form, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: this.save,
-  });
+  }));
 
   /** B. Pinned with an instantiation expression. */
-  pinned = this.use(Form<typeof signup>, {
+  pinned = this.use(Form<typeof signup>, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: this.save,
-  });
+  }));
 
   /** C. The callback form, for defaults that come from props. */
   fromProps = this.use(Form, (self: Signup) => ({
@@ -88,21 +88,21 @@ class Signup extends Component {
    * `any`. The hook itself still resolves correctly, which `callSites` asserts. Exactly
    * the limitation `Query` documents.
    */
-  inlineBare = this.use(Form, {
+  inlineBare = this.use(Form, () => ({
     schema: signup,
     defaultValues: defaults,
     // @ts-expect-error - `values` is an implicit any here, and only here
     onSubmit: (values) => void values,
-  });
+  }));
 
   /** E. The same, pinned: the pin gives the literal a target, so the parameter is typed. */
-  inlinePinned = this.use(Form<typeof signup>, {
+  inlinePinned = this.use(Form<typeof signup>, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: (values) => {
       expectType<SignupOut>()(values);
     },
-  });
+  }));
 
   /**
    * F. A handler that drops its parameter entirely. Accepted, unpinned.
@@ -113,32 +113,32 @@ class Signup extends Component {
    * assignable to a zero-parameter call site. Against the real `use` it is fine, and this
    * case is here so that stays true.
    */
-  ignoresBare = this.use(Form, {
+  ignoresBare = this.use(Form, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: () => {},
-  });
+  }));
 
   /** G. The same, pinned. */
-  ignoresPinned = this.use(Form<typeof signup>, {
+  ignoresPinned = this.use(Form<typeof signup>, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: () => {},
-  });
+  }));
 
   /** H. Unused but written and annotated — works with no pin. */
-  unusedAnnotated = this.use(Form, {
+  unusedAnnotated = this.use(Form, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: (_values: SignupOut) => {},
-  });
+  }));
 
   /** I. Unused but written, unannotated — works because the pin supplies the type. */
-  unusedPinned = this.use(Form<typeof signup>, {
+  unusedPinned = this.use(Form<typeof signup>, () => ({
     schema: signup,
     defaultValues: defaults,
     onSubmit: (_values) => {},
-  });
+  }));
 
   render(): RamondaNode {
     return <form />;
@@ -283,11 +283,11 @@ declare const colliding: StandardSchemaV1<Colliding, Colliding>;
 declare const collidingDefaults: Colliding;
 
 class Awkward extends Component {
-  form = this.use(Form<typeof colliding>, {
+  form = this.use(Form<typeof colliding>, () => ({
     schema: colliding,
     defaultValues: collidingDefaults,
     onSubmit: (_values) => {},
-  });
+  }));
 
   render(): RamondaNode {
     return <form />;

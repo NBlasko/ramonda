@@ -72,11 +72,11 @@ class App extends Component {
   // The query cache belongs to this tree and reaches every page through context.
   // On the app root because that is where a real app puts it — one cache per
   // render tree, never a module-level singleton.
-  // The bag directly: the defaults never change, and a callback would build a fresh
-  // `defaults` object on every render of the root — a changed prop each time (RMD022).
-  query = this.use(QueryClientProvider, {
+  // The defaults never change, and the callback does not rebuild them: one that reads no signal
+  // is called once, at mount, so `defaults` keeps one identity for the life of the root.
+  query = this.use(QueryClientProvider, () => ({
     defaults: { staleTime: 5_000, retry: 1 },
-  });
+  }));
   toggleTheme() {
     this.theme = this.theme === "light" ? "dark" : "light";
   }

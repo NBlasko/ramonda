@@ -103,11 +103,11 @@ export class SignupPage extends Component {
     description: "A form, validated on both sides.",
     link: [{ rel: "canonical", href: "https://example.com/signup" }],
   }));
-  private form = this.use(Form<typeof schema>, {
+  private form = this.use(Form<typeof schema>, () => ({
     schema,
     defaultValues: DEFAULTS,
     onSubmit: this.save,
-  });
+  }));
 
   /** Set once the fake server has accepted, so the page can say so. */
   private accepted = false;

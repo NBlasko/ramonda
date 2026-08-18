@@ -167,10 +167,12 @@ async function build(mode: Mode): Promise<Build> {
  *
  * Every one is deliberate, for three different reasons:
  *
- * - `RMD004` / `RMD015` — writing to props THROWS in every build, not only in
- *   development. Read-only inputs are a rule, not a warning, so the error and its code
- *   ship. Dropping the code from the message would leave a developer with a thrown
- *   string and nothing to search for.
+ * - `RMD004` / `RMD015` / `RMD055` — writing to props, and handing `use()` a props object
+ *   instead of a callback, THROW in every build rather than only in development. Read-only
+ *   inputs and a reactive bag are rules, not warnings, so the error and its code ship.
+ *   Dropping the code from the message would leave a developer with a thrown string and
+ *   nothing to search for. The prose stays behind: each throw carries one sentence, and the
+ *   fix text is in `SPECS`, which development prints beside it.
  * - `RMD009` — production has its own blunt update-loop stop, a counter that throws
  *   before the tab freezes, and its message points at the development diagnostic that
  *   names the actual component. That pointer is the value of the message.
@@ -196,6 +198,7 @@ const ALLOWED_CODES: Record<string, string> = {
   RMD017: "never resumed",
   RMD047: "not memoised",
   RMD054: "swallowed",
+  RMD055: "must be a callback",
 };
 
 /** What must never reach a production build, with a name for the failure message. */

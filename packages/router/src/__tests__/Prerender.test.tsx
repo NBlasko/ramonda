@@ -25,10 +25,10 @@ import { createRoutes, routePaths } from "../match";
 
 @Host("main")
 class Home extends Component {
-  head = this.use(Head, {
+  head = this.use(Head, () => ({
     title: "Ramonda",
     description: "A class-based frontend framework.",
-  });
+  }));
   render() {
     return <h1>Home</h1>;
   }
@@ -36,11 +36,11 @@ class Home extends Component {
 
 @Host("main")
 class Guide extends Component {
-  head = this.use(Head, {
+  head = this.use(Head, () => ({
     title: "Guide — Ramonda",
     description: "Learn Ramonda step by step.",
     link: [{ rel: "canonical", href: "https://example.dev/guide" }],
-  });
+  }));
   render() {
     return <h1>Guide</h1>;
   }

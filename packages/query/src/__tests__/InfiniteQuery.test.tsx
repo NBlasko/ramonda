@@ -57,13 +57,13 @@ function mountFeed(server: ReturnType<typeof makeServer>, options?: { maxPages?:
      * and nothing flows between two properties of the same object literal. Measured —
      * that is what naming it is for.
      */
-    feed = this.use(InfiniteQuery<Page>, {
+    feed = this.use(InfiniteQuery<Page>, () => ({
       key: ["posts"],
       initialPageParam: 0,
       loadPage: server.load,
       getNextPageParam: (last) => last.next,
       maxPages: options?.maxPages,
-    });
+    }));
 
     renderPage(page: Page) {
       return <li>{page.items.join(",")}</li>;

@@ -36,10 +36,10 @@ beforeEach(() => {
 describe("Portal renders into a target", () => {
   test("puts its child in the target, and nothing where it is declared", async () => {
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta data-portal-test="1" name="p1" content="a" />,
         target: document.head,
-      });
+      }));
       render() {
         return <div id="body">content</div>;
       }
@@ -56,13 +56,13 @@ describe("Portal renders into a target", () => {
 
   test("accepts an array of children, all placed in the target", async () => {
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: [
           <meta data-portal-test="1" name="m1" content="1" />,
           <meta data-portal-test="1" name="m2" content="2" />,
         ],
         target: document.head,
-      });
+      }));
       render() {
         return <div>x</div>;
       }
@@ -143,10 +143,10 @@ describe("Portal owns only its own nodes", () => {
     document.head.appendChild(shell);
 
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta data-portal-test="1" name="p4" content="x" />,
         target: document.head,
-      });
+      }));
       render() {
         return <div>x</div>;
       }
@@ -173,16 +173,16 @@ describe("Portal edge cases the review found", () => {
      * seeded itself with every marked node in the target and swept them away.
      */
     class WithMeta extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta data-portal-test="1" name="keep" content="1" />,
         target: document.head,
-      });
+      }));
       render() {
         return <div>a</div>;
       }
     }
     class Empty extends Component {
-      portal = this.use(Portal, { children: null, target: document.head });
+      portal = this.use(Portal, () => ({ children: null, target: document.head }));
       render() {
         return <div>b</div>;
       }
@@ -212,10 +212,10 @@ describe("Portal edge cases the review found", () => {
     ] as unknown as RamondaNode;
 
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: nested,
         target: document.head,
-      });
+      }));
       render() {
         return <div>x</div>;
       }
@@ -366,10 +366,10 @@ describe("Portal is a full lifecycle boundary", () => {
     }
 
     class Portaler extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <Inner />,
         target,
-      });
+      }));
       render() {
         return <div>p</div>;
       }

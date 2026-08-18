@@ -32,10 +32,10 @@ beforeEach(() => {
 describe("Head on the client", () => {
   test("sets the title and the description", async () => {
     class Page extends Component {
-      head = this.use(Head, {
+      head = this.use(Head, () => ({
         title: "State — Ramonda",
         description: "How @state turns a class field into a signal.",
-      });
+      }));
       render() {
         return <article>body</article>;
       }
@@ -72,13 +72,13 @@ describe("Head on the client", () => {
 
   test("a deeper Head wins, because it applies later", async () => {
     class Inner extends Component {
-      head = this.use(Head, { title: "Inner" });
+      head = this.use(Head, () => ({ title: "Inner" }));
       render() {
         return <span>inner</span>;
       }
     }
     class Layout extends Component {
-      head = this.use(Head, { title: "Layout default" });
+      head = this.use(Head, () => ({ title: "Layout default" }));
       render() {
         return (
           <div>
@@ -119,11 +119,11 @@ describe("Head on the client", () => {
 
   test("removes its own tags on unmount", async () => {
     class Page extends Component {
-      head = this.use(Head, {
+      head = this.use(Head, () => ({
         title: "Page",
         description: "gone soon",
         link: [{ rel: "canonical", href: "https://example.com/page" }],
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -143,7 +143,7 @@ describe("Head on the client", () => {
     document.title = "Ramonda";
 
     class Page extends Component {
-      head = this.use(Head, { title: "Guide" });
+      head = this.use(Head, () => ({ title: "Guide" }));
       render() {
         return <p>guide</p>;
       }
@@ -158,7 +158,7 @@ describe("Head on the client", () => {
 
   test("does not undo a title someone else has since set", async () => {
     class Page extends Component {
-      head = this.use(Head, { title: "First" });
+      head = this.use(Head, () => ({ title: "First" }));
       render() {
         return <p>first</p>;
       }
@@ -202,7 +202,7 @@ describe("Head on the client", () => {
     class Page extends Component {
       // @ts-expect-error — `content` is required by the type; this is the runtime
       // guard for a JS caller that omits it.
-      head = this.use(Head, { meta: [{ name: "robots" }] });
+      head = this.use(Head, () => ({ meta: [{ name: "robots" }] }));
       render() {
         return <p>page</p>;
       }
@@ -220,12 +220,12 @@ describe("Head on the client", () => {
 describe("Head on the server — the reason it exists", () => {
   test("renderPage returns the title and tags alongside the body", async () => {
     class Page extends Component {
-      head = this.use(Head, {
+      head = this.use(Head, () => ({
         title: "Get started — Ramonda",
         description: "Install Ramonda and render your first component.",
         meta: [{ property: "og:type", content: "article" }],
         link: [{ rel: "canonical", href: "https://ramonda.dev/start" }],
-      });
+      }));
       render() {
         return <article>Install it.</article>;
       }
@@ -243,13 +243,13 @@ describe("Head on the server — the reason it exists", () => {
 
   test("each page gets its own head — the build loop does not accumulate", async () => {
     class First extends Component {
-      head = this.use(Head, { title: "First", description: "one" });
+      head = this.use(Head, () => ({ title: "First", description: "one" }));
       render() {
         return <p>first</p>;
       }
     }
     class Second extends Component {
-      head = this.use(Head, { title: "Second", description: "two" });
+      head = this.use(Head, () => ({ title: "Second", description: "two" }));
       render() {
         return <p>second</p>;
       }
@@ -269,7 +269,7 @@ describe("Head on the server — the reason it exists", () => {
 
   test("a render that throws leaves nothing behind — teardown already cleared it", async () => {
     class Broken extends Component {
-      head = this.use(Head, { title: "Broken", description: "should vanish" });
+      head = this.use(Head, () => ({ title: "Broken", description: "should vanish" }));
       render(): never {
         throw new Error("render failed");
       }
@@ -292,15 +292,15 @@ describe("Head on the server — the reason it exists", () => {
     // simply overwrote the one tag. That proved the upsert works, not the reset.
     // A tag the second page never mentions is the only thing that discriminates.
     class Bare extends Component {
-      head = this.use(Head, {
+      head = this.use(Head, () => ({
         meta: [{ property: "og:title", content: "left behind" }],
-      });
+      }));
       render() {
         return <p>bare</p>;
       }
     }
     class Next extends Component {
-      head = this.use(Head, { title: "Next", description: "mine" });
+      head = this.use(Head, () => ({ title: "Next", description: "mine" }));
       render() {
         return <p>next</p>;
       }
@@ -322,9 +322,9 @@ describe("Head on the server — the reason it exists", () => {
 
   test("escapes a value that would otherwise break out of the attribute", async () => {
     class Page extends Component {
-      head = this.use(Head, {
+      head = this.use(Head, () => ({
         description: `He said "hello" & <left>`,
-      });
+      }));
       render() {
         return <p>x</p>;
       }
@@ -354,10 +354,10 @@ describe("Head on the server — the reason it exists", () => {
 describe("Head through hydration", () => {
   test("adopts the server's tags instead of adding a second copy", async () => {
     class Page extends Component {
-      head = this.use(Head, {
+      head = this.use(Head, () => ({
         title: "Hydrated",
         description: "written once",
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -389,7 +389,7 @@ describe("Head through hydration", () => {
 describe("renderToString is unchanged", () => {
   test("still returns just the body", async () => {
     class Page extends Component {
-      head = this.use(Head, { title: "Body only" });
+      head = this.use(Head, () => ({ title: "Body only" }));
       render() {
         return <p>body</p>;
       }

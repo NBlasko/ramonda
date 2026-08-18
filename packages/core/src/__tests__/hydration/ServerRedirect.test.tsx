@@ -103,7 +103,7 @@ describe("renderPage on a redirect", () => {
     @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
-      head = this.use(Head, { title: "Secret", description: "should not leak" });
+      head = this.use(Head, () => ({ title: "Secret", description: "should not leak" }));
       @created go() {
         this.redirect?.("/login");
       }

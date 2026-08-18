@@ -61,7 +61,7 @@ Sometimes clearer, especially when the hook's job is to affect what its owner re
 
 ```tsx
 class Owner extends Component {
-  counter = this.use(CounterHook, { start: 5 });
+  counter = this.use(CounterHook, () => ({ start: 5 }));
   render() {
     return <p>{this.counter.count}</p>;
   }

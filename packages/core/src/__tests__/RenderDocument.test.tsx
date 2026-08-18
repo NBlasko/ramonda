@@ -6,10 +6,10 @@ import { renderDocument } from "../hydration/document";
 import { hydrateRoot } from "../hydration/hydrate";
 
 class Page extends Component {
-  head = this.use(Head, {
+  head = this.use(Head, () => ({
     title: "Get started — Ramonda",
     description: "Install it and render your first component.",
-  });
+  }));
   render() {
     return <article>Install it.</article>;
   }
@@ -45,7 +45,7 @@ describe("renderDocument", () => {
 
   test("escapes a title that would otherwise end the element", async () => {
     class Sharp extends Component {
-      head = this.use(Head, { title: "<script>alert(1)</script> & you" });
+      head = this.use(Head, () => ({ title: "<script>alert(1)</script> & you" }));
       render() {
         return <p>x</p>;
       }

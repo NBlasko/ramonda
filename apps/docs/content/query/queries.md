@@ -239,7 +239,7 @@ TypeScript to infer `ctx` from the same object it is currently inferring — `ct
 
 ```tsx expect-error
 // `ctx` is implicitly `any`, so `ctx.singal` (typo) passes.
-this.use(Query, { key: ["user", id], fetch: (ctx) => loadUser(id, ctx.signal) });
+this.use(Query, () => ({ key: ["user", id], fetch: (ctx) => loadUser(id, ctx.signal) }));
 ```
 
 Pin the type arguments and everything else follows from them:
@@ -247,10 +247,10 @@ Pin the type arguments and everything else follows from them:
 ```tsx
 private key = ["user", this.props.id] as const;
 
-private user = this.use(Query<User, typeof this.key>, {
+private user = this.use(Query<User, typeof this.key>, () => ({
   key: this.key,
   fetch: (ctx) => loadUser(ctx.key[1], ctx.signal),   // ctx.key[1] is the id, typed
-});
+}));
 ```
 
 **Pin both, not just the first.** `Query<User>` alone fixes the `any` — but the key parameter then
@@ -260,7 +260,7 @@ reached into `ctx` for is gone.
 A method needs no pin, because it carries its own annotation:
 
 ```tsx
-private user = this.use(Query, { key: ["user", this.props.id], fetch: this.loadUser });
+private user = this.use(Query, () => ({ key: ["user", this.props.id], fetch: this.loadUser }));
 ```
 
 This is a TypeScript inference limit rather than a rule of this library, so it applies to any hook

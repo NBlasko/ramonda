@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
+import { Hook } from "../../base/Hook";
 import { Host, state, deferHydration, memoizedHandler } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
@@ -207,6 +208,36 @@ describe("production diagnostics", () => {
     // Nothing from the thrown error travels — the app decides what may leave the process.
     expect(record!.message).not.toContain("something the app's own code did");
     expect(record!.data).toBeUndefined();
+  });
+
+  /**
+   * RMD055 is enforcement rather than a diagnostic, and this is where that distinction is worth
+   * money: the throw is outside `if (__DEV__)`, so the mistake cannot survive into a build. What
+   * production drops is only the explanation — the prose lives in `SPECS`, which does not ship.
+   */
+  test("a plain-object props bag throws here too, with no record and no prose", () => {
+    captured = collect();
+
+    class Echo extends Hook<{ seed: number }> {
+      get seed() {
+        return this.props.seed;
+      }
+    }
+    class Page extends Component {
+      echo = this.use(Echo, { seed: 1 } as never);
+      render() {
+        return <p>{String(this.echo.seed)}</p>;
+      }
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      expect(() => bootstrap(<Page />, container)).toThrow(/RMD055/);
+      expect(captured.records.some((r) => r.code === "RMD055")).toBe(false);
+    } finally {
+      container.remove();
+    }
   });
 
   test("a deferral that never settles is reported as stalled", async () => {

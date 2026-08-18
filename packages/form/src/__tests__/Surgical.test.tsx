@@ -81,7 +81,7 @@ describe("a field in its own component", () => {
   function mount() {
     let form!: Form<typeof schema>;
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: () => {} });
+      private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: () => {} }));
       render(): RamondaNode {
         count("page");
         form = this.f;
@@ -178,11 +178,11 @@ describe("rows through list()", () => {
     const rows = Array.from({ length: howMany }, () => ({ v: "filled" }));
     let form!: Form<typeof schema>;
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, {
+      private f = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { ...EMPTY, a: "ok", rows },
         onSubmit: () => {},
-      });
+      }));
       render(): RamondaNode {
         count("page");
         form = this.f;
@@ -287,11 +287,11 @@ describe("at three hundred rows", () => {
     const rows = Array.from({ length: 300 }, () => ({ v: "filled" }));
     let form!: Form<typeof schema>;
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, {
+      private f = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { ...EMPTY, a: "ok", rows },
         onSubmit: () => {},
-      });
+      }));
       render(): RamondaNode {
         form = this.f;
         return (
@@ -377,11 +377,11 @@ describe("a watcher hears only about what it reads", () => {
     const rows = Array.from({ length: howMany }, () => ({ v: "filled" }));
     let form!: Form<typeof schema>;
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, {
+      private f = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { ...EMPTY, a: "ok", rows },
         onSubmit: () => {},
-      });
+      }));
       render(): RamondaNode {
         count("page");
         form = this.f;
@@ -463,7 +463,7 @@ describe("a watcher hears only about what it reads", () => {
     // been touched. Nothing about the message moves on a blur — only permission to show it.
     renders = {};
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: () => {} });
+      private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: () => {} }));
       render(): RamondaNode {
         // Everything this test needs happens through the DOM, which is the point: a blur is a real
         // event on a real element, not a method call.

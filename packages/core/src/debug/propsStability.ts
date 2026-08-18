@@ -252,3 +252,22 @@ function report(kind: Kind, owner: string, key: string, a: unknown, b: unknown):
     second: b,
   });
 }
+
+/**
+ * Reports a props bag handed to `use()` as a plain object. The bag itself is refused by the throw
+ * in `useCommon`, which happens in every build; this only supplies the explanation and the record.
+ *
+ * Here rather than beside the throw for the reason the whole module exists: `SPECS` is the largest
+ * strippable thing in the package, and every path to it stays inside `if (__DEV__)`.
+ */
+export function reportObjectPropsBag(owner: string, hookName: string, keys: readonly string[]): void {
+  // `keys` goes into the record as a STRING. A record carries values, never live objects, so
+  // `reportable` drops an array — see the note beside it.
+  const listed = keys.join(", ");
+  diagnose(
+    "RMD055",
+    `${owner}:${hookName}`,
+    `\`${owner}\` passed <${hookName} /> a plain object${listed === "" ? "" : ` (${listed})`}.`,
+    { keys: listed },
+  );
+}

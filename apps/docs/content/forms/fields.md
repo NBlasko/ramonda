@@ -333,7 +333,7 @@ declare class Rows extends Component<{ of: FieldNode<Contact[]> }> {}
 declare class SaveButton extends Component {}
 
 class Page extends Component {
-  private form = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit });
+  private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }));
 
   @compute get body() {
     return (

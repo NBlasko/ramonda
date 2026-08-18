@@ -109,7 +109,7 @@ describe("renderHook", () => {
 describe("a hook tested through renderHook behaves the same in a real component", () => {
   test("same lifecycle, same values", () => {
     class Owner extends Component {
-      counter = this.use(CounterHook, { start: 5 });
+      counter = this.use(CounterHook, () => ({ start: 5 }));
       render(): RamondaNode {
         return <p>{this.counter.count}</p>;
       }

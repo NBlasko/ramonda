@@ -25,7 +25,7 @@ describe("extending a component (no constructor anywhere)", () => {
   @Host("td")
   class BaseCell extends Component<{ label?: string }> {
     @state count = 0;
-    baseHook = this.use(Helper, { tag: "base" });
+    baseHook = this.use(Helper, () => ({ tag: "base" }));
 
     @created initBase() {
       log.push("base");
@@ -43,7 +43,7 @@ describe("extending a component (no constructor anywhere)", () => {
   @Host("th")
   class FancyCell extends BaseCell {
     @state extra = 7;
-    ownHook = this.use(Helper, { tag: "fancy" });
+    ownHook = this.use(Helper, () => ({ tag: "fancy" }));
 
     @created initFancy() {
       log.push("fancy");

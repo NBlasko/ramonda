@@ -43,7 +43,7 @@ export class Faulty extends Component {
    * development-only devtools name, not application state, and a blob that carried it would mean the
    * two sides disagree about what to restore.
    */
-  private labelled = this.use(Store, { seed: 1 }, { label: "signup" });
+  private labelled = this.use(Store, () => ({ seed: 1 }), { label: "signup" });
 
   render(): RamondaNode {
     // `class` where `className` is read: the styling never applies, and it is reported.

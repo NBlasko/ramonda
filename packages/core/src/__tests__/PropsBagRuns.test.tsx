@@ -1,21 +1,23 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { state } from "../base/decorators";
+import { bootstrap } from "../index";
+import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
- * How often a hook's props CALLBACK runs, and what that costs a bag holding inline functions.
+ * A hook's props are a callback, and this is the measurement that says the rule costs nothing.
  *
- * `/hooks/writing` says the two forms plainly — a plain object is "fixed for the life of the hook,
- * for constants", a callback "re-runs whenever a signal it reads moves". What it does not say, and
- * what decides whether the object form is worth having at all, is what a callback costs when it
- * reads NOTHING: measured here, one run, at mount, and never again.
+ * A callback that reads NO signal is called once, at mount, and never again — so the bag of
+ * constants that used to be written as an object literal is written as a callback for the same
+ * price. The argument for the object form was a bag full of inline functions (`fetch`,
+ * `retryDelay`) that a re-run would rebuild into fresh identities and report as changed props
+ * (RMD022); it only rebuilds them if the bag reads a signal.
  *
- * That matters because the usual argument for reaching for the object form is a bag full of inline
- * functions — `fetch`, `retryDelay` — that a re-run would rebuild into fresh identities and report
- * as changed props (RMD022). It only rebuilds them if the bag reads a signal. A bag of constants
- * and closures that read nothing is built once either way.
+ * The last test is the mirror that keeps the first two honest: a bag that DOES read a signal
+ * re-runs, and its functions are fresh each time. Without it the pair above reads as "callbacks
+ * never re-run", which is the opposite of the point.
  */
 describe("how often a props callback runs", () => {
   test("a bag that reads no signal is built once, however often the owner renders", async () => {
@@ -76,12 +78,7 @@ describe("how often a props callback runs", () => {
     expect(identityChanges).toBe(0);
   });
 
-  /**
-   * The mirror, and what keeps the two above honest: a bag that DOES read a signal re-runs, and its
-   * inline functions are fresh every time. That is the case `@StableProps` exists for — and without
-   * this test the pair above would read as "callbacks never re-run", which is the opposite of the
-   * point.
-   */
+  /** The case `@StableProps` exists for. */
   test("a bag that reads a signal re-runs, and its inline functions are fresh each time", async () => {
     let runs = 0;
     let identityChanges = 0;
@@ -111,5 +108,84 @@ describe("how often a props callback runs", () => {
     }
     expect(runs).toBe(6);
     expect(identityChanges).toBe(5);
+  });
+});
+
+describe("a plain object is refused (RMD055)", () => {
+  let records: RamondaDiagnostic[] = [];
+
+  beforeEach(() => {
+    records = [];
+    resetDiagnostics();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
+  });
+
+  afterEach(() => {
+    globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+    vi.restoreAllMocks();
+  });
+
+  class Echo extends Hook<{ seed: number }> {
+    get seed() {
+      return this.props.seed;
+    }
+  }
+
+  test("an object bag throws, naming the owner and the hook", () => {
+    class Page extends Component {
+      @state n = 1;
+      // The mistake: evaluated once, so `seed` could only ever be 1.
+      echo = this.use(Echo, { seed: this.n } as never);
+      render() {
+        return <p>{String(this.echo.seed)}</p>;
+      }
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      expect(() => bootstrap(<Page />, container)).toThrow(/RMD055.*Echo.*Page/s);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the report carries the keys the object held", () => {
+    class Page extends Component {
+      echo = this.use(Echo, { seed: 1 } as never);
+      render() {
+        return <p />;
+      }
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      expect(() => bootstrap(<Page />, container)).toThrow();
+    } finally {
+      container.remove();
+    }
+
+    const record = records.find((r) => r.code === "RMD055");
+    expect(record?.severity).toBe("error");
+    expect(record?.data?.keys).toBe("seed");
+    expect(record?.dedupKey).toBe("RMD055:Page:Echo");
+  });
+
+  test("a hook taking no props at all is untouched", async () => {
+    class Silent extends Hook {
+      readonly answer = 42;
+    }
+    class Page extends Component {
+      silent = this.use(Silent);
+      render() {
+        return <p>{String(this.silent.answer)}</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    expect(app.container.textContent).toBe("42");
+    expect(records.some((r) => r.code === "RMD055")).toBe(false);
   });
 });

@@ -84,9 +84,13 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
    * whoever wrote it, and a framework word reserved in there collides with a real one eventually.
    *
    * ```tsx
-   * private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+   * private signup = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }), { label: "Sign Up" });
    * private timer = this.use(Poll, undefined, { label: "prices" });
    * ```
+   *
+   * Props are a CALLBACK, never an object — an object literal is evaluated once, while this owner
+   * is constructed, so it can only ever carry what was true then (RMD055). A callback that reads no
+   * signal is called once too, so nothing is paid for saying it this way.
    *
    * A propless hook needs the `undefined` placeholder, and that is deliberate: a second overload
    * taking metadata in the props position would be ambiguous, since `{ label: "…" }` is a perfectly
@@ -102,10 +106,9 @@ export abstract class Hook<R extends HookProps = undefined> implements BaseHook<
     props: PropsFactory<Q, S>,
     meta?: HookMeta,
   ): T;
-  protected use<T extends BaseHook<Q>, Q extends HookProps>(hook: HookClassKind<T, Q>, props: Q, meta?: HookMeta): T;
   protected use<T extends BaseHook<Q>, Q extends HookProps>(
     hook: HookClassKind<T, Q>,
-    props?: Q | PropsFactory<Q, never>,
+    props?: PropsFactory<Q, never>,
     meta?: HookMeta,
   ): T {
     return useCommon(this, hook, props, meta);

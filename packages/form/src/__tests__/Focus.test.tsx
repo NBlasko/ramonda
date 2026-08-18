@@ -41,11 +41,11 @@ function mount(defaults: Values, order: (keyof Values)[] = ["email", "nick", "ag
   let form!: Form<typeof schema>;
 
   class Page extends Component {
-    private f = this.use(Form<typeof schema>, {
+    private f = this.use(Form<typeof schema>, () => ({
       schema,
       defaultValues: defaults,
       onSubmit: () => {},
-    });
+    }));
 
     render(): RamondaNode {
       form = this.f;
@@ -144,11 +144,11 @@ describe("focus after a failed submit", () => {
     let form!: Form<typeof schema>;
 
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, {
+      private f = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { email: "no", nick: "no", age: 0 },
         onSubmit: () => {},
-      });
+      }));
 
       render(): RamondaNode {
         form = this.f;
@@ -177,16 +177,16 @@ describe("focus after a failed submit", () => {
     // Two forms on one page. Focus must not land in the other one, which is what a document-wide
     // query would have done.
     class Page extends Component {
-      private first = this.use(Form<typeof schema>, {
+      private first = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { email: "no", nick: "no", age: 0 },
         onSubmit: () => {},
-      });
-      private second = this.use(Form<typeof schema>, {
+      }));
+      private second = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { email: "no", nick: "no", age: 0 },
         onSubmit: () => {},
-      });
+      }));
 
       render(): RamondaNode {
         return (
@@ -241,11 +241,11 @@ describe("focus after a failed submit", () => {
     };
 
     class Page extends Component {
-      private f = this.use(Form<typeof slowSchema>, {
+      private f = this.use(Form<typeof slowSchema>, () => ({
         schema: slowSchema,
         defaultValues: { email: "no" },
         onSubmit: () => {},
-      });
+      }));
 
       render(): RamondaNode {
         return (
@@ -294,11 +294,11 @@ describe("focus after a failed submit", () => {
     };
 
     class Page extends Component {
-      private f = this.use(Form<typeof listSchema>, {
+      private f = this.use(Form<typeof listSchema>, () => ({
         schema: listSchema,
         defaultValues: { rows: ["fine", ""] },
         onSubmit: () => {},
-      });
+      }));
 
       render(): RamondaNode {
         return (

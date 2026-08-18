@@ -55,10 +55,10 @@ export interface HeadOptions {
  *
  * ```tsx
  * class StateGuide extends Component {
- *   head = this.use(Head, {
+ *   head = this.use(Head, () => ({
  *     title: "State — Ramonda",
  *     description: "How @state turns a class field into a signal.",
- *   });
+ *   }));
  *
  *   render() { return <article>…</article>; }
  * }

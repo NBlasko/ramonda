@@ -1,7 +1,7 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
 import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
-import { checkPropsStability, checkCachedProps } from "../debug/propsStability";
+import { checkPropsStability, checkCachedProps, reportObjectPropsBag } from "../debug/propsStability";
 import { isStrictRender } from "../debug/renderStability";
 import type { HookClassKind } from "../types/commonTypes";
 import { HOOK_META, type BaseHook, type HookMeta, type HookProps } from "../types/HookTypes";
@@ -28,7 +28,9 @@ function buildProps(
   declared: readonly string[] | undefined,
   site?: object,
 ): any {
-  if (typeof hookProps !== "function") return hookProps ?? {};
+  // `undefined` is the whole of the other case: a bag passed as a plain object is refused by
+  // `useCommon` before anything is built (RMD055), so nothing else reaches here.
+  if (hookProps === undefined) return {};
 
   const build = hookProps as (bag: unknown) => any;
 
@@ -50,8 +52,8 @@ function buildProps(
       // debug/propsStability.ts for why twice in one tick, and why a run counter on top.
       //
       // `site` is the call site's props cache, which the check counts runs against. It is absent
-      // only for a bag passed as a plain object, and that returned above — a plain object is not
-      // rebuilt, so there is nothing for this check to be about.
+      // only for a hook taking no props at all, and that returned above — there is no callback to
+      // run twice, so there is nothing for this check to be about.
       if (isStrictRender() && site !== undefined) checkPropsStability(label, bag, build(that), declared, site);
 
       return bag;
@@ -172,6 +174,35 @@ export function useCommon<T extends BaseHook<any>, P>(
   hookProps?: any,
   meta?: HookMeta,
 ): T {
+  /**
+   * A props bag is a CALLBACK, and that is enforced here rather than only typed.
+   *
+   * An object literal in a field initializer is evaluated ONCE, while the owner is being
+   * constructed, so what it captured is what the hook keeps for life: `{ seed: this.n }` written
+   * when `n` was 1 serves 1 forever while the owner reads 7, silently. Nothing can detect that
+   * from inside `use()` — it is handed an already-built object and cannot know the values came
+   * from `this` — so the FORM is what gives way, since the form is the only part that is visible.
+   *
+   * Enforcement, not diagnostics: the throw sits outside `if (__DEV__)`, like a write to props
+   * (RMD004, RMD015), so behaviour cannot differ between builds and a shipped bundle cannot go on
+   * serving a stale bag the types already refuse. The DEV report only explains it.
+   *
+   * The callback costs nothing where the object was chosen for being cheap: a bag that reads no
+   * signal runs once, at mount, and never again — measured in `PropsBagRuns.test.tsx`.
+   */
+  if (hookProps !== undefined && typeof hookProps !== "function") {
+    if (__DEV__) {
+      reportObjectPropsBag(
+        that.constructor.name,
+        hook.name,
+        typeof hookProps === "object" && hookProps !== null ? Object.keys(hookProps) : [],
+      );
+    }
+    throw new TypeError(
+      `[RMD055] <${hook.name} /> was given a plain object as its props in ${that.constructor.name} — a hook's props must be a callback: \`this.use(${hook.name}, () => ({ ... }))\`. An object literal is evaluated once, so it can only ever carry what was true while ${that.constructor.name} was being constructed.`,
+    );
+  }
+
   let internalHooks = that[INTERNAL_HOOKS];
 
   if (!internalHooks) {
@@ -190,10 +221,9 @@ export function useCommon<T extends BaseHook<any>, P>(
   // non-configurable symbol on the class, so it cannot change afterwards.
   const declaredStable = (hook as unknown as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
 
-  // A bag passed as a plain object has one identity for the life of the call site, so there is
-  // nothing to cache and nothing to track. Only a CALLBACK rebuilds, so only a callback gets the
-  // machinery — and a hook taking no props at all pays for none of it.
-  const isFactory = typeof hookProps === "function";
+  // A hook taking no props at all pays for none of the machinery below: there is no callback to
+  // re-run, so there is nothing to cache and no signal to track.
+  const isFactory = hookProps !== undefined;
 
   const cacheId = isFactory ? createId() : 0;
   const cache: PropsCache | undefined = isFactory
@@ -324,8 +354,8 @@ export function useCommon<T extends BaseHook<any>, P>(
 
     // The cache handed back the same bag, so every key in it is the same value it already had —
     // the diff below would visit each one to prove that and wake nothing. Skipped by IDENTITY,
-    // not by a flag: a plain-object bag reaches the same conclusion by the same test, and so
-    // does a callback that happened to be re-run and settled by `@StableProps`.
+    // not by a flag: a callback that was re-run and settled by `@StableProps` reaches the same
+    // conclusion by the same test.
     //
     // What is NOT skipped is the walk into the children further down. A child hook can depend on
     // state of its own, which this hook's bag says nothing about, so skipping the recursion here

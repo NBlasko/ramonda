@@ -10,6 +10,10 @@ declare global {
   class List extends Hook<any> {
     [key: string]: any;
   }
+  /** The reader's own hook, for the RMD055 examples. */
+  class Counter extends Hook<any> {
+    [key: string]: any;
+  }
   const f: any;
   const register: (...args: any[]) => any;
   /** The reader's own lookup, for the async-validation examples. */

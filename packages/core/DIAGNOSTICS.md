@@ -87,6 +87,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD051` | warning | A list row cannot be told apart from its siblings |
 | `RMD052` | error | A component among JSX children, where an element was meant |
 | `RMD053` | error | The request was read with no request scope installed |
+| `RMD055` | error | A hook's props passed as a plain object |
 
 ### RMD052 — A component among JSX children, where an element was meant
 
@@ -148,6 +149,31 @@ analyzer's reach through a variable or a build with no types.
 
 The other way to arrive here is calling `requestContext()` at module top level, before any render
 has started.
+
+### RMD055 — A hook's props passed as a plain object
+
+```tsx
+counter = this.use(Counter, { start: this.count }); // ✗ throws
+counter = this.use(Counter, () => ({ start: this.count })); // ✓
+```
+
+A field initializer runs once, so an object written in one carries what was true while the owner was
+being constructed and carries it for the hook's whole life. Measured before the form was closed: with
+`{ seed: this.n }` and `n` moved from 1 to 7, the hook reads 1 forever, the callback form reads 7, and
+nothing reports the difference.
+
+Enforced in `helpers/common.ts`, at the top of `useCommon`, and it **throws in every build** — the same
+rule as a write to props (RMD004, RMD015), because the alternative is a shipped bundle serving a stale
+value for the life of the page. `reportObjectPropsBag` supplies the explanation and the record in a
+development build; it is not what stops the call.
+
+Nothing can catch this from the inside. `use()` receives a finished object and cannot know a value in it
+came from `this.count`, so no runtime check exists that is not a heuristic — which is why the shape is
+refused rather than the staleness detected.
+
+The callback is free where the object looked cheapest: a bag that reads no signal runs once, at mount,
+and never again, and its inline functions keep their identity. `__tests__/PropsBagRuns.test.tsx` pins
+both halves.
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 
@@ -506,7 +532,7 @@ class RowsHook extends Hook<{ prefix: string }> {
 
 @Host("div")
 class TableApp extends Component {
-  rowsHook = this.use(RowsHook, { prefix: "x" });
+  rowsHook = this.use(RowsHook, () => ({ prefix: "x" }));
   render() {
     return <table><tbody>
       {this.rowsHook.rows.map(r => <Row key={r} label={r} />)}

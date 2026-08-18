@@ -67,9 +67,9 @@ describe("inspector: component + hook state", () => {
       @state value = this.props.seed;
     }
     class Page extends Component {
-      signup = this.use(Store, { seed: 1 }, { label: "signup" });
-      login = this.use(Store, { seed: 2 }, { label: "login" });
-      plain = this.use(Store, { seed: 3 });
+      signup = this.use(Store, () => ({ seed: 1 }), { label: "signup" });
+      login = this.use(Store, () => ({ seed: 2 }), { label: "login" });
+      plain = this.use(Store, () => ({ seed: 3 }));
       render() {
         return <div>x</div>;
       }
@@ -93,7 +93,7 @@ describe("inspector: component + hook state", () => {
       }
     }
     class Page extends Component {
-      store = this.use(Store, { seed: 1 }, { label: "signup" });
+      store = this.use(Store, () => ({ seed: 1 }), { label: "signup" });
       render() {
         return <div>x</div>;
       }

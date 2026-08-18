@@ -38,11 +38,11 @@ function mount(defaults: Values = SEED) {
   let form!: Form<typeof schema>;
 
   class Page extends Component {
-    private f = this.use(Form<typeof schema>, {
+    private f = this.use(Form<typeof schema>, () => ({
       schema,
       defaultValues: defaults,
       onSubmit: (_values) => {},
-    });
+    }));
 
     render(): RamondaNode {
       form = this.f;
@@ -361,7 +361,7 @@ describe("a row's element survives a remove with no key written", () => {
     let form!: Form<typeof schema>;
 
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, { schema, defaultValues: SEED, onSubmit: () => {} });
+      private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: SEED, onSubmit: () => {} }));
       render(): RamondaNode {
         form = this.f;
         return (

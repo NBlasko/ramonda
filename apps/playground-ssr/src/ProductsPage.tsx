@@ -243,13 +243,13 @@ export class ProductsPage extends Component {
 
   // Passed directly rather than through a callback: every value in it is a constant or a
   // module-level function, so there is nothing for a per-render rebuild to keep in step.
-  private feed = this.use(InfiniteQuery<ProductPage>, {
+  private feed = this.use(InfiniteQuery<ProductPage>, () => ({
     key: ["products"],
     initialPageParam: 0,
     loadPage,
     // `undefined` ends the list. `skip + limit` past `total` is exactly that.
     getNextPageParam: nextSkip,
-  });
+  }));
 
   /**
    * Scrolled into view — ask for one more page. `fetchNextPage` is a no-op when there is no
