@@ -49,12 +49,12 @@ function mount(
   let form!: Form<typeof schema>;
 
   class Page extends Component {
-    private f = this.use(Form<typeof schema>, {
+    private f = this.use(Form<typeof schema>, () => ({
       schema,
       defaultValues: EMPTY,
       onSubmit: options?.onSubmit ?? (() => {}),
       validateOn: options?.validateOn,
-    });
+    }));
 
     render(): RamondaNode {
       form = this.f;
@@ -526,8 +526,8 @@ describe("validation", () => {
     let right!: Form<typeof schema>;
 
     class Pair extends Component {
-      private a = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: (_v) => {} });
-      private b = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: (_v) => {} });
+      private a = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: (_v) => {} }));
+      private b = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: (_v) => {} }));
 
       render(): RamondaNode {
         left = this.a;

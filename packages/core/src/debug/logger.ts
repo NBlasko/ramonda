@@ -1,7 +1,5 @@
 // packages/core/src/debug/logger.ts
 
-// packages/core/src/debug/logger.ts
-
 /**
  * Captured before `installPurityGuard` patches it.
  *
@@ -15,9 +13,22 @@ const nativeRandomUUID = typeof crypto !== "undefined" ? crypto.randomUUID.bind(
 // In-memory log history, replayed to the devtools when it connects. Bounded by
 // a ring buffer so a long session can't grow it without limit.
 const MAX_VAULT_LOGS = 500;
-const RAMONDA_LOG_VAULT: any[] = [];
 
-export const ramondaLog = (type: "warning" | "error" | "info", message: string, data?: any) => {
+/** One line of the history, as the vault holds it and as the devtools panel receives it. */
+interface LogEntry {
+  type: LogType;
+  message: string;
+  /** Whatever the call site had to hand — a value, an object, an `Error`. Printed and rendered, never read. */
+  data?: unknown;
+  timestamp: string;
+  id: string;
+}
+
+type LogType = "warning" | "error" | "info";
+
+const RAMONDA_LOG_VAULT: LogEntry[] = [];
+
+export const ramondaLog = (type: LogType, message: string, data?: unknown) => {
   if (typeof __DEV__ !== "undefined" && __DEV__) {
     const logEntry = {
       type,

@@ -147,6 +147,40 @@ Anything that touches `window`, starts a timer, or opens a connection belongs on
 client. (Effects — the next page — are always client-only, so you rarely need `env`
 for them.)
 
+### The one exception: `@created` on a hydrated page
+
+A page that arrived as server markup has already run its `@created` once — on the
+server. So when the browser takes that markup over, a **`shared` `@created` is
+skipped**:
+
+| on a hydrated page | runs |
+|---|---|
+| `@created` — `"shared"` (default) | **no** — it ran on the server |
+| `@created` — `"client"` | yes |
+| `@mounted` — `"shared"` (default) | yes |
+
+`@mounted` is not skipped, and the asymmetry is the point: `@mounted` exists to touch
+the real DOM, and the server never had one, so its work has not been done yet
+whatever ran there.
+
+**The trap is a `shared` `@created` whose effect is not in the hydration blob.** The
+model is that a shared create's work is captured by `@state` — it runs on the server,
+the values travel in the markup, and the browser restores them rather than repeating
+the work. That holds for anything you *store*. It does not hold for anything you
+*prime*: a validation pass, a subscription, a cache warmed on the side. Those never
+happen at all on a hydrated page, and nothing says so — the page simply behaves as
+though that step was never written.
+
+If a create must happen in the browser no matter how the page got there, say so:
+
+```tsx
+@created({ env: "client" })
+prime() {} // runs on a hydrated page too
+```
+
+A guard is worth having beside it when the work is not idempotent, since a
+client-only render *and* a hydrated one both reach it.
+
 ### The method also receives `env`
 
 When a method needs to know which side it is on — rather than skip a side entirely —

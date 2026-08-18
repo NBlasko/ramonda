@@ -349,6 +349,26 @@ describe("the switch", () => {
     expect(reported()).not.toContain("RMD020");
   });
 
+  /**
+   * An attribute nested past `valueEqual`'s default depth, holding a value that is not a function of
+   * state. The comparison used to stop at two levels and answer "different" without looking, and the
+   * report then said the value was "rebuilt with the same contents" and recommended a `@compute` —
+   * for a `performance.now()`. `debug/purityGuard.ts` does not watch clocks and says why, so nothing
+   * else here would have caught it.
+   */
+  test("a deep attribute that is not a function of state is named as one", async () => {
+    class Panel extends Component {
+      render() {
+        return <p data-x={{ a: { b: { c: performance.now() } } } as never}>x</p>;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+
+    expect(logs.join("\n")).toContain("does not come from state");
+    expect(logs.join("\n")).not.toContain("with the same contents");
+  });
+
   test("render really does run twice while it is on", async () => {
     let renders = 0;
 

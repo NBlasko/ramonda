@@ -34,11 +34,11 @@ const signupSchema = object({
 });
 
 class Signup extends Component {
-  private form = this.use(Form, {
+  private form = this.use(Form, () => ({
     schema: signupSchema,
     defaultValues: { email: "", password: "", confirm: "" },
     onSubmit: this.save,
-  });
+  }));
 
   save(values: InferOut<typeof signupSchema>) {
     return api.signup(values);

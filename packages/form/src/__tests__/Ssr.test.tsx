@@ -65,7 +65,7 @@ class SaveButton extends Component {
 }
 
 class Page extends Component {
-  f = this.use(Form<typeof schema>, { schema, defaultValues: defaults(), onSubmit: () => {} });
+  f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: defaults(), onSubmit: () => {} }));
 
   render(): RamondaNode {
     return (
@@ -173,11 +173,11 @@ describe("through hydration", () => {
    */
   test("a form whose defaults pass is still valid after hydration", async () => {
     class Fine extends Component {
-      f = this.use(Form<typeof schema>, {
+      f = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { email: "ada@example.com", rows: [] },
         onSubmit: () => {},
-      });
+      }));
 
       render(): RamondaNode {
         return (

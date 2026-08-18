@@ -470,7 +470,7 @@ describe("watchProp", () => {
     }
 
     class Panel extends Component<{ label: string }> {
-      noise = this.use(Noise, { tick: 0 });
+      noise = this.use(Noise, () => ({ tick: 0 }));
 
       @watchProp((p: { label: string }) => p.label)
       onLabel([next]: [string], [previous]: [string]) {

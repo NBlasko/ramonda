@@ -43,10 +43,10 @@ afterEach(() => {
 describe("a portal into a named target", () => {
   test("the server collects its block, keyed by the target's name", async () => {
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <div class="modal">hello</div>,
         target: modals,
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -62,10 +62,10 @@ describe("a portal into a named target", () => {
 
   test("renderDocument puts each collected block in a container of its own", async () => {
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <div class="modal">hello</div>,
         target: modals,
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -83,10 +83,10 @@ describe("a portal into a named target", () => {
   test("the client adopts the server's block instead of building a second one", async () => {
     @Host("div")
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <div class="modal">hello</div>,
         target: modals,
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -139,7 +139,7 @@ describe("a portal into a named target", () => {
 
     @Host("div")
     class Page extends Component {
-      portal = this.use(Portal, { children: <Dialog />, target: modals });
+      portal = this.use(Portal, () => ({ children: <Dialog />, target: modals }));
       render() {
         return <p>page</p>;
       }
@@ -174,10 +174,10 @@ describe("a portal into a named target", () => {
 
     @Host("div")
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <div class="modal">client</div>,
         target: modals,
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -206,10 +206,10 @@ describe("a portal into a named target", () => {
 describe("a portal into a named target, on a prerendered page", () => {
   test("renderStatic collects the blocks the way renderPage does", async () => {
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <div class="modal">baked</div>,
         target: modals,
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -239,7 +239,7 @@ describe("a portal into a named target, on a prerendered page", () => {
 describe("after the markup has been captured", () => {
   test("neither render leaves a page's portal nodes standing", async () => {
     class Page extends Component {
-      portal = this.use(Portal, { children: <div class="modal">held</div>, target: modals });
+      portal = this.use(Portal, () => ({ children: <div class="modal">held</div>, target: modals }));
       render() {
         return <p>page</p>;
       }

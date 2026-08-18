@@ -49,7 +49,7 @@ function mount<V>(defaults: V) {
   const schema = complaining<V>();
   let form!: Form<typeof schema>;
   class Page extends Component {
-    private f = this.use(Form<typeof schema>, { schema, defaultValues: defaults, onSubmit: () => {} });
+    private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: defaults, onSubmit: () => {} }));
     render(): RamondaNode {
       form = this.f;
       return <span>x</span>;

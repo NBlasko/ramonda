@@ -40,11 +40,11 @@ function mount(onSubmit: (values: Values) => void | Promise<void> = () => {}) {
   let form!: Form<typeof schema>;
 
   class Page extends Component {
-    private f = this.use(Form<typeof schema>, {
+    private f = this.use(Form<typeof schema>, () => ({
       schema,
       defaultValues: { email: "", tags: ["a"] },
       onSubmit,
-    });
+    }));
 
     render() {
       form = this.f;
@@ -108,11 +108,11 @@ describe("production build", () => {
 
     let form!: Form<typeof rejecting>;
     class Page extends Component {
-      private f = this.use(Form<typeof rejecting>, {
+      private f = this.use(Form<typeof rejecting>, () => ({
         schema: rejecting,
         defaultValues: { email: "", tags: ["a"] },
         onSubmit,
-      });
+      }));
       render() {
         form = this.f;
         return null;

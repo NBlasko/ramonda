@@ -22,7 +22,7 @@ export interface HookMeta {
    * call is the one place that knows which of the two it is.
    *
    * ```tsx
-   * private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+   * private signup = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }), { label: "Sign Up" });
    * ```
    *
    * Added rather than substituted: the class says WHAT the node is, which a label cannot recover,

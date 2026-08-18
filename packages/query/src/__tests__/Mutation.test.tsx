@@ -120,7 +120,7 @@ describe("Mutation", () => {
       // `Mutation<Todo, string>` names both types, so `title`, `data`, `vars` and `ctx`
       // are typed with no annotations — the options are CHECKED against MutationProps
       // instead of being what the types are inferred from.
-      add = this.use(Mutation<Todo, string>, {
+      add = this.use(Mutation<Todo, string>, () => ({
         mutate: async (title) => ({ title }),
         onMutate: () => {
           order.push("mutate");
@@ -131,7 +131,7 @@ describe("Mutation", () => {
         onSettled: () => {
           order.push("settled");
         },
-      });
+      }));
       render(): RamondaNode {
         return <p />;
       }

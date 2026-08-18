@@ -29,7 +29,7 @@ class SizeHook extends Hook<SizeProps> {
 let hook: SizeHook;
 
 class Panel extends Component {
-  size = this.use(SizeHook, { width: 10 });
+  size = this.use(SizeHook, () => ({ width: 10 }));
   render() {
     hook = this.size;
     return <div id="panel">{String(this.size.width)}</div>;

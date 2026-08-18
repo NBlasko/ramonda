@@ -12,11 +12,11 @@ import { report } from "./diagnostics";
  *
  * ```tsx
  * class Signup extends Component {
- *   private form = this.use(Form, {
+ *   private form = this.use(Form, () => ({
  *     schema: signupSchema,
  *     defaultValues: { email: "", password: "" },
  *     onSubmit: this.save,
- *   });
+ *   }));
  *
  *   save(values: SignupValues) {
  *     return api.signup(values);

@@ -47,22 +47,22 @@ export class MutationDemo extends Component {
 
   @state draft = "";
 
-  // The bag itself, with no callback around it: nothing in either one depends on props or
-  // state, so there is nothing a per-render rebuild would keep in step — and nothing to
-  // rebuild, which is what RMD022 is about.
-  private list = this.use(Query<string[]>, {
+  // Nothing in either bag depends on props or state, so the callback reads no signal and is
+  // called once: `loadTodos` and the key keep the identity they were built with, which is what
+  // RMD022 is about.
+  private list = this.use(Query<string[]>, () => ({
     key: ["todos"],
     fetch: loadTodos,
     staleTime: 10_000,
-  });
+  }));
 
-  private add = this.use(Mutation<string, string>, {
+  private add = this.use(Mutation<string, string>, () => ({
     mutate: createTodo,
     onMutate: optimisticAdd,
     // On success the list is refetched, so the optimistic guess is replaced by
     // whatever the server actually has.
     invalidates: [["todos"]],
-  });
+  }));
 
   @onElement("submit")
   submit(event: Event) {

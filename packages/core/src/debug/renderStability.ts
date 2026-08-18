@@ -1,5 +1,5 @@
 import { devFlags } from "../config";
-import { isPlainObject, valueEqual } from "../helpers/valueEqual";
+import { isPlainObject, valueEqualThorough } from "../helpers/valueEqual";
 import { isListNode } from "../vdom/guards";
 import type { BaseComponent } from "../types/vdom";
 import { diagnose } from "./diagnostics";
@@ -89,16 +89,19 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
 
   if ((isPlainObject(a) && isPlainObject(b)) || (Array.isArray(a) && Array.isArray(b))) {
     /**
-     * `valueEqual` is bounded, and past a bound it answers "different" — which is the answer
-     * `resolveStable` needs (it must never reuse a value whose contents moved) and one this only
-     * uses to pick WORDING. So a pair that is deeper than the bound, or wider than it, is called
-     * non-deterministic here even when its contents match.
+     * Compared THOROUGHLY, because the answer picks between two sentences that mean different
+     * things: "rebuilt with the same contents" asks the app to hold the value somewhere stable,
+     * while "not a function of state" tells it to go and find a `Math.random()`. Getting that wrong
+     * sends a reader looking for something they never wrote.
      *
-     * That is a less precise message, never a wrong verdict: something WAS rebuilt either way, and
-     * both messages say so. It is the direction to be wrong in — the alternative is a comparison
-     * that guesses "equal" from a sample, which is what silently dropped a change past the width.
+     * `valueEqual`'s default bounds are sized for `resolveStable`, which runs per prop per render
+     * and only has to CHOOSE a reference — so past a bound it answers "different", which costs it a
+     * fresh reference and nothing more. Read as evidence here, that same answer was a verdict about
+     * contents nobody had looked at: measured, `() => ({ children: <div><h2 /></div> })` is two
+     * levels past the default depth, so every JSX value handed to a hook was reported as "does not
+     * come from state", with advice about randomness under it.
      */
-    return valueEqual(a, b) ? "object" : "nondeterministic";
+    return valueEqualThorough(a, b) ? "object" : "nondeterministic";
   }
 
   // Two primitives that differ between two calls in the same tick: the render is not

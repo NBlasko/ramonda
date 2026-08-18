@@ -119,7 +119,7 @@ describe("state and lifecycle without markup", () => {
 
     @Host("div")
     class TableApp extends Component {
-      rowsHook = this.use(RowsHook, { prefix: "x" });
+      rowsHook = this.use(RowsHook, () => ({ prefix: "x" }));
       render() {
         return (
           <table>

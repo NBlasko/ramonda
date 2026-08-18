@@ -173,8 +173,8 @@ describe("hydration: a hook labelled in its use() metadata", () => {
       @state value = this.props.seed;
     }
     class Page extends Component {
-      named = this.use(Store, { seed: 1 }, { label: "signup" });
-      plain = this.use(Store, { seed: 2 });
+      named = this.use(Store, () => ({ seed: 1 }), { label: "signup" });
+      plain = this.use(Store, () => ({ seed: 2 }));
       @state top = 0;
       render() {
         return <div>x</div>;

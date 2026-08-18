@@ -51,11 +51,11 @@ function register(values: Signup): Promise<{ ok: boolean }> {
 
 @Host("div")
 export class FormDemo extends Component {
-  private form = this.use(Form<typeof schema>, {
+  private form = this.use(Form<typeof schema>, () => ({
     schema,
     defaultValues: DEFAULTS,
     onSubmit: this.save,
-  });
+  }));
 
   private accepted = false;
 

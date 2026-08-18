@@ -182,7 +182,7 @@ describe("the ten that were messages", () => {
     class Page extends Component {
       // `as never`: the MetaTag union makes this a type error at the call site, which is the first
       // line of defence. The runtime check is for a build with no types, and that is what this is.
-      head = this.use(Head, { meta: [{ content: "A description" } as never] });
+      head = this.use(Head, () => ({ meta: [{ content: "A description" } as never] }));
       render() {
         return <p>page</p>;
       }

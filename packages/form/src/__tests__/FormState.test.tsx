@@ -68,7 +68,7 @@ class TextField extends Component<{ of: FieldNode<string>; id: string }> {
 function mount(onSubmit: (values: Values) => void | Promise<void> = () => {}) {
   let form!: Form<typeof schema>;
   class Page extends Component {
-    private f = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit });
+    private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit }));
 
     render(): RamondaNode {
       count("page");
@@ -212,7 +212,7 @@ describe("a button that watches the form", () => {
     let form!: Form<typeof schema>;
 
     class Page extends Component {
-      private f = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: () => {} });
+      private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: () => {} }));
 
       @compute get body(): RamondaNode {
         built++;
@@ -283,11 +283,11 @@ describe("a button that watches the form", () => {
     let inner!: Form<typeof schema>;
 
     class Inner extends Component {
-      private f = this.use(Form<typeof schema>, {
+      private f = this.use(Form<typeof schema>, () => ({
         schema,
         defaultValues: { email: "ada@example.com", name: "" },
         onSubmit: () => {},
-      });
+      }));
       render(): RamondaNode {
         inner = this.f;
         return (
@@ -299,7 +299,7 @@ describe("a button that watches the form", () => {
     }
 
     class Outer extends Component {
-      private f = this.use(Form<typeof schema>, { schema, defaultValues: EMPTY, onSubmit: () => {} });
+      private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: () => {} }));
       render(): RamondaNode {
         outer = this.f;
         return (

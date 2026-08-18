@@ -354,7 +354,7 @@ describe("the props callback cache", () => {
 
     class Panel extends Component {
       @state tick = 0;
-      reader = this.use(Reader, { n: 5 });
+      reader = this.use(Reader, () => ({ n: 5 }));
 
       render() {
         return <div>{`${this.reader.n}:${this.tick}`}</div>;

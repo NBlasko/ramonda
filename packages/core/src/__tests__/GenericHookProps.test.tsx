@@ -67,12 +67,12 @@ class Consumer extends Component<{ id: string }> {
   }
 }
 
-/** The plain-object form must keep working, and keep inferring. */
+/** A bag of constants still infers the hook's type parameter, through the callback like any other. */
 class ObjectPropsConsumer extends Component {
-  private resource = this.use(Resource, {
+  private resource = this.use(Resource, () => ({
     from: "/fixed",
     load: (): Loaded => ({ name: "fixed", hits: 7 }),
-  });
+  }));
 
   get loaded(): Loaded {
     return this.resource.data;

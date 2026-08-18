@@ -430,9 +430,11 @@ consecutive runs of the callback and its value never moved. Below four, ordinary
 reported for coincidences; the same threshold, for the same reason, as
 [RMD024](#rmd024-a-compute-recomputes-without-its-answer-changing).
 
-A corollary worth knowing: a callback that is never invalidated cannot be reported. It runs
-once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
-and a value built once is not churn.
+A corollary worth knowing: a callback that is never invalidated cannot be reported for churn. It
+runs once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity), and
+a value built once is not churn — the count never leaves zero. The **different-contents** finding
+below still applies to it, and matters more there than anywhere: a value that is not a function of
+state is frozen into that cache at mount and served for the life of the hook.
 
 Three findings, three fixes:
 
@@ -571,6 +573,12 @@ the renders where the callback does run.
 **Function props are skipped.** `load: () => self.tick` reads the signal when it is *called*, so
 one closure held across renders keeps answering with the current value — a fresh identity there
 says nothing about staleness.
+
+**The comparison goes to the end.** The one the framework uses to CHOOSE a reference is bounded at a
+depth of two and at fifty array entries, because it runs on every render; past either it answers
+"different", which costs a fresh reference and nothing more. A report cannot be built on that answer,
+so this one compares thoroughly instead — deep enough for a JSX subtree passed through a bag, wide
+enough for a table's worth of rows, which is where it used to go quiet for having compared nothing.
 
 ## What is non-deterministic in JavaScript, and what catches it
 
@@ -907,10 +915,10 @@ Give the component a real host tag with `@Host("div")` if the event needs one. S
 ```tsx
 // Skipped. Nothing identifies it, so an update could only append a second copy.
 // The cast is what it takes to write this at all — see below.
-skipped = this.use(Head, { meta: [{ content: "A framework." } as never] });
+skipped = this.use(Head, () => ({ meta: [{ content: "A framework." } as never] }));
 
 // Written, and matched by its `name` when it changes.
-described = this.use(Head, { meta: [{ name: "description", content: "A framework." }] });
+described = this.use(Head, () => ({ meta: [{ name: "description", content: "A framework." }] }));
 ```
 
 `Head` matches the tags it has already written so that an update replaces them rather than appending,
@@ -1484,3 +1492,47 @@ The record carries the code and nothing from the error. The message on a thrown 
 whatever threw — your code, or a library inside it — and a record that may leave the process is the
 wrong place to discover what is in it for the first time. If you want the detail, catch it in the
 callback, where you know what you are looking at.
+
+## RMD055 — A hook's props passed as a plain object
+
+```tsx expect-error
+class Panel extends Component {
+  @state count = 1;
+
+  // ✗ the compiler refuses this, and `use()` throws if it arrives anyway
+  counter = this.use(Counter, { start: this.count });
+}
+```
+
+A field initializer runs once, so an object written in one holds what was true at that moment and goes
+on holding it for the life of the hook. `start` there is `1` forever: `this.count` moving to `7`
+changes the owner and reaches nothing inside `Counter`.
+
+Pass a callback, and the props follow:
+
+```tsx
+counter = this.use(Counter, () => ({ start: this.count }));
+```
+
+The callback is cached on the signals it reads, so it is re-run on a render where one of them moved
+and skipped on a render where none did.
+
+**Constants are written the same way, and cost the same.** A callback that reads no signal is called
+once, at mount, and never again, and the inline functions in it keep their identity across the owner's
+renders — measured in core's `PropsBagRuns.test.tsx`. So there is no bag cheap enough for the shape to
+be worth choosing.
+
+A development build calls it more often than that, and keeps none of it: a second time at mount, so
+[RMD022](#rmd022-a-hooks-props-callback-built-a-new-value-for-the-same-contents) can compare the two
+bags and catch a value that is not a function of state, and once per render of the owner, so
+[RMD027](#rmd027-a-props-callback-reads-a-value-that-is-not-reactive) can check the cache has not gone
+stale. The hook is handed the first bag in every build.
+
+**It throws in every build**, like a write to props ([RMD004](#rmd004-props-mutated-by-the-receiving-component),
+[RMD015](#rmd015-hook-options-assigned-by-the-hook-that-received-them)): the alternative is a shipped bundle serving one
+stale value for the life of the page, silently. The report beside the throw is development-only, and it
+names the owner, the hook, and the keys the object carried.
+
+The mistake cannot be found from inside `use()`, which is handed a finished object with no way to tell
+`{ start: this.count }` from `{ start: 1 }`. The FORM is the visible half, so the form is what the
+framework holds you to.

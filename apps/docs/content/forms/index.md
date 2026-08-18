@@ -31,11 +31,11 @@ const schema = object({
 });
 
 class SignupForm extends Component {
-  private form = this.use(Form<typeof schema>, {
+  private form = this.use(Form<typeof schema>, () => ({
     schema,
     defaultValues: { email: "", password: "" },
     onSubmit: this.save,
-  });
+  }));
 
   async save(values: { email: string; password: string }) {
     await fetch("/api/signup", { method: "POST", body: JSON.stringify(values) });
@@ -107,10 +107,10 @@ fetcher](/query/queries#typing-the-fetcher) is the same restriction for the same
 
 ```tsx
 // Pinned: `values` is typed, and a wrong field name is an error.
-this.use(Form<typeof schema>, { schema, defaultValues, onSubmit: (values) => … });
+this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit: (values) => … }));
 
 // Also fine, no pin needed: the method has its own annotation.
-this.use(Form, { schema, defaultValues, onSubmit: this.save });
+this.use(Form, () => ({ schema, defaultValues, onSubmit: this.save }));
 ```
 
 ## What the form gives you
@@ -171,9 +171,10 @@ array goes whole: your rows if you have added, removed or reordered any, the new
 not. Pairing rows by number across a length change would put one row's text onto another, which is
 the failure row identities exist to prevent — see [Array fields](/forms/arrays).
 
-**Use a props callback**, as above. A props object literal is evaluated once, so defaults written
-that way can never move — that is the shape in [The whole thing](#the-whole-thing), and it is right
-for a form whose defaults are constants.
+**Read them through the props callback**, as above, whenever the defaults arrive after the form does.
+The callback re-runs when a signal it reads moves, so `defaultValues: this.record` follows the fetch
+that filled `record` — while a form whose defaults are constants reads the same either way, since a
+callback that touches no signal is called once and its bag kept.
 
 ### One object, not a fresh one
 

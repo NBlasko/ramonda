@@ -209,7 +209,7 @@ export class App extends Component {
    * PIPELINE rather than of one page. A static route, an ISR route and a dynamic one all have to
    * carry it.
    */
-  notices = this.use(Portal, { children: <NoticeStack />, target: noticesTarget });
+  notices = this.use(Portal, () => ({ children: <NoticeStack />, target: noticesTarget }));
   head = this.use(Head, () => ({
     title: "Ramonda SSR playground",
     description: "The layout's description, shown when a page sets none.",

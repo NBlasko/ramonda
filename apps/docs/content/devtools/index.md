@@ -278,7 +278,7 @@ inside the form it belongs to. Unnamed, that name is `Form 1`, `Form 2` — the 
 which is rarely what you wanted to know. Name it in the **third argument** to `use()`:
 
 ```tsx
-private signup = this.use(Form<typeof schema>, { schema, defaultValues, onSubmit }, { label: "Sign Up" });
+private signup = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }), { label: "Sign Up" });
 ```
 
 The tab and the component tree then call it **`Form (Sign Up)`** — the class says what it is, the label

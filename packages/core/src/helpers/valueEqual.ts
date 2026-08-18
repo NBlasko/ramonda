@@ -37,7 +37,36 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-export function valueEqual(a: unknown, b: unknown, maxDepth: number = DEFAULT_DEPTH, depth = 0): boolean {
+/**
+ * The bounds a DIAGNOSTIC compares with, and why they are not the ones above.
+ *
+ * The defaults are sized for `resolveStable`, which runs on the hot path, per declared prop, per
+ * render — and which only has to CHOOSE a reference, so "different" past a bound costs it a fresh
+ * one and nothing else. A diagnostic has to SPEAK: it tells an app that a value churns, or that a
+ * prop is stale, and past a bound it would be saying so about contents it never looked at.
+ *
+ * Measured, and this is what makes it affordable: a diagnostic compares only a pair that is already
+ * known to differ by reference, only in a development build, and only under the double render.
+ *
+ * The depth clears the shapes that were being reported for being deep — a JSX subtree in a props
+ * bag, a nested record — and the width clears a table's worth of rows, which is where the array cap
+ * was answering "different" for two arrays it had not compared at all.
+ */
+export const THOROUGH_DEPTH = 24;
+const THOROUGH_WIDTH = 1000;
+
+/** `valueEqual` with those bounds — the entry point for every caller that reports. */
+export function valueEqualThorough(a: unknown, b: unknown): boolean {
+  return valueEqual(a, b, THOROUGH_DEPTH, 0, THOROUGH_WIDTH);
+}
+
+export function valueEqual(
+  a: unknown,
+  b: unknown,
+  maxDepth: number = DEFAULT_DEPTH,
+  depth = 0,
+  maxWidth: number = MAX_WIDTH,
+): boolean {
   if (Object.is(a, b)) return true;
   if (depth >= maxDepth) return false;
 
@@ -54,10 +83,10 @@ export function valueEqual(a: unknown, b: unknown, maxDepth: number = DEFAULT_DE
      * Erring toward "different" costs a fresh reference for a wide array — correct, just not
      * optimal, which is what the bounds were always documented to cost.
      */
-    if (a.length > MAX_WIDTH) return false;
+    if (a.length > maxWidth) return false;
 
     for (let i = 0; i < a.length; i++) {
-      if (!valueEqual(a[i], b[i], maxDepth, depth + 1)) return false;
+      if (!valueEqual(a[i], b[i], maxDepth, depth + 1, maxWidth)) return false;
     }
     return true;
   }
@@ -66,7 +95,7 @@ export function valueEqual(a: unknown, b: unknown, maxDepth: number = DEFAULT_DE
     const aKeys = Object.keys(a);
     if (aKeys.length !== Object.keys(b).length) return false;
     for (const key of aKeys) {
-      if (!valueEqual(a[key], b[key], maxDepth, depth + 1)) return false;
+      if (!valueEqual(a[key], b[key], maxDepth, depth + 1, maxWidth)) return false;
     }
     return true;
   }

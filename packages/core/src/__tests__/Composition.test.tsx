@@ -159,7 +159,7 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
 
     @Host("div")
     class App extends Component {
-      group = this.use(FirstThree, { labels: ["a", "b", "c"] });
+      group = this.use(FirstThree, () => ({ labels: ["a", "b", "c"] }));
       render() {
         return (
           <table>

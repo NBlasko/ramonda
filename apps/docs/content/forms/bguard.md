@@ -34,7 +34,7 @@ import { htmlConstraints } from "@ramonda/form/bguard";
 const html = htmlConstraints(signupSchema);
 
 class SignupForm extends Component {
-  private form = this.use(Form<typeof signupSchema>, { schema: signupSchema, defaultValues, onSubmit });
+  private form = this.use(Form<typeof signupSchema>, () => ({ schema: signupSchema, defaultValues, onSubmit }));
 
   render() {
     const f = this.form.fields;

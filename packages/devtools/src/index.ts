@@ -22,11 +22,26 @@ import {
 } from "./session";
 
 interface DevLogPayload {
-  data: any;
+  /** Whatever the diagnostic had to hand. Rendered as JSON or as an `Error`'s message, never read into. */
+  data: unknown;
   id: string;
   message: string;
   timestamp: string;
   type: string;
+}
+
+/**
+ * The three channels core speaks on, declared once so a listener's `detail` is typed rather than cast.
+ *
+ * `addEventListener` reads the payload off this map, so the alternative is `(e as CustomEvent).detail`
+ * at every call site — the same cast three times, with nothing naming what travels on each channel.
+ */
+declare global {
+  interface WindowEventMap {
+    "ramonda:logs-sync": CustomEvent<DevLogPayload[]>;
+    "ramonda:dev-log": CustomEvent<DevLogPayload>;
+    "ramonda:toggle-devtools": CustomEvent<{ forceOpen?: boolean } | undefined>;
+  }
 }
 
 const MAX_LOG_NODES = 200;
@@ -202,7 +217,7 @@ class RamondaDevTools extends HTMLElement {
   }
 
   private setupEventListeners() {
-    window.addEventListener("ramonda:logs-sync", (e: any) => {
+    window.addEventListener("ramonda:logs-sync", (e) => {
       if (!this.alive) return;
       const history: DevLogPayload[] = e.detail;
       if (history && Array.isArray(history)) {
@@ -215,13 +230,13 @@ class RamondaDevTools extends HTMLElement {
       }
     });
 
-    window.addEventListener("ramonda:dev-log", (e: any) => {
+    window.addEventListener("ramonda:dev-log", (e) => {
       if (!this.alive) return;
       this.addLogToUI(e.detail);
       if (e.detail.type === "error") this.alertError();
     });
 
-    window.addEventListener("ramonda:toggle-devtools", (e: any) => {
+    window.addEventListener("ramonda:toggle-devtools", (e) => {
       if (!this.alive) return;
       e.detail?.forceOpen ? this.openDevTools() : this.toggle();
     });

@@ -626,7 +626,7 @@ describe("Query", () => {
 
     class Card extends Component {
       private query = this.use(QueryClientProvider);
-      private data = this.use(UserData, { id: 3 });
+      private data = this.use(UserData, () => ({ id: 3 }));
       render(): RamondaNode {
         return <p id="out">{this.data.label}</p>;
       }

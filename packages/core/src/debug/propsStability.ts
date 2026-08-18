@@ -1,6 +1,6 @@
 import { diagnose } from "./diagnostics";
 import { classify, type Kind } from "./renderStability";
-import { valueEqual } from "../helpers/valueEqual";
+import { valueEqualThorough } from "../helpers/valueEqual";
 
 /**
  * DEV-only: calls a hook's props callback twice and reports anything that came out
@@ -164,7 +164,7 @@ export function checkPropsStability(
      * key was a fresh function on every one of the last few runs. That is the honest measure for
      * a closure, whose cost is exactly proportional to how often the bag is rebuilt.
      */
-    if (kind === "object" && !valueEqual(seen.previous, a, DEPTH)) {
+    if (kind === "object" && !valueEqualThorough(seen.previous, a)) {
       seen.previous = a;
       seen.equalRuns = 0;
       continue;
@@ -180,12 +180,6 @@ export function checkPropsStability(
     report(kind, owner, key, a, b);
   }
 }
-
-/**
- * Deeper than `classify`'s default, because this comparison decides whether to speak. `classify`
- * only picks wording between two same-tick values it already knows differ.
- */
-const DEPTH = 5;
 
 /**
  * DEV-only: the safety net under the props-callback cache. RMD027.
@@ -222,7 +216,7 @@ const DEPTH = 5;
  * with the same body are not equal by any comparison that is safe to make, and a fresh closure on
  * an untracked call proves nothing about staleness.
  */
-export function checkCachedProps(owner: string, cached: unknown, fresh: unknown, depth: number): void {
+export function checkCachedProps(owner: string, cached: unknown, fresh: unknown): void {
   if (!isBag(cached) || !isBag(fresh)) return;
 
   for (const key of Object.keys(fresh)) {
@@ -230,7 +224,15 @@ export function checkCachedProps(owner: string, cached: unknown, fresh: unknown,
     const b = fresh[key];
 
     if (typeof b === "function" || typeof a === "function") continue;
-    if (valueEqual(a, b, depth)) continue;
+
+    /**
+     * Compared THOROUGHLY, for the same reason the wording is: this report tells an app one of its
+     * props is holding a value it has moved past. `valueEqual`'s default bounds answer "different"
+     * past a depth of two and past fifty array entries, which is safe where a reference has to be
+     * chosen and is no basis at all for that sentence — a JSX subtree in a bag is past the first,
+     * and a table's worth of rows is past the second, and neither had been compared.
+     */
+    if (valueEqualThorough(a, b)) continue;
 
     diagnose(
       "RMD027",
@@ -251,4 +253,23 @@ function report(kind: Kind, owner: string, key: string, a: unknown, b: unknown):
     first: a,
     second: b,
   });
+}
+
+/**
+ * Reports a props bag handed to `use()` as a plain object. The bag itself is refused by the throw
+ * in `useCommon`, which happens in every build; this only supplies the explanation and the record.
+ *
+ * Here rather than beside the throw for the reason the whole module exists: `SPECS` is the largest
+ * strippable thing in the package, and every path to it stays inside `if (__DEV__)`.
+ */
+export function reportObjectPropsBag(owner: string, hookName: string, keys: readonly string[]): void {
+  // `keys` goes into the record as a STRING. A record carries values, never live objects, so
+  // `reportable` drops an array — see the note beside it.
+  const listed = keys.join(", ");
+  diagnose(
+    "RMD055",
+    `${owner}:${hookName}`,
+    `\`${owner}\` passed <${hookName} /> a plain object${listed === "" ? "" : ` (${listed})`}.`,
+    { keys: listed },
+  );
 }

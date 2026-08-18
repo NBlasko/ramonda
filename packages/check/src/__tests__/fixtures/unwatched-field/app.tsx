@@ -53,7 +53,7 @@ class Layout extends Component<{ of: any }> {
 
 /** Silent: the OWNER reads its own fields, and reading `form.fields` is asking about the form. */
 class Page extends Component {
-  form = this.use(Form, { schema, defaultValues, onSubmit: () => {} });
+  form = this.use(Form, () => ({ schema, defaultValues, onSubmit: () => {} }));
   render() {
     return (
       <form>

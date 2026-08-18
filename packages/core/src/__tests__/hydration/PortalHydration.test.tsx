@@ -55,10 +55,10 @@ afterEach(() => {
 describe("Portal SSR", () => {
   test("renderPage emits a tag the portal placed in the head", async () => {
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta name="p" content="v" />,
         target: document.head,
-      });
+      }));
       render() {
         return <div>body</div>;
       }
@@ -99,7 +99,7 @@ describe("Portal SSR", () => {
     }
 
     class Page extends Component {
-      portal = this.use(Portal, { children: <Badge />, target: document.head });
+      portal = this.use(Portal, () => ({ children: <Badge />, target: document.head }));
       render() {
         return <div>body</div>;
       }
@@ -116,10 +116,10 @@ describe("Portal hydration", () => {
   test("adopts the server's node instead of duplicating it, and owns it", async () => {
     @Host("div")
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta name="p" content="v" />,
         target: document.head,
-      });
+      }));
       render() {
         return <p>page</p>;
       }
@@ -251,19 +251,19 @@ describe("Portal hydration", () => {
     // adopt counts total children rather than element children, a portal with a
     // string child claims one node too many — the next portal's — and sweeps it.
     class First extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: ["prefix", <meta name="a" content="x" />],
         target: document.head,
-      });
+      }));
       render() {
         return <p>first</p>;
       }
     }
     class Second extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta name="b" content="x" />,
         target: document.head,
-      });
+      }));
       render() {
         return <p>second</p>;
       }
@@ -334,10 +334,10 @@ describe("Portal hydration restores components", () => {
     }
 
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <Badge />,
         target: document.head,
-      });
+      }));
       render() {
         return <div>body</div>;
       }
@@ -386,10 +386,10 @@ describe("a comment that only looks like an anchor", () => {
     document.head.insertAdjacentHTML("beforeend", '<!--r999--><meta name="shell" content="stays">');
 
     class Page extends Component {
-      portal = this.use(Portal, {
+      portal = this.use(Portal, () => ({
         children: <meta name="mine" content="x" />,
         target: document.head,
-      });
+      }));
       render() {
         return <div>body</div>;
       }

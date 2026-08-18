@@ -15,10 +15,10 @@ tab and in a search result, and they decide whether anyone clicks. Set them with
 import { Head } from "@ramonda/core";
 
 export class StateGuide extends Component {
-  head = this.use(Head, {
+  head = this.use(Head, () => ({
     title: "State — Ramonda",
     description: "How @state turns a class field into a signal.",
-  });
+  }));
 
   render() {
     return <article>…</article>;
