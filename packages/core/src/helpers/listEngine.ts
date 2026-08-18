@@ -308,7 +308,7 @@ export class ListEngine<T> {
   /**
    * Stores this pass's scope for a key, releasing whatever it displaces.
    *
-   * Two items answering the same key is user error, reported in DEV (RMD013),
+   * Two items answering the same key is user error, reported in DEV as RMD002 twenty lines above,
    * but the map only holds one scope per key — so the first item's scope was
    * overwritten here after it had already subscribed to everything its mapper
    * read. It was then in neither map: gone from this pass's, never in the

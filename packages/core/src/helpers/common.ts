@@ -38,8 +38,11 @@ function buildProps(
   // with the checks after it. The two read the same but bundle differently: an early
   // return leaves the rest of the body reachable as far as esbuild's dead-code pass is
   // concerned, so `checkPropsStability` stayed referenced in a production build and
-  // dragged `diagnose` — and with it every diagnostic's title and fix text, all 21 of
-  // them — into the bundle. Caught by apps/docs' production build test.
+  // dragged `diagnose` — and with it every diagnostic's title and fix text — into the
+  // bundle. Caught by apps/docs' `ProdAppBuild.test.ts`, which still guards it.
+  //
+  // The count that used to be written here (21) is left out on purpose: it was true on the
+  // day and there are more than twice as many now, so a number here only ages.
   if (__DEV__) {
     const label = `${that.constructor.name} → ${hookName}`;
     const previous = propsPhase.label;
