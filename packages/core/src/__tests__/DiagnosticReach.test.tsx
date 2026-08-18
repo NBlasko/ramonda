@@ -8,7 +8,7 @@ import { hydrateRoot } from "../hydration/hydrate";
 import { renderToString } from "../hydration/ssr";
 import { STATE_ATTR } from "../helpers/constants";
 import { list } from "../base/list";
-import type { ComponentChild } from "../types/vdom";
+import type { ComponentChild, VNode } from "../types/vdom";
 
 /**
  * The four codes nothing had ever fired.
@@ -64,7 +64,11 @@ describe("the codes that no test reached", () => {
     class Rows extends Component {
       @state items = [1, 2, 3];
       render() {
-        return <ul>{list(this.items, (n: number) => (n === 2 ? null : <li>{n}</li>))}</ul>;
+        // The cast is what it takes to write this at all: `ItemRender` promises a node, so a
+        // callback that returns nothing is a type error — which is the first line of defence and
+        // the reason RMD013 is the second. A build with no types has neither.
+        const render = ((n: number) => (n === 2 ? null : <li>{n}</li>)) as unknown as (n: number) => VNode;
+        return <ul>{list(this.items, render)}</ul>;
       }
     }
 
