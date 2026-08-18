@@ -60,3 +60,9 @@ export declare function requestContext(): {
   readonly cookies: { get(name: string): string | undefined };
   get<T>(key: RequestKey<T>): T;
 };
+
+/** The lifecycle decorators, as much of them as a rule about their METHODS needs. */
+export declare function created(value: unknown, context: unknown): void;
+export declare function mounted(value: unknown, context: unknown): void;
+export declare function destroyed(value: unknown, context: unknown): void;
+export declare function fetch(url: string): Promise<unknown>;

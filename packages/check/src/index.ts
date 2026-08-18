@@ -31,6 +31,7 @@ export type {
   RowWithoutAKeyIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
+  UnguardedAsyncLifecycleIssue,
   UnknownAriaAttributeIssue,
   UnknownRoleIssue,
   UnnamedFrameIssue,

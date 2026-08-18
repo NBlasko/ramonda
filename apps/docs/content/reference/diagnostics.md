@@ -1493,6 +1493,41 @@ whatever threw — your code, or a library inside it — and a record that may l
 wrong place to discover what is in it for the first time. If you want the detail, catch it in the
 callback, where you know what you are looking at.
 
+## RMD057 — An async lifecycle rejected
+
+```tsx
+@state posts: unknown[] = [];
+
+@mounted async load() {
+  this.posts = await fetchPosts();   // ✗ if this throws, nothing tells anyone
+}
+```
+
+**An error boundary does not catch this, and that is deliberate.** The rejection arrives at an
+arbitrary later moment — the page is already on screen and interactive, and there is no render left
+to fail. Replacing what the reader is using with a fallback at that point is the worse outcome.
+
+What follows is why the report exists. The page renders exactly as though the method had succeeded:
+`posts` is still `[]`, the empty state shows, and the only trace is an unhandled rejection in a
+console nobody is watching.
+
+Handle it where it happens, and put the failure somewhere the render can see:
+
+```tsx
+@state error = "";
+
+@mounted async load() {
+  try { this.posts = await fetchPosts(); }
+  catch (e) { this.error = String(e); }
+}
+```
+
+If the failure really should take the page down, re-throw it from `render()` — that **is** a render,
+and a boundary can see it.
+
+`ramonda-check` reports the same method before it ships, as
+[`unguarded-async-lifecycle`](/reference/check).
+
 ## RMD056 — The request blob could not be read
 
 ```tsx
@@ -1508,8 +1543,8 @@ does not render, which is the same stance [`RMD036`](#rmd036-the-state-blob-coul
 for the state blob.
 
 **What makes this worth its own code is what you see instead.** Two other diagnostics fire in its
-place and both point away from the cause: [`RMD025`](#rmd025) says a key was not exposed — it was —
-and [`RMD007`](#rmd007) reports the render mismatch that follows, whose advice is about clocks and
+place and both point away from the cause: [`RMD025`](#rmd025-per-request-data-read-in-the-browser) says a key was not exposed — it was —
+and [`RMD007`](#rmd007-server-and-client-rendered-different-output) reports the render mismatch that follows, whose advice is about clocks and
 random numbers. The page looks correct throughout, because the server's markup is still on screen.
 
 The blob is JSON on the root element, so something between the server writing it and the browser

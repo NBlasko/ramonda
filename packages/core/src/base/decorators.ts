@@ -660,6 +660,40 @@ function isDecoratorContext(value: unknown): value is DecoratorContext {
   return typeof value === "object" && value !== null && "kind" in value;
 }
 
+/**
+ * Reports a lifecycle whose promise rejected, and does NOT consume the rejection.
+ *
+ * An `async @mounted` that throws never reaches an error boundary. That is deliberate — the
+ * rejection arrives at an arbitrary later moment, when the page is already interactive and there is
+ * no render left to fail, so swapping the page for a fallback then is the worse outcome. What was
+ * wrong is that it happened in SILENCE: measured before this existed, a rejecting `async @mounted`
+ * left the page rendering as though it had succeeded, with no diagnostic and nothing but an
+ * unhandled rejection in the console to say otherwise.
+ *
+ * The handler is attached to a SEPARATE branch and the original promise is returned untouched, so
+ * the server's work drain still sees exactly what it saw before. Nothing is swallowed: the
+ * rejection stays unhandled, which is the honest outcome, and now it arrives with an explanation.
+ */
+function reportIfRejected(result: unknown, owner: object, member: string, decoratorName: string): unknown {
+  if (typeof (result as { then?: unknown })?.then !== "function") return result;
+
+  (result as Promise<unknown>).then(undefined, (error: unknown) => {
+    if (__DEV__) {
+      const name = displayName(owner);
+      diagnose(
+        "RMD057",
+        `${name}.${member}`,
+        `<${name} />'s @${decoratorName} \`${member}\` rejected: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { component: name, member, phase: decoratorName },
+      );
+    }
+  });
+
+  return result;
+}
+
 function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) {
   const register = (context: EnhancedClassMethodDecoratorContext, env: LifecycleEnv) => {
     if (__DEV__) {
@@ -667,9 +701,14 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
     }
     const contextName = ensureStringContextName(context.name, decoratorName);
     context.addInitializer(function (this) {
+      const bound = this[contextName].bind(this);
+      const self = this;
       this[GLOBAL_RUNTIME][phase].push({
         id: createId(),
-        cb: this[contextName].bind(this),
+        // Wrapped rather than called raw, so a promise that rejects says so. The wrapper returns
+        // whatever the method returned — including the promise itself — so every caller behaves
+        // exactly as before.
+        cb: (...args: unknown[]) => reportIfRejected(bound(...args), self, contextName, decoratorName),
         env,
       });
     });

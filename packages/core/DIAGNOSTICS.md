@@ -89,6 +89,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD053` | error | The request was read with no request scope installed |
 | `RMD055` | error | A hook's props passed as a plain object |
 | `RMD056` | warning | The request blob could not be read |
+| `RMD057` | warning | An async lifecycle rejected |
 
 ### RMD052 — A component among JSX children, where an element was meant
 

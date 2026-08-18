@@ -365,7 +365,7 @@ Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
 `HeadingSkipsALevelIssue`, `InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`,
 `PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
 `RowWithoutAKeyIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
-`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
 `UnsplittableImportIssue`, `UnwatchedFieldIssue`.
 
 The rules themselves are **not** exported, and that is a decision. A rule carries functions over its

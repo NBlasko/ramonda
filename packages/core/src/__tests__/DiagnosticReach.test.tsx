@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { created, Host, state } from "../base/decorators";
+import { created, Host, mounted, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { serializeComponentToJSON } from "../hydration/serialize";
@@ -235,5 +235,44 @@ describe("the codes that no test reached", () => {
     // The two that used to be the only thing a reader got, and why RMD056 has to be there.
     expect(codes()).toContain("RMD025");
     expect(codes()).toContain("RMD007");
+  });
+
+  /**
+   * An `async @mounted` that rejects.
+   *
+   * Found during the review by running it against an error boundary, which is the only way it shows:
+   * the sync lifecycle is caught and renders the fallback, and the async one is not caught, reports
+   * nothing, and leaves the page rendering as though it had succeeded. `@mounted async load()`
+   * fetching data is a documented pattern, so this is the commonest async path there is.
+   *
+   * **The boundary NOT catching it is deliberate and is not what changed.** The rejection arrives at
+   * an arbitrary later moment, when the page is already interactive and there is no render left to
+   * fail. What changed is the silence.
+   *
+   * The handler is on a separate branch and the original promise is untouched, so the rejection is
+   * still unhandled — which is the honest outcome — and now it arrives with an explanation.
+   */
+  test("RMD057 — an async lifecycle that rejected", async () => {
+    @Host("div")
+    class Boom extends Component {
+      @mounted async load() {
+        throw new Error("fetch failed");
+      }
+      render() {
+        return <span>ok</span>;
+      }
+    }
+
+    const dom = await getDOM(<Boom />);
+    await dom.settle();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(codes()).toContain("RMD057");
+    expect(of("RMD057")?.data).toMatchObject({ component: "Boom", member: "load", phase: "mounted" });
+    // The failure is named, not guessed at.
+    expect(of("RMD057")?.message).toContain("fetch failed");
+    // The page is untouched: this reports, it does not take anything down.
+    expect(dom.container.textContent).toBe("ok");
+    dom.unmount();
   });
 });
