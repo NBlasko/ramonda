@@ -1,6 +1,5 @@
 import type { RefTarget } from "../base/Ref";
 import type { Runtime } from "../core/runtime";
-import type { State } from "../reactivity/State";
 
 export interface AnchorClickEvent extends Event {
   target: HTMLAnchorElement;
@@ -10,7 +9,27 @@ export type RenderableProps<P> = Readonly<P> & {
   readonly key?: string;
 };
 
-export type Context = Record<string | number, State<any>>;
+/**
+ * The bag a component publishes on, and every descendant reads from.
+ *
+ * One object per component, made with `Object.create(parentContext)`. So a READ walks the
+ * prototype chain and finds the nearest ancestor that published, and a WRITE lands as an OWN
+ * property, which is what keeps a sibling from seeing it. Both halves are load-bearing: the chain
+ * is the lookup, and own-ness is the scope.
+ *
+ * A hook publishes onto its OWNER's object, because a hook is handed the owning component's
+ * runtime — which is why publishing belongs in `@created` rather than a constructor: by then the
+ * component has its own object, and its children are rendered after, which is when they look.
+ *
+ * The keys belong to whoever publishes, and each publisher takes one nothing outside it can name:
+ * `createContext` a fresh number from `createId()`, `Head` a module-private symbol. That is what
+ * makes two publishers on one object safe, and it is the rule a third one keeps.
+ *
+ * The values are `unknown` because they have nothing in common — `createContext` publishes a
+ * per-key signal channel, `Head` a node in the head tree. Whoever reads a key is whoever published
+ * it, so the read is where the shape is named.
+ */
+export type Context = Record<string | number | symbol, unknown>;
 
 // biome-ignore lint/complexity/noBannedTypes: Default Props
 export type DefaultProps = {};

@@ -137,7 +137,7 @@ export function createContext<T extends object>(
           return signals.get(key);
         },
       };
-      (owner.context as Record<string | number, unknown>)[contextId] = channel;
+      owner.context[contextId] = channel;
 
       // Reactive reader for the providing component. It reads the options
       // directly — always fresh before render — so the providing component
@@ -158,7 +158,7 @@ export function createContext<T extends object>(
 
     constructor(owner: Runtime) {
       super(owner, undefined);
-      const channel = (owner.context as Record<string | number, unknown>)[contextId] as ContextChannel | undefined;
+      const channel = owner.context[contextId] as ContextChannel | undefined;
 
       if (__DEV__) {
         /**
