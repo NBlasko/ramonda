@@ -1493,6 +1493,29 @@ whatever threw — your code, or a library inside it — and a record that may l
 wrong place to discover what is in it for the first time. If you want the detail, catch it in the
 callback, where you know what you are looking at.
 
+## RMD056 — The request blob could not be read
+
+```tsx
+// The server stamps what the page opted into onto the root element:
+//   <main data-ramonda-request='{"review-sid":"s-123"}'>
+// and `hydrateRoot` reads it back. If that string does not parse, nothing is restored.
+const sid = requestKey<string>("sid", { exposeToClient: true });
+requestContext().get(sid); // undefined on the client, for every exposed key
+```
+
+The blob is ignored rather than fatal — a page that renders with a value missing beats a page that
+does not render, which is the same stance [`RMD036`](#rmd036-the-state-blob-could-not-be-read) takes
+for the state blob.
+
+**What makes this worth its own code is what you see instead.** Two other diagnostics fire in its
+place and both point away from the cause: [`RMD025`](#rmd025) says a key was not exposed — it was —
+and [`RMD007`](#rmd007) reports the render mismatch that follows, whose advice is about clocks and
+random numbers. The page looks correct throughout, because the server's markup is still on screen.
+
+The blob is JSON on the root element, so something between the server writing it and the browser
+parsing it altered it: an HTML transform, a proxy rewriting markup, or a value that did not
+serialize cleanly.
+
 ## RMD055 — A hook's props passed as a plain object
 
 ```tsx expect-error

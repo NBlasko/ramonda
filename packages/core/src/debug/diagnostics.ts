@@ -83,7 +83,8 @@ export type DiagnosticCode =
   | "RMD051"
   | "RMD052"
   | "RMD053"
-  | "RMD055";
+  | "RMD055"
+  | "RMD056";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -391,6 +392,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "The request was read with no request scope installed",
     fix: "`requestContext()` is live only while the page is being rendered — on the server that is the SYNCHRONOUS section, and the scope is cleared before the render's first `await`, so a read below one arrives here. Read it in `render()`, in `@created`, or above the first `await` of an async lifecycle method, and keep what you need in `@state`. Holding the object does not help: every member of it is a getter over the current request, so `const ctx = requestContext()` above an `await` and `ctx.get(key)` below it is the same late read. The other way to arrive here is calling it at module top level, before any render has started. This is reported as well as thrown because the throw does not always arrive anywhere: inside an async `@mounted` it goes into the server drain and is swallowed, and the page is served, complete and quietly missing this value.",
+  },
+  RMD056: {
+    // warning, not error: the page renders and every value is simply missing, which is the same
+    // stance RMD036 takes for the state blob. Taking a page down over a blob is the worse failure.
+    severity: "warning",
+    title: "The request blob could not be read",
+    fix: "The server stamps the values a page opted into onto the root element, and `hydrateRoot` reads them back. This one did not parse, so NOTHING was restored — every `requestContext().get(key)` on the client answers `undefined`, including keys that were exposed correctly. What you will see beside this is misleading on its own: `RMD025` says a key was not exposed, which is not what happened, and `RMD007` reports the render mismatch that follows and sends you looking for a clock. This is the report that says what actually went wrong. The blob is JSON on the root element; something between the server writing it and the browser parsing it altered it — an HTML transform, a proxy rewriting the markup, or a value that could not be serialized cleanly.",
   },
   RMD055: {
     severity: "error",

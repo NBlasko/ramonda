@@ -6,7 +6,8 @@ import { resetDiagnostics } from "../debug/diagnostics";
 import { serializeComponentToJSON } from "../hydration/serialize";
 import { hydrateRoot } from "../hydration/hydrate";
 import { renderToString } from "../hydration/ssr";
-import { STATE_ATTR } from "../helpers/constants";
+import { requestContext, requestKey, setRequestScope } from "../hydration/requestContext";
+import { REQUEST_ATTR, STATE_ATTR } from "../helpers/constants";
 import { list } from "../base/list";
 import type { ComponentChild, VNode } from "../types/vdom";
 
@@ -49,6 +50,8 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
   vi.restoreAllMocks();
+  setRequestScope(undefined);
+  document.body.innerHTML = "";
 });
 
 const codes = () => records.map((record) => record.code);
@@ -182,6 +185,55 @@ describe("the codes that no test reached", () => {
     expect(codes()).toContain("RMD036");
     expect(of("RMD036")?.data).toMatchObject({ component: "Counter" });
     // The reason the diagnostic exists: what the reader would otherwise be left with.
+    expect(codes()).toContain("RMD007");
+  });
+
+  /**
+   * A request blob that does not parse.
+   *
+   * Found during the review of this package, and the silence was the fault. The blob is ignored so
+   * the page still renders — the right call, and the same one the state blob makes — but nothing
+   * said so, and two other diagnostics fire in its place pointing the wrong way. Measured before
+   * the code existed: `RMD025` claims the key was not exposed, which is false, and `RMD007` reports
+   * the render mismatch that follows, whose advice is about clocks. The page looks correct
+   * throughout, because the server's markup is still on screen.
+   *
+   * So this test asserts the misleading pair as well. They are not bugs — each is right about what
+   * it can see — and `RMD056` is the one that explains them.
+   */
+  test("RMD056 — a request blob that could not be read", async () => {
+    const sid = requestKey<string>("review-sid", { exposeToClient: true });
+
+    @Host("main")
+    class Page extends Component {
+      render() {
+        return <p>{requestContext().get(sid) ?? "none"}</p>;
+      }
+    }
+
+    const html = await renderToString(<Page />, {
+      request: {
+        url: new URL("https://example.com/account"),
+        cookies: new Map(),
+        values: new Map([[sid, "s-123"]]),
+      },
+    });
+    expect(html).toContain(REQUEST_ATTR);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    // Exactly what was served, with the blob altered in transit.
+    container.innerHTML = html.replace(new RegExp(`${REQUEST_ATTR}="[^"]*"`), `${REQUEST_ATTR}="{broken"`);
+    records = [];
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    expect(codes()).toContain("RMD056");
+    expect(of("RMD056")?.data).toMatchObject({ reason: expect.any(String) });
+
+    // The two that used to be the only thing a reader got, and why RMD056 has to be there.
+    expect(codes()).toContain("RMD025");
     expect(codes()).toContain("RMD007");
   });
 });
