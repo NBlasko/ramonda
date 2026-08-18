@@ -88,6 +88,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD052` | error | A component among JSX children, where an element was meant |
 | `RMD053` | error | The request was read with no request scope installed |
 | `RMD055` | error | A hook's props passed as a plain object |
+| `RMD056` | error | One context provided twice by the same component |
 
 ### RMD052 — A component among JSX children, where an element was meant
 
@@ -246,6 +247,27 @@ is the one that does: a nav bar beside the outlet has no matched route above it.
 Deduped per context id + owning component, so each call site says it once
 however many instances mount, and two components missing the same context are
 two reports.
+
+### RMD056 — One context provided twice by the same component
+
+A component publishes a context on ONE object — its own — so a second Provider
+of the same context replaces the first under the same key, and every descendant
+reads the second.
+
+The check is `Object.hasOwn(owner.context, contextId)`, and own-ness is exactly
+the question. A context object is `Object.create(parentContext)`, so a Provider
+ABOVE this component leaves the key inherited here rather than own — which is
+nesting, is ordinary, and must stay silent. Only a second publish on one
+component makes the key own. Widening this to `in` reports every nested
+Provider, and core's tests fail if it is.
+
+It reports rather than throwing, unlike RMD055: the page has one deterministic
+reading — the second Provider's — so refusing it would break an app that has
+been living with the first one ignored.
+
+What hides the fault is that the first Provider still reads: a Provider provides
+AND reads, so the component that made the mistake is the one place it looks
+fine.
 
 ### RMD004 — Props mutated
 

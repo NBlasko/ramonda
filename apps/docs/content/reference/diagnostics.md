@@ -1536,3 +1536,54 @@ names the owner, the hook, and the keys the object carried.
 The mistake cannot be found from inside `use()`, which is handed a finished object with no way to tell
 `{ start: this.count }` from `{ start: 1 }`. The FORM is the visible half, so the form is what the
 framework holds you to.
+
+## RMD056 — One context provided twice by the same component
+
+```tsx
+const [ThemeProvider, ThemeConsumer] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Panel extends Component {
+  // ✗ two Providers of one context, on one component
+  base = this.use(ThemeProvider, () => ({ color: "slate" }));
+  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <Card />;
+  }
+}
+```
+
+A component publishes a context on one object — its own — so the second Provider replaces the first
+under the same key. Every descendant reads `"amber"`, and `base` is unreachable from below.
+
+What hides it is that `base` still works *here*: a Provider reads as well as provides, so
+`this.base.color` is `"slate"` inside `Panel` while every component under it sees `"amber"`. The
+component that made the mistake is the one place the mistake is invisible.
+
+There is no reading of this the framework could honour, so keep the one you meant and delete the other.
+If both values are needed below, they are two contexts — call `createContext` twice, and each gets a
+key of its own. If the second was meant to win for part of the tree, that is a **nested** Provider:
+
+```tsx
+const [ThemeProvider] = createContext({ color: "slate" }, { label: "Theme" });
+
+class Highlight extends Component {
+  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
+
+  render() {
+    return <Card />;
+  }
+}
+```
+
+On its own component it publishes on its own object, so it shadows the one above for its own branch
+and leaves the rest of the tree reading `"slate"`. That is the ordinary arrangement and nothing is
+reported for it — the report asks whether this component *already* published the key itself, which a
+Provider above it never makes true.
+
+Deduped per context and owning component, so a component that mounts a thousand times says it once.
+
+**It reports rather than throwing**, unlike a plain-object props bag
+([RMD055](#rmd055-a-hooks-props-passed-as-a-plain-object)). There, a shipped bundle would go on serving a value
+nobody set; here the page has one deterministic reading, and refusing it would break an app that has
+been living with the first Provider being ignored. A later version can refuse.

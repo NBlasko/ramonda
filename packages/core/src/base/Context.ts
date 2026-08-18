@@ -137,6 +137,34 @@ export function createContext<T extends object>(
           return signals.get(key);
         },
       };
+      if (__DEV__) {
+        /**
+         * A SECOND Provider of this context on the SAME component.
+         *
+         * `Object.hasOwn` is the whole check, and it is exact for the same reason the publish is an
+         * own property at all — see the `Context` type. An ancestor that provides the same context
+         * leaves the key INHERITED on this object, which is ordinary and is how nesting works; only
+         * a second publish on one component makes it own, and the second one wins for every
+         * descendant.
+         *
+         * Reported rather than thrown, unlike a plain-object props bag (RMD055): there the shipped
+         * bundle would go on serving a value nobody set, while here the page has one deterministic
+         * reading — the second Provider's — and refusing it would break an app that has been
+         * quietly living with the first one being ignored. The report is what makes the choice
+         * visible; a later version can refuse.
+         */
+        if (Object.hasOwn(owner.context, contextId)) {
+          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+          diagnose(
+            "RMD056",
+            `${contextId}:${holder ?? "?"}`,
+            `${holder ? `<${holder} /> ` : ""}uses ${Provider.name} twice, so the second one replaces the ` +
+              `first for every descendant. The first is still readable here, through its own hook.`,
+            { keys: contextKeys.join(", ") },
+          );
+        }
+      }
+
       owner.context[contextId] = channel;
 
       // Reactive reader for the providing component. It reads the options
