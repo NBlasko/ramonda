@@ -571,13 +571,16 @@ export function reconcileEntries(
     else cloneChildren.push(entry);
   }
 
-  const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
   /**
-   * How many nodes were here BEFORE anything was claimed.
-   *
-   * Read now, not after the loop: `claimOrMount` appends the nodes it mounts to `cloneChildren`,
-   * so reading it afterwards counts the new ones too and the comparison always looks balanced.
+   * `cloneChildren` is the pool to claim from, and it GROWS as the loop runs: `claimOrMount`
+   * appends every node it mounts. So its length is not "how many nodes were here before" at any
+   * point after the first claim, and anything that wanted that number would have to read it up
+   * here — which nothing does. It is written down because the shape invites the mistake: the
+   * variable this note used to sit above was such a count, and it was gone before this line was
+   * ever committed while the note stayed behind describing it.
    */
+  const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
+
   const entries: RecordEntry[] = [];
   let changed = false;
   let plainIndex = 0;
