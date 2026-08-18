@@ -42,25 +42,24 @@ function isConditional(node: ts.Node): boolean {
   );
 }
 
-/** Whether a node has a JSX element or fragment above it — which is what makes it not a root. */
-function insideJsx(node: ts.Node): boolean {
-  for (let at = node.parent; at !== undefined; at = at.parent) {
-    if (ts.isJsxElement(at) || ts.isJsxFragment(at)) return true;
-  }
-  return false;
-}
-
-/** Every top-level JSX tree in a file: the renders, one per subject a tree rule reads. */
+/**
+ * Every top-level JSX tree in a file: the renders, one per subject a tree rule reads.
+ *
+ * The walk stops at the first markup it meets on any path, so "top-level" needs no ancestor test —
+ * nothing below a root is ever visited here. An earlier version asked each candidate whether it had
+ * JSX above it as well; probed across every fixture and across three real projects, that question
+ * was answered `false` every single time, so it was a guard that could not fire and a reader would
+ * have had to work out why.
+ *
+ * What is below a root is `treeFor`'s to collect, INCLUDING markup inside braces and inside
+ * attributes, whose parent is not JSX at all.
+ */
 export function rootsIn(file: ts.SourceFile): (ts.JsxElement | ts.JsxFragment | ts.JsxSelfClosingElement)[] {
   const roots: (ts.JsxElement | ts.JsxFragment | ts.JsxSelfClosingElement)[] = [];
   (function look(node: ts.Node): void {
     if (ts.isJsxElement(node) || ts.isJsxFragment(node) || ts.isJsxSelfClosingElement(node)) {
-      if (!insideJsx(node)) {
-        roots.push(node);
-        // Its children are part of THIS tree, and are collected by `treeFor` rather than becoming
-        // roots of their own — including the ones inside braces, whose parent is not JSX.
-        return;
-      }
+      roots.push(node);
+      return;
     }
     ts.forEachChild(node, look);
   })(file);

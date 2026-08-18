@@ -274,11 +274,19 @@ describe("a name on a role that takes none", () => {
   });
 
   /**
-   * `aria-labelledBy` reaches the DOM as a different attribute from `aria-labelledby`, so it is not
-   * a name at all — the vocabulary rule has that one, and reporting it here would say the name does
-   * nothing for the wrong reason. The wrong-case span lives in `aria.tsx`.
+   * Attribute names are matched case-INSENSITIVELY, and that was measured rather than assumed.
+   *
+   * The first version compared them as written, on the neighbouring rule's claim that
+   * `aria-labelledBy` reaches the DOM as a different attribute. Rendered through
+   * `renderToString`, that is false for an HTML element — `setAttribute` lowercases, so the
+   * attribute arrives as `aria-labelledby` and is a name like any other. It IS true inside SVG,
+   * where `setAttributeNS(null, name)` writes the name verbatim; every tag this rule consults is
+   * an HTML tag, so that case cannot reach it.
+   *
+   * `aria.tsx` therefore carries a `role` on its wrong-case span, so that line stays about one
+   * fault.
    */
-  test("an attribute whose case is wrong is not a name", () => {
+  test("this rule reads only names, and leaves the vocabulary to its own rule", () => {
     expect(found().some((issue) => issue.file.endsWith("aria.tsx"))).toBe(false);
   });
 

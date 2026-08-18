@@ -11,8 +11,10 @@ class Vocabulary extends Component {
   render() {
     return (
       <div>
-        {/* REPORTED — the case is wrong, so this is a different attribute that nothing reads. */}
-        <span aria-labelledBy="title" />
+        {/* REPORTED — the case is wrong. The role is written so that this line is about the
+            attribute's NAME and nothing else: a bare `<span>` is `generic`, which takes no name,
+            and that is a different rule reporting a different fault on the same line. */}
+        <span role="note" aria-labelledBy="title" />
         {/* REPORTED — one character out. */}
         <span aria-requred="true" />
         {/* REPORTED — not in the vocabulary at all, and near nothing. */}

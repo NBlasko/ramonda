@@ -19,7 +19,11 @@ const headings = () => run().findings["heading-skips-a-level"];
  */
 describe("two elements claiming one id", () => {
   test("every duplicate is reported, pointing at the second", () => {
-    expect(ids().map((issue) => `${issue.id} on <${issue.tag}>`)).toEqual(["email on <input>", "summary on <p>"]);
+    expect(ids().map((issue) => `${issue.id} on <${issue.tag}>`)).toEqual([
+      "email on <input>",
+      "summary on <p>",
+      "a on <input>",
+    ]);
   });
 
   test("it names the line that will win the lookup", () => {
@@ -50,7 +54,7 @@ describe("two elements claiming one id", () => {
   });
 
   test("a spread may carry the id, so the element is not judged", () => {
-    expect(ids()).toHaveLength(2);
+    expect(ids()).toHaveLength(3);
   });
 
   test("a computed id is not compared with anything", () => {
@@ -69,12 +73,28 @@ describe("two elements claiming one id", () => {
 
 describe("a heading that skips a level", () => {
   test("every skip is reported, with the level it came after", () => {
-    expect(headings().map((issue) => `h${issue.after} → h${issue.level}`)).toEqual(["h1 → h3", "h2 → h5", "h1 → h4"]);
+    expect(headings().map((issue) => `h${issue.after} → h${issue.level}`)).toEqual([
+      "h1 → h3",
+      "h2 → h5",
+      "h1 → h4",
+      "h1 → h3",
+    ]);
   });
 
   /** Markup written in a plain helper is markup all the same — the third report above is one. */
   test("a render outside a class is read too", () => {
-    expect(headings()).toHaveLength(3);
+    expect(headings()).toHaveLength(4);
+  });
+
+  /**
+   * Both elements on ONE line, which is where the wording had to change: written only as
+   * "line N", the report sent a reader to the line they were already looking at. Invisible from
+   * the finding, which is correct either way — it only showed in what the command printed.
+   */
+  test("two on one line are described as being on it, not by its number", () => {
+    const same = headings().find((issue) => issue.afterAtLine === issue.line);
+    expect(same).toBeDefined();
+    expect(ids().find((issue) => issue.firstAtLine === issue.line)).toBeDefined();
   });
 
   test("descending one step at a time is not a skip", () => {

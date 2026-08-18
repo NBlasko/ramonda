@@ -106,10 +106,19 @@ export const roleTakesNoName = {
     const found: RoleTakesNoNameIssue[] = [];
     for (const attribute of openingOf(element).attributes.properties) {
       if (!("name" in attribute) || attribute.name === undefined) continue;
-      // As WRITTEN, not lowercased. `aria-labelledBy` reaches the DOM as a different attribute
-      // from `aria-labelledby` and is not a name at all — it is the sibling rule's business, and
-      // reporting it here would say the name does nothing for the wrong reason.
-      const name = attribute.name.getText();
+      /**
+       * Lowercased, because the DOM lowercases it.
+       *
+       * This was written case-SENSITIVELY first, on the sibling rule's claim that
+       * `aria-labelledBy` reaches the DOM as a different attribute. Measured through
+       * `renderToString`, that is false for an HTML element: attributes go through
+       * `setAttribute`, which the HTML specification lowercases, so `aria-labelledBy` arrives as
+       * `aria-labelledby` and IS a name. Skipping it would have been a silence on a real fault.
+       *
+       * It is true inside SVG, where `setAttributeNS(null, name)` writes the name verbatim — but
+       * every tag in `NAME_PROHIBITED_TAGS` is an HTML tag, so that case cannot arrive here.
+       */
+      const name = attribute.name.getText().toLowerCase();
       if (!NAMES.includes(name)) continue;
       found.push({ attribute: name, tag, role, from, ...positionOf(attribute) });
     }

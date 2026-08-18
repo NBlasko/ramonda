@@ -54,7 +54,11 @@ export const headingSkipsALevel = {
     heading: (found) => `${found.length} heading(s) that skip a level:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <h${issue.level}> follows the <h${issue.after}> on line ${issue.afterAtLine}, so the outline`,
+      // "on this line" when they share one — otherwise the report sends a reader to the line they
+      // are already looking at. Same fault, and the same way of finding it, as `duplicate-id`.
+      `    <h${issue.level}> follows the <h${issue.after}> ${
+        issue.afterAtLine === issue.line ? "earlier on this line" : `on line ${issue.afterAtLine}`
+      }, so the outline`,
       // Read from the printed report, not from the code: the first version said "claims a level
       // that never appear" for every single-level skip, which is most of them.
       `    claims ${issue.level - issue.after === 2 ? "a level that never appears" : "levels that never appear"}.`,

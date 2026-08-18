@@ -44,10 +44,15 @@ export const duplicateId = {
     severity: "warn",
     reportedWhen: "two elements in one render carry the same literal `id`, and both are always present",
     heading: (found) => `${found.length} element(s) claiming an \`id\` another element already has:`,
+    // The same-line wording is not decoration. Written only as "line N", a duplicate written
+    // `<input id="a" /><input id="a" />` printed "line 4 already claims it" from line 4 — the
+    // reader is sent to the line they are already looking at, twice. Read from the output.
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.tag} id="${issue.id}"> — line ${issue.firstAtLine} already claims it, and`,
-      `    everything that looks the id up will find that one.`,
+      `    <${issue.tag} id="${issue.id}"> — ${
+        issue.firstAtLine === issue.line ? "an earlier element on this line" : `line ${issue.firstAtLine}`
+      } already claims it,`,
+      `    and everything that looks the id up will find that one.`,
     ],
     advice:
       "An id is the one name a document promises is unique, and more is built on that promise than\n" +

@@ -788,9 +788,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   /**
    * The per-RENDER rules, from the same pass again.
    *
-   * A render is one top-level JSX tree in the source, so the subject is found by walking the file
-   * for markup with no markup above it — the same reason the element rules walk from the file
-   * rather than from a class: markup written in a plain helper is markup all the same.
+   * A render is one top-level JSX tree in the source, so the subjects are found by walking the file
+   * and stopping at the first markup on each path — everything below a root belongs to that root.
+   * From the FILE rather than from a class, for the same reason the element rules do: markup
+   * written in a plain helper function is markup all the same.
    */
   const treeRules = activate(TREE_RULES, imported);
 
