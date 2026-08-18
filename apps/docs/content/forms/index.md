@@ -174,7 +174,7 @@ the failure row identities exist to prevent — see [Array fields](/forms/arrays
 **Read them through the props callback**, as above, whenever the defaults arrive after the form does.
 The callback re-runs when a signal it reads moves, so `defaultValues: this.record` follows the fetch
 that filled `record` — while a form whose defaults are constants reads the same either way, since a
-callback that touches no signal runs once and stops.
+callback that touches no signal is called once and its bag kept.
 
 ### One object, not a fresh one
 

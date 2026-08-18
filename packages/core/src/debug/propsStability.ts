@@ -1,6 +1,6 @@
 import { diagnose } from "./diagnostics";
 import { classify, type Kind } from "./renderStability";
-import { valueEqual } from "../helpers/valueEqual";
+import { valueEqual, type Bound } from "../helpers/valueEqual";
 
 /**
  * DEV-only: calls a hook's props callback twice and reports anything that came out
@@ -97,6 +97,7 @@ export function checkPropsStability(
   second: unknown,
   declared: readonly string[] | undefined,
   site: object,
+  tracked: boolean,
 ): void {
   if (!isBag(first) || !isBag(second)) return;
 
@@ -142,6 +143,25 @@ export function checkPropsStability(
     if (kind === "nondeterministic") {
       runs.delete(key);
       report(kind, owner, key, a, b);
+      continue;
+    }
+
+    /**
+     * The churn half, and a callback that read no signal is exempt from it.
+     *
+     * Everything below counts how often a value is REBUILT across renders, and the report tells
+     * the app to hold it somewhere stable instead. Neither applies when the callback's dependency
+     * set is empty: nothing can mark that cache dirty, so the callback is never called again and
+     * the bag it built is the one the hook keeps. The only rebuild is the second call this check
+     * makes itself, which is the check reporting its own work.
+     *
+     * Measured on `() => ({ children: <div><h2 /></div> })`: reported on every render, with
+     * `valueEqual`'s depth bound making the wording "does not come from state". The non-determinism
+     * above is deliberately NOT exempt — an untracked bag is where a value that moves gets frozen
+     * into the cache for good, which is worse there than anywhere else.
+     */
+    if (!tracked) {
+      runs.delete(key);
       continue;
     }
 
@@ -230,7 +250,20 @@ export function checkCachedProps(owner: string, cached: unknown, fresh: unknown,
     const b = fresh[key];
 
     if (typeof b === "function" || typeof a === "function") continue;
-    if (valueEqual(a, b, depth)) continue;
+
+    /**
+     * Silence when the comparison stopped at its own bound instead of finding a difference.
+     *
+     * `valueEqual` answers "different" past its depth and its array width, which is the safe answer
+     * for `resolveStable` — a fresh reference, correct if not optimal. Here it would be a sentence
+     * telling the app a prop is stale on the strength of a comparison that never finished. A JSX
+     * subtree handed to a `Portal`, or a nested record, is deeper than the bound and rebuilt by
+     * every call of the callback, so it would be reported on every render of the owner, forever,
+     * with nothing to fix.
+     */
+    const bound: Bound = { hit: false };
+    if (valueEqual(a, b, depth, 0, bound)) continue;
+    if (bound.hit) continue;
 
     diagnose(
       "RMD027",

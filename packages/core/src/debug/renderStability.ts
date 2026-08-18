@@ -1,5 +1,5 @@
 import { devFlags } from "../config";
-import { isPlainObject, valueEqual } from "../helpers/valueEqual";
+import { isPlainObject, valueEqual, type Bound } from "../helpers/valueEqual";
 import { isListNode } from "../vdom/guards";
 import type { BaseComponent } from "../types/vdom";
 import { diagnose } from "./diagnostics";
@@ -89,16 +89,26 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
 
   if ((isPlainObject(a) && isPlainObject(b)) || (Array.isArray(a) && Array.isArray(b))) {
     /**
-     * `valueEqual` is bounded, and past a bound it answers "different" — which is the answer
-     * `resolveStable` needs (it must never reuse a value whose contents moved) and one this only
-     * uses to pick WORDING. So a pair that is deeper than the bound, or wider than it, is called
-     * non-deterministic here even when its contents match.
+     * `valueEqual` is bounded, and past a bound it answers "different" — the answer `resolveStable`
+     * needs, since it must never reuse a value whose contents moved. Here the same answer decides
+     * WORDING, and the two words are not interchangeable: "rebuilt with the same contents" asks the
+     * app to hold the value somewhere stable, while "not a function of state" tells it to move a
+     * `Math.random()` it may not have written.
      *
-     * That is a less precise message, never a wrong verdict: something WAS rebuilt either way, and
-     * both messages say so. It is the direction to be wrong in — the alternative is a comparison
-     * that guesses "equal" from a sample, which is what silently dropped a change past the width.
+     * So a difference the comparison never reached is not evidence of non-determinism. A pair that
+     * stopped at the bound is called rebuilt, which is the half that IS established — the two
+     * identities differ. What that costs is a deep value which genuinely moves between two calls in
+     * one tick: it is reported as churn, through the run counter, rather than immediately. The
+     * usual sources of that are caught anyway and separately — randomness and a clock read while a
+     * bag is being built are RMD021, which is what `propsPhase` marks the phase for.
+     *
+     * Measured, on the shape that made this worth changing: `() => ({ children: <div><h2 /></div> })`
+     * is two levels past the default bound, so every JSX value handed to a hook was reported as
+     * "does not come from state", with advice about `Math.random()` beside it.
      */
-    return valueEqual(a, b) ? "object" : "nondeterministic";
+    const bound: Bound = { hit: false };
+    if (valueEqual(a, b, undefined, 0, bound)) return "object";
+    return bound.hit ? "object" : "nondeterministic";
   }
 
   // Two primitives that differ between two calls in the same tick: the render is not

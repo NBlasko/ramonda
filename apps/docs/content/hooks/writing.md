@@ -41,7 +41,9 @@ owner's own props or state — that is what keeps them in sync.
 A bag of constants is written the same way — `this.use(Counter, () => ({ start: 10 }))`.
 A callback that reads no signal is called once, at mount, and never again, so it costs
 what a fixed object costs; and the day a constant becomes a `@state` there is nothing to
-rewrite. Handing `use()` an object instead throws (`RMD055`), because an object literal is
+rewrite. (In development the framework calls it a few more times to check it — see [the
+reactivity model](/why/reactivity#a-hooks-props-callback-is-fine-grained) — and keeps none of
+those results.) Handing `use()` an object instead throws (`RMD055`), because an object literal is
 evaluated while the owner is being constructed and can only ever carry what was true then.
 
 **The parameter is typed for you.** `self` is the class the `use()` is written in, so

@@ -395,7 +395,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD055: {
     severity: "error",
     title: "A hook's props passed as a plain object",
-    fix: "Pass a callback instead: `this.use(Hook, () => ({ ... }))`. An object literal in a field initializer is evaluated ONCE, while the owner is being constructed, so every value in it is frozen at that moment — a later `this.count` never reaches the hook, and nothing reports the stale value. A callback that reads no signal costs nothing: it runs once, at mount, and never again, and the inline functions in it keep their identity.",
+    fix: "Pass a callback instead: `this.use(Hook, () => ({ ... }))`. An object literal in a field initializer is evaluated ONCE, while the owner is being constructed, so every value in it is frozen at that moment — a later `this.count` never reaches the hook, and nothing reports the stale value. A callback that reads no signal costs nothing: it runs once, at mount, and never again, and the inline functions in it keep their identity. (A development build calls it again to check it, and keeps nothing from those calls.)",
   },
 };
 /** Bounds the dedup set — a runaway dynamic key can't grow it without limit. */

@@ -73,7 +73,7 @@ class App extends Component {
   // On the app root because that is where a real app puts it — one cache per
   // render tree, never a module-level singleton.
   // The defaults never change, and the callback does not rebuild them: one that reads no signal
-  // is called once, at mount, so `defaults` keeps one identity for the life of the root.
+  // is called once, at mount, so `defaults` keeps the one identity for the life of the root.
   query = this.use(QueryClientProvider, () => ({
     defaults: { staleTime: 5_000, retry: 1 },
   }));

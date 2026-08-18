@@ -48,7 +48,9 @@ bag reads move? Ten hooks on a component and one changed signal is one render an
 
 **A bag of constants is built once** — a callback that reads no signal runs at mount and never again,
 and the functions inside it keep their identity. So a hook is not disturbed by its owner re-rendering
-for an unrelated reason.
+for an unrelated reason. (A development build calls it more than that: a second time at mount, to
+catch a value that is not a function of state, and once per render to check the cache has not gone
+stale. Both results are thrown away — the hook is handed the one bag either way.)
 
 **Inside the hook, each prop is its own signal**, so only the keys whose values actually moved wake
 anything — the per-key behaviour context has, one level down.

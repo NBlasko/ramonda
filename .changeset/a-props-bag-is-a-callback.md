@@ -24,6 +24,11 @@ in it keep their identity across every render of the owner — so a bag of const
 report. `core/__tests__/PropsBagRuns.test.tsx` pins both halves, and the mirror beside them: a bag
 that DOES read a signal re-runs, with fresh functions each time, which is what `@StableProps` is for.
 
+A development build calls it more than that, and keeps none of it: twice at mount, so RMD022 can
+compare the two bags, and once per render of the owner, so RMD027 can check the cache has not gone
+stale. Both counts are measured in that file's second suite, with `strictRender` on as it is by
+default. The hook is handed the one bag in either build.
+
 **It throws rather than warns,** the same rule as a write to props (RMD004, RMD015), and outside
 `if (__DEV__)` so a shipped bundle cannot go on serving one stale value for the life of the page.
 Development adds the explanation and a record naming the owner, the hook and the keys the object

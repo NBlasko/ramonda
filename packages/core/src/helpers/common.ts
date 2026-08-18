@@ -26,7 +26,7 @@ function buildProps(
   hookName: string,
   hookProps: unknown,
   declared: readonly string[] | undefined,
-  site?: object,
+  site?: PropsCache,
 ): any {
   // `undefined` is the whole of the other case: a bag passed as a plain object is refused by
   // `useCommon` before anything is built (RMD055), so nothing else reaches here.
@@ -54,7 +54,15 @@ function buildProps(
       // `site` is the call site's props cache, which the check counts runs against. It is absent
       // only for a hook taking no props at all, and that returned above — there is no callback to
       // run twice, so there is nothing for this check to be about.
-      if (isStrictRender() && site !== undefined) checkPropsStability(label, bag, build(that), declared, site);
+      //
+      // The bag was built under the tracker just now, so `site.deps` is what this callback reads.
+      // An EMPTY set means nothing can ever mark the cache dirty, so this bag is the one the hook
+      // keeps for life — churn is impossible by construction, and the check is told so. It still
+      // runs: a callback that reads nothing reactive is exactly where a value that is not a
+      // function of state gets FROZEN rather than merely rebuilt, which is the worse fault.
+      if (isStrictRender() && site !== undefined) {
+        checkPropsStability(label, bag, build(that), declared, site, site.deps.size > 0);
+      }
 
       return bag;
     } finally {
@@ -188,7 +196,8 @@ export function useCommon<T extends BaseHook<any>, P>(
    * serving a stale bag the types already refuse. The DEV report only explains it.
    *
    * The callback costs nothing where the object was chosen for being cheap: a bag that reads no
-   * signal runs once, at mount, and never again — measured in `PropsBagRuns.test.tsx`.
+   * signal runs once, at mount, and never again — measured in `PropsBagRuns.test.tsx`, which also
+   * pins what a development build adds and throws away (RMD022's second call, RMD027's probe).
    */
   if (hookProps !== undefined && typeof hookProps !== "function") {
     if (__DEV__) {

@@ -37,11 +37,34 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-export function valueEqual(a: unknown, b: unknown, maxDepth: number = DEFAULT_DEPTH, depth = 0): boolean {
+/**
+ * Records that a verdict was reached AT a bound rather than by comparing to the end.
+ *
+ * "Different" past a bound is the safe answer for a caller that has to CHOOSE — `resolveStable`
+ * hands back a fresh reference, which is correct and merely not optimal. It is not a safe answer
+ * for a caller that has to SPEAK: RMD027 tells an app one of its values is stale, and a comparison
+ * that stopped early has established no such thing. Those callers pass this and stay quiet when it
+ * comes back hit.
+ */
+export interface Bound {
+  hit: boolean;
+}
+
+export function valueEqual(
+  a: unknown,
+  b: unknown,
+  maxDepth: number = DEFAULT_DEPTH,
+  depth = 0,
+  bound?: Bound,
+): boolean {
   if (Object.is(a, b)) return true;
-  if (depth >= maxDepth) return false;
+  if (depth >= maxDepth) {
+    if (bound) bound.hit = true;
+    return false;
+  }
 
   if (Array.isArray(a) && Array.isArray(b)) {
+    // A length that differs is a difference, proven — the bound had nothing to do with it.
     if (a.length !== b.length) return false;
     /**
      * Past the width, "different" — the same answer the depth bound gives, and for the same reason.
@@ -54,10 +77,13 @@ export function valueEqual(a: unknown, b: unknown, maxDepth: number = DEFAULT_DE
      * Erring toward "different" costs a fresh reference for a wide array — correct, just not
      * optimal, which is what the bounds were always documented to cost.
      */
-    if (a.length > MAX_WIDTH) return false;
+    if (a.length > MAX_WIDTH) {
+      if (bound) bound.hit = true;
+      return false;
+    }
 
     for (let i = 0; i < a.length; i++) {
-      if (!valueEqual(a[i], b[i], maxDepth, depth + 1)) return false;
+      if (!valueEqual(a[i], b[i], maxDepth, depth + 1, bound)) return false;
     }
     return true;
   }
@@ -66,7 +92,7 @@ export function valueEqual(a: unknown, b: unknown, maxDepth: number = DEFAULT_DE
     const aKeys = Object.keys(a);
     if (aKeys.length !== Object.keys(b).length) return false;
     for (const key of aKeys) {
-      if (!valueEqual(a[key], b[key], maxDepth, depth + 1)) return false;
+      if (!valueEqual(a[key], b[key], maxDepth, depth + 1, bound)) return false;
     }
     return true;
   }

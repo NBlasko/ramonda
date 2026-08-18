@@ -430,9 +430,12 @@ consecutive runs of the callback and its value never moved. Below four, ordinary
 reported for coincidences; the same threshold, for the same reason, as
 [RMD024](#rmd024-a-compute-recomputes-without-its-answer-changing).
 
-A corollary worth knowing: a callback that is never invalidated cannot be reported. It runs
-once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
-and a value built once is not churn.
+A corollary worth knowing: a callback that is never invalidated cannot be reported for churn. It
+runs once, its bag is [cached](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity),
+and a value built once is not churn — so a callback whose dependency set is empty is exempt from
+the count, and the only rebuild left is the second call this check makes itself. The
+**different-contents** finding below is not exempt: that is where an untracked callback is at its
+worst, since the value is frozen into the cache rather than merely rebuilt.
 
 Three findings, three fixes:
 
@@ -450,7 +453,12 @@ Three findings, three fixes:
   needed. Nothing can hide this one; what is compared is the contents. **Reported on the
   first occurrence**, with no count in front of it: this is a fault rather than churn, and
   it is the one kind the cache makes worse — a `Math.random()` in the bag is now frozen
-  into the cached bag until something else invalidates it.
+  into the cached bag until something else invalidates it. This one asks for a difference the
+  comparison actually **found**: past its bounded depth, a pair is called rebuilt rather than
+  non-deterministic, because a comparison that stopped early has not established anything about
+  the contents. A JSX subtree in a bag is past that bound, and randomness at depth is
+  [RMD021](#rmd021-randomness-during-a-render-a-compute-a-memoised-handler-or-a-hooks-props)'s
+  to catch.
 
 A `@compute` holding the whole bag fixes every value in it at once, and is the shortest
 answer when several are unstable together.
@@ -571,6 +579,11 @@ the renders where the callback does run.
 **Function props are skipped.** `load: () => self.tick` reads the signal when it is *called*, so
 one closure held across renders keeps answering with the current value — a fresh identity there
 says nothing about staleness.
+
+**And so is a value the comparison could not finish.** It is bounded, and past the bound it answers
+"different" without having found a difference — which is the safe answer where a value has to be
+chosen, and no basis at all for telling you a prop is stale. A JSX subtree handed through a bag is
+past that bound and rebuilt by every call, so this stays quiet about it.
 
 ## What is non-deterministic in JavaScript, and what catches it
 
@@ -1513,6 +1526,12 @@ and skipped on a render where none did.
 once, at mount, and never again, and the inline functions in it keep their identity across the owner's
 renders — measured in core's `PropsBagRuns.test.tsx`. So there is no bag cheap enough for the shape to
 be worth choosing.
+
+A development build calls it more often than that, and keeps none of it: a second time at mount, so
+[RMD022](#rmd022-a-hooks-props-callback-built-a-new-value-for-the-same-contents) can compare the two
+bags and catch a value that is not a function of state, and once per render of the owner, so
+[RMD027](#rmd027-a-props-callback-reads-a-value-that-is-not-reactive) can check the cache has not gone
+stale. The hook is handed the first bag in every build.
 
 **It throws in every build**, like a write to props ([RMD004](#rmd004-props-mutated-by-the-receiving-component),
 [RMD015](#rmd015-hook-options-assigned-by-the-hook-that-received-them)): the alternative is a shipped bundle serving one

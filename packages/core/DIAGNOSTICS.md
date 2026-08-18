@@ -173,7 +173,8 @@ refused rather than the staleness detected.
 
 The callback is free where the object looked cheapest: a bag that reads no signal runs once, at mount,
 and never again, and its inline functions keep their identity. `__tests__/PropsBagRuns.test.tsx` pins
-both halves.
+both halves — and, in its second suite, what a DEVELOPMENT build adds on top: a second call at mount for
+RMD022's comparison and one per render for RMD027's freshness probe, both discarded.
 
 ### RMD033–RMD042 — the ten that were messages before they were codes
 

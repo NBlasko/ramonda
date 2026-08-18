@@ -59,7 +59,7 @@ class Signup extends Component {
     void values;
   }
 
-  /** A. Direct object with a bound method. The bag is constant, so RMD022 never runs. */
+  /** A. A bag of constants with a bound method — it reads no signal, so it is built once. */
   form = this.use(Form, () => ({
     schema: signup,
     defaultValues: defaults,

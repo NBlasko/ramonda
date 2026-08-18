@@ -79,16 +79,14 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * later re-render happens to trigger the next one. Measured: an effect attached
  * from a click handler stayed silent, then fired on an unrelated `@state` change.
  * That is why every decorator here registers from `addInitializer`.
- */
-/**
- * `(...args: any[]) => any` on a decorator's `value`, and `unknown[]` is not an option.
  *
- * Measured: a method declared with a parameter — `@updated after(n: number)` — is assignable to
- * `(...args: any[]) => void` and NOT to `(...args: unknown[]) => void`, which fails as TS1241,
- * "unable to resolve signature of method decorator". Narrowing it type-checks across this whole
- * repository, because nothing here declares a parameter on such a method; it would refuse the first
- * application that did. Whether these lifecycles should take no parameters at all is a separate
- * question about the API, not about this annotation.
+ * **`value: (...args: any[]) => any` here and on every decorator below, and `unknown[]` is not an
+ * option.** Measured: a method declared with a parameter — `@updated after(n: number)` — is
+ * assignable to `(...args: any[]) => void` and NOT to `(...args: unknown[]) => void`, which fails as
+ * TS1241, "unable to resolve signature of method decorator". Narrowing it type-checks across this
+ * whole repository, because nothing here declares a parameter on such a method; it would refuse the
+ * first application that did. Whether these lifecycles should take a parameter at all is a question
+ * about the API, not about this annotation.
  */
 function attachEffect(instance: { [GLOBAL_RUNTIME]: Runtime }, value: (...args: any[]) => any, alwaysRebuild: boolean) {
   const effectId = createId();

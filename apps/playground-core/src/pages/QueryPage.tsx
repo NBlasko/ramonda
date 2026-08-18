@@ -132,8 +132,8 @@ class ProfileCard extends Component<{ id: string; label: string }> {
 
 class FlakyCard extends Component {
   // Nothing in this bag depends on props or state, and the callback costs nothing for saying so:
-  // one that reads no signal is called once, at mount, so `fetch` and `retryDelay` are built once
-  // and keep their identity. Rebuilding — the churn RMD022 reports — needs a signal to read.
+  // one that reads no signal is called once, at mount, so `fetch` and `retryDelay` keep the identity
+  // they were built with. Rebuilding — the churn RMD022 reports — needs a signal to read.
   private flaky = this.use(Query<string>, () => ({
     key: ["flaky"],
     fetch: () => getFlaky(),
