@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 21 of them.
+**Warnings.** These print and the run still passes. 22 of them.
 
 | rule | reported when |
 |---|---|
@@ -154,6 +154,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
 | `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |
 | `unknown-role` | a `role` names nothing, or names an abstract role that markup may not use |
+| `aria-value` | an `aria-*` attribute carries a literal value its specification does not permit |
 | `aria-with-no-subject` | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
 | `unnamed-frame` | an `iframe` has no `title` |
@@ -345,6 +346,17 @@ element assistive technology cannot name. `unnamed-image` and `unnamed-frame` ar
 nothing to announce them by; `empty-heading-or-link` is a row in the screen reader's list of
 headings, or of links, with no label; `positive-tabindex` does not move one element, it reorders
 the whole document.
+
+Three more read the ARIA vocabulary itself, and they fail in a way worth naming: **the browser keeps
+whatever you write.** An attribute is a string, so a misspelled name, an invented role and a value
+outside the specification all survive to the inspector looking perfectly healthy — and none of them
+does anything. `unknown-aria-attribute` catches the name (a wrong CASE is the commonest, since JSX
+preserves what you type while HTML attributes are lowercase), `unknown-role` catches the role, and
+`aria-value` catches the value: `aria-hidden="yes"` is not `true`, so the element stays in the
+accessibility tree.
+
+`false` is never reported. `aria-hidden="false"` says the element is exposed, which is not what
+leaving the attribute off says.
 
 ```
 [ramonda-check] 1 image(s) with nothing to announce them by:

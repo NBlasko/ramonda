@@ -220,3 +220,81 @@ export const NO_ARIA: ReadonlySet<string> = new Set([
   "template",
   "title",
 ]);
+
+/**
+ * What kind of value each `aria-*` attribute takes.
+ *
+ * Source: **WAI-ARIA 1.2**, the "Characteristics" table under each state and property, where every
+ * one of them declares its value type. The types below are that list collapsed to the ones a
+ * static reader can actually judge.
+ *
+ * ## The types this deliberately does NOT carry
+ *
+ * `ID reference` and `ID reference list` — `aria-labelledby`, `aria-controls`, `aria-owns` and the
+ * rest. Any non-empty string is a well-formed id, so there is nothing to judge without the
+ * document; whether the id EXISTS is a different question and a different rule.
+ *
+ * `string` is absent for the same reason from the other side: `aria-label` takes any string, so
+ * every value is correct and a table entry would say nothing.
+ *
+ * ## Which way it is allowed to be wrong
+ *
+ * The same way the tables above are. A rule reading this reports a value that is NOT permitted, so
+ * a token list short by one reports correct markup — the fatal kind of mistake. Short lists are
+ * therefore left out entirely rather than guessed at: an attribute with no entry here is one no
+ * rule will judge.
+ */
+export type AriaValueKind = "boolean" | "boolean-or-undefined" | "tristate" | "integer" | "number" | "token";
+
+export interface AriaValue {
+  kind: AriaValueKind;
+  /** For `token`, every value the specification permits. Absent for every other kind. */
+  tokens?: ReadonlySet<string>;
+}
+
+export const ARIA_VALUES: ReadonlyMap<string, AriaValue> = new Map<string, AriaValue>([
+  // true/false.
+  ["aria-atomic", { kind: "boolean" }],
+  ["aria-busy", { kind: "boolean" }],
+  ["aria-disabled", { kind: "boolean" }],
+  ["aria-modal", { kind: "boolean" }],
+  ["aria-multiline", { kind: "boolean" }],
+  ["aria-multiselectable", { kind: "boolean" }],
+  ["aria-readonly", { kind: "boolean" }],
+  ["aria-required", { kind: "boolean" }],
+
+  // true/false/undefined — where "undefined" is a value you may write, meaning "not applicable".
+  ["aria-expanded", { kind: "boolean-or-undefined" }],
+  ["aria-grabbed", { kind: "boolean-or-undefined" }],
+  ["aria-hidden", { kind: "boolean-or-undefined" }],
+  ["aria-selected", { kind: "boolean-or-undefined" }],
+
+  // tristate: true/false/mixed/undefined.
+  ["aria-checked", { kind: "tristate" }],
+  ["aria-pressed", { kind: "tristate" }],
+
+  // integer.
+  ["aria-colcount", { kind: "integer" }],
+  ["aria-colindex", { kind: "integer" }],
+  ["aria-colspan", { kind: "integer" }],
+  ["aria-level", { kind: "integer" }],
+  ["aria-posinset", { kind: "integer" }],
+  ["aria-rowcount", { kind: "integer" }],
+  ["aria-rowindex", { kind: "integer" }],
+  ["aria-rowspan", { kind: "integer" }],
+  ["aria-setsize", { kind: "integer" }],
+
+  // number — a decimal is permitted, and is the point of a slider.
+  ["aria-valuemax", { kind: "number" }],
+  ["aria-valuemin", { kind: "number" }],
+  ["aria-valuenow", { kind: "number" }],
+
+  // token: one of a closed list.
+  ["aria-autocomplete", { kind: "token", tokens: new Set(["both", "inline", "list", "none"]) }],
+  ["aria-current", { kind: "token", tokens: new Set(["date", "false", "location", "page", "step", "time", "true"]) }],
+  ["aria-haspopup", { kind: "token", tokens: new Set(["dialog", "false", "grid", "listbox", "menu", "tree", "true"]) }],
+  ["aria-invalid", { kind: "token", tokens: new Set(["false", "grammar", "spelling", "true"]) }],
+  ["aria-live", { kind: "token", tokens: new Set(["assertive", "off", "polite"]) }],
+  ["aria-orientation", { kind: "token", tokens: new Set(["horizontal", "undefined", "vertical"]) }],
+  ["aria-sort", { kind: "token", tokens: new Set(["ascending", "descending", "none", "other"]) }],
+]);

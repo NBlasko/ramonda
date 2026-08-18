@@ -120,3 +120,58 @@ describe("the ARIA vocabulary", () => {
     expect(found.map((issue) => `${issue.tag}:${issue.attribute}`)).toEqual(["title:role", "title:aria-hidden"]);
   });
 });
+
+/**
+ * The value half of the ARIA vocabulary. The names in these are all correct — the sibling rule has
+ * nothing to say about them — and the browser keeps every one, because an attribute is a string. It
+ * is the MEANING that does not happen: `aria-hidden="yes"` leaves the element in the accessibility
+ * tree, and it looks exactly like an element that was hidden.
+ */
+describe("an aria value the specification does not permit", () => {
+  const found = () => run().findings["aria-value"];
+
+  test("every kind of wrong value is reported, with what it takes", () => {
+    expect(found().map((issue) => `${issue.attribute}="${issue.value}" wants ${issue.wants}`)).toEqual([
+      'aria-hidden="yes" wants `true`, `false` or `undefined`',
+      'aria-atomic="1" wants `true` or `false`',
+      'aria-selected="mixed" wants `true`, `false` or `undefined`',
+      'aria-live="loud" wants one of `assertive`, `off`, `polite`',
+      'aria-current="yes" wants one of `date`, `false`, `location`, `page`, `step`, `time`, `true`',
+      'aria-level="two" wants a whole number',
+      'aria-valuenow="40%" wants a number',
+    ]);
+  });
+
+  /**
+   * `false` is a value, not an absence — `aria-hidden="false"` says the element is exposed, which
+   * is not what leaving the attribute off says. A rule that reported it would be reporting the
+   * documented way to write the thing.
+   */
+  test("false, undefined and mixed are values where the spec allows them", () => {
+    const permitted = ['aria-hidden="false"', 'aria-expanded="undefined"', 'aria-checked="mixed"'];
+    expect(found().some((issue) => permitted.includes(`${issue.attribute}="${issue.value}"`))).toBe(false);
+  });
+
+  test("a negative integer and a decimal are still a number", () => {
+    expect(found().some((issue) => ["-1", "0.5", "1e3"].includes(issue.value))).toBe(false);
+  });
+
+  /** An expression is not a value this can read, and guessing at one is what the package refuses. */
+  test("an expression is not judged", () => {
+    expect(found().every((issue) => issue.value.length > 0)).toBe(true);
+  });
+
+  /**
+   * A label takes any string and an id reference is any non-empty name, so there is no table for
+   * either — an attribute with no entry is one no rule has an opinion about.
+   */
+  test("an attribute whose every value is well formed has no entry and is never reported", () => {
+    expect(found().some((issue) => issue.attribute === "aria-label" || issue.attribute === "aria-labelledby")).toBe(
+      false,
+    );
+  });
+
+  test("a component's prop is not markup yet", () => {
+    expect(found().every((issue) => issue.line < 40)).toBe(true);
+  });
+});
