@@ -136,12 +136,13 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 31 of them.
+**Warnings.** These print and the run still passes. 32 of them.
 
 | rule | reported when |
 |---|---|
 | `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics) |
 | `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
+| `compute-reads-a-plain-field` | a `@compute` reads an ordinary field that is written after the first render, so the cached value goes stale |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
 | `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |

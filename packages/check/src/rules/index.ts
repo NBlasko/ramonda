@@ -24,6 +24,7 @@ import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
 import { asyncRender } from "./async-render";
+import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
@@ -87,6 +88,7 @@ export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-h
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
+export { computeReadsAPlainField, type ComputeReadsAPlainFieldIssue } from "./compute-reads-a-plain-field";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
@@ -119,6 +121,7 @@ export const CLASS_RULES = [
   asyncRender,
   stateWrittenWhileRendering,
   clockReadWhileRendering,
+  computeReadsAPlainField,
   arrowFields,
   browserUrl,
   domWrites,

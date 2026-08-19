@@ -16,6 +16,7 @@ export type {
   ClassInsteadOfClassNameIssue,
   ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
+  ComputeReadsAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ContextIssue,
   DomWriteIssue,
