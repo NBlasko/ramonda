@@ -116,8 +116,29 @@ vnode per row per render, and — measured at 10 000 rows over five re-renders �
 all**: the diff finds the rows identical and touches nothing. So a short list keeps every guarantee and
 pays nothing you can notice, and only a very large one is worth moving to a method.
 
-What you never get is a stale row. That was the alternative, and it is the reason the rule is the
-callback's shape rather than a promise to be careful.
+**What you never get is a stale row from anything reactive.** Every signal the callback reads while a row
+is built is recorded against that row — `@state`, `@persist`, a prop, a `@compute` over any of them — and a
+write marks exactly the rows that read it. That is the guarantee, and it is why the rule is the callback's
+shape rather than a promise to be careful.
+
+**The boundary is a value that is not reactive at all**, and it is worth knowing because it looks like it
+works until you make the callback a method:
+
+```tsx
+class Board extends Component {
+  label = "old";                                    // not `@state`, and a row shows it
+  row(task: Task) {
+    return <li>{task.title} {this.label}</li>;      // ✗ nothing records this read
+  }
+}
+```
+
+A plain field is not a signal, so nothing records the read and nothing marks the row. `render()` gets away
+with it because it re-runs whole — the markup outside the list shows the new value the next time anything
+re-renders — and a reused row does not re-run, so it keeps the old one. It is the same answer a `@compute`
+gives for a plain field, and the reason
+[`@state` is for anything `render()` shows](/concepts/state#fields-that-arent-state). Mark it `@state`, or
+leave the callback inline, which rebuilds every row and so reads it again.
 
 It follows that the description is not a list of things you can look at:
 

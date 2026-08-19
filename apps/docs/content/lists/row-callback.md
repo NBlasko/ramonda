@@ -87,6 +87,10 @@ class NumberedTasks extends Component {
 If the callback starts capturing a lot of the surrounding state, that is the sign to
 make it a component.
 
+Whichever you pick, read the state a row shows *inside* the callback and keep it `@state`. A value read
+outside, or a plain field, is not recorded against the row — see
+[what a row is allowed to remember](/lists#skipping-the-callback-needs-a-callback-it-can-skip).
+
 ## Next
 
 - [Nested lists](/lists/nested) — a list of lists.
