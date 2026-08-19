@@ -92,6 +92,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD057` | warning | A context consumed above the provider on the same component |
 | `RMD058` | warning | The request blob could not be read |
 | `RMD059` | warning | An async lifecycle rejected |
+| `RMD060` | error | render() is async |
 
 ### RMD052 — A component among JSX children, where an element was meant
 

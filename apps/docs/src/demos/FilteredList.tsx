@@ -61,7 +61,13 @@ export class FilteredList extends Component {
     return (
       <div>
         <p className="demo-row">
-          <input type="text" placeholder="filter by name or role" value={this.query} onInput={this.onInput} />
+          <input
+            type="text"
+            aria-label="Filter by name or role"
+            placeholder="filter by name or role"
+            value={this.query}
+            onInput={this.onInput}
+          />
           <span className="demo-note">
             star a row, then filter — a row that stays keeps its own star, and no row inherits one from a person the
             filter removed

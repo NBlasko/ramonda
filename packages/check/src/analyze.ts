@@ -9,23 +9,32 @@ import {
   applyClass,
   applyElement,
   applyModule,
+  applyProject,
   applyTree,
   CLASS_RULES,
   ELEMENT_RULES,
   emptyFindings,
+  idTableFor,
   MODULE_RULES,
+  PROJECT_RULES,
   rootsIn,
   TREE_RULES,
 } from "./rules";
 import type {
+  AccessKeyIssue,
+  AriaHiddenOnFocusableIssue,
   AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
+  AsyncRenderIssue,
   BrowserUrlIssue,
   ClassInsteadOfClassNameIssue,
+  ClickWithNoKeyboardPathIssue,
   ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
+  ComputeReadsAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
+  ControlWithNoLabelIssue,
   DomWriteIssue,
   DuplicateDecoratorIssue,
   DuplicateKeyAmongSiblingsIssue,
@@ -33,11 +42,19 @@ import type {
   EmptyHeadingOrLinkIssue,
   Findings,
   HeadingSkipsALevelIssue,
+  FragmentLinkToNowhereIssue,
+  FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
+  IndexAsKeyIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
+  LinkWithoutADestinationIssue,
+  MediaWithNoCaptionsIssue,
+  NamedOnlyByAPlaceholderIssue,
   OneProviderPerComponentIssue,
+  PersistOfALossyValueIssue,
   PositiveTabIndexIssue,
+  ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
@@ -52,6 +69,7 @@ import type {
   UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
+  WatchOfAPropThatIsNotThereIssue,
 } from "./rules";
 
 /**
@@ -60,42 +78,20 @@ import type {
  * the shape of a finding is part of the rule, not of the analyzer that collects it.
  */
 
-export type {
-  AriaValueIssue,
-  AriaWithNoSubjectIssue,
-  ArrowFieldIssue,
-  BrowserUrlIssue,
-  ClassInsteadOfClassNameIssue,
-  ClientOnlyRequestReadIssue,
-  ClockReadWhileRenderingIssue,
-  ContextConsumedAboveItsProviderIssue,
-  DomWriteIssue,
-  DuplicateDecoratorIssue,
-  DuplicateKeyAmongSiblingsIssue,
-  DuplicateIdIssue,
-  EmptyHeadingOrLinkIssue,
-  Findings,
-  HeadingSkipsALevelIssue,
-  HeadTagsCollideIssue,
-  InteractiveInsideInteractiveIssue,
-  LateRequestReadIssue,
-  OneProviderPerComponentIssue,
-  PositiveTabIndexIssue,
-  RoleMissingRequiredAriaIssue,
-  RoleTakesNoNameIssue,
-  RowWithoutAKeyIssue,
-  ServerEnvInSharedCodeIssue,
-  StateWrittenWhileRenderingIssue,
-  TagNeedsItsParentIssue,
-  UnguardedAsyncLifecycleIssue,
-  UnknownAriaAttributeIssue,
-  UnknownRoleIssue,
-  UnnamedFrameIssue,
-  UnnamedImageIssue,
-  UnexposedEnvReadIssue,
-  UnsplittableImportIssue,
-  UnwatchedFieldIssue,
-};
+/**
+ * Every issue shape, re-exported wholesale.
+ *
+ * This was a list of every name, typed out twice in this file — once to import and once to send on —
+ * and neither copy did anything but pass a type through. What they DID do was collide: a rule added
+ * on one branch and a rule added on another meet here, in a sorted list, every single time. Two
+ * merges have now been spent hand-resolving lists that held no decision, and one of them auto-merged
+ * into duplicate keys with no marker to show for it.
+ *
+ * `export type *` says the same thing and cannot go stale. What a rule must still be added to is the
+ * registry in `./rules` — one list, and a real one: the ids in it are what `Findings` is keyed by,
+ * so it cannot be discovered at runtime without losing the literal types this package is built on.
+ */
+export type * from "./rules";
 
 /**
  * Proves, before the app is ever opened, that every context consumer has a matching provider
@@ -806,6 +802,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * written in a plain helper function is markup all the same.
    */
   const treeRules = activate(TREE_RULES, imported);
+
+  /**
+   * The per-PROJECT rules — the fifth subject, and the only one that needs the whole source set
+   * read before any of it can be answered.
+   *
+   * The table is built here, ahead of the loop below, because the question these rules ask is about
+   * ABSENCE: "nothing anywhere carries this id". That cannot be answered from a file that has not
+   * been opened, so the collecting and the asking are two passes rather than one. Every other
+   * family answers from the subject in front of it and needs no such thing.
+   *
+   * Built only when a rule would read it — the walk is one pass over every file, and a project
+   * whose rules are all gated off should not pay for it.
+   */
+  const projectRules = activate(PROJECT_RULES, imported);
+  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources), findings);
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);

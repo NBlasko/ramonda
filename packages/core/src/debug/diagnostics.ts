@@ -87,7 +87,8 @@ export type DiagnosticCode =
   | "RMD056"
   | "RMD057"
   | "RMD058"
-  | "RMD059";
+  | "RMD059"
+  | "RMD060";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -409,6 +410,13 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "An async lifecycle rejected",
     fix: "An `async` `@created`, `@mounted` or `@destroyed` that rejects is NOT caught by an error boundary, and that is deliberate: the rejection arrives at an arbitrary later moment, when the page is already interactive and there is no render left to fail — replacing it with a fallback then is the worse outcome. So the page keeps running and this says what happened, which is the part that used to be missing. Handle it where it happens: wrap the body in `try`/`catch` and put the failure in `@state` — an `error` field the render can show — which is also the only way to tell the reader anything. If the work must take the page down, re-throw from `render()` rather than from the lifecycle, because that IS a render and a boundary can see it. `ramonda-check` reports the same method before it ships, as `unguarded-async-lifecycle`.",
+  },
+  RMD060: {
+    // error: nothing renders. The component's output is a promise, so the diff is handed an object
+    // that is not markup and throws from inside itself, naming neither the component nor `render`.
+    severity: "error",
+    title: "render() is async",
+    fix: "`render()` must return markup, not a promise for it. An `async render()` returns a `Promise` the moment it is called, so the diff is handed an object that is not a node — and what you see is a `TypeError` from inside the framework naming neither your component nor `render`. The type system refuses this, so reaching it means a cast, a `@ts-ignore`, or a loosened base class somewhere above. Load the data outside the render: `@mounted` (or `@created`) writing the result into `@state`, and a render that shows what state it is in; or `AsyncLoad`, which takes the promise and renders a fallback while it settles. `ramonda-check` reports the same method before it ships, as `async-render`.",
   },
   RMD055: {
     severity: "error",

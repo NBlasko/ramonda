@@ -1,11 +1,22 @@
 import type ts from "typescript";
-import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext, TreeRule } from "./rule";
+import type {
+  ElementRule,
+  JsxElementLike,
+  ModuleContext,
+  ModuleRule,
+  ProjectContext,
+  ProjectRule,
+  Rule,
+  RuleContext,
+  TreeRule,
+} from "./rule";
 import { contextFor } from "./element";
 import { treeFor } from "./tree";
 import { unnamedImage } from "./unnamed-image";
 import { classInsteadOfClassName } from "./class-instead-of-classname";
 import { duplicateKeyAmongSiblings } from "./duplicate-key-among-siblings";
 import { rowWithoutAKey } from "./row-without-a-key";
+import { indexAsKey } from "./index-as-key";
 import { interactiveInsideInteractive } from "./interactive-inside-interactive";
 import { tagNeedsItsParent } from "./tag-needs-its-parent";
 import { unknownAriaAttribute } from "./unknown-aria-attribute";
@@ -17,14 +28,28 @@ import { ariaWithNoSubject } from "./aria-with-no-subject";
 import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
+import { linkWithoutADestination } from "./link-without-a-destination";
+import { freshObjectInProps } from "./fresh-object-in-props";
+import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
+import { accessKey } from "./access-key";
+import { mediaWithNoCaptions } from "./media-with-no-captions";
+import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
+import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
+import { controlWithNoLabel } from "./control-with-no-label";
+import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
+import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
+import { asyncRender } from "./async-render";
+import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
+import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
+import { persistOfALossyValue } from "./persist-of-a-lossy-value";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
@@ -38,6 +63,11 @@ import { serverEnvInSharedCode } from "./server-env-in-shared-code";
 
 export type {
   ElementContext,
+  FormControl,
+  IdReference,
+  ProjectContext,
+  ProjectRule,
+  UnreadableId,
   ElementRule,
   JsxElementLike,
   ModuleContext,
@@ -55,6 +85,7 @@ export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
 export { classInsteadOfClassName, type ClassInsteadOfClassNameIssue } from "./class-instead-of-classname";
 export { duplicateKeyAmongSiblings, type DuplicateKeyAmongSiblingsIssue } from "./duplicate-key-among-siblings";
 export { rowWithoutAKey, type RowWithoutAKeyIssue } from "./row-without-a-key";
+export { indexAsKey, type IndexAsKeyIssue } from "./index-as-key";
 export { interactiveInsideInteractive, type InteractiveInsideInteractiveIssue } from "./interactive-inside-interactive";
 export { tagNeedsItsParent, type TagNeedsItsParentIssue } from "./tag-needs-its-parent";
 export { NEEDS_PARENT, NOT_INSIDE_ITSELF } from "./html";
@@ -79,8 +110,25 @@ export { roleTakesNoName, type RoleTakesNoNameIssue } from "./role-takes-no-name
 export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
+export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
+export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
+export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
+export { accessKey, type AccessKeyIssue } from "./access-key";
+export { mediaWithNoCaptions, type MediaWithNoCaptionsIssue } from "./media-with-no-captions";
+export { fragmentLinkToNowhere, type FragmentLinkToNowhereIssue } from "./fragment-link-to-nowhere";
+export {
+  referenceToAnIdThatIsNotThere,
+  type ReferenceToAnIdThatIsNotThereIssue,
+} from "./reference-to-an-id-that-is-not-there";
+export { controlWithNoLabel, type ControlWithNoLabelIssue } from "./control-with-no-label";
+export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
+export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
+export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
+export { asyncRender, type AsyncRenderIssue } from "./async-render";
+export { computeReadsAPlainField, type ComputeReadsAPlainFieldIssue } from "./compute-reads-a-plain-field";
+export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
@@ -88,6 +136,7 @@ export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
+export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-of-a-lossy-value";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
@@ -114,13 +163,17 @@ export { rootsIn, treeFor } from "./tree";
  * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
  */
 export const CLASS_RULES = [
+  asyncRender,
   stateWrittenWhileRendering,
   clockReadWhileRendering,
+  computeReadsAPlainField,
   arrowFields,
   browserUrl,
   domWrites,
   duplicateDecorators,
   unwatchedFields,
+  watchOfAPropThatIsNotThere,
+  persistOfALossyValue,
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
@@ -142,6 +195,7 @@ export const MODULE_RULES = [unsplittableImport, unexposedEnvRead] as const;
 export const ELEMENT_RULES = [
   duplicateKeyAmongSiblings,
   rowWithoutAKey,
+  indexAsKey,
   classInsteadOfClassName,
   tagNeedsItsParent,
   interactiveInsideInteractive,
@@ -155,6 +209,12 @@ export const ELEMENT_RULES = [
   emptyHeadingOrLink,
   unnamedFrame,
   positiveTabIndex,
+  ariaHiddenOnFocusable,
+  linkWithoutADestination,
+  freshObjectInProps,
+  clickWithNoKeyboardPath,
+  accessKey,
+  mediaWithNoCaptions,
 ] as const;
 
 /**
@@ -168,7 +228,21 @@ export const ELEMENT_RULES = [
 export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
 
 /** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
-export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES] as const;
+/**
+ * The rules whose subject is the WHOLE PROJECT — the fifth, and the only one needing two passes.
+ *
+ * Every other family reads its subject and answers in the same walk. These ask about ABSENCE, and
+ * absence cannot be established from a file nobody has opened yet — so the run collects the id
+ * table first and asks afterwards. See `ProjectRule`.
+ */
+export const PROJECT_RULES = [
+  fragmentLinkToNowhere,
+  referenceToAnIdThatIsNotThere,
+  controlWithNoLabel,
+  namedOnlyByAPlaceholder,
+] as const;
+
+export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES, ...PROJECT_RULES] as const;
 
 export type AnyRule = (typeof RULES)[number];
 
@@ -182,7 +256,9 @@ type IssueOf<R> =
         ? Issue
         : R extends TreeRule<infer Issue>
           ? Issue
-          : never;
+          : R extends ProjectRule<infer Issue>
+            ? Issue
+            : never;
 
 /**
  * What every rule found, keyed by its id and typed as that rule's own issue.
@@ -337,6 +413,20 @@ export function applyElement(
   const context = contextFor(element);
   if (context.spreads) return;
   for (const rule of active) collect(findings, rule, rule.read(element, context));
+}
+
+/**
+ * Every active project rule, over the table built from the whole source set.
+ *
+ * Called ONCE per run rather than once per file, which is what having the project as a subject
+ * means — and is why this is the only `apply*` that takes no node.
+ */
+export function applyProject(
+  active: readonly (typeof PROJECT_RULES)[number][],
+  project: ProjectContext,
+  findings: Findings,
+): void {
+  for (const rule of active) collect(findings, rule, rule.read(project));
 }
 
 export function applyModule(
