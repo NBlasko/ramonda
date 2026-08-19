@@ -52,29 +52,53 @@ describe("the rule catalogue", () => {
   });
 
   /**
-   * No code is claimed by two rules.
+   * Which rules answer each runtime code, written down rather than left to chance.
    *
-   * Not a style point: a reader who sees `RMD005` and looks it up must find ONE static check to
-   * read, and two rules answering the same code means the reference sends them to a fork in the
-   * road with no way of knowing which half is theirs.
+   * A reader who sees `RMD005` and looks it up has to find the static check that explains it. Most
+   * codes have exactly one, and a SECOND appearing by accident would send that reader to a fork in
+   * the road with no way of knowing which half is theirs.
+   *
+   * Some genuinely have two, though, and each pair is two halves of one code rather than two rules
+   * saying the same thing — so the pairs are declared here with the reason. The test is not "never
+   * two"; it is "exactly the ones written down", which makes adding a second claimant a deliberate
+   * act instead of something nobody notices.
    */
-  test("no diagnostic is claimed twice", () => {
-    const claimed = new Map<string, string>();
+  const PAIRS: Record<string, { rules: string[]; because: string }> = {
+    RMD023: {
+      rules: ["row-without-a-key", "index-as-key"],
+      because: "a row with no key at all, and a row whose key says only where it was",
+    },
+    RMD050: {
+      rules: ["duplicate-decorators", "decorator-that-adds-nothing"],
+      because: "the same decorator written twice, and two different ones giving a member the same thing",
+    },
+    RMD033: {
+      rules: ["persist-of-a-lossy-value", "unserializable-state"],
+      because:
+        "`@persist`, which claims the blob whatever the project does, and `@state`, which only crosses under SSR",
+    },
+  };
+
+  test("each runtime code is answered by exactly the rules written down here", () => {
+    const claimants = new Map<string, string[]>();
     for (const rule of ruleCatalogue()) {
       for (const code of rule.alsoReportedAs ?? []) {
-        /**
-         * Two codes are answered by a pair of rules on purpose, and each pair is two halves of one
-         * runtime code rather than two rules saying the same thing:
-         *
-         * - `RMD023` — `row-without-a-key` reports a row with no key at all; `index-as-key` reports
-         *   one whose key says only where the row was.
-         * - `RMD050` — `duplicate-decorators` reports the same decorator written twice on a member;
-         *   `decorator-that-adds-nothing` reports two DIFFERENT decorators giving it the same thing.
-         */
-        if (code === "RMD023" || code === "RMD050") continue;
-        expect(claimed.has(code), `${code} is claimed by ${claimed.get(code)} and ${rule.id}`).toBe(false);
-        claimed.set(code, rule.id);
+        claimants.set(code, [...(claimants.get(code) ?? []), rule.id]);
       }
+    }
+
+    for (const [code, rules] of claimants) {
+      const pair = PAIRS[code];
+      if (pair === undefined) {
+        expect(rules, `${code} is answered by ${rules.join(" and ")} — declare the pair or fix it`).toHaveLength(1);
+        continue;
+      }
+      expect([...rules].sort(), `${code}: ${pair.because}`).toEqual([...pair.rules].sort());
+    }
+
+    // A pair that stops being one is as much a drift as a pair nobody declared.
+    for (const code of Object.keys(PAIRS)) {
+      expect(claimants.has(code), `${code} is declared as a pair and nothing answers it`).toBe(true);
     }
   });
 });

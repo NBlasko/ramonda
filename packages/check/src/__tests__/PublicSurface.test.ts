@@ -83,6 +83,7 @@ const EXPECTED_TYPES = [
   "UnnamedFrameIssue",
   "UnnamedImageIssue",
   "UnexposedEnvReadIssue",
+  "UnserializableStateIssue",
   "UnsplittableImportIssue",
   "UnwatchedFieldIssue",
   "WatchOfAPropThatIsNotThereIssue",

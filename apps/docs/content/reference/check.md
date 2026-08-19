@@ -138,7 +138,7 @@ rules**, so a rule cannot be added without appearing here.
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 
-**Warnings.** These print and the run still passes. 46 of them.
+**Warnings.** These print and the run still passes. 47 of them.
 
 | rule | reported when |
 |---|---|
@@ -152,6 +152,7 @@ rules**, so a rule cannot be added without appearing here.
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
 | `watch-of-a-prop-that-is-not-there` | a `@watchProp` selector names something the component's props type does not declare, so the method never runs |
 | `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |
+| `unserializable-state` | a `@state` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, and the project renders on a server — also [`RMD019`](/reference/diagnostics), [`RMD033`](/reference/diagnostics) |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
 | `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |

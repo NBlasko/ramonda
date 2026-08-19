@@ -54,6 +54,7 @@ import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
 import { persistOfALossyValue } from "./persist-of-a-lossy-value";
+import { unserializableState } from "./unserializable-state";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
@@ -145,6 +146,7 @@ export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-d
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-of-a-lossy-value";
+export { unserializableState, type UnserializableStateIssue } from "./unserializable-state";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
@@ -185,6 +187,7 @@ export const CLASS_RULES = [
   unwatchedFields,
   watchOfAPropThatIsNotThere,
   persistOfALossyValue,
+  unserializableState,
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
@@ -367,11 +370,21 @@ export function emptyFindings(): Findings {
  * the question. Deciding it here rather than inside each rule means the answer is computed once for
  * the whole project instead of once per class, and that a new rule cannot forget to ask.
  */
-export function activate<R extends { id: string }>(all: readonly R[], imported: ReadonlySet<string>): R[] {
+export function activate<R extends { id: string }>(
+  all: readonly R[],
+  imported: ReadonlySet<string>,
+  rendersOnServer = true,
+): R[] {
   // `"needs" in rule` rather than `rule.needs`: these are the rules' own inferred types, and a rule
   // that declares no `needs` has no such property to read. Narrowing asks the question the optional
   // field was meant to ask, without widening every rule to `Rule<unknown>` and losing its id.
-  return all.filter((rule) => !("needs" in rule) || rule.needs === undefined || imported.has(rule.needs as string));
+  return all.filter((rule) => {
+    if ("needs" in rule && rule.needs !== undefined && !imported.has(rule.needs as string)) return false;
+    // The second gate, and the same shape as the first: a rule whose fault only exists when there
+    // is a hydration blob to cross is not SKIPPED in a browser-only project, it is not asked.
+    if ("needsServerRendering" in rule && rule.needsServerRendering === true && !rendersOnServer) return false;
+    return true;
+  });
 }
 
 /**
