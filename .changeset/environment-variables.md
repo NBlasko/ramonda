@@ -29,6 +29,14 @@ rename it. Read the server side with `process.env.WHATEVER`, and the public side
 - **No leak through the SSR dev server.** Vite injects `import.meta.env` with only the prefixed names plus
   its own `BASE_URL/DEV/MODE/PROD/SSR`.
 
+**Verified end to end in a real app build, not only per piece.** `apps/playground-ssr` builds with esbuild
+through both `ramondaOptions` and the plugin; with `RAMONDA_PUBLIC_SMOKE` and `RAMONDA_SMOKE_SECRET` both
+set, the client bundle carries the public value (2 occurrences), carries **no trace of the secret**, and
+has **zero live `import.meta.env.NAME` reads** left — so nothing is waiting to throw in a browser. That app
+writes its own `define` after the spread, and the env entries survive because it also installs the plugin,
+which merges after the options are assembled. It is the case `ramondaDefine` exists for, seen from the
+other side.
+
 **`ramondaDefine` is a function, not a key on `ramondaOptions`, and that is a deliberate shape.** A spread
 cannot refuse anything: a build writing its own `define` after the spread — which every build does, because
 `__DEV__` lives there — would silently drop the env entries. A key that is lost by writing the obvious thing
