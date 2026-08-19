@@ -374,15 +374,15 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`, `DuplicateKeyAmongSiblingsIssue`,
 `EmptyHeadingOrLinkIssue`, `FragmentLinkToNowhereIssue`, `FreshObjectInPropsIssue`,
 `HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `IndexAsKeyIssue`,
-`InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
-`MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
-`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowWithoutAKeyIssue`,
-`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
-`TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
-`UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`,
-`UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`, `UnsplittableImportIssue`,
-`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`InteractiveInsideInteractiveIssue`, `IntervalWithNoCleanupIssue`, `LateRequestReadIssue`,
+`LinkWithoutADestinationIssue`, `MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`,
+`OneProviderPerComponentIssue`, `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`,
+`ReferenceToAnIdThatIsNotThereIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
+`StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
+`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
+`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

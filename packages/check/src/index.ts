@@ -33,6 +33,7 @@ export type {
   FragmentLinkToNowhereIssue,
   FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
+  IntervalWithNoCleanupIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   IndexAsKeyIssue,

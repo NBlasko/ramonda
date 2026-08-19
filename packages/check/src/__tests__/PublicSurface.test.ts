@@ -57,6 +57,7 @@ const EXPECTED_TYPES = [
   "HeadTagsCollideIssue",
   "HeadingSkipsALevelIssue",
   "IndexAsKeyIssue",
+  "IntervalWithNoCleanupIssue",
   "InteractiveInsideInteractiveIssue",
   "LateRequestReadIssue",
   "LinkWithoutADestinationIssue",
