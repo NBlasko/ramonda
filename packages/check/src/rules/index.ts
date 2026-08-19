@@ -1,5 +1,15 @@
 import type ts from "typescript";
-import type { ElementRule, JsxElementLike, ModuleContext, ModuleRule, Rule, RuleContext, TreeRule } from "./rule";
+import type {
+  ElementRule,
+  JsxElementLike,
+  ModuleContext,
+  ModuleRule,
+  ProjectContext,
+  ProjectRule,
+  Rule,
+  RuleContext,
+  TreeRule,
+} from "./rule";
 import { contextFor } from "./element";
 import { treeFor } from "./tree";
 import { unnamedImage } from "./unnamed-image";
@@ -23,6 +33,8 @@ import { freshObjectInProps } from "./fresh-object-in-props";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { accessKey } from "./access-key";
 import { mediaWithNoCaptions } from "./media-with-no-captions";
+import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
+import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
@@ -46,6 +58,10 @@ import { clientOnlyRequestRead } from "./client-only-request-read";
 
 export type {
   ElementContext,
+  IdReference,
+  ProjectContext,
+  ProjectRule,
+  UnreadableId,
   ElementRule,
   JsxElementLike,
   ModuleContext,
@@ -93,6 +109,12 @@ export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object
 export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
 export { accessKey, type AccessKeyIssue } from "./access-key";
 export { mediaWithNoCaptions, type MediaWithNoCaptionsIssue } from "./media-with-no-captions";
+export { fragmentLinkToNowhere, type FragmentLinkToNowhereIssue } from "./fragment-link-to-nowhere";
+export {
+  referenceToAnIdThatIsNotThere,
+  type ReferenceToAnIdThatIsNotThereIssue,
+} from "./reference-to-an-id-that-is-not-there";
+export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
@@ -191,7 +213,16 @@ export const ELEMENT_RULES = [
 export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
 
 /** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
-export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES] as const;
+/**
+ * The rules whose subject is the WHOLE PROJECT — the fifth, and the only one needing two passes.
+ *
+ * Every other family reads its subject and answers in the same walk. These ask about ABSENCE, and
+ * absence cannot be established from a file nobody has opened yet — so the run collects the id
+ * table first and asks afterwards. See `ProjectRule`.
+ */
+export const PROJECT_RULES = [fragmentLinkToNowhere, referenceToAnIdThatIsNotThere] as const;
+
+export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES, ...PROJECT_RULES] as const;
 
 export type AnyRule = (typeof RULES)[number];
 
@@ -205,7 +236,9 @@ type IssueOf<R> =
         ? Issue
         : R extends TreeRule<infer Issue>
           ? Issue
-          : never;
+          : R extends ProjectRule<infer Issue>
+            ? Issue
+            : never;
 
 /**
  * What every rule found, keyed by its id and typed as that rule's own issue.
@@ -360,6 +393,20 @@ export function applyElement(
   const context = contextFor(element);
   if (context.spreads) return;
   for (const rule of active) collect(findings, rule, rule.read(element, context));
+}
+
+/**
+ * Every active project rule, over the table built from the whole source set.
+ *
+ * Called ONCE per run rather than once per file, which is what having the project as a subject
+ * means — and is why this is the only `apply*` that takes no node.
+ */
+export function applyProject(
+  active: readonly (typeof PROJECT_RULES)[number][],
+  project: ProjectContext,
+  findings: Findings,
+): void {
+  for (const rule of active) collect(findings, rule, rule.read(project));
 }
 
 export function applyModule(

@@ -225,6 +225,108 @@ export interface TreeContext {
   elements: readonly TreeNode[];
 }
 
+/**
+ * A rule whose subject is the WHOLE PROJECT — every id written in it, and every reference to one.
+ *
+ * The fifth subject, and the first that none of the other four can approximate. An id is written in
+ * one component and referenced in another: `<a href="#pricing">` in a navigation bar, `id="pricing"`
+ * on a heading three files away. A per-render rule cannot see the pair, and a per-element rule sees
+ * one half of it.
+ *
+ * ## Why it is a SUBJECT rather than a fifth family of the same kind
+ *
+ * Every other family reads its subject and answers. This one needs the whole project read BEFORE any
+ * rule may speak, because the question is about absence — "nothing anywhere defines this id" — and
+ * absence cannot be established from a file that has not been opened yet. So the run does two
+ * passes: one that collects, one that asks. That is the structural difference, and it is the reason
+ * this could not have been another `TreeRule`.
+ *
+ * ## What it may and may not claim
+ *
+ * **Only NEGATIVE existence.** "This id is defined nowhere" is a fact about a project. "This id is
+ * defined twice" is not a fault at this scope at all — two pages may each have a `main`, and they
+ * are never in one document together. Duplicates belong to `duplicate-id`, whose subject is one
+ * render, and that division is deliberate rather than an oversight.
+ */
+export interface ProjectRule<Issue> {
+  id: string;
+  report: Report<Issue>;
+  needs?: string;
+  read(project: ProjectContext): Issue[];
+}
+
+/** Where something was written, for a report that has to point at it. */
+export interface Where {
+  file: string;
+  line: number;
+  column: number;
+}
+
+/** One `id` this analyzer could not read, and therefore could not put in the table. */
+export interface UnreadableId extends Where {
+  /** The expression as written — `{this.props.id}` — which is what the reader has to find. */
+  written: string;
+}
+
+/** One place an id is NAMED: a fragment link, an ARIA relationship, a `htmlFor`. */
+export interface IdReference extends Where {
+  /** The attribute that names it — `href`, `aria-labelledby`, `htmlFor`. */
+  attribute: string;
+  /** The id named, without the `#` a fragment link carries. */
+  target: string;
+  /** The tag it was written on, so a report reads like the source. */
+  tag: string;
+}
+
+/**
+ * Every id the project writes, and every place one is named.
+ *
+ * Built once, before any rule in this family runs.
+ */
+export interface ProjectContext {
+  /** Every id written out in full, anywhere in the project. */
+  ids: ReadonlySet<string>;
+
+  /**
+   * The literal HEAD of every id built from a template — `row-` from `` id={`row-${i}`} ``.
+   *
+   * A template can only produce strings that begin with its first literal chunk, so a reference to
+   * something that does not begin with any of these cannot be one of them. That is a real proof
+   * rather than a heuristic, and it is what keeps a list's generated ids from silencing the whole
+   * table the way a fully opaque one does.
+   */
+  prefixes: readonly string[];
+
+  /**
+   * The ids this analyzer could NOT read — `id={this.props.id}`, `id={createId()}`.
+   *
+   * **One of these silences every rule in this family**, and that is the silence contract taken at
+   * its word: an author who writes an id this cannot name has told us their ids are built at
+   * runtime, and "this id is defined nowhere" stops being something anybody can prove. The list is
+   * carried rather than reduced to a flag so the command can SAY why it went quiet — a silence
+   * nobody can see is a silence nobody can fix.
+   *
+   * **A SPREAD is deliberately not one of these**, and the line is worth defending because it is
+   * the one place this family accepts a residual risk. `<input {...bind} />` may carry an `id` and
+   * nothing here can say whether it does — but it is not a claim that it does, whereas `id={x}` is.
+   * Counting spreads here was measured against this repository and would have silenced every rule
+   * in every project in it: four to sixteen spreading elements each, against **zero** explicit
+   * unreadable ids. A rule that is off everywhere is not a strict rule, it is an absent one.
+   *
+   * The risk that leaves is precise, and small: a project whose ONLY definition of some id arrives
+   * through a spread, while a reference to it is written out as a literal. Ramonda's own spread
+   * carries `name`, the handlers and `aria-invalid` — checked, not assumed — and no `id`. A
+   * reference written as a literal is nearly always written beside the literal id it names.
+   *
+   * An element that spreads is still never asked about its own references: that element's
+   * uncertainty is real, and it is the same stance the per-element family takes.
+   */
+  unreadable: readonly UnreadableId[];
+
+  /** Every place an id is named. */
+  references: readonly IdReference[];
+}
+
 export interface ElementContext {
   /**
    * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.

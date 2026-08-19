@@ -9,11 +9,14 @@ import {
   applyClass,
   applyElement,
   applyModule,
+  applyProject,
   applyTree,
   CLASS_RULES,
   ELEMENT_RULES,
   emptyFindings,
+  idTableFor,
   MODULE_RULES,
+  PROJECT_RULES,
   rootsIn,
   TREE_RULES,
 } from "./rules";
@@ -38,6 +41,7 @@ import type {
   EmptyHeadingOrLinkIssue,
   Findings,
   HeadingSkipsALevelIssue,
+  FragmentLinkToNowhereIssue,
   FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
   IndexAsKeyIssue,
@@ -47,6 +51,7 @@ import type {
   MediaWithNoCaptionsIssue,
   PersistOfALossyValueIssue,
   PositiveTabIndexIssue,
+  ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
@@ -89,6 +94,7 @@ export type {
   EmptyHeadingOrLinkIssue,
   Findings,
   HeadingSkipsALevelIssue,
+  FragmentLinkToNowhereIssue,
   FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
   IndexAsKeyIssue,
@@ -98,6 +104,7 @@ export type {
   MediaWithNoCaptionsIssue,
   PersistOfALossyValueIssue,
   PositiveTabIndexIssue,
+  ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
@@ -822,6 +829,21 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * written in a plain helper function is markup all the same.
    */
   const treeRules = activate(TREE_RULES, imported);
+
+  /**
+   * The per-PROJECT rules — the fifth subject, and the only one that needs the whole source set
+   * read before any of it can be answered.
+   *
+   * The table is built here, ahead of the loop below, because the question these rules ask is about
+   * ABSENCE: "nothing anywhere carries this id". That cannot be answered from a file that has not
+   * been opened, so the collecting and the asking are two passes rather than one. Every other
+   * family answers from the subject in front of it and needs no such thing.
+   *
+   * Built only when a rule would read it — the walk is one pass over every file, and a project
+   * whose rules are all gated off should not pay for it.
+   */
+  const projectRules = activate(PROJECT_RULES, imported);
+  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources), findings);
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);

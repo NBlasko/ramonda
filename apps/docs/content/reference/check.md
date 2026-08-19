@@ -136,7 +136,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 37 of them.
+**Warnings.** These print and the run still passes. 39 of them.
 
 | rule | reported when |
 |---|---|
@@ -177,6 +177,8 @@ rules**, so a rule cannot be added without appearing here.
 | `media-with-no-captions` | a `video` or `audio` element carries no `<track>`, so its content exists only as sound |
 | `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
+| `fragment-link-to-nowhere` | an `href="#name"` points at an id no element in the project carries |
+| `reference-to-an-id-that-is-not-there` | an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries |
 
 [rules:end]: #
 
