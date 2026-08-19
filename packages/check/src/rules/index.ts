@@ -60,6 +60,7 @@ import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-pr
 import { clientOnlyRequestRead } from "./client-only-request-read";
 import { oneProviderPerComponent } from "./one-provider-per-component";
 import { unexposedEnvRead } from "./unexposed-env-read";
+import { rowReadsAPlainField } from "./row-reads-a-plain-field";
 import { serverEnvInSharedCode } from "./server-env-in-shared-code";
 
 export type {
@@ -147,6 +148,7 @@ export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skip
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
 export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./one-provider-per-component";
 export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
+export { rowReadsAPlainField, type RowReadsAPlainFieldIssue } from "./row-reads-a-plain-field";
 export { serverEnvInSharedCode, type ServerEnvInSharedCodeIssue } from "./server-env-in-shared-code";
 export { clientOnlyBecause, isServerOnly } from "./lifecycle-env";
 export { contextHalfOf, type ContextHalf } from "./context-pair";
@@ -186,7 +188,7 @@ export const CLASS_RULES = [
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
-export const MODULE_RULES = [unsplittableImport, unexposedEnvRead] as const;
+export const MODULE_RULES = [unsplittableImport, unexposedEnvRead, rowReadsAPlainField] as const;
 
 /**
  * Every rule that reads one JSX ELEMENT — where accessibility lives.

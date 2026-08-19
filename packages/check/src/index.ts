@@ -56,6 +56,7 @@ export type {
   UnnamedFrameIssue,
   UnnamedImageIssue,
   UnexposedEnvReadIssue,
+  RowReadsAPlainFieldIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
   WatchOfAPropThatIsNotThereIssue,

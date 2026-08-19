@@ -140,6 +140,11 @@ gives for a plain field, and the reason
 [`@state` is for anything `render()` shows](/concepts/state#fields-that-arent-state). Mark it `@state`, or
 leave the callback inline, which rebuilds every row and so reads it again.
 
+**`ramonda-check` reports this before it ships**, as `row-reads-a-plain-field` — the runtime cannot, because
+a plain field read leaves no trace to observe. It stays quiet for a field nothing writes, a field written
+only in `@created`, an inline callback, and a read that never reaches the markup, which is what a plain
+field is *for*: a `WebSocket` or a `Map` cannot be `@state`, because that is serialised into the page.
+
 It follows that the description is not a list of things you can look at:
 
 ```tsx

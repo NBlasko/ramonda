@@ -377,11 +377,11 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
 `MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
 `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowWithoutAKeyIssue`,
-`ServerEnvInSharedCodeIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
-`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnsplittableImportIssue`,
-`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowReadsAPlainFieldIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateWrittenWhileRenderingIssue`,
+`TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
