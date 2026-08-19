@@ -20,6 +20,7 @@ import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
 import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInProps } from "./fresh-object-in-props";
+import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
@@ -87,6 +88,7 @@ export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
 export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
+export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
@@ -169,6 +171,7 @@ export const ELEMENT_RULES = [
   ariaHiddenOnFocusable,
   linkWithoutADestination,
   freshObjectInProps,
+  clickWithNoKeyboardPath,
 ] as const;
 
 /**

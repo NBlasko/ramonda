@@ -69,3 +69,36 @@ describe("a link with nowhere to go", () => {
     expect(found).toHaveLength(5);
   });
 });
+
+/**
+ * A control a pointer can use and a keyboard cannot.
+ *
+ * The silence is what decides whether this ships: "click anywhere on the card" is written
+ * constantly and works, because the real control is one level in.
+ */
+describe("a click handler with no keyboard path", () => {
+  test("a pointer-only handler on a plain element is reported", () => {
+    const found = run().findings["click-with-no-keyboard-path"];
+    expect(found.map((issue) => `${issue.tag}:${issue.handler}`)).toEqual(["div:onClick", "span:onMouseDown"]);
+  });
+
+  test("a wrapper around a real control is left alone", () => {
+    const found = run().findings["click-with-no-keyboard-path"];
+    // Nine elements in that component carry a handler or look like they might; two are reported.
+    expect(found).toHaveLength(2);
+  });
+
+  /**
+   * The exclusion the first version of this rule did not have, and its absence showed immediately:
+   * run against this repository's documentation site it reported two backdrops, and both were
+   * correct markup — a backdrop's click is a convenience beside Escape and a close button.
+   *
+   * The line drawn is structural rather than a guess at a class name: an element with CONTENT
+   * presents itself as something to do; an empty one announces nothing and is a hit area.
+   */
+  test("an empty element is a backdrop, not a control", () => {
+    const found = run().findings["click-with-no-keyboard-path"];
+    expect(found.some((issue) => issue.tag === "div" && issue.handler === "onClick" && found.length > 2)).toBe(false);
+    expect(found).toHaveLength(2);
+  });
+});

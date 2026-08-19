@@ -32,6 +32,7 @@ const EXPECTED_TYPES = [
   "AsyncRenderIssue",
   "BrowserUrlIssue",
   "ClassInsteadOfClassNameIssue",
+  "ClickWithNoKeyboardPathIssue",
   "ClientOnlyRequestReadIssue",
   "ClockReadWhileRenderingIssue",
   "ComponentGraph",

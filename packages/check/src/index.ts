@@ -14,6 +14,7 @@ export type {
   AsyncRenderIssue,
   BrowserUrlIssue,
   ClassInsteadOfClassNameIssue,
+  ClickWithNoKeyboardPathIssue,
   ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
   ComputeReadsAPlainFieldIssue,

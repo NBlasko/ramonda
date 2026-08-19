@@ -107,3 +107,53 @@ class Links extends Component {
 }
 
 bootstrap(<Links />, null);
+
+/**
+ * A click handler with no keyboard path, beside every shape that has one.
+ *
+ * The wrapper cases are the load-bearing half. "Click anywhere on the card" is written constantly
+ * and works perfectly well for a keyboard, because the real control is one level in — a rule that
+ * reported it would be reporting a page that works.
+ */
+@Host("section")
+class Cards extends Component {
+  render() {
+    return (
+      <section>
+        {/* REPORTED — a pointer and nothing else. */}
+        <div onClick={() => {}}>Open</div>
+        {/* REPORTED — `onMouseDown` is the same fault. */}
+        <span onMouseDown={() => {}}>Drag</span>
+
+        {/* Not reported: a button is all three things already. */}
+        <button onClick={() => {}}>Open</button>
+        {/* Not reported: a key handler is a keyboard path. */}
+        <div onClick={() => {}} onKeyDown={() => {}} role="button" tabIndex={0}>
+          Open
+        </div>
+        {/* Not reported: somebody is building the path by hand; picking at a half-built one is a
+            different rule from this one. */}
+        <div onClick={() => {}} role="button">
+          Open
+        </div>
+        {/* Not reported: the real control is one level in. */}
+        <div className="card" onClick={() => {}}>
+          <h3>Title</h3>
+          <a href="/read">Read more</a>
+        </div>
+        {/* Not reported: a COMPONENT renders who-knows-what, so nothing here is certain. */}
+        <div onClick={() => {}}>
+          <Cards />
+        </div>
+        {/* Not reported: no handler at all. */}
+        <div className="plain">Text</div>
+        {/* Not reported: nothing inside it, so it is a backdrop rather than a control. Found by
+            running the first version of this rule against the documentation site, where both of its
+            reports were exactly this and both were correct. */}
+        <div className="backdrop" onClick={() => {}} />
+      </section>
+    );
+  }
+}
+
+bootstrap(<Cards />, null);
