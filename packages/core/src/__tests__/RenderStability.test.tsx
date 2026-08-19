@@ -365,8 +365,176 @@ describe("the switch", () => {
 
     await getDOM<Panel>(<Panel />);
 
-    expect(logs.join("\n")).toContain("does not come from state");
+    expect(logs.join("\n")).toContain("produced a different value for");
     expect(logs.join("\n")).not.toContain("with the same contents");
+    // And the descent names the leaf that actually moved, rather than the whole attribute.
+    expect(logs.join("\n")).toContain("data-x.a.b.c");
+  });
+
+  /**
+   * The other half of "an inline object prop is reported", and it was silent.
+   *
+   * `classify` asked `isPlainObject`, which is `Object.prototype`-or-null and nothing else, so a
+   * value with a prototype fell through to "this difference says nothing" — measured, `new Date()`
+   * was reported in no position at all: not as a prop, not as an attribute, not as a child. Two
+   * files claimed the opposite ("RMD020, every time (a fresh object has a fresh identity)"), which
+   * is the worst kind of wrong: a gap documented as covered.
+   */
+  describe("a value with a prototype, constructed in render()", () => {
+    class Sink extends Component<{ at?: unknown }> {
+      render() {
+        return <span>sink</span>;
+      }
+    }
+
+    // Declared out here on purpose. A `class` expression written INSIDE the render is a different
+    // constructor every time, so its instances do not share a prototype and the check calls that
+    // non-determinism — which is right, and is not what this test is about.
+    class Point {
+      x = 1;
+    }
+
+    test.each([
+      ["a Date", () => new Date()],
+      ["a Map", () => new Map([["a", 1]])],
+      ["a Set", () => new Set([1])],
+      ["a class instance", () => new Point()],
+    ])("%s prop is reported as fresh, not as changed", async (_name, make) => {
+      class Panel extends Component {
+        render() {
+          return <Sink at={make()} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("RMD020");
+      expect(reported()).toContain("Sink.at");
+      expect(reported()).toContain("constructs a new object");
+      // Its contents are never read — `valueEqual` walks own enumerable keys and a `Map`'s
+      // entries are not those — so the report must not pretend to know they matched.
+      expect(reported()).not.toContain("with the same contents");
+    });
+
+    test("the same Date held in a field is not reported", async () => {
+      class Panel extends Component {
+        readonly at = new Date();
+        render() {
+          return <Sink at={this.at} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).not.toContain("RMD020");
+    });
+
+    test("two different constructors in one tick is non-determinism, not a rebuild", async () => {
+      let flip = false;
+      class Panel extends Component {
+        render() {
+          flip = !flip;
+          return <Sink at={flip ? new Date() : new Map()} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("produced a different value for");
+    });
+  });
+
+  /**
+   * An inline function inside an object prop, which the check used to mis-name.
+   *
+   * Measured: `cfg={{ fn: () => 1 }}` was reported as *"produced a different value … so the value
+   * does not come from state"*, under advice to move a `new Date()` or a `Math.random()` into
+   * `@created`. The two bags differ only in a closure's identity — the thorough compare is right
+   * to call them different, and the report was wrong about why. So a differing plain-object prop
+   * is now DESCENDED into, and each key answers for itself.
+   */
+  describe("descending into an object prop that is not the same", () => {
+    class Sink extends Component<{ cfg?: unknown }> {
+      render() {
+        return <span>sink</span>;
+      }
+    }
+
+    test("an inline function inside it is named as a handler, at its own key", async () => {
+      class Panel extends Component {
+        render() {
+          return <Sink cfg={{ label: "steady", fn: () => 1 }} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("cfg.fn");
+      expect(reported()).toContain("the source is the same");
+      // Not on `does not come from state`: RMD020's SPEC ends with that phrase, so it is in every
+      // report this check ever writes. The DETAIL sentence is the one that names the verdict.
+      expect(reported()).not.toContain("produced a different value for");
+    });
+
+    test("a different set of keys is still non-determinism", async () => {
+      let flip = false;
+      class Panel extends Component {
+        render() {
+          flip = !flip;
+          return <Sink cfg={flip ? { a: 1 } : { a: 1, b: 2 }} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      // Descending compares the keys of the FIRST bag, so it would walk straight past an extra
+      // one. Two calls in a tick that disagree about a bag's shape are not rebuilding it.
+      expect(reported()).toContain("produced a different value for");
+    });
+
+    test("an array of column definitions names the function inside one", async () => {
+      // The shape this matters most for. `cols` differs only because a closure inside item 0 does,
+      // and reporting the array from outside sent the reader looking for randomness.
+      class Panel extends Component {
+        render() {
+          return <Sink cfg={[{ key: "name", render: () => 1 }] as never} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("cfg[0].render");
+      expect(reported()).toContain("the source is the same");
+      expect(reported()).not.toContain("produced a different value for");
+    });
+
+    test("an array whose length disagrees is non-determinism", async () => {
+      let flip = false;
+      class Panel extends Component {
+        render() {
+          flip = !flip;
+          return <Sink cfg={(flip ? [1] : [1, 2]) as never} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("produced a different value for");
+    });
+
+    test("a `children` key one level down is a key, not a tree", async () => {
+      // `children` is skipped only in an element's own attributes, where it is a vnode tree
+      // walked separately. In somebody's config object it is an ordinary name.
+      class Panel extends Component {
+        render() {
+          return <Sink cfg={{ steady: 1, children: () => 2 }} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("cfg.children");
+    });
   });
 
   test("render really does run twice while it is on", async () => {

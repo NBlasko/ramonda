@@ -170,9 +170,10 @@ interface ImportMeta {
 
 **Put it in a file your `tsconfig.json` already compiles**, or nothing reads it. A scaffolded project has
 one either way: `global.d.ts` in the SSR template, which is in its `include`, and `src/vite-env.d.ts` in the
-SPA one. In the SPA template `/// <reference types="vite/client" />` has already declared both interfaces,
-so there you *extend* `ImportMetaEnv` rather than introduce it — writing the `ImportMeta` half again is
-harmless, since an interface of the same name merges.
+SPA one. In both, `ImportMetaEnv` already exists — from `/// <reference types="vite/client" />` in the SPA
+template, and written out in the SSR one, which has no Vite types to reference — so what you write there
+*extends* it rather than introducing it. Writing the `ImportMeta` half again is harmless either way, since
+an interface of the same name merges.
 
 ## It refuses rather than corrects
 

@@ -37,11 +37,15 @@ import { computePhase, renderPhase } from "./renderPhase";
  *
  * ## What covers the clock then
  *
- * - `new Date()` — RMD020, every time (a fresh object has a fresh identity).
+ * - `new Date()` — RMD020, every time, as its `instance` verdict: two calls in one tick
+ *   produce two objects, and a fresh identity is the whole question. It never reads the time,
+ *   which is why the resolution of the clock does not matter here.
  * - `Date.now()` in a server-rendered app — RMD007, when the hydration disagrees. The
  *   two sides are milliseconds to seconds apart, not microseconds.
  * - `Date.now()` in a client-only app, rendered into the output — **nothing catches
- *   it.** That gap is real and stated rather than papered over.
+ *   it.** That gap is real and stated rather than papered over. It is the same gap as
+ *   `new Date().toISOString()`, measured: both renders land in one millisecond, so the
+ *   two strings are equal and there is nothing for a comparison to see.
  */
 let installed = false;
 
