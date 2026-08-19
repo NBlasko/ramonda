@@ -1,4 +1,12 @@
-import type { RamondaArgs, RefusedOnFields, RefusedOnForm, RefusedOnMeta, SVGArgs } from "./types/commonTypes";
+import type {
+  NamedFrame,
+  NamedImage,
+  RamondaArgs,
+  RefusedOnFields,
+  RefusedOnForm,
+  RefusedOnMeta,
+  SVGArgs,
+} from "./types/commonTypes";
 import type { RamondaNode, VNode } from "./types/vdom";
 
 declare global {
@@ -41,7 +49,7 @@ declare global {
       a: RamondaArgs<HTMLAnchorElement>;
       abbr: RamondaArgs<HTMLElement>;
       address: RamondaArgs<HTMLElement>;
-      area: RamondaArgs<HTMLAreaElement>;
+      area: RamondaArgs<HTMLAreaElement> & NamedImage;
       article: RamondaArgs<HTMLElement>;
       aside: RamondaArgs<HTMLElement>;
       audio: RamondaArgs<HTMLAudioElement>;
@@ -89,8 +97,8 @@ declare global {
       hr: RamondaArgs<HTMLHRElement>;
       html: RamondaArgs<HTMLHtmlElement>;
       i: RamondaArgs<HTMLElement>;
-      iframe: RamondaArgs<HTMLIFrameElement>;
-      img: RamondaArgs<HTMLImageElement>;
+      iframe: RamondaArgs<HTMLIFrameElement> & NamedFrame;
+      img: RamondaArgs<HTMLImageElement> & NamedImage;
       input: RamondaArgs<HTMLInputElement> & Partial<RefusedOnFields>;
       ins: RamondaArgs<HTMLModElement>;
       kbd: RamondaArgs<HTMLElement>;

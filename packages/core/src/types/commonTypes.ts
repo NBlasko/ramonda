@@ -98,6 +98,38 @@ export interface RefusedOnFields {
   defaultChecked: "write `checked` — the attribute is the initial state, and `defaultChecked` reaches the DOM verbatim";
 }
 
+/**
+ * The ways an element can be given a name, as a requirement rather than a suggestion.
+ *
+ * An image and a frame are the two things on a page that a reader who cannot see them has nothing
+ * else to go on for: everything else can be worked out from what is inside it, and these have
+ * nothing inside them. So the name is not a nicety, it is the content.
+ *
+ * ## Why a union rather than `alt: string`
+ *
+ * Because `alt` is one of four ways, and the checker already knows that: `unnamed-image` accepts
+ * `alt`, `aria-label`, `aria-labelledby` or `title`, and `unnamed-frame` accepts the last three.
+ * A type demanding `alt` alone would refuse `<img aria-label="…">` — markup the checker calls
+ * correct — and a type and a rule disagreeing about the same line is worse than either being
+ * slightly lax.
+ *
+ * `alt=""` satisfies this, which is right: it is the documented way to say "decoration, skip me",
+ * and it is a decision somebody made rather than one they forgot.
+ *
+ * ## What it does to a spread, which is the point
+ *
+ * `<img {...rest} />` with an untyped bag is refused, because nothing about that bag says a name is
+ * in it. That is exactly the case the checker cannot speak about — a spreading element is handed to
+ * no rule at all — so the two halves cover each other rather than overlapping.
+ *
+ * A spread that carries a name in its TYPE passes, which is the shape a wrapper component should
+ * have anyway.
+ */
+export type NamedImage = { alt: string } | { "aria-label": string } | { "aria-labelledby": string } | { title: string };
+
+/** The same, for a frame: `alt` is not one of its attributes, so `title` leads. */
+export type NamedFrame = { title: string } | { "aria-label": string } | { "aria-labelledby": string };
+
 export type RamondaArgs<T extends BaseElements> = Partial<
   | ObservableEvents<T>
   | {

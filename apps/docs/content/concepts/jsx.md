@@ -78,6 +78,25 @@ the right spelling written into the error:
 There is no controlled/uncontrolled pair here, which is why `defaultValue` has
 nothing to mean: a render decides `value` like it decides any other attribute.
 
+**An image and a frame have to be named.** `<img>`, `<area>` and `<iframe>` are
+the two things on a page with nothing inside them to work them out from, so the
+name is the content rather than a nicety — and the types ask for one:
+
+```tsx
+<img src="/chart.png" alt="Revenue, rising through Q3" />
+<img src="/divider.png" alt="" />        // decoration: a decision, not an omission
+<iframe src="/map" title="Office location" />
+```
+
+Any of `alt`, `aria-label`, `aria-labelledby` or `title` satisfies it — the same
+four [`ramonda-check`](/reference/check) accepts, so the type and the rule never
+disagree about a line. `alt=""` counts, because saying "skip me" is an answer.
+
+One consequence worth knowing: `<img {...props} />` needs a `props` whose TYPE
+carries one of the four. An untyped bag is refused, since nothing about it says
+a name is in there — and that is exactly the case the checker cannot speak about,
+because a spreading element is handed to no rule at all.
+
 **SVG keeps its real names.** Inside SVG the names are written exactly as SVG defines
 them — `stroke-width` with a dash, `viewBox` in camelCase — because the JSX mirrors
 the real element one to one:
