@@ -1,4 +1,7 @@
-import { bootstrap, Component } from "../framework";
+import { bootstrap, Component, state } from "../framework";
+import { created } from "@ramonda/core";
+
+declare const process: { env: Record<string, string | undefined> };
 
 /** ✗ Vite's prefix, which Ramonda's build no longer exposes — the migration hazard. */
 export class FromVite extends Component {
@@ -61,6 +64,45 @@ export class Annotated extends Component {
   }
 }
 
+/** ✗ `process.env` in render(), which runs on both sides — `process` does not exist in a browser. */
+export class ReadsProcessInRender extends Component {
+  render() {
+    return <p>{process.env.DATABASE_URL}</p>;
+  }
+}
+
+/** ✗ A field initialiser also runs on both sides. */
+export class ReadsProcessInAField extends Component {
+  private url = process.env.DATABASE_URL;
+  render() {
+    return <p>{this.url}</p>;
+  }
+}
+
+/** ✗ A bare `@created()` defaults to `shared`, so the browser runs it too. */
+export class ReadsProcessInSharedCreate extends Component {
+  @state region = "";
+  @created()
+  read() {
+    this.region = process.env.REGION ?? "";
+  }
+  render() {
+    return <p>{this.region}</p>;
+  }
+}
+
+/** The one excuse: explicitly server-only, with the answer kept in state. */
+export class ReadsProcessOnTheServer extends Component {
+  @state region = "";
+  @created({ env: "server" })
+  read() {
+    this.region = process.env.REGION ?? "";
+  }
+  render() {
+    return <p>{this.region}</p>;
+  }
+}
+
 export class App extends Component {
   render() {
     return (
@@ -72,6 +114,10 @@ export class App extends Component {
         <BuiltIns />
         <Computed />
         <Annotated />
+        <ReadsProcessInRender />
+        <ReadsProcessInAField />
+        <ReadsProcessInSharedCreate />
+        <ReadsProcessOnTheServer />
       </main>
     );
   }

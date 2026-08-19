@@ -34,6 +34,7 @@ import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-pr
 import { clientOnlyRequestRead } from "./client-only-request-read";
 import { oneProviderPerComponent } from "./one-provider-per-component";
 import { unexposedEnvRead } from "./unexposed-env-read";
+import { serverEnvInSharedCode } from "./server-env-in-shared-code";
 
 export type {
   ElementContext,
@@ -95,6 +96,8 @@ export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skip
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
 export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./one-provider-per-component";
 export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
+export { serverEnvInSharedCode, type ServerEnvInSharedCodeIssue } from "./server-env-in-shared-code";
+export { clientOnlyBecause, isServerOnly } from "./lifecycle-env";
 export { contextHalfOf, type ContextHalf } from "./context-pair";
 export {
   contextConsumedAboveItsProvider,
@@ -124,6 +127,7 @@ export const CLASS_RULES = [
   contextConsumedAboveItsProvider,
   clientOnlyRequestRead,
   oneProviderPerComponent,
+  serverEnvInSharedCode,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */

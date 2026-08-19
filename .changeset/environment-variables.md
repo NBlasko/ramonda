@@ -43,12 +43,23 @@ variables than the app asked for, which is the one mistake here that cannot be w
 from before, a name with no prefix, or `RAMONDA_` without `PUBLIC`, which is the one that most reads as if
 it should already work. It suggests the name to use, stripping the old prefix rather than nesting it.
 
-It is an **error**, not the usual warning-first, and it is one of the few rules here that is genuinely
-COMPLETE: it asks nothing about where a value came from or whether one was set, only whether the NAME —
+And `server-env-in-shared-code` closes the other direction: `process.env` read from a member the browser
+also runs. `process` does not exist there, so it is a `ReferenceError` on the page rather than an
+`undefined` — and a dev server may shim enough of `process` to hide it until the production bundle. The
+asymmetry with `client-only-request-read`, which asks the opposite question of the same decorators, is that
+**"not marked" means "the browser gets here"**: `render()` runs on both sides, so does a field initialiser,
+and `@created`/`@mounted`/`@destroyed` default to `shared`. Only `{ env: "server" }` excuses a member — and
+a bare `@created()` is the easy mistake, because it looks server-ish. A read at module scope is not judged,
+since a server entry legitimately has one and whether a module reaches the client bundle is a question about
+imports. `CLIENT_ONLY_DECORATORS`, `LIFECYCLE_DECORATORS` and the two questions moved to
+`rules/lifecycle-env.ts` now that two rules share them.
+
+`unexposed-env-read` is an **error**, not the usual warning-first, and it is one of the few rules here that
+is genuinely COMPLETE: it asks nothing about where a value came from or whether one was set, only whether the NAME —
 written on the spot — is in the exposed set. That answer does not depend on an environment or a `.env`
 file, so there is no path it has to go quiet for. The exceptions are the bundler's own five names, a
 computed key, and a site carrying `ramonda-check-ignore`. Zero hits across `apps/docs`, both playgrounds,
-form and query.
+form and query — and zero for `server-env-in-shared-code` across the same six.
 
 New: `PUBLIC_ENV_PREFIX` and `publicEnv(env)` from the main entry, `ramondaDefine(own?)` from
 `@ramonda/build/esbuild`. The `create-ramonda` SSR template's build script now calls `ramondaDefine`.

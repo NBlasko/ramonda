@@ -32,6 +32,7 @@ export type {
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
+  ServerEnvInSharedCodeIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
   UnguardedAsyncLifecycleIssue,

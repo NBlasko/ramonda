@@ -44,7 +44,7 @@ describe("an environment variable read but never exposed", () => {
   test("it points at the name, on the line the name is written", () => {
     const issue = found().find((each) => each.name === "VITE_API_URL");
     expect(issue?.file).toBe(join(here, "fixtures", "env-reads", "app.tsx"));
-    expect(issue?.line).toBe(6);
+    expect(issue?.line).toBe(9);
   });
 
   test("what stays silent, and why each one is silent", () => {
@@ -57,5 +57,44 @@ describe("an environment variable read but never exposed", () => {
     expect(names).not.toContain("which");
     // And an author who said why: the annotation is this package's own and is honoured.
     expect(names).not.toContain("VITE_LEGACY");
+  });
+});
+
+/**
+ * `process.env` read from a member the browser also runs.
+ *
+ * `process` does not exist in a browser, so this is a `ReferenceError` on the page rather than an
+ * `undefined` — and a development run can hide it, because a dev server may shim enough of `process`
+ * to get through. The fault then waits for the production bundle.
+ *
+ * The asymmetry with `client-only-request-read`, which asks the opposite question of the same
+ * decorators: **"not marked" means "the browser gets here".** `render()` runs on both sides, so does a
+ * field initialiser, and the lifecycle family defaults to `shared`. Only `{ env: "server" }` excuses a
+ * member.
+ */
+describe("process.env in code the browser runs", () => {
+  const serverEnv = () =>
+    analyzeProject(join(here, "fixtures", "env-reads", "tsconfig.json")).findings["server-env-in-shared-code"];
+
+  test("every read the browser can reach is named, with the member holding it", () => {
+    expect(serverEnv().map((issue) => `${issue.component}.${issue.member}: ${issue.read}`)).toEqual([
+      "ReadsProcessInRender.render: process.env.DATABASE_URL",
+      "ReadsProcessInAField.url: process.env.DATABASE_URL",
+      "ReadsProcessInSharedCreate.read: process.env.REGION",
+    ]);
+  });
+
+  /**
+   * The three shapes are three different reasons, and each has to be caught on its own: a render, a
+   * field initialiser, and a lifecycle whose default nobody changed. Missing the last one would be the
+   * easy mistake, because it LOOKS server-ish.
+   */
+  test("a bare @created() is not an excuse — the family defaults to shared", () => {
+    const names = serverEnv().map((issue) => issue.component);
+    expect(names).toContain("ReadsProcessInSharedCreate");
+  });
+
+  test('an explicit { env: "server" } is the one excuse there is', () => {
+    expect(serverEnv().map((issue) => issue.component)).not.toContain("ReadsProcessOnTheServer");
   });
 });

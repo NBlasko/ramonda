@@ -53,6 +53,7 @@ const EXPECTED_TYPES = [
   "RoleMissingRequiredAriaIssue",
   "RoleTakesNoNameIssue",
   "RowWithoutAKeyIssue",
+  "ServerEnvInSharedCodeIssue",
   "RuleSummary",
   "Split",
   "SplitPoint",
