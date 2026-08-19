@@ -43,6 +43,8 @@ import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
 import { stateMutatedInPlace } from "./state-mutated-in-place";
+import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
+import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
 import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
@@ -135,6 +137,8 @@ export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { stateMutatedInPlace, type StateMutatedInPlaceIssue } from "./state-mutated-in-place";
+export { decoratorThatAddsNothing, type DecoratorThatAddsNothingIssue } from "./decorator-that-adds-nothing";
+export { unkeyableMemoizedArgument, type UnkeyableMemoizedArgumentIssue } from "./unkeyable-memoized-argument";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
@@ -170,6 +174,8 @@ export const CLASS_RULES = [
   asyncRender,
   stateWrittenWhileRendering,
   stateMutatedInPlace,
+  decoratorThatAddsNothing,
+  unkeyableMemoizedArgument,
   clockReadWhileRendering,
   computeReadsAPlainField,
   arrowFields,

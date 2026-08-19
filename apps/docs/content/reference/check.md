@@ -133,17 +133,19 @@ rules**, so a rule cannot be added without appearing here.
 |---|---|
 | `async-render` | `render()` is `async`, so it returns a promise where the diff expects markup — also [`RMD060`](/reference/diagnostics) |
 | `arrow-fields` | a class field holds a function literal, so every instance builds a fresh one and props comparison can never match |
-| `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD045`](/reference/diagnostics), [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics) |
+| `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD045`](/reference/diagnostics), [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics), [`RMD050`](/reference/diagnostics) |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 
-**Warnings.** These print and the run still passes. 44 of them.
+**Warnings.** These print and the run still passes. 46 of them.
 
 | rule | reported when |
 |---|---|
 | `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics), [`RMD018`](/reference/diagnostics) |
 | `state-mutated-in-place` | a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires — also [`RMD005`](/reference/diagnostics), [`RMD048`](/reference/diagnostics) |
+| `decorator-that-adds-nothing` | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics) |
+| `unkeyable-memoized-argument` | a `@memoizedHandler` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
 | `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
 | `compute-reads-a-plain-field` | a `@compute` reads an ordinary field that is written after the first render, so the cached value goes stale |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |

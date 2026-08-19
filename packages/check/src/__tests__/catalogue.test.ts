@@ -62,9 +62,16 @@ describe("the rule catalogue", () => {
     const claimed = new Map<string, string>();
     for (const rule of ruleCatalogue()) {
       for (const code of rule.alsoReportedAs ?? []) {
-        // `RMD023` is the one exception, and it is a real pair: `row-without-a-key` reports a row
-        // with no key at all, `index-as-key` reports one whose key says only where the row was.
-        if (code === "RMD023") continue;
+        /**
+         * Two codes are answered by a pair of rules on purpose, and each pair is two halves of one
+         * runtime code rather than two rules saying the same thing:
+         *
+         * - `RMD023` — `row-without-a-key` reports a row with no key at all; `index-as-key` reports
+         *   one whose key says only where the row was.
+         * - `RMD050` — `duplicate-decorators` reports the same decorator written twice on a member;
+         *   `decorator-that-adds-nothing` reports two DIFFERENT decorators giving it the same thing.
+         */
+        if (code === "RMD023" || code === "RMD050") continue;
         expect(claimed.has(code), `${code} is claimed by ${claimed.get(code)} and ${rule.id}`).toBe(false);
         claimed.set(code, rule.id);
       }

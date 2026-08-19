@@ -168,7 +168,10 @@ export const duplicateDecorators = {
     // Four codes, one per decorator, because what the framework does about it differs: `@Host`
     // throws, the middle two silently pick a winner, `@StableProps` merges. This rule reports the
     // source of all four, and said so only in prose until the field could hold a list.
-    alsoReportedAs: ["RMD045", "RMD032", "RMD040", "RMD046"],
+    // `RMD050` too, for the member-level half: the same decorator written twice on one member.
+    // `decorator-that-adds-nothing` answers the other half of that code — two DIFFERENT decorators
+    // giving one member the same thing — and the pair is deliberate.
+    alsoReportedAs: ["RMD045", "RMD032", "RMD040", "RMD046", "RMD050"],
     heading: (found) => `${found.length} class(es) declaring a single-use decorator twice:`,
     lines: (issue) => {
       // The member is named for a `redundant` report, because that count is per member: without it,

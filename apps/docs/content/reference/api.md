@@ -370,8 +370,8 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `AsyncRenderIssue`, `AttributeThatDoesNothingIssue`, `BrowserUrlIssue`,
 `ClassInsteadOfClassNameIssue`, `ClickWithNoKeyboardPathIssue`, `ClientOnlyRequestReadIssue`,
 `ClockReadWhileRenderingIssue`, `ComputeReadsAPlainFieldIssue`,
-`ContextConsumedAboveItsProviderIssue`, `ControlWithNoLabelIssue`, `DomWriteIssue`,
-`DuplicateDecoratorIssue`, `DuplicateIdIssue`, `DuplicateKeyAmongSiblingsIssue`,
+`ContextConsumedAboveItsProviderIssue`, `ControlWithNoLabelIssue`, `DecoratorThatAddsNothingIssue`,
+`DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`, `DuplicateKeyAmongSiblingsIssue`,
 `EmptyHeadingOrLinkIssue`, `FragmentLinkToNowhereIssue`, `FreshObjectInPropsIssue`,
 `HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `IndexAsKeyIssue`,
 `InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
@@ -380,8 +380,9 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowWithoutAKeyIssue`,
 `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
 `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
-`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`,
+`UnnamedFrameIssue`, `UnnamedImageIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
