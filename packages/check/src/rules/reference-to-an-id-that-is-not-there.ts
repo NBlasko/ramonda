@@ -40,14 +40,13 @@ export interface ReferenceToAnIdThatIsNotThereIssue {
 }
 
 /**
- * The attributes this rule does not speak about, each for its own reason.
+ * The attribute this rule does not speak about.
  *
- * `href` is `fragment-link-to-nowhere`'s, which has a different sentence to say. `htmlFor` is not an
- * association at all in Ramonda — it renders as `htmlfor` and names nothing whatever id it carries,
- * measured through the framework — so "the id it points at does not exist" would be the second most
- * interesting thing about that line.
+ * A fragment link is `fragment-link-to-nowhere`'s, which has a different sentence to say about the
+ * same absence — a link that does not move the page is not the same story as a label that names
+ * nothing.
  */
-const SAYS_NOTHING_ANYWAY: ReadonlySet<string> = new Set(["href", "htmlFor"]);
+const SAYS_NOTHING_ANYWAY: ReadonlySet<string> = new Set(["href"]);
 
 /** What each attribute costs when it resolves to nothing — the sentence the report needs. */
 const COSTS: Readonly<Record<string, string>> = {
@@ -60,6 +59,7 @@ const COSTS: Readonly<Record<string, string>> = {
   "aria-errormessage": "so the error is never announced with the field",
   "aria-flowto": "so the reading order it asks for is not applied",
   for: "so the label names nothing, and clicking it focuses nothing",
+  htmlfor: "so the label names nothing, and clicking it focuses nothing",
 };
 
 export const referenceToAnIdThatIsNotThere = {

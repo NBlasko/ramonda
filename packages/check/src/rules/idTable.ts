@@ -17,15 +17,9 @@ import type { FormControl, IdReference, ProjectContext, UnreadableId } from "./r
 /**
  * The attributes that NAME an id.
  *
- * **`for`, not `htmlFor`** — measured through the framework, not assumed. Ramonda gives an HTML
- * element its attributes through `setAttribute`, which lowercases the name, and it special-cases
- * `className` into `class` but has no such case for `htmlFor`. So `<label htmlFor="a">` renders
- * `htmlfor="a"`, `label.htmlFor` reads `""`, and the label is associated with nothing — while
- * `<label for="b">` works. Both typecheck.
- *
- * `htmlFor` is kept in the set anyway, because a rule that ignored it would report the control it
- * was aimed at as unlabelled and say nothing about the reason. It is an ATTEMPT to name something,
- * and the rules treat it as one — see `NOT_A_REAL_ASSOCIATION`.
+ * Both spellings of the label association are here — `for` as HTML writes it, `htmlFor` as the JSX
+ * borrows it. They were not equivalent while these rules were being written; see
+ * {@link LABELS_A_CONTROL} for what was measured and what core now does about it.
  */
 export const NAMES_AN_ID: ReadonlySet<string> = new Set([
   "for",
@@ -39,6 +33,26 @@ export const NAMES_AN_ID: ReadonlySet<string> = new Set([
   "aria-flowto",
   "htmlFor",
 ]);
+
+/**
+ * The attributes that point a label at a control, shared by the two rules that ask.
+ *
+ * **Both spellings, and that is newer than it looks.** `htmlFor` used to associate nothing: an HTML
+ * attribute is written through `setAttribute`, which lowercases the name, and core special-cased
+ * `className` into `class` while having no such case for its twin. Measured while these rules were
+ * being written — `<label htmlFor="a">` rendered `htmlfor="a"` and `label.htmlFor` read `""` — and
+ * core now implements the pair the documentation had always described as one rule.
+ */
+export const LABELS_A_CONTROL: ReadonlySet<string> = new Set(["for", "htmlFor"]);
+
+/**
+ * `input` types that carry their own name, or have no name to carry.
+ *
+ * `submit`, `reset` and `button` are named by their `value`, and by a browser default when there is
+ * none — so they are never nameless. `hidden` is not rendered at all. `image` is named by its `alt`,
+ * which is `unnamed-image`'s subject and not these rules'.
+ */
+export const NAMES_ITSELF: ReadonlySet<string> = new Set(["submit", "reset", "button", "hidden", "image"]);
 
 /** The elements a reader has to be told the purpose of, because nothing about them says it. */
 const CONTROLS: ReadonlySet<string> = new Set(["input", "select", "textarea"]);

@@ -1,15 +1,5 @@
+import { LABELS_A_CONTROL, NAMES_ITSELF } from "./idTable";
 import type { FormControl, ProjectRule } from "./rule";
-
-/**
- * The attributes that point a label at a control.
- *
- * `for` is the one that WORKS: Ramonda writes HTML attributes through `setAttribute`, which
- * lowercases, and `htmlFor` therefore arrives as `htmlfor` and associates nothing — measured
- * through the framework. `htmlFor` is counted here all the same, because it is somebody naming this
- * control and reporting it as nameless would send them looking for the wrong thing entirely. What
- * is wrong with that line is the attribute, not the absence of one.
- */
-const LABELS_A_CONTROL: ReadonlySet<string> = new Set(["for", "htmlFor"]);
 
 /**
  * A form control with no accessible name — nothing anywhere says what it is for.
@@ -34,7 +24,7 @@ const LABELS_A_CONTROL: ReadonlySet<string> = new Set(["for", "htmlFor"]);
  *
  * ## What it will not say
  *
- * **A control whose own `id` this cannot read.** It cannot be matched against any `htmlFor`, so
+ * **A control whose own `id` this cannot read.** It cannot be matched against any label, so
  * nothing about that control is knowable — a narrower silence than the family's, and the right one:
  * the rest of the project is still perfectly answerable.
  *
@@ -66,15 +56,6 @@ export interface ControlWithNoLabelIssue {
   column: number;
 }
 
-/**
- * `input` types that carry their own name, or have no name to carry.
- *
- * `submit`, `reset` and `button` are named by their `value`, and by a default the browser supplies
- * when there is none — so they are never nameless. `hidden` is not rendered at all. `image` is
- * named by its `alt`, which is `unnamed-image`'s subject and not this one's.
- */
-const NAMES_ITSELF: ReadonlySet<string> = new Set(["submit", "reset", "button", "hidden", "image"]);
-
 /** Whether anything the walk saw could be giving this control a name. */
 function couldBeNamed(control: FormControl, labelled: ReadonlySet<string>): boolean {
   if (control.namingAttribute || control.insideALabel) return true;
@@ -88,7 +69,7 @@ function couldBeNamed(control: FormControl, labelled: ReadonlySet<string>): bool
    */
   if (control.placeholder) return true;
   if (control.tag === "input" && control.type !== undefined && NAMES_ITSELF.has(control.type)) return true;
-  // Its own id is unreadable, so it cannot be matched against a `htmlFor` — and nothing about this
+  // Its own id is unreadable, so it cannot be matched against any label — and nothing about this
   // one control is knowable. Not a project-wide silence: everything else still is.
   if (control.opaqueId) return true;
   return control.id !== undefined && labelled.has(control.id);
@@ -122,7 +103,7 @@ export const controlWithNoLabel = {
   },
 
   read(project) {
-    /** The ids some `<label htmlFor=…>` names, anywhere in the project. */
+    /** The ids some `<label for=…>` names, anywhere in the project. */
     const labelled = new Set(
       project.references
         .filter((reference) => LABELS_A_CONTROL.has(reference.attribute))

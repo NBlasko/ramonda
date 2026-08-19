@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import { hasContent, numberAttr, openingOf } from "./element";
+import { hasContent, openingOf } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
@@ -164,7 +164,9 @@ export const clickWithNoKeyboardPath = {
     // decision to build it by hand, and picking at it is a different rule from this one.
     if (hasAKeyHandler(opening)) return [];
     if (has("role")) return [];
-    if (numberAttr(element, "tabIndex") !== undefined || has("tabIndex")) return [];
+    // `has`, not `numberAttr`: the question is whether somebody reached for a tab order at all, and
+    // an unreadable `tabIndex={n}` is as much of a reach as a written one.
+    if (has("tabIndex")) return [];
 
     if (hasAnInteractiveDescendant(children)) return [];
 

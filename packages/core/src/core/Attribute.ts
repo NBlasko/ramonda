@@ -210,6 +210,25 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     return;
   }
 
+  /**
+   * The twin of `className`, and it was missing.
+   *
+   * `concepts/jsx` states the pair as one rule — "`class` and `for` are keywords in JavaScript, so
+   * JSX borrows the DOM property names instead: `className` and `htmlFor`" — and only half of it
+   * was implemented. Measured before this was written: `<label htmlFor="a">` rendered
+   * `htmlfor="a"` and `label.htmlFor` read `""`, because an HTML attribute is written through
+   * `setAttribute`, which lowercases the name and has no idea that `htmlfor` was meant to be `for`.
+   * The label was associated with nothing, in markup that typechecks and looks right.
+   *
+   * Written as the ATTRIBUTE rather than through the property, unlike `className` above: `for` is
+   * an attribute on `<label>` and `<output>` and nothing else, so the property does not exist to
+   * assign on the element somebody may have written it on by mistake.
+   */
+  if (name === "htmlFor") {
+    enhancedNode.setAttribute("for", value);
+    return;
+  }
+
   if (name === "key") {
     enhancedNode[KEY_SYM] = value;
     return;
@@ -250,6 +269,9 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   enhancedNode.setAttribute(name, value);
 }
 
+/** The DOM's name for each attribute the JSX spells differently — read back the way it was written. */
+const ALIASED_BACK: Readonly<Record<string, string>> = { class: "className", for: "htmlFor" };
+
 function removeByQualifiedName(enhancedNode: EnhancedHTMLNode, name: string) {
   if (name === "key") {
     enhancedNode[KEY_SYM] = undefined;
@@ -258,6 +280,11 @@ function removeByQualifiedName(enhancedNode: EnhancedHTMLNode, name: string) {
   if (name === "className") {
     // The DOM attribute is `class`; removing "className" would be a no-op.
     enhancedNode.removeAttribute("class");
+    return;
+  }
+  if (name === "htmlFor") {
+    // Same again: the DOM attribute is `for`.
+    enhancedNode.removeAttribute("for");
     return;
   }
   if (enhancedNode[IS_SVG]) {
@@ -322,7 +349,9 @@ function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
   if (keyValue != null) nodeAttributes.key = keyValue;
 
   for (const item of enhancedNode.attributes) {
-    const name = item.name === "class" ? "className" : item.name;
+    // Read back under the name the JSX writes, so a diff compares like with like. Both aliases
+    // normalize, because both are written in the source and both arrive here as the DOM's name.
+    const name = ALIASED_BACK[item.name] ?? item.name;
     nodeAttributes[name] = item.value;
   }
 

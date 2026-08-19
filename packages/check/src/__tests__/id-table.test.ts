@@ -118,12 +118,12 @@ describe("a form control with no label", () => {
   });
 
   /**
-   * `htmlFor` names nothing in Ramonda — it renders as `htmlfor`, measured through the framework —
-   * but a control it points at is still NOT called nameless. Somebody is naming that control, and
-   * telling them there is no label sends them looking for the wrong thing: the fault on that line
-   * is the attribute, not the absence of one.
+   * Both spellings of the association count, and they were not equivalent while this was written:
+   * `htmlFor` rendered as `htmlfor` and named nothing until core implemented the pair its own
+   * documentation had always described as one rule. Asserted here so neither half can quietly stop
+   * counting.
    */
-  test("a control a htmlFor points at is not called nameless", () => {
+  test("a control named through either spelling is not called nameless", () => {
     const found = run("id-table").findings["control-with-no-label"];
     expect(found).toHaveLength(2);
   });

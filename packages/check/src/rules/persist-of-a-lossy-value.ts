@@ -96,8 +96,10 @@ function lossyValueOf(member: ts.PropertyDeclaration): { holds: string; becomes:
     if (ts.isNewExpression(written)) {
       const name = constructedName(written.expression);
       if (name === undefined || STILL_JSON.has(name)) return undefined;
-      // The last segment, so `Intl.NumberFormat` is looked up as itself and an aliased `Map` still
-      // reads as `Map`. Anything not named here is an instance, which JSON flattens the same way.
+      // Looked up by the WHOLE name as written, dots included. So `Intl.NumberFormat` misses the
+      // table and is described as an instance, which is what it is; and a `Map` imported under
+      // another name misses it too and gets the same, slightly less specific, true sentence.
+      // Anything not named in the table is an instance, and JSON flattens all of them the same way.
       return { holds: name, becomes: BECOMES.get(name) ?? A_PLAIN_BAG };
     }
     // Anything else written out — a literal, a call, a name — is either fine or unreadable, and

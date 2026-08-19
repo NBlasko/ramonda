@@ -11,14 +11,13 @@ class Signup extends Component {
   render() {
     return (
       <form>
-        {/* Not reported: a label points at it by id. `for`, not `htmlFor` — measured through the
-            framework, `htmlFor` renders as `htmlfor` and associates nothing. */}
+        {/* Not reported: a label points at it by id, written as HTML writes it. */}
         <label for="email">Email</label>
         <input id="email" type="email" />
 
-        {/* Not reported by the label rules either, although `htmlFor` names nothing in Ramonda:
-            somebody IS naming this control, and calling it nameless would send them looking for the
-            wrong thing. The attribute is the fault on that line, not the absence of one. */}
+        {/* Not reported: the same association under the name the JSX borrows. Both spellings are
+            checked because both are written, and they were NOT equivalent until core implemented
+            the pair its documentation had always described as one rule. */}
         <label htmlFor="phone">Phone</label>
         <input id="phone" type="tel" />
 

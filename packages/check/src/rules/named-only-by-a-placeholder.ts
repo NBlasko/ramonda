@@ -1,14 +1,5 @@
+import { LABELS_A_CONTROL, NAMES_ITSELF } from "./idTable";
 import type { ProjectRule } from "./rule";
-
-/**
- * The attributes that point a label at a control — the same set `control-with-no-label` keeps.
- *
- * `for` is the one that WORKS: Ramonda writes HTML attributes through `setAttribute`, which
- * lowercases, so `htmlFor` arrives as `htmlfor` and associates nothing. Measured through the
- * framework. `htmlFor` is counted anyway, because it is somebody naming this control, and the fault
- * on that line is the attribute rather than the absence of one.
- */
-const LABELS_A_CONTROL: ReadonlySet<string> = new Set(["for", "htmlFor"]);
 
 /**
  * A control whose only name is its `placeholder`.
@@ -44,9 +35,6 @@ export interface NamedOnlyByAPlaceholderIssue {
   line: number;
   column: number;
 }
-
-/** The same set `control-with-no-label` keeps, and for the same reasons. */
-const NAMES_ITSELF: ReadonlySet<string> = new Set(["submit", "reset", "button", "hidden", "image"]);
 
 export const namedOnlyByAPlaceholder = {
   id: "named-only-by-a-placeholder",

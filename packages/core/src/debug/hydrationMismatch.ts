@@ -114,8 +114,8 @@ export function reportAttributeMismatches(
     const value = nextAttributes[attribute];
     if (!isComparable(attribute, value)) continue;
 
-    // Ramonda normalizes to className; the DOM attribute is `class`.
-    const domName = attribute === "className" ? "class" : attribute;
+    // Ramonda normalizes to the JSX spelling; the DOM's names are `class` and `for`.
+    const domName = attribute === "className" ? "class" : attribute === "htmlFor" ? "for" : attribute;
     if (domName === STATE_ATTR || domName === "data-ramonda") continue;
 
     const found = node.getAttribute(domName);
