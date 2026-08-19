@@ -84,7 +84,7 @@ if (!existsSync(serverBundle)) {
  */
 installDom(`${ORIGIN}/`);
 
-const { paths, renderOne } = await import(pathToFileURL(serverBundle).href);
+const { BASE, paths, renderOne } = await import(pathToFileURL(serverBundle).href);
 
 const routePaths = paths();
 let bytes = 0;
@@ -142,9 +142,62 @@ const redirects = [["/concepts/effects", "/concepts/subscriptions", 301]];
 writeFileSync(join(dist, "_redirects"), `${redirects.map(([from, to, code]) => `${from} ${to} ${code}`).join("\n")}\n`);
 console.log(`[docs] ${"(redirects)".padEnd(24)} → dist/_redirects  ${redirects.length} rule(s)`);
 
+/**
+ * `sitemap.xml`, from the same route list the pages were written from.
+ *
+ * A crawler finds pages by following links, and a documentation site's deepest pages are the ones
+ * fewest links reach — the reference entries somebody arrives at from a search, which is the whole
+ * point of them. A sitemap says they exist without waiting for a path to be walked to them.
+ *
+ * Generated here rather than kept as a file for the reason everything else in this build is: a page
+ * added and a sitemap not is a page that exists and cannot be found, and nothing would have said so.
+ * `404` is deliberately absent — it is a page the host serves, not a page that is.
+ *
+ * `lastmod`, `changefreq` and `priority` are all omitted. The first would need a real date per page
+ * and a wrong one is worse than none; the other two are hints crawlers have ignored for years.
+ */
+const sitemap = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  ...routePaths.map((routePath) => `  <url><loc>${new URL(routePath, BASE).href}</loc></url>`),
+  "</urlset>",
+  "",
+].join("\n");
+writeFileSync(join(dist, "sitemap.xml"), sitemap);
+console.log(`[docs] ${"(sitemap)".padEnd(24)} → dist/sitemap.xml  ${routePaths.length} URL(s)`);
+
+/**
+ * `robots.txt`, which is where a crawler looks for the sitemap.
+ *
+ * A sitemap nothing points at is a sitemap nothing reads: the file has no discoverable location of
+ * its own, and `robots.txt` is the one place every crawler checks by convention.
+ */
+writeFileSync(join(dist, "robots.txt"), `User-agent: *\nAllow: /\nSitemap: ${new URL("/sitemap.xml", BASE).href}\n`);
+console.log(`[docs] ${"(robots)".padEnd(24)} → dist/robots.txt`);
+
 // Static assets. `public/` is copied verbatim so a favicon or a stylesheet needs
 // no build entry of its own.
 const publicDir = join(root, "public");
-if (existsSync(publicDir)) cpSync(publicDir, dist, { recursive: true });
+if (existsSync(publicDir)) {
+  /**
+   * One owner per file, said out loud rather than decided by copy order.
+   *
+   * `public/` is copied over the output, so a hand-written `robots.txt` would silently replace the
+   * generated one — and what it would take with it is the `Sitemap:` line, which is the only thing
+   * pointing a crawler at the sitemap. Nothing would say so: the build would pass, the file would
+   * be there, and it would be the wrong one. Writing the generated files afterwards instead would
+   * be the same bug facing the other way.
+   */
+  const owned = ["robots.txt", "sitemap.xml"].filter((name) => existsSync(join(publicDir, name)));
+  if (owned.length > 0) {
+    console.error(
+      `[docs] public/ carries ${owned.join(" and ")}, which this script generates.\n` +
+        `       Two owners of one file means whichever is copied last wins, silently.\n` +
+        `       Either delete the file from public/ or take the generation out of prerender.mjs.`,
+    );
+    process.exit(1);
+  }
+  cpSync(publicDir, dist, { recursive: true });
+}
 
 console.log(`[docs] ${routePaths.length} page(s) + 404, ${bytes} B of HTML → dist/`);
