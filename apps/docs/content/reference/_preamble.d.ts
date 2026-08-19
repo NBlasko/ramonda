@@ -14,10 +14,6 @@ declare global {
     [key: string]: any;
     render(): any;
   }
-  /** The app's own declaration of what it reads — shown on the build page, and needed to type it. */
-  interface ImportMetaEnv {
-    readonly RAMONDA_PUBLIC_API_BASE: string;
-  }
   interface Signup {
     email: string;
     password: string;

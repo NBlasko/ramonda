@@ -23,6 +23,17 @@ interface UserConfigLike {
 }
 
 /**
+ * Whether a prefix setting is the one Ramonda needs — as the bare string, or as a one-entry list,
+ * because Vite accepts both spellings and an app writing the array form did not mean anything
+ * different by it.
+ */
+function samePrefix(prefix: string | string[] | undefined): boolean {
+  if (prefix === undefined) return false;
+  const list = typeof prefix === "string" ? [prefix] : prefix;
+  return list.length === 1 && list[0] === PUBLIC_ENV_PREFIX;
+}
+
+/**
  * The Vite plugin: an app running Ramonda adds this and configures nothing about the transform.
  *
  * ```ts
@@ -32,8 +43,9 @@ interface UserConfigLike {
  * export default defineConfig({ plugins: [ramonda()] });
  * ```
  *
- * It fills in `jsx`, `jsxImportSource` and `target`. The first two are ordinary. The third is the
- * reason this package exists — see {@link lowersDecorators} for what happens without it.
+ * It fills in `jsx`, `jsxImportSource`, `target` and `envPrefix`. The first two are ordinary. The third
+ * is the reason this package exists — see {@link lowersDecorators} for what happens without it. The
+ * fourth decides which environment variables reach the browser — see {@link PUBLIC_ENV_PREFIX}.
  *
  * ## Why it refuses rather than corrects
  *
@@ -45,17 +57,6 @@ interface UserConfigLike {
  *
  * A target that is already safe is left exactly as it is, for the same reason: it was a real choice.
  */
-/**
- * Whether a prefix setting is the one Ramonda needs — as the bare string, or as a one-entry list,
- * because Vite accepts both spellings and an app writing the array form did not mean anything
- * different by it.
- */
-function samePrefix(prefix: string | string[] | undefined): boolean {
-  if (prefix === undefined) return false;
-  const list = typeof prefix === "string" ? [prefix] : prefix;
-  return list.length === 1 && list[0] === PUBLIC_ENV_PREFIX;
-}
-
 export function ramonda(): VitePluginLike {
   return {
     name: "ramonda",
@@ -106,7 +107,7 @@ export function ramonda(): VitePluginLike {
       // this one, and exposing a wider set of variables than the app asked for is the one mistake in
       // this area nobody can walk back once a page has shipped.
       if (!samePrefix(config.envPrefix)) {
-        throw refuseEnvPrefix("the resolved Vite config's `envPrefix`", config.envPrefix);
+        throw refuseEnvPrefix("the resolved Vite config", config.envPrefix);
       }
     },
   };

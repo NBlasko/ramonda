@@ -155,14 +155,24 @@ replaces the env entries, and every `import.meta.env.RAMONDA_PUBLIC_…` read be
 throws in the browser, because esbuild creates no `import.meta.env` of its own. The plugin form needs none
 of this: it runs after the options are assembled, so it merges into whatever is there.
 
-**Types.** Declare the names your app reads, once, and a typo becomes a build error:
+**Types.** Declare the names your app reads, once, and a typo becomes a build error. Two interfaces, and
+both are needed — `ImportMetaEnv` on its own is attached to nothing, and the error you get is
+`Property 'env' does not exist on type 'ImportMeta'`:
 
 ```ts
-// env.d.ts
 interface ImportMetaEnv {
   readonly RAMONDA_PUBLIC_API_BASE: string;
 }
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
 ```
+
+**Put it in a file your `tsconfig.json` already compiles**, or nothing reads it. A scaffolded project has
+one either way: `global.d.ts` in the SSR template, which is in its `include`, and `src/vite-env.d.ts` in the
+SPA one. In the SPA template `/// <reference types="vite/client" />` has already declared both interfaces,
+so there you *extend* `ImportMetaEnv` rather than introduce it — writing the `ImportMeta` half again is
+harmless, since an interface of the same name merges.
 
 ## It refuses rather than corrects
 

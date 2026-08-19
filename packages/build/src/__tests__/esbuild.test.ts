@@ -130,11 +130,17 @@ describe("environment variables", () => {
     expect(publicEnv(ENV)).toEqual({ RAMONDA_PUBLIC_API_BASE: "https://api.example.com" });
   });
 
-  test("envDefines emits the floor object AND each key, and the floor holds only public names", () => {
-    const defines = envDefines(ENV);
+  test("envDefines emits the floor object AND each key, and the floor holds no secrets", () => {
+    const defines = envDefines({ ...ENV, NODE_ENV: "production" });
 
-    // The floor, so an unknown key reads `undefined` rather than throwing.
+    // The floor, so an unknown key reads `undefined` rather than throwing — carrying the public names
+    // and the five a bundler is expected to provide, and nothing else.
     expect(JSON.parse(defines["import.meta.env"])).toEqual({
+      MODE: "production",
+      DEV: false,
+      PROD: true,
+      SSR: false,
+      BASE_URL: "/",
       RAMONDA_PUBLIC_API_BASE: "https://api.example.com",
     });
     // The per-key entry, which is what gets inlined as a literal.
@@ -142,6 +148,35 @@ describe("environment variables", () => {
     // And nothing for the secret, under either shape.
     expect(defines["import.meta.env.RAMONDA_SESSION_SECRET"]).toBeUndefined();
     expect(defines["import.meta.env"]).not.toContain("super-secret-value");
+  });
+
+  /**
+   * The five a bundler is expected to provide. Left out at first, and measured to be a real bug: both
+   * `@ramonda/query` and `@ramonda/form` document `if (import.meta.env.DEV) { void import("…") }` as the
+   * one line an app writes, and without these it compiled to `if (undefined)` — the panel never loaded.
+   */
+  test("the bundler's own names follow NODE_ENV, and cannot disagree with each other", () => {
+    const dev = JSON.parse(envDefines({ NODE_ENV: "development" })["import.meta.env"]);
+    expect(dev).toMatchObject({ MODE: "development", DEV: true, PROD: false });
+
+    // No NODE_ENV means production, the way a build tool assumes when nobody said otherwise.
+    const bare = JSON.parse(envDefines({})["import.meta.env"]);
+    expect(bare).toMatchObject({ MODE: "production", DEV: false, PROD: true });
+
+    // And each is a literal of its own, so `if (import.meta.env.DEV)` can be eliminated outright.
+    expect(envDefines({ NODE_ENV: "production" })["import.meta.env.DEV"]).toBe("false");
+  });
+
+  test("SSR is asked of the caller, because only the caller knows", () => {
+    expect(JSON.parse(envDefines({}, { ssr: true })["import.meta.env"])).toMatchObject({ SSR: true });
+    expect(JSON.parse(envDefines({})["import.meta.env"])).toMatchObject({ SSR: false });
+  });
+
+  test("a public name wins over a built-in of the same name", () => {
+    // Contrived, and the order still has to be the honest one: what the app set is what it meant.
+    const defines = envDefines({ RAMONDA_PUBLIC_MODE: "x", MODE: "should-not-appear" });
+    expect(JSON.parse(defines["import.meta.env"]).MODE).toBe("production");
+    expect(JSON.parse(defines["import.meta.env"]).RAMONDA_PUBLIC_MODE).toBe("x");
   });
 
   test("the plugin inlines the public value and leaves no trace of the others", async () => {
@@ -154,8 +189,9 @@ describe("environment variables", () => {
       // The value, not just the name: a bundle that carried it under any spelling would fail here.
       expect(code).not.toContain("super-secret-value");
       expect(code).not.toContain("postgres://nope");
-      // And no read is left as a live reference, which is what would throw in a browser.
-      expect(code).not.toMatch(/import\.meta\.env\./);
+      // And no read is left as a live reference to `import.meta`, which is what would throw in a
+      // browser. esbuild's own `<define:import.meta.env>` bookkeeping is not a read.
+      expect(code).not.toMatch(/\bimport\.meta\.env\.[A-Za-z_]/);
     } finally {
       for (const key of Object.keys(ENV)) delete process.env[key];
       Object.assign(process.env, before);

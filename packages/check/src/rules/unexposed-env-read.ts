@@ -62,16 +62,27 @@ export const unexposedEnvRead = {
   id: "unexposed-env-read",
 
   report: {
-    // An ERROR rather than the usual warning-first, for the same reason `one-provider-per-component`
-    // is one: the value is not merely suspect, it is `undefined` — and unlike a throw, nothing at
-    // runtime will ever tell you.
-    severity: "error",
-    reportedWhen: "`import.meta.env` is read for a name no build exposes, so the value is always `undefined`",
+    /**
+     * A WARNING, and the reason is a premise this rule cannot verify.
+     *
+     * It is true that the name is never exposed — IF the project uses `@ramonda/build`'s Vite plugin,
+     * which is what replaces Vite's `VITE_` prefix. A Ramonda app on plain Vite still exposes `VITE_*`,
+     * and for that app every report here would be wrong.
+     *
+     * `needs: "@ramonda/build"` is the gate for exactly this and cannot be used: `needs` is decided from
+     * what the program imports, and the only file importing that package is `vite.config.ts`, which both
+     * scaffolded tsconfigs leave out of `include`. So the premise is stated in the message instead of
+     * being enforced, and the run is not failed over it.
+     */
+    severity: "warn",
+    reportedWhen:
+      "`import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined`",
     heading: (found) => `${found.length} environment variable(s) read but never exposed:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    \`import.meta.env.${issue.name}\` is always \`undefined\` — nothing exposes that name.`,
-      `    Rename it \`${issue.suggestion}\`, or read it on the server with \`process.env.${issue.name}\`.`,
+      `    \`import.meta.env.${issue.name}\` is not exposed by Ramonda's build settings, so it reads`,
+      `    \`undefined\`. Rename it \`${issue.suggestion}\`, or read it on the server with`,
+      `    \`process.env.${issue.name}\`.`,
     ],
     advice:
       "A variable reaches the browser only when its name says so. `@ramonda/build` exposes the\n" +
@@ -84,7 +95,10 @@ export const unexposedEnvRead = {
       "default rather than adding to it, so `VITE_*` is no longer exposed — measured, in `build` and in\n" +
       "`dev`. Rename the variable, or read it on the server and pass the value down.\n\n" +
       "The bundler's own names — `DEV`, `PROD`, `MODE`, `SSR`, `BASE_URL` — are always available and\n" +
-      "are never reported.",
+      "are never reported.\n\n" +
+      "This assumes you are using `@ramonda/build`'s Vite plugin, which is what replaces Vite's own\n" +
+      "`VITE_` prefix. If you configure Vite yourself and left `envPrefix` alone, `VITE_*` still works\n" +
+      "and this report does not apply to you — which is why it is a warning and not a failure.",
   },
 
   read(file, context) {

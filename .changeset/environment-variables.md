@@ -29,6 +29,23 @@ rename it. Read the server side with `process.env.WHATEVER`, and the public side
 - **No leak through the SSR dev server.** Vite injects `import.meta.env` with only the prefixed names plus
   its own `BASE_URL/DEV/MODE/PROD/SSR`.
 
+**What the review of this branch caught, and the first one was a real bug.** `envDefines`'s floor object
+held only the public names, so `import.meta.env.DEV/PROD/MODE/SSR/BASE_URL` compiled to `undefined` in every
+esbuild build — and `@ramonda/query` and `@ramonda/form` both document `if (import.meta.env.DEV) { void
+import("…/devtools") }` as the one line an app writes. Measured: that guard became `if (undefined)` and the
+panel never loaded, in exactly the arrangement the SSR template uses (Vite in dev, esbuild in production).
+The floor now carries all five, each from something the build already said rather than a guess: `MODE` from
+`NODE_ENV`, `DEV`/`PROD` derived from it so they cannot disagree, `SSR` asked of the caller because only the
+caller knows (the plugin reads `platform === "node"`), and `BASE_URL` as `/`. All five are overridable.
+
+The review also found that `server-env-in-shared-code` reported a helper reached only from a server-only
+lifecycle — the shape its own advice recommends once the read is factored out, at error severity, with no
+`ramonda-check-ignore` available to class rules. A helper is now excused when EVERY reference to it in the
+class sits in an already-excused member, iterated to a fixed point so a helper may call a helper; a helper
+also called from `render()` is still reported, because an excuse has to hold for every caller. And
+`process.env` is now asked of `context.resolve`, so a file that SHIMS `process` for browser code is left
+alone — the shim is the fix, and `browser-url` draws the same distinction.
+
 **Verified end to end in a real app build, not only per piece.** `apps/playground-ssr` builds with esbuild
 through both `ramondaOptions` and the plugin; with `RAMONDA_PUBLIC_SMOKE` and `RAMONDA_SMOKE_SECRET` both
 set, the client bundle carries the public value (2 occurrences), carries **no trace of the secret**, and
@@ -62,8 +79,12 @@ since a server entry legitimately has one and whether a module reaches the clien
 imports. `CLIENT_ONLY_DECORATORS`, `LIFECYCLE_DECORATORS` and the two questions moved to
 `rules/lifecycle-env.ts` now that two rules share them.
 
-`unexposed-env-read` is an **error**, not the usual warning-first, and it is one of the few rules here that
-is genuinely COMPLETE: it asks nothing about where a value came from or whether one was set, only whether the NAME —
+`unexposed-env-read` is a **warning**, not an error, and the reason is a premise it cannot verify: the name
+is never exposed IF the project uses `@ramonda/build`'s Vite plugin. A Ramonda app on plain Vite still
+exposes `VITE_*`, and `needs: "@ramonda/build"` cannot gate it — `needs` is decided from what the program
+imports, and the only file importing that package is `vite.config.ts`, which both scaffolded tsconfigs leave
+out of `include`. So the premise is stated in the message rather than enforced, and the run is not failed
+over it. Within its premise it is one of the few rules here that is genuinely COMPLETE: it asks nothing about where a value came from or whether one was set, only whether the NAME —
 written on the spot — is in the exposed set. That answer does not depend on an environment or a `.env`
 file, so there is no path it has to go quiet for. The exceptions are the bundler's own five names, a
 computed key, and a site carrying `ramonda-check-ignore`. Zero hits across `apps/docs`, both playgrounds,

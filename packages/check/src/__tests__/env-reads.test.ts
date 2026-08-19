@@ -44,7 +44,7 @@ describe("an environment variable read but never exposed", () => {
   test("it points at the name, on the line the name is written", () => {
     const issue = found().find((each) => each.name === "VITE_API_URL");
     expect(issue?.file).toBe(join(here, "fixtures", "env-reads", "app.tsx"));
-    expect(issue?.line).toBe(9);
+    expect(issue?.line).toBe(7);
   });
 
   test("what stays silent, and why each one is silent", () => {
@@ -81,7 +81,34 @@ describe("process.env in code the browser runs", () => {
       "ReadsProcessInRender.render: process.env.DATABASE_URL",
       "ReadsProcessInAField.url: process.env.DATABASE_URL",
       "ReadsProcessInSharedCreate.read: process.env.REGION",
+      "HelperAlsoCalledInRender.both: process.env.DATABASE_URL",
     ]);
+  });
+
+  /**
+   * A helper reached only from a server-only lifecycle, which is the shape this rule's own advice
+   * recommends once the read is factored out. Reporting it was a false positive at error severity, and
+   * class rules get no `ramonda-check-ignore`, so there would have been no way out but restructuring
+   * correct code.
+   */
+  test("a helper only a server-only member calls is excused, however many hops away", () => {
+    const names = serverEnv().map((issue) => issue.component);
+    expect(names).not.toContain("DelegatesToAHelper");
+    expect(names).not.toContain("DelegatesTwice");
+  });
+
+  /** And an excuse has to hold for EVERY caller: one of them is the browser, so it is not an excuse. */
+  test("the same helper called from render as well is reported", () => {
+    expect(serverEnv().map((issue) => `${issue.component}.${issue.member}`)).toContain("HelperAlsoCalledInRender.both");
+  });
+
+  /**
+   * A file that shims `process` for browser code. The shim IS the fix, so reporting it would be
+   * reporting the reader's own answer — the rule asks whether the name resolves to a declaration, which
+   * is `browser-url`'s distinction between a global and a local of the same name.
+   */
+  test("a `process` that resolves to a declaration is not Node's", () => {
+    expect(serverEnv().map((issue) => issue.component)).not.toContain("UsesAShim");
   });
 
   /**

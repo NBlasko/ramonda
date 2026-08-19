@@ -9,6 +9,7 @@ interface EsbuildOptionsLike {
   jsxImportSource?: string;
   target?: string | string[];
   define?: Record<string, string>;
+  platform?: string;
 }
 
 interface EsbuildPluginLike {
@@ -58,6 +59,8 @@ export const ramondaOptions = RAMONDA_TRANSFORM;
  * Only `RAMONDA_PUBLIC_*` is read — see `publicEnv`.
  */
 export function ramondaDefine(own: Record<string, string> = {}): Record<string, string> {
+  // `ssr` is not knowable here — this is called before the build object exists — so it defaults to
+  // `false` and a server build that cares says `"import.meta.env.SSR": "true"` in `own`, which wins.
   return { ...envDefines(process.env), ...own };
 }
 
@@ -94,7 +97,9 @@ export function ramonda(): EsbuildPluginLike {
        * own value — and merged rather than assigned, because replacing `define` would take away
        * `__DEV__` and everything else a build depends on.
        */
-      options.define = { ...envDefines(process.env), ...options.define };
+      // `platform` is the only place `import.meta.env.SSR` can be read from honestly, and the plugin is
+      // the one form that gets to see it.
+      options.define = { ...envDefines(process.env, { ssr: options.platform === "node" }), ...options.define };
     },
   };
 }

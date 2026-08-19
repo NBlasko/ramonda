@@ -104,13 +104,45 @@ export function publicEnv(env: Record<string, string | undefined>): Record<strin
  * ship every secret the machine had. Only {@link publicEnv} may go in, which is why this takes the
  * environment through that function and not directly.
  */
-export function envDefines(env: Record<string, string | undefined>): Record<string, string> {
-  const values = publicEnv(env);
+export function envDefines(
+  env: Record<string, string | undefined>,
+  options: { ssr?: boolean } = {},
+): Record<string, string> {
+  const values: Record<string, string | boolean> = {
+    ...builtIns(env, options.ssr === true),
+    ...publicEnv(env),
+  };
   const out: Record<string, string> = { "import.meta.env": JSON.stringify(values) };
   for (const [name, value] of Object.entries(values)) {
     out[`import.meta.env.${name}`] = JSON.stringify(value);
   }
   return out;
+}
+
+/**
+ * The five names a bundler is expected to provide, which Vite supplies and esbuild does not.
+ *
+ * **Left out at first, and that was a bug worth naming.** `@ramonda/query` and `@ramonda/form` both
+ * document `if (import.meta.env.DEV) { void import("…/devtools") }` as the one line an app writes — and
+ * measured, without these the read compiled to `undefined` under esbuild, so that guard became
+ * `if (undefined)` and the panel never loaded. The ssr template runs Vite in dev and esbuild in
+ * production, so it is exactly the arrangement where the two halves must agree.
+ *
+ * Each value comes from something the build already said, not from a guess:
+ *
+ * - `MODE` is `NODE_ENV`, the signal every build sets, defaulting to `production` the way a build tool
+ *   does when nobody said otherwise.
+ * - `DEV` and `PROD` follow from it, so they cannot disagree with each other.
+ * - `SSR` is asked of the caller, because only the caller knows: the esbuild plugin reads
+ *   `platform === "node"`, and {@link envDefines} takes it as an option.
+ * - `BASE_URL` is `/`, which is Vite's own default.
+ *
+ * All five are overridable, because a caller's own `define` entry wins over these — see
+ * `ramondaDefine`.
+ */
+function builtIns(env: Record<string, string | undefined>, ssr: boolean): Record<string, string | boolean> {
+  const mode = env.NODE_ENV ?? "production";
+  return { MODE: mode, DEV: mode !== "production", PROD: mode === "production", SSR: ssr, BASE_URL: "/" };
 }
 
 /**
@@ -123,13 +155,17 @@ export function envDefines(env: Record<string, string | undefined>): Record<stri
  */
 export function refuseEnvPrefix(where: string, actual: unknown): Error {
   return new Error(
-    `[ramonda] ${where} sets \`envPrefix\` to ${JSON.stringify(actual)}, and Ramonda needs ` +
+    `[ramonda] ${where} has \`envPrefix\` set to ${JSON.stringify(actual)}, and Ramonda needs ` +
       `${JSON.stringify(PUBLIC_ENV_PREFIX)}.\n` +
       `That prefix is how a variable is marked safe to ship: anything named \`${PUBLIC_ENV_PREFIX}…\` is ` +
       `inlined into the browser bundle, and everything else stays on the server, read with ` +
       `\`process.env\`.\n` +
-      `Remove the \`envPrefix\` line and this plugin will set it. If you need another prefix exposed as ` +
-      `well, expose it deliberately: read it on the server and pass it down, or rename the variable.`,
+      `If your config sets it, remove that line and this plugin will set it. If it does not, another ` +
+      `plugin did — this is checked twice for exactly that case, because Vite merges each plugin's ` +
+      `config over the last and exposing a wider set of variables than you asked for is the one mistake ` +
+      `here that cannot be walked back.\n` +
+      `To use another prefix, expose it deliberately instead: read it on the server and pass the value ` +
+      `down, or rename the variable.`,
   );
 }
 

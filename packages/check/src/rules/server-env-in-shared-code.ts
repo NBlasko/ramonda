@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { isServerOnly } from "./lifecycle-env";
-import type { Rule } from "./rule";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * `process.env` read from a member the browser also runs.
@@ -41,12 +41,85 @@ export interface ServerEnvInSharedCodeIssue {
   column: number;
 }
 
-/** `process.env` and `process.env.NAME` — the read, however far the property chain goes. */
-function processEnvRead(node: ts.Node): ts.Node | undefined {
+/**
+ * `process.env` — Node's, not a local of the same name.
+ *
+ * The distinction is `browser-url`'s, and the same trick answers it: the analyzer builds its program with
+ * `noLib` and no `@types/node`, so **Node's `process` resolves to nothing** while a `const process = …` or
+ * a `declare const process` in the source resolves to its declaration. A file that shims `process` for
+ * browser code is therefore left alone, which it must be — the shim is the fix, and reporting it would be
+ * reporting the reader's own answer.
+ */
+function processEnvRead(node: ts.Node, context: RuleContext): ts.Node | undefined {
   if (!ts.isPropertyAccessExpression(node)) return undefined;
   if (node.name.text !== "env") return undefined;
   const target = node.expression;
-  return ts.isIdentifier(target) && target.text === "process" ? node : undefined;
+  if (!ts.isIdentifier(target) || target.text !== "process") return undefined;
+  return context.resolve(target) === undefined ? node : undefined;
+}
+
+/** A member's own name, when it has a plain one to go by. */
+function memberName(member: ts.ClassElement): string | undefined {
+  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
+}
+
+/**
+ * Every member the browser cannot reach — the ones marked `{ env: "server" }`, and the helpers only
+ * those call.
+ *
+ * **The second half is why this exists**, and leaving it out was a false positive on the very shape this
+ * rule's advice recommends: read the variable in a server-only lifecycle, and the moment the read is
+ * factored into a helper the helper is reported. Verified against a fixture before it was fixed.
+ *
+ * A helper counts as excused when EVERY reference to it inside this class sits in a member that is
+ * already excused — the same one-hop, same-class question `client-only-request-read` asks of its
+ * handlers, and the same reason it is safe: it is the declaration in front of us, not the general
+ * dataflow this package refuses.
+ *
+ * Iterated to a fixed point, because a helper may call a helper. It converges: each pass can only add
+ * names, and there are finitely many.
+ */
+function serverOnlyMembers(cls: ts.ClassDeclaration, context: RuleContext): Set<string> {
+  const excused = new Set<string>();
+  for (const member of cls.members) {
+    const name = memberName(member);
+    if (name !== undefined && isServerOnly(member, context)) excused.add(name);
+  }
+  if (excused.size === 0) return excused;
+
+  /** Which members hold a `this.<name>` reference, so a helper can be asked who calls it. */
+  const callers = new Map<string, Set<string>>();
+  for (const member of cls.members) {
+    const from = memberName(member);
+    if (from === undefined) continue;
+    (function look(node: ts.Node): void {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        ts.isIdentifier(node.name)
+      ) {
+        const to = node.name.text;
+        const into = callers.get(to) ?? new Set<string>();
+        into.add(from);
+        callers.set(to, into);
+      }
+      ts.forEachChild(node, look);
+    })(member);
+  }
+
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [name, from] of callers) {
+      if (excused.has(name) || from.size === 0) continue;
+      // Every caller excused, and at least one — a member nothing in this class references may be
+      // called from anywhere, so it is not excused on silence.
+      if ([...from].every((caller) => excused.has(caller))) {
+        excused.add(name);
+        changed = true;
+      }
+    }
+  }
+  return excused;
 }
 
 export const serverEnvInSharedCode = {
@@ -82,21 +155,20 @@ export const serverEnvInSharedCode = {
 
   read(cls, context) {
     const found: ServerEnvInSharedCodeIssue[] = [];
+    const excused = serverOnlyMembers(cls, context);
 
     for (const member of cls.members) {
-      // The one excuse there is. Everything else in a class is somewhere the browser reaches.
-      if (isServerOnly(member, context)) continue;
-      const name = member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : "(anonymous)";
-
+      const name = memberName(member);
+      if (name !== undefined && excused.has(name)) continue;
       const visit = (node: ts.Node): void => {
-        const read = processEnvRead(node);
+        const read = processEnvRead(node, context);
         if (read !== undefined) {
           // The whole read, not just `process.env`: `process.env.DATABASE_URL` is what the reader
           // wrote and what they will search for.
           const outermost = ts.isPropertyAccessExpression(read.parent) ? read.parent : read;
           found.push({
             component: context.self.name,
-            member: name,
+            member: name ?? "(anonymous)",
             read: outermost.getText(),
             ...positionOf(read),
           });

@@ -1,8 +1,6 @@
 import { bootstrap, Component, state } from "../framework";
 import { created } from "@ramonda/core";
 
-declare const process: { env: Record<string, string | undefined> };
-
 /** ✗ Vite's prefix, which Ramonda's build no longer exposes — the migration hazard. */
 export class FromVite extends Component {
   render() {
@@ -103,6 +101,71 @@ export class ReadsProcessOnTheServer extends Component {
   }
 }
 
+/**
+ * The shape this rule's own advice recommends, once the read is factored out. `fromDb` is reached only
+ * from a server-only lifecycle, so the browser never runs it either.
+ */
+export class DelegatesToAHelper extends Component {
+  @state data = "";
+  @created({ env: "server" })
+  load() {
+    this.data = this.fromDb();
+  }
+  private fromDb(): string {
+    return process.env.DATABASE_URL ?? "";
+  }
+  render() {
+    return <p>{this.data}</p>;
+  }
+}
+
+/** Two hops, because a helper may call a helper. */
+export class DelegatesTwice extends Component {
+  @state data = "";
+  @created({ env: "server" })
+  load() {
+    this.data = this.middle();
+  }
+  private middle(): string {
+    return this.deep();
+  }
+  private deep(): string {
+    return process.env.DATABASE_URL ?? "";
+  }
+  render() {
+    return <p>{this.data}</p>;
+  }
+}
+
+/**
+ * ✗ The same helper, but ALSO called from render — so one of its callers is the browser. An excuse has to
+ * hold for every caller or it is not an excuse.
+ */
+export class HelperAlsoCalledInRender extends Component {
+  @state data = "";
+  @created({ env: "server" })
+  load() {
+    this.data = this.both();
+  }
+  private both(): string {
+    return process.env.DATABASE_URL ?? "";
+  }
+  render() {
+    return <p>{this.both()}</p>;
+  }
+}
+
+/**
+ * A file that SHIMS `process` for browser code. The shim is the fix, so reporting it would be reporting
+ * the reader's own answer — the rule asks whether the name resolves to a declaration.
+ */
+declare const shimmed: { env: Record<string, string | undefined> };
+export class UsesAShim extends Component {
+  render() {
+    return <p>{shimmed.env.ANYTHING}</p>;
+  }
+}
+
 export class App extends Component {
   render() {
     return (
@@ -118,6 +181,10 @@ export class App extends Component {
         <ReadsProcessInAField />
         <ReadsProcessInSharedCreate />
         <ReadsProcessOnTheServer />
+        <DelegatesToAHelper />
+        <DelegatesTwice />
+        <HelperAlsoCalledInRender />
+        <UsesAShim />
       </main>
     );
   }
