@@ -63,7 +63,8 @@ export const stateWrittenWhileRendering = {
     reportedWhen:
       "a state write is reached from `render()` or a `@compute` — directly, through a " +
       "helper it calls, or three files away",
-    alsoReportedAs: "RMD001",
+    // `RMD018` is the same fault inside a `@compute`, which this walk reaches from as well.
+    alsoReportedAs: ["RMD001", "RMD018"],
     heading: (found) => `${found.length} state write(s) reached from a render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

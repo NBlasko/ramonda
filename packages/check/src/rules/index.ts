@@ -42,6 +42,7 @@ import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
+import { stateMutatedInPlace } from "./state-mutated-in-place";
 import { asyncRender } from "./async-render";
 import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
@@ -133,6 +134,7 @@ export { computeReadsAPlainField, type ComputeReadsAPlainFieldIssue } from "./co
 export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
+export { stateMutatedInPlace, type StateMutatedInPlaceIssue } from "./state-mutated-in-place";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
@@ -167,6 +169,7 @@ export { rootsIn, treeFor } from "./tree";
 export const CLASS_RULES = [
   asyncRender,
   stateWrittenWhileRendering,
+  stateMutatedInPlace,
   clockReadWhileRendering,
   computeReadsAPlainField,
   arrowFields,
@@ -315,7 +318,8 @@ export interface RuleSummary {
   /** The condition, as a clause completing "reported when". */
   reportedWhen: string;
   /** The runtime diagnostic reporting the same fault, for the rules that have one. */
-  alsoReportedAs?: string;
+  /** Every runtime code this rule answers, in the order the reference should list them. */
+  alsoReportedAs?: readonly string[];
 }
 
 /**
@@ -329,8 +333,14 @@ export function ruleCatalogue(): RuleSummary[] {
     id: rule.id,
     severity: rule.report.severity,
     reportedWhen: rule.report.reportedWhen,
+    // Normalised to a list here so every consumer has one shape to read. A rule may write a single
+    // code, because most answer exactly one and a list of one reads as ceremony.
     ...("alsoReportedAs" in rule.report && rule.report.alsoReportedAs !== undefined
-      ? { alsoReportedAs: rule.report.alsoReportedAs as string }
+      ? {
+          alsoReportedAs: (Array.isArray(rule.report.alsoReportedAs)
+            ? rule.report.alsoReportedAs
+            : [rule.report.alsoReportedAs]) as readonly string[],
+        }
       : {}),
   }));
 }

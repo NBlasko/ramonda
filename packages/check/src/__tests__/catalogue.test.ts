@@ -43,8 +43,31 @@ describe("the rule catalogue", () => {
    */
   test("a named diagnostic is spelled like one", () => {
     for (const rule of ruleCatalogue()) {
-      if (rule.alsoReportedAs === undefined) continue;
-      expect(rule.alsoReportedAs, rule.id).toMatch(/^RMD\d{3}$/);
+      // A LIST now: one rule can answer several codes — `duplicate-decorators` answers four, one
+      // per single-use decorator, because what the framework does about each differs.
+      for (const code of rule.alsoReportedAs ?? []) {
+        expect(code, rule.id).toMatch(/^RMD\d{3}$/);
+      }
+    }
+  });
+
+  /**
+   * No code is claimed by two rules.
+   *
+   * Not a style point: a reader who sees `RMD005` and looks it up must find ONE static check to
+   * read, and two rules answering the same code means the reference sends them to a fork in the
+   * road with no way of knowing which half is theirs.
+   */
+  test("no diagnostic is claimed twice", () => {
+    const claimed = new Map<string, string>();
+    for (const rule of ruleCatalogue()) {
+      for (const code of rule.alsoReportedAs ?? []) {
+        // `RMD023` is the one exception, and it is a real pair: `row-without-a-key` reports a row
+        // with no key at all, `index-as-key` reports one whose key says only where the row was.
+        if (code === "RMD023") continue;
+        expect(claimed.has(code), `${code} is claimed by ${claimed.get(code)} and ${rule.id}`).toBe(false);
+        claimed.set(code, rule.id);
+      }
     }
   });
 });

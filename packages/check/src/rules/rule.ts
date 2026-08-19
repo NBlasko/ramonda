@@ -74,8 +74,14 @@ export interface Report<Issue> {
    * left the rule's reach. Naming the code here lets the reference link the two without a second
    * list to keep in step — and lets the generator refuse a code the diagnostics page does not
    * document.
+   *
+   * **A LIST, because one rule can answer several codes.** `duplicate-decorators` covers four of
+   * them — a single-use decorator written twice is `RMD032`, `RMD040`, `RMD045` or `RMD046`
+   * depending on which decorator it was — and it named none, because this field held one string.
+   * The prose in the rule said so and nothing machine-readable did, so the reference linked neither
+   * way. Found by grepping every rule for codes it mentions and comparing against what it declares.
    */
-  alsoReportedAs?: string;
+  alsoReportedAs?: string | readonly string[];
 
   /** The line that opens the section, given everything this rule found. */
   heading(found: readonly Issue[]): string;

@@ -165,6 +165,10 @@ export const duplicateDecorators = {
     reportedWhen:
       "a single-use decorator is written twice: `@Host`, `@catchError`, " +
       "`@ShouldUpdateOnPropsChange` or `@StableProps`",
+    // Four codes, one per decorator, because what the framework does about it differs: `@Host`
+    // throws, the middle two silently pick a winner, `@StableProps` merges. This rule reports the
+    // source of all four, and said so only in prose until the field could hold a list.
+    alsoReportedAs: ["RMD045", "RMD032", "RMD040", "RMD046"],
     heading: (found) => `${found.length} class(es) declaring a single-use decorator twice:`,
     lines: (issue) => {
       // The member is named for a `redundant` report, because that count is per member: without it,

@@ -72,6 +72,7 @@ const EXPECTED_TYPES = [
   "RuleSummary",
   "Split",
   "SplitPoint",
+  "StateMutatedInPlaceIssue",
   "StateWrittenWhileRenderingIssue",
   "TagNeedsItsParentIssue",
   "UnguardedAsyncLifecycleIssue",

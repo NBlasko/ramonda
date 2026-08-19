@@ -48,6 +48,7 @@ export type {
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,
+  StateMutatedInPlaceIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
   UnguardedAsyncLifecycleIssue,
