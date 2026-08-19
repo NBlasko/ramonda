@@ -1,4 +1,4 @@
-import { check, fillIn, lowersDecorators, refuse, refuseOff } from "./settings";
+import { PUBLIC_ENV_PREFIX, check, fillIn, lowersDecorators, refuse, refuseEnvPrefix, refuseOff } from "./settings";
 
 /**
  * Structural, rather than imported from `vite`, so this package's types do not make the whole of
@@ -13,6 +13,8 @@ interface VitePluginLike {
 }
 
 interface UserConfigLike {
+  /** Which variables reach the browser. See `PUBLIC_ENV_PREFIX`. */
+  envPrefix?: string | string[];
   // `jsx` is Vite's own union rather than `string`, so this plugin is assignable where Vite expects
   // a plugin. Widening it type-checks here and fails at every call site, which is the wrong way round.
   esbuild?:
@@ -43,6 +45,17 @@ interface UserConfigLike {
  *
  * A target that is already safe is left exactly as it is, for the same reason: it was a real choice.
  */
+/**
+ * Whether a prefix setting is the one Ramonda needs — as the bare string, or as a one-entry list,
+ * because Vite accepts both spellings and an app writing the array form did not mean anything
+ * different by it.
+ */
+function samePrefix(prefix: string | string[] | undefined): boolean {
+  if (prefix === undefined) return false;
+  const list = typeof prefix === "string" ? [prefix] : prefix;
+  return list.length === 1 && list[0] === PUBLIC_ENV_PREFIX;
+}
+
 export function ramonda(): VitePluginLike {
   return {
     name: "ramonda",
@@ -66,9 +79,16 @@ export function ramonda(): VitePluginLike {
       if (target !== undefined && !lowersDecorators(target))
         throw refuse("`esbuild.target` in your Vite config", target);
 
+      if (config.envPrefix !== undefined && !samePrefix(config.envPrefix)) {
+        throw refuseEnvPrefix("your Vite config", config.envPrefix);
+      }
+
       // Every setting the app did not name, and only those, so a choice of its own survives the
       // merge — Vite applies this OVER the user's config, so returning one would replace it.
-      return { esbuild: fillIn(config.esbuild) };
+      return {
+        esbuild: fillIn(config.esbuild),
+        ...(config.envPrefix === undefined ? { envPrefix: PUBLIC_ENV_PREFIX } : {}),
+      };
     },
 
     /**
@@ -81,6 +101,12 @@ export function ramonda(): VitePluginLike {
       check("the resolved Vite config", config.esbuild);
       if (!lowersDecorators(config.esbuild?.target)) {
         throw refuse("the resolved Vite config's `esbuild.target`", config.esbuild?.target);
+      }
+      // Checked here as well as above for the reason this hook exists: another plugin merges after
+      // this one, and exposing a wider set of variables than the app asked for is the one mistake in
+      // this area nobody can walk back once a page has shipped.
+      if (!samePrefix(config.envPrefix)) {
+        throw refuseEnvPrefix("the resolved Vite config's `envPrefix`", config.envPrefix);
       }
     },
   };

@@ -4,7 +4,8 @@ import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ramonda, ramondaOptions } from "../esbuild";
+import { ramonda, ramondaDefine, ramondaOptions } from "../esbuild";
+import { envDefines, publicEnv } from "../settings";
 
 /**
  * esbuild is where this actually went wrong, and the reason is one line of its documentation: the
@@ -82,5 +83,113 @@ describe("the plugin", () => {
 
     expect(seen).toBe("es2020");
     expect(parsed).toBe(true);
+  });
+});
+
+/**
+ * `import.meta.env`, and the two things that measurement showed were not obvious.
+ *
+ * esbuild neither provides `import.meta.env` nor complains about a read of it: an undefined key stays a
+ * live reference, and `import.meta.env` is undefined at runtime, so the read THROWS in a browser. So the
+ * floor object has to be defined as well as each key — and the floor object is the trap in this whole
+ * feature, because putting `process.env` in it would ship every secret the build machine had.
+ */
+describe("environment variables", () => {
+  const ENV = {
+    RAMONDA_PUBLIC_API_BASE: "https://api.example.com",
+    RAMONDA_SESSION_SECRET: "super-secret-value",
+    DATABASE_URL: "postgres://nope",
+    NOT_RAMONDA: "x",
+  };
+
+  /** Bundles a source of its own, because this question is about reads rather than decorators. */
+  async function bundleSource(source: string, options: Parameters<typeof esbuild>[0]) {
+    const dir = await mkdtemp(join(tmpdir(), "ramonda-build-env-"));
+    try {
+      const entry = join(dir, "entry.ts");
+      await writeFile(entry, source);
+      const result = await esbuild({
+        ...options,
+        entryPoints: [entry],
+        bundle: true,
+        format: "esm",
+        write: false,
+      });
+      return result.outputFiles.map((file) => file.text).join("\n");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  const READS =
+    `export const shown = import.meta.env.RAMONDA_PUBLIC_API_BASE;\n` +
+    `export const secret = import.meta.env.RAMONDA_SESSION_SECRET;\n` +
+    `export const missing = import.meta.env.RAMONDA_PUBLIC_NOT_SET;\n`;
+
+  test("publicEnv takes the prefixed names and nothing else", () => {
+    expect(publicEnv(ENV)).toEqual({ RAMONDA_PUBLIC_API_BASE: "https://api.example.com" });
+  });
+
+  test("envDefines emits the floor object AND each key, and the floor holds only public names", () => {
+    const defines = envDefines(ENV);
+
+    // The floor, so an unknown key reads `undefined` rather than throwing.
+    expect(JSON.parse(defines["import.meta.env"])).toEqual({
+      RAMONDA_PUBLIC_API_BASE: "https://api.example.com",
+    });
+    // The per-key entry, which is what gets inlined as a literal.
+    expect(defines["import.meta.env.RAMONDA_PUBLIC_API_BASE"]).toBe('"https://api.example.com"');
+    // And nothing for the secret, under either shape.
+    expect(defines["import.meta.env.RAMONDA_SESSION_SECRET"]).toBeUndefined();
+    expect(defines["import.meta.env"]).not.toContain("super-secret-value");
+  });
+
+  test("the plugin inlines the public value and leaves no trace of the others", async () => {
+    const before = { ...process.env };
+    Object.assign(process.env, ENV);
+    try {
+      const code = await bundleSource(READS, { plugins: [ramonda()] });
+
+      expect(code).toContain('"https://api.example.com"');
+      // The value, not just the name: a bundle that carried it under any spelling would fail here.
+      expect(code).not.toContain("super-secret-value");
+      expect(code).not.toContain("postgres://nope");
+      // And no read is left as a live reference, which is what would throw in a browser.
+      expect(code).not.toMatch(/import\.meta\.env\./);
+    } finally {
+      for (const key of Object.keys(ENV)) delete process.env[key];
+      Object.assign(process.env, before);
+    }
+  });
+
+  test("the plugin merges UNDER a define the build already made", async () => {
+    const before = { ...process.env };
+    Object.assign(process.env, ENV);
+    try {
+      const code = await bundleSource(`export const dev = __DEV__;\n`, {
+        plugins: [ramonda()],
+        define: { __DEV__: "false" },
+      });
+      // Replacing `define` rather than merging would take `__DEV__` away and leave it undeclared.
+      expect(code).toContain("false");
+    } finally {
+      for (const key of Object.keys(ENV)) delete process.env[key];
+      Object.assign(process.env, before);
+    }
+  });
+
+  test("ramondaDefine lets the caller's own name win", () => {
+    const before = { ...process.env };
+    Object.assign(process.env, ENV);
+    try {
+      const defines = ramondaDefine({ __DEV__: "false", "import.meta.env": '{"MINE":1}' });
+      expect(defines.__DEV__).toBe("false");
+      // The caller asked for it explicitly, so it wins — refusing here would be surprising in a
+      // function whose whole job is to be merged into.
+      expect(defines["import.meta.env"]).toBe('{"MINE":1}');
+    } finally {
+      for (const key of Object.keys(ENV)) delete process.env[key];
+      Object.assign(process.env, before);
+    }
   });
 });

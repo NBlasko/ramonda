@@ -47,6 +47,92 @@ export function lowersDecorators(target: string | readonly string[] | undefined)
   return list.some((entry) => entry.toLowerCase() !== "esnext");
 }
 
+/**
+ * The prefix that decides what reaches the browser.
+ *
+ * ## Why a prefix at all, and why only on this half
+ *
+ * A variable is only safe to ship if somebody decided it was, and the decision has to be visible in
+ * the name — otherwise adding one to a `.env` is one keystroke away from publishing a secret. So the
+ * PUBLIC half is prefixed and the server half is not: `DATABASE_URL` comes from the host — Docker, Fly,
+ * a CI secret — and the app does not get to rename it. Next, Vite, Astro and SvelteKit all draw the line
+ * in the same place.
+ *
+ * Read on the server with `process.env.WHATEVER`. Read in shared or client code with
+ * `import.meta.env.RAMONDA_PUBLIC_WHATEVER`, which both bundlers turn into a literal.
+ *
+ * ## Measured, because two things about it were not obvious
+ *
+ * **Vite's `envPrefix` REPLACES its default rather than adding to it.** Setting this means `VITE_*`
+ * stops being exposed — measured, in both `build` and `dev`. That is deliberate: one convention is the
+ * point, and an app that was reading `VITE_*` finds out from the build rather than from a page.
+ *
+ * **esbuild leaves an undefined `import.meta.env.X` as a live reference**, and creates no
+ * `import.meta.env`, so the read THROWS in a browser. Measured. That is why {@link envDefines} emits
+ * the object as well as each key.
+ */
+export const PUBLIC_ENV_PREFIX = "RAMONDA_PUBLIC_";
+
+/**
+ * The variables that may travel, and nothing else.
+ *
+ * Takes the environment rather than reading `process.env` itself, so the caller decides — a build
+ * script may have loaded a `.env` of its own, and a test can hand it a fixture.
+ */
+export function publicEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (name.startsWith(PUBLIC_ENV_PREFIX) && value !== undefined) out[name] = value;
+  }
+  return out;
+}
+
+/**
+ * esbuild `define` entries that make `import.meta.env.RAMONDA_PUBLIC_*` mean the same thing it means
+ * under Vite.
+ *
+ * Two kinds of entry, and both are needed:
+ *
+ * - **`import.meta.env` itself**, as the floor. Without it an undefined key stays a live reference and
+ *   throws, because esbuild does not create the object — measured. With it, an unknown key reads
+ *   `undefined`, which is what Vite does.
+ * - **one entry per public name**, which is what gets inlined as a literal, and therefore what lets a
+ *   bundler eliminate `if (import.meta.env.RAMONDA_PUBLIC_FLAG)` branches. The specific entry wins over
+ *   the object — measured.
+ *
+ * **The floor object is the trap in this whole feature.** `JSON.stringify(process.env)` there would
+ * ship every secret the machine had. Only {@link publicEnv} may go in, which is why this takes the
+ * environment through that function and not directly.
+ */
+export function envDefines(env: Record<string, string | undefined>): Record<string, string> {
+  const values = publicEnv(env);
+  const out: Record<string, string> = { "import.meta.env": JSON.stringify(values) };
+  for (const [name, value] of Object.entries(values)) {
+    out[`import.meta.env.${name}`] = JSON.stringify(value);
+  }
+  return out;
+}
+
+/**
+ * The refusal for an `envPrefix` the app chose itself.
+ *
+ * Same rule as `target` and `jsx`: fill in what was not said, refuse what disagrees. Refusing matters
+ * more here than it looks, because Vite MERGES a plugin's config over the app's — so quietly returning
+ * this key would take the app's own choice away and expose a different set of variables than it asked
+ * for, which is the one mistake in this area that cannot be walked back.
+ */
+export function refuseEnvPrefix(where: string, actual: unknown): Error {
+  return new Error(
+    `[ramonda] ${where} sets \`envPrefix\` to ${JSON.stringify(actual)}, and Ramonda needs ` +
+      `${JSON.stringify(PUBLIC_ENV_PREFIX)}.\n` +
+      `That prefix is how a variable is marked safe to ship: anything named \`${PUBLIC_ENV_PREFIX}…\` is ` +
+      `inlined into the browser bundle, and everything else stays on the server, read with ` +
+      `\`process.env\`.\n` +
+      `Remove the \`envPrefix\` line and this plugin will set it. If you need another prefix exposed as ` +
+      `well, expose it deliberately: read it on the server and pass it down, or rename the variable.`,
+  );
+}
+
 /** What a transform can be told, in the shape both adapters share. */
 interface Told {
   jsx?: string;

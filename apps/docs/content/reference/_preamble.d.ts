@@ -3,6 +3,21 @@
 export {};
 
 declare global {
+  /**
+   * What the build page's environment example assumes: Node's `process`, the reader's own database
+   * connect, and a component of theirs that takes a URL. None of the three is Ramonda's, and naming
+   * them here is what keeps the example about the variables.
+   */
+  const process: { env: Record<string, string | undefined> };
+  const connect: (url: string | undefined) => void;
+  class Feed extends Component<{ from: string }> {
+    [key: string]: any;
+    render(): any;
+  }
+  /** The app's own declaration of what it reads — shown on the build page, and needed to type it. */
+  interface ImportMetaEnv {
+    readonly RAMONDA_PUBLIC_API_BASE: string;
+  }
   interface Signup {
     email: string;
     password: string;

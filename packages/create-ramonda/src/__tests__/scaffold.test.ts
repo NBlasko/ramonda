@@ -285,7 +285,11 @@ describe("development is development", () => {
     expect(read("vite.config.ts")).toContain("__DEV__");
     expect(read("vite.config.ts")).toMatch(/__DEV__.*true/);
     expect(read("scripts/build.mjs")).toContain('conditions: ["production"]');
-    expect(read("scripts/build.mjs")).toContain('define: { __DEV__: "false" }');
+    // Through `ramondaDefine`, which merges in the `import.meta.env.RAMONDA_PUBLIC_*` entries — writing
+    // `define` plainly would drop them and every such read would throw in a browser. The assertion is
+    // still about `__DEV__` being false in the build; only the spelling moved.
+    expect(read("scripts/build.mjs")).toContain('ramondaDefine({ __DEV__: "false" })');
+    expect(read("scripts/build.mjs")).toContain('ramondaDefine } from "@ramonda/build/esbuild"');
     expect(scripts.start).toContain("--prod");
   });
 });
