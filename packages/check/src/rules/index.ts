@@ -21,6 +21,8 @@ import { positiveTabIndex } from "./positive-tabindex";
 import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInProps } from "./fresh-object-in-props";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
+import { accessKey } from "./access-key";
+import { mediaWithNoCaptions } from "./media-with-no-captions";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
@@ -89,6 +91,8 @@ export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabinde
 export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
 export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
+export { accessKey, type AccessKeyIssue } from "./access-key";
+export { mediaWithNoCaptions, type MediaWithNoCaptionsIssue } from "./media-with-no-captions";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
@@ -172,6 +176,8 @@ export const ELEMENT_RULES = [
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,
+  accessKey,
+  mediaWithNoCaptions,
 ] as const;
 
 /**

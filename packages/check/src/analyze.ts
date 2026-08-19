@@ -18,6 +18,7 @@ import {
   TREE_RULES,
 } from "./rules";
 import type {
+  AccessKeyIssue,
   AriaHiddenOnFocusableIssue,
   AriaValueIssue,
   AriaWithNoSubjectIssue,
@@ -43,6 +44,7 @@ import type {
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   LinkWithoutADestinationIssue,
+  MediaWithNoCaptionsIssue,
   PersistOfALossyValueIssue,
   PositiveTabIndexIssue,
   RoleMissingRequiredAriaIssue,
@@ -67,6 +69,7 @@ import type {
  */
 
 export type {
+  AccessKeyIssue,
   AriaHiddenOnFocusableIssue,
   AriaValueIssue,
   AriaWithNoSubjectIssue,
@@ -92,6 +95,7 @@ export type {
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   LinkWithoutADestinationIssue,
+  MediaWithNoCaptionsIssue,
   PersistOfALossyValueIssue,
   PositiveTabIndexIssue,
   RoleMissingRequiredAriaIssue,

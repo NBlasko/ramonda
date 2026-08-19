@@ -24,6 +24,7 @@ const EXPECTED = ["analyzeProject", "diffGraphs", "filesOf", "refuseToDiff", "ru
  * able to name what it is holding.
  */
 const EXPECTED_TYPES = [
+  "AccessKeyIssue",
   "AnalyzeResult",
   "AriaHiddenOnFocusableIssue",
   "AriaValueIssue",
@@ -55,6 +56,7 @@ const EXPECTED_TYPES = [
   "InteractiveInsideInteractiveIssue",
   "LateRequestReadIssue",
   "LinkWithoutADestinationIssue",
+  "MediaWithNoCaptionsIssue",
   "PersistOfALossyValueIssue",
   "PositiveTabIndexIssue",
   "RoleMissingRequiredAriaIssue",

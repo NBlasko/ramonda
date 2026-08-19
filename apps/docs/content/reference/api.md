@@ -358,7 +358,8 @@ your config rather than guessing at them.
 | `Split`, `SplitPoint` | What `splitOf` answers. |
 | `GraphDiff` | What `diffGraphs` answers. |
 
-Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
+Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
+`ArrowFieldIssue`,
 `AriaHiddenOnFocusableIssue`, `AriaValueIssue`, `AsyncRenderIssue`, `AriaWithNoSubjectIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
 `ClickWithNoKeyboardPathIssue`, `ClientOnlyRequestReadIssue`,
 `ClockReadWhileRenderingIssue`, `ComputeReadsAPlainFieldIssue`,
@@ -367,7 +368,7 @@ Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
 `DuplicateKeyAmongSiblingsIssue`, `EmptyHeadingOrLinkIssue`, `FreshObjectInPropsIssue`,
 `HeadTagsCollideIssue`,
 `HeadingSkipsALevelIssue`, `IndexAsKeyIssue`, `InteractiveInsideInteractiveIssue`,
-`LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
+`LateRequestReadIssue`, `LinkWithoutADestinationIssue`, `MediaWithNoCaptionsIssue`,
 `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
 `RowWithoutAKeyIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
 `UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
