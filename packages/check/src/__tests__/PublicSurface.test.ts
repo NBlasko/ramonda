@@ -31,6 +31,7 @@ const EXPECTED_TYPES = [
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",
   "AsyncRenderIssue",
+  "AttributeThatDoesNothingIssue",
   "BrowserUrlIssue",
   "ClassInsteadOfClassNameIssue",
   "ClickWithNoKeyboardPathIssue",

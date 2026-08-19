@@ -45,6 +45,110 @@ type ObservableEvents<T extends BaseElements> = {
       K]: T[K] extends Function ? T[K] : T[K];
 };
 
+/**
+ * Names that typecheck and do nothing, refused here with the reason in the error.
+ *
+ * `ObservableEvents<T>` maps every property of the DOM interface, so a PROPERTY that is not an
+ * attribute is accepted as one. An HTML attribute is written through `setAttribute`, which
+ * lowercases the name — so `innerHTML` arrives as `innerhtml`, an attribute nothing reads. Measured
+ * for every camelCase name a JSX author might reach for; these are the ones that came back dead.
+ *
+ * ## Why the type is a SENTENCE and not `never`
+ *
+ * `never` produces "Type 'string' is not assignable to type 'undefined'", which says something is
+ * wrong and nothing about what to do. A string literal type puts the answer in the error itself:
+ * TypeScript prints the expected type, so the expected type is the advice.
+ *
+ * Kept SHORT for the same reason. The error is read in an editor's tooltip and on one terminal
+ * line, which is the most cramped place any of this project's prose appears — the first drafts ran
+ * to 144 characters and arrived as a wall. What a reader needs is the name to write.
+ *
+ * ## Why these are refused rather than aliased
+ *
+ * `class` and `for` are aliased because they are RESERVED WORDS — that is the whole rule
+ * `concepts/jsx` states, and it is complete. Nothing here is reserved: `http-equiv` and
+ * `accept-charset` are writable exactly as HTML spells them, and `value` and `checked` are the
+ * attributes React's `default*` pair stands in for. Aliasing them would turn a two-name exception
+ * into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
+ */
+interface RefusedNames {
+  innerHTML: "write the markup as children — `innerHTML` is not an attribute";
+  textContent: "write the text as children — `textContent` is not an attribute";
+}
+
+/**
+ * The same idea, for names that are dead on ONE element rather than on all of them.
+ *
+ * Written as separate types so each tag refuses only what is meaningless ON IT — a `<div>` has no
+ * business being told about `http-equiv`, and an error naming an attribute the element does not
+ * take is an error somebody has to decode before they can use it.
+ */
+export interface RefusedOnMeta {
+  httpEquiv: "write `http-equiv`, with the hyphen, as HTML spells it";
+}
+
+export interface RefusedOnForm {
+  acceptCharset: "write `accept-charset`, with the hyphen, as HTML spells it";
+}
+
+/**
+ * React's uncontrolled-input pair, which this framework does not have.
+ *
+ * There is no controlled/uncontrolled distinction here: the `value` and `checked` attributes ARE
+ * the initial state, and a render decides them like any other attribute.
+ */
+export interface RefusedOnFields {
+  defaultValue: "write `value` — the attribute IS the initial value";
+  defaultChecked: "write `checked` — the attribute IS the initial state";
+}
+
+/**
+ * The ways an element can be given a name, as a requirement rather than a suggestion.
+ *
+ * An image and a frame are the two things on a page that a reader who cannot see them has nothing
+ * else to go on for: everything else can be worked out from what is inside it, and these have
+ * nothing inside them. So the name is not a nicety, it is the content.
+ *
+ * ## Why a union rather than `alt: string`
+ *
+ * Because `alt` is one of four ways, and the checker already knows that: `unnamed-image` accepts
+ * `alt`, `aria-label`, `aria-labelledby` or `title`, and `unnamed-frame` accepts the last three.
+ * A type demanding `alt` alone would refuse `<img aria-label="…">` — markup the checker calls
+ * correct — and a type and a rule disagreeing about the same line is worse than either being
+ * slightly lax.
+ *
+ * `alt=""` satisfies this, which is right: it is the documented way to say "decoration, skip me",
+ * and it is a decision somebody made rather than one they forgot.
+ *
+ * ## What it does to a spread, which is the point
+ *
+ * `<img {...rest} />` with an untyped bag is refused, because nothing about that bag says a name is
+ * in it. That is exactly the case the checker cannot speak about — a spreading element is handed to
+ * no rule at all — so the two halves cover each other rather than overlapping.
+ *
+ * A spread that carries a name in its TYPE passes, which is the shape a wrapper component should
+ * have anyway.
+ *
+ * ## And why `alt={maybe}` is refused when `maybe` is `string | undefined`
+ *
+ * Because it is not proof. Measured: an attribute given `undefined` is not written at all — no
+ * `alt`, not even an empty one — so a name that MIGHT be undefined is a name that might not be
+ * there, and this type exists to say it is.
+ *
+ * `ramonda-check` is quiet about the same line, and the two are not in disagreement. The rule asks
+ * whether an `alt` was WRITTEN, because it cannot evaluate an expression and reporting a maybe is
+ * the one thing it may never do. The type can see the expression's type, so it asks the stronger
+ * question. Permissive where nothing can be known, strict where something can — the same division
+ * as with the spread above.
+ *
+ * The fix is to decide: `alt={caption ?? ""}` says "no caption, and that is deliberate", which is
+ * exactly what an empty `alt` means.
+ */
+export type NamedImage = { alt: string } | { "aria-label": string } | { "aria-labelledby": string } | { title: string };
+
+/** The same, for a frame: `alt` is not one of its attributes, so `title` leads. */
+export type NamedFrame = { title: string } | { "aria-label": string } | { "aria-labelledby": string };
+
 export type RamondaArgs<T extends BaseElements> = Partial<
   | ObservableEvents<T>
   | {
@@ -53,7 +157,8 @@ export type RamondaArgs<T extends BaseElements> = Partial<
       key: string | number;
       ref: RefTarget<T>;
     }
->;
+> &
+  Partial<RefusedNames>;
 
 export interface SVGArguments extends SVGGraphicsElement {
   width: string | number;

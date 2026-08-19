@@ -4,8 +4,14 @@ import { App } from "./App";
 import { routes } from "./routes";
 import { brand } from "@ramonda/theme";
 
-/** Where the site is served from — used to build absolute og:image / canonical URLs. */
-const BASE = "https://ramonda.pages.dev";
+/**
+ * Where the site is served from — used to build absolute og:image / canonical URLs.
+ *
+ * Exported because the sitemap needs the same origin, and a second copy of it in the prerender
+ * script would be a fact written twice: a move would take the canonical tags with it and leave the
+ * sitemap pointing at the old host, which is the one file nobody opens to check.
+ */
+export const BASE = "https://ramonda.pages.dev";
 
 const DESCRIPTION = "Ramonda — a UI framework. Explicit. Predictable. Readable.";
 

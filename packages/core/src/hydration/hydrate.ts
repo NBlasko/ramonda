@@ -544,6 +544,13 @@ function adoptHost(component: BaseComponent, host: EnhancedChildNode, vnode: VNo
 function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void {
   const componentRuntime = component[COMPONENT_RUNTIME];
 
+  // The watch is over the moment the promise settles, whichever way it settled —
+  // so this is cleared ABOVE the early returns below rather than beside the
+  // successful path. A subtree that resumed into a destroyed component has
+  // answered the question the timer was asking just as much as one that
+  // rendered.
+  clearStalledHydrationWatch(component);
+
   // Torn down while its promise was in flight. The nodes are already gone; the
   // promise resolving must not write into a dead component.
   if (componentRuntime.isDestroyed) return;
@@ -609,6 +616,24 @@ function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void 
  */
 const STALLED_HYDRATION_MS = 10_000;
 
+/**
+ * The armed timers, so a subtree that resumes can put its own out.
+ *
+ * A WeakMap rather than a field on the component runtime, and the reason is
+ * size: every component would carry the field, while only a deferred subtree
+ * ever arms a timer. Nothing has to be removed on teardown either — the entry
+ * dies with the component it is keyed by.
+ */
+const stalledWatches = new WeakMap<object, ReturnType<typeof setTimeout>>();
+
+/** Puts out the watch armed for this subtree, if there was one. */
+function clearStalledHydrationWatch(component: BaseComponent): void {
+  const timer = stalledWatches.get(component);
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  stalledWatches.delete(component);
+}
+
 function watchForStalledHydration(component: BaseComponent): void {
   const timer = setTimeout(() => {
     const componentRuntime = component[COMPONENT_RUNTIME];
@@ -635,8 +660,17 @@ function watchForStalledHydration(component: BaseComponent): void {
     }
   }, STALLED_HYDRATION_MS);
 
-  // Do not hold a Node process (or a test run) open waiting for a diagnostic.
+  /**
+   * Two different things, and the second is why the first is not enough.
+   *
+   * `unref` keeps a Node process (or a test run) from being held open — and it
+   * is Node-only. In a browser there is no `unref`, so an armed timer holds its
+   * closure, and the closure holds the component, for the full ten seconds after
+   * the subtree is finished with. Recording it is what lets `resumeHydration`
+   * put it out at once.
+   */
   (timer as unknown as { unref?: () => void }).unref?.();
+  stalledWatches.set(component, timer);
 }
 
 /** Element vnodes carry an uppercased tag (it matches nodeName); components carry a class. */

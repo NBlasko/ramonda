@@ -57,7 +57,60 @@ and `htmlFor`:
 ```
 
 Everything else — `id`, `href`, `disabled`, `value`, `placeholder`, `aria-*`,
-`data-*` — is written exactly as in HTML.
+`data-*` — is written exactly as in HTML. That includes the hyphenated ones:
+`http-equiv` and `accept-charset` are written with their hyphens, not as
+`httpEquiv` and `acceptCharset`.
+
+Those two are the exception list in full. An attribute name is given to
+`setAttribute` as it stands, so a name spelled any other way arrives in the
+document as something no browser reads — it renders, it does nothing, and there
+is nothing on the page to see. The types refuse the ones people reach for, with
+the right spelling written into the error:
+
+| written | what it should be |
+|---|---|
+| `httpEquiv` | `http-equiv` |
+| `acceptCharset` | `accept-charset` |
+| `defaultValue` | `value` — the attribute **is** the initial value |
+| `defaultChecked` | `checked` |
+| `innerHTML`, `textContent` | the element's children |
+
+There is no controlled/uncontrolled pair here, which is why `defaultValue` has
+nothing to mean: a render decides `value` like it decides any other attribute.
+
+**An image and a frame have to be named.** `<img>`, `<area>` and `<iframe>` are
+the two things on a page with nothing inside them to work them out from, so the
+name is the content rather than a nicety — and the types ask for one:
+
+```tsx
+<img src="/chart.png" alt="Revenue, rising through Q3" />
+<img src="/divider.png" alt="" />        // decoration: a decision, not an omission
+<iframe src="/map" title="Office location" />
+```
+
+Any of `alt`, `aria-label`, `aria-labelledby` or `title` satisfies it — the same
+four [`ramonda-check`](/reference/check) accepts, so the type and the rule never
+disagree about a line. `alt=""` counts, because saying "skip me" is an answer.
+
+Two consequences worth knowing, and both come from the same place — the type
+asks for proof, not for an attempt.
+
+`<img {...props} />` needs a `props` whose **type** carries one of the four. An
+untyped bag is refused, since nothing about it says a name is in there.
+
+And a name that might be `undefined` is refused too: an attribute given
+`undefined` is not written at all, so `alt={caption}` where `caption` is
+`string | undefined` leaves the image with no `alt` whatever. Decide instead:
+
+```tsx
+<img src="/photo.jpg" alt={caption ?? ""} />
+```
+
+`ramonda-check` is quiet on both of those lines, and that is not the two of them
+disagreeing. A rule may never report a maybe — a spreading element is handed to
+no rule at all, and an expression is not something it can evaluate. The type can
+see both, so it asks the stronger question. Permissive where nothing can be
+known, strict where something can.
 
 **SVG keeps its real names.** Inside SVG the names are written exactly as SVG defines
 them — `stroke-width` with a dash, `viewBox` in camelCase — because the JSX mirrors
