@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 29 of them.
+**Warnings.** These print and the run still passes. 30 of them.
 
 | rule | reported when |
 |---|---|
@@ -143,6 +143,7 @@ rules**, so a rule cannot be added without appearing here.
 | `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
+| `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
 | `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |

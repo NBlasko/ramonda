@@ -366,7 +366,7 @@ Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
 `DuplicateKeyAmongSiblingsIssue`, `EmptyHeadingOrLinkIssue`, `HeadTagsCollideIssue`,
 `HeadingSkipsALevelIssue`, `IndexAsKeyIssue`, `InteractiveInsideInteractiveIssue`,
 `LateRequestReadIssue`,
-`PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
+`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
 `RowWithoutAKeyIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
 `UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
 `UnsplittableImportIssue`, `UnwatchedFieldIssue`.

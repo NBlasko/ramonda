@@ -50,6 +50,7 @@ const EXPECTED_TYPES = [
   "IndexAsKeyIssue",
   "InteractiveInsideInteractiveIssue",
   "LateRequestReadIssue",
+  "PersistOfALossyValueIssue",
   "PositiveTabIndexIssue",
   "RoleMissingRequiredAriaIssue",
   "RoleTakesNoNameIssue",

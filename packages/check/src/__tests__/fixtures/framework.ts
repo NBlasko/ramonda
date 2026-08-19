@@ -36,6 +36,8 @@ export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unkno
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;
 export declare function compute(value: unknown, context: unknown): void;
+/** Serialized-but-not-reactive state — the hydration blob's own decorator. */
+export declare function persist(value: unknown, context: unknown): void;
 
 /** The form's two hooks, as much of them as a fixture needs. */
 export declare class Form<S> {

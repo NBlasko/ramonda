@@ -27,6 +27,7 @@ import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
+import { persistOfALossyValue } from "./persist-of-a-lossy-value";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
@@ -89,6 +90,7 @@ export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
+export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-of-a-lossy-value";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
@@ -117,6 +119,7 @@ export const CLASS_RULES = [
   domWrites,
   duplicateDecorators,
   unwatchedFields,
+  persistOfALossyValue,
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
