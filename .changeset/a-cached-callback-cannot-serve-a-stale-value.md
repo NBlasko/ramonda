@@ -49,6 +49,10 @@ and wiping the map instead fails the second.
 reads nothing, track nothing and are never invalidated — which is the whole purpose of each cache. When a
 signal WAS read, a rebuild is the honest answer: the row or the handler behaves differently now.
 
+Both halves are real runtime code rather than development checks, and the production bundle grew by
+**146 B gzipped** — 21043 → 21189, measured by bundling `core`'s entry with `--define:__DEV__=false`
+against the same file on `main`.
+
 Ten tests across `ListCallbackIdentity.test.tsx` and `MemoizedHandlerStaleness.test.tsx`, including the
 four nested-list combinations (both inline, both stable, only outer, only inner) and the boundary that is
 NOT fixed and now says so: a stable callback reading a plain field still caches it, exactly as a
