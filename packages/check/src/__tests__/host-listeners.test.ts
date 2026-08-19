@@ -14,12 +14,25 @@ const run = () => analyzeProject(join(here, "fixtures", "host-listeners", "tscon
  * syntax, so the pair is provable without asking anything about types.
  */
 describe("a listener on the default host", () => {
-  test("every `@onElement` on a boxless host is reported, with the event named", () => {
+  test("a non-bubbling event on a boxless host is reported, with the event named", () => {
     const found = run().findings["listener-on-the-default-host"];
     expect(found.map((issue) => `${issue.component}.${issue.member}:${issue.event}`)).toEqual([
       "Bare.onEnter:mouseenter",
-      "Bare.onClick:click",
+      "Bare.onFocus:focus",
     ]);
+  });
+
+  /**
+   * The narrowing, and it came from the rule being questioned rather than from reading it.
+   *
+   * A click on a CHILD of a boxless host reaches the listener perfectly well — measured in core: the
+   * handler ran and the count went up. Bubbling needs an ANCESTOR, not a box, and the host is one.
+   * So a bubbling listener there is not a fault, and the first version reported working code, which
+   * is the one thing this package refuses to do. `RMD042` was narrowed to match.
+   */
+  test("a bubbling event is not reported, because it arrives", () => {
+    const found = run().findings["listener-on-the-default-host"];
+    expect(found.some((issue) => issue.event === "click" || issue.event === "input")).toBe(false);
   });
 
   /** `@onWindow` and `@onDocument` resolve to the globals, so the host has nothing to do with them. */
@@ -36,5 +49,6 @@ describe("a listener on the default host", () => {
   test("a real element, declared or inherited, is silent", () => {
     const found = run().findings["listener-on-the-default-host"];
     expect(found.some((issue) => issue.component === "Boxed" || issue.component === "Inherits")).toBe(false);
+    expect(found).toHaveLength(2);
   });
 });

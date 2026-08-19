@@ -10,9 +10,19 @@ import type { Rule } from "./rule";
  * parent's grid or flex row exactly as if the component were not there.
  *
  * The cost is that it has no BOX. An element with `display: contents` generates no box, so nothing
- * can be over it, and a pointer event can never have it as the direct target. `@onElement("click")`
- * still sees clicks on the children, because they bubble — but `mouseenter`, `mouseleave` and
- * anything else that does not bubble never arrives at all, and the handler simply never runs.
+ * can be over it and nothing can enter it.
+ *
+ * ## Only a NON-BUBBLING event, and that narrowing came from being asked
+ *
+ * The first version reported every `@onElement` on a default host, which is what the runtime did
+ * too. Measured after the question was put: a click on a CHILD of a boxless host reaches the
+ * listener perfectly well — the handler ran, the count went up. Bubbling does not need a box; it
+ * needs an ancestor, and the host is one.
+ *
+ * So a bubbling listener there is not a fault and reporting it was reporting working code, which is
+ * the one thing this package refuses to do. What genuinely never arrives is an event dispatched at
+ * its target and nowhere else: `mouseenter` needs a box to enter, `focus` needs something
+ * focusable. Those are reported, and `RMD042` was narrowed to match.
  *
  * The framework reports it as `RMD042` when the listener is attached, which is on mount and on the
  * client. This says it before the page is opened, including for a component behind a route nobody
@@ -43,9 +53,10 @@ export interface ListenerOnTheDefaultHostIssue {
 /**
  * Events that do not bubble, so on a boxless host the handler never runs at all.
  *
- * Said separately in the report because the two cases differ by a lot. A `click` on a default host
- * still arrives from the children, and the listener does most of what its author wanted; a
- * `mouseenter` arrives never. The list is the DOM's, not a judgement.
+ * The list is the DOM's rather than a judgement: each of these is dispatched at its target and
+ * nowhere else. `focusin`/`focusout` are deliberately absent — they are the BUBBLING counterparts
+ * of `focus`/`blur` and reach an ancestor perfectly well. Mirrors `DOES_NOT_BUBBLE` in
+ * `base/decorators.ts`, which decides the same thing at runtime.
  */
 const DOES_NOT_BUBBLE: ReadonlySet<string> = new Set([
   "mouseenter",
@@ -113,24 +124,22 @@ export const listenerOnTheDefaultHost = {
     reportedWhen:
       "`@onElement` is on a component with no `@Host`, so the listener sits on a `display: contents` host that has no box",
     alsoReportedAs: ["RMD042"],
-    heading: (found) => `${found.length} listener(s) on a host with no box:`,
+    heading: (found) => `${found.length} listener(s) waiting for an event that cannot arrive:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       `    <${issue.component}>'s \`${issue.member}\` waits for "${issue.event}" on the default ` +
-        `\`<ramonda-host>\`, which has \`display: contents\` and no box — ${
-          DOES_NOT_BUBBLE.has(issue.event)
-            ? `and "${issue.event}" does not bubble, so it never arrives`
-            : "so it can never be the direct target, only the end of a bubble"
-        }.`,
+        `\`<ramonda-host>\`, which has \`display: contents\` and no box — and "${issue.event}" does ` +
+        "not bubble, so it never arrives.",
     ],
     advice:
       'Without `@Host` a component\'s host is `<ramonda-host style="display: contents">`, and that\n' +
       "is the point of it: it takes part in no layout, so the markup inside lands in the parent's\n" +
       "grid or flex row as if the component were not there.\n\n" +
       "What it has no part in is being a target. `display: contents` generates no box, so nothing\n" +
-      "can be over it. An event that BUBBLES still reaches the listener from the children, and one\n" +
-      "that does not — `mouseenter`, `mouseleave`, `focus`, `blur`, `scroll` — never arrives, and\n" +
-      "the handler never runs.\n\n" +
+      "can be over it and nothing can enter it.\n\n" +
+      "A BUBBLING event is unaffected and is not reported: a click on a child reaches the listener\n" +
+      "perfectly well, because bubbling needs an ancestor rather than a box. This event is\n" +
+      "dispatched at its target and nowhere else, so it never arrives here at all.\n\n" +
       'Give the component a real element with `@Host("div")`, or move the listener onto the element\n' +
       "that should carry it and hand it a handler in the markup.\n\n" +
       "This is a warning today and an error in a later version.",
@@ -149,10 +158,11 @@ export const listenerOnTheDefaultHost = {
         if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) continue;
         if (call.expression.text !== "onElement") continue;
 
-        // The event as written. An expression this cannot read leaves the rule with nothing to say
-        // about which half of the fault this is, so it says nothing at all.
+        // The event as written. An expression this cannot read says nothing about whether it
+        // bubbles, and that is the whole question.
         const written = call.arguments[0];
         if (written === undefined || !ts.isStringLiteralLike(written)) continue;
+        if (!DOES_NOT_BUBBLE.has(written.text)) continue;
 
         found.push({
           component: self.name,
