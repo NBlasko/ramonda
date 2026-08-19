@@ -1632,13 +1632,29 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
               return;
             }
 
+            /**
+             * A listener on the default host, for an event that cannot reach it.
+             *
+             * Only a NON-BUBBLING one, and that narrowing is a fix. This used to report every
+             * `@onElement` on a `<ramonda-host>`, and most of them work: measured — a click on a
+             * child of a boxless host reaches the listener perfectly well, because it bubbles. The
+             * host has no box, so it can never be the direct TARGET; it is still an ancestor, and
+             * an ancestor is all a bubbling listener needs.
+             *
+             * What genuinely never arrives is an event that does not bubble. `mouseenter` needs a
+             * box to enter, `focus` needs something focusable — and neither is ever reported by any
+             * other means, which is what makes this worth a code of its own.
+             */
             if (__DEV__ && decoratorName === "onElement" && (target as Node).nodeName === HOST_TAG) {
-              diagnose(
-                "RMD042",
-                `${component.constructor.name}.${type}`,
-                `@onElement is listening for "${type}" on the default <ramonda-host>.`,
-                { component: component.constructor.name, event: type },
-              );
+              if (DOES_NOT_BUBBLE.has(type)) {
+                diagnose(
+                  "RMD042",
+                  `${component.constructor.name}.${type}`,
+                  `@onElement is listening for "${type}" on the default <ramonda-host>, which has no box — ` +
+                    `and "${type}" does not bubble, so it never arrives.`,
+                  { component: component.constructor.name, event: type },
+                );
+              }
             }
 
             // The one cast, and it is confined here: addEventListener hands back
@@ -1662,6 +1678,28 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
  *
  *   @onWindow("resize") onResize(e: UIEvent) { … }
  */
+/**
+ * Events that do not bubble, so an ancestor listener never sees them.
+ *
+ * Read against the DOM's own definitions rather than chosen: each of these is dispatched at its
+ * target and nowhere else. `focusin`/`focusout` are deliberately absent — they are the BUBBLING
+ * counterparts of `focus`/`blur` and reach an ancestor perfectly well.
+ */
+const DOES_NOT_BUBBLE: ReadonlySet<string> = new Set([
+  "mouseenter",
+  "mouseleave",
+  "pointerenter",
+  "pointerleave",
+  "focus",
+  "blur",
+  "load",
+  "unload",
+  "abort",
+  "error",
+  "scroll",
+  "resize",
+]);
+
 export const onWindow = createEventListenerDecorator<EventOwner, WindowEventMap>("onWindow", () =>
   typeof window !== "undefined" ? window : null,
 );

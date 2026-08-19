@@ -83,7 +83,10 @@ export const rowWithoutAKey = {
   report: {
     severity: "warn",
     reportedWhen: "a row built by `map` or by `list()` has no `key`",
-    alsoReportedAs: "RMD023",
+    // `RMD023` is the `map` half — no identity at all. `RMD051` is the `list()` half: an identity
+    // was inferred and could not tell the row from its siblings. This rule reports the source of
+    // both, which is a row whose identity nobody chose.
+    alsoReportedAs: ["RMD023", "RMD051"],
     /**
      * The heading names WHICH way the rows were built, when they were all built one way.
      *

@@ -133,22 +133,28 @@ rules**, so a rule cannot be added without appearing here.
 |---|---|
 | `async-render` | `render()` is `async`, so it returns a promise where the diff expects markup — also [`RMD060`](/reference/diagnostics) |
 | `arrow-fields` | a class field holds a function literal, so every instance builds a fresh one and props comparison can never match |
-| `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
+| `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD045`](/reference/diagnostics), [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics), [`RMD050`](/reference/diagnostics) |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 
-**Warnings.** These print and the run still passes. 43 of them.
+**Warnings.** These print and the run still passes. 49 of them.
 
 | rule | reported when |
 |---|---|
-| `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics) |
+| `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics), [`RMD018`](/reference/diagnostics) |
+| `state-mutated-in-place` | a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires — also [`RMD005`](/reference/diagnostics), [`RMD048`](/reference/diagnostics) |
+| `decorator-that-adds-nothing` | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics) |
+| `unkeyable-memoized-argument` | a `@memoizedHandler` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
 | `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
-| `compute-reads-a-plain-field` | a `@compute` reads an ordinary field that is written after the first render, so the cached value goes stale |
+| `cached-read-of-a-plain-field` | a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale — also [`RMD027`](/reference/diagnostics) |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
 | `watch-of-a-prop-that-is-not-there` | a `@watchProp` selector names something the component's props type does not declare, so the method never runs |
 | `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |
+| `unserializable-state` | a `@state` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, and the project renders on a server — also [`RMD019`](/reference/diagnostics), [`RMD033`](/reference/diagnostics) |
+| `interval-with-no-cleanup` | a component starts a raw `setInterval` whose id nothing ever clears, so it keeps firing after unmount — also [`RMD006`](/reference/diagnostics) |
+| `listener-on-the-default-host` | `@onElement` is on a component with no `@Host`, so the listener sits on a `display: contents` host that has no box — also [`RMD042`](/reference/diagnostics) |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
 | `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |
@@ -157,7 +163,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
-| `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics) |
+| `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
 | `class-instead-of-classname` | an element carries `class` where `className` was meant, so it styles nothing — also [`RMD039`](/reference/diagnostics) |
 | `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select |
@@ -173,7 +179,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unnamed-frame` | an `iframe` has no `title` |
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
-| `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — `#` or `javascript:` |
+| `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
 | `fresh-object-in-props` | an object or array literal is written into a component's props, so it is a new value every render and comparison can never match |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |

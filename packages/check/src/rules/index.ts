@@ -42,8 +42,11 @@ import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
+import { stateMutatedInPlace } from "./state-mutated-in-place";
+import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
+import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
-import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
+import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
@@ -51,6 +54,9 @@ import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
 import { persistOfALossyValue } from "./persist-of-a-lossy-value";
+import { unserializableState } from "./unserializable-state";
+import { intervalWithNoCleanup } from "./interval-with-no-cleanup";
+import { listenerOnTheDefaultHost } from "./listener-on-the-default-host";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
@@ -129,16 +135,22 @@ export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-h
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
-export { computeReadsAPlainField, type ComputeReadsAPlainFieldIssue } from "./compute-reads-a-plain-field";
+export { cachedReadOfAPlainField, type CachedReadOfAPlainFieldIssue } from "./cached-read-of-a-plain-field";
 export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
+export { stateMutatedInPlace, type StateMutatedInPlaceIssue } from "./state-mutated-in-place";
+export { decoratorThatAddsNothing, type DecoratorThatAddsNothingIssue } from "./decorator-that-adds-nothing";
+export { unkeyableMemoizedArgument, type UnkeyableMemoizedArgumentIssue } from "./unkeyable-memoized-argument";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-of-a-lossy-value";
+export { unserializableState, type UnserializableStateIssue } from "./unserializable-state";
+export { intervalWithNoCleanup, type IntervalWithNoCleanupIssue } from "./interval-with-no-cleanup";
+export { listenerOnTheDefaultHost, type ListenerOnTheDefaultHostIssue } from "./listener-on-the-default-host";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
@@ -167,8 +179,11 @@ export { rootsIn, treeFor } from "./tree";
 export const CLASS_RULES = [
   asyncRender,
   stateWrittenWhileRendering,
+  stateMutatedInPlace,
+  decoratorThatAddsNothing,
+  unkeyableMemoizedArgument,
   clockReadWhileRendering,
-  computeReadsAPlainField,
+  cachedReadOfAPlainField,
   arrowFields,
   browserUrl,
   domWrites,
@@ -176,6 +191,9 @@ export const CLASS_RULES = [
   unwatchedFields,
   watchOfAPropThatIsNotThere,
   persistOfALossyValue,
+  unserializableState,
+  intervalWithNoCleanup,
+  listenerOnTheDefaultHost,
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
@@ -315,7 +333,8 @@ export interface RuleSummary {
   /** The condition, as a clause completing "reported when". */
   reportedWhen: string;
   /** The runtime diagnostic reporting the same fault, for the rules that have one. */
-  alsoReportedAs?: string;
+  /** Every runtime code this rule answers, in the order the reference should list them. */
+  alsoReportedAs?: readonly string[];
 }
 
 /**
@@ -329,8 +348,14 @@ export function ruleCatalogue(): RuleSummary[] {
     id: rule.id,
     severity: rule.report.severity,
     reportedWhen: rule.report.reportedWhen,
+    // Normalised to a list here so every consumer has one shape to read. A rule may write a single
+    // code, because most answer exactly one and a list of one reads as ceremony.
     ...("alsoReportedAs" in rule.report && rule.report.alsoReportedAs !== undefined
-      ? { alsoReportedAs: rule.report.alsoReportedAs as string }
+      ? {
+          alsoReportedAs: (Array.isArray(rule.report.alsoReportedAs)
+            ? rule.report.alsoReportedAs
+            : [rule.report.alsoReportedAs]) as readonly string[],
+        }
       : {}),
   }));
 }
@@ -351,11 +376,21 @@ export function emptyFindings(): Findings {
  * the question. Deciding it here rather than inside each rule means the answer is computed once for
  * the whole project instead of once per class, and that a new rule cannot forget to ask.
  */
-export function activate<R extends { id: string }>(all: readonly R[], imported: ReadonlySet<string>): R[] {
+export function activate<R extends { id: string }>(
+  all: readonly R[],
+  imported: ReadonlySet<string>,
+  rendersOnServer = true,
+): R[] {
   // `"needs" in rule` rather than `rule.needs`: these are the rules' own inferred types, and a rule
   // that declares no `needs` has no such property to read. Narrowing asks the question the optional
   // field was meant to ask, without widening every rule to `Rule<unknown>` and losing its id.
-  return all.filter((rule) => !("needs" in rule) || rule.needs === undefined || imported.has(rule.needs as string));
+  return all.filter((rule) => {
+    if ("needs" in rule && rule.needs !== undefined && !imported.has(rule.needs as string)) return false;
+    // The second gate, and the same shape as the first: a rule whose fault only exists when there
+    // is a hydration blob to cross is not SKIPPED in a browser-only project, it is not asked.
+    if ("needsServerRendering" in rule && rule.needsServerRendering === true && !rendersOnServer) return false;
+    return true;
+  });
 }
 
 /**

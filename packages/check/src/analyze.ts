@@ -32,7 +32,7 @@ import type {
   ClickWithNoKeyboardPathIssue,
   ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
-  ComputeReadsAPlainFieldIssue,
+  CachedReadOfAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
   DomWriteIssue,
@@ -748,6 +748,23 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * present just as plainly.
    */
   const imported = new Set<string>();
+
+  /**
+   * Whether anything in this project renders on a server — a fact some rules are only true under.
+   *
+   * Read from the same import statements and by the same argument as `imported`: an IMPORT, not a
+   * mounted anything. The four names are core's server-side entries plus `hydrateRoot`, which is
+   * the client half of the same story — a project that hydrates was rendered on a server by
+   * definition, whatever it imports to do it.
+   *
+   * A browser-only project is not a project where these rules are quietly skipped; it is a project
+   * where they are not asked. `@state` holding a `Map` is perfectly correct with no blob to cross,
+   * so a rule about it has no premise there at all — the same stance `needs` takes about a rule
+   * whose package is absent.
+   */
+  const SERVER_ENTRIES = new Set(["renderToString", "renderPage", "renderStatic", "hydrateRoot"]);
+  let rendersOnServer = false;
+
   for (const file of sources) {
     for (const statement of file.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
@@ -755,6 +772,16 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!specifier.startsWith("@ramonda/")) continue;
       const [scope, name] = specifier.split("/");
       imported.add(`${scope}/${name}`);
+
+      // `@ramonda/server` exists for one purpose, so importing it is the answer on its own.
+      if (`${scope}/${name}` === "@ramonda/server") rendersOnServer = true;
+
+      const clause = statement.importClause?.namedBindings;
+      if (clause !== undefined && ts.isNamedImports(clause)) {
+        for (const element of clause.elements) {
+          if (SERVER_ENTRIES.has((element.propertyName ?? element.name).text)) rendersOnServer = true;
+        }
+      }
     }
   }
 
@@ -765,7 +792,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * times for one component would be the same answer 68 times. `exempt` is per class and is applied
    * by `applyClass` — see the note on it.
    */
-  const rules = activate(CLASS_RULES, imported);
+  const rules = activate(CLASS_RULES, imported, rendersOnServer);
 
   /**
    * The per-FILE rules, and one pass over the sources to run them.
@@ -784,14 +811,14 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * function is markup all the same, and an accessibility fault does not become acceptable for
    * having been written outside a class.
    */
-  const elementRules = activate(ELEMENT_RULES, imported);
+  const elementRules = activate(ELEMENT_RULES, imported, rendersOnServer);
 
   const readElements = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings);
     ts.forEachChild(node, readElements);
   };
 
-  const moduleRules = activate(MODULE_RULES, imported);
+  const moduleRules = activate(MODULE_RULES, imported, rendersOnServer);
 
   /**
    * The per-RENDER rules, from the same pass again.
@@ -801,7 +828,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * From the FILE rather than from a class, for the same reason the element rules do: markup
    * written in a plain helper function is markup all the same.
    */
-  const treeRules = activate(TREE_RULES, imported);
+  const treeRules = activate(TREE_RULES, imported, rendersOnServer);
 
   /**
    * The per-PROJECT rules — the fifth subject, and the only one that needs the whole source set
@@ -815,7 +842,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * Built only when a rule would read it — the walk is one pass over every file, and a project
    * whose rules are all gated off should not pay for it.
    */
-  const projectRules = activate(PROJECT_RULES, imported);
+  const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
   if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources), findings);
 
   for (const file of sources) {

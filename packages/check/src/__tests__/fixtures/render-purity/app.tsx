@@ -1,3 +1,4 @@
+import { Panel } from "./inherited";
 import { Component, Host, bootstrap, compute, list, memoizedHandler, mounted, state } from "../framework";
 import { plainLabel, stampedLabel } from "./format";
 
@@ -101,3 +102,19 @@ class Untimed extends Component {
 
 bootstrap(<Impure />, null);
 bootstrap(<Untimed />, null);
+
+/**
+ * REPORTED — the write is on the base, and so is the field.
+ *
+ * Written last so it cannot move any other case's line numbers, and separate from every other class
+ * here because it is the one that needs a second file to be the fault at all.
+ */
+@Host("div")
+class InheritsIt extends Panel {
+  render() {
+    this.count();
+    return <div>{this.hits}</div>;
+  }
+}
+
+bootstrap(<InheritsIt />, null);
