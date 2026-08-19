@@ -1,5 +1,6 @@
 ---
 "@ramonda/build": minor
+"@ramonda/check": minor
 "create-ramonda": patch
 ---
 
@@ -36,6 +37,18 @@ is worse than no key. The plugin form needs none of this; it merges after the op
 **`envPrefix` set by the app is REFUSED, not merged**, in `config` and again in `configResolved` — because
 Vite merges a plugin's config over the app's, so quietly returning that key would expose a different set of
 variables than the app asked for, which is the one mistake here that cannot be walked back.
+
+**And a rule that catches the migration, because the migration is where this bites.**
+`unexposed-env-read` reports `import.meta.env.NAME` for any name nothing exposes — a `VITE_*` left over
+from before, a name with no prefix, or `RAMONDA_` without `PUBLIC`, which is the one that most reads as if
+it should already work. It suggests the name to use, stripping the old prefix rather than nesting it.
+
+It is an **error**, not the usual warning-first, and it is one of the few rules here that is genuinely
+COMPLETE: it asks nothing about where a value came from or whether one was set, only whether the NAME —
+written on the spot — is in the exposed set. That answer does not depend on an environment or a `.env`
+file, so there is no path it has to go quiet for. The exceptions are the bundler's own five names, a
+computed key, and a site carrying `ramonda-check-ignore`. Zero hits across `apps/docs`, both playgrounds,
+form and query.
 
 New: `PUBLIC_ENV_PREFIX` and `publicEnv(env)` from the main entry, `ramondaDefine(own?)` from
 `@ramonda/build/esbuild`. The `create-ramonda` SSR template's build script now calls `ramondaDefine`.

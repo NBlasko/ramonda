@@ -63,6 +63,7 @@ const EXPECTED_TYPES = [
   "UnknownRoleIssue",
   "UnnamedFrameIssue",
   "UnnamedImageIssue",
+  "UnexposedEnvReadIssue",
   "UnsplittableImportIssue",
   "UnwatchedFieldIssue",
   "Where",

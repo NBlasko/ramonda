@@ -33,6 +33,7 @@ import { headingSkipsALevel } from "./heading-skips-a-level";
 import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-provider";
 import { clientOnlyRequestRead } from "./client-only-request-read";
 import { oneProviderPerComponent } from "./one-provider-per-component";
+import { unexposedEnvRead } from "./unexposed-env-read";
 
 export type {
   ElementContext,
@@ -93,6 +94,7 @@ export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
 export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./one-provider-per-component";
+export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
 export { contextHalfOf, type ContextHalf } from "./context-pair";
 export {
   contextConsumedAboveItsProvider,
@@ -125,7 +127,7 @@ export const CLASS_RULES = [
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
-export const MODULE_RULES = [unsplittableImport] as const;
+export const MODULE_RULES = [unsplittableImport, unexposedEnvRead] as const;
 
 /**
  * Every rule that reads one JSX ELEMENT — where accessibility lives.

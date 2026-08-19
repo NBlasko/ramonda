@@ -39,6 +39,7 @@ export type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
 } from "./analyze";

@@ -48,6 +48,7 @@ import type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
 } from "./rules";
@@ -89,6 +90,7 @@ export type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
 };
