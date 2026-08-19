@@ -178,21 +178,48 @@ is what makes the shape above the answer.
 
 ## Telling a phone from a desktop
 
-`ctx.headers.get("user-agent")` is the header, and there is nothing else to it. What is worth
-knowing is what reading it costs and where it goes wrong.
+**Nothing in the first request tells you the screen size.** Not the user agent — that is a string the
+browser chooses, every browser lies in it for compatibility, and Chrome is deliberately *reducing* what
+it contains. Client hints (`Accept-CH: Sec-CH-Viewport-Width`) need a round trip before the browser starts
+sending them, and a cookie written by the page needs a previous visit. On a single-page app the first
+request is the *only* document request, so neither ever arrives.
 
-**Try CSS first.** A media query costs nothing, is right when somebody resizes the window, and lets
-the same HTML serve every visitor — so the page can still be [static](/ssr/modes). Reach for the
-header only when the two need different **markup**: a chart component you do not want to send to a
-phone at all, a list that is a table on one and cards on the other.
+So this is not a question of how to find out. It is a question of **what to render while you do not
+know**, and there are three answers.
 
-**It makes the route per-request.** The header is part of who is asking, so a build cannot know it;
-reading it during one throws, on purpose, rather than baking one visitor's answer for everybody.
+| the two versions differ in… | do this | what it costs |
+|---|---|---|
+| **layout** — same data, same components | **CSS**: container queries, or a media query | nothing. Right when someone resizes, and the page can stay [static](/ssr/modes) |
+| **components** — different markup, different data | **defer**: send a layout-neutral shell, decide on the client after mount | a placeholder for one frame |
+| components, and a placeholder is worse than being wrong | **guess** from the user agent, and accept that a wrong guess is permanent | see below |
 
-**Decide once, on the server, and keep the answer in state.** This is the part that catches people:
-headers do not exist in the browser, so the same read at hydration returns nothing and the branch
-flips — the server sent the phone's markup and the client rebuilds the desktop's. `@state` is
-serialised into the page, so a decision made in `@created` arrives with it and hydration agrees:
+**Reach for CSS first, and further than feels natural.** Container queries style an element by *its
+container's* size, so a component adapts without anyone knowing the viewport at all — no guess, no
+server/client split, no flicker. Most "different on mobile" is layout wearing a disguise.
+
+### Deferring, and why it is usually the answer
+
+When the two really are different components, render neither on the server:
+
+```tsx
+class Panel extends Component {
+  @state private narrow: boolean | undefined = undefined;
+
+  @mounted({ env: "client" }) measure() {
+    this.narrow = window.matchMedia("(max-width: 600px)").matches;
+  }
+
+  render() {
+    if (this.narrow === undefined) return <Skeleton />;
+    return this.narrow ? <Cards /> : <Table />;
+  }
+}
+```
+
+The server sends the skeleton, the browser measures the real window, and the right branch arrives a tick
+later. Nobody ever sees the wrong one — and `matchMedia` is a fact, where the user agent is a guess.
+
+### Guessing, and exactly what it costs
 
 ```tsx
 class Page extends Component {
@@ -209,13 +236,39 @@ class Page extends Component {
 }
 ```
 
-Reading the header inside `render()` instead is the version that breaks, and it breaks loudly:
-[`RMD025`](/reference/diagnostics#rmd025-per-request-data-read-in-the-browser) in development, and
-a hydration mismatch when the two renders disagree.
+This is the shape to use *if* you guess, and the reason is real: headers do not exist in the browser, so
+reading one during hydration returns nothing and the branch would flip. `@state` is serialised, so the
+client reads back what the server decided and hydration agrees.
 
-**The string is a guess, not a fact.** Every browser lies in its user agent for compatibility, and a
-tablet, a desktop in a narrow window and a phone in desktop mode are all cases a substring test gets
-wrong. Use it to choose what to *send*, and let CSS handle how it *looks*.
+**But understand what "agrees" buys you.** Measured: with a desktop user agent and a phone browser, the
+server sends the table, the phone shows the table after hydration, and **nothing is reported at all**.
+Hydration agrees — on the wrong answer, permanently, because the decision is frozen into the page. The
+version that reads the window inside `render()` instead ends up *correct* and is reported as
+[`RMD007`](/reference/diagnostics#rmd007-server-and-client-rendered-different-output), at the cost of a
+flicker. So the trade is **flickers-but-right against silent-and-possibly-wrong-for-ever**, and it is
+worth choosing on purpose.
+
+It also makes the route per-request: the header is part of who is asking, so a build cannot know it, and
+reading one during a static build throws rather than baking one visitor's answer for everybody.
+
+### If you guess, guess mobile
+
+A default only ever serves the visitors you could **not** identify — and that population is not your
+audience. It is bots, in-app webviews (which *are* phones, and carry the strangest user agents), privacy
+browsers, anything with a reduced UA. Today an unrecognised string falls through to "desktop", which puts
+every uncertain visitor on the expensive side of the mistake.
+
+Because the mistake is not symmetric. Wrong towards mobile is a narrow column on a wide screen: plain, and
+completely usable. Wrong towards desktop is a wide table on a 380px phone: horizontal scrolling, tap
+targets too small to hit. Mobile also sends less, and when it is wrong the correction lands on the faster
+device.
+
+Your audience changes how *often* you are wrong. It does not change which mistake is worse — and a default
+is chosen by cost, not by frequency. The one real exception is an app that does not work on a phone at
+all, and that wants a message rather than a default.
+
+And if you deferred, this section barely applies: the "default" is what the skeleton looks like, and a
+narrow skeleton fits everywhere.
 
 ## It is not a place for secrets
 
