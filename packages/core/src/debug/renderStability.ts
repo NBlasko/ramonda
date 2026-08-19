@@ -112,17 +112,18 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
    * the same as a plain object's, and only the wording differs — the contents cannot be read,
    * because `valueEqual` walks own enumerable keys and a `Map`'s entries are not those.
    *
-   * **This is the branch that used to return `undefined`**, which made two documented claims
-   * false: both this file and `purityGuard.ts` said `new Date()` was caught "every time (a
-   * fresh object has a fresh identity)". Measured, it was caught nowhere —
-   * `classify(new Date(1), new Date(2))` answered `undefined`, in a prop, in an attribute and
-   * as a child. A stated gap is honest; a gap stated as covered is not.
+   * The test to remember: `classify(new Date(1), new Date(2))` answers `instance`. Without this
+   * branch it answers `undefined`, and a `Date` is then reported in no position at all — not as a
+   * prop, not as an attribute, not as a child — while `purityGuard.ts` lists it under what covers
+   * the clock.
    *
-   * Two different constructors from two calls in one tick is a different value, not a rebuild.
+   * PROTOTYPE identity, not `constructor`: a `class` written inside a render is a new constructor
+   * on every call, so two of its instances share nothing and are a different value rather than a
+   * rebuilt one.
    */
   if (isObjectish(a) && isObjectish(b)) {
-    const sameShape = Object.getPrototypeOf(a) === Object.getPrototypeOf(b);
-    return sameShape ? "instance" : "nondeterministic";
+    const samePrototype = Object.getPrototypeOf(a) === Object.getPrototypeOf(b);
+    return samePrototype ? "instance" : "nondeterministic";
   }
 
   // Two primitives that differ between two calls in the same tick: the render is not
@@ -299,42 +300,68 @@ function compareAttributes(
 
     walk.budget--;
 
-    // A vnode passed as a PROP — `onLoading={<p>…</p>}`, a fallback, children handed
-    // down — is a fresh object on every render because that is what JSX is. Walk into
-    // it (an inline handler inside it still counts) rather than calling the vnode
-    // itself an object built in place.
-    if (isVNode(aValue) && isVNode(bValue)) {
-      compareNode(aValue, bValue, `${path}.${key}`, 0, walk);
-      continue;
-    }
-
-    /**
-     * A plain object prop whose contents are NOT the same. Descend, rather than classify the whole
-     * bag from outside it.
-     *
-     * Measured: `cfg={{ fn: () => 1 }}` was reported as *"produced a different value … so the value
-     * does not come from state"*, with advice to move a `new Date()` or a `Math.random()` into
-     * `@created` — for an inline arrow, in an app that contains neither. The two differ only in a
-     * function's identity, which the thorough compare correctly calls "different" and this then
-     * mis-named. Descending reports `cfg.fn` as the handler it is.
-     *
-     * A different SET of keys from two calls in one tick is not a rebuild at all, and descending
-     * would walk past it — so that stays non-determinism, named here.
-     */
-    if (depth < MAX_DEPTH && isPlainObject(aValue) && isPlainObject(bValue) && !valueEqualThorough(aValue, bValue)) {
-      const aKeys = Object.keys(aValue);
-      const bKeys = Object.keys(bValue);
-      if (aKeys.length !== bKeys.length || aKeys.some((k) => !Object.hasOwn(bValue, k))) {
-        report("nondeterministic", walk.owner, `${path}.${key}`, aValue, bValue);
-        continue;
-      }
-      compareAttributes(aValue, bValue, `${path}.${key}`, walk, skipFunctions, depth + 1);
-      continue;
-    }
-
-    const kind = classify(aValue, bValue);
-    if (kind) report(kind, walk.owner, `${path}.${key}`, aValue, bValue);
+    compareValue(aValue, bValue, `${path}.${key}`, depth, walk);
   }
+}
+
+/**
+ * Decides one differing pair: descend into it, or name it.
+ *
+ * **Why descend at all.** Classifying a whole bag from outside it named the wrong fault. Measured,
+ * `cfg={{ fn: () => 1 }}` was reported as *"produced a different value … so the value does not come
+ * from state"*, under advice to move a `new Date()` or a `Math.random()` into `@created` — for an
+ * inline arrow, in an app containing neither. The two bags differ only in a closure's identity,
+ * which the thorough compare is right to call different and which this was wrong to explain that
+ * way. Descending reports `cfg.fn` as the handler it is.
+ *
+ * **Arrays too, and that is the common shape**: `cols={[{ key: "name", render: () => … }]}` is a
+ * table's column definitions, and it had the same wrong answer for the same reason.
+ *
+ * **A bag whose SHAPE disagrees is not a rebuild** — a different set of keys, a different length —
+ * and descending would walk straight past the extra one. That stays non-determinism, named here.
+ */
+function compareValue(a: unknown, b: unknown, path: string, depth: number, walk: Walk): void {
+  // A vnode passed as a PROP — `onLoading={<p>…</p>}`, a fallback, children handed
+  // down — is a fresh object on every render because that is what JSX is. Walk into
+  // it (an inline handler inside it still counts) rather than calling the vnode
+  // itself an object built in place.
+  if (isVNode(a) && isVNode(b)) {
+    compareNode(a, b, path, 0, walk);
+    return;
+  }
+
+  // Only when the contents are NOT equal. Equal contents ARE the finding — a value rebuilt in
+  // place, which `classify` names `object` — and there is nothing inside it to blame.
+  if (depth < MAX_DEPTH && !valueEqualThorough(a, b)) {
+    if (isPlainObject(a) && isPlainObject(b)) {
+      const aKeys = Object.keys(a);
+      if (aKeys.length !== Object.keys(b).length || aKeys.some((k) => !Object.hasOwn(b, k))) {
+        report("nondeterministic", walk.owner, path, a, b);
+        return;
+      }
+      // `skipFunctions` is not passed on: it exempts a `list()`'s inline BUILDER, one level up.
+      // A function inside an item is not that, and a fresh one per render costs the row its identity.
+      compareAttributes(a, b, path, walk, false, depth + 1);
+      return;
+    }
+
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) {
+        report("nondeterministic", walk.owner, path, a, b);
+        return;
+      }
+      for (let i = 0; i < a.length; i++) {
+        if (walk.budget <= 0) return;
+        if (Object.is(a[i], b[i])) continue;
+        walk.budget--;
+        compareValue(a[i], b[i], `${path}[${i}]`, depth + 1, walk);
+      }
+      return;
+    }
+  }
+
+  const kind = classify(a, b);
+  if (kind) report(kind, walk.owner, path, a, b);
 }
 
 function report(kind: Kind, owner: string, path: string, a: unknown, b: unknown): void {

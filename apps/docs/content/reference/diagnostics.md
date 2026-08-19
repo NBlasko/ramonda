@@ -349,20 +349,25 @@ state lost, `@destroyed` and `@created` run again.
 @compute get config() { … }            // ✓ recomputed only when its inputs change
 ```
 
-If the two objects are **not** the same, the check walks *into* them and each key answers for itself, so
-an inline function inside a config object is reported as the function it is:
+If the two are **not** the same, the check walks *into* them — an object by key, an array by index — so
+a function inside somebody's config is reported as the function it is, at the place it sits:
 
 ```tsx
-<Table cfg={{ rows: 10, onRow: () => this.pick() }} />   // reported as `cfg.onRow`, a handler
+<Table cfg={{ rows: 10, onRow: () => this.pick() }} />        // reported as `cfg.onRow`
+<Table cols={[{ key: "name", render: () => this.cell() }]} /> // reported as `cols[0].render`
 ```
+
+A bag whose *shape* disagrees between the two calls — a different set of keys, a different length — is
+not a rebuild at all, so that is reported as the last case instead.
 
 **An object with a prototype, constructed in place** — a `Date`, a `Map`, a `Set`, a class instance. The
 consequence is the same as a plain object's, and so is the fix: construct it once and keep it in a field,
 a `@compute`, or a module constant.
 
 ```tsx
-<Row at={new Date()} />                // ✗ a new Date every render
-@created init() { this.at = new Date() }   // ✓ decided once
+<Row at={new Date()} />     // ✗ a new Date every render
+readonly at = new Date();   // ✓ constructed once, with the component
+<Row at={this.at} />
 ```
 
 The report says the object is **fresh**, not that its contents matched, because they are not read: the

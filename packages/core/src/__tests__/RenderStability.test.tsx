@@ -492,6 +492,36 @@ describe("the switch", () => {
       expect(reported()).toContain("produced a different value for");
     });
 
+    test("an array of column definitions names the function inside one", async () => {
+      // The shape this matters most for. `cols` differs only because a closure inside item 0 does,
+      // and reporting the array from outside sent the reader looking for randomness.
+      class Panel extends Component {
+        render() {
+          return <Sink cfg={[{ key: "name", render: () => 1 }] as never} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("cfg[0].render");
+      expect(reported()).toContain("the source is the same");
+      expect(reported()).not.toContain("produced a different value for");
+    });
+
+    test("an array whose length disagrees is non-determinism", async () => {
+      let flip = false;
+      class Panel extends Component {
+        render() {
+          flip = !flip;
+          return <Sink cfg={(flip ? [1] : [1, 2]) as never} />;
+        }
+      }
+
+      await getDOM<Panel>(<Panel />);
+
+      expect(reported()).toContain("produced a different value for");
+    });
+
     test("a `children` key one level down is a key, not a tree", async () => {
       // `children` is skipped only in an element's own attributes, where it is a vnode tree
       // walked separately. In somebody's config object it is an ordinary name.

@@ -783,12 +783,13 @@ not those. So it reports the object as FRESH rather than claiming the contents m
 Two disagreeing prototypes in one tick is `nondeterministic` instead — a `class` written
 inside a render is a different constructor each time.
 
-**A plain object prop that is not equal is descended into**, and each key answers for
-itself. Reporting the bag from outside named the wrong fault: `cfg={{ fn: () => 1 }}`
-differs only in a closure's identity, and was reported as "does not come from state"
-under advice to go and find a `Math.random()`. It reports `cfg.fn` as a handler. A
-differing *set* of keys is not a rebuild and stays non-determinism, and `children` one
-level down is an ordinary key rather than a tree.
+**An object or array prop that is not equal is descended into**, and each leaf answers
+for itself. Reporting the bag from outside named the wrong fault: `cfg={{ fn: () => 1 }}`
+and `cols={[{ key: "name", render: () => … }]}` differ only in a closure's identity, and
+were reported as "does not come from state" under advice to go and find a
+`Math.random()`. They report `cfg.fn` and `cols[0].render` as the handlers they are. A
+bag whose SHAPE disagrees is not a rebuild — a different set of keys, a different length
+— and stays non-determinism. `children` one level down is an ordinary key, not a tree.
 
 **It does not catch a millisecond clock**, and that is worth stating rather than
 discovering: the two renders are microseconds apart, so `Date.now()` reads the same
