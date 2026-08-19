@@ -47,6 +47,7 @@ const EXPECTED_TYPES = [
   "GraphDiff",
   "GraphEdge",
   "GraphNode",
+  "FreshObjectInPropsIssue",
   "HeadTagsCollideIssue",
   "HeadingSkipsALevelIssue",
   "IndexAsKeyIssue",

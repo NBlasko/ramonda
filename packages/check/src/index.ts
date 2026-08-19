@@ -26,6 +26,7 @@ export type {
   EmptyHeadingOrLinkIssue,
   Findings,
   HeadingSkipsALevelIssue,
+  FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,

@@ -136,7 +136,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 33 of them.
+**Warnings.** These print and the run still passes. 34 of them.
 
 | rule | reported when |
 |---|---|
@@ -171,6 +171,7 @@ rules**, so a rule cannot be added without appearing here.
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — `#` or `javascript:` |
+| `fresh-object-in-props` | an object or array literal is written into a component's props, so it is a new value every render and comparison can never match |
 | `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
 
