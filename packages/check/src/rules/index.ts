@@ -32,6 +32,7 @@ import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInProps } from "./fresh-object-in-props";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { accessKey } from "./access-key";
+import { attributeThatDoesNothing } from "./attribute-that-does-nothing";
 import { mediaWithNoCaptions } from "./media-with-no-captions";
 import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
 import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
@@ -114,6 +115,7 @@ export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./li
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
 export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
 export { accessKey, type AccessKeyIssue } from "./access-key";
+export { attributeThatDoesNothing, type AttributeThatDoesNothingIssue } from "./attribute-that-does-nothing";
 export { mediaWithNoCaptions, type MediaWithNoCaptionsIssue } from "./media-with-no-captions";
 export { fragmentLinkToNowhere, type FragmentLinkToNowhereIssue } from "./fragment-link-to-nowhere";
 export {
@@ -214,6 +216,7 @@ export const ELEMENT_RULES = [
   freshObjectInProps,
   clickWithNoKeyboardPath,
   accessKey,
+  attributeThatDoesNothing,
   mediaWithNoCaptions,
 ] as const;
 

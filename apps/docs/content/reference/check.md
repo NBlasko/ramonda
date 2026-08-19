@@ -138,7 +138,7 @@ rules**, so a rule cannot be added without appearing here.
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 
-**Warnings.** These print and the run still passes. 42 of them.
+**Warnings.** These print and the run still passes. 43 of them.
 
 | rule | reported when |
 |---|---|
@@ -177,6 +177,7 @@ rules**, so a rule cannot be added without appearing here.
 | `fresh-object-in-props` | an object or array literal is written into a component's props, so it is a new value every render and comparison can never match |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
+| `attribute-that-does-nothing` | an attribute is written whose name reaches the DOM verbatim and that nothing reads |
 | `media-with-no-captions` | a `video` or `audio` element carries no `<track>`, so its content exists only as sound |
 | `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |

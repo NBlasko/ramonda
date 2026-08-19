@@ -12,6 +12,7 @@ export type {
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
   AsyncRenderIssue,
+  AttributeThatDoesNothingIssue,
   BrowserUrlIssue,
   ClassInsteadOfClassNameIssue,
   ClickWithNoKeyboardPathIssue,

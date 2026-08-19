@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { analyzeProject } from "./analyze";
 import { diffGraphs, refuseToDiff } from "./diff";
 import type { ComponentGraph } from "./graph";
-import { failingRules, RULES } from "./rules";
+import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
 
 /**
@@ -43,6 +43,23 @@ const values = new Set([graphAt, diffAgainst].filter((v): v is string => v !== u
 const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
 const tsconfig = resolve(arg ?? "tsconfig.json");
 const TAG = "[ramonda-check]";
+
+/**
+ * The line that opens a rule's section, with the rule's ID in it.
+ *
+ * The id used to appear nowhere in the output, which left a reader with a sentence and no name.
+ * The id is the name: it is the key in `findings`, the row on the reference page, and the thing to
+ * search for — and the reference is a table keyed by it, so somebody who has it can find the entry
+ * and somebody who has only the prose cannot.
+ *
+ * The URL is deliberately NOT printed beside it. The page has no per-rule anchor, so a link would
+ * land at the top of a long reference — the exact failure `links.test.ts` was written about, where
+ * "the docs sent me to the wrong place" reads as a broken site rather than a broken link. The
+ * package's README carries the address once, which is where an address belongs.
+ */
+function sectionHeading(rule: AnyRule, found: readonly unknown[]): string {
+  return `\n${TAG} ${rule.id} — ${rule.report.heading(found as never)}\n`;
+}
 
 if (!existsSync(tsconfig)) {
   console.error(`${TAG} no tsconfig at ${tsconfig}. Pass one: ramonda-check <path>`);
@@ -233,7 +250,7 @@ for (const rule of RULES) {
   if (rule.report.severity !== "warn") continue;
   const found = findings[rule.id];
   if (found.length === 0) continue;
-  console.warn(`\n${TAG} ${rule.report.heading(found as never)}\n`);
+  console.warn(sectionHeading(rule, found));
   for (const issue of found) for (const line of rule.report.lines(issue as never)) console.warn(line);
   console.warn(`\n${rule.report.advice}\n`);
 }
@@ -412,7 +429,7 @@ for (const rule of RULES) {
   if (rule.report.severity !== "error") continue;
   const found = findings[rule.id];
   if (found.length === 0) continue;
-  console.error(`\n${TAG} ${rule.report.heading(found as never)}\n`);
+  console.error(sectionHeading(rule, found));
   for (const issue of found) for (const line of rule.report.lines(issue as never)) console.error(line);
   console.error(`${rule.report.advice}\n`);
 }
