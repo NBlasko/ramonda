@@ -51,8 +51,7 @@ export interface LinkWithoutADestinationIssue {
 const SAYS: Readonly<Record<LinkWithoutADestinationIssue["kind"], string>> = {
   "no href": "no `href` at all, so it is not focusable, not in the tab order, and not announced as a link",
   "empty fragment":
-    '`href="#"`, which is this page — a middle click, "open in new tab" and the context menu all ' +
-    "go nowhere",
+    '`href="#"`, which is this page — a middle click, "open in new tab" and the context menu all ' + "go nowhere",
   "javascript:":
     "a `javascript:` href, which is not a destination — every way of following a link but a plain " +
     "click does nothing, and a Content Security Policy refuses this shape first",
@@ -70,20 +69,20 @@ export const linkWithoutADestination = {
       // The handler is named only where it is the diagnosis: an `<a>` with a click and no `href` is
       // a button wearing a link's clothes, which is the whole sentence. Beside `href="#"` it adds
       // nothing the line does not already say.
-      `    <a> has ${issue.kind === "no href" && issue.handled ? "an \`onClick\` but " : ""}${SAYS[issue.kind]}${
+      `    <a> has ${issue.kind === "no href" && issue.handled ? "an `onClick` but " : ""}${SAYS[issue.kind]}${
         issue.kind !== "no href" && issue.handled ? ", and the handler has to cancel the navigation it asked for" : ""
       }.`,
     ],
     advice:
       "The tag is not what makes a link; `href` is. Without a real one an `<a>` is not focusable, is\n" +
       "not in the tab order, is not announced as a link, and does not answer a middle click, a\n" +
-      "context menu or an \"open in new tab\". It still LOOKS like a link, which is why the page\n" +
+      'context menu or an "open in new tab". It still LOOKS like a link, which is why the page\n' +
       "seems fine.\n\n" +
       "If it navigates, give it the destination — `<a href={…}>`, or the `Link` the router builds,\n" +
       "which writes a real one. If it does not navigate, it is a `<button>`: that is the element\n" +
       "for something that acts on this page, and it is focusable, announced and keyboard-operable\n" +
       "without anything being written on it.\n\n" +
-      "`href=\"#section\"` is a real destination and is not reported. Only the bare `#` is.\n\n" +
+      '`href="#section"` is a real destination and is not reported. Only the bare `#` is.\n\n' +
       "This is a warning today and an error in a later version.",
   },
 

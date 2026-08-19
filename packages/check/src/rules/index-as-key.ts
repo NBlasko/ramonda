@@ -120,7 +120,8 @@ export const indexAsKey = {
 
   report: {
     severity: "warn",
-    reportedWhen: "a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had",
+    reportedWhen:
+      "a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had",
     alsoReportedAs: "RMD023",
     heading: (found) => `${found.length} row(s) keyed by their position:`,
     lines: (issue) => [

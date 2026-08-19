@@ -127,7 +127,8 @@ export const persistOfALossyValue = {
 
   report: {
     severity: "warn",
-    reportedWhen: "a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries",
+    reportedWhen:
+      "a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries",
     alsoReportedAs: "RMD033",
     heading: (found) => `${found.length} \`@persist\` field(s) the hydration blob cannot carry:`,
     lines: (issue) => [

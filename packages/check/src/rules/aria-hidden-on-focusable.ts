@@ -54,7 +54,7 @@ export const ariaHiddenOnFocusable = {
 
   report: {
     severity: "warn",
-    reportedWhen: "`aria-hidden=\"true\"` is written on an element a keyboard can still focus",
+    reportedWhen: '`aria-hidden="true"` is written on an element a keyboard can still focus',
     heading: (found) => `${found.length} focusable element(s) hidden from the accessibility tree:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
