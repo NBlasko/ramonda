@@ -1,7 +1,7 @@
 import type { ComponentClassKind, RamondaNode } from "@ramonda/core";
 import { Link as LinkImpl } from "./Link";
 import { Router, RouteOutlet, Navigator as NavigatorImpl } from "./Router";
-import type { PathOf, RouteConfig } from "./match";
+import type { ParamsOf, PathOf, RouteConfig, RouteParams } from "./match";
 import type { StateUpdater } from "./types";
 
 /**
@@ -13,13 +13,8 @@ import type { StateUpdater } from "./types";
  */
 export type Href = string & { readonly __href: unique symbol };
 
-// Pull the `:param` names out of a pattern → the params object it needs.
-type ParamNames<P extends string> = P extends `${string}:${infer Name}/${infer Rest}`
-  ? Name | ParamNames<`/${Rest}`>
-  : P extends `${string}:${infer Name}`
-    ? Name
-    : never;
-type ParamsOf<P extends string> = { [K in ParamNames<P>]: string };
+// `ParamNames` / `ParamsOf` moved to `match.ts`, the leaf both sides can reach: the READ side
+// (`Navigator.params`) needs them too, and this module imports from `Router.tsx`.
 
 /** The `:param` patterns of a config — the only paths `route()` is for (static paths go direct). */
 type ParamPath<C extends RouteConfig> = Extract<PathOf<C>, `${string}:${string}`>;
@@ -100,9 +95,27 @@ export interface TypedLinkProps<P extends string> {
  * Built from the real `Navigator` instance (so it keeps the hook's runtime shape and
  * satisfies `this.use`'s `BaseHook` constraint), with just `push`/`replace` narrowed.
  */
-export type TypedNavigator<P extends string> = Omit<InstanceType<typeof NavigatorImpl>, "push" | "replace"> & {
-  push(href: P, opts?: { scroll?: boolean }): void;
-  replace(href: P, opts?: { scroll?: boolean }): void;
+export type TypedNavigator<C extends RouteConfig> = Omit<
+  InstanceType<typeof NavigatorImpl>,
+  "push" | "replace" | "params"
+> & {
+  push(href: AnyHref<C>, opts?: { scroll?: boolean }): void;
+  replace(href: AnyHref<C>, opts?: { scroll?: boolean }): void;
+  /**
+   * Name the pattern, and the params type comes out of it — `params("/u/:id")` is `{ id: string }`.
+   *
+   * `Pat` is constrained to `ParamPath<C>`: the patterns THIS table declares that actually have
+   * params. So a pattern the table does not name is a type error, and a static path is refused
+   * because it has no params to read — which is one step past inferring from a string a caller made
+   * up, and the reason it is worth binding the kit to one table at all.
+   *
+   * The pattern is checked at runtime too, against what the outlet above matched — see
+   * `assertPattern`. A type argument nothing verifies is the fault this router already refuses on the
+   * writing side.
+   */
+  params<Pat extends ParamPath<C>>(pattern: Pat): ParamsOf<Pat>;
+  /** The untyped door, unchanged: params are strings of unknown shape when no one route is meant. */
+  params<T extends RouteParams = RouteParams>(): T;
 };
 
 /**
@@ -118,7 +131,7 @@ export interface TypedRouterKit<C extends RouteConfig> {
   /** Renders whichever route matches. `<RouteOutlet routes={routes} />`. */
   RouteOutlet: typeof RouteOutlet;
   /** `this.use(Navigator)` — reads the URL + navigates, with `push`/`replace` typed to this table. */
-  Navigator: NoPropsHookClass<TypedNavigator<AnyHref<C>>>;
+  Navigator: NoPropsHookClass<TypedNavigator<C>>;
   /** `<Link href="/…">` — `href` is any path this table names, filled in, or an `Href` from `route()`. */
   Link: ComponentClassKind<TypedLinkProps<AnyHref<C>>>;
   /**
@@ -149,7 +162,7 @@ export function createRouter<C extends RouteConfig>(_routes: C): TypedRouterKit<
   return {
     Router,
     RouteOutlet,
-    Navigator: NavigatorImpl as unknown as NoPropsHookClass<TypedNavigator<AnyHref<C>>>,
+    Navigator: NavigatorImpl as unknown as NoPropsHookClass<TypedNavigator<C>>,
     Link: LinkImpl as unknown as ComponentClassKind<TypedLinkProps<AnyHref<C>>>,
     route: buildRoute as TypedRouterKit<C>["route"],
   };

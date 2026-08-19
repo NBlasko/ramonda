@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ramonda } from "../vite";
+import { PUBLIC_ENV_PREFIX } from "../settings";
 
 function parses(file: string) {
   return new Promise<boolean>((resolve) => {
@@ -102,15 +103,58 @@ describe("what the plugin puts in the config", () => {
 
   test("and it checks the resolved config, in case something later put it back", () => {
     const { configResolved } = hooks(ramonda());
+    // What Vite hands this hook has already been through `config` and the merge, so a healthy
+    // resolved config carries the prefix — calling it without one is not a realistic arrangement.
+    const resolved = { esbuild: { target: "es2022" }, envPrefix: PUBLIC_ENV_PREFIX };
 
-    expect(() => configResolved({ esbuild: { target: "es2022" } })).not.toThrow();
+    expect(() => configResolved(resolved)).not.toThrow();
 
     // Plugin order is not something this package controls, so the value it returned is not proof of
     // the value that survived. All three settings, not just the target.
-    expect(() => configResolved({ esbuild: { target: "esnext" } })).toThrow(/decorator/i);
-    expect(() => configResolved({ esbuild: { target: "es2022", jsxImportSource: "elsewhere" } })).toThrow(
+    expect(() => configResolved({ ...resolved, esbuild: { target: "esnext" } })).toThrow(/decorator/i);
+    expect(() => configResolved({ ...resolved, esbuild: { target: "es2022", jsxImportSource: "elsewhere" } })).toThrow(
       /jsxImportSource/,
     );
+    // And the one nobody can walk back: a later plugin widening what reaches the browser.
+    expect(() => configResolved({ ...resolved, envPrefix: "" })).toThrow(/envPrefix/);
+    expect(() => configResolved({ ...resolved, envPrefix: ["RAMONDA_PUBLIC_", "VITE_"] })).toThrow(/envPrefix/);
+  });
+
+  /**
+   * Which variables reach the browser, which is the one setting here whose mistake cannot be undone:
+   * a secret that shipped, shipped.
+   */
+  describe("envPrefix", () => {
+    test("it is filled in when the app said nothing", () => {
+      const { config } = hooks(ramonda());
+      const returned = config({}, { command: "build", mode: "production" }) as { envPrefix?: string };
+      expect(returned.envPrefix).toBe(PUBLIC_ENV_PREFIX);
+    });
+
+    test("an app that set the same prefix keeps its own line", () => {
+      const { config } = hooks(ramonda());
+      // Not returned, because Vite merges over the app: returning it would replace a line that
+      // already agrees, for no gain.
+      const returned = config({ envPrefix: PUBLIC_ENV_PREFIX }, { command: "build", mode: "production" }) as
+        | Record<string, unknown>
+        | undefined;
+      expect(returned !== undefined && "envPrefix" in returned).toBe(false);
+    });
+
+    test("the one-entry array spelling is the same answer", () => {
+      const { config } = hooks(ramonda());
+      const returned = config({ envPrefix: [PUBLIC_ENV_PREFIX] }, { command: "build", mode: "production" }) as
+        | Record<string, unknown>
+        | undefined;
+      expect(returned !== undefined && "envPrefix" in returned).toBe(false);
+    });
+
+    test("a different prefix is REFUSED rather than overridden", () => {
+      const { config } = hooks(ramonda());
+      // Overriding would expose a different set of variables than the app asked for, in silence.
+      expect(() => config({ envPrefix: "VITE_" }, { command: "build", mode: "production" })).toThrow(/envPrefix/);
+      expect(() => config({ envPrefix: "" }, { command: "build", mode: "production" })).toThrow(/envPrefix/);
+    });
   });
 });
 

@@ -138,36 +138,77 @@ export function createContext<T extends object>(
           return signals.get(key);
         },
       };
-      if (__DEV__) {
-        /**
-         * A SECOND Provider of this context on the SAME component.
-         *
-         * `Object.hasOwn` is the whole check, and it is exact for the same reason the publish is an
-         * own property at all — see the `Context` type. An ancestor that provides the same context
-         * leaves the key INHERITED on this object, which is ordinary and is how nesting works; only
-         * a second publish on one component makes it own, and the second one wins for every
-         * descendant.
-         *
-         * Reported rather than thrown, unlike a plain-object props bag (RMD055): there the shipped
-         * bundle would go on serving a value nobody set, while here the page has one deterministic
-         * reading — the second Provider's — and refusing it would break an app that has been
-         * quietly living with the first one being ignored. The report is what makes the choice
-         * visible; a later version can refuse.
-         */
-        if (Object.hasOwn(owner.context, contextId)) {
-          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+      /**
+       * ONE Provider of a context per component. A second is refused.
+       *
+       * ## Why this is an invariant rather than an option
+       *
+       * A component has one context object and a key on it holds one value, so a second publish
+       * REPLACES the first — and every descendant then reads the second whichever half of the tree
+       * it is in, while the component itself can still read both through its own hooks. That is the
+       * shape of the fault: it looks correct from the one place that made it.
+       *
+       * There is no reading of two the framework could honour, and nothing for an author to declare.
+       * `ContextOptions.single` is a different axis: it says whether NESTING is a fault — two on one
+       * path, on different components — and a context that welcomes nesting (a theme, a form) is
+       * still broken by two on one component. So this needs no option and takes none.
+       *
+       * Splitting the keys between two Providers is not the way out either, and the types already
+       * close it: a Provider takes `options: T` whole, so the second cannot supply half. It would
+       * replace the channel and the first half would fall back to the default.
+       *
+       * ## Why it THROWS, in every build
+       *
+       * Like a write to props (RMD004, RMD015) and a plain-object props bag (RMD055): the
+       * alternative is a shipped bundle serving a value nobody chose, silently, to whichever
+       * descendant asked. A DEV-only report leaves production doing exactly that. The throw sits
+       * outside `if (__DEV__)` so behaviour cannot differ between builds, and the report inside only
+       * explains it.
+       *
+       * ## What to write instead
+       *
+       * Put each Provider on its own component and hand it the subtree it is for, which is React's
+       * Provider in Ramonda's terms:
+       *
+       * ```tsx
+       * @Host("div")
+       * class FormScope extends Component<{ children?: RamondaNode }> {
+       *   private form = this.use(Form, () => ({ … }));
+       *   render() { return this.props.children; }
+       * }
+       * ```
+       *
+       * Measured: a child passed as `children` inherits the WRAPPER's context, not the context of
+       * whoever wrote the JSX — because a context object is created from the component that RENDERS
+       * a node. So two of those side by side are two independent scopes, and a consumer inside each
+       * finds its own with nothing passed down.
+       */
+      if (Object.hasOwn(owner.context, contextId)) {
+        const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+        const owning = holder ?? "this component";
+        if (__DEV__) {
           diagnose(
             "RMD056",
             `${contextId}:${holder ?? "?"}`,
-            `${holder ? `<${holder} /> ` : ""}uses ${Provider.name} twice, so the second one replaces the ` +
-              `first for every descendant. The first is still readable here, through its own hook.`,
+            `${holder ? `<${holder} /> ` : ""}uses ${Provider.name} twice, and the second would replace ` +
+              `the first for every descendant.`,
             { keys: contextKeys.join(", ") },
           );
         }
+        throw new Error(
+          `[RMD056] ${owning} mounts ${Provider.name} twice. A component publishes a context on ONE ` +
+            `object, so the second replaces the first and every descendant reads the second whichever ` +
+            `part of the tree it is in — while ${owning} can still read both, which is what makes the ` +
+            `mistake invisible from here. Put each ${Provider.name} on its own component and give it ` +
+            `the subtree it is for: a component that renders \`this.props.children\` scopes the ` +
+            `context to what is inside it, so two of them side by side are two independent scopes.`,
+        );
+      }
 
+      if (__DEV__) {
         // RMD057, the other direction: a consumer of this context was constructed on this component
         // BEFORE the provider, so it resolved the channel from above and this publish will never
-        // reach it. See `debug/contextPairing.ts` — the report is the same one either way round.
+        // reach it. See `debug/contextPairing.ts`.
         if (hasContextConsumer(owner, contextId)) {
           const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
           reportConsumedAboveProvider(contextId, holder, Provider.name, Consumer.name);

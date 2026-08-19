@@ -192,11 +192,17 @@ describe("a lazy whose source does not name a module", () => {
       }
     }
 
-    // A real module resolution, so it takes as many turns as the loader takes —
-    // waited on by CONDITION rather than a fixed count, which is only reliable
-    // until the machine is busy running the rest of the suite.
+    // A real module resolution, so it takes as long as the loader takes — waited on by CONDITION, and
+    // the budget is a DEADLINE rather than a count of turns.
+    //
+    // It was 50 turns, and 50 turns is not a fair chance: under `turbo run test` this file runs beside
+    // every other package's suite with coverage on, and a real `import()` needs more event-loop turns
+    // there than it does alone. Measured — this test passed standalone (twice, with coverage) and failed
+    // under the gate (twice), for no reason but load. What runs out under load is time, so time is what
+    // the budget has to be.
     const app = await getDOM(<Page />);
-    for (let i = 0; i < 50 && app.container.querySelectorAll("span").length < 2; i++) {
+    const deadline = Date.now() + 5000;
+    while (app.container.querySelectorAll("span").length < 2 && Date.now() < deadline) {
       await tick();
       await app.settle();
     }

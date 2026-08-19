@@ -18,7 +18,7 @@ import * as esbuild from "../esbuild";
  * The docs' `check-api-coverage.mjs` reads this list too, so a new export here has to be
  * acknowledged twice — once as API, once as a row on /reference/build.
  */
-const EXPECTED = ["RAMONDA_TRANSFORM", "lowersDecorators"];
+const EXPECTED = ["PUBLIC_ENV_PREFIX", "RAMONDA_TRANSFORM", "lowersDecorators", "publicEnv"];
 
 /**
  * The shared plumbing, which both adapters import and neither publishes.
@@ -27,7 +27,7 @@ const EXPECTED = ["RAMONDA_TRANSFORM", "lowersDecorators"];
  * what was left unsaid", and an app calling them directly would be configuring the transform by
  * hand again with extra steps — the exact thing the package exists to take away.
  */
-const FORBIDDEN = ["check", "fillIn", "refuse", "refuseOff", "refuseSetting"];
+const FORBIDDEN = ["check", "fillIn", "refuse", "refuseOff", "refuseSetting", "refuseEnvPrefix", "envDefines"];
 
 describe("public API surface", () => {
   test("the main entry exports exactly what it means to", () => {
@@ -59,7 +59,7 @@ describe("public API surface", () => {
   });
 
   test("the esbuild entry publishes the plugin and the options", () => {
-    expect(Object.keys(esbuild).sort()).toEqual(["ramonda", "ramondaOptions"]);
+    expect(Object.keys(esbuild).sort()).toEqual(["ramonda", "ramondaDefine", "ramondaOptions"]);
   });
 });
 
@@ -94,13 +94,13 @@ describe("the published declarations", () => {
     }
   });
 
-  test("the main entry publishes the two names and no types", () => {
+  test("the main entry publishes exactly the named values and no types", () => {
     const exported = [...declarations("index").matchAll(/^export \{([^}]*)\};?/gms)]
       .flatMap(([, names]) => names.split(","))
       .map((name) => name.replace(/\btype\b/, "").trim())
       .filter(Boolean)
       .sort();
 
-    expect(exported).toEqual(["RAMONDA_TRANSFORM", "lowersDecorators"]);
+    expect(exported).toEqual(["PUBLIC_ENV_PREFIX", "RAMONDA_TRANSFORM", "lowersDecorators", "publicEnv"]);
   });
 });

@@ -55,8 +55,12 @@ Each outlet publishes the params *it* matched, and a component reads the nearest
 outlet above it:
 
 ```tsx
-const { teamId } = this.route.params<{ teamId: string }>();
+const { teamId } = this.route.params("/teams/:teamId");
 ```
+
+Name the pattern of the outlet that matched *this* component — not an outer one. Each outlet publishes
+the params it matched, so an inner page reads the inner pattern, and naming a param the inner route does
+not supply throws rather than handing back `undefined`.
 
 ## Next
 

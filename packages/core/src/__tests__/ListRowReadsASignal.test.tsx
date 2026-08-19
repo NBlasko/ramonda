@@ -152,16 +152,25 @@ describe("a list row that reads a signal", () => {
       readonly rows: readonly string[] = ["a", "b"];
       @state unrelated = 1;
       @state shown = "x";
+
+      /**
+       * A METHOD, and the form is the condition for this mirror.
+       *
+       * A fresh closure per render could have captured anything from that render, so the engine
+       * rebuilds every row for it rather than serve a stale capture — which would make `builds` climb
+       * here for a reason that has nothing to do with subscriptions. A method cannot capture, so what
+       * this measures is the item scope, which is the point. See `ListCallbackIdentity.test.tsx`.
+       */
+      row(item: string) {
+        builds++;
+        return <Row item={item} />;
+      }
+
       render() {
         return (
           <div>
             <p>{this.shown}</p>
-            <ul>
-              {list(this.rows, (item) => {
-                builds++;
-                return <Row item={item} />;
-              })}
-            </ul>
+            <ul>{list(this.rows, this.row)}</ul>
           </div>
         );
       }

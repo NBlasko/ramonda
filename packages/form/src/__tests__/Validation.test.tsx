@@ -525,14 +525,37 @@ describe("validation", () => {
     let left!: Form<typeof schema>;
     let right!: Form<typeof schema>;
 
-    class Pair extends Component {
-      private a = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: (_v) => {} }));
-      private b = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: (_v) => {} }));
+    /**
+     * ONE form per component, which is the only arrangement there is: a component publishes a context
+     * on one object, so a second Form on the same one is refused (RMD056). Two side by side are two
+     * components, which is also React's shape — a Provider is a subtree there, and here a component
+     * that renders `this.props.children` is the same thing.
+     */
+    class OneForm extends Component<{ take: (form: Form<typeof schema>) => void }> {
+      private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: (_v) => {} }));
 
       render(): RamondaNode {
-        left = this.a;
-        right = this.b;
+        this.props.take(this.form);
         return <form />;
+      }
+    }
+
+    class Pair extends Component {
+      render(): RamondaNode {
+        return (
+          <div>
+            <OneForm
+              take={(form) => {
+                left = form;
+              }}
+            />
+            <OneForm
+              take={(form) => {
+                right = form;
+              }}
+            />
+          </div>
+        );
       }
     }
 

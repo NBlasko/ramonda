@@ -251,19 +251,25 @@ describe("reactivity graph", () => {
       @state useFlag = true;
       @state flag = "F1";
       @state other = "O1";
-      render() {
+
+      /**
+       * A METHOD, so that what this measures is the SCOPE's dependency set.
+       *
+       * An inline arrow is rebuilt every render by design — a fresh closure could have captured
+       * anything from that render — which would make `mapperRuns` climb for a reason unrelated to
+       * dependencies. See `listEngine.ts`'s `lastBuilder`.
+       */
+      row(row: { t: string }) {
+        mapperRuns++;
         return (
-          <ul>
-            {list(this.rows, (row: { t: string }) => {
-              mapperRuns++;
-              return (
-                <li>
-                  {row.t}-{this.useFlag ? this.flag : this.other}
-                </li>
-              );
-            })}
-          </ul>
+          <li>
+            {row.t}-{this.useFlag ? this.flag : this.other}
+          </li>
         );
+      }
+
+      render() {
+        return <ul>{list(this.rows, this.row)}</ul>;
       }
     }
 

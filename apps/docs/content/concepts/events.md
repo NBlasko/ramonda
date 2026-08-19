@@ -115,6 +115,32 @@ id from the item.
 Entries whose arguments were not asked for during a render are dropped, so the cache
 follows the list instead of growing with every value ever seen.
 
+## What the cache is allowed to remember
+
+The method runs **once per key** and never again, so anything it reads before returning the handler is
+closed into that handler and would be frozen there:
+
+```tsx
+@memoizedHandler
+remove(name: string) {
+  const mode = this.mode;                  // read while BUILDING the handler
+  return () => this.apply(mode, name);
+}
+```
+
+That is watched. The reads the builder makes are tracked, and when one of them changes, **that entry is
+dropped** — the next render builds the handler again, with the value the signal now holds. Only that
+entry: a handler built for other arguments, which read nothing, keeps the very same function.
+
+So the rule is short: **read state inside the returned handler when you can, and if you read it while
+building, expect a new function when it changes** — which is right, because the handler now does
+something different.
+
+A builder that reads nothing is the common case and pays nothing at all: no reads are tracked, no entry
+is ever dropped, and the handler is the same function for the life of the component. A **plain field**
+(not `@state`) read while building is the one thing that cannot be watched, for the same reason it
+cannot be watched anywhere — there is no signal to hear from.
+
 ```demo:MemoHandlers
 ```
 

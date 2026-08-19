@@ -254,24 +254,47 @@ two reports.
 
 ### RMD056 — One context provided twice by the same component
 
-A component publishes a context on ONE object — its own — so a second Provider
-of the same context replaces the first under the same key, and every descendant
-reads the second.
+**It THROWS**, in every build, like a write to props (RMD004, RMD015) and a
+plain-object props bag (RMD055). A component publishes a context on ONE object,
+so a second Provider would replace the first and hand every descendant the
+second whichever part of the tree it is in — while the component itself could
+still read both through its own hooks, which is what makes the mistake invisible
+from the one place that made it. A DEV-only report would leave production doing
+exactly that, silently.
 
 The check is `Object.hasOwn(owner.context, contextId)`, and own-ness is exactly
 the question. A context object is `Object.create(parentContext)`, so a Provider
 ABOVE this component leaves the key inherited here rather than own — which is
-nesting, is ordinary, and must stay silent. Only a second publish on one
-component makes the key own. Widening this to `in` reports every nested
+nesting, is ordinary, and must stay legal. Only a second publish on one
+component makes the key own. Widening this to `in` refuses every nested
 Provider, and core's tests fail if it is.
 
-It reports rather than throwing, unlike RMD055: the page has one deterministic
-reading — the second Provider's — so refusing it would break an app that has
-been living with the first one ignored.
+**Nothing is declared for it, and `single` is a different question.** `single`
+says whether NESTING is a fault — two on one path, on different components — and
+a context that welcomes nesting (a theme, a form) is still broken by two on one
+component. So the two are independent axes, and this one takes no option because
+there is no version of it an author would choose.
 
-What hides the fault is that the first Provider still reads: a Provider provides
-AND reads, so the component that made the mistake is the one place it looks
-fine.
+**What to write instead: one Provider per component, each given the subtree it
+is for.** That is React's Provider in Ramonda's terms — a component that renders
+`this.props.children` scopes the context to what is inside it:
+
+```tsx
+@Host("div")
+class FormScope extends Component<{ children?: RamondaNode }> {
+  private form = this.use(Form, () => ({ … }));
+  render() { return this.props.children; }
+}
+```
+
+Two of those side by side are two independent scopes, and a consumer inside each
+finds its own with nothing passed down. **Measured**, because the refusal rests
+on it: a child passed as `children` inherits the WRAPPER's context, not the
+context of whoever wrote the JSX — a context object is created from the component
+that RENDERS a node.
+
+Splitting the keys between two Providers is not a way out, and the types already
+close it: a Provider takes `options: T` whole, so the second cannot supply half.
 
 ### RMD057 — A context consumed above its provider
 

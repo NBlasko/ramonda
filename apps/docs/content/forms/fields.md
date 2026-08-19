@@ -319,6 +319,14 @@ whole value against the baseline — and the form computes it only while somethi
 Two forms nested behave the way you would want without saying anything: the button watches the nearest
 form above it.
 
+**Two forms side by side are two components**, and that is the only way to write them: a component
+publishes the form context once, so a second `Form` on the same component throws
+([`RMD056`](/reference/diagnostics#rmd056-one-context-provided-twice-by-the-same-component)) rather
+than quietly handing every button below it the second form. Give each form the subtree it belongs to —
+a component that renders `this.props.children` is enough — and a plain `this.use(FormState)` inside
+each finds its own with nothing passed down. See
+[Context](/composition/context#two-of-one-context-a-scope-per-subtree).
+
 With no form above it at all, every fact reads as its default and core reports
 [`RMD003`](/reference/diagnostics) when the component mounts.
 

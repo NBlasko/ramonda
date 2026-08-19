@@ -44,15 +44,22 @@ class Plain extends Component {
     { id: 3, value: "c" },
   ];
   @state unrelated = 0;
+
+  /**
+   * A METHOD, and every scope test in this file depends on the form.
+   *
+   * A fresh closure per render could have captured anything from that render, and nothing can look
+   * inside one — so the engine rebuilds every row for it rather than serve a stale capture. A method
+   * cannot capture a render's locals, so the per-item scopes decide. See `listEngine.ts`'s
+   * `lastBuilder`, and `ListCallbackIdentity.test.tsx`.
+   */
+  row(row: Row) {
+    mapperCalls++;
+    return <Item row={row} />;
+  }
+
   render() {
-    return (
-      <ul>
-        {list(this.rows, (row: Row) => {
-          mapperCalls++;
-          return <Item row={row} />;
-        })}
-      </ul>
-    );
+    return <ul>{list(this.rows, this.row)}</ul>;
   }
 }
 
@@ -64,17 +71,17 @@ class Selecting extends Component {
     { id: 3, value: "c" },
   ];
   @state selected = 1;
+
+  /** A method, for the reason on `Plain.row`. */
+  row(row: Row) {
+    mapperCalls++;
+    // Reads a signal beyond the item — the case that makes naive vnode
+    // caching unsafe, and the reason the mapper runs inside a tracker.
+    return <Item row={row} mark={row.id === this.selected ? "*" : ""} />;
+  }
+
   render() {
-    return (
-      <ul>
-        {list(this.rows, (row: Row) => {
-          mapperCalls++;
-          // Reads a signal beyond the item — the case that makes naive vnode
-          // caching unsafe, and the reason the mapper runs inside a tracker.
-          return <Item row={row} mark={row.id === this.selected ? "*" : ""} />;
-        })}
-      </ul>
-    );
+    return <ul>{list(this.rows, this.row)}</ul>;
   }
 }
 
@@ -170,6 +177,11 @@ describe("per-item reactive scopes", () => {
  * The behaviour CHANGED when per-item scopes arrived: before them the mapper ran
  * on every render, so any unrelated render happened to pick these up. That was
  * accidental rescue, not a guarantee.
+ *
+ * And it is now CONDITIONAL ON THE CALLBACK'S FORM. A stable callback — a method, a module-level
+ * function — is a cache, and these are what a cache cannot see. An inline callback is rebuilt every
+ * render, so it re-reads them; that is not a rescue either, it is the cache not applying. Both halves
+ * are pinned in `ListCallbackIdentity.test.tsx`.
  */
 describe("what the scopes deliberately do not track", () => {
   beforeEach(() => {
@@ -187,14 +199,21 @@ describe("what the scopes deliberately do not track", () => {
       ];
       @state tick = 0;
       mode = "compact"; // deliberately NOT @state
+
+      /**
+       * A METHOD, and that is now the condition for this test's claim.
+       *
+       * A stable callback is a cache over what it read, and a plain field is not something it can have
+       * read reactively — so it is never called again, exactly as a `@compute` over a plain field is
+       * never recomputed. With an INLINE callback the row is rebuilt every render and the write DOES
+       * reach the item; that half is pinned in `ListCallbackIdentity.test.tsx`.
+       */
+      row(row: Row) {
+        return <Item row={row} mark={`-${this.mode}`} />;
+      }
+
       render() {
-        return (
-          <ul data-tick={String(this.tick)}>
-            {list(this.rows, (row: Row) => (
-              <Item row={row} mark={`-${this.mode}`} />
-            ))}
-          </ul>
-        );
+        return <ul data-tick={String(this.tick)}>{list(this.rows, this.row)}</ul>;
       }
     }
 
@@ -203,8 +222,8 @@ describe("what the scopes deliberately do not track", () => {
     expect(dump(app.container)).toBe("a-compact,b-compact");
 
     app.instance.mode = "wide";
-    // Even an unrelated re-render does not rescue it — the whole-list skip means
-    // the items are never looked at.
+    // Even an unrelated re-render does not rescue it: the callback is stable, so the whole-list skip
+    // holds and the items are never looked at.
     app.instance.tick++;
     await app.settle();
 

@@ -314,6 +314,8 @@ build](/reference/build)
 |---|---|
 | `RAMONDA_TRANSFORM` | The three settings themselves — `jsx`, `jsxImportSource`, `target` — for a bundler with no adapter here. |
 | `lowersDecorators(target)` | Whether a target compiles the decorators away. A list lowers if even one entry is something other than `esnext`. |
+| `PUBLIC_ENV_PREFIX` | `"RAMONDA_PUBLIC_"` — the prefix that marks an environment variable safe to ship to the browser. |
+| `publicEnv(env)` | The variables in `env` that may travel, and nothing else. |
 
 ### `@ramonda/build/vite`
 
@@ -326,6 +328,7 @@ build](/reference/build)
 | | |
 |---|---|
 | `ramondaOptions` | The settings, ready to spread into a build you call yourself. |
+| `ramondaDefine(own?)` | The `define` entries that make `import.meta.env.RAMONDA_PUBLIC_*` work, merged with your own. Call it — a plain `define` after the spread would drop them. |
 | `ramonda()` | The same settings as a plugin, for a build assembled somewhere you cannot reach. |
 
 ---
@@ -359,22 +362,21 @@ your config rather than guessing at them.
 | `GraphDiff` | What `diffGraphs` answers. |
 
 Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
-`ArrowFieldIssue`,
-`AriaHiddenOnFocusableIssue`, `AriaValueIssue`, `AsyncRenderIssue`, `AriaWithNoSubjectIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
-`ClickWithNoKeyboardPathIssue`, `ClientOnlyRequestReadIssue`,
-`ClockReadWhileRenderingIssue`, `ComputeReadsAPlainFieldIssue`,
-`ContextConsumedAboveItsProviderIssue`, `ControlWithNoLabelIssue`, `DomWriteIssue`,
-`DuplicateDecoratorIssue`, `DuplicateIdIssue`,
-`DuplicateKeyAmongSiblingsIssue`, `EmptyHeadingOrLinkIssue`, `FragmentLinkToNowhereIssue`,
-`FreshObjectInPropsIssue`,
-`HeadTagsCollideIssue`,
-`HeadingSkipsALevelIssue`, `IndexAsKeyIssue`, `InteractiveInsideInteractiveIssue`,
-`LateRequestReadIssue`, `LinkWithoutADestinationIssue`, `MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`,
-`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`,
-`ReferenceToAnIdThatIsNotThereIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
-`RowWithoutAKeyIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
-`UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`AriaHiddenOnFocusableIssue`, `AriaValueIssue`, `AriaWithNoSubjectIssue`, `ArrowFieldIssue`,
+`AsyncRenderIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
+`ClickWithNoKeyboardPathIssue`, `ClientOnlyRequestReadIssue`, `ClockReadWhileRenderingIssue`,
+`ComputeReadsAPlainFieldIssue`, `ContextConsumedAboveItsProviderIssue`, `ControlWithNoLabelIssue`,
+`DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`, `DuplicateKeyAmongSiblingsIssue`,
+`EmptyHeadingOrLinkIssue`, `FragmentLinkToNowhereIssue`, `FreshObjectInPropsIssue`,
+`HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `IndexAsKeyIssue`,
+`InteractiveInsideInteractiveIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
+`MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
+`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
+`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowWithoutAKeyIssue`,
+`ServerEnvInSharedCodeIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
+`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`,
+`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnsplittableImportIssue`,
+`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 The rules themselves are **not** exported, and that is a decision. A rule carries functions over its
 own issue type and a `read` that takes a compiler node, so publishing one would make this package's

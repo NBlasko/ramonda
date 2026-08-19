@@ -76,6 +76,49 @@ knows nothing about the list can differ, so **the callback is never called at al
 and not one row is touched. A `.map()` cannot do that: by the time anything can ask
 whether the work was needed, every row has already been built.
 
+## Skipping the callback needs a callback it can skip
+
+The rule above has one condition, and it follows from what skipping means: to hand back last render's
+rows, the framework has to be sure the callback would produce the same ones. It knows every value the
+callback **read** — reads are tracked wherever they happen, however many helpers deep, in whatever
+module. What it cannot know is a value read *outside* the callback and closed over:
+
+```tsx
+const label = this.label;
+list(this.tasks, (task: Task) => <li>{task.title} {label}</li>)   // the row reads nothing
+```
+
+Nothing can look inside a closure and list what it captured. So the framework goes by the one thing it
+can see: **an inline callback is a new function every render, and a new function might have captured
+anything — so its rows are rebuilt.** A callback that *cannot* capture a render's locals has a stable
+reference, and its rows are reused:
+
+```tsx
+class Board extends Component {
+  @state tasks: Task[] = [];
+  @state label = "";
+
+  row(task: Task) {
+    return <li>{task.title} {this.label}</li>;    // reads its state INSIDE — tracked
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+```
+
+**A method is the form to reach for when a list is large.** A module-level function counts too, for the
+same reason — it cannot see any render either.
+
+**And an inline callback is not wrong, it is just not skipped.** It costs the callback call and a fresh
+vnode per row per render, and — measured at 10 000 rows over five re-renders — **no extra DOM work at
+all**: the diff finds the rows identical and touches nothing. So a short list keeps every guarantee and
+pays nothing you can notice, and only a very large one is worth moving to a method.
+
+What you never get is a stale row. That was the alternative, and it is the reason the rule is the
+callback's shape rather than a promise to be careful.
+
 It follows that the description is not a list of things you can look at:
 
 ```tsx

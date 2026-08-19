@@ -121,6 +121,24 @@ class ProfileForm extends Component {
    * reports — and this page should be the model rather than the counter-example.
    */
   @memoizedHandler
+  /**
+   * A METHOD rather than an arrow written in `render()`, which is the form a list should reach for.
+   *
+   * An inline callback is a fresh function every render, so the engine cannot know what it closed over
+   * and rebuilds every row. A method cannot capture a render's locals, so its rows are reused — and it
+   * reads everything it needs INSIDE itself, where reads are tracked. See `list()`'s own doc.
+   */
+  private tagRow(row: { field: { $: { bind: unknown } }; index: number }) {
+    return (
+      <div className="row">
+        <input {...(row.field.$.bind as Record<string, unknown>)} />
+        <button type="button" onClick={this.removeTag(row.index)}>
+          ×
+        </button>
+      </div>
+    );
+  }
+
   private removeTag(index: number): () => void {
     return () => this.form.fields.tags.$.remove(index);
   }
@@ -170,14 +188,7 @@ class ProfileForm extends Component {
           {f.bio.$.error ? <p className="error small">{f.bio.$.error}</p> : null}
 
           <p className="label">tags</p>
-          {list(f.tags.$.rows, (row) => (
-            <div className="row">
-              <input {...row.field.$.bind} />
-              <button type="button" onClick={this.removeTag(row.index)}>
-                ×
-              </button>
-            </div>
-          ))}
+          {list(f.tags.$.rows, this.tagRow)}
           <button type="button" onClick={this.addTag}>
             + tag
           </button>
