@@ -1,6 +1,17 @@
 import type { FormControl, ProjectRule } from "./rule";
 
 /**
+ * The attributes that point a label at a control.
+ *
+ * `for` is the one that WORKS: Ramonda writes HTML attributes through `setAttribute`, which
+ * lowercases, and `htmlFor` therefore arrives as `htmlfor` and associates nothing — measured
+ * through the framework. `htmlFor` is counted here all the same, because it is somebody naming this
+ * control and reporting it as nameless would send them looking for the wrong thing entirely. What
+ * is wrong with that line is the attribute, not the absence of one.
+ */
+const LABELS_A_CONTROL: ReadonlySet<string> = new Set(["for", "htmlFor"]);
+
+/**
  * A form control with no accessible name — nothing anywhere says what it is for.
  *
  * Every other element on a page can be worked out from what is in it. A control cannot: an
@@ -114,7 +125,7 @@ export const controlWithNoLabel = {
     /** The ids some `<label htmlFor=…>` names, anywhere in the project. */
     const labelled = new Set(
       project.references
-        .filter((reference) => reference.attribute.toLowerCase() === "htmlfor")
+        .filter((reference) => LABELS_A_CONTROL.has(reference.attribute))
         .map((reference) => reference.target),
     );
 

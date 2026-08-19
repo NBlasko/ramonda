@@ -35,11 +35,11 @@ export class Page extends Component {
         </section>
 
         {/* REPORTED — the label names nothing, so the input has no name and the click does nothing. */}
-        <label htmlFor="emial">Email</label>
-        <input id="email" />
+        <label for="emial">Email</label>
+        <input id="email" aria-label="Email" />
 
         {/* Not reported: corrected, and the id is on the input above. */}
-        <label htmlFor="email">Email again</label>
+        <label for="email">Email again</label>
 
         {/* Not reported: a template can only produce ids beginning with `row-`, so this is one it
             could have made. */}

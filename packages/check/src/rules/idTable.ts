@@ -14,8 +14,21 @@ import type { FormControl, IdReference, ProjectContext, UnreadableId } from "./r
  * the table would then be silent about a project that is in fact entirely readable.
  */
 
-/** The attributes that NAME an id, and what each one means when it names nothing. */
+/**
+ * The attributes that NAME an id.
+ *
+ * **`for`, not `htmlFor`** — measured through the framework, not assumed. Ramonda gives an HTML
+ * element its attributes through `setAttribute`, which lowercases the name, and it special-cases
+ * `className` into `class` but has no such case for `htmlFor`. So `<label htmlFor="a">` renders
+ * `htmlfor="a"`, `label.htmlFor` reads `""`, and the label is associated with nothing — while
+ * `<label for="b">` works. Both typecheck.
+ *
+ * `htmlFor` is kept in the set anyway, because a rule that ignored it would report the control it
+ * was aimed at as unlabelled and say nothing about the reason. It is an ATTEMPT to name something,
+ * and the rules treat it as one — see `NOT_A_REAL_ASSOCIATION`.
+ */
 export const NAMES_AN_ID: ReadonlySet<string> = new Set([
+  "for",
   "aria-labelledby",
   "aria-describedby",
   "aria-controls",

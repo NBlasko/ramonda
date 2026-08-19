@@ -39,6 +39,16 @@ export interface ReferenceToAnIdThatIsNotThereIssue {
   column: number;
 }
 
+/**
+ * The attributes this rule does not speak about, each for its own reason.
+ *
+ * `href` is `fragment-link-to-nowhere`'s, which has a different sentence to say. `htmlFor` is not an
+ * association at all in Ramonda — it renders as `htmlfor` and names nothing whatever id it carries,
+ * measured through the framework — so "the id it points at does not exist" would be the second most
+ * interesting thing about that line.
+ */
+const SAYS_NOTHING_ANYWAY: ReadonlySet<string> = new Set(["href", "htmlFor"]);
+
 /** What each attribute costs when it resolves to nothing — the sentence the report needs. */
 const COSTS: Readonly<Record<string, string>> = {
   "aria-labelledby": "so the element has no accessible name at all",
@@ -49,7 +59,7 @@ const COSTS: Readonly<Record<string, string>> = {
   "aria-details": "so the details are never reachable",
   "aria-errormessage": "so the error is never announced with the field",
   "aria-flowto": "so the reading order it asks for is not applied",
-  htmlfor: "so the label names nothing, and clicking it focuses nothing",
+  for: "so the label names nothing, and clicking it focuses nothing",
 };
 
 export const referenceToAnIdThatIsNotThere = {
@@ -83,7 +93,7 @@ export const referenceToAnIdThatIsNotThere = {
     if (project.unreadable.length > 0) return [];
 
     return project.references
-      .filter((reference) => reference.attribute.toLowerCase() !== "href" && !couldExist(reference.target, project))
+      .filter((reference) => !SAYS_NOTHING_ANYWAY.has(reference.attribute) && !couldExist(reference.target, project))
       .map(({ attribute, target, tag, file, line, column }) => ({ attribute, target, tag, file, line, column }));
   },
 } as const satisfies ProjectRule<ReferenceToAnIdThatIsNotThereIssue>;

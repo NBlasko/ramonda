@@ -38,7 +38,7 @@ describe("an id reference resolving to nothing", () => {
     const found = run("id-table").findings["reference-to-an-id-that-is-not-there"];
     expect(found.map((issue) => `${issue.attribute}:${issue.target}`)).toEqual([
       "aria-labelledby:blrb",
-      "htmlFor:emial",
+      "for:emial",
       "aria-controls:panel-that-never-was",
     ]);
   });
@@ -111,9 +111,20 @@ describe("a form control with no label", () => {
   });
 
   /** Four ways to be named, and each is written in the fixture beside the ones that are not. */
-  test("a htmlFor, a wrapping label, aria and title all count as a name", () => {
+  test("a for, a wrapping label, aria and title all count as a name", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    // Thirteen controls in the fixture; two are nameless.
+    // Fifteen controls in the fixture; two are nameless.
+    expect(found).toHaveLength(2);
+  });
+
+  /**
+   * `htmlFor` names nothing in Ramonda — it renders as `htmlfor`, measured through the framework —
+   * but a control it points at is still NOT called nameless. Somebody is naming that control, and
+   * telling them there is no label sends them looking for the wrong thing: the fault on that line
+   * is the attribute, not the absence of one.
+   */
+  test("a control a htmlFor points at is not called nameless", () => {
+    const found = run("id-table").findings["control-with-no-label"];
     expect(found).toHaveLength(2);
   });
 
