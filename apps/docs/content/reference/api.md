@@ -359,7 +359,7 @@ your config rather than guessing at them.
 | `GraphDiff` | What `diffGraphs` answers. |
 
 Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
-`AriaValueIssue`, `AriaWithNoSubjectIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
+`AriaHiddenOnFocusableIssue`, `AriaValueIssue`, `AriaWithNoSubjectIssue`, `BrowserUrlIssue`, `ClassInsteadOfClassNameIssue`,
 `ClientOnlyRequestReadIssue`, `ClockReadWhileRenderingIssue`,
 `ContextConsumedAboveItsProviderIssue`, `DomWriteIssue`,
 `DuplicateDecoratorIssue`, `DuplicateIdIssue`,

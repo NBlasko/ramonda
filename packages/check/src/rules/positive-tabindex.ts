@@ -1,7 +1,6 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
-import type { ElementRule, JsxElementLike } from "./rule";
+import { numberAttr, openingOf } from "./element";
+import type { ElementRule } from "./rule";
 
 /**
  * A `tabIndex` above zero, which moves the element to the front of the tab order.
@@ -46,43 +45,20 @@ export const positiveTabIndex = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, attr }) {
+  read(element, { tag }) {
     if (tag === undefined) return [];
 
     /**
      * Read as a literal only, which is the silence contract doing its job.
      *
      * `tabIndex={index}` inside a list may well be positive, and this cannot know — so it says
-     * nothing. `attr` already answers `undefined` for anything it cannot read; a number written in
-     * braces is the one form it returns as text, so it is parsed here rather than trusted.
+     * nothing. `numberAttr` answers `undefined` for anything that is not written out, and it is
+     * shared with `aria-hidden-on-focusable` so the two rules cannot disagree about what a
+     * `tabIndex` says on the same line.
      */
-    const written = attr("tabIndex") ?? numberInBraces(element);
-    if (written === undefined) return [];
-
-    const value = Number(written);
-    if (!Number.isInteger(value) || value <= 0) return [];
+    const value = numberAttr(element, "tabIndex");
+    if (value === undefined || value <= 0) return [];
 
     return [{ tag, value, ...positionOf(openingOf(element)) }];
   },
 } as const satisfies ElementRule<PositiveTabIndexIssue>;
-
-/**
- * `tabIndex={1}` — a numeric literal in braces, which is how JSX writes a number.
- *
- * `attr` deliberately answers only for strings, because for every other rule in this family a
- * number is not the kind of value being asked about. Here it is the only kind, so it is read here
- * rather than by widening what every other rule has to think about.
- */
-function numberInBraces(element: JsxElementLike): string | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== "tabindex") continue;
-
-    const value = attribute.initializer;
-    if (value === undefined || !ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-
-    // `{1}` is a literal; `{-1}` is a prefix expression and never positive, so it is left unread.
-    return ts.isNumericLiteral(value.expression) ? value.expression.text : undefined;
-  }
-  return undefined;
-}

@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 27 of them.
+**Warnings.** These print and the run still passes. 28 of them.
 
 | rule | reported when |
 |---|---|
@@ -164,6 +164,7 @@ rules**, so a rule cannot be added without appearing here.
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
 | `unnamed-frame` | an `iframe` has no `title` |
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
+| `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
 | `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
 

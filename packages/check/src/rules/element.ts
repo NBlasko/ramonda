@@ -98,3 +98,51 @@ export function hasContent(children: readonly ts.JsxChild[]): boolean {
     return true;
   });
 }
+
+/**
+ * An attribute read as a NUMBER — `tabIndex={0}`, `tabIndex="0"`, `tabIndex={-1}`.
+ *
+ * `attr` deliberately answers only for strings, because for most rules in this family a number is
+ * not the kind of value being asked about. Two rules ask about exactly one number, `tabIndex`, and
+ * they must agree about what it says: one reports a POSITIVE one and the other reports a
+ * non-negative one, so a disagreement about how `{-1}` is spelled would make the pair contradict
+ * itself on the same line.
+ *
+ * `undefined` for anything that is not a literal, which is the silence contract: `tabIndex={index}`
+ * inside a list is a number this cannot know.
+ */
+export function numberAttr(element: JsxElementLike, name: string): number | undefined {
+  for (const attribute of openingOf(element).attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+
+    const value = attribute.initializer;
+    if (value === undefined) return undefined;
+
+    // `tabIndex="0"` — valid JSX, and the same fact as `{0}`.
+    if (ts.isStringLiteral(value)) return numberOf(value.text);
+
+    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
+
+    const written = value.expression;
+    if (ts.isNumericLiteral(written)) return numberOf(written.text);
+
+    // `{-1}` is a prefix expression rather than a literal, which is the whole reason this exists.
+    if (
+      ts.isPrefixUnaryExpression(written) &&
+      written.operator === ts.SyntaxKind.MinusToken &&
+      ts.isNumericLiteral(written.operand)
+    ) {
+      const magnitude = numberOf(written.operand.text);
+      return magnitude === undefined ? undefined : -magnitude;
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+/** A whole number, or `undefined` for anything else — `"1.5"` and `"x"` are both unreadable here. */
+function numberOf(text: string): number | undefined {
+  const value = Number(text);
+  return Number.isInteger(value) ? value : undefined;
+}

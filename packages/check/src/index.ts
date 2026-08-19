@@ -28,6 +28,7 @@ export type {
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,
+  AriaHiddenOnFocusableIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,

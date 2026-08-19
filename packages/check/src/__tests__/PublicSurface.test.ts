@@ -25,6 +25,7 @@ const EXPECTED = ["analyzeProject", "diffGraphs", "filesOf", "refuseToDiff", "ru
  */
 const EXPECTED_TYPES = [
   "AnalyzeResult",
+  "AriaHiddenOnFocusableIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

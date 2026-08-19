@@ -17,6 +17,7 @@ import { ariaWithNoSubject } from "./aria-with-no-subject";
 import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
+import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -76,6 +77,7 @@ export { roleTakesNoName, type RoleTakesNoNameIssue } from "./role-takes-no-name
 export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-heading-or-link";
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
+export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
@@ -145,6 +147,7 @@ export const ELEMENT_RULES = [
   emptyHeadingOrLink,
   unnamedFrame,
   positiveTabIndex,
+  ariaHiddenOnFocusable,
 ] as const;
 
 /**
