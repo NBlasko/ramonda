@@ -156,10 +156,25 @@ console.log(`[docs] ${"(redirects)".padEnd(24)} → dist/_redirects  ${redirects
  * `lastmod`, `changefreq` and `priority` are all omitted. The first would need a real date per page
  * and a wrong one is worse than none; the other two are hints crawlers have ignored for years.
  */
+/**
+ * The five characters XML reserves.
+ *
+ * A path with an `&` in it would end the document mid-way, and an unparseable sitemap is not a
+ * loud failure — a crawler drops it and nothing anywhere says so. Every path here is written by
+ * hand today, which is an argument for it never happening and not for leaving it unescaped.
+ */
+const xml = (value) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
 const sitemap = [
   '<?xml version="1.0" encoding="UTF-8"?>',
   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-  ...routePaths.map((routePath) => `  <url><loc>${new URL(routePath, BASE).href}</loc></url>`),
+  ...routePaths.map((routePath) => `  <url><loc>${xml(new URL(routePath, BASE).href)}</loc></url>`),
   "</urlset>",
   "",
 ].join("\n");

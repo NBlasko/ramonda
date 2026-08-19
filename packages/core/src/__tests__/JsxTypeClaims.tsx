@@ -18,6 +18,8 @@ declare const withAlt: { src: string; alt: string };
 declare const imgProps: JSX.IntrinsicElements["img"];
 declare const maybeAlt: { src: string; alt?: string };
 declare const extras: { className?: string; loading?: string };
+declare const maybe: string | undefined;
+declare const caption: string;
 
 /** The shape `@ramonda/form` spreads onto a control, as `CommonBind` declares it. */
 declare const bind: {
@@ -131,6 +133,37 @@ export class Spreads extends Component {
         <img {...maybeAlt} />
         {/* @ts-expect-error — a spread of unrelated extras, and nothing names it */}
         <img src="/a.png" {...extras} />
+      </div>
+    );
+  }
+}
+
+/**
+ * A name that might be `undefined` is not a name.
+ *
+ * Measured: an attribute given `undefined` is not written at all — no `alt`, not even an empty one.
+ * So `string | undefined` proves nothing, and this type exists to prove something.
+ *
+ * `ramonda-check` stays quiet on the same line, and that is not a disagreement: the rule asks
+ * whether an `alt` was written, because it cannot evaluate an expression and reporting a maybe is
+ * the one thing it may never do. The type can see the expression's type, so it asks the stronger
+ * question.
+ */
+export class MaybeNames extends Component {
+  render() {
+    return (
+      <div>
+        {/* Allowed: a name that is certainly a string. */}
+        <img src="/a.png" alt={caption} />
+        {/* Allowed: the decision made. An empty `alt` says "no caption, deliberately". */}
+        <img src="/a.png" alt={maybe ?? ""} />
+
+        {/* @ts-expect-error — `string | undefined` is not proof that a name is there */}
+        <img src="/a.png" alt={maybe} />
+        {/* @ts-expect-error — the same, through ARIA */}
+        <img src="/a.png" aria-label={maybe} />
+        {/* @ts-expect-error — and for a frame */}
+        <iframe src="/x" title={maybe} />
       </div>
     );
   }

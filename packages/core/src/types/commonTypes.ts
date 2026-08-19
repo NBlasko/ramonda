@@ -59,6 +59,10 @@ type ObservableEvents<T extends BaseElements> = {
  * wrong and nothing about what to do. A string literal type puts the answer in the error itself:
  * TypeScript prints the expected type, so the expected type is the advice.
  *
+ * Kept SHORT for the same reason. The error is read in an editor's tooltip and on one terminal
+ * line, which is the most cramped place any of this project's prose appears — the first drafts ran
+ * to 144 characters and arrived as a wall. What a reader needs is the name to write.
+ *
  * ## Why these are refused rather than aliased
  *
  * `class` and `for` are aliased because they are RESERVED WORDS — that is the whole rule
@@ -68,8 +72,8 @@ type ObservableEvents<T extends BaseElements> = {
  * into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
  */
 interface RefusedNames {
-  innerHTML: "Ramonda renders children — an `innerHTML` attribute reaches the DOM verbatim and nothing reads it";
-  textContent: "put the text in the element's children — a `textContent` attribute does nothing";
+  innerHTML: "write the markup as children — `innerHTML` is not an attribute";
+  textContent: "write the text as children — `textContent` is not an attribute";
 }
 
 /**
@@ -80,11 +84,11 @@ interface RefusedNames {
  * take is an error somebody has to decode before they can use it.
  */
 export interface RefusedOnMeta {
-  httpEquiv: "write `http-equiv` — an attribute with a hyphen is written exactly as HTML spells it, and `httpEquiv` reaches the DOM verbatim";
+  httpEquiv: "write `http-equiv`, with the hyphen, as HTML spells it";
 }
 
 export interface RefusedOnForm {
-  acceptCharset: "write `accept-charset` — an attribute with a hyphen is written exactly as HTML spells it, and `acceptCharset` reaches the DOM verbatim";
+  acceptCharset: "write `accept-charset`, with the hyphen, as HTML spells it";
 }
 
 /**
@@ -94,8 +98,8 @@ export interface RefusedOnForm {
  * the initial state, and a render decides them like any other attribute.
  */
 export interface RefusedOnFields {
-  defaultValue: "write `value` — the attribute is the initial value, and `defaultValue` reaches the DOM verbatim";
-  defaultChecked: "write `checked` — the attribute is the initial state, and `defaultChecked` reaches the DOM verbatim";
+  defaultValue: "write `value` — the attribute IS the initial value";
+  defaultChecked: "write `checked` — the attribute IS the initial state";
 }
 
 /**
@@ -124,6 +128,21 @@ export interface RefusedOnFields {
  *
  * A spread that carries a name in its TYPE passes, which is the shape a wrapper component should
  * have anyway.
+ *
+ * ## And why `alt={maybe}` is refused when `maybe` is `string | undefined`
+ *
+ * Because it is not proof. Measured: an attribute given `undefined` is not written at all — no
+ * `alt`, not even an empty one — so a name that MIGHT be undefined is a name that might not be
+ * there, and this type exists to say it is.
+ *
+ * `ramonda-check` is quiet about the same line, and the two are not in disagreement. The rule asks
+ * whether an `alt` was WRITTEN, because it cannot evaluate an expression and reporting a maybe is
+ * the one thing it may never do. The type can see the expression's type, so it asks the stronger
+ * question. Permissive where nothing can be known, strict where something can — the same division
+ * as with the spread above.
+ *
+ * The fix is to decide: `alt={caption ?? ""}` says "no caption, and that is deliberate", which is
+ * exactly what an empty `alt` means.
  */
 export type NamedImage = { alt: string } | { "aria-label": string } | { "aria-labelledby": string } | { title: string };
 

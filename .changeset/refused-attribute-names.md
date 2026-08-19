@@ -26,6 +26,13 @@ in the document. These six came back dead; the rest (`readOnly`, `maxLength`, `t
 The refusal is a string literal type rather than `never`, so the error carries the answer:
 TypeScript prints the expected type, and the expected type is the advice.
 
+```
+Type '"refresh"' is not assignable to type '"write `http-equiv`, with the hyphen, as HTML spells it"'.
+```
+
+Kept short deliberately — the error is read in an editor tooltip and on one terminal line, which is
+the most cramped place any of this project's prose appears.
+
 Refused rather than aliased on purpose. `class` and `for` are aliased because they are reserved
 words, and that rule is complete — nothing here is reserved, and `http-equiv` is writable exactly as
 HTML spells it. Aliasing would turn a two-name exception into a list that grows forever.

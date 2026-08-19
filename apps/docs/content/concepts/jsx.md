@@ -92,10 +92,25 @@ Any of `alt`, `aria-label`, `aria-labelledby` or `title` satisfies it — the sa
 four [`ramonda-check`](/reference/check) accepts, so the type and the rule never
 disagree about a line. `alt=""` counts, because saying "skip me" is an answer.
 
-One consequence worth knowing: `<img {...props} />` needs a `props` whose TYPE
-carries one of the four. An untyped bag is refused, since nothing about it says
-a name is in there — and that is exactly the case the checker cannot speak about,
-because a spreading element is handed to no rule at all.
+Two consequences worth knowing, and both come from the same place — the type
+asks for proof, not for an attempt.
+
+`<img {...props} />` needs a `props` whose **type** carries one of the four. An
+untyped bag is refused, since nothing about it says a name is in there.
+
+And a name that might be `undefined` is refused too: an attribute given
+`undefined` is not written at all, so `alt={caption}` where `caption` is
+`string | undefined` leaves the image with no `alt` whatever. Decide instead:
+
+```tsx
+<img src="/photo.jpg" alt={caption ?? ""} />
+```
+
+`ramonda-check` is quiet on both of those lines, and that is not the two of them
+disagreeing. A rule may never report a maybe — a spreading element is handed to
+no rule at all, and an expression is not something it can evaluate. The type can
+see both, so it asks the stronger question. Permissive where nothing can be
+known, strict where something can.
 
 **SVG keeps its real names.** Inside SVG the names are written exactly as SVG defines
 them — `stroke-width` with a dash, `viewBox` in camelCase — because the JSX mirrors
