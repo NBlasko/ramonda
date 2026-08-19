@@ -47,6 +47,29 @@ class Ticker extends Component {
   }
 }
 
+/**
+ * A property and a local of the SAME NAME, kept apart.
+ *
+ * One set for both would let the local here silence the property, which is a miss nobody would ever
+ * find — it errs towards silence, so it is not a false report, but it is the kind of muddle a later
+ * reader has to re-derive.
+ */
+@Host("div")
+class SameName extends Component {
+  /* REPORTED — the property is never cleared; only a LOCAL of that name is. */
+  private id = 0;
+
+  @mounted start() {
+    this.id = setInterval(() => {}, 1000);
+    const id = setInterval(() => {}, 1000);
+    clearInterval(id);
+  }
+
+  render() {
+    return <div />;
+  }
+}
+
 /** A local cleared in the same function is reachable, so it is not this fault. */
 @Host("div")
 class Once extends Component {

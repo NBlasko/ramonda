@@ -20,6 +20,8 @@ describe("an interval nothing clears", () => {
       "nowhere:-",
       "a local:id",
       "a property:tick",
+      // The fourth is `SameName`'s, asserted on its own below.
+      "a property:id",
     ]);
   });
 
@@ -27,7 +29,7 @@ describe("an interval nothing clears", () => {
   test("a property something clears, and the decorator, are both silent", () => {
     const found = run().findings["interval-with-no-cleanup"];
     expect(found.some((issue) => issue.named === "kept")).toBe(false);
-    expect(found).toHaveLength(3);
+    expect(found).toHaveLength(4);
   });
 
   /**
@@ -37,11 +39,22 @@ describe("an interval nothing clears", () => {
   test("a timeout is not reported", () => {
     const found = run().findings["interval-with-no-cleanup"];
     expect(found.every((issue) => issue.member === "start")).toBe(true);
+    expect(found.some((issue) => issue.kept === "nowhere" && issue.component === "Ticker")).toBe(true);
   });
 
   /** A local cleared in the same function is still reachable, so it is not the fault. */
   test("an interval cleared where it was made is left alone", () => {
     const found = run().findings["interval-with-no-cleanup"];
     expect(found.some((issue) => issue.component === "Once")).toBe(false);
+  });
+
+  /**
+   * A property and a local of the same name are kept apart, so the local's `clearInterval` cannot
+   * silence the property. One set for both would have made this a miss nobody would ever find.
+   */
+  test("a local does not answer for a property of the same name", () => {
+    const found = run().findings["interval-with-no-cleanup"];
+    const sameName = found.filter((issue) => issue.component === "SameName");
+    expect(sameName.map((issue) => `${issue.kept}:${issue.named}`)).toEqual(["a property:id"]);
   });
 });

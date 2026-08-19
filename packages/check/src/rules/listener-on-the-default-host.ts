@@ -77,13 +77,27 @@ function hasAHost(cls: ts.ClassDeclaration, resolve: (id: ts.Node) => ts.Symbol 
     )?.types[0]?.expression;
     if (base === undefined || (!ts.isIdentifier(base) && !ts.isPropertyAccessExpression(base))) return false;
 
+    /**
+     * The framework's own bases END the chain, and this is the fix for a real bug.
+     *
+     * `Component` and `Hook` carry no `@Host` — the default host is what a component gets by NOT
+     * having one — so reaching either is the answer rather than the end of what can be seen.
+     *
+     * The first version treated any base it could not read as "has a host", and in a real
+     * application `@ramonda/core` resolves to a `.d.ts`: so `class Bare extends Component` hit that
+     * branch and the rule went silent for **every component anybody outside this repository would
+     * ever write**. It only worked here because the workspace maps `@ramonda/core` at its source.
+     * Measured against a project pointed at the built `.d.ts`, which is what a consumer has.
+     */
+    if (ts.isIdentifier(base) && (base.text === "Component" || base.text === "Hook")) return false;
+
     const declaration: ts.ClassLikeDeclaration | undefined = resolve(base)?.declarations?.find(
       (one): one is ts.ClassLikeDeclaration => ts.isClassLike(one),
     );
     if (declaration === undefined) return false;
     const file = declaration.getSourceFile();
-    // A base in a declaration file or a dependency: its `@Host` is not in the source to read, so
-    // nothing here can say there is none.
+    // Some OTHER base this cannot read — a component published by somebody else, which may well
+    // carry a `@Host`. That one really is unknown, and unknown means silence.
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) return true;
     at = declaration;
   }

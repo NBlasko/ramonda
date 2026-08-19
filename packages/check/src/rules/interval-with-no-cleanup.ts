@@ -65,9 +65,16 @@ function isSetInterval(call: ts.CallExpression, resolve: RuleContext["resolve"])
   return ts.isIdentifier(callee) && callee.text === "setInterval" && resolve(callee) === undefined;
 }
 
-/** Every property this class clears an interval with — `clearInterval(this.tick)`. */
-function clearedProperties(cls: ts.ClassDeclaration): ReadonlySet<string> {
-  const found = new Set<string>();
+/**
+ * What this class clears an interval with — properties and locals kept apart.
+ *
+ * ONE set would let a local called `tick` silence a property called `tick`, which is a miss nobody
+ * would ever find. It only errs towards silence, so it is not a false report — but a muddled set is
+ * the kind of thing a later reader has to re-derive, and keeping them apart costs one line.
+ */
+function clearedNames(cls: ts.ClassDeclaration): { properties: ReadonlySet<string>; locals: ReadonlySet<string> } {
+  const properties = new Set<string>();
+  const locals = new Set<string>();
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
@@ -86,11 +93,11 @@ function clearedProperties(cls: ts.ClassDeclaration): ReadonlySet<string> {
             argument.expression.kind === ts.SyntaxKind.ThisKeyword &&
             ts.isIdentifier(argument.name)
           ) {
-            found.add(argument.name.text);
+            properties.add(argument.name.text);
           }
-          // A local cleared in the same function — recorded under its own name, which is enough to
-          // tell `const id = setInterval(…); clearInterval(id)` from one that is never cleared.
-          if (ts.isIdentifier(argument)) found.add(argument.text);
+          // A local cleared somewhere — enough to tell `const id = setInterval(…); clearInterval(id)`
+          // from one that is never cleared.
+          if (ts.isIdentifier(argument)) locals.add(argument.text);
         }
       }
     }
@@ -98,7 +105,7 @@ function clearedProperties(cls: ts.ClassDeclaration): ReadonlySet<string> {
   };
 
   for (const member of cls.members) ts.forEachChild(member, visit);
-  return found;
+  return { properties, locals };
 }
 
 /** Where the id of this call goes, read from what encloses it. */
@@ -166,7 +173,7 @@ export const intervalWithNoCleanup = {
   },
 
   read(cls, { self, resolve }) {
-    const cleared = clearedProperties(cls);
+    const cleared = clearedNames(cls);
     const found: IntervalWithNoCleanupIssue[] = [];
 
     for (const member of cls.members) {
@@ -176,8 +183,11 @@ export const intervalWithNoCleanup = {
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node) && isSetInterval(node, resolve)) {
           const { kept, named } = keptIn(node);
-          // A name something clears is the shape the advice asks for, wherever it is cleared from.
-          if (named === undefined || !cleared.has(named)) {
+          // A name something clears is the shape the advice asks for, wherever it is cleared from —
+          // and a property is only answered by a property, a local only by a local.
+          const isCleared =
+            named !== undefined && (kept === "a property" ? cleared.properties.has(named) : cleared.locals.has(named));
+          if (!isCleared) {
             found.push({ component: self.name, member: memberName, kept, named, ...positionOf(node) });
           }
         }
