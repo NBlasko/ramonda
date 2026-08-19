@@ -67,3 +67,43 @@ class Toolbar extends Component {
 }
 
 bootstrap(<Toolbar />, null);
+
+declare const to: string;
+
+/**
+ * Every shape `link-without-a-destination` has an opinion about, beside every shape it must not.
+ *
+ * In this fixture rather than its own because the two rules are about the same thing from opposite
+ * sides — one is about an element the keyboard reaches and should not, the other about one it
+ * should reach and cannot.
+ */
+@Host("nav")
+class Links extends Component {
+  render() {
+    return (
+      <nav>
+        {/* REPORTED — no `href`, and a handler where the destination should be. */}
+        <a onClick={() => {}}>Open</a>
+        {/* REPORTED — a destination that is this page. */}
+        <a href="#" onClick={() => {}}>
+          Toggle
+        </a>
+        {/* REPORTED — not a destination, and the shape a CSP refuses first. */}
+        <a href="javascript:void(0)">Run</a>
+        {/* REPORTED — no `href` and no handler either; it is text that looks like a link. */}
+        <a>Nowhere</a>
+
+        {/* Not reported: a real destination. */}
+        <a href="/pricing">Pricing</a>
+        {/* Not reported: a fragment that names something is the point of a table of contents. */}
+        <a href="#pricing">Jump to pricing</a>
+        {/* Not reported: an expression this cannot read — the silence contract. */}
+        <a href={to}>Wherever</a>
+        {/* Not reported: the legacy anchor TARGET, written to be jumped to rather than to jump. */}
+        <a id="pricing" />
+      </nav>
+    );
+  }
+}
+
+bootstrap(<Links />, null);
