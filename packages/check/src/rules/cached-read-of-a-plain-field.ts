@@ -1,10 +1,11 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { isThisUse, positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
- * A `@compute` reading an ordinary field that something writes after the first render.
+ * A CACHED reader — a `@compute` or a hook's props callback — reading an ordinary field that
+ * something writes after the first render.
  *
  * ## What actually happens, measured rather than reasoned about
  *
@@ -22,6 +23,21 @@ import type { Rule } from "./rule";
  * The last row is the fault, and it is the bad kind: the page re-rendered, everything else on it
  * updated, and this one number is wrong. Nothing throws, nothing is reported at runtime, and the
  * value is wrong rather than missing — somebody reads a total that is not the total.
+ *
+ * ## Two readers, one fault
+ *
+ * A `@compute` caches on the state and props it reads. A hook's props callback caches the same way —
+ * `this.use(Form, () => ({ schema: this.schema }))` is not called again on a render where none of
+ * the signals it read moved. Neither notices an ordinary field, so both hold an answer built from a
+ * value that has since changed.
+ *
+ * They were nearly two rules. They are one because the fault is one: the same set of fields, the
+ * same writes, the same fix. Two rules would have been two copies of every judgement below, and
+ * this session has spent enough time on pairs that drifted.
+ *
+ * The runtime reports the props-callback half as `RMD027`, and names the same root cause in its own
+ * words: "most often a plain field standing in for state". The `@compute` half has no code of its
+ * own — it fails by holding a stale value rather than by being noticed.
  *
  * ## What is deliberately NOT reported, and why each one would be a false report
  *
@@ -43,11 +59,13 @@ import type { Rule } from "./rule";
  * **A field read only by `render()`.** `render()` re-reads on every pass, so it is never stale.
  * The cache is what makes this a fault, so the rule is about `@compute` and nothing else.
  */
-export interface ComputeReadsAPlainFieldIssue {
+export interface CachedReadOfAPlainFieldIssue {
   /** The component or hook. */
   component: string;
-  /** The `@compute` that will hold a stale value. */
-  compute: string;
+  /** Which kind of cached reader it is, because they read differently in a report. */
+  reader: "a `@compute`" | "a props callback";
+  /** The member that will hold a stale value — the compute, or the field the `this.use` is on. */
+  named: string;
   /** The ordinary field it reads. */
   field: string;
   /** The member that writes the field, which is what makes it stale. */
@@ -63,7 +81,7 @@ function nameOf(member: ts.ClassElement): string | undefined {
 }
 
 /**
- * The fields a compute may read without ever going stale.
+ * The fields a cached reader may read without ever going stale.
  *
  * Everything reactive, plus the two shapes that are read in a compute constantly and are not data:
  * a hook instance, which has its own reactivity, and a function, which is `arrow-fields`' subject.
@@ -154,22 +172,24 @@ function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
   return nameOf(member) !== "render";
 }
 
-export const computeReadsAPlainField = {
-  id: "compute-reads-a-plain-field",
+export const cachedReadOfAPlainField = {
+  id: "cached-read-of-a-plain-field",
 
   report: {
     severity: "warn",
     reportedWhen:
-      "a `@compute` reads an ordinary field that is written after the first render, so the cached value goes stale",
-    heading: (found) => `${found.length} \`@compute\`(s) that can hold a stale value:`,
+      "a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale",
+    alsoReportedAs: ["RMD027"],
+    heading: (found) => `${found.length} cached read(s) that can hold a stale value:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}>'s \`${issue.compute}\` reads \`${issue.field}\`, which is not state — ` +
-        `\`${issue.writtenBy}\` writes it, and that invalidates nothing.`,
+      `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads \`${issue.field}\`, ` +
+        `which is not state: \`${issue.writtenBy}\` writes it, and that invalidates nothing.`,
     ],
     advice:
-      "A `@compute` caches, and it recomputes when something it TRACKS changes — state and props. An\n" +
-      "ordinary field is neither, so writing one invalidates nothing and the cached value stays.\n\n" +
+      "A `@compute` caches, and it recomputes when something it TRACKS changes — state and props. A\n" +
+      "hook's props callback caches the same way. An ordinary field is neither, so writing one\n" +
+      "invalidates nothing and the cached value stays.\n\n" +
       "The failure is worth picturing, because it is not a missing update. The page renders again\n" +
       "for some other reason, everything else on it is correct, and this one value is the answer\n" +
       "from before the field changed. Nothing throws and nothing is reported — the number is simply\n" +
@@ -203,20 +223,43 @@ export const computeReadsAPlainField = {
     }
     if (writtenBy.size === 0) return [];
 
-    const found: ComputeReadsAPlainFieldIssue[] = [];
+    const found: CachedReadOfAPlainFieldIssue[] = [];
 
-    for (const member of cls.members) {
-      if (!hasDecorator(member, "compute")) continue;
-      const compute = nameOf(member);
-      if (compute === undefined) continue;
-
-      for (const field of fieldsReadIn(member)) {
+    /** One reported read, whichever kind of cached reader found it. */
+    const report = (node: ts.Node, reader: CachedReadOfAPlainFieldIssue["reader"], named: string): void => {
+      for (const field of fieldsReadIn(node)) {
         const writer = writtenBy.get(field);
         if (writer === undefined) continue;
-        found.push({ component: self.name, compute, field, writtenBy: writer, ...positionOf(member) });
+        found.push({ component: self.name, reader, named, field, writtenBy: writer, ...positionOf(node) });
       }
+    };
+
+    for (const member of cls.members) {
+      if (hasDecorator(member, "compute")) {
+        const named = nameOf(member);
+        if (named !== undefined) report(member, "a `@compute`", named);
+        continue;
+      }
+
+      /**
+       * `x = this.use(Hook, () => ({ … }))` — the SECOND argument, which is the props callback.
+       *
+       * Only a function written there is walked. `this.use(Hook, someFactory)` hands over a value
+       * this cannot follow without dataflow, and a plain object rather than a callback is a
+       * different fault with its own report (`RMD055`, which the types refuse anyway).
+       */
+      if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
+      const call = member.initializer;
+      if (!ts.isCallExpression(call) || !isThisUse(call)) continue;
+
+      const factory = call.arguments[1];
+      if (factory === undefined) continue;
+      if (!ts.isArrowFunction(factory) && !ts.isFunctionExpression(factory)) continue;
+
+      const named = nameOf(member);
+      if (named !== undefined) report(factory, "a props callback", named);
     }
 
     return found;
   },
-} as const satisfies Rule<ComputeReadsAPlainFieldIssue>;
+} as const satisfies Rule<CachedReadOfAPlainFieldIssue>;

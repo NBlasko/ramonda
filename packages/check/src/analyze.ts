@@ -32,7 +32,7 @@ import type {
   ClickWithNoKeyboardPathIssue,
   ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
-  ComputeReadsAPlainFieldIssue,
+  CachedReadOfAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
   DomWriteIssue,

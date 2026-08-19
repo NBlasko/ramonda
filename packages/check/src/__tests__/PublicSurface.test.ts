@@ -38,7 +38,7 @@ const EXPECTED_TYPES = [
   "ClientOnlyRequestReadIssue",
   "ClockReadWhileRenderingIssue",
   "ComponentGraph",
-  "ComputeReadsAPlainFieldIssue",
+  "CachedReadOfAPlainFieldIssue",
   "ContextConsumedAboveItsProviderIssue",
   "ControlWithNoLabelIssue",
   "ContextIssue",

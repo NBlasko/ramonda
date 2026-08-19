@@ -46,7 +46,7 @@ import { stateMutatedInPlace } from "./state-mutated-in-place";
 import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
 import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
-import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
+import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
@@ -135,7 +135,7 @@ export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-h
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
-export { computeReadsAPlainField, type ComputeReadsAPlainFieldIssue } from "./compute-reads-a-plain-field";
+export { cachedReadOfAPlainField, type CachedReadOfAPlainFieldIssue } from "./cached-read-of-a-plain-field";
 export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
@@ -183,7 +183,7 @@ export const CLASS_RULES = [
   decoratorThatAddsNothing,
   unkeyableMemoizedArgument,
   clockReadWhileRendering,
-  computeReadsAPlainField,
+  cachedReadOfAPlainField,
   arrowFields,
   browserUrl,
   domWrites,

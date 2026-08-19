@@ -1,6 +1,7 @@
 import { Component, Hook, Host, bootstrap, compute, created, destroyed, mounted, state } from "../framework";
 
 declare function expensive(): number;
+declare function makeProps(): { rate: number };
 
 class Clock extends Hook {
   now = 0;
@@ -53,6 +54,14 @@ class Cart extends Component {
   @compute get total() {
     return this.tick * this.rate;
   }
+
+  /* REPORTED — a hook's props callback caches the same way a `@compute` does, so an ordinary
+     field goes stale in it too. This is `RMD027`'s own root cause, in the runtime's words: "most
+     often a plain field standing in for state". */
+  form = this.use(Clock, () => ({ rate: this.rate }));
+
+  /* Not reported: the factory is a value this cannot follow without dataflow. */
+  other = this.use(Clock, makeProps);
 
   /* Not reported: `prefix` and `currency` are never written after the first render. */
   @compute get label() {
