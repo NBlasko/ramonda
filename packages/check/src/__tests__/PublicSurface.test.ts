@@ -70,6 +70,7 @@ const EXPECTED_TYPES = [
   "UnnamedImageIssue",
   "UnsplittableImportIssue",
   "UnwatchedFieldIssue",
+  "WatchOfAPropThatIsNotThereIssue",
   "Where",
 ];
 

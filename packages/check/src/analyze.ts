@@ -55,6 +55,7 @@ import type {
   UnnamedImageIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
+  WatchOfAPropThatIsNotThereIssue,
 } from "./rules";
 
 /**
@@ -101,6 +102,7 @@ export type {
   UnnamedImageIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
+  WatchOfAPropThatIsNotThereIssue,
 };
 
 /**

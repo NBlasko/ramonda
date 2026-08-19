@@ -25,6 +25,7 @@ import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
 import { asyncRender } from "./async-render";
 import { computeReadsAPlainField } from "./compute-reads-a-plain-field";
+import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
@@ -89,6 +90,7 @@ export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-h
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
 export { computeReadsAPlainField, type ComputeReadsAPlainFieldIssue } from "./compute-reads-a-plain-field";
+export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
@@ -127,6 +129,7 @@ export const CLASS_RULES = [
   domWrites,
   duplicateDecorators,
   unwatchedFields,
+  watchOfAPropThatIsNotThere,
   persistOfALossyValue,
   lateRequestRead,
   headTagsCollide,

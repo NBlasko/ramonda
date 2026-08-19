@@ -369,7 +369,7 @@ Every rule publishes its own issue shape, named for the rule: `ArrowFieldIssue`,
 `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
 `RowWithoutAKeyIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
 `UnguardedAsyncLifecycleIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`.
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 The rules themselves are **not** exported, and that is a decision. A rule carries functions over its
 own issue type and a `read` that takes a compiler node, so publishing one would make this package's

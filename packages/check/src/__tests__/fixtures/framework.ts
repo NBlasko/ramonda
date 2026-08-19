@@ -1,8 +1,16 @@
-export declare class Component {
+/**
+ * The props type parameter is DEFAULTED, so every fixture that writes a bare `extends Component`
+ * keeps compiling. It is here because a rule reads the type ARGUMENT as syntax —
+ * `watch-of-a-prop-that-is-not-there` asks what props a class declares by reading what is written
+ * between the angle brackets, never by asking the checker for a type.
+ */
+export declare class Component<P = Record<string, unknown>> {
+  props: P;
   protected use<T>(hook: T, options?: unknown): unknown;
   render(): unknown;
 }
-export declare class Hook {
+export declare class Hook<P = Record<string, unknown>> {
+  props: P;
   protected use<T>(hook: T, options?: unknown): unknown;
 }
 /** The type that says "a component goes here" — what a slot is declared with. */
@@ -90,6 +98,10 @@ export declare function destroyed(options?: {
   env?: "shared" | "client" | "server";
 }): (value: unknown, context: unknown) => void;
 export declare function destroyed(value: unknown, context: unknown): void;
+/** One selector per value watched; the method runs when what it reads differs from last render. */
+export declare function watchProp(
+  ...selectors: ((props: any) => unknown)[]
+): (value: unknown, context: unknown) => void;
 export declare function updated(value: unknown, context: unknown): void;
 export declare function deferHydration(value: unknown, context: unknown): void;
 export declare function interval(ms: string | number): (...args: unknown[]) => void;

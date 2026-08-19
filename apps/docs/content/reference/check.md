@@ -136,7 +136,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 32 of them.
+**Warnings.** These print and the run still passes. 33 of them.
 
 | rule | reported when |
 |---|---|
@@ -145,6 +145,7 @@ rules**, so a rule cannot be added without appearing here.
 | `compute-reads-a-plain-field` | a `@compute` reads an ordinary field that is written after the first render, so the cached value goes stale |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |
 | `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
+| `watch-of-a-prop-that-is-not-there` | a `@watchProp` selector names something the component's props type does not declare, so the method never runs |
 | `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |

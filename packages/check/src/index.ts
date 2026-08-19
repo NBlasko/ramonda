@@ -46,6 +46,7 @@ export type {
   UnnamedImageIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
+  WatchOfAPropThatIsNotThereIssue,
 } from "./analyze";
 // The composition graph the issues are computed from. A FORMAT rather than an API: it is versioned
 // by `schema` and there is no second consumer yet, so nothing here is documented for one.
