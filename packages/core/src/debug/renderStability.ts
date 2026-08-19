@@ -18,7 +18,7 @@ import { diagnose } from "./diagnostics";
  * that is not deterministic, reported without needing an SSR round trip to disagree
  * with. But only the part of that class which varies WITHIN a tick —
  * `Math.random()`, `performance.now()` and `new Date()` (which is a fresh object, so its
- * identity differs) are caught every time. A **millisecond clock is not**: measured over
+ * identity differs — reported as `instance`) are caught every time. A **millisecond clock is not**: measured over
  * 200,000 tries, two consecutive `Date.now()` calls differ in 0.006% of them — the two
  * renders happen microseconds apart, well inside one millisecond. `RMD007` is the check
  * that catches those, because a server render and its hydration are milliseconds to
@@ -71,7 +71,7 @@ interface VNodeLike {
 }
 
 /** What kind of instability a differing pair is. */
-export type Kind = "handler" | "object" | "nondeterministic";
+export type Kind = "handler" | "object" | "instance" | "nondeterministic";
 
 /**
  * Classifies a pair that is not `Object.is`-equal.
@@ -102,6 +102,27 @@ export function classify(a: unknown, b: unknown): Kind | undefined {
      * come from state", with advice about randomness under it.
      */
     return valueEqualThorough(a, b) ? "object" : "nondeterministic";
+  }
+
+  /**
+   * Anything else with a prototype — a `Date`, a `Map`, a `Set`, a class instance.
+   *
+   * Two of them with different identities were CONSTRUCTED by this render: a stable field or
+   * module constant passes `Object.is` long before reaching here. So the fault and the fix are
+   * the same as a plain object's, and only the wording differs — the contents cannot be read,
+   * because `valueEqual` walks own enumerable keys and a `Map`'s entries are not those.
+   *
+   * **This is the branch that used to return `undefined`**, which made two documented claims
+   * false: both this file and `purityGuard.ts` said `new Date()` was caught "every time (a
+   * fresh object has a fresh identity)". Measured, it was caught nowhere —
+   * `classify(new Date(1), new Date(2))` answered `undefined`, in a prop, in an attribute and
+   * as a child. A stated gap is honest; a gap stated as covered is not.
+   *
+   * Two different constructors from two calls in one tick is a different value, not a rebuild.
+   */
+  if (isObjectish(a) && isObjectish(b)) {
+    const sameShape = Object.getPrototypeOf(a) === Object.getPrototypeOf(b);
+    return sameShape ? "instance" : "nondeterministic";
   }
 
   // Two primitives that differ between two calls in the same tick: the render is not
@@ -139,6 +160,9 @@ const DETAIL: Record<Kind, (owner: string, path: string) => string> = {
   object: (owner, path) =>
     `<${owner} /> builds a new object or array for \`${path}\` on every render, with the same contents.\n` +
     `A child receiving it re-renders every time, a \`@compute\` reading it recomputes every time, and if it is a list's items every row loses its identity and the whole list is rebuilt.`,
+  instance: (owner, path) =>
+    `<${owner} /> constructs a new object for \`${path}\` on every render — a \`Date\`, a \`Map\`, a \`Set\` or a class instance.\n` +
+    `A child receiving it re-renders every time and a \`@compute\` reading it recomputes every time. Its contents are not compared here, so this says the object is FRESH, not that it changed.`,
   nondeterministic: (owner, path) =>
     `<${owner} /> produced a different value for \`${path}\` from two renders in the same tick, with no state change between them — so the value does not come from state.`,
 };
@@ -148,6 +172,8 @@ const FIX: Record<Kind, string> = {
     "Give the function a stable identity: a bound method (`onClick={this.submit}`), or `@memoizedHandler` when it has to be built per item — that caches by its arguments, per instance.",
   object:
     "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.",
+  instance:
+    "Construct it once and keep it: a field, a `@compute` getter, or a module constant. If it is a clock — `new Date()` — decide the value once in `@created` and keep it in `@state`, so a server render and its hydration agree (RMD007).",
   nondeterministic:
     "`render()` must be a function of state and props only. Move `new Date()` / `Math.random()` into `@created` and keep the result in `@state` (or `@persist`), so the value is decided once — and so a server render and its hydration agree (RMD007).",
 };
@@ -245,11 +271,26 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
   if (kind) report(kind, walk.owner, path || "the render output", a, b);
 }
 
-function compareAttributes(a: Attributes, b: Attributes, path: string, walk: Walk, skipFunctions = false): void {
+/**
+ * Compares one bag of named values: an element's attributes, or — recursively — a plain object
+ * handed down as one of them.
+ *
+ * `depth` is 0 for the element's own attributes and counts descents from there. It decides two
+ * things: the bound, and that `children` is skipped only at the top, where it is a vnode tree
+ * walked separately. One level down, `children` is an ordinary key of somebody's config object.
+ */
+function compareAttributes(
+  a: Attributes,
+  b: Attributes,
+  path: string,
+  walk: Walk,
+  skipFunctions = false,
+  depth = 0,
+): void {
   for (const key of Object.keys(a)) {
     if (walk.budget <= 0) return;
     // `children` is walked as a tree, not compared as an attribute.
-    if (key === "children") continue;
+    if (depth === 0 && key === "children") continue;
 
     const aValue = a[key];
     const bValue = b[key];
@@ -264,6 +305,30 @@ function compareAttributes(a: Attributes, b: Attributes, path: string, walk: Wal
     // itself an object built in place.
     if (isVNode(aValue) && isVNode(bValue)) {
       compareNode(aValue, bValue, `${path}.${key}`, 0, walk);
+      continue;
+    }
+
+    /**
+     * A plain object prop whose contents are NOT the same. Descend, rather than classify the whole
+     * bag from outside it.
+     *
+     * Measured: `cfg={{ fn: () => 1 }}` was reported as *"produced a different value … so the value
+     * does not come from state"*, with advice to move a `new Date()` or a `Math.random()` into
+     * `@created` — for an inline arrow, in an app that contains neither. The two differ only in a
+     * function's identity, which the thorough compare correctly calls "different" and this then
+     * mis-named. Descending reports `cfg.fn` as the handler it is.
+     *
+     * A different SET of keys from two calls in one tick is not a rebuild at all, and descending
+     * would walk past it — so that stays non-determinism, named here.
+     */
+    if (depth < MAX_DEPTH && isPlainObject(aValue) && isPlainObject(bValue) && !valueEqualThorough(aValue, bValue)) {
+      const aKeys = Object.keys(aValue);
+      const bKeys = Object.keys(bValue);
+      if (aKeys.length !== bKeys.length || aKeys.some((k) => !Object.hasOwn(bValue, k))) {
+        report("nondeterministic", walk.owner, `${path}.${key}`, aValue, bValue);
+        continue;
+      }
+      compareAttributes(aValue, bValue, `${path}.${key}`, walk, skipFunctions, depth + 1);
       continue;
     }
 

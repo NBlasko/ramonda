@@ -12,6 +12,11 @@ import { computePhase, renderPhase } from "./renderPhase";
  * `performance.now()` differ every time, `new Date()` differs every time (a fresh
  * object), and **`Date.now()` differs in 0.006%** — the two renders are microseconds
  * apart, well inside one millisecond.
+
+ * Being a fresh object is only useful if the comparison LOOKS at it, and for a long
+ * while it did not: `classify` had no branch for a value with a prototype, so a `Date`
+ * answered "this says nothing" in a prop, in an attribute and as a child. It reports
+ * one now, as `instance`.
  *
  * So the double render is blind to a millisecond clock, which is the most common form
  * of the mistake. This check watches the CALL instead of the value, which is reliable
@@ -37,11 +42,14 @@ import { computePhase, renderPhase } from "./renderPhase";
  *
  * ## What covers the clock then
  *
- * - `new Date()` — RMD020, every time (a fresh object has a fresh identity).
+ * - `new Date()` — RMD020, every time: two calls in one tick produce two objects, and a
+ *   fresh identity is what that check is looking for. It does not have to read the time.
  * - `Date.now()` in a server-rendered app — RMD007, when the hydration disagrees. The
  *   two sides are milliseconds to seconds apart, not microseconds.
  * - `Date.now()` in a client-only app, rendered into the output — **nothing catches
- *   it.** That gap is real and stated rather than papered over.
+ *   it.** That gap is real and stated rather than papered over. It is the same gap as
+ *   `new Date().toISOString()`, measured: both renders land in one millisecond, so the
+ *   two strings are equal and there is nothing for a comparison to see.
  */
 let installed = false;
 

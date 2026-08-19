@@ -70,6 +70,9 @@ const DETAIL: Record<Kind, (owner: string, key: string) => string> = {
   object: (owner, key) =>
     `\`${owner}\` built a new array or object for the \`${key}\` prop on ${RUNS + 1} consecutive runs of its props callback, with the same contents every time.\n` +
     `Every prop is a signal, so a new reference is a change: a \`@compute\` reading it recomputes, a \`@watchProp\` on it fires, and a subscription whose \`connect\` reads it reconnects — for a value that never moved.`,
+  instance: (owner, key) =>
+    `\`${owner}\` constructed a new object for the \`${key}\` prop on ${RUNS + 1} consecutive runs of its props callback — a \`Date\`, a \`Map\`, a \`Set\` or a class instance.\n` +
+    `Every prop is a signal, so a new reference is a change: a \`@compute\` reading it recomputes, a \`@watchProp\` on it fires, and a subscription whose \`connect\` reads it reconnects. Its contents are not compared, so this says the object is FRESH, not that it changed.`,
   nondeterministic: (owner, key) =>
     `\`${owner}\` produced a different value for the \`${key}\` prop from two calls in the same tick, with no state change between them — so the prop does not come from state.\n` +
     `Every run of the callback puts a different value in this prop: as a query key, a new cache entry each time and a fetch that never settles.`,
@@ -80,6 +83,8 @@ const FIX: Record<Kind, string> = {
     "A bound method instead of a closure: `fetch: self.load`, where `load()` reads `this.props` when it is called, so there is nothing to capture and the identity never changes. `@memoizedHandler` when it has to be built per argument.",
   object:
     'Hold it somewhere that HAS an identity and hand that over: a `@compute` (`@compute get key() { return ["user", this.props.id] }`), a field, a module constant — so the callback passes a value along instead of building one. A `@compute` holding the whole bag does it for every value in it at once. If you own the hook, `@StableProps("key")` declares the prop a value and settles it for every call site.',
+  instance:
+    "Construct it once and hand that one over: a field, a `@compute`, or a module constant. A `Date` is the common case and rarely wants to be a prop at all — decide the moment once in `@created` and keep it in `@state` (or `@persist`, so it survives hydration).",
   nondeterministic:
     "A props callback must be a function of state and props only. Read the value once in `@created` and keep it in `@state` (or `@persist`, so it survives hydration), or read it in the handler that needs it.",
 };
