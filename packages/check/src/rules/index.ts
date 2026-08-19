@@ -6,6 +6,7 @@ import { unnamedImage } from "./unnamed-image";
 import { classInsteadOfClassName } from "./class-instead-of-classname";
 import { duplicateKeyAmongSiblings } from "./duplicate-key-among-siblings";
 import { rowWithoutAKey } from "./row-without-a-key";
+import { indexAsKey } from "./index-as-key";
 import { interactiveInsideInteractive } from "./interactive-inside-interactive";
 import { tagNeedsItsParent } from "./tag-needs-its-parent";
 import { unknownAriaAttribute } from "./unknown-aria-attribute";
@@ -53,6 +54,7 @@ export { unnamedImage, type UnnamedImageIssue } from "./unnamed-image";
 export { classInsteadOfClassName, type ClassInsteadOfClassNameIssue } from "./class-instead-of-classname";
 export { duplicateKeyAmongSiblings, type DuplicateKeyAmongSiblingsIssue } from "./duplicate-key-among-siblings";
 export { rowWithoutAKey, type RowWithoutAKeyIssue } from "./row-without-a-key";
+export { indexAsKey, type IndexAsKeyIssue } from "./index-as-key";
 export { interactiveInsideInteractive, type InteractiveInsideInteractiveIssue } from "./interactive-inside-interactive";
 export { tagNeedsItsParent, type TagNeedsItsParentIssue } from "./tag-needs-its-parent";
 export { NEEDS_PARENT, NOT_INSIDE_ITSELF } from "./html";
@@ -134,6 +136,7 @@ export const MODULE_RULES = [unsplittableImport] as const;
 export const ELEMENT_RULES = [
   duplicateKeyAmongSiblings,
   rowWithoutAKey,
+  indexAsKey,
   classInsteadOfClassName,
   tagNeedsItsParent,
   interactiveInsideInteractive,

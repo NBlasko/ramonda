@@ -135,7 +135,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 28 of them.
+**Warnings.** These print and the run still passes. 29 of them.
 
 | rule | reported when |
 |---|---|
@@ -151,6 +151,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics) |
+| `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
 | `class-instead-of-classname` | an element carries `class` where `className` was meant, so it styles nothing — also [`RMD039`](/reference/diagnostics) |
 | `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select |
 | `interactive-inside-interactive` | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |

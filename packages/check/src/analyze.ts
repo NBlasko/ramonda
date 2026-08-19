@@ -18,6 +18,7 @@ import {
   TREE_RULES,
 } from "./rules";
 import type {
+  AriaHiddenOnFocusableIssue,
   AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
@@ -34,6 +35,7 @@ import type {
   Findings,
   HeadingSkipsALevelIssue,
   HeadTagsCollideIssue,
+  IndexAsKeyIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,
@@ -58,6 +60,7 @@ import type {
  */
 
 export type {
+  AriaHiddenOnFocusableIssue,
   AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
@@ -74,6 +77,7 @@ export type {
   Findings,
   HeadingSkipsALevelIssue,
   HeadTagsCollideIssue,
+  IndexAsKeyIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
   PositiveTabIndexIssue,

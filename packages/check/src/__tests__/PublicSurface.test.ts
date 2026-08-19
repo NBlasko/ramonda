@@ -47,6 +47,7 @@ const EXPECTED_TYPES = [
   "GraphNode",
   "HeadTagsCollideIssue",
   "HeadingSkipsALevelIssue",
+  "IndexAsKeyIssue",
   "InteractiveInsideInteractiveIssue",
   "LateRequestReadIssue",
   "PositiveTabIndexIssue",
