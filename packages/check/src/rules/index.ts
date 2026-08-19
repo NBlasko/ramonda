@@ -56,6 +56,7 @@ import { unwatchedFields } from "./unwatched-fields";
 import { persistOfALossyValue } from "./persist-of-a-lossy-value";
 import { unserializableState } from "./unserializable-state";
 import { intervalWithNoCleanup } from "./interval-with-no-cleanup";
+import { listenerOnTheDefaultHost } from "./listener-on-the-default-host";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
@@ -149,6 +150,7 @@ export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-of-a-lossy-value";
 export { unserializableState, type UnserializableStateIssue } from "./unserializable-state";
 export { intervalWithNoCleanup, type IntervalWithNoCleanupIssue } from "./interval-with-no-cleanup";
+export { listenerOnTheDefaultHost, type ListenerOnTheDefaultHostIssue } from "./listener-on-the-default-host";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
@@ -191,6 +193,7 @@ export const CLASS_RULES = [
   persistOfALossyValue,
   unserializableState,
   intervalWithNoCleanup,
+  listenerOnTheDefaultHost,
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
