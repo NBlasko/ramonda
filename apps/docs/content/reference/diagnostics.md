@@ -325,7 +325,7 @@ differs was built by the render itself, or does not come from state at all.
 That is what makes this precise: comparing against the *previous* render cannot tell a value that
 was created in place from one that genuinely changed. Two calls in one tick can.
 
-Three things get reported, each with its own fix.
+Four things get reported, each with its own fix.
 
 **A function built in place.** The source is identical between the two calls, only the identity is
 fresh. That is not just an allocation: an event handler whose identity changed is removed and re-added
@@ -349,8 +349,29 @@ state lost, `@destroyed` and `@created` run again.
 @compute get config() { … }            // ✓ recomputed only when its inputs change
 ```
 
-**A value that does not come from state** — `Math.random()`, `performance.now()`, `new Date()`. Decide
-the value once in `@created` and keep it in `@state`.
+If the two objects are **not** the same, the check walks *into* them and each key answers for itself, so
+an inline function inside a config object is reported as the function it is:
+
+```tsx
+<Table cfg={{ rows: 10, onRow: () => this.pick() }} />   // reported as `cfg.onRow`, a handler
+```
+
+**An object with a prototype, constructed in place** — a `Date`, a `Map`, a `Set`, a class instance. The
+consequence is the same as a plain object's, and so is the fix: construct it once and keep it in a field,
+a `@compute`, or a module constant.
+
+```tsx
+<Row at={new Date()} />                // ✗ a new Date every render
+@created init() { this.at = new Date() }   // ✓ decided once
+```
+
+The report says the object is **fresh**, not that its contents matched, because they are not read: the
+comparison walks own enumerable keys and a `Map`'s entries are not those. And a `class` written inside a
+render is a *different* constructor every time, so its instances are reported as the next case instead.
+
+**A value that does not come from state** — `Math.random()`, `performance.now()`. Decide the value once
+in `@created` and keep it in `@state`. A render that produces two different *kinds* of value in one tick
+lands here too — two prototypes that disagree is not a rebuild.
 
 Only the part of that class which varies **within a tick**, though: the two renders are microseconds
 apart, so a millisecond clock reads the same both times. Measured over 200,000 tries, two consecutive
@@ -590,7 +611,7 @@ the answer is that they fall into groups with different checks:
 | `Math.random()` | every time | yes |
 | `crypto.randomUUID()` | every time | yes |
 | `crypto.getRandomValues()` | every time | yes |
-| `new Date()` (kept as an object) | every time | — |
+| `new Date()` (kept as an object) | every time, as `instance` | — |
 | `performance.now()` | every time | — |
 | `Date.now()` | **0.006%** | — |
 | `new Date().toISOString()` | 0.091% | — |

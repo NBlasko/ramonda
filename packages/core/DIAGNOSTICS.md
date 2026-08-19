@@ -772,8 +772,23 @@ still disconnected really is orphaned.
 
 A development build calls each component's `render()` **twice** and compares the two
 outputs. With no state change between the two calls, anything that differs was built
-by the render itself — an inline function, a rebuilt object or array — or does not
-come from state at all (`Math.random()`, `performance.now()`, `new Date()`).
+by the render itself — an inline function, a rebuilt object or array, a freshly
+constructed `Date`/`Map`/`Set`/class instance — or does not come from state at all
+(`Math.random()`, `performance.now()`).
+
+**Four verdicts:** `handler`, `object`, `instance`, `nondeterministic`. `instance` is
+separate from `object` because a value with a prototype has its identity compared and
+its contents not: the comparison walks own enumerable keys, and a `Map`'s entries are
+not those. So it reports the object as FRESH rather than claiming the contents matched.
+Two disagreeing prototypes in one tick is `nondeterministic` instead — a `class` written
+inside a render is a different constructor each time.
+
+**A plain object prop that is not equal is descended into**, and each key answers for
+itself. Reporting the bag from outside named the wrong fault: `cfg={{ fn: () => 1 }}`
+differs only in a closure's identity, and was reported as "does not come from state"
+under advice to go and find a `Math.random()`. It reports `cfg.fn` as a handler. A
+differing *set* of keys is not a rebuild and stays non-determinism, and `children` one
+level down is an ordinary key rather than a tree.
 
 **It does not catch a millisecond clock**, and that is worth stating rather than
 discovering: the two renders are microseconds apart, so `Date.now()` reads the same
@@ -847,7 +862,7 @@ the answer is that they fall into groups with different checks:
 | `Math.random()` | every time | yes |
 | `crypto.randomUUID()` | every time | yes |
 | `crypto.getRandomValues()` | every time | yes |
-| `new Date()` (kept as an object) | every time | — |
+| `new Date()` (kept as an object) | every time, as `instance` | — |
 | `performance.now()` | every time | — |
 | `Date.now()` | **0.006%** | — |
 | `new Date().toISOString()` | 0.091% | — |
@@ -875,8 +890,10 @@ where that work belongs.
 ### RMD022 — a hook's props callback built a new value for the same contents
 
 The callback is called twice in one tick and the bags compared, key by key, with the same
-`classify` RMD020 uses — so the three findings and their names are the same: `handler`,
-`object`, `nondeterministic`. Gated on `isStrictRender()`, so one switch turns off both
+`classify` RMD020 uses — so the findings and their names are the same: `handler`, `object`,
+`instance`, `nondeterministic`. The wording differs, because a props bag is a signal: a new
+identity is a *change*, which recomputes a `@compute`, fires a `@watchProp`, and reconnects a
+subscription whose `connect` reads it. Gated on `isStrictRender()`, so one switch turns off both
 double calls.
 
 **Two conditions, and the second is what makes it worth reading.** The same-tick pair proves
