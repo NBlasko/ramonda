@@ -385,6 +385,21 @@ apart, so a millisecond clock reads the same both times. Measured over 200,000 t
 hydration are milliseconds to seconds apart. The two checks cover the class between them; neither
 covers it alone.
 
+**Where it reaches, and the one place it cannot.** Every row of a `.map()`, a `filter` or an array
+literal is compared — those rows are built by the render, so both renders have them. A `list()` row is
+compared too, but not from here: `list()` is lazy on purpose, so the builder is called by the engine
+during the diff, and the check runs there. That has a cost worth knowing and a shape worth knowing:
+
+```
+100 rows, a stable callback, mount then three more renders
+check on:   200 row builds on mount, 200 after the three
+check off:  100                      100
+```
+
+Twice for a row that is **built**, and nothing at all for one that is reused — a reused row is never
+rebuilt, so a list whose rows are all steady pays nothing after the first render. A mistake in one row
+callback is **one** report, however many rows there are.
+
 **What is deliberately not checked.** A hook's props callback exists in order to re-run on every
 render of its owner — that is its contract — so the bag it returns is a fresh object by design, and so
 are the values in it: a fetcher that closes over a prop cannot be a stable function. That churn is

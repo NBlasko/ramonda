@@ -200,6 +200,22 @@ export function checkRenderStability(component: BaseComponent, first: unknown, s
 }
 
 /**
+ * The same comparison for ONE list row, called by `listEngine.ts` where the row is built.
+ *
+ * The double render cannot reach a row: `list()` is lazy on purpose, so the second render rebuilds
+ * the descriptor and not the items. The engine is the only place that has two builds to compare,
+ * and it is also the cheap place — a row that is reused is never rebuilt, so the cost is one extra
+ * builder call per row actually BUILT rather than per row per render.
+ *
+ * `path` carries no row index, deliberately. `diagnose` keys a report by owner, path and kind, so
+ * an index would turn one mistake in one callback into ten thousand reports.
+ */
+export function checkRowStability(owner: string, path: string, first: unknown, second: unknown): void {
+  const walk: Walk = { owner, budget: MAX_NODES };
+  compareNode(first, second, path, 0, walk);
+}
+
+/**
  * **A hook's props bag is deliberately NOT checked**, and that decision came from
  * auditing what the check actually said about one.
  *
@@ -222,10 +238,38 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
 
   if (Object.is(a, b)) return;
 
-  // A `list()` descriptor. Its mapper has not run, so there is nothing deep to
-  // compare — but `each` is the interesting part: rebuilt items are how a list
-  // silently loses every row's identity.
+  /**
+   * The two things `IS_LIST` brands, which need opposite treatment.
+   *
+   * **A built REGION** — an array in children position, so a `.map()`, a `filter`, an array
+   * literal. `h.ts` wraps it in the same branded shape a `list()` has, and its rows are already
+   * BUILT: they sit in `vnodes`, in both outputs, because both renders ran the `.map()`. Comparing
+   * them costs nothing — nobody has to build anything that was not built anyway. Skipping them
+   * meant `{items.map((i) => <li onClick={() => …}>)}` was reported when the same `<li>` was
+   * written by hand and silent the moment it came from an array.
+   *
+   * **A `list()` DESCRIPTOR** has no rows yet: the builder is called by the engine during the
+   * diff, so there is nothing here to compare but `each` — and rebuilt items are how a list
+   * silently loses every row's identity. `listEngine.ts` compares the rows themselves, where they
+   * are built and where the item scope exists.
+   */
   if (isListNode(a) && isListNode(b)) {
+    const aRows = (a as { vnodes?: unknown }).vnodes;
+    const bRows = (b as { vnodes?: unknown }).vnodes;
+    if (Array.isArray(aRows) && Array.isArray(bRows)) {
+      // Every row gets the SAME path — no index. `diagnose` keys a report by owner, path and kind,
+      // so an index turns one mistake in one `.map()` callback into one report per row: measured, a
+      // two-row list reported twice and a ten-thousand-row list would have reported ten thousand
+      // times. Rows that differ in SHAPE still separate themselves, because the tag and the
+      // attribute name are in the path.
+      const shared = Math.min(aRows.length, bRows.length);
+      for (let i = 0; i < shared; i++) {
+        if (walk.budget <= 0) return;
+        compareNode(aRows[i], bRows[i], path, depth + 1, walk);
+      }
+      return;
+    }
+
     // `each` only — the BUILDER is declared inline by design, and a fresh one
     // costs nothing: an item scope is reused on `existing.item === item &&
     // !existing.dirty` (listEngine.ts), so the mapper's identity is never

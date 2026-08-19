@@ -803,6 +803,15 @@ all. Two calls in one tick can, with no false positives. It also catches
 non-determinism, which the previous-render comparison never could — RMD007 sees the
 same class of mistake, but only after a hydration mismatch has already happened.
 
+**Where it reaches.** A `.map()`, a `filter` and an array literal all arrive as one branded region
+holding rows the render already built, so those rows are compared at no extra cost — the comparison
+used to have a single branch for that shape and a `list()` descriptor, and it was written for the
+descriptor, so mapped rows were thrown away. A `list()` row cannot be compared from a render at all,
+because the builder is called by the engine during the diff; `listEngine.ts` builds it a second time
+there, with the tracker detached, and compares. Measured, 100 rows and a stable callback: 200 builds on
+mount and 200 after three further renders, against 100 and 100 with the check off. Twice for a row that
+is BUILT, nothing for one that is reused. One report per callback, not per row.
+
 **Why it can run on every render.** Measured here: `render()` is 3-4% of a commit
 (1.56 µs of 48.69 for one element, 9.27 of 211.63 for twenty) and 0.04% for a table
 of 500 rows — `list()` is lazy, so a second render rebuilds the descriptor and not
