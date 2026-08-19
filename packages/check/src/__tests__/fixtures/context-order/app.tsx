@@ -90,6 +90,34 @@ export class ReachedByIndex extends Component {
   }
 }
 
+/** ✗ Two Providers of one context on one component — core throws on this (RMD056). */
+export class ProvidesTwice extends Component {
+  base = this.use(ThemeProvider, () => ({ color: "slate" }));
+  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
+  render() {
+    return <p>twice</p>;
+  }
+}
+
+/** ✗ Renamed, and still one context — the pair is known by where it was declared. */
+export class ProvidesTwiceRenamed extends Component {
+  one = this.use(SizeProvider, () => ({ size: "m" }));
+  two = this.use(Publishes, () => ({ color: "rose" }));
+  three = this.use(ThemeProvider, () => ({ color: "amber" }));
+  render() {
+    return <p>renamed twice</p>;
+  }
+}
+
+/** Two CONSUMERS of one context is harmless — a consumer reads and publishes nothing. */
+export class ConsumesTwice extends Component {
+  a = this.use(ThemeConsumer);
+  b = this.use(Reads);
+  render() {
+    return <p>consumes twice</p>;
+  }
+}
+
 export class App extends Component {
   render() {
     return (
@@ -102,6 +130,9 @@ export class App extends Component {
         <OnlyAProvider />
         <TwoDifferentContexts />
         <ReachedByIndex />
+        <ProvidesTwice />
+        <ProvidesTwiceRenamed />
+        <ConsumesTwice />
       </main>
     );
   }

@@ -15,6 +15,11 @@ declare global {
     [key: string]: any;
     render(): any;
   }
+  /** The consumer the context page keeps rendering — declared once so each block stays its own module. */
+  class Badge extends Component<any> {
+    [key: string]: any;
+    render(): any;
+  }
   class ThemeProvider extends Hook<any> {
     [key: string]: any;
   }

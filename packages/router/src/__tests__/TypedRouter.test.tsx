@@ -157,3 +157,148 @@ function _typeChecks() {
   route("/about", {});
 }
 void _typeChecks;
+
+/**
+ * `params(pattern)` — the reading side typed from the pattern, the way `route(pattern, …)` has always
+ * typed the writing side.
+ *
+ * Three things, and the third is the one no other router does: the pattern is constrained to the
+ * patterns THIS table declares, and it is checked at runtime against the route the outlet actually
+ * matched. A type argument nothing verifies is the fault `route()` already refuses on its side.
+ */
+describe("params(pattern) is typed from the pattern", () => {
+  @Host("main")
+  class Named extends Component {
+    private nav = this.use(Navigator);
+    render() {
+      // The type comes OUT of the pattern — no annotation, and `id` is `string`.
+      const { id } = this.nav.params("/u/:id");
+      return <h1>{id}</h1>;
+    }
+  }
+
+  @Host("main")
+  class TwoParams extends Component {
+    private nav = this.use(Navigator);
+    render() {
+      const { id, pid } = this.nav.params("/u/:id/p/:pid");
+      return <h1>{`${id}:${pid}`}</h1>;
+    }
+  }
+
+  @Host("div")
+  class App extends Component {
+    router = this.use(Router);
+    render() {
+      return <RouteOutlet routes={withNamed} />;
+    }
+  }
+
+  const withNamed = createRoutes({
+    "/u/:id": <Named />,
+    "/u/:id/p/:pid": <TwoParams />,
+    "*": <Home />,
+  });
+
+  test("reads the param the outlet matched", async () => {
+    window.history.pushState(null, "", "/u/ada");
+    const mounted = render((<App />) as never);
+    try {
+      expect(mounted.container.textContent).toBe("ada");
+    } finally {
+      mounted.unmount();
+    }
+  });
+
+  test("reads both params of a two-param pattern", async () => {
+    window.history.pushState(null, "", "/u/ada/p/7");
+    const mounted = render((<App />) as never);
+    try {
+      expect(mounted.container.textContent).toBe("ada:7");
+    } finally {
+      mounted.unmount();
+    }
+  });
+
+  /**
+   * The type refuses what the table does not declare. Validated by `check-types` — an unused
+   * `@ts-expect-error` fails the build, so these lines cannot rot into silence.
+   */
+  test("the types refuse a pattern this table does not have", () => {
+    const probe = (nav: InstanceType<typeof Navigator>) => {
+      // @ts-expect-error — not a pattern in this table
+      nav.params("/teams/:teamId");
+      // @ts-expect-error — a static path has no params to read
+      nav.params("/about");
+      // The untyped door is still there, and still typed by what the caller asserts.
+      const loose = nav.params<{ id: string }>();
+      return loose.id;
+    };
+    expect(typeof probe).toBe("function");
+  });
+});
+
+/**
+ * The runtime half: a named pattern is a claim about which route this component is on, and an
+ * unchecked claim hands back `undefined` typed as `string`.
+ */
+describe("params(pattern) is checked against the route that matched", () => {
+  @Host("main")
+  class Wrong extends Component {
+    private nav = this.use(Navigator);
+    render() {
+      // Claims `:pid`, but the route below only supplies `:id`.
+      const { pid } = this.nav.params("/u/:id/p/:pid");
+      return <h1>{pid}</h1>;
+    }
+  }
+
+  @Host("div")
+  class App extends Component {
+    router = this.use(Router);
+    render() {
+      return <RouteOutlet routes={onlyId} />;
+    }
+  }
+
+  const onlyId = createRoutes({ "/u/:id": <Wrong />, "*": <Home /> });
+
+  test("throws, naming the param and the route it is standing on", () => {
+    window.history.pushState(null, "", "/u/ada");
+    expect(() => render((<App />) as never)).toThrow(/\[Ramonda Router\] params\("\/u\/:id\/p\/:pid"\)/);
+    expect(() => render((<App />) as never)).toThrow(/does not supply it/);
+    // The message has to name the route the component IS on, or a reader cannot tell which is wrong.
+    expect(() => render((<App />) as never)).toThrow(/"\/u\/:id"/);
+  });
+
+  /**
+   * NOT an equality check on the key. A component rendered by two patterns that agree on their params
+   * names one of them and is right on both — the claim is about the params, not the spelling.
+   */
+  test("a different pattern with the same param is accepted", () => {
+    @Host("main")
+    class Reader extends Component {
+      private nav = this.use(Navigator);
+      render() {
+        return <h1>{this.nav.params("/u/:id").id}</h1>;
+      }
+    }
+    @Host("div")
+    class Two extends Component {
+      router = this.use(Router);
+      render() {
+        return <RouteOutlet routes={people} />;
+      }
+    }
+    // `Reader` names `/u/:id` while being rendered by `/people/:id` — same param, so it holds.
+    const people = createRoutes({ "/people/:id": <Reader />, "*": <Home /> });
+
+    window.history.pushState(null, "", "/people/ada");
+    const mounted = render((<Two />) as never);
+    try {
+      expect(mounted.container.textContent).toBe("ada");
+    } finally {
+      mounted.unmount();
+    }
+  });
+});

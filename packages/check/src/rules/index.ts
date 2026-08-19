@@ -32,6 +32,7 @@ import { duplicateId } from "./duplicate-id";
 import { headingSkipsALevel } from "./heading-skips-a-level";
 import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-provider";
 import { clientOnlyRequestRead } from "./client-only-request-read";
+import { oneProviderPerComponent } from "./one-provider-per-component";
 
 export type {
   ElementContext,
@@ -91,6 +92,8 @@ export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./un
 export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
+export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./one-provider-per-component";
+export { contextHalfOf, type ContextHalf } from "./context-pair";
 export {
   contextConsumedAboveItsProvider,
   type ContextConsumedAboveItsProviderIssue,
@@ -118,6 +121,7 @@ export const CLASS_RULES = [
   unguardedAsyncLifecycle,
   contextConsumedAboveItsProvider,
   clientOnlyRequestRead,
+  oneProviderPerComponent,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */

@@ -52,8 +52,14 @@ export interface FormFacts {
  * available: `GLOBAL_RUNTIME` is internal to `@ramonda/core`, so this package cannot reach
  * `owner.context` by hand.
  *
- * Two forms nested behave correctly and for free: contexts are prototype-chained per component, so the
+ * Two forms NESTED behave correctly and for free: contexts are prototype-chained per component, so the
  * inner one shadows the outer for everything inside it.
+ *
+ * Two forms SIDE BY SIDE are two components, and core refuses the alternative — a second `Form` on one
+ * component would publish over the first and hand every descendant the second whichever form's markup
+ * it is in (RMD056). So a form owns a component, and two of them are two scopes: a component that
+ * renders `this.props.children` gives its form the subtree it is for, which is what makes a plain
+ * `this.use(FormState)` below it unambiguous with nothing passed down.
  *
  * The value is the form itself and its identity never changes, so the context is only a way to FIND
  * the form — a consumer subscribing to the `form` key is subscribing to something that never moves.

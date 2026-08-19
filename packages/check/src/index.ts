@@ -27,6 +27,7 @@ export type {
   HeadTagsCollideIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,
+  OneProviderPerComponentIssue,
   PositiveTabIndexIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

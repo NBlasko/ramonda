@@ -67,10 +67,10 @@ class GreetingPage extends Component {
   // Below `nav` on purpose: field initialisers run in order, so reading `this.nav` above this
   // point would read the field before it exists.
   head = this.use(Head, (self: GreetingPage) => ({
-    title: `Hello, ${self.nav.params<{ name: string }>().name} — Ramonda`,
+    title: `Hello, ${self.nav.params("/hello/:name").name} — Ramonda`,
   }));
   render() {
-    const { name } = this.nav.params<{ name: string }>();
+    const { name } = this.nav.params("/hello/:name");
     return (
       <div className="card">
         <h1>Hello, {name}!</h1>

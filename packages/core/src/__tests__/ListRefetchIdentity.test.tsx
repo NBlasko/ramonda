@@ -92,15 +92,21 @@ class Plain extends Component {
     { id: 2, t: "b", done: false },
     { id: 3, t: "c", done: false },
   ];
+  /**
+   * A METHOD, not an inline arrow, and that is now load-bearing for the fast path below.
+   *
+   * A fresh closure per render could have captured anything from that render, and nothing can look
+   * inside one — so the engine rebuilds every row for it. A method cannot capture a render's locals,
+   * so its reference is stable and the reuse checks apply. See `listEngine.ts`'s `lastBuilder`, and
+   * `ListCallbackIdentity.test.tsx` for both halves.
+   */
+  row(r: Row) {
+    mapperCalls++;
+    return <li>{r.t}</li>;
+  }
+
   render() {
-    return (
-      <ul>
-        {list(this.rows, (r: Row) => {
-          mapperCalls++;
-          return <li>{r.t}</li>;
-        })}
-      </ul>
-    );
+    return <ul>{list(this.rows, this.row)}</ul>;
   }
 }
 

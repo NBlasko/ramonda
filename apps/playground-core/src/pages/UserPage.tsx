@@ -4,7 +4,7 @@ import { Link, Navigator } from "../routes";
 export class UserPage extends Component {
   route = this.use(Navigator);
   render() {
-    const id = this.route.params<{ id: string }>().id;
+    const id = this.route.params("/users/:id").id;
     return (
       <div className="page">
         <h2>User Profile</h2>

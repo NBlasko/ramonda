@@ -36,6 +36,31 @@ export type ItemRender<T> = (item: T) => VNode;
  * </ul>
  * ```
  *
+ * ## The callback's SHAPE decides whether the rows can be reused
+ *
+ * Rows are reused when nothing the callback READ has moved, and reads are tracked wherever they happen
+ * — any call depth, any module. What cannot be seen is a value read OUTSIDE the callback and closed
+ * over, and nothing can look inside a closure to find out. So the engine goes by the one thing it can
+ * see:
+ *
+ * - **an INLINE callback is a new function every render**, so it might have captured anything, and its
+ *   rows are rebuilt. Correct, and it costs a callback call and a vnode per row per render — measured
+ *   at 10 000 rows over five re-renders as **no extra DOM work at all**, because the diff finds the
+ *   rows identical.
+ * - **a callback that cannot capture a render's locals** — a method, or a module-level function — has a
+ *   stable reference, and its rows are reused:
+ *
+ * ```tsx
+ * class Board extends Component {
+ *   row(task: Task) { return <TaskRow key={task.id} item={task} />; }   // reads state INSIDE
+ *   render() { return <ul>{list(this.todo, this.row)}</ul>; }
+ * }
+ * ```
+ *
+ * **Reach for the method form when a list is large.** A short list keeps every guarantee either way,
+ * and what you never get is a stale row — which is the reason the rule is the callback's shape rather
+ * than a promise to be careful. See `helpers/listEngine.ts`'s `lastBuilder`.
+ *
  * ## Two arguments, and always a function
  *
  * There used to be an options bag — `{ each, as, render, key }` — and every field
@@ -128,7 +153,8 @@ export function list<T>(each: Each<T>, render: ItemRender<T>): ListNode {
  * one thing that differs is the thing you cannot see: it does not iterate here.
  * Nothing has run when it returns. What comes back is a DESCRIPTION, and the
  * mapper is called by the diff, once it is holding the region the rows live in —
- * which is the whole reason a list whose array did not change costs nothing.
+ * which is what lets a list whose array did not change cost nothing, when the callback is one that can
+ * be reused (see above).
  *
  * Anyone who expects an array meets `undefined`, `is not a function` and `is not
  * iterable`, none of which say what happened. TypeScript refuses all three, so
@@ -143,7 +169,7 @@ function guardAgainstArrayUse(descriptor: object): void {
   const explain = (reached: string): never => {
     throw new TypeError(
       `\`list()\` returns a description of a list, not an array, so \`${reached}\` has nothing to work with.\n` +
-        `Nothing has run yet: the callback is called by the framework when it renders the list, which is what makes a list whose array did not change cost nothing.\n` +
+        `Nothing has run yet: the callback is called by the framework when it renders the list, which is what lets a list whose array did not change cost nothing.\n` +
         `Render it — \`<ul>{list(items, (item) => …)}</ul>\` — or, if what you want is an array of values rather than a rendered list, use \`items.map(…)\`.`,
     );
   };

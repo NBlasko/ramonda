@@ -48,6 +48,7 @@ const EXPECTED_TYPES = [
   "HeadingSkipsALevelIssue",
   "InteractiveInsideInteractiveIssue",
   "LateRequestReadIssue",
+  "OneProviderPerComponentIssue",
   "PositiveTabIndexIssue",
   "RoleMissingRequiredAriaIssue",
   "RoleTakesNoNameIssue",

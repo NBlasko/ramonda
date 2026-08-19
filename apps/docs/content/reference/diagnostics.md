@@ -1539,11 +1539,11 @@ framework holds you to.
 
 ## RMD056 — One context provided twice by the same component
 
-```tsx
-const [ThemeProvider, ThemeConsumer] = createContext({ color: "slate" }, { label: "Theme" });
+```tsx expect-error
+const [ThemeProvider] = createContext({ color: "slate" }, { label: "Theme" });
 
 class Panel extends Component {
-  // ✗ two Providers of one context, on one component
+  // ✗ two Providers of one context, on one component — this throws
   base = this.use(ThemeProvider, () => ({ color: "slate" }));
   accent = this.use(ThemeProvider, () => ({ color: "amber" }));
 
@@ -1553,33 +1553,62 @@ class Panel extends Component {
 }
 ```
 
-A component publishes a context on one object — its own — so the second Provider replaces the first
-under the same key. Every descendant reads `"amber"`, and `base` is unreachable from below.
+A component publishes a context on one object, so the second Provider would replace the first under
+the same key: every descendant reads `"amber"`, and `base` is unreachable from below.
 
-What hides it is that `base` still works *here*: a Provider reads as well as provides, so
-`this.base.color` is `"slate"` inside `Panel` while every component under it sees `"amber"`. The
-component that made the mistake is the one place the mistake is invisible.
+What hides it is that `base` still works *here*. A Provider reads as well as provides, so
+`this.base.color` is `"slate"` inside `Panel` while every component under it sees `"amber"` — **the
+component that made the mistake is the one place the mistake is invisible.** That is why this
+**throws in every build**, like a write to props
+([RMD004](#rmd004-props-mutated-by-the-receiving-component)) and a plain-object props bag
+([RMD055](#rmd055-a-hooks-props-passed-as-a-plain-object)): a development-only report would leave a
+shipped page handing the wrong value to whichever descendant asked.
 
-There is no reading of this the framework could honour, so keep the one you meant and delete the other.
-If both values are needed below, they are two contexts — call `createContext` twice, and each gets a
-key of its own. If the second was meant to win for part of the tree, that is a **nested** Provider:
+Write two scopes instead. A component that renders `this.props.children` scopes its context to what is
+inside it, which is what a `<Provider>` element does in a framework that has fragments:
 
 ```tsx
-const [ThemeProvider] = createContext({ color: "slate" }, { label: "Theme" });
+const [ThemeProvider, ThemeConsumer] = createContext({ color: "slate" }, { label: "Theme" });
 
-class Highlight extends Component {
-  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
-
+class Scope extends Component<{ color: string; children?: RamondaNode }> {
+  theme = this.use(ThemeProvider, () => ({ color: this.props.color }));
   render() {
-    return <Card />;
+    return this.props.children;
+  }
+}
+
+class Panel extends Component {
+  render() {
+    return (
+      <div>
+        <Scope color="slate">
+          <Card />
+        </Scope>
+        <Scope color="amber">
+          <Card />
+        </Scope>
+      </div>
+    );
   }
 }
 ```
 
-On its own component it publishes on its own object, so it shadows the one above for its own branch
-and leaves the rest of the tree reading `"slate"`. That is the ordinary arrangement and nothing is
-reported for it — the report asks whether this component *already* published the key itself, which a
-Provider above it never makes true.
+Two independent scopes, and a consumer inside each finds its own **with nothing passed down**. That
+works because a context object is created from the component that *renders* a node — so a child handed
+in as `children` inherits the wrapper's context, not the context of whoever wrote the JSX.
+
+**Nesting is untouched and needs no scope wrapper.** A Provider on a descendant component shadows the
+one above it for its own branch, which is ordinary and is never refused: the check asks whether *this*
+component already published the key itself, and a Provider above it never makes that true.
+
+**`single` is a different question.** It declares whether *nesting* is a fault — two on one path, on
+different components — and a context that welcomes nesting is still broken by two on one component. So
+this takes no option: there is no version of it an author would choose.
+
+**Splitting the keys between two Providers is not a way out**, and the types already close it. A
+Provider takes its options whole, so the second cannot supply half — it would replace the channel and
+the first half would fall back to the default. If the two values are for different purposes, they are
+two contexts: call `createContext` twice.
 
 ## RMD057 — A context consumed above the provider on the same component
 
