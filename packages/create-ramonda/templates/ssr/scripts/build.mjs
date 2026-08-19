@@ -12,7 +12,7 @@
  * where to put it.
  */
 import { build } from "esbuild";
-import { ramondaOptions } from "@ramonda/build/esbuild";
+import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";
 
 const shared = {
   ...ramondaOptions,
@@ -21,7 +21,9 @@ const shared = {
   // The production condition picks `@ramonda/core`'s optimized build, and `__DEV__` compiles the
   // development-only branches out of your own code.
   conditions: ["production"],
-  define: { __DEV__: "false" },
+  // Through `ramondaDefine` because writing `define` plainly would drop the entries that make
+  // `import.meta.env.RAMONDA_PUBLIC_*` readable — see its own note.
+  define: ramondaDefine({ __DEV__: "false" }),
 };
 
 await build({

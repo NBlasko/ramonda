@@ -102,6 +102,78 @@ There is one asymmetry with Vite worth knowing. Vite's config may leave `target`
 esbuild's default *is* `esnext`, so a build that never mentions a target has already chosen the
 broken one. That is why an unset target here is filled in rather than left alone.
 
+## Environment variables
+
+Two kinds, and the difference is which side may see them.
+
+| where you read it | how | who can see it |
+|---|---|---|
+| server only | `process.env.DATABASE_URL` | the server. Name it whatever your host names it. |
+| the browser too | `import.meta.env.RAMONDA_PUBLIC_API_BASE` | **everyone.** It is compiled into the bundle as a literal. |
+
+**The prefix is the decision.** Anything named `RAMONDA_PUBLIC_…` is inlined into the browser bundle;
+everything else stays on the server. That is the whole mechanism, and it exists so that adding a variable
+to a `.env` is never one keystroke away from publishing a secret.
+
+**Only the public half is prefixed**, and that is deliberate: `DATABASE_URL` comes from your host — Docker,
+Fly, a CI secret — and your app does not get to rename it.
+
+```
+# .env
+DATABASE_URL=postgres://…                      # server only
+RAMONDA_SESSION_SECRET=…                       # server only — no PUBLIC, so it never travels
+RAMONDA_PUBLIC_API_BASE=https://api.example.com   # in the bundle, readable by anyone
+```
+
+```tsx
+class Page extends Component {
+  @created({ env: "server" }) load() {
+    connect(process.env.DATABASE_URL);              // server
+  }
+  render() {
+    return <Feed from={import.meta.env.RAMONDA_PUBLIC_API_BASE} />;   // both sides
+  }
+}
+```
+
+You configure none of this: `@ramonda/build`'s Vite plugin sets `envPrefix`, and its esbuild half emits
+the `define` entries. But two things are worth knowing, because both were measured rather than assumed.
+
+**It replaces Vite's `VITE_` prefix rather than adding to it.** An app that was reading `VITE_SOMETHING`
+finds that variable `undefined` after adopting Ramonda's build settings. Rename it, or read it on the
+server and pass it down. Setting `envPrefix` yourself is **refused** rather than merged, because a plugin
+that quietly widened what reaches the browser would be the one mistake here nobody can walk back.
+
+**With esbuild, call `ramondaDefine` rather than writing `define` yourself:**
+
+```ts
+await build({ ...ramondaOptions, define: ramondaDefine({ __DEV__: "false" }) });
+```
+
+`ramondaOptions` is spread, and a spread cannot refuse anything — a plain `define` written after it
+replaces the env entries, and every `import.meta.env.RAMONDA_PUBLIC_…` read becomes a live reference that
+throws in the browser, because esbuild creates no `import.meta.env` of its own. The plugin form needs none
+of this: it runs after the options are assembled, so it merges into whatever is there.
+
+**Types.** Declare the names your app reads, once, and a typo becomes a build error. Two interfaces, and
+both are needed — `ImportMetaEnv` on its own is attached to nothing, and the error you get is
+`Property 'env' does not exist on type 'ImportMeta'`:
+
+```ts
+interface ImportMetaEnv {
+  readonly RAMONDA_PUBLIC_API_BASE: string;
+}
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+```
+
+**Put it in a file your `tsconfig.json` already compiles**, or nothing reads it. A scaffolded project has
+one either way: `global.d.ts` in the SSR template, which is in its `include`, and `src/vite-env.d.ts` in the
+SPA one. In the SPA template `/// <reference types="vite/client" />` has already declared both interfaces,
+so there you *extend* `ImportMetaEnv` rather than introduce it — writing the `ImportMeta` half again is
+harmless, since an interface of the same name merges.
+
 ## It refuses rather than corrects
 
 If your config names any of the three as something Ramonda cannot work with, the build stops and

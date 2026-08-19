@@ -32,6 +32,7 @@ export type {
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
+  ServerEnvInSharedCodeIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
   UnguardedAsyncLifecycleIssue,
@@ -39,6 +40,7 @@ export type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
 } from "./analyze";

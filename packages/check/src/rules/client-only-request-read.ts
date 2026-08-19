@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { importedFromCore } from "./core-import";
+import { clientOnlyBecause } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
 
 /**
@@ -52,80 +53,6 @@ export interface ClientOnlyRequestReadIssue {
   file: string;
   line: number;
   column: number;
-}
-
-/**
- * Decorators that put a member on the client and nowhere else, and what to call each one in a report.
- *
- * Read off the framework rather than guessed, and each entry has a mechanism behind it:
- * `@updated` is skipped for `env === "server"` in `flushUpdated`; the timers and the listener
- * decorators are built on `createSubscriptionDecorator`, which attaches an EFFECT, and
- * `runComponentEffects` returns immediately on the server; `@deferHydration` belongs to hydration,
- * which only ever happens in a browser.
- */
-const CLIENT_ONLY_DECORATORS = new Map<string, string>([
-  ["updated", "`@updated` runs after a commit, and the commit skips a server render"],
-  ["deferHydration", "`@deferHydration` belongs to hydration, which only happens in a browser"],
-  ["interval", "`@interval` is an effect, and effects never run on the server"],
-  ["timeout", "`@timeout` is an effect, and effects never run on the server"],
-  ["onWindow", "`@onWindow` is an effect, and effects never run on the server"],
-  ["onDocument", "`@onDocument` is an effect, and effects never run on the server"],
-  ["onElement", "`@onElement` is an effect, and effects never run on the server"],
-]);
-
-/** The lifecycle decorators, which run on BOTH sides unless the call says otherwise. */
-const LIFECYCLE_DECORATORS = new Set(["created", "mounted", "destroyed"]);
-
-/** The decorator's name, whatever spelling reached it — `@updated` or `@created({ … })`. */
-function decoratorName(decorator: ts.Decorator): string | undefined {
-  const expression = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
-  return ts.isIdentifier(expression) ? expression.text : undefined;
-}
-
-/** `{ env: "client" }` on a lifecycle decorator, which is what narrows it to one side. */
-function envOf(decorator: ts.Decorator): string | undefined {
-  if (!ts.isCallExpression(decorator.expression)) return undefined;
-  const options = decorator.expression.arguments[0];
-  if (options === undefined || !ts.isObjectLiteralExpression(options)) return undefined;
-  for (const property of options.properties) {
-    if (!ts.isPropertyAssignment(property)) continue;
-    const key = property.name;
-    const named = ts.isIdentifier(key) || ts.isStringLiteral(key) ? key.text : undefined;
-    if (named !== "env") continue;
-    const value = property.initializer;
-    return ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value) ? value.text : undefined;
-  }
-  return undefined;
-}
-
-/**
- * Why this member cannot run on the server, or `undefined` when it can — which includes not knowing.
- *
- * The decorator has to come from core: an app is entitled to its own `@interval`, and reporting a
- * read under one would be reporting the reader's own code for the framework's rule.
- */
-function clientOnlyBecause(member: ts.ClassElement, context: RuleContext): string | undefined {
-  // `ts.getDecorators` wants a node the compiler already knows can carry them; a `ClassElement` is
-  // the union and includes the ones that cannot. The two that can are the two a lifecycle is written
-  // on, and asking about the others is how a member with none reads as one with none.
-  const decorated = ts.isMethodDeclaration(member) || ts.isPropertyDeclaration(member) ? member : undefined;
-  for (const decorator of (decorated === undefined ? undefined : ts.getDecorators(decorated)) ?? []) {
-    const name = decoratorName(decorator);
-    if (name === undefined) continue;
-
-    const expression = ts.isCallExpression(decorator.expression)
-      ? decorator.expression.expression
-      : decorator.expression;
-    if (!importedFromCore(expression, context.resolveLocal)) continue;
-
-    const known = CLIENT_ONLY_DECORATORS.get(name);
-    if (known !== undefined) return known;
-
-    if (LIFECYCLE_DECORATORS.has(name) && envOf(decorator) === "client") {
-      return `\`@${name}({ env: "client" })\` says so itself`;
-    }
-  }
-  return undefined;
 }
 
 /**

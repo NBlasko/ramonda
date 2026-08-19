@@ -41,6 +41,7 @@ import type {
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
+  ServerEnvInSharedCodeIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
   UnguardedAsyncLifecycleIssue,
@@ -48,6 +49,7 @@ import type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
 } from "./rules";
@@ -82,6 +84,7 @@ export type {
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
+  ServerEnvInSharedCodeIssue,
   StateWrittenWhileRenderingIssue,
   TagNeedsItsParentIssue,
   UnguardedAsyncLifecycleIssue,
@@ -89,6 +92,7 @@ export type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  UnexposedEnvReadIssue,
   UnsplittableImportIssue,
   UnwatchedFieldIssue,
 };
