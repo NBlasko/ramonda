@@ -56,8 +56,8 @@
   },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
-    "@types/node": "^26.1.2",
-    "esbuild": "0.28.1",
+    "@types/node": "^26.2.0",
+    "esbuild": "0.28.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",
