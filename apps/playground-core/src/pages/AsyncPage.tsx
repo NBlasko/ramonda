@@ -11,6 +11,18 @@ let flakyAttempts = 0;
 const MISSING_CHUNK = "/__ramonda_missing_chunk__.js";
 
 /**
+ * The props each lazy panel is handed once it loads.
+ *
+ * Module constants rather than literals written in the JSX, and the reason is the reason
+ * `fresh-object-in-props` exists: a literal is built during the render, so the child is handed a
+ * different object every time and props comparison can never match it. Measured — one child goes
+ * from one render to two the moment its parent re-renders for any reason at all.
+ */
+const LAZY_PROPS = { title: "HeavyPanel (lazy)" };
+const RETRY_PROPS = { title: "HeavyPanel (after retries)" };
+const RACE_PROPS = { title: "HeavyPanel (after the race)" };
+
+/**
  * Lets the "unmounted while still loading" demo finish on demand.
  *
  * This used to be `setTimeout(…, 3000)` inside the lazy, and RMD006 was right to
@@ -97,7 +109,7 @@ export class AsyncPage extends Component {
               lazy={() => import("../demos/HeavyPanel")}
               onLoading={<p className="muted">loading the module…</p>}
               errorFallback={<p className="muted">could not load it</p>}
-              loadedProps={{ title: "HeavyPanel (lazy)" }}
+              loadedProps={LAZY_PROPS}
             />
           ) : null}
         </section>
@@ -154,7 +166,7 @@ export class AsyncPage extends Component {
               }}
               cacheKey="flaky-heavy-panel"
               onLoading={<p className="muted">loading…</p>}
-              loadedProps={{ title: "HeavyPanel (after retries)" }}
+              loadedProps={RETRY_PROPS}
               errorFallback={({ error, retry, attempt }) => (
                 <div className="row">
                   <span className="muted small">
@@ -190,7 +202,7 @@ export class AsyncPage extends Component {
               onLoading={<p className="muted">waiting… unmount me, or press "let it finish"</p>}
               errorFallback={<p className="muted">error</p>}
               cacheKey="slow-heavy-panel"
-              loadedProps={{ title: "HeavyPanel (after the race)" }}
+              loadedProps={RACE_PROPS}
             />
           ) : null}
         </section>

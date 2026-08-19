@@ -167,6 +167,7 @@ export class Search extends Component {
             ref={this.input}
             type="search"
             className="search-input"
+            aria-label="Search the documentation"
             placeholder="Search the documentation…"
             value={this.query}
             onInput={this.onInput}

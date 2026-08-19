@@ -3,12 +3,13 @@ import { GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { resolveHostTag } from "./hostTag";
 import type { HostMeta } from "../types/commonTypes";
 import { createRamonda } from "../vdom/CreateRamonda";
-import { isArray } from "./utils";
+import { displayName, isArray } from "./utils";
 import { HOST_META, hostStyle, HOST_TAG, HAS_LIST } from "./constants";
 import { isListNode } from "../vdom/guards";
 import { renderPhase } from "../debug/renderPhase";
 import { checkRenderStability, isStrictRender } from "../debug/renderStability";
 import { currentOrigin } from "../core/origin";
+import { diagnose } from "../debug/diagnostics";
 
 export function generateRenderOutput(component: BaseComponent) {
   if (__DEV__) {
@@ -38,6 +39,21 @@ export function generateRenderOutput(component: BaseComponent) {
   return buildRenderOutput(component);
 }
 
+/**
+ * Says so when `render()` returned a promise, which is the one thing it may never do.
+ *
+ * Dev-only: the check costs one property read on the value the render just returned, and production
+ * keeps the behaviour it always had.
+ */
+function reportIfAsync(output: unknown, component: BaseComponent): void {
+  if (typeof (output as { then?: unknown })?.then !== "function") return;
+
+  const name = displayName(component as object);
+  diagnose("RMD060", name, `<${name} />'s \`render()\` is async — it returns a promise, not markup.`, {
+    component: name,
+  });
+}
+
 function buildRenderOutput(component: BaseComponent) {
   // Everything render() builds is stamped with this component, so the diff can
   // tell a component's own elements from ones handed to it through a prop.
@@ -52,6 +68,10 @@ function buildRenderOutput(component: BaseComponent) {
   } finally {
     currentOrigin.id = previousOrigin;
   }
+
+  // Asked of what `render()` ITSELF returned, before it is wrapped in a host element — the wrapper
+  // is a node whatever is inside it, so the question cannot be asked one level up.
+  if (__DEV__) reportIfAsync(innerRendered, component);
 
   const ctor = component.constructor as { [HOST_META]?: HostMeta };
   const meta = ctor[HOST_META];

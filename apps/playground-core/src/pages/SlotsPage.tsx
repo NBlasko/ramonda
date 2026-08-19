@@ -1,4 +1,4 @@
-import { Component, state, list } from "@ramonda/core";
+import { Component, compute, state, list } from "@ramonda/core";
 import { Chip, ArrayPanel, IconPanel, PlainPanel, TextPanel } from "../demos/SlotPanels";
 
 interface Guest {
@@ -29,6 +29,17 @@ export class SlotsPage extends Component {
 
   // Case 4: plain tags only, slot nested inside an object prop.
   @state plainRows = ["one", "two"];
+
+  /**
+   * The slot object, built once per change rather than once per render.
+   *
+   * Written in the JSX it was a fresh object every render, so `PlainPanel` could never be skipped —
+   * `fresh-object-in-props` reports exactly that. A `@compute` hands back the same object until
+   * `plainRows` changes, which is what comparison needs.
+   */
+  @compute get plainSlots() {
+    return { body: this.plainRows.map((label) => <li className="chip">{label}</li>) };
+  }
 
   // Case 5: text as a slot, and the panel's own chrome around it.
   @state text = "slotted text";
@@ -149,11 +160,7 @@ export class SlotsPage extends Component {
             No components in the slot at all, and it arrives as <code>slots.body</code> — proof the guarantee does not
             depend on the prop's name or on how deep it sits.
           </p>
-          <PlainPanel
-            slots={{
-              body: this.plainRows.map((label) => <li className="chip">{label}</li>),
-            }}
-          />
+          <PlainPanel slots={this.plainSlots} />
         </section>
 
         {/* ── 5. text as a slot ──────────────────────────────────────────── */}

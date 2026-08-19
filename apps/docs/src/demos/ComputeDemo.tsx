@@ -55,7 +55,13 @@ export class ComputeDemo extends Component {
     return (
       <div>
         <p className="demo-row">
-          <input type="text" placeholder="filter" value={this.filter} onInput={this.onFilter} />
+          <input
+            type="text"
+            aria-label="Filter the items"
+            placeholder="filter"
+            value={this.filter}
+            onInput={this.onFilter}
+          />
           <button type="button" onClick={this.addItem}>
             add an item
           </button>

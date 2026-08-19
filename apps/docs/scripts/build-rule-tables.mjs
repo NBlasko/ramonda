@@ -15,6 +15,17 @@
  *   node scripts/build-rule-tables.mjs          # write them
  *   node scripts/build-rule-tables.mjs --check  # fail if they are out of date (for CI)
  *
+ * ## It writes the issue-type list on the API page too
+ *
+ * Same argument, arrived at from the other direction: that list is a paragraph naming every rule's
+ * issue shape, and it was maintained by hand. Every rule added meant editing it, every BRANCH that
+ * added a rule collided with every other branch there, and the only thing catching a miss was
+ * `check-api-coverage.mjs` failing the build afterwards.
+ *
+ * The names are read from what `@ramonda/check` actually exports, rather than derived from rule ids
+ * — a derivation would need the same list of naming exceptions the surface test keeps, which is one
+ * more copy of a thing that must agree.
+ *
  * ## Why the markers are link definitions
  *
  * A generated region needs a boundary the renderer does not show. Markdown here is rendered with
@@ -35,6 +46,10 @@ const check = process.argv.includes("--check");
 
 const START = "[rules:start]: #";
 const END = "[rules:end]: #";
+
+const api = join(content, "api.md");
+const ISSUES_START = "[issues:start]: #";
+const ISSUES_END = "[issues:end]: #";
 
 /**
  * The row for one rule.
@@ -104,17 +119,113 @@ if (from === -1 || to === -1 || to < from) {
   process.exit(1);
 }
 
+/**
+ * Replaces one generated region, or says clearly why it cannot.
+ *
+ * Shared by the two pages this writes, because the failure that matters is the same on both: a
+ * missing marker means the script has nowhere to write and would otherwise do nothing at all,
+ * quietly, which is exactly the drift it exists to end.
+ */
+function replaceRegion(file, startMarker, endMarker, body) {
+  const text = readFileSync(file, "utf8");
+  const at = text.indexOf(startMarker);
+  const until = text.indexOf(endMarker);
+  if (at === -1 || until === -1 || until < at) {
+    console.error(
+      `[rules] ${file} has no generated region.\n` +
+        `        It is bounded by the link definitions ${startMarker} and ${endMarker};\n` +
+        `        without both, this script has nowhere to write and would silently do nothing.`,
+    );
+    process.exit(1);
+  }
+  return { text, updated: text.slice(0, at) + body + text.slice(until + endMarker.length) };
+}
+
+/**
+ * Every issue shape the package publishes, read from what it actually exports.
+ *
+ * The source of truth is `src/rules/index.ts`, for two reasons that both matter. It is not the rule
+ * IDS, because deriving `ArrowFieldIssue` from `arrow-fields` needs the naming exceptions the
+ * surface test keeps and a second copy of those is what this script exists to avoid. And it is not
+ * `src/index.ts`, because that also publishes the GRAPH checks' shapes — `ContextIssue` is real and
+ * public and is not any rule's, so a sentence beginning "every rule publishes" must not name it.
+ */
+function issueTypes() {
+  const source = readFileSync(join(here, "..", "..", "..", "packages", "check", "src", "rules", "index.ts"), "utf8");
+  /**
+   * Both spellings of a type export, because both are written and the first version read only one.
+   *
+   * `export { rule, type RuleIssue }` is the form every rule uses today; `export type { RuleIssue }`
+   * is the form somebody will use tomorrow. Found by planting a name in the second form and watching
+   * `--check` stay green — which is the whole reason to plant one.
+   */
+  const names = [
+    ...[...source.matchAll(/\btype (\w+Issue)\b/g)].map((match) => match[1]),
+    ...[...source.matchAll(/\btype \{([^}]*)\}/g)].flatMap((match) => match[1].match(/\w+Issue/g) ?? []),
+  ];
+  return [...new Set(names)].sort();
+}
+
+/** The paragraph, wrapped so the file stays readable in a diff. */
+function paragraph(names) {
+  const words = `Every rule publishes its own issue shape, named for the rule: ${names
+    .map((name) => `\`${name}\``)
+    .join(", ")}.`.split(" ");
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    if (line.length > 0 && `${line} ${word}`.length > 100) {
+      lines.push(line);
+      line = word;
+    } else line = line.length === 0 ? word : `${line} ${word}`;
+  }
+  if (line.length > 0) lines.push(line);
+  return lines.join("\n");
+}
+
+/**
+ * No early exit when this page is already right.
+ *
+ * There used to be a `process.exit(0)` here, and moving the API page's block below it made that
+ * exit skip the second page entirely — a planted name went unreported and the run stayed green.
+ * Caught by planting one, which is the only reason to plant one. Two pages means the script may
+ * only finish once, at the end.
+ */
 const updated = existing.slice(0, from) + region + existing.slice(to + END.length);
-if (updated === existing) {
-  if (check) console.log(`[rules] up to date — ${rules.length} rules`);
-  process.exit(0);
+if (updated !== existing) {
+  if (check) {
+    console.error(
+      "[rules] the rule tables in reference/check.md are out of date\n" +
+        "        run `node scripts/build-rule-tables.mjs` and commit the result.",
+    );
+    process.exit(1);
+  }
+  writeFileSync(page, updated);
+  console.log(`[rules] reference/check.md — ${errors.length} errors, ${warnings.length} warnings`);
 }
-if (check) {
-  console.error(
-    "[rules] the rule tables in reference/check.md are out of date\n" +
-      "        run `node scripts/build-rule-tables.mjs` and commit the result.",
-  );
-  process.exit(1);
+
+const issues = issueTypes();
+const issueRegion = [
+  ISSUES_START,
+  "",
+  "*Generated by `scripts/build-rule-tables.mjs` from what the package exports — edit the rule, not this.*",
+  "",
+  paragraph(issues),
+  "",
+  ISSUES_END,
+].join("\n");
+
+const apiPage = replaceRegion(api, ISSUES_START, ISSUES_END, issueRegion);
+if (apiPage.updated !== apiPage.text) {
+  if (check) {
+    console.error(
+      "[rules] the issue-type list in reference/api.md is out of date\n" +
+        "        run `node scripts/build-rule-tables.mjs` and commit the result.",
+    );
+    process.exit(1);
+  }
+  writeFileSync(api, apiPage.updated);
+  console.log(`[rules] reference/api.md — ${issues.length} issue types`);
 }
-writeFileSync(page, updated);
-console.log(`[rules] reference/check.md — ${errors.length} errors, ${warnings.length} warnings`);
+
+if (check) console.log(`[rules] up to date — ${rules.length} rules, ${issues.length} issue types`);

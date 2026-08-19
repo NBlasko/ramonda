@@ -22,7 +22,13 @@ export class RefFocus extends Component {
   render() {
     return (
       <p className="demo-row">
-        <input ref={this.input} type="text" placeholder="type here" onInput={this.onInput} />
+        <input
+          ref={this.input}
+          type="text"
+          aria-label="Anything you like"
+          placeholder="type here"
+          onInput={this.onInput}
+        />
         <button type="button" onClick={this.focusInput}>
           focus it
         </button>
