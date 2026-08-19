@@ -24,6 +24,20 @@ Measured across every app and package here: zero errors, scaffold templates unaf
 documentation's own examples typecheck unchanged. The production bundle is byte-identical — types
 are erased.
 
-The refusals are pinned by `NamedImageTypes.refused.tsx`, where each shape sits under its own
-`@ts-expect-error`: a directive that stops being necessary is itself an error, so relaxing any of
-this fails the typecheck rather than passing quietly.
+**A spread is not restricted.** The requirement is about the name, and anything that proves one is
+there satisfies it — the spread's own type, or an attribute written beside it:
+
+```tsx
+<img {...anything} alt="written out" />   // fine — the name is right there
+<img {...imgProps} />                     // fine — the type carries one of the four
+<img {...bag} />                          // refused — nothing says a name is in it
+```
+
+Controls are untouched: nothing is required on an `<input>`, `<select>` or `<textarea>`, so a form's
+`bind` spread goes on exactly as before.
+
+All of it is pinned by `packages/core/src/__tests__/JsxTypeClaims.tsx`, which states every claim in
+both directions — shapes that must compile, and shapes under `@ts-expect-error` that must not. A
+directive that stops being necessary is itself an error, so relaxing any of this fails the typecheck
+rather than passing quietly. Verified by relaxing the image requirement (four directives went
+unused) and one refused name (one did).

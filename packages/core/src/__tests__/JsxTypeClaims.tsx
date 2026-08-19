@@ -1,0 +1,160 @@
+import { Component } from "../base/Component";
+
+/**
+ * Everything the JSX types promise, in one file, pinned in both directions.
+ *
+ * Not a test file — there is nothing to run, and vitest does not pick it up. It is a set of claims
+ * checked by `tsc` in this package's own `check-types`, and it is the only place they are written
+ * down as code rather than as prose.
+ *
+ * **A shape with no directive must compile.** **A shape under `@ts-expect-error` must not** — and
+ * TypeScript reports an "unused '@ts-expect-error' directive" the day one of them starts
+ * compiling, so relaxing any of this fails the build instead of passing quietly. Verified by
+ * relaxing one requirement and watching two directives go unused.
+ */
+
+declare const loose: Record<string, unknown>;
+declare const withAlt: { src: string; alt: string };
+declare const imgProps: JSX.IntrinsicElements["img"];
+declare const maybeAlt: { src: string; alt?: string };
+declare const extras: { className?: string; loading?: string };
+
+/** The shape `@ramonda/form` spreads onto a control, as `CommonBind` declares it. */
+declare const bind: {
+  readonly name: string;
+  readonly value: string;
+  readonly onInput: (event: Event) => void;
+  readonly onBlur: (event: Event) => void;
+  readonly "aria-invalid": boolean | undefined;
+};
+
+/**
+ * Names that reach the DOM verbatim and do nothing.
+ *
+ * Measured by rendering each one and reading back what landed in the document — every one of these
+ * arrives lowercased as a name no browser reads.
+ */
+export class RefusedNames extends Component {
+  render() {
+    return (
+      <div>
+        {/* @ts-expect-error — the attribute is `http-equiv` */}
+        <meta httpEquiv="refresh" content="5" />
+        {/* @ts-expect-error — the attribute is `accept-charset` */}
+        <form acceptCharset="utf-8" />
+        {/* @ts-expect-error — the attribute IS the initial value */}
+        <input defaultValue="v" />
+        {/* @ts-expect-error — the attribute IS the initial state */}
+        <input defaultChecked />
+        {/* @ts-expect-error — Ramonda renders children */}
+        <div innerHTML="<p>x</p>" />
+        {/* @ts-expect-error — put the text in the children */}
+        <span textContent="hi" />
+      </div>
+    );
+  }
+}
+
+/** The correct spellings of the same things, which must keep compiling. */
+export class AcceptedNames extends Component {
+  render() {
+    return (
+      <div>
+        <meta http-equiv="refresh" content="5" />
+        <form accept-charset="utf-8" noValidate />
+        <input value="v" checked readOnly maxLength={5} tabIndex={0} autocomplete="off" />
+        {/* The two that ARE aliased, because they are reserved words. */}
+        <div className="x" />
+        <label htmlFor="a">A</label>
+        <label for="b">B</label>
+      </div>
+    );
+  }
+}
+
+/** An image and a frame have nothing inside them to be worked out from, so they must be named. */
+export class Unnamed extends Component {
+  render() {
+    return (
+      <div>
+        {/* @ts-expect-error — nothing names it */}
+        <img src="/a.png" />
+        {/* @ts-expect-error — a frame with no title and no ARIA name */}
+        <iframe src="/x" />
+        {/* @ts-expect-error — an area is a link with a picture's problem */}
+        <area href="/x" />
+      </div>
+    );
+  }
+}
+
+/** All four ways, and `alt=""` among them: saying "skip me" is an answer, not an omission. */
+export class Named extends Component {
+  render() {
+    return (
+      <div>
+        <img src="/a.png" alt="a cat" />
+        <img src="/b.png" alt="" />
+        <img src="/c.png" aria-label="a dog" />
+        <img src="/d.png" aria-labelledby="cap" />
+        <img src="/e.png" title="a bird" />
+        <iframe src="/x" title="A map" />
+        <area href="/x" alt="Region" />
+      </div>
+    );
+  }
+}
+
+/**
+ * What a SPREAD may and may not do — the part people worry about, so it is written out in full.
+ *
+ * Spreading is not restricted. The requirement is about the NAME, and it is satisfied by anything
+ * that proves one is there: the spread's own type, or an attribute written beside it. Only the case
+ * where nothing at all provides a name is refused — which is precisely the case `ramonda-check`
+ * cannot speak about, since a spreading element is handed to no rule.
+ */
+export class Spreads extends Component {
+  render() {
+    return (
+      <div>
+        {/* Allowed: the spread's type carries a name. */}
+        <img {...withAlt} />
+        <img {...imgProps} />
+        {/* Allowed: the name is written out, whatever else the bag holds. */}
+        <img {...loose} alt="written out" />
+        <img src="/a.png" {...extras} alt="written out" />
+        <iframe {...loose} title="A map" />
+
+        {/* @ts-expect-error — an untyped bag says nothing about carrying a name */}
+        <img {...loose} />
+        {/* @ts-expect-error — an OPTIONAL alt cannot prove there is one */}
+        <img {...maybeAlt} />
+        {/* @ts-expect-error — a spread of unrelated extras, and nothing names it */}
+        <img src="/a.png" {...extras} />
+      </div>
+    );
+  }
+}
+
+/**
+ * Controls are untouched, which is the other half of the worry.
+ *
+ * Nothing is REQUIRED on an `<input>`, a `<select>`, a `<textarea>` or anything else — the refused
+ * names above are optional properties, so they only bite when somebody writes one. A form's spread
+ * goes on exactly as it did.
+ */
+export class ControlSpreads extends Component {
+  render() {
+    return (
+      <div>
+        <input {...bind} />
+        <input {...bind} id="email" type="email" />
+        <textarea {...bind} />
+        <select {...loose} />
+        <input {...loose} />
+        <div {...loose} />
+        <form {...loose} />
+      </div>
+    );
+  }
+}
