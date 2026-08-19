@@ -57,7 +57,26 @@ and `htmlFor`:
 ```
 
 Everything else — `id`, `href`, `disabled`, `value`, `placeholder`, `aria-*`,
-`data-*` — is written exactly as in HTML.
+`data-*` — is written exactly as in HTML. That includes the hyphenated ones:
+`http-equiv` and `accept-charset` are written with their hyphens, not as
+`httpEquiv` and `acceptCharset`.
+
+Those two are the exception list in full. An attribute name is given to
+`setAttribute` as it stands, so a name spelled any other way arrives in the
+document as something no browser reads — it renders, it does nothing, and there
+is nothing on the page to see. The types refuse the ones people reach for, with
+the right spelling written into the error:
+
+| written | what it should be |
+|---|---|
+| `httpEquiv` | `http-equiv` |
+| `acceptCharset` | `accept-charset` |
+| `defaultValue` | `value` — the attribute **is** the initial value |
+| `defaultChecked` | `checked` |
+| `innerHTML`, `textContent` | the element's children |
+
+There is no controlled/uncontrolled pair here, which is why `defaultValue` has
+nothing to mean: a render decides `value` like it decides any other attribute.
 
 **SVG keeps its real names.** Inside SVG the names are written exactly as SVG defines
 them — `stroke-width` with a dash, `viewBox` in camelCase — because the JSX mirrors

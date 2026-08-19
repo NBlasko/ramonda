@@ -45,6 +45,59 @@ type ObservableEvents<T extends BaseElements> = {
       K]: T[K] extends Function ? T[K] : T[K];
 };
 
+/**
+ * Names that typecheck and do nothing, refused here with the reason in the error.
+ *
+ * `ObservableEvents<T>` maps every property of the DOM interface, so a PROPERTY that is not an
+ * attribute is accepted as one. An HTML attribute is written through `setAttribute`, which
+ * lowercases the name — so `innerHTML` arrives as `innerhtml`, an attribute nothing reads. Measured
+ * for every camelCase name a JSX author might reach for; these are the ones that came back dead.
+ *
+ * ## Why the type is a SENTENCE and not `never`
+ *
+ * `never` produces "Type 'string' is not assignable to type 'undefined'", which says something is
+ * wrong and nothing about what to do. A string literal type puts the answer in the error itself:
+ * TypeScript prints the expected type, so the expected type is the advice.
+ *
+ * ## Why these are refused rather than aliased
+ *
+ * `class` and `for` are aliased because they are RESERVED WORDS — that is the whole rule
+ * `concepts/jsx` states, and it is complete. Nothing here is reserved: `http-equiv` and
+ * `accept-charset` are writable exactly as HTML spells them, and `value` and `checked` are the
+ * attributes React's `default*` pair stands in for. Aliasing them would turn a two-name exception
+ * into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
+ */
+interface RefusedNames {
+  innerHTML: "Ramonda renders children — an `innerHTML` attribute reaches the DOM verbatim and nothing reads it";
+  textContent: "put the text in the element's children — a `textContent` attribute does nothing";
+}
+
+/**
+ * The same idea, for names that are dead on ONE element rather than on all of them.
+ *
+ * Written as separate types so each tag refuses only what is meaningless ON IT — a `<div>` has no
+ * business being told about `http-equiv`, and an error naming an attribute the element does not
+ * take is an error somebody has to decode before they can use it.
+ */
+export interface RefusedOnMeta {
+  httpEquiv: "write `http-equiv` — an attribute with a hyphen is written exactly as HTML spells it, and `httpEquiv` reaches the DOM verbatim";
+}
+
+export interface RefusedOnForm {
+  acceptCharset: "write `accept-charset` — an attribute with a hyphen is written exactly as HTML spells it, and `acceptCharset` reaches the DOM verbatim";
+}
+
+/**
+ * React's uncontrolled-input pair, which this framework does not have.
+ *
+ * There is no controlled/uncontrolled distinction here: the `value` and `checked` attributes ARE
+ * the initial state, and a render decides them like any other attribute.
+ */
+export interface RefusedOnFields {
+  defaultValue: "write `value` — the attribute is the initial value, and `defaultValue` reaches the DOM verbatim";
+  defaultChecked: "write `checked` — the attribute is the initial state, and `defaultChecked` reaches the DOM verbatim";
+}
+
 export type RamondaArgs<T extends BaseElements> = Partial<
   | ObservableEvents<T>
   | {
@@ -53,7 +106,8 @@ export type RamondaArgs<T extends BaseElements> = Partial<
       key: string | number;
       ref: RefTarget<T>;
     }
->;
+> &
+  Partial<RefusedNames>;
 
 export interface SVGArguments extends SVGGraphicsElement {
   width: string | number;

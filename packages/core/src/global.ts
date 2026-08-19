@@ -1,4 +1,4 @@
-import type { RamondaArgs, SVGArgs } from "./types/commonTypes";
+import type { RamondaArgs, RefusedOnFields, RefusedOnForm, RefusedOnMeta, SVGArgs } from "./types/commonTypes";
 import type { RamondaNode, VNode } from "./types/vdom";
 
 declare global {
@@ -76,7 +76,7 @@ declare global {
       figcaption: RamondaArgs<HTMLElement>;
       figure: RamondaArgs<HTMLElement>;
       footer: RamondaArgs<HTMLElement>;
-      form: RamondaArgs<HTMLFormElement>;
+      form: RamondaArgs<HTMLFormElement> & Partial<RefusedOnForm>;
       h1: RamondaArgs<HTMLHeadingElement>;
       h2: RamondaArgs<HTMLHeadingElement>;
       h3: RamondaArgs<HTMLHeadingElement>;
@@ -91,7 +91,7 @@ declare global {
       i: RamondaArgs<HTMLElement>;
       iframe: RamondaArgs<HTMLIFrameElement>;
       img: RamondaArgs<HTMLImageElement>;
-      input: RamondaArgs<HTMLInputElement>;
+      input: RamondaArgs<HTMLInputElement> & Partial<RefusedOnFields>;
       ins: RamondaArgs<HTMLModElement>;
       kbd: RamondaArgs<HTMLElement>;
       keygen: RamondaArgs<HTMLElement>;
@@ -104,7 +104,7 @@ declare global {
       mark: RamondaArgs<HTMLElement>;
       menu: RamondaArgs<HTMLElement>;
       menuitem: RamondaArgs<HTMLElement>;
-      meta: RamondaArgs<HTMLMetaElement>;
+      meta: RamondaArgs<HTMLMetaElement> & Partial<RefusedOnMeta>;
       meter: RamondaArgs<HTMLMeterElement>;
       nav: RamondaArgs<HTMLElement>;
       noindex: RamondaArgs<HTMLElement>;
@@ -128,7 +128,7 @@ declare global {
       slot: RamondaArgs<HTMLSlotElement>;
       script: RamondaArgs<HTMLScriptElement>;
       section: RamondaArgs<HTMLElement>;
-      select: RamondaArgs<HTMLSelectElement>;
+      select: RamondaArgs<HTMLSelectElement> & Partial<RefusedOnFields>;
       small: RamondaArgs<HTMLElement>;
       source: RamondaArgs<HTMLSourceElement>;
       span: RamondaArgs<HTMLSpanElement>;
@@ -141,7 +141,7 @@ declare global {
       template: RamondaArgs<HTMLTemplateElement>;
       tbody: RamondaArgs<HTMLTableSectionElement>;
       td: RamondaArgs<HTMLTableDataCellElement>;
-      textarea: RamondaArgs<HTMLTextAreaElement>;
+      textarea: RamondaArgs<HTMLTextAreaElement> & Partial<RefusedOnFields>;
       tfoot: RamondaArgs<HTMLTableSectionElement>;
       th: RamondaArgs<HTMLTableHeaderCellElement>;
       thead: RamondaArgs<HTMLTableSectionElement>;
