@@ -45,9 +45,25 @@ pick(id) { let val = 0; if (id === 2) { val = this.mode; } return () => …; }
 `pick(1)` read nothing, so its function never changes. Only `pick(2)` is rebuilt. Both halves are pinned,
 and wiping the map instead fails the second.
 
+**What the review caught, and it was the important half.** The first version of the memo fix REPLACED the
+enclosing tracker instead of forwarding to it, so the builder's reads were visible to nothing: the entry
+was dropped when the signal moved, but the region holding the handler was never invalidated and the stale
+handler stayed in the DOM. Measured in the decorator's canonical use — one handler per list row —
+`"old:a"` on both clicks. The deps are now forwarded through `trackDependency` on the way out, on the hit
+path as much as the miss path, exactly as `@compute` and the props cache do and for the reason they
+document. And the per-entry subscriptions are released from `clearReactives` on destroy, which the first
+version also missed: a builder reading a signal that outlives the component left its listener attached
+for the life of the page.
+
 **Free for correct code, in both places.** A row callback written as a method, and a handler builder that
 reads nothing, track nothing and are never invalidated — which is the whole purpose of each cache. When a
 signal WAS read, a rebuild is the honest answer: the row or the handler behaves differently now.
+
+**A pre-existing fault came with the review and is fixed here**, because it lives in the same set of
+remembered fields: `list(undefined, …)` returned an empty node while still remembering the array from the
+pass before, so handing the same array back later matched the whole-list skip against that empty node and
+the rows never returned. Measured on `main` as well: `rows → undefined → the same rows` gave 2 rows, then
+0, then 0. Pinned for both callback forms.
 
 Both halves are real runtime code rather than development checks, and the production bundle grew by
 **146 B gzipped** — 21043 → 21189, measured by bundling `core`'s entry with `--define:__DEV__=false`

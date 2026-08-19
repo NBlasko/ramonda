@@ -140,7 +140,20 @@ export class ListEngine<T> {
     const each = descriptor.each;
     const render = descriptor.builder;
 
-    if (!each) return this.wrap(owner, []);
+    /**
+     * No array at all — `undefined` while data is loading, or a conditional that has gone away.
+     *
+     * The remembered pass has to be FORGOTTEN here, and not remembering it was a bug that predates
+     * `lastBuilder`: `wrap` below sets `lastNode` to this empty node while `lastEach` still holds the
+     * array from before, so handing the SAME array back later matched the whole-list skip against an
+     * empty node and rendered nothing, for ever. Measured on `main` as well as here —
+     * `rows → undefined → the same rows` gave 2 rows, then 0, then 0.
+     */
+    if (!each) {
+      this.lastEach = undefined;
+      this.lastBuilder = undefined;
+      return this.wrap(owner, []);
+    }
 
     // A callback this pass did not have last pass may have closed over anything, so neither skip
     // below is safe for it. See `lastBuilder`.

@@ -983,6 +983,22 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
     }
 
     attachEffect(this, () => cleanUp(instanceMap), true);
+
+    /**
+     * Let go of every entry's subscriptions when the component is destroyed.
+     *
+     * `attachEffect` above returns no cleanup, and the eviction sweep only runs while the component is
+     * still rendering — so without this a builder that read a signal OUTLIVING the component (one on a
+     * provider above it, or a module-level store) leaves its listener attached for the life of the
+     * page. The listener holds `invalidate`, which holds the entry and the map and the dead instance,
+     * and it keeps firing for a handler nobody can reach. `@compute`, the props cache and the context
+     * consumer all register the same way, and `releaseMemoEntry`'s own comment says why.
+     */
+    const map = instanceMap;
+    this[GLOBAL_RUNTIME].clearReactives.push(() => {
+      for (const entry of map.values()) releaseMemoEntry(entry);
+      map.clear();
+    });
   });
 
   return function (this: any, ...args: any[]) {
@@ -1070,6 +1086,8 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
        */
       const collected = new Set<State<unknown>>();
       const previousTracker = trackerContainer.current;
+      // Collect only. Forwarding happens on the way out, once the tracker is restored and the deps are
+      // known — see the block before `return entry.fn`, and `@compute`'s getter, which does the same.
       trackerContainer.current = {
         addDep(state: State<unknown>) {
           collected.add(state);
@@ -1108,6 +1126,28 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
         };
         for (const dep of collected) dep[attach]({ id: listenerId, onChange: invalidate });
       }
+    }
+
+    /**
+     * Hand this entry's dependencies to whoever is reading it — the render, a list row, a `@compute`,
+     * an effect.
+     *
+     * **This is what makes dropping the entry mean anything.** Invalidating a cache entry does not
+     * re-run anything by itself: something has to ASK for the handler again, and only a region that
+     * knows it depends on the signal will be re-run to ask. Without this, the builder's reads were
+     * visible to nothing: the entry was dropped when the signal moved, the row that held the handler
+     * was never invalidated, and the old handler stayed in the DOM. Measured — a handler per list row,
+     * the decorator's canonical use, fired the stale capture on every click.
+     *
+     * On the HIT path as much as the miss path, and for the same reason `@compute` and the props cache
+     * forward on both: a hit touches no signal at all, so a reader rebuilt for an unrelated reason
+     * would record nothing and lose the dependency it had.
+     *
+     * Through `trackDependency` rather than the tracker directly, because a reader can also be an
+     * EFFECT, which is not a tracker scope — the note on `@compute`'s getter is the same one.
+     */
+    if (entry.deps !== undefined) {
+      for (const dep of entry.deps) trackDependency(dep);
     }
 
     return entry.fn;

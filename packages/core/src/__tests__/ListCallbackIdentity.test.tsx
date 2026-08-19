@@ -436,3 +436,50 @@ describe("the boundary: a plain field is untrackable, in a list as anywhere else
     expect(document.getElementById("p-a")?.textContent).toBe("old");
   });
 });
+
+/**
+ * A pre-existing fault found while reviewing this change, and fixed with it because it lives in the
+ * same set of remembered fields.
+ *
+ * `list(undefined, …)` — data still loading, or a conditional gone away — returned an empty node while
+ * still REMEMBERING the array from the pass before. So handing the same array back later matched the
+ * whole-list skip against that empty node, and the rows never returned. Measured on `main` too:
+ * `rows → undefined → the same rows` gave 2, then 0, then 0.
+ */
+describe("an array that goes away and comes back", () => {
+  beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
+
+  for (const [name, useMethod] of [
+    ["a stable callback", true],
+    ["an inline callback", false],
+  ] as const) {
+    test(`the SAME array reference renders again — ${name}`, async () => {
+      @Host("div")
+      class App extends Component {
+        @state rows: Row[] | undefined = ROWS;
+
+        row(r: Row) {
+          return <li>{r.id}</li>;
+        }
+
+        render() {
+          const each = this.rows as Row[];
+          return <ul>{useMethod ? list(each, this.row) : list(each, (r: Row) => <li>{r.id}</li>)}</ul>;
+        }
+      }
+
+      using app = await getDOM<App>(<App />);
+      await app.settle();
+      expect(document.querySelectorAll("li").length).toBe(2);
+
+      app.instance.rows = undefined;
+      await app.settle();
+      expect(document.querySelectorAll("li").length).toBe(0);
+
+      // The very same array object as at mount — which is what used to match the stale empty node.
+      app.instance.rows = ROWS;
+      await app.settle();
+      expect(document.querySelectorAll("li").length).toBe(2);
+    });
+  }
+});

@@ -44,5 +44,20 @@ resolution moved to `rules/context-pair.ts` now that two rules share it.
 forms cannot reach each other's state" and "focus stays inside the form it was submitted from" are
 exactly as testable with two components, and that is what an app writes anyway.
 
+**Two things to know before upgrading, and neither is comfortable.**
+
+**The check rule does not cover the case that motivated this.** It sees only a pair written directly, and
+`Form` and `QueryClientProvider` wrap their Provider in a hook of their own — which is exactly the shape
+found in this repository. So for the arrangement most likely to be in an app, there is no pre-flight
+warning: the throw arrives when the component is constructed. Fixing that needs the graph to follow a
+Provider through a hook class, which is a bigger piece and is not attempted here.
+
+**It throws even where nothing was reading the context.** Two `Form`s on one component that are only ever
+reached directly — `this.first.fields.email.$.bind`, no descendant `FormState` — were working, and now
+they stop. That is the same trade RMD055 made: the form is refused where it happens to be harmless,
+because whether it is harmless depends on what a descendant does later, and nothing at the publish site
+can see that. The migration is one component per Provider, and `focus after a failed submit` in
+`@ramonda/form` is the worked example.
+
 Documented where a reader looks: a new section on `/composition/context`, which never taught subtree
 scoping at all, plus `/forms/fields` and the RMD056 reference.
