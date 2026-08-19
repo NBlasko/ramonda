@@ -34,6 +34,13 @@ class Cart extends Component {
   @persist money = new Formatter();
   /* REPORTED — JSON drops a function without a word. */
   @persist compare = (a: number, b: number) => a - b;
+  /* REPORTED — a lossy value one level inside an object literal. This is the COMMONEST shape of
+     the fault and the first version of this rule missed it, while its runtime twin RMD033 was
+     widened to recurse for exactly this reason. */
+  @persist meta = { openedAt: new Date() };
+  /* REPORTED — and inside an array. */
+  @persist stamps = [new Date()];
+
   /* REPORTED — no initializer, but the annotation says it all. */
   @persist pending: Map<string, boolean>;
 

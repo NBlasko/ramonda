@@ -173,7 +173,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unnamed-frame` | an `iframe` has no `title` |
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
-| `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — `#` or `javascript:` |
+| `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
 | `fresh-object-in-props` | an object or array literal is written into a component's props, so it is a new value every render and comparison can never match |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |

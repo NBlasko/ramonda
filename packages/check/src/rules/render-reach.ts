@@ -28,9 +28,13 @@ import ts from "typescript";
  * ## What it cannot see, and says nothing about
  *
  * A helper handed the component itself — `format(this)` — writing through the parameter. Following
- * that is dataflow, which this package refuses by decision. A method reached through a base class,
- * which needs the heritage walk the graph does and this does not. And anything behind a value: a
- * function picked out of a record, a method called through a variable.
+ * that is dataflow, which this package refuses by decision. And anything behind a value: a function
+ * picked out of a record, a method called through a variable.
+ *
+ * A method on a BASE CLASS used to be on that list and is not any more — see {@link heritage}. It
+ * was the one item there that was a gap rather than a decision: a base is another class and the
+ * same object, so `this` still means the component, and a `render()` reaching a write through an
+ * inherited method reported nothing at all. Found by planting it.
  */
 
 /** How deep the call chain is followed before giving up. Deep enough for real code, bounded. */
@@ -59,6 +63,47 @@ function memberName(member: ts.ClassElement): string | undefined {
   return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
 }
 
+/**
+ * Every class in this one's heritage chain, nearest first, as far as declarations can be followed.
+ *
+ * `this.helper()` used to be looked for in `cls.members` and nowhere else, so a method INHERITED
+ * from a base class was never found and the walk stopped there without a word. Measured: a
+ * `render()` calling `this.touch()`, where `touch` is on a base in another file and writes
+ * `this.n`, reported nothing at all.
+ *
+ * That is not the same case as a free function, and the distinction is the whole of it: a base
+ * class is another CLASS but the same OBJECT, so `this` still means the component and a write
+ * through it is still the component's. `insideTheClass` stays true across the hop.
+ *
+ * Bounded, because a chain that resolves in a ring would otherwise not end — and four is more
+ * heritage than any component here has.
+ */
+function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve"]): ts.ClassLikeDeclaration[] {
+  const chain: ts.ClassLikeDeclaration[] = [];
+  let at: ts.ClassLikeDeclaration | undefined = cls;
+
+  for (let hop = 0; hop < 4 && at !== undefined; hop++) {
+    const base: ts.Expression | undefined = at.heritageClauses?.find(
+      (clause) => clause.token === ts.SyntaxKind.ExtendsKeyword,
+    )?.types[0]?.expression;
+    if (base === undefined || (!ts.isIdentifier(base) && !ts.isPropertyAccessExpression(base))) break;
+
+    const declaration: ts.ClassLikeDeclaration | undefined = resolve(base)?.declarations?.find(
+      (one): one is ts.ClassLikeDeclaration => ts.isClassLike(one),
+    );
+    if (declaration === undefined || chain.includes(declaration)) break;
+
+    // A declaration file or a dependency: nothing to walk, and not ours to judge either.
+    const file = declaration.getSourceFile();
+    if (file.isDeclarationFile || file.fileName.includes("node_modules")) break;
+
+    chain.push(declaration);
+    at = declaration;
+  }
+
+  return chain;
+}
+
 /** Whether a member carries a given decorator, by name. */
 export function hasDecorator(member: ts.ClassElement, name: string): boolean {
   for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
@@ -70,15 +115,30 @@ export function hasDecorator(member: ts.ClassElement, name: string): boolean {
   return false;
 }
 
-/** The fields this class declares as state — the only ones a write to is `RMD001`. */
-export function stateFieldsOf(cls: ts.ClassDeclaration): ReadonlySet<string> {
+/**
+ * The fields this class has as state — the only ones a write to is `RMD001`.
+ *
+ * **Its BASES too**, and that was a gap rather than a decision: a component whose state lives on a
+ * shared base class had none of it recognised, so every write to it was invisible — measured, with
+ * `@state n` on a base and `this.n = 1` reached from the subclass's render, and nothing reported.
+ * Inherited state is the component's state; where the field is written down does not change that.
+ *
+ * `resolve` is optional so a caller with no checker still gets the class's own fields, which is the
+ * behaviour this had before.
+ */
+export function stateFieldsOf(cls: ts.ClassDeclaration, resolve?: RenderReach["resolve"]): ReadonlySet<string> {
   const found = new Set<string>();
-  for (const member of cls.members) {
-    if (!ts.isPropertyDeclaration(member)) continue;
-    if (!hasDecorator(member, "state") && !hasDecorator(member, "persist")) continue;
-    const name = memberName(member);
-    if (name !== undefined) found.add(name);
+
+  const declared = resolve === undefined ? [cls] : [cls, ...heritage(cls, resolve)];
+  for (const declaring of declared) {
+    for (const member of declaring.members) {
+      if (!ts.isPropertyDeclaration(member)) continue;
+      if (!hasDecorator(member, "state") && !hasDecorator(member, "persist")) continue;
+      const name = memberName(member);
+      if (name !== undefined) found.add(name);
+    }
   }
+
   return found;
 }
 
@@ -163,6 +223,8 @@ function bodyOf(declaration: ts.Declaration | undefined): ts.Node | undefined {
  */
 export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void {
   const seen = new Set<ts.Node>();
+  /** This class first, then what it extends — a method is looked for in that order. */
+  const own: ts.ClassLikeDeclaration[] = [cls, ...heritage(cls, reach.resolve)];
 
   const walk = (node: ts.Node, through: readonly string[], insideTheClass: boolean, depth: number): void => {
     if (depth > MAX_DEPTH || seen.has(node)) return;
@@ -186,10 +248,14 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
           ts.isIdentifier(callee.name)
         ) {
           const name = callee.name.text;
-          for (const member of cls.members) {
-            if (memberName(member) !== name) continue;
-            const body = ts.isMethodDeclaration(member) ? member.body : undefined;
-            if (body) walk(body, [...through, name], true, depth + 1);
+          // This class first, then its bases: a base is another class and the same object, so
+          // `this` still means the component and `insideTheClass` stays true.
+          for (const declaring of own) {
+            for (const member of declaring.members) {
+              if (memberName(member) !== name) continue;
+              const body = ts.isMethodDeclaration(member) ? member.body : undefined;
+              if (body) walk(body, [...through, name], true, depth + 1);
+            }
           }
         }
 

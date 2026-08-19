@@ -11,10 +11,13 @@ import type { ElementRule } from "./rule";
  * why this is worth reporting — the page looks right and only half of the people using it can
  * follow the link.
  *
- * Three spellings say the same thing and all three are reported:
+ * Four spellings say the same thing and all four are reported:
  *
  * - **No `href` at all.** Usually an `onClick` was added instead, which is a button wearing a link's
  *   clothes.
+ * - **`href=""`.** A destination that is the page it is already on, so following it RELOADS —
+ *   losing what the reader had typed and where they had scrolled to. Worse than the bare `#` below
+ *   rather than the same.
  * - **`href="#"`.** A destination that is this page, kept only so the element stays focusable. The
  *   handler then has to cancel the navigation it just asked for.
  * - **`href="javascript:…"`.** Not a destination either, and the one shape a Content Security Policy
@@ -30,8 +33,8 @@ import type { ElementRule } from "./rule";
  * markup that is doing the opposite of this fault.
  */
 export interface LinkWithoutADestinationIssue {
-  /** Which of the three shapes it is, because the fix differs. */
-  kind: "no href" | "empty fragment" | "javascript:";
+  /** Which of the four shapes it is, because what each one costs differs. */
+  kind: "no href" | "empty href" | "empty fragment" | "javascript:";
   /** Whether a click handler was written instead, which decides what the advice should say. */
   handled: boolean;
   file: string;
@@ -45,11 +48,14 @@ export interface LinkWithoutADestinationIssue {
  * `<a href="#">` IS focusable and IS announced as a link — the fault there is that the destination
  * is this page, so every way of following a link but the plain click does the wrong thing. Only the
  * one with no `href` at all is outside the tab order. A report that said "not focusable" about all
- * three would be wrong about two of them, on the line where somebody is deciding whether to believe
+ * four would be wrong about three of them, on the line where somebody is deciding whether to believe
  * it.
  */
 const SAYS: Readonly<Record<LinkWithoutADestinationIssue["kind"], string>> = {
   "no href": "no `href` at all, so it is not focusable, not in the tab order, and not announced as a link",
+  "empty href":
+    "an empty `href`, which resolves to the page it is already on — so following it RELOADS, losing " +
+    "whatever the reader had typed and scrolled to",
   "empty fragment":
     '`href="#"`, which is this page — a middle click, "open in new tab" and the context menu all ' + "go nowhere",
   "javascript:":
@@ -62,7 +68,7 @@ export const linkWithoutADestination = {
 
   report: {
     severity: "warn",
-    reportedWhen: "an `<a>` has no `href`, or one that goes nowhere — `#` or `javascript:`",
+    reportedWhen: "an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:`",
     heading: (found) => `${found.length} link(s) with nowhere to go:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -103,6 +109,11 @@ export const linkWithoutADestination = {
     const written = attr("href");
     if (written === undefined) return [];
 
+    // An empty `href` is the shape the first version of this rule missed, found by auditing the
+    // claim against the code: "one that goes nowhere" plainly covers it, and the enumeration behind
+    // the claim did not. It is worse than `#` rather than the same — a bare `#` jumps to the top of
+    // the page, while an empty one reloads it.
+    if (written.trim() === "") return [{ kind: "empty href" as const, handled, ...at }];
     if (written.trim() === "#") return [{ kind: "empty fragment" as const, handled, ...at }];
     if (/^\s*javascript:/i.test(written)) return [{ kind: "javascript:" as const, handled, ...at }];
 

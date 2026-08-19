@@ -85,27 +85,60 @@ function constructedName(expression: ts.Expression): string | undefined {
   return undefined;
 }
 
-/** What a field holds, when that can be read off the source; `undefined` when it cannot. */
-function lossyValueOf(member: ts.PropertyDeclaration): { holds: string; becomes: string } | undefined {
-  const written = member.initializer;
+/**
+ * What an EXPRESSION holds, looking inside object and array literals.
+ *
+ * The recursion is the whole of this, and its absence was the bug: `@persist opened = new Date()`
+ * was reported while `@persist meta = { openedAt: new Date() }` was not — and the second is the
+ * commoner shape by a distance. `RMD033`, this rule's runtime twin, recurses for exactly that
+ * reason and says so; the static half was written shallow and claimed the same thing.
+ *
+ * Bounded at four, as the runtime check is: a literal nested deeper than that is not a shape
+ * anybody writes into a hydration blob, and an unbounded walk over a self-referential type is a
+ * hang rather than a report.
+ */
+function lossyIn(written: ts.Expression, depth = 0): { holds: string; becomes: string } | undefined {
+  if (depth > 4) return undefined;
 
-  if (written !== undefined) {
-    if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) {
-      return { holds: "a function", becomes: "nothing at all — JSON drops a function without a word" };
+  if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) {
+    return { holds: "a function", becomes: "nothing at all — JSON drops a function without a word" };
+  }
+
+  if (ts.isObjectLiteralExpression(written)) {
+    for (const property of written.properties) {
+      if (!ts.isPropertyAssignment(property)) continue;
+      const found = lossyIn(property.initializer, depth + 1);
+      if (found !== undefined) return found;
     }
-    if (ts.isNewExpression(written)) {
-      const name = constructedName(written.expression);
-      if (name === undefined || STILL_JSON.has(name)) return undefined;
-      // Looked up by the WHOLE name as written, dots included. So `Intl.NumberFormat` misses the
-      // table and is described as an instance, which is what it is; and a `Map` imported under
-      // another name misses it too and gets the same, slightly less specific, true sentence.
-      // Anything not named in the table is an instance, and JSON flattens all of them the same way.
-      return { holds: name, becomes: BECOMES.get(name) ?? A_PLAIN_BAG };
-    }
-    // Anything else written out — a literal, a call, a name — is either fine or unreadable, and
-    // both mean silence.
     return undefined;
   }
+
+  if (ts.isArrayLiteralExpression(written)) {
+    for (const element of written.elements) {
+      const found = lossyIn(element, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  if (ts.isNewExpression(written)) {
+    const name = constructedName(written.expression);
+    if (name === undefined || STILL_JSON.has(name)) return undefined;
+    // Looked up by the WHOLE name as written, dots included. So `Intl.NumberFormat` misses the
+    // table and is described as an instance, which is what it is; and a `Map` imported under
+    // another name misses it too and gets the same, slightly less specific, true sentence.
+    // Anything not named in the table is an instance, and JSON flattens all of them the same way.
+    return { holds: name, becomes: BECOMES.get(name) ?? A_PLAIN_BAG };
+  }
+
+  // Anything else written out — a literal, a call, a name — is either fine or unreadable, and both
+  // mean silence.
+  return undefined;
+}
+
+/** What a field holds, when that can be read off the source; `undefined` when it cannot. */
+function lossyValueOf(member: ts.PropertyDeclaration): { holds: string; becomes: string } | undefined {
+  if (member.initializer !== undefined) return lossyIn(member.initializer);
 
   /**
    * No initializer, so the ANNOTATION is the only thing written. Read as syntax: `Map<string, T>`

@@ -21,6 +21,8 @@ describe("a persisted value JSON cannot carry", () => {
       "openedAt:Date",
       "money:Formatter",
       "compare:a function",
+      "meta:Date",
+      "stamps:Date",
       "pending:Map",
     ]);
   });

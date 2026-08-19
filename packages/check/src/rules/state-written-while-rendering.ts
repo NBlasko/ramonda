@@ -83,7 +83,7 @@ export const stateWrittenWhileRendering = {
   },
 
   read(cls, { self, resolve }) {
-    const fields = stateFieldsOf(cls);
+    const fields = stateFieldsOf(cls, resolve);
     if (fields.size === 0) return [];
 
     const found: StateWrittenWhileRenderingIssue[] = [];
