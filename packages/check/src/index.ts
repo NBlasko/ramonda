@@ -11,6 +11,7 @@ export type {
   AriaValueIssue,
   AriaWithNoSubjectIssue,
   ArrowFieldIssue,
+  AsyncRenderIssue,
   BrowserUrlIssue,
   ClassInsteadOfClassNameIssue,
   ClientOnlyRequestReadIssue,

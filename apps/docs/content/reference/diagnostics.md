@@ -1699,3 +1699,40 @@ and a boundary can see it.
 
 `ramonda-check` reports the same method before it ships, as
 [`unguarded-async-lifecycle`](/reference/check).
+
+## RMD060 — render() is async
+
+```tsx
+// @ts-ignore
+async render() {                       // ✗ returns a promise, not markup
+  const rows = await api.rows();
+  return <ul>{String(rows)}</ul>;
+}
+```
+
+An `async render()` returns a `Promise` the moment it is called, so the diff is handed an object that
+is not a node. What you see without this report is a `TypeError` thrown from inside the framework —
+a stack of framework frames naming neither your component nor `render()`.
+
+**The type system already refuses this**, so reaching it means a `@ts-ignore`, a cast, or a base
+class loosened somewhere above. That is exactly why the check exists in all three places: a type is a
+defence only while nobody casts it away.
+
+Load the data outside the render, and let `render()` show whichever state the component is in:
+
+```tsx
+@state rows: unknown[] = [];
+
+@mounted async load() {
+  this.rows = await api.rows();
+}
+
+render() {
+  return this.rows.length === 0 ? <p>Loading…</p> : <ul>…</ul>;
+}
+```
+
+Where the promise itself is the subject, [`AsyncLoad`](/composition/lazy) takes it and renders a
+fallback while it settles.
+
+`ramonda-check` reports the same method before it ships, as [`async-render`](/reference/check).

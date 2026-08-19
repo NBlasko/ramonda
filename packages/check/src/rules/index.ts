@@ -23,6 +23,7 @@ import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
+import { asyncRender } from "./async-render";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
 import { duplicateDecorators } from "./duplicate-decorators";
@@ -85,6 +86,7 @@ export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./li
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
+export { asyncRender, type AsyncRenderIssue } from "./async-render";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
@@ -114,6 +116,7 @@ export { rootsIn, treeFor } from "./tree";
  * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
  */
 export const CLASS_RULES = [
+  asyncRender,
   stateWrittenWhileRendering,
   clockReadWhileRendering,
   arrowFields,

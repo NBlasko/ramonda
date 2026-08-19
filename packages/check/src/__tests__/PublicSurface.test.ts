@@ -29,6 +29,7 @@ const EXPECTED_TYPES = [
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",
+  "AsyncRenderIssue",
   "BrowserUrlIssue",
   "ClassInsteadOfClassNameIssue",
   "ClientOnlyRequestReadIssue",
