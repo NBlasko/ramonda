@@ -888,12 +888,72 @@ function describeUnkeyableArgs(args: unknown[]): string {
   return bad.join(", ");
 }
 
-const memoMap = new WeakMap<object, Map<string, { fn: (...args: any[]) => any; used: boolean }>>();
-const cleanUp = (instanceMap: Map<string, { fn: (...args: any[]) => any; used: boolean }>) => {
+/**
+ * One cached handler, and the signals its BUILDER read.
+ *
+ * ## Why the deps are here at all
+ *
+ * The cache is keyed by the arguments, so a method is called once per key and never again — and
+ * whatever it read on that one call is closed into the handler and frozen. Measured before this
+ * existed: a method reading `this.prefix` before returning its closure served `"old"` on every click
+ * for the life of the page, while `prefix` was already `"new"`. Nothing said so; the comment on the
+ * cache-miss branch below had already named the hazard for randomness (RMD021) without noticing that
+ * a signal has the same shape.
+ *
+ * So the builder runs inside a tracker, exactly as `@compute` and a list row do, and a change to
+ * anything it read drops THIS entry.
+ *
+ * ## Per entry, and that is the whole point of it being here rather than on the map
+ *
+ * ```tsx
+ * pick(id) { let val = 0; if (id === 2) { val = this.mode; } return () => …; }
+ * ```
+ *
+ * `pick(1)` read nothing, so it has no deps and its handler keeps its identity for ever. `pick(2)`
+ * read `mode`, so only that entry goes when `mode` moves. Dropping the whole map would rebuild
+ * `pick(1)` too — a new identity for a handler that cannot have changed, and every child it was
+ * passed to re-rendering for nothing.
+ *
+ * ## What it costs when the code is right
+ *
+ * Nothing. The documented shape — `pick(id) { return () => { this.selected = id; }; }` — reads no
+ * signal while building, so `deps` stays undefined, no listener is attached, and the entry is never
+ * dropped. Identity is stable for ever, which is the decorator's entire purpose.
+ *
+ * And when a signal WAS read, a new identity is the honest answer: the handler behaves differently
+ * now, so whatever holds it should hear about it.
+ */
+interface MemoEntry {
+  fn: (...args: any[]) => any;
+  used: boolean;
+  /** The signals the builder read. `undefined` when it read none, which is the common case. */
+  deps?: Set<State<unknown>>;
+  /** Identifies this entry's subscription, so it can be detached without touching another's. */
+  listenerId?: number;
+}
+
+const memoMap = new WeakMap<object, Map<string, MemoEntry>>();
+
+/**
+ * Lets go of an entry's subscriptions.
+ *
+ * Called from both places an entry can leave — the eviction sweep below and the invalidation the
+ * signal itself triggers. Forgetting either leaves the signal holding a listener, and the listener
+ * holding the entry: the cache would grow for the life of the page and a dead handler would keep
+ * being invalidated.
+ */
+function releaseMemoEntry(entry: MemoEntry): void {
+  if (entry.deps === undefined || entry.listenerId === undefined) return;
+  for (const dep of entry.deps) dep[detach](entry.listenerId);
+  entry.deps.clear();
+}
+
+const cleanUp = (instanceMap: Map<string, MemoEntry>) => {
   for (const [key, entry] of instanceMap.entries()) {
     if (entry.used) {
       entry.used = false;
     } else {
+      releaseMemoEntry(entry);
       instanceMap.delete(key);
     }
   }
@@ -999,15 +1059,55 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
         memoPhase.label = `${displayName(this)}.${String(context.name)}`;
       }
 
+      /**
+       * The builder runs inside a tracker, so a signal it reads before returning becomes this entry's
+       * dependency — see `MemoEntry`. The same mechanism `@compute` and a list row use, and for the
+       * same reason: whatever the builder read is frozen into the handler, so the handler is only
+       * honest for as long as those reads hold.
+       *
+       * The collector is a local rather than the entry, because the entry does not exist yet; it is
+       * moved onto the entry below, and only if anything was actually read.
+       */
+      const collected = new Set<State<unknown>>();
+      const previousTracker = trackerContainer.current;
+      trackerContainer.current = {
+        addDep(state: State<unknown>) {
+          collected.add(state);
+        },
+      };
+
       let fn: unknown;
       try {
         fn = originalMethod.call(this, ...args);
       } finally {
+        // Restored rather than nulled: a handler may be built from inside a render, a `@compute` or a
+        // list row, and that tracker still has reads to collect after this returns.
+        trackerContainer.current = previousTracker;
         if (__DEV__) memoPhase.label = previousMemoPhase;
       }
 
-      entry = { fn: fn as (...a: any[]) => any, used: true };
-      instanceMap.set(key, entry);
+      const fresh: MemoEntry = { fn: fn as (...a: any[]) => any, used: true };
+      entry = fresh;
+      instanceMap.set(key, fresh);
+
+      if (collected.size > 0) {
+        const listenerId = createId();
+        fresh.deps = collected;
+        fresh.listenerId = listenerId;
+        /**
+         * Dropped, not rebuilt. The next call for this key builds a fresh handler with the value the
+         * signal now holds — and doing it lazily means a signal that moves without anyone asking for
+         * the handler again costs one map delete.
+         */
+        const invalidate = (): void => {
+          // Only if this entry is still the one under that key. A later build for the same key
+          // replaced it, and dropping the replacement would throw away a handler this never watched.
+          if (instanceMap.get(key) !== fresh) return;
+          releaseMemoEntry(fresh);
+          instanceMap.delete(key);
+        };
+        for (const dep of collected) dep[attach]({ id: listenerId, onChange: invalidate });
+      }
     }
 
     return entry.fn;

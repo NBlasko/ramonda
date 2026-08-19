@@ -88,6 +88,46 @@ export class ListEngine<T> {
 
   /** The array and the result of the last full pass, for the whole-list skip. */
   private lastEach: readonly T[] | undefined;
+  /**
+   * The row callback from last pass, and the whole of how a stale capture is refused.
+   *
+   * ## What it decides
+   *
+   * A row is reused when nothing it READ has moved. That is exact for what the callback reads inside
+   * itself — the tracker records every such read, at any call depth, in any module. It is blind to a
+   * value read OUTSIDE and closed over:
+   *
+   * ```tsx
+   * const label = this.label;                                  // read here
+   * list(rows, () => <li>{label}</li>)                          // row tracks nothing
+   * ```
+   *
+   * The row then depends on nothing, is never invalidated, and serves the first `label` for the life
+   * of the list. Measured before this existed: `"old"` where the same field outside the list read
+   * `"new"`.
+   *
+   * ## Why the reference answers it
+   *
+   * Nothing can look inside a closure and enumerate what it captured. But a closure that could have
+   * captured a render's locals is, by construction, CREATED in that render — so its reference is new.
+   * A callback that cannot capture is written where a render cannot reach it, and its reference is
+   * stable. Measured over three renders: a class method gives 1 distinct reference, a module-level
+   * function 1, an inline arrow 3.
+   *
+   * So one identity check classifies every form correctly, with no form detection and nothing static:
+   * a method or a module-level function keeps the fast path, and a fresh closure rebuilds.
+   *
+   * ## What rebuilding costs, measured
+   *
+   * 10 000 rows, five re-renders from an unrelated signal: the stable form does 0 row builds, the
+   * inline form does 50 000 — and **both do 5 DOM writes.** The diff finds the rows equal and touches
+   * nothing. So the cost is JS only, closures and small objects, and the expensive half of a render is
+   * untouched. That is what a framework without this cache does for every list, every render.
+   *
+   * Wall clock cannot measure it here — jsdom swings wider than the effect, and one attempt was
+   * outright invalid — so the operation counts above are the claim.
+   */
+  private lastBuilder: ItemRender<T> | undefined;
   private lastNode: ListNode | undefined;
   /** Set by any scope's invalidation; cleared when a full pass runs. */
   private anyDirty = false;
@@ -102,6 +142,11 @@ export class ListEngine<T> {
 
     if (!each) return this.wrap(owner, []);
 
+    // A callback this pass did not have last pass may have closed over anything, so neither skip
+    // below is safe for it. See `lastBuilder`.
+    const builderChanged = render !== this.lastBuilder;
+    this.lastBuilder = render;
+
     // Whole-list skip. The array is replaced on every change (mutating it in
     // place is reported as RMD005), so the SAME reference plus no invalidated
     // scope means nothing about this list can differ from last render — not one
@@ -109,7 +154,11 @@ export class ListEngine<T> {
     // object tells the diff the same thing, and it leaves the region untouched.
     //
     // Measured 30ms → 0.06ms on 10000 items.
-    if (each === this.lastEach && !this.anyDirty && this.lastNode !== undefined) {
+    //
+    // `builderChanged` belongs HERE as much as on the per-row check, and forgetting it here is the
+    // subtle half: this returns the cached node without calling the callback at all, so a fresh
+    // closure would never run and the stale capture would survive every render.
+    if (each === this.lastEach && !this.anyDirty && !builderChanged && this.lastNode !== undefined) {
       return this.lastNode;
     }
 
@@ -210,10 +259,11 @@ export class ListEngine<T> {
       const existing = this.scopes.get(scopeKey);
 
       // Nothing this item's output depends on has changed, it is still the same
-      // object, and it has not moved out from under a mapper that reads the
-      // position: reuse last render's vnode untouched. `clean` tells the diff it
-      // may skip the subtree entirely.
-      if (existing && existing.item === item && !existing.dirty) {
+      // object, it has not moved out from under a mapper that reads the position,
+      // and the callback is one that cannot have captured anything new: reuse last
+      // render's vnode untouched. `clean` tells the diff it may skip the subtree
+      // entirely.
+      if (existing && existing.item === item && !existing.dirty && !builderChanged) {
         rows++;
         if (existing.vnode.attributes?.key != null) keyedRows++;
         out.push(existing.vnode);
@@ -413,6 +463,7 @@ export class ListEngine<T> {
     // The cached result would otherwise keep the last vnode tree alive too.
     this.lastNode = undefined;
     this.lastEach = undefined;
+    this.lastBuilder = undefined;
   }
 }
 

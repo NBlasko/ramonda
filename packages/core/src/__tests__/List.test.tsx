@@ -503,16 +503,17 @@ describe("the whole-list skip still applies", () => {
       @state unrelated = 0;
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
 
+      /** A METHOD: the skip turns on the callback's identity, and a method's is stable. */
+      row(task: Task) {
+        mapperRuns++;
+        return <li>{task.title}</li>;
+      }
+
       render() {
         return (
           <div>
             <p>{this.unrelated}</p>
-            <ul>
-              {list(this.tasks, (task: Task) => {
-                mapperRuns++;
-                return <li>{task.title}</li>;
-              })}
-            </ul>
+            <ul>{list(this.tasks, this.row)}</ul>
           </div>
         );
       }

@@ -28,15 +28,21 @@ let mapperCalls = 0;
 class App extends Component {
   @state rows: Row[] = [{ t: "a" }, { t: "b" }, { t: "c" }];
   @state tick = 0;
+  /**
+   * A METHOD, and the form is what the skip now turns on.
+   *
+   * An inline arrow is a new function every render, and a new function could have closed over anything
+   * from that render — so the engine rebuilds every row for it rather than serve a stale capture. A
+   * method cannot capture a render's locals, so its reference is stable and the skip applies. See
+   * `listEngine.ts`'s `lastBuilder`, and `ListCallbackIdentity.test.tsx` for both halves.
+   */
+  row(r: Row) {
+    mapperCalls++;
+    return <li>{r.t}</li>;
+  }
+
   render() {
-    return (
-      <ul data-tick={String(this.tick)}>
-        {list(this.rows, (r: Row) => {
-          mapperCalls++;
-          return <li>{r.t}</li>;
-        })}
-      </ul>
-    );
+    return <ul data-tick={String(this.tick)}>{list(this.rows, this.row)}</ul>;
   }
 }
 
