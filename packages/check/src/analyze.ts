@@ -78,57 +78,20 @@ import type {
  * the shape of a finding is part of the rule, not of the analyzer that collects it.
  */
 
-export type {
-  AccessKeyIssue,
-  AriaHiddenOnFocusableIssue,
-  AriaValueIssue,
-  AriaWithNoSubjectIssue,
-  ArrowFieldIssue,
-  AsyncRenderIssue,
-  BrowserUrlIssue,
-  ClassInsteadOfClassNameIssue,
-  ClickWithNoKeyboardPathIssue,
-  ClientOnlyRequestReadIssue,
-  ClockReadWhileRenderingIssue,
-  ComputeReadsAPlainFieldIssue,
-  ContextConsumedAboveItsProviderIssue,
-  ControlWithNoLabelIssue,
-  DomWriteIssue,
-  DuplicateDecoratorIssue,
-  DuplicateKeyAmongSiblingsIssue,
-  DuplicateIdIssue,
-  EmptyHeadingOrLinkIssue,
-  Findings,
-  HeadingSkipsALevelIssue,
-  FragmentLinkToNowhereIssue,
-  FreshObjectInPropsIssue,
-  HeadTagsCollideIssue,
-  IndexAsKeyIssue,
-  InteractiveInsideInteractiveIssue,
-  LateRequestReadIssue,
-  LinkWithoutADestinationIssue,
-  MediaWithNoCaptionsIssue,
-  NamedOnlyByAPlaceholderIssue,
-  OneProviderPerComponentIssue,
-  PersistOfALossyValueIssue,
-  PositiveTabIndexIssue,
-  ReferenceToAnIdThatIsNotThereIssue,
-  RoleMissingRequiredAriaIssue,
-  RoleTakesNoNameIssue,
-  RowWithoutAKeyIssue,
-  ServerEnvInSharedCodeIssue,
-  StateWrittenWhileRenderingIssue,
-  TagNeedsItsParentIssue,
-  UnguardedAsyncLifecycleIssue,
-  UnknownAriaAttributeIssue,
-  UnknownRoleIssue,
-  UnnamedFrameIssue,
-  UnnamedImageIssue,
-  UnexposedEnvReadIssue,
-  UnsplittableImportIssue,
-  UnwatchedFieldIssue,
-  WatchOfAPropThatIsNotThereIssue,
-};
+/**
+ * Every issue shape, re-exported wholesale.
+ *
+ * This was a list of every name, typed out twice in this file — once to import and once to send on —
+ * and neither copy did anything but pass a type through. What they DID do was collide: a rule added
+ * on one branch and a rule added on another meet here, in a sorted list, every single time. Two
+ * merges have now been spent hand-resolving lists that held no decision, and one of them auto-merged
+ * into duplicate keys with no marker to show for it.
+ *
+ * `export type *` says the same thing and cannot go stale. What a rule must still be added to is the
+ * registry in `./rules` — one list, and a real one: the ids in it are what `Findings` is keyed by,
+ * so it cannot be discovered at runtime without losing the literal types this package is built on.
+ */
+export type * from "./rules";
 
 /**
  * Proves, before the app is ever opened, that every context consumer has a matching provider
