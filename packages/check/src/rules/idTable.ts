@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf, tagOf } from "./element";
-import type { IdReference, ProjectContext, UnreadableId } from "./rule";
+import { enclosingElement } from "./html";
+import type { FormControl, IdReference, ProjectContext, UnreadableId } from "./rule";
 
 /**
  * The project's ids, and every place one is named — the fifth subject, built in one pass.
@@ -25,6 +26,22 @@ export const NAMES_AN_ID: ReadonlySet<string> = new Set([
   "aria-flowto",
   "htmlFor",
 ]);
+
+/** The elements a reader has to be told the purpose of, because nothing about them says it. */
+const CONTROLS: ReadonlySet<string> = new Set(["input", "select", "textarea"]);
+
+/** The attributes that give an element a name outright, rather than by pointing at one. */
+const NAMES_IT_DIRECTLY: ReadonlySet<string> = new Set(["aria-label", "aria-labelledby", "title"]);
+
+/** Whether a `<label>` encloses this element within the same render. */
+function insideALabel(element: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
+  let at = enclosingElement(element);
+  while (at !== undefined) {
+    if (tagOf(at) === "label") return true;
+    at = enclosingElement(at);
+  }
+  return false;
+}
 
 /** What a JSX attribute's value says, when it says anything this can read in full. */
 function literalOf(value: ts.JsxAttributeValue | undefined): string | undefined {
@@ -56,6 +73,7 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
   const prefixes: string[] = [];
   const unreadable: UnreadableId[] = [];
   const references: IdReference[] = [];
+  const controls: FormControl[] = [];
 
   const readElement = (element: ts.JsxElement | ts.JsxSelfClosingElement): void => {
     const opening = openingOf(element);
@@ -72,6 +90,8 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
      * have silenced every rule here in every project in this repository.
      */
     if (opening.attributes.properties.some(ts.isJsxSpreadAttribute)) return;
+
+    if (hostTag !== undefined && CONTROLS.has(hostTag)) readControl(element, hostTag);
 
     for (const attribute of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attribute)) continue;
@@ -133,6 +153,45 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
     }
   };
 
+  /** What the walk can see about how a control might be named. The judgement is the rule's. */
+  const readControl = (element: ts.JsxElement | ts.JsxSelfClosingElement, tag: string): void => {
+    const opening = openingOf(element);
+
+    let type: string | undefined;
+    let id: string | undefined;
+    let opaqueId = false;
+    let namingAttribute = false;
+    let placeholder = false;
+
+    for (const attribute of opening.attributes.properties) {
+      if (!ts.isJsxAttribute(attribute)) continue;
+      const name = attribute.name.getText().toLowerCase();
+
+      if (name === "type") type = literalOf(attribute.initializer)?.toLowerCase();
+      else if (name === "id") {
+        const written = literalOf(attribute.initializer);
+        if (written === undefined) opaqueId = true;
+        else id = written;
+      } else if (name === "placeholder") placeholder = true;
+      else if (NAMES_IT_DIRECTLY.has(name)) {
+        // Written at all, in any form. `aria-label={t("email")}` is somebody naming this control,
+        // and whether the string is empty is not a question this can answer.
+        namingAttribute = true;
+      }
+    }
+
+    controls.push({
+      tag,
+      type,
+      id,
+      opaqueId,
+      namingAttribute,
+      placeholder,
+      insideALabel: insideALabel(element),
+      ...positionOf(opening),
+    });
+  };
+
   const walk = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) readElement(node);
     ts.forEachChild(node, walk);
@@ -140,7 +199,7 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
 
   for (const file of sources) walk(file);
 
-  return { ids, prefixes, unreadable, references };
+  return { ids, prefixes, unreadable, references, controls };
 }
 
 /**

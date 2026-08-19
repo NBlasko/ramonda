@@ -91,3 +91,48 @@ describe("a project with an id this cannot read", () => {
     expect(findings["reference-to-an-id-that-is-not-there"].length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A form control with nothing to say what it is for.
+ *
+ * The `htmlFor` half is why this lives with the id table: `<label htmlFor="email">` and
+ * `<input id="email">` are frequently not in the same render, and the pairing is a project fact.
+ *
+ * The two rules split one subject deliberately. A `placeholder` DOES give a control an accessible
+ * name, so calling such a control unnamed would be false — and told they have "no label" for a
+ * field with a placeholder in it, somebody reasonably decides the checker is wrong and stops
+ * reading it. The first version of this rule made exactly that mistake, and this repository's own
+ * six reports were all of them placeholder-only.
+ */
+describe("a form control with no label", () => {
+  test("only the controls with nothing naming them are reported", () => {
+    const found = run("id-table").findings["control-with-no-label"];
+    expect(found.map((issue) => issue.tag)).toEqual(["input", "textarea"]);
+  });
+
+  /** Four ways to be named, and each is written in the fixture beside the ones that are not. */
+  test("a htmlFor, a wrapping label, aria and title all count as a name", () => {
+    const found = run("id-table").findings["control-with-no-label"];
+    // Thirteen controls in the fixture; two are nameless.
+    expect(found).toHaveLength(2);
+  });
+
+  test("a placeholder is not called nameless — it is its own report", () => {
+    const findings = run("id-table").findings;
+    expect(findings["named-only-by-a-placeholder"].map((issue) => issue.tag)).toEqual(["input"]);
+    // And the placeholder-only one is NOT in the other rule's list.
+    expect(findings["control-with-no-label"]).toHaveLength(2);
+  });
+
+  /**
+   * `control-with-no-label` does NOT share the family's project-wide silence, and that is a real
+   * distinction: its claim is about one control and that control's own id, so an unreadable id
+   * somewhere else says nothing about it. The opaque fixture proves both halves at once — the
+   * control whose own id is unreadable is skipped, the one beside it is still reported.
+   */
+  test("it keeps working in a project the other two rules have gone quiet in", () => {
+    const findings = run("id-table-opaque").findings;
+    expect(findings["fragment-link-to-nowhere"]).toEqual([]);
+    expect(findings["control-with-no-label"]).toHaveLength(1);
+  });
+});

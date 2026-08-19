@@ -136,7 +136,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 
-**Warnings.** These print and the run still passes. 39 of them.
+**Warnings.** These print and the run still passes. 41 of them.
 
 | rule | reported when |
 |---|---|
@@ -179,6 +179,8 @@ rules**, so a rule cannot be added without appearing here.
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
 | `fragment-link-to-nowhere` | an `href="#name"` points at an id no element in the project carries |
 | `reference-to-an-id-that-is-not-there` | an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries |
+| `control-with-no-label` | a form control has no label, no `aria-label`, no `aria-labelledby` and no `title`, so nothing says what it is for |
+| `named-only-by-a-placeholder` | a form control's only name is its `placeholder`, which disappears as soon as anybody types |
 
 [rules:end]: #
 

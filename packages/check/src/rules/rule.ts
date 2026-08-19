@@ -279,6 +279,44 @@ export interface IdReference extends Where {
 }
 
 /**
+ * One form control, as the rule about labels needs to see it.
+ *
+ * The FACTS are collected here and the judgement is made in the rule, deliberately: what is written
+ * on an element and what encloses it are things only the walk can see, while "this control has no
+ * accessible name" is a conclusion drawn from those plus the project's `htmlFor` references. Putting
+ * the conclusion in the table would make the table answer a question only one rule asks.
+ */
+export interface FormControl extends Where {
+  /** `input`, `select` or `textarea`. */
+  tag: string;
+  /** An `input`'s `type`, lowercased, when it is written as a literal. */
+  type: string | undefined;
+  /** Its `id` when written out, which is what a `htmlFor` could name. */
+  id: string | undefined;
+  /**
+   * Whether it writes an `id` this cannot read.
+   *
+   * Its own silence, and a narrower one than the family's: a control whose id is unreadable cannot
+   * be matched against any `htmlFor`, so nothing can be said about THAT control — while the rest of
+   * the project is still perfectly answerable.
+   */
+  opaqueId: boolean;
+  /** Whether `aria-label`, `aria-labelledby` or `title` is written at all, in any form. */
+  namingAttribute: boolean;
+  /**
+   * Whether a `placeholder` is written.
+   *
+   * Carried apart from the naming attributes because it is neither one thing nor the other, and two
+   * rules need to tell it apart from both. The name computation really does fall back to it, so a
+   * control with one is not nameless — and a placeholder disappears the moment somebody types, so it
+   * is not a label either.
+   */
+  placeholder: boolean;
+  /** Whether a `<label>` encloses it in the same render. */
+  insideALabel: boolean;
+}
+
+/**
  * Every id the project writes, and every place one is named.
  *
  * Built once, before any rule in this family runs.
@@ -325,6 +363,9 @@ export interface ProjectContext {
 
   /** Every place an id is named. */
   references: readonly IdReference[];
+
+  /** Every form control, with what the walk could see about how it might be named. */
+  controls: readonly FormControl[];
 }
 
 export interface ElementContext {

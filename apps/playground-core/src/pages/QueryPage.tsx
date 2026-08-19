@@ -225,7 +225,7 @@ class TodoPanel extends Component {
         {/* `each` takes null/undefined, so there is no `?? []` rebuilt every render. */}
         <ul>{list(this.list.data, this.renderTodo)}</ul>
         <div className="row">
-          <input value={this.draft} placeholder="new todo" onInput={this.typed} />
+          <input value={this.draft} aria-label="New todo" placeholder="new todo" onInput={this.typed} />
           <button disabled={this.add.isPending} onClick={this.submit}>
             {this.add.isPending ? "saving…" : "add"}
           </button>

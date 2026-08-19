@@ -35,6 +35,8 @@ import { accessKey } from "./access-key";
 import { mediaWithNoCaptions } from "./media-with-no-captions";
 import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
 import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
+import { controlWithNoLabel } from "./control-with-no-label";
+import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
@@ -58,6 +60,7 @@ import { clientOnlyRequestRead } from "./client-only-request-read";
 
 export type {
   ElementContext,
+  FormControl,
   IdReference,
   ProjectContext,
   ProjectRule,
@@ -114,6 +117,8 @@ export {
   referenceToAnIdThatIsNotThere,
   type ReferenceToAnIdThatIsNotThereIssue,
 } from "./reference-to-an-id-that-is-not-there";
+export { controlWithNoLabel, type ControlWithNoLabelIssue } from "./control-with-no-label";
+export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
 
@@ -220,7 +225,12 @@ export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
  * absence cannot be established from a file nobody has opened yet — so the run collects the id
  * table first and asks afterwards. See `ProjectRule`.
  */
-export const PROJECT_RULES = [fragmentLinkToNowhere, referenceToAnIdThatIsNotThere] as const;
+export const PROJECT_RULES = [
+  fragmentLinkToNowhere,
+  referenceToAnIdThatIsNotThere,
+  controlWithNoLabel,
+  namedOnlyByAPlaceholder,
+] as const;
 
 export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES, ...PROJECT_RULES] as const;
 

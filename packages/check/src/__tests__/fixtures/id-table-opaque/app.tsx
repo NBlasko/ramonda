@@ -18,6 +18,15 @@ class App extends Component {
         {/* Would be reported in any project whose ids are all readable. Here: nothing. */}
         <a href="#nowhere-at-all">Go</a>
         <label htmlFor="nothing-like-it">Name</label>
+
+        {/* An id this cannot read cannot be matched against any `htmlFor`, so nothing about THIS
+            control is knowable. `control-with-no-label` goes quiet for it alone. */}
+        <input id={generated} type="text" />
+
+        {/* And it is still reported here — `control-with-no-label` does NOT share the family's
+            project-wide silence, because its claim is about one control and its own id. That is a
+            real distinction rather than an oversight, and this is where it is proved. */}
+        <input type="text" />
       </div>
     );
   }
