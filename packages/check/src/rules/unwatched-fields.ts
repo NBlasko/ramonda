@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { heritage } from "./render-reach";
 import { hookNamed, isThisUse, positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
@@ -113,10 +114,33 @@ export const unwatchedFields = {
       "A component that only WRITES through a field is correct as written and is not reported.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     let watches = false;
     /** Locals holding a handle the component was handed — `const f = this.props.of.$`. */
     const held = new Set<string>();
+
+    /**
+     * The BASES too, for the watch — a hook belongs to the INSTANCE, so a base's
+     * `this.use(Field, …)` subscribes the subclass exactly as its own would.
+     *
+     * Reading one class body made a subclass that reads what its base watches an ERROR on working
+     * code. Measured with a plant.
+     *
+     * The other direction is out of reach and stays that way: a base that READS while the subclass
+     * watches is reported at the base, which cannot see who extends it. The shape is odd — a watch
+     * belongs where the read is — and the chain here, as everywhere in this package, is walked
+     * upward only.
+     */
+    for (const declaring of heritage(cls, resolve)) {
+      ts.forEachChild(declaring, function inherited(node) {
+        if (ts.isCallExpression(node) && isThisUse(node)) {
+          const arg = node.arguments[0];
+          const named = arg === undefined ? undefined : hookNamed(arg);
+          if (named !== undefined && ts.isIdentifier(named) && named.text === WATCH_HOOK) watches = true;
+        }
+        ts.forEachChild(node, inherited);
+      });
+    }
 
     ts.forEachChild(cls, function first(node) {
       if (ts.isCallExpression(node) && isThisUse(node)) {

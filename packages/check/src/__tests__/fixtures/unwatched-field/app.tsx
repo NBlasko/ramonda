@@ -51,6 +51,25 @@ class Layout extends Component<{ of: any }> {
   }
 }
 
+/**
+ * The watch on a BASE, the read in the subclass — one instance, one subscription.
+ *
+ * A hook belongs to the INSTANCE, so a base's `this.use(Field, …)` subscribes the subclass exactly
+ * as its own would. Planted to find out whether the rule sees the watch across the boundary.
+ */
+class WatchesOnABase extends Component<{ of: any }> {
+  watch = this.use(Field, () => ({ of: this.props.of }));
+  render() {
+    return <span />;
+  }
+}
+
+class ReadsBelowIt extends WatchesOnABase {
+  render() {
+    return <span>{this.props.of.$.value}</span>;
+  }
+}
+
 /** Silent: the OWNER reads its own fields, and reading `form.fields` is asking about the form. */
 class Page extends Component {
   form = this.use(Form, () => ({ schema, defaultValues, onSubmit: () => {} }));
@@ -63,6 +82,7 @@ class Page extends Component {
         <Watched of={this.form.fields.nick} />
         <WriteOnly of={this.form.fields.nick} />
         <Layout of={this.form.fields.city} />
+        <ReadsBelowIt of={this.form.fields.city} />
       </form>
     );
   }

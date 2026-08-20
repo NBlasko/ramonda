@@ -20,6 +20,17 @@ subclass this cannot see. Everything referenced is judged exactly as before — 
 The miss this leaves is written into the rule rather than left to be discovered: a subclass calling
 such a helper from `render()` is a real fault and is reported by nothing.
 
+**`unwatched-fields` had the same false positive, and it is an ERROR too.** A hook belongs to the
+INSTANCE, so a base's `this.use(Field, …)` subscribes the subclass exactly as its own would — and
+reading one class body made a subclass that reads what its base watches a reported fault on working
+code. The watch is looked for up the chain now.
+
+**`unkeyable-memoized-argument` missed every call to an inherited handler.** A `@memoizedHandler` on
+a base is the subclass's handler, on the same instance and with the same cache, so
+`this.pick({ id })` down there THROWS `RMD047` at runtime exactly as it would up here — and nothing
+said so. Calls are matched against the chain now, while the DECLARATION half stays where it is
+written, so a base's unkeyable parameter is reported once rather than again for every subclass.
+
 **`browser-url` and `dom-writes` reach a helper on the class and stop at the file boundary**, and
 that is now a decision on the record instead of an accident. Both were measured: a read or a write
 one `this.method()` away IS found; a utility in another file is not. Following the import would name
