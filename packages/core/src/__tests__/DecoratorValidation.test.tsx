@@ -13,6 +13,7 @@ import {
   memoized,
 } from "../base/decorators";
 import { Component } from "../base/Component";
+import { getDOM } from "../test/setup";
 
 /**
  * Decorator arguments are fixed at the source — they cannot depend on runtime
@@ -322,6 +323,33 @@ describe("decorator target validation", () => {
  * Found by asking whether `@memoized` and `@compute` collide as names. They do not, and the parameter list
  * is exactly where they are told apart.
  */
+/**
+ * A `@compute` METHOD is read as a property, not called.
+ *
+ * The documentation said otherwise — `/concepts/compute` showed `total() {} // this.total()` — and nothing
+ * caught it, because a comment inside a code block is prose: `check-examples` compiles the code, and the
+ * claim was in the `//`. Measured: `this.total` holds the value and `this.total()` throws `is not a
+ * function`. Pinned here so the sentence cannot drift back.
+ */
+describe("a @compute method", () => {
+  test("holds the value and is not callable", async () => {
+    class Panel extends Component {
+      @state n = 2;
+      @compute total() {
+        return this.n * 3;
+      }
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Panel>(<Panel />);
+    const read = app.instance as unknown as { total: unknown };
+    expect(read.total).toBe(6);
+    expect(() => (read.total as () => unknown)()).toThrow(/not a function/);
+  });
+});
+
 describe("@compute with a parameter", () => {
   test("and the runtime refuses it too, for the build that has no types", () => {
     const bare = compute as unknown as (fn: unknown, context: unknown) => unknown;

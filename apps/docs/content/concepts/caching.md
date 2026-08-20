@@ -17,8 +17,8 @@ The difference is the **key**.
 |---|---|---|
 | keyed by | nothing | its arguments |
 | how many values | **one per component** | **one per argument, per component** |
-| you write | a getter, or a method with no parameters | a method that takes arguments and returns the value |
-| you read it as | a property — `this.total` | a call — `this.rowConfig(id)` |
+| you write | a getter, **or a method** — with no parameters | a method that takes arguments and returns the value |
+| you read it as | a property, either way — `this.total` | a call — `this.rowConfig(id)` |
 | when it recomputes | a signal its body read has changed | the same, and only that entry is dropped |
 | when it is dropped | never, while the component lives | when a render stops asking for that argument |
 
@@ -51,6 +51,28 @@ class Board extends Component {
 
 A `@compute` cannot do the second, and not because it would be slow: it belongs to the
 component, so it has exactly one slot. There is nowhere to put a value per row.
+
+## `@compute` is a getter or a method, and both read as a property
+
+The method form is a spelling, not a different kind of thing. `@compute` installs an
+accessor, so a method stops being callable:
+
+```tsx
+class Board extends Component {
+  @state rows: RowItem[] = [];
+
+  @compute get total() {
+    return this.rows.length;   // this.total
+  }
+
+  @compute visible() {
+    return this.rows.length;   // this.visible — calling it throws
+  }
+}
+```
+
+Use a getter for a value and a method when the name is a verb; the reading is the same.
+`@memoized` is the opposite: it is always called, because the arguments are the point.
 
 ## The compiler already knows
 

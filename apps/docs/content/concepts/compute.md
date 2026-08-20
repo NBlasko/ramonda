@@ -46,17 +46,23 @@ recalculates when one of *its own* reads changed.
 
 ## A getter or a method
 
-Both work, and both cache the same way:
+Both work, both cache the same way, and **both are read as a property**:
 
 ```tsx alternatives
 @compute
 get total() {} // this.total
 
 @compute
-total() {} // this.total()
+total() {} // this.total — not this.total()
 ```
 
-Use a getter for a value, a method when the name is a verb.
+`@compute` installs an accessor, so a method stops being callable: `this.total()` throws
+`total is not a function`. The method form is a spelling, not a different kind of thing —
+use a getter for a value, a method when the name is a verb.
+
+That is also why a `@compute` method takes no parameters: nothing would ever pass one. A
+parameter is a type error, and a build with no types refuses it too. When a value has to
+differ per argument, [`@memoized`](/concepts/caching) is the decorator keyed by them.
 
 ## It must not change anything
 
