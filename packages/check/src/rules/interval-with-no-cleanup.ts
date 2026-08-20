@@ -207,17 +207,14 @@ export const intervalWithNoCleanup = {
           /**
            * An ABSTRACT class keeping the id on a property is the one shape this cannot answer. The
            * chain is walked upward, never down, so a subclass clearing the property is invisible —
-           * and an abstract class is never mounted on its own, which is what makes the report a
-           * guess rather than a fact. A concrete base IS mountable, so it keeps its report.
+           * and an abstract class is never mounted on its own, which makes the report a guess rather
+           * than a fact. A concrete base IS mountable, so it keeps its report.
            *
            * Only the property shape: an id kept nowhere, or in a local that dies with the call, is
-           * beyond any subclass's reach and stays certain.
+           * beyond any subclass's reach and stays certain either way.
            */
-          if (abstract && kept === "a property" && !isCleared) {
-            ts.forEachChild(node, visit);
-            return;
-          }
-          if (!isCleared) {
+          const aSubclassMightClearIt = abstract && kept === "a property";
+          if (!isCleared && !aSubclassMightClearIt) {
             found.push({ component: self.name, member: memberName, kept, named, ...positionOf(node) });
           }
         }

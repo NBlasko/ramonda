@@ -144,6 +144,9 @@ export const contextConsumedAboveItsProvider = {
       // rather than by line, so two on one line still have an order.
       if (consumer.rank > provider.rank) continue;
       if (consumer.rank === provider.rank && consumer.at.getStart() >= provider.at.getStart()) continue;
+      // One half has to be declared HERE. Both on a base is that base's own fault, and its own pass
+      // reports it — without this, one pair on a shared base was reported again for every subclass.
+      if (consumer.on !== undefined && provider.on !== undefined) continue;
       found.push({
         component: context.self.name,
         context: consumer.label ?? consumer.name,

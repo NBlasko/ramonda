@@ -102,6 +102,10 @@ export const oneProviderPerComponent = {
      *
      * Furthest ancestor first, then this class: a subclass's fields initialise after its base's, so
      * a Provider inherited from a base is always the first of the two.
+     *
+     * The SECOND one has to be declared here, or nothing is reported. Both halves on a base is that
+     * base's own fault and its own pass says so — without this, one line on a shared base was
+     * reported once for the base and once again for every class extending it.
      */
     const chain = [...heritage(cls, context.resolve)].reverse();
     for (const declaring of [...chain, cls]) {
@@ -123,7 +127,7 @@ export const oneProviderPerComponent = {
                   at: member,
                   on: inherited,
                 });
-              } else {
+              } else if (declaring === cls) {
                 found.push({
                   component: context.self.name,
                   context: half.label ?? half.name,

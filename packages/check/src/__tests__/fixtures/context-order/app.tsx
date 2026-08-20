@@ -157,6 +157,28 @@ export class ProvidesThenConsumes extends ProvidesOnABase {
   reads = this.use(ThemeConsumer);
 }
 
+/** ✗ BOTH halves on the base — the base's own pass reports it. Does a subclass report it again? */
+export class BothOnTheBase extends Component {
+  base = this.use(ThemeProvider, () => ({ color: "slate" }));
+  second = this.use(ThemeProvider, () => ({ color: "amber" }));
+  render() {
+    return <p>both on the base</p>;
+  }
+}
+
+export class InheritsBoth extends BothOnTheBase {}
+
+/** The same question for the consumer-first pair. */
+export class ConsumerFirstOnTheBase extends Component {
+  outer = this.use(ThemeConsumer);
+  own = this.use(ThemeProvider, () => ({ color: "amber" }));
+  render() {
+    return <p>consumer first on the base</p>;
+  }
+}
+
+export class InheritsTheOrder extends ConsumerFirstOnTheBase {}
+
 export class App extends Component {
   render() {
     return (
@@ -176,6 +198,8 @@ export class App extends Component {
         <ProvidesAnother />
         <ProvidesUnderIt />
         <ProvidesThenConsumes />
+        <InheritsBoth />
+        <InheritsTheOrder />
       </main>
     );
   }

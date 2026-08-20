@@ -27,6 +27,11 @@ component's as much as what it declares itself.
   and which are written after the first render — so a plain field on a shared base made the whole
   fault invisible.
 
+**Reported once per fault, not once per class that inherits it.** Walking the chain made a pair
+written on a shared base visible from every subclass as well, so one line was reported for the base
+and again for each class extending it. One half has to be declared on the class being reported;
+both on a base is that base's own fault, and its own pass says so.
+
 The chain is walked upward only, and that decides one deliberate silence: a class cannot know who
 extends it, so an **abstract** class keeping a timer id on a property is no longer reported. It is
 never mounted on its own, and any subclass may be the one clearing it. A concrete base keeps its

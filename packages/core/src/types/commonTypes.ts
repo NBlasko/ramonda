@@ -39,18 +39,17 @@ export type HookClassKind<T, R> = new (runtime: Runtime, options: R) => T;
 type BaseElements = HTMLElement | SVGElement | SVGRect;
 
 /**
- * The element's own properties, as attributes — with the `on…` half removed.
+ * The element's own properties, as attributes — everything except the `on…` half.
  *
- * Handlers used to come from here, renamed to `on${Capitalize<name>}`. That was measured and it did
- * not do what it looked like it did: the DOM's event types are single lowercase tokens, so
+ * Handlers used to come from here too, renamed to `on${Capitalize<name>}`, and that was measured to
+ * do something other than it looked like: the DOM's event types are single lowercase tokens, so
  * capitalising the first letter produces `onMouseenter`, `onKeydown`, `onDblclick`. The natural
- * spellings were hard errors and the accepted ones were unguessable — and it went unnoticed because
- * every event this repository uses happens to be ONE word, where `onclick` capitalises correctly.
+ * spellings were hard errors and the accepted ones were unguessable — unnoticed for as long as it
+ * was because every event this repository writes is ONE word, where `onclick` capitalises correctly.
  *
- * So handlers come from the DOM's event MAP now, which is a better source in three ways: it needs
- * no capitalisation, it is the authoritative list of what `addEventListener` accepts, and it holds
- * the five events with no `on…` property at all — `focusin`, `focusout` and the `composition*`
- * three, which nothing here could name before.
+ * They come from the DOM's event MAP now (see {@link EventHandlers}), which is a better source in
+ * three ways: nothing has to be capitalised, it is the authoritative list of what
+ * `addEventListener` accepts, and it holds the five events with no `on…` property at all.
  */
 type DomProperties<T extends BaseElements> = {
   // biome-ignore lint/complexity/noBannedTypes: This is how it works
@@ -88,15 +87,17 @@ type VerbatimEvents = {
 };
 
 /**
- * The spellings this used to accept, refused with the one that replaced them.
+ * The spelling this used to accept, refused with the one that replaced it.
  *
- * Generated from the same map, so it cannot fall out of step: for every event name, the capitalised
- * form somebody arriving from another framework will type — and the form this framework itself
- * accepted until now. Both land on the same sentence, which names the spelling to use.
+ * Generated from the same map, so it cannot fall out of step. One entry per event, and it is
+ * exactly the form the old mapping produced: `onClick` for the single-word events, which is also
+ * what somebody used to another JSX dialect types, and `onMouseenter` for the rest, which is what
+ * anybody who wrote against the old types has in their source. Both land on the same sentence, and
+ * the sentence names the spelling to use.
  *
- * It cannot cover `onMouseEnter`, because nothing can produce that string from `"mouseenter"`. That
- * one is an ordinary "not assignable" error, which is the fault of the DOM's naming and not
- * something a type can apologise for.
+ * It cannot cover `onMouseEnter`, because nothing can produce that string from `"mouseenter"` —
+ * that one is an ordinary "not assignable", which is as much as a type can say about a name it
+ * cannot spell.
  */
 type RefusedEventCasing = {
   [K in keyof HTMLElementEventMap as `on${Capitalize<K>}`]: "write the event name in lowercase, as the DOM spells it — `onclick`, `onmouseenter`";

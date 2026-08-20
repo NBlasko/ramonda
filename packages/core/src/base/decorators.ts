@@ -1309,7 +1309,9 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * `<my-widget>` becomes a web component the moment one is defined; `<mywidget>` is an
  * `HTMLUnknownElement` for ever, and is almost always a misspelling of a real tag.
  *
- * The runtime keeps its own check for the build that has no types — see `assertHostTag`.
+ * The runtime's own check is looser on purpose — it asks only for a plausible element name, and a
+ * net that never REFUSES what the type allows cannot make a typed build behave differently from an
+ * untyped one. See `assertHostTag`.
  */
 type HostTag = keyof JSX.IntrinsicElements | `${string}-${string}`;
 

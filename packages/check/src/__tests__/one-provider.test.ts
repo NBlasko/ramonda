@@ -24,7 +24,20 @@ describe("one Provider of a context per component", () => {
       "ProvidesTwice: Theme",
       "ProvidesTwiceRenamed: Theme",
       "ProvidesAgain: Theme",
+      "BothOnTheBase: Theme",
     ]);
+  });
+
+  /**
+   * Once per fault, not once per class that inherits it.
+   *
+   * Walking the chain made a pair written on a shared base visible from every subclass too — so one
+   * line was reported for the base and again for each class extending it. The SECOND provider has to
+   * be declared HERE; both on a base is that base's own fault, and its own pass says so.
+   */
+  test("a pair written on a base is reported once, by the base", () => {
+    expect(found().filter((each) => each.component === "InheritsBoth")).toEqual([]);
+    expect(found().filter((each) => each.component === "BothOnTheBase")).toHaveLength(1);
   });
 
   /**

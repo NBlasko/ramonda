@@ -29,7 +29,17 @@ describe("a context consumed above its provider", () => {
       "WithAFieldBetween: Size",
       "RenamedBindings: Theme",
       "ProvidesUnderIt: Theme",
+      "ConsumerFirstOnTheBase: Theme",
     ]);
+  });
+
+  /**
+   * Once per fault, not once per class that inherits it. Walking the chain made a pair written on a
+   * shared base visible from every subclass; one half has to be declared HERE for this to speak.
+   */
+  test("a pair written on a base is reported once, by the base", () => {
+    expect(found().filter((each) => each.component === "InheritsTheOrder")).toEqual([]);
+    expect(found().filter((each) => each.component === "ConsumerFirstOnTheBase")).toHaveLength(1);
   });
 
   /**

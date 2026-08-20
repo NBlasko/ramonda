@@ -81,7 +81,7 @@ class Cart extends Component {
 
   render() {
     return (
-      <div onClick={() => this.bump()}>
+      <div onclick={() => this.bump()}>
         {this.label}
         {String(this.total)}
         {String(this.heavy)}
@@ -124,7 +124,7 @@ class Priced extends Totals {
   }
 
   render() {
-    return <div onClick={() => this.bump()}>{String(this.total)}</div>;
+    return <div onclick={() => this.bump()}>{String(this.total)}</div>;
   }
 }
 
