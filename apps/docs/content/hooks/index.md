@@ -177,7 +177,7 @@ class Toolbar extends Hook<{ actions: Action[] }> {
 
   // Cached by its argument, per instance — so each button keeps one handler across
   // renders instead of getting a fresh closure (which RMD020 reports).
-  @memoizedHandler
+  @memoized
   runner(id: string) {
     return () => this.run(id);
   }

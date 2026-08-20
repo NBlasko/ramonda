@@ -6,7 +6,7 @@ import {
   created,
   destroyed,
   interval,
-  memoizedHandler,
+  memoized,
   mounted,
   onDocument,
   onWindow,
@@ -28,7 +28,7 @@ import type { RamondaNode } from "../types/vdom";
  * before the code was written, and each does real work twice.
  *
  * The pairs that are genuinely nonsense never reach this code at all: `@state @compute`,
- * `@compute @persist`, `@state @watchProp` and `@memoizedHandler @compute` throw from the shape
+ * `@compute @persist`, `@state @watchProp` and `@memoized @compute` throw from the shape
  * validators, naming the member and what it is. This code is for the gap between those two sets.
  */
 
@@ -108,7 +108,7 @@ describe("a decorator that adds nothing", () => {
       @compute @compute get doubled() {
         return this.n * 2;
       }
-      @memoizedHandler @memoizedHandler pick(id: number) {
+      @memoized @memoized pick(id: number) {
         return () => id;
       }
       render(): RamondaNode {

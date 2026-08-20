@@ -75,7 +75,7 @@ for a declared slot.
 | `@state` | Turns a field into a signal. [State](/concepts/state) |
 | `@compute` | Caches a derived value; method or getter. [Derived values](/concepts/compute) |
 | `@persist` | Marks a non-reactive field as part of the hydration payload. [env](/ssr/env) |
-| `@memoizedHandler` | Caches a function by its arguments, per instance. |
+| `@memoized` | Caches a function by its arguments, per instance. |
 
 ### Decorators — lifecycle
 
@@ -369,7 +369,7 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `AriaHiddenOnFocusableIssue`, `AriaValueIssue`, `AriaWithNoSubjectIssue`, `ArrowFieldIssue`,
 `AsyncRenderIssue`, `AttributeThatDoesNothingIssue`, `BrowserUrlIssue`,
 `CachedReadOfAPlainFieldIssue`, `ClassInsteadOfClassNameIssue`, `ClickWithNoKeyboardPathIssue`,
-`ClientOnlyRequestReadIssue`, `ClockReadWhileRenderingIssue`,
+`ClientOnlyRequestReadIssue`, `ClockReadWhileRenderingIssue`, `ComputeTakesNoArgumentsIssue`,
 `ContextConsumedAboveItsProviderIssue`, `ControlWithNoLabelIssue`, `DecoratorThatAddsNothingIssue`,
 `DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`, `DuplicateKeyAmongSiblingsIssue`,
 `EmptyHeadingOrLinkIssue`, `FragmentLinkToNowhereIssue`, `FreshObjectInHookPropsIssue`,

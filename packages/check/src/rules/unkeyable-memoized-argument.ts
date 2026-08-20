@@ -5,7 +5,7 @@ import { hasDecorator, heritage } from "./render-reach";
 import type { Rule, RuleContext } from "./rule";
 
 /**
- * A `@memoizedHandler` called with something a cache key cannot hold.
+ * A `@memoized` called with something a cache key cannot hold.
  *
  * The decorator caches by its ARGUMENTS, and a key can hold a string, a number or a boolean —
  * exactly those three, which is what `describeUnkeyableArgs` in `base/decorators.ts` decides by.
@@ -49,7 +49,7 @@ import type { Rule, RuleContext } from "./rule";
 export interface UnkeyableMemoizedArgumentIssue {
   /** The component or hook. */
   component: string;
-  /** The memoized handler. */
+  /** The memoized member — it may hand back a value rather than a handler. */
   member: string;
   /** What was passed, or what the parameter is declared to take. */
   passed: string;
@@ -123,9 +123,9 @@ export const unkeyableMemoizedArgument = {
   report: {
     severity: "warn",
     reportedWhen:
-      "a `@memoizedHandler` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean",
+      "a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean",
     alsoReportedAs: ["RMD047"],
-    heading: (found) => `${found.length} memoized handler call(s) that cannot be cached:`,
+    heading: (found) => `${found.length} @memoized call(s) that cannot be cached:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       `    <${issue.component}>'s \`${issue.member}\` ${
@@ -133,7 +133,7 @@ export const unkeyableMemoizedArgument = {
       } ${issue.passed} — a cache key holds a string, a number or a boolean.`,
     ],
     advice:
-      "`@memoizedHandler` caches by its arguments, and a key can hold a string, a number or a\n" +
+      "`@memoized` caches by its arguments, and a key can hold a string, a number or a\n" +
       "boolean. An object cannot: comparing it by value is not something the cache can do, and\n" +
       "keying on its identity would miss every time — a fresh object per render fills the map and\n" +
       "hands back a new handler on every pass, which is the churn the decorator exists to prevent.\n\n" +
@@ -153,7 +153,7 @@ export const unkeyableMemoizedArgument = {
     /**
      * The same, plus the ones a base declares — which is what a CALL has to be matched against.
      *
-     * A `@memoizedHandler` on a base is the subclass's handler, on the same instance and with the
+     * A `@memoized` on a base is the subclass's handler, on the same instance and with the
      * same cache: `this.pick({ id })` down here THROWS `RMD047` at runtime exactly as it would up
      * there. Matching calls against one class body missed every one of them; measured with a plant.
      *
@@ -165,7 +165,7 @@ export const unkeyableMemoizedArgument = {
     for (const declaring of [cls, ...heritage(cls, resolve)]) {
       for (const member of declaring.members) {
         if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
-        if (!hasDecorator(member, "memoizedHandler")) continue;
+        if (!hasDecorator(member, "memoized")) continue;
         if (!memoized.has(member.name.text)) memoized.set(member.name.text, member);
         if (declaring === cls) declaredHere.set(member.name.text, member);
       }

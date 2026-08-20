@@ -1,4 +1,4 @@
-import { Component, Host, createSubscriptionDecorator, list, memoizedHandler, state } from "@ramonda/core";
+import { Component, Host, createSubscriptionDecorator, list, memoized, state } from "@ramonda/core";
 
 /** Module scope, so `each` is the SAME array every render — a fresh literal would be a new
  *  value each time and cost the list its identity. */
@@ -40,11 +40,11 @@ export class EffectCleanup extends Component {
     this.log = [...this.log, line].slice(-4);
   }
 
-  // `@memoizedHandler`, not an inline arrow: it caches the returned function by
+  // `@memoized`, not an inline arrow: it caches the returned function by
   // its arguments, per instance, so the same button gets the same handler on every
   // render. A fresh one would be re-attached to the element each time (and RMD020
   // reports it).
-  @memoizedHandler
+  @memoized
   switchTo(next: string) {
     return () => {
       this.channel = next;

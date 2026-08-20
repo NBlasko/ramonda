@@ -49,6 +49,7 @@ import { stateMutatedInPlace } from "./state-mutated-in-place";
 import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
 import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
+import { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
 import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
@@ -168,6 +169,7 @@ export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skip
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
 export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./one-provider-per-component";
 export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
+export { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
 export { rowReadsAPlainField, type RowReadsAPlainFieldIssue } from "./row-reads-a-plain-field";
 export { serverEnvInSharedCode, type ServerEnvInSharedCodeIssue } from "./server-env-in-shared-code";
 export { clientOnlyBecause, isServerOnly } from "./lifecycle-env";
@@ -187,6 +189,7 @@ export { rootsIn, treeFor } from "./tree";
  * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
  */
 export const CLASS_RULES = [
+  computeTakesNoArguments,
   asyncRender,
   stateWrittenWhileRendering,
   stateMutatedInPlace,

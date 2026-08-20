@@ -25,7 +25,7 @@ INSTANCE, so a base's `this.use(Field, …)` subscribes the subclass exactly as 
 reading one class body made a subclass that reads what its base watches a reported fault on working
 code. The watch is looked for up the chain now.
 
-**`unkeyable-memoized-argument` missed every call to an inherited handler.** A `@memoizedHandler` on
+**`unkeyable-memoized-argument` missed every call to an inherited handler.** A `@memoized` on
 a base is the subclass's handler, on the same instance and with the same cache, so
 `this.pick({ id })` down there THROWS `RMD047` at runtime exactly as it would up here — and nothing
 said so. Calls are matched against the chain now, while the DECLARATION half stays where it is

@@ -1,4 +1,4 @@
-import { Component, list, memoizedHandler, state } from "@ramonda/core";
+import { Component, list, memoized, state } from "@ramonda/core";
 import { Link } from "../routes";
 import { Mutation, Query, QueryClientAccess, type FetchContext, type QueryEntry } from "@ramonda/query";
 
@@ -143,7 +143,7 @@ class FlakyCard extends Component {
     retryDelay: (failureCount) => failureCount * 400,
   }));
 
-  @memoizedHandler
+  @memoized
   arm(count: number) {
     return () => {
       failuresLeft = count;
@@ -266,7 +266,7 @@ export class QueryPage extends Component {
     );
   }
 
-  @memoizedHandler
+  @memoized
   select(id: string) {
     return () => {
       this.id = id;

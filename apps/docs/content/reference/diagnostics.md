@@ -336,7 +336,7 @@ on the element on every render, and a function passed to a child re-renders that
 <button onclick={this.save}>           // ✓ a bound method
 ```
 
-For a handler that must be built per item, [`@memoizedHandler`](/concepts/events) caches it by its
+For a handler that must be built per item, [`@memoized`](/concepts/events) caches it by its
 arguments, per instance — so the second render hands back the same function and nothing is reported.
 
 **An object or array built in place**, with the same contents. A child receiving it re-renders every
@@ -384,6 +384,28 @@ apart, so a millisecond clock reads the same both times. Measured over 200,000 t
 [RMD007](#rmd007-server-and-client-rendered-different-output) instead — a server render and its
 hydration are milliseconds to seconds apart. The two checks cover the class between them; neither
 covers it alone.
+
+**A CACHED render is noted, not reported.** `@compute` and `@memoized` are allowed on `render`, and a
+cached render hands back one answer for both calls — so an inline handler, a rebuilt object and a
+non-deterministic read go unreported in the render itself. Caching a render is a deliberate choice, so this
+is not a warning and carries no code: it is one `info` line, once per component, saying what the check can no
+longer see. A `list()` row is the exception and keeps its cover, because the list builds each row twice on
+its own — measured, an inline row handler is still reported under a cached render.
+
+```tsx
+@compute
+render() { … }   // an info line: RMD020 cannot see inside this component any more
+```
+
+The note names a second cost too: a cached render refreshes only when a **signal** it read moves, so
+anything else it reads keeps its old value — measured, a plain field left the old text on screen where an
+uncached render showed the new one. To keep the check, cache the expensive **data** in a `@compute` and read
+it from an ordinary `render`.
+
+It is asked of the decorator, not of the output, and that is deliberate: `render() { return
+this.props.children }` and `render() { return A_CONSTANT }` also hand back one object, and neither hides
+anything. A `@compute` body returned from `render` has the same cost and is **not** noted, for the same
+reason — nothing distinguishes it from those two.
 
 **Where it reaches, and the one place it cannot.** Every row of a `.map()`, a `filter` or an array
 literal is compared — those rows are built by the render, so both renders have them, and each row is
@@ -439,7 +461,7 @@ differently in each, so the message differs with it:
 - **In a [`@compute`](/concepts/compute)** it is quieter and worse: the answer is
   cached, so the value is frozen at the moment it was first asked for, and only a
   dependency the compute actually READ can refresh it — which may be never.
-- **In a [`@memoizedHandler`](/concepts/events) builder** it is cached *with the
+- **In a [`@memoized`](/concepts/events) builder** it is cached *with the
   handler*, keyed by the arguments, so every call to that handler uses the one value.
   The builder runs during a render, so without its own report the fix would look like a
   render problem.
@@ -497,7 +519,7 @@ Three findings, three fixes:
   declares the prop a value and settles it for every call site at once.
 - **a function** — a bound method (`fetch: self.load`) reads `this` when it is called, so
   there is nothing to capture and the identity never changes;
-  [`@memoizedHandler`](/concepts/events) when it has to be built per argument. A
+  [`@memoized`](/concepts/events) when it has to be built per argument. A
   declaration cannot help here: two closures with the same body are not equal by any
   comparison that is safe to make, so a declared function prop is still reported.
 - **different contents from two calls in one tick** — the callback is not a function of
@@ -1061,20 +1083,20 @@ extend it.
 ## RMD047 — A memoized handler was given an argument it cannot key on
 
 ```tsx expect-error
-@memoizedHandler
+@memoized
 pick(row: Row) {          // reported: a Row cannot be part of a cache key
   return () => this.select(row.id);
 }
 ```
 
 ```tsx
-@memoizedHandler
+@memoized
 pick(id: string) {        // the way: key on the primitive, read the rest inside
   return () => this.select(id);
 }
 ```
 
-`@memoizedHandler` caches by the ARGUMENTS, and a cache key can hold a string, a number or a
+`@memoized` caches by the ARGUMENTS, and a cache key can hold a string, a number or a
 boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its
 identity would miss every time — a fresh object per render would fill the map and hand back a new
 handler on every pass, which is the churn the decorator exists to prevent.
@@ -1169,7 +1191,7 @@ is both `@created` and `@updated`, a handler on `@onWindow` and `@onDocument`, a
 for writing two.
 
 And the pairs that make no sense at all never reach this code: `@state` with `@compute`, `@compute` with
-`@persist`, `@state` with `@watchProp`, `@memoizedHandler` with `@compute` all **throw**, naming the member
+`@persist`, `@state` with `@watchProp`, `@memoized` with `@compute` all **throw**, naming the member
 and what it is, because one of the two is on the wrong kind of member entirely.
 
 Reported once per member, not once per instance — a list of a thousand rows says it once.

@@ -20,7 +20,7 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@state`](/concepts/state) | both | component · hook | yes — one per field |
 | [`@persist`](/ssr/env) | both | component · hook | yes — one per field |
 | [`@compute`](/concepts/compute) | both | component · hook | yes |
-| [`@memoizedHandler`](/reference/api) | both | component · hook | yes |
+| [`@memoized`](/reference/api) | both | component · hook | yes |
 | [`@created`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
 | [`@mounted`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
 | [`@destroyed`](/concepts/lifecycle) | client in practice¹ | component · hook | yes, reverse order |
@@ -87,12 +87,13 @@ defined. Unlike the three refusals above — which hold in every build — this 
 other decorator-argument checks, all of which are compiled out of production. The mistake is fixed
 at the source, so the moment you write it is the only moment worth refusing it.
 
-They are not shades of wrong. Measured, one class per decorator:
+They are not all shades of wrong, and two of them are allowed — `@compute` and `@memoized` cache the
+render, and development notes what that costs instead of refusing it. Measured, one class per decorator:
 
 | written on `render` | what it did |
 |---|---|
-| `@compute` | Turned the method into a cached property, so rendering died with `component.render is not a function` — before a page appeared, and with no diagnostic. |
-| `@memoizedHandler` | Did not throw. The render was memoised on arguments it does not have, and the component **never updated again** — a frozen page, and nothing said. |
+| `@compute` | Cached the render on the signals it read. State and props still reach the DOM — so it looks fine — and anything it read that is NOT a signal freezes the page: measured, a plain field left `old` on screen where the same component without the decorator showed `new`. Silent, which is why the guard is not waiting for a crash. |
+| `@memoized` | The same as `@compute` now: the render is cached, a state write still reaches the DOM (measured, `1` → `2`), and it freezes on anything the render read that is not a signal. It used to freeze on everything, before a memoised builder's reads invalidated their own entry. |
 | `@created`, `@mounted`, `@updated`, `@destroyed` | Registered the render as a lifecycle callback, so it ran outside the render pass as well as inside it. |
 | `@catchError` | Made the render the handler for errors thrown by its own subtree. |
 | `@state`, `@persist` | Mean "serialise me", which a render is not. |

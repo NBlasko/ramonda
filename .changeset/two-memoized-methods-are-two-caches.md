@@ -2,7 +2,7 @@
 "@ramonda/core": patch
 ---
 
-**`@memoizedHandler` on two methods of one component returned the same handler.** The second method's
+**`@memoized` on two methods of one component returned the same handler.** The second method's
 call ran the first one's body — no diagnostic, nothing thrown.
 
 The cache is one map per instance, shared by every memoized method on it, and the key was built from the

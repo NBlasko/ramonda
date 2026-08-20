@@ -776,7 +776,15 @@ by the render itself — an inline function, a rebuilt object or array, a freshl
 constructed `Date`/`Map`/`Set`/class instance — or does not come from state at all
 (`Math.random()`, `performance.now()`).
 
-**Four verdicts:** `handler`, `object`, `instance`, `nondeterministic`. `instance` is
+**Four verdicts:** `handler`, `object`, `instance`, `nondeterministic`. **A CACHED render is noted instead**
+— on the log channel at `info`, once per component, with no code: `@compute` and `@memoized` are allowed on
+`render`, a cached render hands back one answer for both calls, and what the render itself built goes
+unreported. A `list()` row keeps its cover — `listEngine` builds each row twice on its own — so a handler
+built per row is still reported under a cached render, measured. A warning would be scolding a deliberate
+choice. Asked of the decorator rather than of the output —
+`render() { return this.props.children }` and a render returning a module constant also hand back one
+object and hide nothing, measured — so a `@compute` body returned from `render` is NOT noted, for that same
+reason. `instance` is
 separate from `object` because a value with a prototype has its identity compared and
 its contents not: the comparison walks own enumerable keys, and a `Map`'s entries are
 not those. So it reports the object as FRESH rather than claiming the contents matched.
@@ -823,7 +831,7 @@ which is exactly where handlers live.
 
 Building the second output is safe: `buildRenderOutput` produces vnodes and nothing
 else — components are constructed by the diff, `hostTag` is already cached, a render
-registers no signal dependencies, and `@memoizedHandler` returns the same function
+registers no signal dependencies, and `@memoized` returns the same function
 for the same arguments, so it reads as stable rather than as a fault.
 
 **Not** a hook's props callback. That was implemented and then removed after auditing what it

@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state, memoizedHandler } from "../base/decorators";
+import { Host, state, memoized } from "../base/decorators";
 
 /**
  * What a memoized handler is allowed to remember.
@@ -31,7 +31,7 @@ describe("a memoized handler whose builder read a signal", () => {
       @state tick = 0;
 
       /** Reads `prefix` BEFORE returning the closure — the read the cache used to freeze. */
-      @memoizedHandler
+      @memoized
       pick(id: string) {
         const captured = this.prefix;
         return () => seen.push(`${captured}:${id}`);
@@ -78,7 +78,7 @@ describe("a memoized handler whose builder read a signal", () => {
       @state mode = "m1";
       @state tick = 0;
 
-      @memoizedHandler
+      @memoized
       pick(id: number) {
         let val = "none";
         if (id === 2) {
@@ -128,7 +128,7 @@ describe("a memoized handler whose builder read nothing", () => {
       @state unrelated = "a";
       @state selected = "";
 
-      @memoizedHandler
+      @memoized
       pick(id: string) {
         return () => {
           this.selected = id;

@@ -3,6 +3,8 @@ import { devFlags } from "../config";
 import { isPlainObject, valueEqualThorough } from "../helpers/valueEqual";
 import { isListNode } from "../vdom/guards";
 import type { BaseComponent } from "../types/vdom";
+import { announceCachedRenderOnce, hasCachedRender } from "./cachedRender";
+import { ramondaLog } from "./logger";
 import { diagnose } from "./diagnostics";
 
 /**
@@ -173,9 +175,10 @@ const DETAIL: Record<Kind, (owner: string, path: string) => string> = {
 
 const FIX: Record<Kind, string> = {
   handler:
-    "Give the function a stable identity: a bound method (`onClick={this.submit}`), or `@memoizedHandler` when it has to be built per item — that caches by its arguments, per instance.",
+    "Give the function a stable identity: a bound method (`onClick={this.submit}`), or `@memoized` when it has to be built per item — that caches by its arguments, per instance.",
   object:
-    "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.",
+    "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.\n" +
+    "PER ITEM, none of those works — a `@compute` belongs to the component, not to the row. `@memoized` is the one that does: it caches by its arguments, per instance, and it caches a value as readily as a handler.",
   instance:
     "Construct it once and keep it: a field, a `@compute` getter, or a module constant. If it is a clock — `new Date()` — decide the value once in `@created` and keep it in `@state`, so a server render and its hydration agree (RMD007).",
   nondeterministic:
@@ -194,11 +197,46 @@ interface Walk {
  * Building the second is safe: `buildRenderOutput` produces vnodes and nothing
  * else — components are constructed by the diff, `hostTag` is already cached, a
  * render registers no signal dependencies (re-rendering is driven by the listener
- * attached when a signal is created), and `@memoizedHandler` returns the same
+ * attached when a signal is created), and `@memoized` returns the same
  * function for the same arguments, so it shows up as stable rather than as a fault.
  */
 export function checkRenderStability(component: BaseComponent, first: unknown, second: unknown): void {
   const walk: Walk = { owner: component.constructor.name, budget: MAX_NODES };
+
+  /**
+   * A cached render is the one shape this cannot look into, so it says so instead of comparing. It is the
+   * render's OWN output that goes unchecked — a `list()` row is built twice by `listEngine`, not by the
+   * two calls here, so rows keep their cover and the note says so.
+   *
+   * `@compute render()` and `@memoized render()` are allowed — see `debug/cachedRender.ts` for why
+   * forbidding them protected nobody — and the two outputs are then one object, so every comparison below
+   * would pass for the wrong reason.
+   *
+   * Asked of the MARK rather than of identity. Identity was the first attempt and it has false positives,
+   * measured: `render() { return this.props.children }` and `render() { return A_CONSTANT }` also hand back
+   * the same object, and neither hides anything the parent did not already check.
+   */
+  if (hasCachedRender(component)) {
+    /**
+     * Said once, on the log channel at `info`, and deliberately NOT as a diagnostic.
+     *
+     * Caching a render is a legitimate choice — `@compute render()` is allowed — so a warning would be
+     * scolding somebody for a decision they made on purpose, which is how a codebase learns to scroll
+     * past warnings. What is worth saying is only this: from here on, this component is not covered.
+     */
+    if (announceCachedRenderOnce(component)) {
+      ramondaLog(
+        "info",
+        `<${walk.owner} /> has a cached render, so RMD020 cannot compare its output — an inline handler, ` +
+          `an object rebuilt in place and a value that does not come from state go unreported in the ` +
+          `render itself. A \`list()\` row is still checked, because the list builds each row twice on ` +
+          `its own. And a cached render refreshes only when a SIGNAL it read moves, so anything else it ` +
+          `reads keeps its old value. All of it is the deal; nothing here is wrong.`,
+      );
+    }
+    return;
+  }
+
   compareNode(first, second, "", 0, walk);
 }
 

@@ -131,6 +131,7 @@ rules**, so a rule cannot be added without appearing here.
 
 | rule | reported when |
 |---|---|
+| `compute-takes-no-arguments` | a `@compute` declares a parameter, and its cache is keyed by nothing so the argument is ignored |
 | `async-render` | `render()` is `async`, so it returns a promise where the diff expects markup — also [`RMD060`](/reference/diagnostics) |
 | `arrow-fields` | a class field holds a function literal, so every instance builds a fresh one and props comparison can never match |
 | `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD045`](/reference/diagnostics), [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics), [`RMD050`](/reference/diagnostics) |
@@ -146,7 +147,7 @@ rules**, so a rule cannot be added without appearing here.
 | `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics), [`RMD018`](/reference/diagnostics) |
 | `state-mutated-in-place` | a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires — also [`RMD005`](/reference/diagnostics), [`RMD048`](/reference/diagnostics) |
 | `decorator-that-adds-nothing` | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics) |
-| `unkeyable-memoized-argument` | a `@memoizedHandler` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
+| `unkeyable-memoized-argument` | a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
 | `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
 | `cached-read-of-a-plain-field` | a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale — also [`RMD027`](/reference/diagnostics) |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |

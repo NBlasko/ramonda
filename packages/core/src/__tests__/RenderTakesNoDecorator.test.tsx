@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { catchError, compute, created, memoizedHandler, mounted, state } from "../base/decorators";
+import { catchError, compute, created, memoized, mounted, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import type { RamondaNode } from "../types/vdom";
 
@@ -9,47 +9,62 @@ import type { RamondaNode } from "../types/vdom";
  * `abstract` — a build with no types refused nothing, and the two worst outcomes said nothing
  * either.
  *
- * Measured before the rule was written, one class per decorator:
- * - `@compute get render()` — `TypeError: component.render is not a function`, a raw throw out of
- *   the framework with no diagnostic.
- * - `@memoizedHandler render()` — no throw at all, and the component **never updates again**:
- *   `"0" -> "0"` after a state write that should have shown `1`.
+ * Measured, one class per decorator, and TWO of these have since changed — the note says which:
+ * - `@compute render()` — it CACHES. A state write and a props change still reach the DOM, and anything
+ *   the render read that is NOT a signal freezes: `__tests__/prod/ComputeOnRender.prod.test.tsx` has the
+ *   four measurements. It used to throw `component.render is not a function`, because the method form
+ *   installed an accessor; it installs a function now.
+ * - `@memoized render()` — no throw, and it CACHES: measured `"1" -> "2"`, because a memoised builder's
+ *   reads invalidate their own entry. It froze on everything before that existed, which is what the
+ *   sentence here used to say.
  * - `@created`, `@catchError`, `@state` — mounted and rendered, quietly meaning something else.
  *
  * A class body is evaluated when the module is imported, so each case is built inside its own
  * arrow: the decorator has to run where the expectation can catch it.
  */
 describe("render takes no decorator", () => {
-  const refused = (build: () => unknown) => expect(build).toThrow(/`render` takes no decorator/);
+  const refused = (build: () => unknown) => expect(build).toThrow(/`render` does not take this decorator/);
 
   /**
-   * The only one TypeScript refuses on its own — a getter cannot override a method — hence the
-   * `@ts-expect-error`, which is also the point: the type system catches the shape that throws
-   * LOUDLY and lets the one that freezes the page in silence straight through. This guard is the
-   * half that covers a build with no types, and the half that covers the quiet failure.
+   * The two that CACHE are allowed now, and this is the pair that used to be refused.
+   *
+   * Forbidding them protected nobody: `@compute get body()` returned from `render` does the same thing and
+   * was always legal — measured, it blinds RMD020 and freezes on a plain field exactly the same way. So the
+   * ban cost one wrapper and taught that the rule was arbitrary. What replaced it is a report: RMD020 says
+   * a render is cached, which is the case it cannot see into. See `debug/cachedRender.ts`.
    */
-  test("the one that breaks rendering outright", () => {
-    refused(() => {
-      class Broken extends Component {
-        // @ts-expect-error a getter cannot override the base class's method
-        @compute get render(): RamondaNode {
-          return <span>x</span>;
-        }
-      }
-      return Broken;
-    });
-  });
-
-  test("the one that froze the page in silence", () => {
-    refused(() => {
-      class Frozen extends Component {
-        @memoizedHandler
+  test("the two that cache are allowed", () => {
+    expect(() => {
+      class Cached extends Component {
+        @compute
         render(): RamondaNode {
           return <span>x</span>;
         }
       }
-      return Frozen;
-    });
+      return Cached;
+    }).not.toThrow();
+
+    expect(() => {
+      class Memoised extends Component {
+        @memoized
+        render(): RamondaNode {
+          return <span>x</span>;
+        }
+      }
+      return Memoised;
+    }).not.toThrow();
+  });
+
+  /** A GETTER named `render` is still refused by TypeScript itself: it cannot override a method. */
+  test("a getter named render is a type error, whatever the decorator", () => {
+    class Broken extends Component {
+      // @ts-expect-error a getter cannot override the base class's method
+      @compute get render(): RamondaNode {
+        return <span>x</span>;
+      }
+    }
+    void Broken;
+    expect(true).toBe(true);
   });
 
   test("a lifecycle decorator, which would run the render outside the render pass", () => {

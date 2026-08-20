@@ -1,12 +1,12 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, memoizedHandler, persist, created, mounted, destroyed } from "../index";
+import { Component, Host, state, memoized, persist, created, mounted, destroyed } from "../index";
 
 /**
  * The decorator surface is the biggest thing this framework exposes, and it read
  * as 65% branch coverage — most of which turned out to be the `false` side of
  * `if (__DEV__)`, unreachable while tests run in DEV. These cover what was
- * genuinely untested: memoizedHandler's identity and collection, @persist's
+ * genuinely untested: memoized's identity and collection, @persist's
  * non-reactive write, symbol-named members, and the lifecycle FACTORY form.
  *
  * Nothing was found broken.
@@ -15,12 +15,12 @@ describe("decorators", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
-  test("memoizedHandler returns one function per distinct argument list", async () => {
+  test("memoized returns one function per distinct argument list", async () => {
     let built = 0;
     @Host("div")
     class C extends Component {
       @state tick = 0;
-      @memoizedHandler pick(id: number) {
+      @memoized pick(id: number) {
         built++;
         return () => id;
       }
@@ -45,7 +45,7 @@ describe("decorators", () => {
   test("a non-primitive argument is refused, loudly — in DEVELOPMENT", async () => {
     @Host("div")
     class C extends Component {
-      @memoizedHandler pick(o: unknown) {
+      @memoized pick(o: unknown) {
         return () => o;
       }
       render() {
@@ -58,15 +58,15 @@ describe("decorators", () => {
     // objects would collide into one entry — the wrong handler, silently.
     //
     // Loudly HERE and not in production, where this used to throw out of a render
-    // and take the page down over one argument. See `prod/MemoizedHandlerKey.prod.test.tsx`
-    // for the other half, and `MemoizedHandlerKey.test.tsx` for what the message says.
-    expect(() => app.instance.pick({ a: 1 })).toThrow(/@memoizedHandler on C\.pick/);
+    // and take the page down over one argument. See `prod/MemoizedKey.prod.test.tsx`
+    // for the other half, and `MemoizedKey.test.tsx` for what the message says.
+    expect(() => app.instance.pick({ a: 1 })).toThrow(/@memoized on C\.pick/);
   });
 
   test("two instances of a component do not share handlers", async () => {
     @Host("div")
     class Child extends Component<{ id: string }> {
-      @memoizedHandler pick(n: number) {
+      @memoized pick(n: number) {
         return () => `${this.props.id}:${n}`;
       }
       render() {
@@ -97,7 +97,7 @@ describe("decorators", () => {
     @Host("div")
     class C extends Component {
       @state ids = [1, 2, 3];
-      @memoizedHandler pick(id: number) {
+      @memoized pick(id: number) {
         return () => id;
       }
       render() {

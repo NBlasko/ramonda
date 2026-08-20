@@ -226,7 +226,7 @@ load(ctx: FetchContext) {
 }
 ```
 
-[`@memoizedHandler`](/concepts/events) covers the case where the function has to be built
+[`@memoized`](/concepts/events) covers the case where the function has to be built
 per argument; it caches by its arguments, so it is stable too.
 
 **Or a `@compute` for the whole bag**, which fixes every value in it at once:

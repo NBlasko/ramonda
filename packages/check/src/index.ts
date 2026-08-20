@@ -21,6 +21,7 @@ export type {
   CachedReadOfAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
+  ComputeTakesNoArgumentsIssue,
   ContextIssue,
   DecoratorThatAddsNothingIssue,
   DomWriteIssue,

@@ -71,7 +71,7 @@ const EXPECTED = [
   "watchProp",
   "deferHydration",
   "catchError",
-  "memoizedHandler",
+  "memoized",
   "onElement",
   "onWindow",
   "onDocument",

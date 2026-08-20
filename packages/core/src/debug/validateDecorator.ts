@@ -18,10 +18,13 @@ function fail(decorator: string, message: string): never {
  * nothing.
  *
  * Measured, one class per decorator:
- * - `@compute get render()` turns the method into a cached PROPERTY, so the framework's
- *   `component.render()` dies with `TypeError: component.render is not a function` — before a page
- *   appears, with no diagnostic of any kind.
- * - `@memoizedHandler render()` is worse, because it does not throw. The render is memoised on its
+ * - `@compute render()` CACHES the render on the signals it read. State and props still reach the DOM,
+ *   so it looks like it works — and anything the render read that is not a signal freezes the page:
+ *   measured, a plain field left `old` on screen while the same component without the decorator showed
+ *   `new`. Silent, and re-measured in `__tests__/prod/ComputeOnRender.prod.test.tsx` after the method form
+ *   started installing a function; before that it installed an accessor and the page died loudly with
+ *   `component.render is not a function`.
+ * - `@memoized render()` is the same shape. The render is memoised on its
  *   arguments, it has none, and the component **never updates again**: measured `"0" -> "0"` after
  *   a state write that should have shown `1`. A frozen page and nothing said.
  * - `@created`, `@mounted`, `@updated`, `@destroyed` register the render as a lifecycle callback,
@@ -33,14 +36,30 @@ function fail(decorator: string, message: string): never {
  * member core reserves, and until now it was reserved only by TypeScript's `abstract` — a build
  * with no types refused nothing.
  */
+/**
+ * The two that CACHE are allowed, and the reason is that forbidding them protected nobody.
+ *
+ * `@compute get body() { … }` returned from `render()` has always been legal, and it is the same thing:
+ * measured, it blinds RMD020 exactly as `@compute render()` does, and freezes on a plain field exactly the
+ * same way. So the ban cost one wrapper and taught that the rule was arbitrary.
+ *
+ * What replaced it is a note rather than a refusal: RMD020 says, once per component, that it can no longer
+ * see into this render. It is asked of the DECORATOR, so the wrapper — a `@compute` body returned from
+ * `render()` — pays the same cost and is not noted; `debug/cachedRender.ts` says why nothing can tell it
+ * apart from two legitimate shapes.
+ */
+const CACHING = new Set(["compute", "memoized"]);
+
 export function assertNotRender(decorator: string, name: string | symbol): void {
   if (name !== "render") return;
+  if (CACHING.has(decorator)) return;
   fail(
     decorator,
-    `\`render\` takes no decorator. It is the method the framework calls to build your element, and ` +
-      `a decorator either replaces it — \`@compute\` makes it a property, and rendering dies with ` +
-      `"component.render is not a function" — or quietly changes when it runs. Put the behaviour on a ` +
-      `member of its own and call it from \`render\`.`,
+    `\`render\` does not take this decorator. It is the method the framework calls to build your element, ` +
+      `and this one changes when it runs or means something else entirely. Put the behaviour on a member ` +
+      `of its own and call it from \`render\`. (\`@compute\` and \`@memoized\` ARE allowed: they cache the ` +
+      `result, and development says so once per component, so you know RMD020 can no longer compare this ` +
+      `render's output.)`,
   );
 }
 
@@ -70,15 +89,38 @@ export function assertField(kind: string, decorator: string, name: string | symb
 }
 
 /**
- * @compute is the one decorator that legitimately takes either — a method called
- * as `this.total()` or a getter read as `this.total`. Both are cached the same
- * way, so both are allowed and everything else is not.
+ * The decorator makes sense on a method or a getter, and the two install different things.
+ *
+ * A getter becomes an accessor, so what you read is the value. A METHOD stays a function that returns the
+ * value — which is what keeps its declared type true. Installing an accessor for a method was a type lie in
+ * both directions: `this.total` was declared `() => number` while it held a `number`, so reading it as the
+ * number it is was an error and calling it threw. Measured on both, and the fix was to make the method form
+ * behave like one rather than to remove it.
  */
 export function assertMethodOrGetter(kind: string, decorator: string, name: string | symbol): void {
   assertNotRender(decorator, name);
   if (kind !== "method" && kind !== "getter") {
     fail(decorator, `Can only decorate a method or a getter, but \`${String(name)}\` is a ${kind}.`);
   }
+}
+
+/**
+ * A `@compute` METHOD takes no arguments, because its cache is keyed by nothing.
+ *
+ * One value per component is the whole shape of it, so an argument would be accepted and ignored — the
+ * second call with a different argument would hand back the first call's answer. `@memoized` is the
+ * decorator keyed BY arguments, and this says so rather than letting the two be confused silently.
+ *
+ * `fn.length` counts declared parameters up to the first default or rest, so `times(n = 1)` slips through.
+ * That case has a usable value in the body, which is the less wrong of the two.
+ */
+export function assertNoParameters(fn: unknown, decorator: string, name: string | symbol): void {
+  if (typeof fn !== "function" || fn.length === 0) return;
+  fail(
+    decorator,
+    `\`${String(name)}\` declares ${fn.length} parameter(s), and a ${decorator} caches one value per ` +
+      "component — an argument would be ignored. Use `@memoized` for a value keyed by its arguments.",
+  );
 }
 
 /** @interval(ms) / @timeout(ms) */

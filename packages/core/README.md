@@ -216,7 +216,7 @@ because it follows the position rather than the row.
 | `@onWindow` / `@onDocument` / `@onElement` | listeners, removed on unmount; typed from the event name |
 | `@interval` / `@timeout` | timers that clear themselves on unmount |
 | `@persist` | state that survives SSR → hydration |
-| `@memoizedHandler` | a stable callback identity across renders |
+| `@memoized` | a stable callback identity across renders |
 
 Event handlers are typed from the name, via the DOM's own event maps:
 

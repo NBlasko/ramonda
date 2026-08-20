@@ -1,4 +1,4 @@
-import { Component, Host, list, state, watchProp, memoizedHandler } from "@ramonda/core";
+import { Component, Host, list, state, watchProp, memoized } from "@ramonda/core";
 
 /** Module scope, so `each` is the SAME array every render — a fresh literal would be a new value
  *  each time and cost the list the identity it mints from its items. */
@@ -51,7 +51,7 @@ export class WatchPropDemo extends Component {
     );
   }
 
-  @memoizedHandler
+  @memoized
   select(id: string) {
     return () => {
       this.userId = id;

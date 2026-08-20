@@ -67,6 +67,19 @@ function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: "pipe", ...options });
 }
 
+/**
+ * Everything a failed command said, from BOTH streams.
+ *
+ * `String(error.stdout ?? error.stderr)` was the bug that hid a real CI failure: `??` falls through only
+ * on `null` and `undefined`, and a command that writes its error to stderr leaves `stdout` as `""`. So the
+ * detail was the empty string, `if (detail)` was false, and the gate printed a headline with no reason
+ * under it — `npm ci --omit=dev` failed in CI and the log said nothing about why.
+ */
+function outputOf(error) {
+  const parts = [error?.stdout, error?.stderr].map((part) => String(part ?? "").trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join("\n") : String(error);
+}
+
 function fail(what, detail) {
   if (selftest !== undefined) {
     const expected = PLANTED[selftest].expect;
@@ -80,7 +93,8 @@ function fail(what, detail) {
     process.exit(1);
   }
   console.error(`\n[scaffold] ${what}`);
-  if (detail) console.error(detail.trim().split("\n").slice(-25).join("\n"));
+  // 25 lines was too few for an `npm ci` failure, whose useful line sits above a wall of peer output.
+  if (detail) console.error(detail.trim().split("\n").slice(-60).join("\n"));
   process.exit(1);
 }
 
@@ -222,14 +236,14 @@ try {
   try {
     run("npm", ["install", "--no-audit", "--no-fund"], { cwd: app });
   } catch (error) {
-    fail("`npm install` failed in the generated project", String(error.stdout ?? error.stderr ?? error));
+    fail("`npm install` failed in the generated project", outputOf(error));
   }
 
   let built;
   try {
     built = run("npm", ["run", "build"], { cwd: app });
   } catch (error) {
-    fail("`npm run build` failed in the generated project", String(error.stdout ?? error.stderr ?? error));
+    fail("`npm run build` failed in the generated project", outputOf(error));
   }
 
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */
@@ -273,10 +287,7 @@ try {
     try {
       run("npm", ["ci", "--omit=dev", "--no-audit", "--no-fund"], { cwd: app });
     } catch (error) {
-      fail(
-        "`npm ci --omit=dev` failed — a production install of the generated project",
-        String(error.stdout ?? error.stderr ?? error),
-      );
+      fail("`npm ci --omit=dev` failed — a production install of the generated project", outputOf(error));
     }
     await servesSomewhere();
     checks.push("a production install that serves");

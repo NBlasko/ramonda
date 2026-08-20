@@ -38,7 +38,7 @@ keep `this`. Ramonda binds your methods to the instance when the component is bu
 
 That is not only convenience: a decorator can't be applied to an arrow-function field,
 so if the way to keep `this` were an arrow field, you couldn't decorate your handlers.
-Binding ordinary methods is what keeps `@memoizedHandler` and the event decorators
+Binding ordinary methods is what keeps `@memoized` and the event decorators
 usable on them.
 
 ## Why TC39 decorators

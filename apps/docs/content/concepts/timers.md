@@ -2,7 +2,7 @@
 title: Timers
 description: Run something on a clock or after a delay — started and cleaned up for you.
 section: Lifecycle and subscriptions
-order: 33
+order: 34
 ---
 
 # Timers

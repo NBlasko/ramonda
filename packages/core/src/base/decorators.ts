@@ -19,6 +19,7 @@ import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { markCachedRender } from "../debug/cachedRender";
 import { reportFault } from "../debug/fault";
 import { claimMember } from "../debug/claimMember";
 import { computePhase } from "../debug/renderPhase";
@@ -31,6 +32,7 @@ import {
   assertMethod,
   assertField,
   assertMethodOrGetter,
+  assertNoParameters,
   assertConnect,
   assertDisconnect,
   assertDelay,
@@ -66,7 +68,7 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
 /**
  * The internal primitive every effect-shaped decorator is built on. It stays
  * internal because two of its three parameters are things no app should hold:
- * `alwaysRebuild` (only `@memoizedHandler` has a use for it) and a raw effect
+ * `alwaysRebuild` (only `@memoized` has a use for it) and a raw effect
  * body with no contract about what it returns.
  *
  * `createSubscriptionDecorator` is the public door onto it — same machinery, with the
@@ -1046,7 +1048,7 @@ const cleanUp = (instanceMap: Map<string, MemoEntry>) => {
  */
 let memoizedMemberSequence = 0;
 
-export function memoizedHandler<T extends (...args: any[]) => any>(
+export function memoized<T extends (...args: any[]) => any>(
   target: T,
   context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime }, T>,
 ): T {
@@ -1054,14 +1056,16 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
     // On a field this already failed, but as `Cannot read properties of
     // undefined (reading 'get')` from inside the framework — an error that names
     // neither the decorator nor the member it was put on.
-    assertMethod(context.kind, "memoizedHandler", context.name);
+    assertMethod(context.kind, "memoized", context.name);
   }
 
   const originalMethod = target;
   const member = ++memoizedMemberSequence;
 
   context.addInitializer(function () {
-    if (__DEV__) claimMember(this, String(context.name), "memoizedHandler", "memoized");
+    if (__DEV__) claimMember(this, String(context.name), "memoized", "memoized");
+    // As for `@compute` — see `debug/cachedRender.ts`.
+    if (__DEV__ && context.name === "render") markCachedRender(this);
 
     let instanceMap = memoMap.get(this);
 
@@ -1119,7 +1123,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
           `<${owner} /> called ${String(context.name)} with ${describeUnkeyableArgs(args)}.`,
         );
         throw new Error(
-          `[RMD047] @memoizedHandler on ${owner}.${String(
+          `[RMD047] @memoized on ${owner}.${String(
             context.name,
           )} was called with an argument it cannot build a cache key from: ${describeUnkeyableArgs(args)}. ` +
             `A key can hold a string, a number or a boolean — an object cannot be compared by value, and keying ` +
@@ -1142,7 +1146,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
         reportFault(
           "RMD047",
           `${(this as { constructor: { name: string } }).constructor.name}:${String(context.name)}`,
-          "@memoizedHandler was called with an argument it cannot build a cache key from, so it is not memoised.",
+          "@memoized was called with an argument it cannot build a cache key from, so it is not memoised.",
         );
       }
       return originalMethod.call(this, ...args);
@@ -1151,7 +1155,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
     /**
      * The MEMBER is part of the key, and leaving it out was a silent wrong answer.
      *
-     * One map per INSTANCE is shared by every `@memoizedHandler` on it, so keying by the arguments
+     * One map per INSTANCE is shared by every `@memoized` on it, so keying by the arguments
      * alone made two methods collide on the same argument. Measured: with `removeFor(id)` and
      * `editFor(id)` on one component, `removeFor(1) === editFor(1)` and calling the second ran the
      * first's body — twice `remove:1`, no diagnostic, nothing thrown. The commonest shape in a list
@@ -1536,7 +1540,7 @@ type DeclarablePropsOf<C> = C extends new (
  * **Functions.** Two closures with the same body are not equal by any comparison that is
  * safe to make, so a listed function prop is left exactly as it came and RMD022 still
  * reports it — unstable AND silent would be the worst of both. Pass a bound method
- * instead, or `@memoizedHandler` when it has to be built per argument.
+ * instead, or `@memoized` when it has to be built per argument.
  *
  * Contents are compared to a bounded depth, so a deeply nested literal gets a fresh
  * reference rather than a wrong one — the safe direction.
@@ -1901,6 +1905,19 @@ export function compute<T, R>(
     assertMethodOrGetter(context.kind, "compute", context.name);
   }
 
+  /**
+   * OUTSIDE `__DEV__`, unlike every other check here, and that is deliberate.
+   *
+   * A `@compute` caches ONE value per component, so an argument is accepted and then ignored: the second
+   * call with a different argument hands back the first call's answer. Nothing throws, nothing is logged,
+   * and the number on the page is simply wrong. A silently wrong value is the class of fault RMD056 is also
+   * refused in every build for.
+   *
+   * It costs one `fn.length` per decorated member per class DEFINITION — once, not per instance, not per
+   * read. `@memoized` is the decorator keyed by arguments, and the message says so.
+   */
+  assertNoParameters(target, "compute", context.name);
+
   const originalMethod = target;
 
   context.addInitializer(function (this: any) {
@@ -1909,6 +1926,9 @@ export function compute<T, R>(
     const internalId = createId();
 
     if (__DEV__) claimMember(this, String(context.name), "compute", "computed");
+    // Allowed on `render`, and this is what it costs: RMD020 compares two renders, and a cache makes
+    // them one object. Marked here, where the decision was made — see `debug/cachedRender.ts`.
+    if (__DEV__ && context.name === "render") markCachedRender(this);
 
     const cache = {
       value: null as R | null,
@@ -1944,76 +1964,95 @@ export function compute<T, R>(
       cache.isDirty = true;
     };
 
-    Object.defineProperty(this, context.name, {
-      get() {
-        if (__DEV__ && counters) {
-          // Counted at the top, before the branch clears the flag. A compute whose reads are all
-          // misses is paying for a cache it never uses — not necessarily wrong, which is why this
-          // is a number in the panel rather than a diagnostic. See `debug/computeStats.ts`.
-          if (cache.isDirty) counters.misses++;
-          else counters.hits++;
+    /**
+     * One reader, installed two ways.
+     *
+     * A GETTER becomes an accessor, so `this.total` IS the value. A METHOD stays a function that
+     * returns it, so `this.total()` is the value — and that is what keeps the declared type true.
+     * Installing an accessor for a method was a lie in both directions: the member was typed
+     * `() => R` while it held an `R`, so reading it as the value was an error and calling it threw
+     * `is not a function`. Measured on both before this branch existed.
+     *
+     * Both forms share this one cache, these dependencies and this invalidation. The choice is how you
+     * read it, not what it does — which is why `get` is not ceremony.
+     */
+    const read = (): R | null => {
+      if (__DEV__ && counters) {
+        // Counted at the top, before the branch clears the flag. A compute whose reads are all
+        // misses is paying for a cache it never uses — not necessarily wrong, which is why this
+        // is a number in the panel rather than a diagnostic. See `debug/computeStats.ts`.
+        if (cache.isDirty) counters.misses++;
+        else counters.hits++;
+      }
+      if (cache.isDirty) {
+        // Synchronously detach from the old State dependencies.
+        for (const dep of cache.deps) {
+          dep[detach](internalId);
         }
-        if (cache.isDirty) {
-          // Synchronously detach from the old State dependencies.
-          for (const dep of cache.deps) {
-            dep[detach](internalId);
-          }
-          cache.deps.clear();
+        cache.deps.clear();
 
-          // Make this cache object the active tracker.
-          const prevTracker = trackerContainer.current;
-          trackerContainer.current = cache;
+        // Make this cache object the active tracker.
+        const prevTracker = trackerContainer.current;
+        trackerContainer.current = cache;
 
-          // Name this compute as the active one, so a state write inside its
-          // body can be reported against it (RMD018). Saved and restored like
-          // the tracker, so a nested read unwinds back to the outer compute.
-          const prevComputePhase = __DEV__ ? computePhase.label : undefined;
-          if (__DEV__) {
-            computePhase.label = `${displayName(this)}.${String(context.name)}`;
-          }
-
-          try {
-            // Run the original getter — this is where cache.deps gets filled.
-            cache.value = originalMethod.call(this);
-            cache.isDirty = false;
-
-            // RMD024: recomputing to the same answer, over and over, means the cache is doing
-            // nothing — see computeChurn.ts for why neither RMD020 nor RMD022 can see it.
-            if (__DEV__) recordCompute(this as object, String(context.name), cache.value);
-          } finally {
-            // Restore the previous tracker — it matters for nested @compute
-            // reads, where an inner one would otherwise steal the outer's deps.
-            trackerContainer.current = prevTracker;
-            if (__DEV__) computePhase.label = prevComputePhase;
-          }
-
-          // Subscribe to the new dependencies synchronously, so a later write
-          // can invalidate this cache.
-          for (const dep of cache.deps) {
-            dep[attach]({
-              id: internalId,
-              onChange: invalidate,
-            });
-          }
+        // Name this compute as the active one, so a state write inside its
+        // body can be reported against it (RMD018). Saved and restored like
+        // the tracker, so a nested read unwinds back to the outer compute.
+        const prevComputePhase = __DEV__ ? computePhase.label : undefined;
+        if (__DEV__) {
+          computePhase.label = `${displayName(this)}.${String(context.name)}`;
         }
 
-        // Whatever this compute depends on, whoever is reading it depends on
-        // too. Without this, a cache HIT touches no State at all, so the reader
-        // records nothing and never invalidates: a @compute reading another
-        // @compute returned a stale value forever. Runs on the hit path as well
-        // as the miss path — the hit is exactly the broken case.
-        //
-        // Through `trackDependency` rather than the tracker directly, because a
-        // reader can also be an EFFECT, and an effect reading a fresh compute
-        // used to subscribe to nothing at all — the deps went to the tracker
-        // scope, which an effect is not in.
-        for (const dep of cache.deps) trackDependency(dep);
+        try {
+          // Run the original getter — this is where cache.deps gets filled.
+          cache.value = originalMethod.call(this);
+          cache.isDirty = false;
 
-        return cache.value;
-      },
-      configurable: true,
-      enumerable: true,
-    });
+          // RMD024: recomputing to the same answer, over and over, means the cache is doing
+          // nothing — see computeChurn.ts for why neither RMD020 nor RMD022 can see it.
+          if (__DEV__) recordCompute(this as object, String(context.name), cache.value);
+        } finally {
+          // Restore the previous tracker — it matters for nested @compute
+          // reads, where an inner one would otherwise steal the outer's deps.
+          trackerContainer.current = prevTracker;
+          if (__DEV__) computePhase.label = prevComputePhase;
+        }
+
+        // Subscribe to the new dependencies synchronously, so a later write
+        // can invalidate this cache.
+        for (const dep of cache.deps) {
+          dep[attach]({
+            id: internalId,
+            onChange: invalidate,
+          });
+        }
+      }
+
+      // Whatever this compute depends on, whoever is reading it depends on
+      // too. Without this, a cache HIT touches no State at all, so the reader
+      // records nothing and never invalidates: a @compute reading another
+      // @compute returned a stale value forever. Runs on the hit path as well
+      // as the miss path — the hit is exactly the broken case.
+      //
+      // Through `trackDependency` rather than the tracker directly, because a
+      // reader can also be an EFFECT, and an effect reading a fresh compute
+      // used to subscribe to nothing at all — the deps went to the tracker
+      // scope, which an effect is not in.
+      for (const dep of cache.deps) trackDependency(dep);
+
+      return cache.value;
+    };
+
+    Object.defineProperty(
+      this,
+      context.name,
+      context.kind === "getter"
+        ? { get: read, configurable: true, enumerable: true }
+        : // Not writable, so the two forms answer an assignment the same way. A getter with no setter
+          // throws on `this.total = 1`; measured, `writable: true` accepted it and replaced the compute
+          // with the number. A derived value is not a place to put one.
+          { value: () => read(), configurable: true, enumerable: true, writable: false },
+    );
 
     // Cleanup when the component is destroyed.
     runtime.clearReactives.push(() => {
