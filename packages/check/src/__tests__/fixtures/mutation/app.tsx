@@ -48,4 +48,37 @@ class Cart extends Component {
   }
 }
 
+/**
+ * The state is on a BASE, the mutation is in the subclass — one instance, one signal.
+ *
+ * `stateFieldsOf` walks the chain, so `rows` is known to be state. Which fields hold an ARRAY was
+ * read from this class body alone, so the declaration on the base was never seen and the push went
+ * unreported: a rule that knew the field was state and not what it held.
+ */
+@Host("div")
+class Inventory extends Component {
+  @state rows: number[] = [];
+  @state owner = { name: "a" };
+
+  render() {
+    return <div>{this.rows.length}</div>;
+  }
+}
+
+@Host("div")
+class Restocked extends Inventory {
+  @mounted seed() {
+    /* REPORTED — the base's array, changed in place. */
+    this.rows.push(1);
+    /* REPORTED — the base's object, changed in place. */
+    this.owner.name = "b";
+  }
+
+  fine() {
+    /* The fix, and it must stay quiet. */
+    this.rows = [...this.rows, 1];
+  }
+}
+
 bootstrap(<Cart />, null);
+bootstrap(<Restocked />, null);

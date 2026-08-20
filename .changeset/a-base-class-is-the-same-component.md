@@ -19,6 +19,13 @@ component's as much as what it declares itself.
 - **`interval-with-no-cleanup`** reported an interval the component does clear, when the
   `clearInterval` is on a base — a false positive on the documented shape. The chain is read upward
   now.
+- **`state-mutated-in-place`** was half-walked, which is worse than not walked: `stateFieldsOf`
+  already knew an inherited field was `@state`, while what it HOLDS was read from the subclass's own
+  body — so a `@state rows: Row[] = []` on a base guarded nothing and `this.rows.push(x)` went
+  unreported.
+- **`cached-read-of-a-plain-field`** read one class body for both halves — which fields are plain,
+  and which are written after the first render — so a plain field on a shared base made the whole
+  fault invisible.
 
 The chain is walked upward only, and that decides one deliberate silence: a class cannot know who
 extends it, so an **abstract** class keeping a timer id on a property is no longer reported. It is

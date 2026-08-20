@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { isThisUse, positionOf } from "../syntax";
-import { hasDecorator } from "./render-reach";
+import { hasDecorator, heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
@@ -201,26 +201,38 @@ export const cachedReadOfAPlainField = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
+    /**
+     * The class and its BASES, because a component's fields are the component's wherever they are
+     * declared: a plain field on a shared base, written by a method here and read by a `@compute`
+     * here, goes stale in exactly the same way and was reported by nothing.
+     *
+     * Upward only. A base cannot know who extends it, so a `@compute` on a base reading a field the
+     * subclass writes stays out of reach — and out of the claim.
+     */
+    const declared = [cls, ...heritage(cls, resolve)];
+
     /** The plain fields — everything a compute could go stale on. */
     const plain = new Set<string>();
-    for (const member of cls.members) {
-      if (!ts.isPropertyDeclaration(member)) continue;
-      if (trackedOrHarmless(member)) continue;
-      const name = nameOf(member);
-      if (name !== undefined) plain.add(name);
-    }
+    for (const declaring of declared)
+      for (const member of declaring.members) {
+        if (!ts.isPropertyDeclaration(member)) continue;
+        if (trackedOrHarmless(member)) continue;
+        const name = nameOf(member);
+        if (name !== undefined) plain.add(name);
+      }
     if (plain.size === 0) return [];
 
     /** field → the member that writes it after the first render. */
     const writtenBy = new Map<string, string>();
-    for (const member of cls.members) {
-      if (!writesAfterTheFirstRender(member)) continue;
-      const where = nameOf(member) ?? "a method";
-      for (const field of fieldsWrittenIn(member)) {
-        if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
+    for (const declaring of declared)
+      for (const member of declaring.members) {
+        if (!writesAfterTheFirstRender(member)) continue;
+        const where = nameOf(member) ?? "a method";
+        for (const field of fieldsWrittenIn(member)) {
+          if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
+        }
       }
-    }
     if (writtenBy.size === 0) return [];
 
     const found: CachedReadOfAPlainFieldIssue[] = [];

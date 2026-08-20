@@ -21,13 +21,31 @@ describe("a state value changed in place", () => {
       "items:push()",
       "user:`name` written",
       "items:an index written",
+      "rows:push()",
+      "owner:`name` written",
+    ]);
+  });
+
+  /**
+   * The state on a BASE, the mutation in the subclass — one instance, one signal.
+   *
+   * `stateFieldsOf` already walked the chain, so an inherited field was known to be state. What it
+   * HOLDS was read from the subclass's own body, so a `@state rows: Row[] = []` on the base guarded
+   * nothing and `this.rows.push(x)` went unreported — a rule that knew the field was state and not
+   * what was in it. Found by planting, which is the only way a half-fixed walk shows itself.
+   */
+  test("a base's array and object are the subclass's to mutate wrongly", () => {
+    const found = run().findings["state-mutated-in-place"];
+    expect(found.filter((issue) => issue.component === "Restocked").map((issue) => issue.field)).toEqual([
+      "rows",
+      "owner",
     ]);
   });
 
   /** The fix must never be reported: `map`, `filter`, `slice` and a spread all return a new value. */
   test("a non-mutating method and a replacement are left alone", () => {
     const found = run().findings["state-mutated-in-place"];
-    expect(found).toHaveLength(3);
+    expect(found).toHaveLength(5);
     expect(found.every((issue) => issue.member === "seed")).toBe(true);
   });
 
