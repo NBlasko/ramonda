@@ -31,6 +31,7 @@ import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
 import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
+import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { accessKey } from "./access-key";
@@ -122,6 +123,10 @@ export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
 export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
 export { freshObjectInHookProps, type FreshObjectInHookPropsIssue } from "./fresh-object-in-hook-props";
+export {
+  freshValueFromAWatchSelector,
+  type FreshValueFromAWatchSelectorIssue,
+} from "./fresh-value-from-a-watch-selector";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
 export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
 export { accessKey, type AccessKeyIssue } from "./access-key";
@@ -207,6 +212,7 @@ export const CLASS_RULES = [
   oneProviderPerComponent,
   serverEnvInSharedCode,
   freshObjectInHookProps,
+  freshValueFromAWatchSelector,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */

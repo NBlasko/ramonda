@@ -54,6 +54,7 @@ const EXPECTED_TYPES = [
   "GraphNode",
   "FragmentLinkToNowhereIssue",
   "FreshObjectInHookPropsIssue",
+  "FreshValueFromAWatchSelectorIssue",
   "FreshObjectInPropsIssue",
   "HeadTagsCollideIssue",
   "HeadingSkipsALevelIssue",

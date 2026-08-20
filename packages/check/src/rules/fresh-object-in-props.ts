@@ -328,6 +328,31 @@ function insideAList(node: ts.Node): boolean {
   return false;
 }
 
+/**
+ * The first expression a function hands back, whether it has a block or not.
+ *
+ * Shared, because three rules now ask it of three different callbacks — a helper that builds a
+ * value, a hook's props factory, and a `@watchProp` selector — and a fourth copy would be a fourth
+ * chance to forget that a concise arrow has no `return` at all.
+ *
+ * A nested function's returns are its own and are not read as this one's.
+ */
+export function returnedBy(fn: ts.ArrowFunction | ts.FunctionExpression): ts.Expression | undefined {
+  if (!ts.isBlock(fn.body)) return fn.body;
+
+  let found: ts.Expression | undefined;
+  (function look(node: ts.Node): void {
+    if (found !== undefined) return;
+    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) return;
+    if (ts.isReturnStatement(node) && node.expression !== undefined) {
+      found = node.expression;
+      return;
+    }
+    ts.forEachChild(node, look);
+  })(fn.body);
+  return found;
+}
+
 /** The written form, kept to one readable line — the report quotes the source, not a shape. */
 export function shorten(node: ts.Expression): string {
   const text = node.getText().replace(/\s+/g, " ");
