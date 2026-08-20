@@ -66,9 +66,10 @@ export interface Built {
  * The name in the report is the function the literal is actually IN, not the one on the line —
  * `conf={chainConf()}` already says `chainConf`, and what a reader needs is where to go next.
  *
- * A `@compute` getter is never followed, and does not need to be — it is read as a PROPERTY, not
- * called — but a `@compute` reached any other way is skipped explicitly, because caching is the
- * whole of what it does.
+ * A `@compute` is never followed, in either form. The getter is read as a PROPERTY and never
+ * reaches a call at all; the METHOD form installs a function that returns the cached value, so
+ * `conf={this.settings()}` is a real call and a supported way to write it. Following it would find
+ * the literal inside and report the cache, which is the opposite of the truth.
  *
  * Cycle-guarded, and bounded at `HOPS` — set deeper than hand-written code goes, because a chain
  * the walk abandons is reported as nothing at all. Everything else answers `undefined`, which is
@@ -146,8 +147,8 @@ export interface Found<T> {
  * `foundIn` names the INNERMOST place, not the outermost — `chainConf()` is already on the line the
  * reader is looking at, and what they need is where to go next.
  *
- * A `@compute` reached through a call is skipped, because caching is the whole of what it does. (It
- * is normally read as a PROPERTY and never reaches here at all.)
+ * A `@compute` reached through a call is skipped, because caching is the whole of what it does —
+ * both forms, since a `@compute` method returns the cached value rather than recomputing.
  *
  * Cycle-guarded, and bounded at `HOPS` — set deeper than hand-written code goes, because a chain
  * the walk abandons is reported as NOTHING, and nothing is what a clean codebase looks like.

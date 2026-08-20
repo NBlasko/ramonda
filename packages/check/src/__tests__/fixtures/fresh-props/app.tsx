@@ -45,6 +45,11 @@ class Table extends Component {
     return { dense: this.dense };
   }
 
+  /** The METHOD form, which returns the cached value — a real call, and not a rebuild. */
+  @compute settings() {
+    return { dense: this.dense };
+  }
+
   render() {
     const local = { dense: true };
     return (
@@ -112,6 +117,10 @@ class Table extends Component {
         <Row conf={STABLE} label="c" />
         {/* Not reported: a `@compute` hands back the same object until something it reads changes. */}
         <Row conf={this.conf} label="d" />
+        {/* Not reported either: the METHOD form is a real call, and it returns that same cached
+            object. Planted when core made both forms readable — a call this walk followed into
+            would find the literal inside and report the cache. */}
+        <Row conf={this.settings()} label="computed-method" />
         {/* Not reported: a HOST element hands nothing to a component, so nothing is compared. */}
         <div style={{ color: "red" }} data-x={[1, 2]}>
           plain

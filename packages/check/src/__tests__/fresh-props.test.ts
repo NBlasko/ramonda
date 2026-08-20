@@ -191,6 +191,20 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
+   * A `@compute` reached through a CALL.
+   *
+   * Planted when main made both forms readable: a `@compute` method now installs a function that
+   * returns the cached value, so `conf={this.settings()}` is a supported way to write it — and a
+   * walk that followed the call would find the literal inside the getter and report the cache
+   * itself. Proved by removing the decorator, which takes the fixture from seventeen findings to
+   * eighteen: the guard is what does the work here, not a resolve that quietly failed.
+   */
+  test("a @compute method called in a prop is silent", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written).not.toContain("this.settings()");
+  });
+
+  /**
    * The two silences that keep the hop provable. A MODULE-level const is built once — that is the
    * documented fix — and a helper handing back an object it holds is a stable reference. Reporting
    * either would be reporting the fix.
@@ -230,7 +244,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Thirty-two elements in the fixture and seventeen reported, so a leak shows as a count.
+    // Thirty-three elements in the fixture and seventeen reported, so a leak shows as a count.
     expect(found).toHaveLength(17);
   });
 });
