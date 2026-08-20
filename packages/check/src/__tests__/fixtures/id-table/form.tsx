@@ -56,6 +56,16 @@ class Signup extends Component {
 
         {/* Not reported by either: a placeholder BESIDE a real name is a hint, which is its job. */}
         <input type="text" aria-label="Email" placeholder="you@example.com" />
+
+        {/* REPORTED — the rest of HTML's labelable set. Each renders a value and nothing else, so
+            without a name a reader is told "50%" with no word for what is at 50%. */}
+        <progress value={0.5} />
+        <meter value={0.5} />
+        <output>42</output>
+        {/* Not reported: named, exactly as an input would be. */}
+        <progress value={0.5} aria-label="Upload" />
+        {/* Not reported: a button is named by what is inside it. */}
+        <button type="button">Send</button>
       </form>
     );
   }

@@ -32,7 +32,7 @@ import type { ElementRule, JsxElementLike } from "./rule";
  * nothing else, while `` key={`${row.id}-${i}`} `` carries an identity and is left alone.
  */
 export interface IndexAsKeyIssue {
-  /** The tag the key was written on, so a report reads like the source. */
+  /** The tag or COMPONENT the key was written on, so a report reads like the source. */
   tag: string;
   /** The index parameter's name, which is the reason this key is a position. */
   index: string;
@@ -143,7 +143,15 @@ export const indexAsKey = {
   },
 
   read(element, { tag }) {
-    if (tag === undefined) return [];
+    /**
+     * A COMPONENT row is asked too, and it used to be skipped.
+     *
+     * `row-without-a-key` already asks one for a key, for the reason that decides both: a component
+     * is what HOLDS the state that lands on the wrong row. Answering that question for a `<li>` and
+     * not for a `<Row />` left the family disagreeing about the same list, and left this rule
+     * silent on the case where the key matters most.
+     */
+    const named = tag ?? openingOf(element as JsxElementLike).tagName.getText();
 
     const index = indexParameterFor(element as JsxElementLike);
     if (index === undefined) return [];
@@ -156,7 +164,7 @@ export const indexAsKey = {
     const names = namesIn(written);
     if (names.length === 0 || names.some((name) => name !== index)) return [];
 
-    return [{ tag, index, written: written.getText(), ...positionOf(openingOf(element as JsxElementLike)) }];
+    return [{ tag: named, index, written: written.getText(), ...positionOf(openingOf(element as JsxElementLike)) }];
   },
 } as const satisfies ElementRule<IndexAsKeyIssue>;
 

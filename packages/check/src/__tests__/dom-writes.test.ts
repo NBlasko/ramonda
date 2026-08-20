@@ -31,7 +31,23 @@ describe("a component writing the document instead of rendering it", () => {
       "document.body.style.setProperty",
       'document.body.style["overflow"]',
       "document.documentElement.innerHTML",
+      // One `this.method()` away, which is where a write like this actually lives.
+      "document.body.classList.add",
     ]);
+  });
+
+  /**
+   * How far it looks: the whole class, and no further.
+   *
+   * A write in a helper the component calls is found. A utility in ANOTHER FILE is not, and that is
+   * a decision — the report names a component and a line with nothing to say how the two are
+   * connected, and a module that owns a DOM effect on purpose (a focus trap, a scroll lock) is a
+   * legitimate thing to write that this rule could not tell from the other kind.
+   */
+  test("a write one this.method() away is found, and one across a file boundary is not", () => {
+    const components = run().findings["dom-writes"].map((issue) => issue.component);
+    expect(components).toContain("WritesViaAHelper");
+    expect(components).not.toContain("WritesViaAnotherFile");
   });
 
   /**

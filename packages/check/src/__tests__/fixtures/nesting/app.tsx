@@ -81,5 +81,24 @@ class Controls extends Component {
   }
 }
 
+/** Ruby annotation, whose parent set is closed in the same way a table's is. */
+class Ruby extends Component {
+  render() {
+    return (
+      <p>
+        {/* Not reported: exactly where they belong. */}
+        <ruby>
+          漢<rp>(</rp>
+          <rt>kan</rt>
+          <rp>)</rp>
+        </ruby>
+        {/* REPORTED — an annotation with nothing to annotate. */}
+        <rt>orphan</rt>
+      </p>
+    );
+  }
+}
+
+bootstrap(<Ruby />, null);
 bootstrap(<Tables />, null);
 bootstrap(<Controls />, null);

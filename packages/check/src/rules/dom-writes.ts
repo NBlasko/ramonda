@@ -16,6 +16,16 @@ import type { Rule } from "./rule";
  * `select()` and `getBoundingClientRect()` have no declarative form: they are things you tell the
  * browser to do, not state the framework owns. They stay allowed, and a rule that caught them would
  * be a rule people switch off.
+ *
+ * ## How far it looks, which is the whole class and no further
+ *
+ * Every member, so a write in a helper the component calls is found — measured, with the write one
+ * `this.method()` away. A utility in ANOTHER FILE is not followed, and that is a decision rather
+ * than a gap: this report names a component and a line, with nothing to say how the two are
+ * connected, so following an import would name a component that did not write the line, in a file
+ * it does not own, once per caller. A module that owns a DOM effect on purpose — a focus trap, a
+ * scroll lock — is also a legitimate thing to write, and this rule has no way to tell it from the
+ * other kind.
  */
 export interface DomWriteIssue {
   /** The class doing the writing. */

@@ -27,6 +27,19 @@ describe("a fragment link pointing at nothing", () => {
    * `` id={`row-${row.id}`} `` could have made. That is a proof rather than a guess, and it is what
    * keeps a list's generated ids from silencing the whole table.
    */
+  /**
+   * An id written in `@Host` props is on the page and is in no JSX element, so the table used to
+   * miss it and the link to it was reported as going nowhere. Found by planting, and the shape got
+   * likelier the day `@Host`'s props became typed as the element's attributes.
+   */
+  test("an id written in @Host props is an id the project carries", () => {
+    const found = run("id-table").findings["fragment-link-to-nowhere"];
+    expect(found.map((issue) => issue.target)).not.toContain("host-anchor");
+    // Both bodies a props callback is written with. The concise one was fixed first and the block
+    // one was still missing, which is what a review is for.
+    expect(found.map((issue) => issue.target)).not.toContain("block-anchor");
+  });
+
   test("an id a template could have produced is not called missing", () => {
     const found = run("id-table").findings["fragment-link-to-nowhere"];
     expect(found.some((issue) => issue.target === "row-3")).toBe(false);
@@ -107,14 +120,28 @@ describe("a project with an id this cannot read", () => {
 describe("a form control with no label", () => {
   test("only the controls with nothing naming them are reported", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    expect(found.map((issue) => issue.tag)).toEqual(["input", "textarea"]);
+    expect(found.map((issue) => issue.tag)).toEqual(["input", "textarea", "progress", "meter", "output"]);
+  });
+
+  /**
+   * The subject is HTML's labelable set, and three of it were missing: `meter`, `progress` and
+   * `output` each render a value and nothing else, so without a name a reader is told "50%" with no
+   * word for what is at 50%. They are labelable exactly as an `<input>` is.
+   *
+   * `<button>` stays out, and that is the line: a button is named by what is INSIDE it.
+   */
+  test("the value-showing controls are reported too, and a button is not", () => {
+    const found = run("id-table").findings["control-with-no-label"];
+    const tags = found.map((issue) => issue.tag);
+    expect(tags).toContain("progress");
+    expect(tags).not.toContain("button");
   });
 
   /** Four ways to be named, and each is written in the fixture beside the ones that are not. */
   test("a for, a wrapping label, aria and title all count as a name", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    // Fifteen controls in the fixture; two are nameless.
-    expect(found).toHaveLength(2);
+    // Twenty controls in the fixture; five are nameless.
+    expect(found).toHaveLength(5);
   });
 
   /**
@@ -125,14 +152,14 @@ describe("a form control with no label", () => {
    */
   test("a control named through either spelling is not called nameless", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    expect(found).toHaveLength(2);
+    expect(found).toHaveLength(5);
   });
 
   test("a placeholder is not called nameless — it is its own report", () => {
     const findings = run("id-table").findings;
     expect(findings["named-only-by-a-placeholder"].map((issue) => issue.tag)).toEqual(["input"]);
     // And the placeholder-only one is NOT in the other rule's list.
-    expect(findings["control-with-no-label"]).toHaveLength(2);
+    expect(findings["control-with-no-label"]).toHaveLength(5);
   });
 
   /**

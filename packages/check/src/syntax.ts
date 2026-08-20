@@ -23,11 +23,19 @@ import ts from "typescript";
  * had drifted yet — but the last thing two copies of one judgement did drift on was which writes leave a
  * cached reader stale, and that was a defect rather than a tidiness question.
  *
- * `undefined` for a computed name (`[key]()`), a string-literal name and a private `#field`: those are
- * members a rule cannot report BY NAME, and every caller skips them.
+ * `undefined` for a computed name (`[key]()`) and a string-literal name: those are members a rule
+ * cannot report BY NAME, and every caller skips them.
+ *
+ * A private `#field` HAS a name — `#field` — and used to be in that list, which cost every caller
+ * something different and all of it silent: `server-env-in-shared-code` reported one as
+ * `(anonymous)` and could not excuse it, the render walk never followed `this.#helper()`, and
+ * `stale-field` could not see one go stale. Found in review by planting the `#` spelling of a shape
+ * the `private` spelling already handled.
  */
 export function memberName(member: ts.ClassElement): string | undefined {
-  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
+  if (member.name === undefined) return undefined;
+  if (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name)) return member.name.text;
+  return undefined;
 }
 
 /**

@@ -191,4 +191,21 @@ export class App extends Component {
   }
 }
 
+/**
+ * NOT reported: two `Head` hooks, colliding across them rather than inside one.
+ *
+ * `Head` merges every mounted one into the same map, so the identity collides exactly as two in one
+ * list do — measured, the document keeps one `<meta name="robots">` and it carries the LAST value.
+ * What differs is the reading: two entries in one array express nothing by being two, while two
+ * hooks express an override, which is how a base sets a page's defaults and a subclass replaces
+ * one of them.
+ */
+export class TwoHeads extends Component {
+  first = this.use(Head, () => ({ meta: [{ name: "robots", content: "index,follow" }] }));
+  second = this.use(Head, () => ({ meta: [{ name: "robots", content: "noindex" }] }));
+  render() {
+    return <p>two heads</p>;
+  }
+}
+
 bootstrap(<App />, null);

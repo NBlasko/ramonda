@@ -353,6 +353,18 @@ describe("a form field read by a component that does not watch it", () => {
     }
   });
 
+  /**
+   * The watch on a BASE and the read in the subclass — one instance, one subscription.
+   *
+   * A hook belongs to the INSTANCE, so a base's `this.use(Field, …)` subscribes the subclass exactly
+   * as its own would. Reading one class body made this an ERROR on working code; found by planting
+   * it, which is how every gap on this axis has been found.
+   */
+  test("a subclass reading what its base watches is not reported", () => {
+    const reported = run("unwatched-field").findings["unwatched-fields"].map((issue) => issue.component);
+    expect(reported).not.toContain("ReadsBelowIt");
+  });
+
   test("says which member would never update, and where", () => {
     const unwatchedFields = run("unwatched-field").findings["unwatched-fields"];
     const broken = unwatchedFields.find((issue) => issue.component === "Broken");

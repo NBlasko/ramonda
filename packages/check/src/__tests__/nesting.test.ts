@@ -16,7 +16,27 @@ const run = () => analyzeProject(join(here, "fixtures", "nesting", "tsconfig.jso
 describe("a tag outside the parent it needs", () => {
   test("is reported, wherever the parent is wrong", () => {
     const found = run().findings["tag-needs-its-parent"];
-    expect(found.map((issue) => `${issue.tag} in ${issue.found}`)).toEqual(["tr in div", "tr in div", "option in div"]);
+    expect(found.map((issue) => `${issue.tag} in ${issue.found}`)).toEqual([
+      "tr in div",
+      "tr in div",
+      "option in div",
+      "rt in p",
+    ]);
+  });
+
+  /**
+   * Ruby annotation, whose parent set is closed in the same way a table's is — `<rtc>` was the other
+   * answer and has been removed from the standard. Found by auditing the table against the content
+   * models rather than by anybody writing ruby.
+   *
+   * `<area>` stays OUT for the opposite reason, and it is the shape worth remembering: it needs a
+   * `<map>` ANCESTOR, not a `<map>` parent, so `<map><p><area /></p></map>` is legal and an entry
+   * for it would report correct markup.
+   */
+  test("an annotation with nothing to annotate is reported, and a correct ruby is not", () => {
+    const found = run().findings["tag-needs-its-parent"];
+    expect(found.filter((issue) => issue.tag === "rt")).toHaveLength(1);
+    expect(found.some((issue) => issue.tag === "rp")).toBe(false);
   });
 
   /**
@@ -41,8 +61,8 @@ describe("a tag outside the parent it needs", () => {
   test("a component in the way makes it say nothing", () => {
     const found = run().findings["tag-needs-its-parent"];
     expect(found.every((issue) => issue.found !== undefined)).toBe(true);
-    // The fixture puts a `<tr>` inside `<Body>`; three reports means it was not one of them.
-    expect(found).toHaveLength(3);
+    // The fixture puts a `<tr>` inside `<Body>`; four reports means it was not one of them.
+    expect(found).toHaveLength(4);
   });
 
   test("it names the parents the tag may have", () => {

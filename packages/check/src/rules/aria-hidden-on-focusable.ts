@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import { numberAttr, openingOf } from "./element";
+import { numberAttr, openingOf, trueAttr } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
@@ -78,9 +78,10 @@ export const ariaHiddenOnFocusable = {
     const { tag } = context;
     if (tag === undefined) return [];
 
-    // Only the literal `"true"` is a claim. `aria-hidden={busy}` may be either, and a rule that
-    // guessed would report the correct half of it.
-    if (context.attr("aria-hidden") !== "true") return [];
+    // Only a literal TRUE is a claim, in any of the three spellings that mean it — `aria-hidden`,
+    // `{true}` and `"true"` all reach the element the same way. `aria-hidden={busy}` may be either,
+    // and a rule that guessed would report the correct half of it.
+    if (trueAttr(element, "aria-hidden") !== true) return [];
 
     // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
     // `tabIndex={-1}` takes a `<button>` back out of it. A rule that asked the tag first would

@@ -78,12 +78,33 @@ describe("a heading that skips a level", () => {
       "h2 → h5",
       "h1 → h4",
       "h1 → h3",
+      "h1 → h4",
+      "h1 → h3",
     ]);
+  });
+
+  /**
+   * A heading is what the ACCESSIBILITY TREE calls one, which is not always what the tag says.
+   *
+   * `role-missing-required-aria` already asks a `role="heading"` for its `aria-level`, so reading
+   * levels off tags alone left the two rules disagreeing about the same element. An `aria-level`
+   * wins over the tag as well, because the tree takes it — and a written role wins over the tag
+   * entirely, so an `<h2 role="presentation">` is out of the outline.
+   *
+   * The report quotes what is on the line rather than a tag that is not: calling a
+   * `<div role="heading" aria-level={3}>` an `<h3>` would send a reader looking for one.
+   */
+  test("a role, an aria-level and a role that removes the heading are all read", () => {
+    const found = headings().map((issue) => issue.as);
+    expect(found).toContain("<div aria-level={3}>");
+    expect(found).toContain("<h2 aria-level={4}>");
+    // `NotAHeadingAnyMore` writes an `<h2 role="presentation">` between two real headings.
+    expect(headings().filter((issue) => issue.after === 1 && issue.level === 2)).toEqual([]);
   });
 
   /** Markup written in a plain helper is markup all the same — the third report above is one. */
   test("a render outside a class is read too", () => {
-    expect(headings()).toHaveLength(4);
+    expect(headings()).toHaveLength(6);
   });
 
   /**
@@ -114,7 +135,13 @@ describe("a heading that skips a level", () => {
    * reporting it would send a reader to delete the level that makes the page correct.
    */
   test("a heading behind a condition breaks the chain rather than being assumed", () => {
-    expect(headings().some((issue) => issue.after === 1 && issue.level === 3 && issue.afterAtLine > 100)).toBe(false);
+    // `ConditionalHeading` sits above line 100 and below the role plants; the guarded heading in it
+    // must not be stepped over. Matched by the WAY it is written, so the plants below cannot count.
+    expect(
+      headings().some(
+        (issue) => issue.after === 1 && issue.level === 3 && issue.afterAtLine > 100 && issue.as === "<h3>",
+      ),
+    ).toBe(false);
   });
 
   test("the report carries a position a reader can open", () => {

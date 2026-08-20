@@ -38,6 +38,13 @@ import type { FormControl, ProjectRule } from "./rule";
  * default when there is none. **`hidden`**, which is not rendered. **`image`**, which is named by
  * its `alt` and belongs to `unnamed-image`.
  *
+ * **A `<button>`**, which is named by what is inside it — the text on a button IS its name. An
+ * empty one is a different report and there is no rule for it yet.
+ *
+ * The subject is otherwise HTML's labelable set, `meter`, `progress` and `output` included: each of
+ * those renders a value and nothing else, so without a name a reader is told "50%" with no word for
+ * what is at 50%.
+ *
  * ## The residual risk, stated rather than hidden
  *
  * `<label><SomeField /></label>` names the control inside `SomeField` at runtime, and nothing in
@@ -47,7 +54,7 @@ import type { FormControl, ProjectRule } from "./rule";
  * label as a prop — but it is real, and it is the one way this rule can be wrong.
  */
 export interface ControlWithNoLabelIssue {
-  /** `input`, `select` or `textarea`. */
+  /** `input`, `select`, `textarea`, `meter`, `progress` or `output`. */
   tag: string;
   /** An `input`'s type, when it says one — `<input type="email">` reads better in a report. */
   type: string | undefined;
@@ -55,6 +62,14 @@ export interface ControlWithNoLabelIssue {
   line: number;
   column: number;
 }
+
+/**
+ * The labelable elements that render a VALUE rather than an empty box.
+ *
+ * They fail the same way and are announced differently: "72%" with no word for what is at 72%,
+ * rather than "edit, blank". One rule, two sentences.
+ */
+const SHOWS_A_VALUE: ReadonlySet<string> = new Set(["meter", "progress", "output"]);
 
 /** Whether anything the walk saw could be giving this control a name. */
 function couldBeNamed(control: FormControl, labelled: ReadonlySet<string>): boolean {
@@ -86,7 +101,12 @@ export const controlWithNoLabel = {
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       `    <${issue.tag}${issue.type === undefined ? "" : ` type="${issue.type}"`}> has no label — ` +
-        `a screen reader announces it as "edit, blank" and stops.`,
+        // What a reader is actually told differs with the element, and the sentence has to as well:
+        // an empty box is announced "edit, blank", while a value with no name is announced as the
+        // value alone. Saying "edit, blank" about a `<progress>` would be inventing a symptom.
+        (SHOWS_A_VALUE.has(issue.tag)
+          ? `a screen reader announces the value and no word for what it belongs to.`
+          : `a screen reader announces it as "edit, blank" and stops.`),
     ],
     advice:
       "Every other element can be worked out from what is inside it. A control cannot: an input is\n" +

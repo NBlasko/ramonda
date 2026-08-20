@@ -118,3 +118,90 @@ class InheritsIt extends Panel {
 }
 
 bootstrap(<InheritsIt />, null);
+
+/**
+ * The shapes a render can reach that are NOT a `this.method()` call.
+ *
+ * Each one is a plant: the CLAIM is "reached from a render, by any path", so every one of these
+ * either has to be reported or has to be a decision written down.
+ */
+@Host("div")
+class OtherPaths extends Component {
+  @state n = 0;
+
+  /** An arrow FIELD, which is a property rather than a method. */
+  viaArrowField = () => {
+    this.n = Date.now();
+  };
+
+  /** A plain getter, read rather than called. */
+  get viaGetter(): number {
+    return Date.now();
+  }
+
+  /** Reached through `super`, so the callee is not `this`. */
+  viaSuper() {
+    return 0;
+  }
+
+  /** A static, called on the class rather than on the instance. */
+  static viaStatic(): number {
+    return Date.now();
+  }
+
+  render() {
+    this.viaArrowField();
+    OtherPaths.viaStatic();
+    return (
+      <div>
+        {this.viaGetter}
+        {this.viaSuper()}
+      </div>
+    );
+  }
+}
+
+/** `super.method()` needs a base with the method on it. */
+class DeepBase extends Component {
+  stampFromBase() {
+    return Date.now();
+  }
+  render() {
+    return <div />;
+  }
+}
+
+@Host("div")
+class ThroughSuper extends DeepBase {
+  render() {
+    return <p>{super.stampFromBase()}</p>;
+  }
+}
+
+/**
+ * NOT reported: a subclass OVERRIDING a base's method. Only the subclass's body runs, so the base's
+ * clock read is never reached — and walking both bodies reported it until the lookup started taking
+ * the nearest declaration, which is how JS resolves a method.
+ */
+class OverriddenBase extends Component {
+  stamp() {
+    return Date.now();
+  }
+  render() {
+    return <span />;
+  }
+}
+
+@Host("div")
+class OverridesIt extends OverriddenBase {
+  stamp() {
+    return 0;
+  }
+  render() {
+    return <p>{this.stamp()}</p>;
+  }
+}
+
+bootstrap(<OverridesIt />, null);
+bootstrap(<OtherPaths />, null);
+bootstrap(<ThroughSuper />, null);
