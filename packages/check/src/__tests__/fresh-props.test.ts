@@ -20,6 +20,11 @@ describe("a prop rebuilt on every render", () => {
       "Row.conf:object",
       "Row.conf:object",
       "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
       "Row.tags:array",
     ]);
   });
@@ -38,8 +43,73 @@ describe("a prop rebuilt on every render", () => {
       "{ dense: true }",
       "local @ `local`",
       "makeConf() @ `makeConf`",
+      "chainConf() @ `level3`",
+      "deepConf() @ `deep12`",
+      "arrowConf() @ `arrowConf`",
+      "maybeConf(true) @ `maybeConf`",
+      "makeConf() as { dense: boolean } @ `makeConf`",
       '["new", "hot"]',
     ]);
+  });
+
+  /**
+   * A helper calling a helper, which is what a real codebase looks like a refactor or two in.
+   *
+   * The NAME in the report is the one this pins: `chainConf()` is already on the line the reader is
+   * looking at, so repeating it says nothing. `level3` is where the literal actually is, three hops
+   * and one file away, and it is the only thing they cannot see from here.
+   *
+   * The arrow was a plain miss until it was planted — only the `function` form was followed, so
+   * writing the same helper as `const makeConf = () => ({…})` silenced the rule completely.
+   */
+  test("a chain of helpers is followed, and the report names where the literal is", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const byWritten = new Map(found.map((issue) => [issue.written, issue.builtIn]));
+
+    expect(byWritten.get("chainConf()")).toBe("`level3`");
+    expect(byWritten.get("arrowConf()")).toBe("`arrowConf`");
+  });
+
+  /** A cast changes the type and nothing else — the object is built at the same moment either way. */
+  test("a cast does not hide it", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written).toContain("makeConf() as { dense: boolean }");
+  });
+
+  /**
+   * The depth bound, pinned at twelve hops — further than anyone writes on purpose.
+   *
+   * A LOW bound looks careful and is not. Giving up after three hops means a chain of four helpers
+   * is reported as nothing at all, and nothing is what a clean codebase looks like: the reader
+   * cannot tell "checked and fine" from "gave up". Cost is not the reason to keep it low either —
+   * a hop is one symbol resolve and one walk of one function body.
+   */
+  test("a twelve-deep chain is still followed to the literal", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const deep = found.find((issue) => issue.written === "deepConf()");
+
+    expect(deep?.builtIn).toBe("`deep12`");
+  });
+
+  /**
+   * What actually stops a runaway is the CYCLE GUARD, not the depth. Two helpers calling each other
+   * hand back no value at all, and the walk has to end on that rather than on the bound — this test
+   * hangs the suite if the guard is ever dropped.
+   */
+  test("recursion terminates and reports nothing", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written).not.toContain("loopConf()");
+    expect(written).not.toContain("chainShared()");
+  });
+
+  /**
+   * A helper with two returns, one of them the held object. It is REPORTED, because the other path
+   * really does build a fresh object and really does defeat comparison whenever it runs — and the
+   * reader is sent to a line where the literal is plainly there to judge for themselves.
+   */
+  test("a helper that builds one on only one path is still reported", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written).toContain("maybeConf(true)");
   });
 
   /**
@@ -82,7 +152,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Eleven elements in the fixture and four reported, so a leak shows as a count.
-    expect(found).toHaveLength(4);
+    // Twenty elements in the fixture and nine reported, so a leak shows as a count.
+    expect(found).toHaveLength(9);
   });
 });

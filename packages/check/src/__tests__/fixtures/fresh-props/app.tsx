@@ -1,6 +1,6 @@
 import { StableProps, Component, Host, bootstrap, compute, state } from "../framework";
 
-import { makeConf, sharedConf } from "./make";
+import { arrowConf, chainConf, chainShared, deepConf, loopConf, maybeConf, makeConf, sharedConf } from "./make";
 
 declare const rest: Record<string, unknown>;
 
@@ -57,6 +57,20 @@ class Table extends Component {
         <Settled conf={{ dense: true }} label="settled" />
         {/* Not reported either: the declaration is inherited. */}
         <SettledBase conf={{ dense: true }} label="inherited" />
+        {/* REPORTED — a helper calling a helper; the report names `level3`, where the literal is. */}
+        <Row conf={chainConf()} label="chain" />
+        {/* REPORTED — twelve hops deep, named for `deep12` where the literal is. */}
+        <Row conf={deepConf()} label="deep" />
+        {/* Not reported: recursion hands back nothing, and the walk terminates on the cycle guard. */}
+        <Row conf={loopConf()} label="loop" />
+        {/* Not reported: the chain ends at a held object, so the whole chain is a stable reference. */}
+        <Row conf={chainShared()} label="chain-shared" />
+        {/* REPORTED — a helper written as an arrow is the same helper. */}
+        <Row conf={arrowConf()} label="arrow" />
+        {/* REPORTED — one path of it builds a fresh object, and that path is the whole fault. */}
+        <Row conf={maybeConf(true)} label="maybe" />
+        {/* REPORTED — a cast is not a defence; the same object is built either way. */}
+        <Row conf={makeConf() as { dense: boolean }} label="cast" />
         {/* REPORTED — an array is the same fault. */}
         <Row tags={["new", "hot"]} label="b" />
 

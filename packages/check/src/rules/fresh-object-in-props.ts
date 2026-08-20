@@ -51,6 +51,15 @@ import type { ElementRule, ElementContext } from "./rule";
  * **A module-level `const`**, which is built once and is the documented fix — and **a helper that
  * hands back an object it holds**, which is the same fix behind a function call. The distinction
  * both times is where the literal is BUILT, not where it is written.
+ *
+ * **Recursion.** A helper that calls itself, directly or through another, never hands back a value
+ * at all; the walk terminates on the cycle guard and reports nothing.
+ *
+ * ## A helper with more than one return
+ *
+ * If ANY path builds a literal, it is reported. A helper that hands back a held object on one
+ * branch and builds a fresh one on the other really does defeat comparison whenever that branch
+ * runs, and the reader is sent to a line where the literal is plainly there.
  */
 export interface FreshObjectInPropsIssue {
   /** The component the prop is handed to, as written. */
@@ -77,6 +86,20 @@ export interface FreshObjectInPropsIssue {
 /** Props the framework consumes itself, so nothing is handed on and nothing is compared. */
 const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
 
+/**
+ * How far the walk follows a value before it gives up.
+ *
+ * Set past anything anyone writes on purpose. A low bound looks careful and is not: giving up after
+ * three hops means a chain of four helpers is silently declared fine, and silence there is
+ * indistinguishable from a clean codebase. Cost is not the reason to keep it low either — a hop is
+ * one symbol resolve and one walk of one function body, and the whole rule costs milliseconds on a
+ * project of 4,000 components.
+ *
+ * What stops a runaway is the CYCLE GUARD, not this number: mutual recursion terminates because
+ * every expression is visited once. This is only a floor under pathological generated code.
+ */
+const HOPS = 20;
+
 interface Built {
   kind: "object" | "array";
   /** Where it is built, when that is not the line the prop is on. */
@@ -95,25 +118,36 @@ interface Built {
  *   object built at the same moment, moved for readability. Only a local counts: a module-level
  *   `const` is built ONCE, which is the documented fix and must stay silent.
  * - **A CALL that builds one.** `conf={makeConf()}`, wherever `makeConf` lives — `resolve` follows
- *   the import. Only when what it returns is a literal built INSIDE it: a helper handing back an
- *   object it holds is a stable reference, and reporting that would report the fix again.
+ *   the import, and follows it again through a helper that calls a helper. Only when what comes
+ *   back is a literal built INSIDE the chain: one handing back an object it HOLDS is a stable
+ *   reference, and reporting that would report the fix again. A helper written as an arrow is the
+ *   same helper, so `const makeConf = () => ({…})` is followed exactly as a `function` is.
+ *
+ * The name in the report is the function the literal is actually IN, not the one on the line —
+ * `conf={chainConf()}` already says `chainConf`, and what a reader needs is where to go next.
  *
  * A `@compute` getter is never followed, and does not need to be — it is read as a PROPERTY, not
  * called — but a `@compute` reached any other way is skipped explicitly, because caching is the
  * whole of what it does.
  *
- * Bounded and cycle-guarded. Everything else answers `undefined`, which is the silence contract: a
+ * Cycle-guarded, and bounded at `HOPS` — set deeper than hand-written code goes, because a chain
+ * the walk abandons is reported as nothing at all. Everything else answers `undefined`, which is
+ * the silence contract: a
  * prop read from `this.props`, a field, a parameter, a ternary — none of those is knowable from
  * here, and a maybe is the one thing this may never report.
  */
 function freshnessOf(
-  written: ts.Expression,
+  expression: ts.Expression,
   resolve: ElementContext["resolve"],
   depth: number,
   seen: Set<ts.Node> = new Set(),
 ): Built | undefined {
-  if (depth > 3 || seen.has(written)) return undefined;
-  seen.add(written);
+  if (depth > HOPS || seen.has(expression)) return undefined;
+  seen.add(expression);
+
+  // A cast is not a defence: `makeConf() as Conf` builds the same object, and parentheses are
+  // required around a concise arrow's literal, so both are peeled before anything is decided.
+  const written = unwrap(expression);
 
   if (ts.isObjectLiteralExpression(written)) return { kind: "object", builtIn: undefined };
   if (ts.isArrayLiteralExpression(written)) return { kind: "array", builtIn: undefined };
@@ -130,35 +164,84 @@ function freshnessOf(
   }
 
   if (ts.isCallExpression(written)) {
-    const callee = written.expression;
+    const callee = unwrap(written.expression);
     const named = ts.isIdentifier(callee) ? callee : ts.isPropertyAccessExpression(callee) ? callee.name : undefined;
     if (named === undefined) return undefined;
 
-    const declaration = resolve(named)?.declarations?.[0];
-    if (declaration === undefined) return undefined;
-    if (!ts.isFunctionDeclaration(declaration) && !ts.isMethodDeclaration(declaration)) return undefined;
+    const called = functionOf(resolve(named)?.declarations?.[0]);
+    if (called === undefined) return undefined;
     // A `@compute` caches its answer, so what it returns is not rebuilt.
-    if (ts.isMethodDeclaration(declaration) && hasDecorator(declaration, "compute")) return undefined;
+    if (ts.isMethodDeclaration(called) && hasDecorator(called, "compute")) return undefined;
 
-    const file = declaration.getSourceFile();
+    const file = called.getSourceFile();
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
-    if (declaration.body === undefined) return undefined;
+    if (called.body === undefined) return undefined;
 
-    let inner: Built | undefined;
-    (function look(node: ts.Node): void {
-      if (inner !== undefined) return;
-      // A nested function's returns are its own, not this one's.
-      if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) return;
-      if (ts.isReturnStatement(node) && node.expression !== undefined) {
-        inner = freshnessOf(node.expression, resolve, depth + 1, seen);
-        if (inner !== undefined) return;
-      }
-      ts.forEachChild(node, look);
-    })(declaration.body);
-    return inner === undefined ? undefined : { kind: inner.kind, builtIn: `\`${named.text}\`` };
+    // A concise arrow has no block: its body IS what it returns.
+    const inner = ts.isBlock(called.body)
+      ? handedBack(called.body, resolve, depth, seen)
+      : freshnessOf(called.body, resolve, depth + 1, seen);
+    // The inner name wins: the reader wants the function the literal is in, and the outer one is
+    // already on the line they are reading.
+    return inner === undefined ? undefined : { kind: inner.kind, builtIn: inner.builtIn ?? `\`${named.text}\`` };
   }
 
   return undefined;
+}
+
+/** The first thing a body returns that is built during the call, if any of them is. */
+function handedBack(
+  body: ts.Block,
+  resolve: ElementContext["resolve"],
+  depth: number,
+  seen: Set<ts.Node>,
+): Built | undefined {
+  let found: Built | undefined;
+  (function look(node: ts.Node): void {
+    if (found !== undefined) return;
+    // A nested function's returns are its own, not this one's.
+    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) return;
+    if (ts.isReturnStatement(node) && node.expression !== undefined) {
+      found = freshnessOf(node.expression, resolve, depth + 1, seen);
+      if (found !== undefined) return;
+    }
+    ts.forEachChild(node, look);
+  })(body);
+  return found;
+}
+
+/**
+ * The function a name stands for, whether it was written as one or assigned as a value.
+ *
+ * `const makeConf = () => ({…})` is the same helper as `function makeConf() { … }` and was found by
+ * planting it: only the `function` form was followed, so writing the helper the other way silenced
+ * the rule completely.
+ */
+function functionOf(
+  declaration: ts.Declaration | undefined,
+): ts.FunctionDeclaration | ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined {
+  if (declaration === undefined) return undefined;
+  if (ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)) return declaration;
+  if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) {
+    const assigned = unwrap(declaration.initializer);
+    if (ts.isArrowFunction(assigned) || ts.isFunctionExpression(assigned)) return assigned;
+  }
+  return undefined;
+}
+
+/** Parentheses and the type-only wrappers around an expression, none of which change the value. */
+function unwrap(expression: ts.Expression): ts.Expression {
+  let at = expression;
+  while (
+    ts.isParenthesizedExpression(at) ||
+    ts.isAsExpression(at) ||
+    ts.isSatisfiesExpression(at) ||
+    ts.isNonNullExpression(at) ||
+    ts.isTypeAssertionExpression(at)
+  ) {
+    at = at.expression;
+  }
+  return at;
 }
 
 /** The written form, kept to one readable line — the report quotes the source, not a shape. */
