@@ -1,4 +1,4 @@
-import { StableProps, Component, Host, bootstrap, compute, state } from "../framework";
+import { StableProps, Component, Host, bootstrap, compute, list, state } from "../framework";
 
 import { arrowConf, chainConf, chainShared, deepConf, loopConf, maybeConf, makeConf, sharedConf } from "./make";
 
@@ -39,6 +39,8 @@ class Table extends Component {
 
   @state maybe: { dense: boolean } | null = null;
 
+  @state rows: { id: string; conf: { dense: boolean } }[] = [];
+
   @compute get conf() {
     return { dense: this.dense };
   }
@@ -73,6 +75,23 @@ class Table extends Component {
         <Row conf={maybeConf(true)} label="maybe" />
         {/* REPORTED — a cast is not a defence; the same object is built either way. */}
         <Row conf={makeConf() as { dense: boolean }} label="cast" />
+        {/* REPORTED as per-row — one literal in the callback is one child per row that cannot be skipped. */}
+        {this.rows.map((row) => (
+          <Row conf={{ dense: true }} label={row.id} />
+        ))}
+        {/* REPORTED as per-row — a local inside the callback is rebuilt for each one. */}
+        {list(this.rows, (row) => {
+          const perRow = { dense: row.id === "x" };
+          return <Row conf={perRow} label={row.id} />;
+        })}
+        {/* Not reported: the row itself is as stable as the array holding it. */}
+        {list(this.rows, (row) => (
+          <Row conf={row} label={row.id} />
+        ))}
+        {/* Not reported: a field of the row, same. */}
+        {list(this.rows, (row) => (
+          <Row conf={row.conf} label={row.id} />
+        ))}
         {/* REPORTED — an array is the same fault. */}
         <Row tags={["new", "hot"]} label="b" />
 

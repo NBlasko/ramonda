@@ -31,6 +31,14 @@ import type { ElementRule, ElementContext } from "./rule";
  * writes nothing to the DOM. What it costs is work, and it multiplies: a list of a thousand rows is
  * a thousand children that cannot be skipped.
  *
+ * ## Inside a list
+ *
+ * `{rows.map((row) => <Row conf={{ id: row.id }} />)}` is the same fault at the scale that hurts:
+ * the literal is built once per ROW, so no row can be skipped. It is reported in those words,
+ * because the fix is not the one that fits a single element — a value derived from the row cannot
+ * be lifted to a constant. The row itself, `conf={row}`, is as stable as the array holding it and
+ * is never reported.
+ *
  * ## What is deliberately NOT reported
  *
  * **Host elements.** `<div style={{ color: "red" }}>` hands nothing to a component and no
@@ -84,6 +92,14 @@ export interface FreshObjectInPropsIssue {
   written: string;
   /** Where the value is built, when it is not on this line — a local, or the function that returns it. */
   builtIn: string | undefined;
+  /**
+   * Whether the element is rendered once per ITEM, inside a `map` or a `list` callback.
+   *
+   * The same fault, but not the same advice: a per-row value cannot be lifted to a constant,
+   * because it depends on the row. It is also the case that costs the most — one literal in a
+   * callback is one child per item that can never be skipped.
+   */
+  perRow: boolean;
   file: string;
   line: number;
   column: number;
@@ -95,6 +111,9 @@ const CHOOSES: ReadonlySet<ts.SyntaxKind> = new Set([
   ts.SyntaxKind.BarBarToken,
   ts.SyntaxKind.AmpersandAmpersandToken,
 ]);
+
+/** Calls whose callback runs once per item, so anything built inside it is built per item. */
+const PER_ITEM: ReadonlySet<string> = new Set(["map", "flatMap", "list"]);
 
 /** Props the framework consumes itself, so nothing is handed on and nothing is compared. */
 const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
@@ -272,6 +291,31 @@ function unwrap(expression: ts.Expression): ts.Expression {
   return at;
 }
 
+/**
+ * Whether this sits inside a callback that runs once per item.
+ *
+ * Read for the REPORT rather than for the finding: the fault is the same either way, but a value
+ * that depends on the row cannot be lifted out of the render, so the advice that fits a single
+ * element is the wrong advice here.
+ */
+function insideAList(node: ts.Node): boolean {
+  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    const here = at;
+    if ((ts.isArrowFunction(here) || ts.isFunctionExpression(here)) && ts.isCallExpression(here.parent)) {
+      const callee = here.parent.expression;
+      const named = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : "";
+      if (PER_ITEM.has(named) && here.parent.arguments.some((argument) => argument === here)) return true;
+    }
+    // A method body is as far as this needs to look: a callback is written inside the render.
+    if (ts.isMethodDeclaration(here) || ts.isSourceFile(here)) return false;
+  }
+  return false;
+}
+
 /** The written form, kept to one readable line — the report quotes the source, not a shape. */
 function shorten(node: ts.Expression): string {
   const text = node.getText().replace(/\s+/g, " ");
@@ -345,9 +389,13 @@ export const freshObjectInProps = {
     heading: (found) => `${found.length} prop(s) rebuilt on every render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component} ${issue.prop}={${issue.written}}> is a new ${issue.kind} every render${
-        issue.builtIn === undefined ? "" : `, built in ${issue.builtIn}`
-      }, so <${issue.component}> re-renders whenever its parent does.`,
+      `    <${issue.component} ${issue.prop}={${issue.written}}> is a new ${issue.kind} ${
+        issue.perRow ? "for every row" : "every render"
+      }${issue.builtIn === undefined ? "" : `, built in ${issue.builtIn}`}, so ${
+        issue.perRow
+          ? `no <${issue.component}> can be skipped when the list renders again.`
+          : `<${issue.component}> re-renders whenever its parent does.`
+      }`,
     ],
     advice:
       "A literal written in JSX is built during the render, so the child is handed a different\n" +
@@ -358,6 +406,11 @@ export const freshObjectInProps = {
       "Moving the literal does not fix it. A `const` at the top of `render()`, an arm of a ternary,\n" +
       "a fallback behind `??`, and a helper that returns a literal — however many helpers deep — are\n" +
       "all the same object built at the same moment, and all of them are reported.\n\n" +
+      "Inside a `map` or a `list` this is the same fault at the worst scale — one literal in the\n" +
+      "callback is one child per row that can never be skipped — and lifting it out is not open to\n" +
+      "you, because the value depends on the row. Two things do work: declare the prop on the ROW\n" +
+      "component with `@StableProps`, or build the values once in a `@compute` that maps the array\n" +
+      "and hand each row the one that belongs to it.\n\n" +
       "Where the value never changes, lift it out of the render — a module constant, or a field on\n" +
       "the class. Where it is derived from state or props, a `@compute` gives you the same value\n" +
       "back until something it reads changes, which is exactly what comparison needs.\n\n" +
@@ -415,6 +468,7 @@ export const freshObjectInProps = {
         kind: built.kind,
         written: shorten(value.expression),
         builtIn: built.builtIn,
+        perRow: insideAList(attribute),
         ...positionOf(attribute),
       });
     }

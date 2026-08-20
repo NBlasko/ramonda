@@ -39,3 +39,9 @@ is about an attribute that is MISSING — `<img {...rest} />` may well carry its
 does not transfer: a spread cannot un-build an object literal written beside it. What it can do is
 overwrite it, so order decides. Written after the last spread, nothing can take the prop away and
 it is reported; written before one, it may never reach the child and this stays quiet.
+
+A literal inside a `map` or a `list` callback is reported in its own words: it is built once per
+ROW, so no row can be skipped when the list renders again. The advice differs there too — a value
+derived from the row cannot be lifted to a constant, so what is offered is `@StableProps` on the row
+component, or a `@compute` that maps the array once. The row itself, `conf={row}`, is as stable as
+the array holding it and is never reported.

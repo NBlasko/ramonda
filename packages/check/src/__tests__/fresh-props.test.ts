@@ -34,6 +34,8 @@ describe("a prop rebuilt on every render", () => {
       "Row.conf:object",
       "Row.conf:object",
       "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
       "Row.tags:array",
       "Row.conf:object",
       "Row.conf:object",
@@ -61,6 +63,8 @@ describe("a prop rebuilt on every render", () => {
       "arrowConf() @ `arrowConf`",
       "maybeConf(true) @ `maybeConf`",
       "makeConf() as { dense: boolean } @ `makeConf`",
+      "{ dense: true }",
+      "perRow @ `perRow`",
       '["new", "hot"]',
       "this.dense ? { dense: true } …",
       "this.dense ? { dense: true } …",
@@ -130,6 +134,23 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
+   * A literal inside a `map` or a `list` callback — the same fault at the scale that hurts, since
+   * it is one child per row that can never be skipped.
+   *
+   * It is reported in DIFFERENT words, because the fix is different: a value derived from the row
+   * cannot be lifted to a constant, and telling someone to do that is telling them nothing. The row
+   * itself is as stable as the array holding it and stays silent.
+   */
+  test("a literal per row says so, and the row itself is silent", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const rows = found.filter((issue) => issue.perRow);
+
+    expect(rows.map((issue) => issue.written)).toEqual(["{ dense: true }", "perRow"]);
+    expect(found.map((issue) => issue.written)).not.toContain("row");
+    expect(found.map((issue) => issue.written)).not.toContain("row.conf");
+  });
+
+  /**
    * A branch builds on the path it takes, and that path is the fault. `conf={this.conf ?? {…}}` is
    * the shape that matters most — a fallback default is written constantly, and it hands the child
    * a fresh object on every render where the left is missing.
@@ -196,7 +217,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Twenty-four elements in the fixture and thirteen reported, so a leak shows as a count.
-    expect(found).toHaveLength(13);
+    // Twenty-eight elements in the fixture and fifteen reported, so a leak shows as a count.
+    expect(found).toHaveLength(15);
   });
 });
