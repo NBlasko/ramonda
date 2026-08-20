@@ -29,8 +29,8 @@ export type { RenderHookProps, RenderHookResult } from "./renderHook";
 
 import { registerAutoCleanup } from "./cleanup";
 
-// Registered at import time, the way the React library does it: a harness rule
-// only holds if a test does not have to remember it. Opt out with
+// Registered at import time, which is the only way it holds: a harness rule that
+// a test has to remember is a harness rule that gets forgotten. Opt out with
 // `import "@ramonda/testing-library/dont-cleanup-after-each"` or the
 // RAMONDA_TL_SKIP_AUTO_CLEANUP env var.
 registerAutoCleanup();

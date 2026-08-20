@@ -68,8 +68,8 @@ type ObservableEvents<T extends BaseElements> = {
  * `class` and `for` are aliased because they are RESERVED WORDS — that is the whole rule
  * `concepts/jsx` states, and it is complete. Nothing here is reserved: `http-equiv` and
  * `accept-charset` are writable exactly as HTML spells them, and `value` and `checked` are the
- * attributes React's `default*` pair stands in for. Aliasing them would turn a two-name exception
- * into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
+ * attributes a `default*` spelling would be standing in for. Aliasing them would turn a two-name
+ * exception into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
  */
 interface RefusedNames {
   innerHTML: "write the markup as children — `innerHTML` is not an attribute";
@@ -92,10 +92,10 @@ export interface RefusedOnForm {
 }
 
 /**
- * React's uncontrolled-input pair, which this framework does not have.
+ * The `defaultValue` / `defaultChecked` pair, which this framework does not have.
  *
- * There is no controlled/uncontrolled distinction here: the `value` and `checked` attributes ARE
- * the initial state, and a render decides them like any other attribute.
+ * There is no controlled/uncontrolled distinction here for them to mark: the `value` and `checked`
+ * attributes ARE the initial state, and a render decides them like any other attribute.
  */
 export interface RefusedOnFields {
   defaultValue: "write `value` — the attribute IS the initial value";
@@ -173,9 +173,9 @@ export interface SVGArguments extends SVGGraphicsElement {
  * **Ramonda writes SVG attribute names verbatim** — `setAttributeNS(null, name)`
  * with no translation — because the JSX is meant to be the DOM. So the name to
  * write is the one SVG defines: `stroke-width` and `fill-opacity` are dashed,
- * `viewBox` and `gradientUnits` are camelCase. React's `strokeWidth` is React's
- * invention and is correctly rejected here; it would also not work at runtime,
- * since SVG attribute names are case-sensitive and `strokeWidth` is not one.
+ * `viewBox` and `gradientUnits` are camelCase. There is no second spelling to learn
+ * and nothing to translate: `strokeWidth` is not an SVG attribute name, so the types
+ * reject it, and it would not work at runtime either — SVG names are case-sensitive.
  *
  * Dashed and all-lowercase names (`stroke-width`, `cx`, `d`, `points`) already
  * pass through the index signature in `RamondaArgs`. These do not, and for a

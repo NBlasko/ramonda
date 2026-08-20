@@ -36,10 +36,10 @@ import { diagnose } from "./diagnostics";
  * wrong instinct anyway. Checking only the first render misses every branch not
  * taken then, which is exactly where handlers live: modals, menus, expanded rows.
  *
- * React's StrictMode is the precedent, and it is strictly heavier: it double-invokes
- * the whole component function *including every hook*, and mounts/unmounts/mounts
- * effects. This doubles only vnode building — no components are constructed (the
- * diff does that), no effects run, no list mappers run.
+ * The cheap half of the idea is the half worth having. Doubling a whole component —
+ * its hooks, its effects mounted and unmounted and mounted again — costs far more
+ * than the answer is worth. This doubles only vnode building: no components are
+ * constructed (the diff does that), no effects run, no list mappers run.
  *
  * ## The one hazard, and the switch
  *

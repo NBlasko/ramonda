@@ -23,9 +23,9 @@ function captureDiagnostics() {
 }
 
 /**
- * "State and lifecycle, but no markup of my own" — React reaches for a component
- * returning null, or a stateful fragment. Ramonda has two answers, and which one
- * you want depends on whether an inert element is acceptable where it sits.
+ * "State and lifecycle, but no markup of my own" — usually answered elsewhere by a
+ * component returning null, or a stateful fragment. Ramonda has two answers, and
+ * which one you want depends on whether an inert element is acceptable where it sits.
  */
 describe("state and lifecycle without markup", () => {
   let captured: ReturnType<typeof captureDiagnostics>;

@@ -100,8 +100,8 @@ function stampBlobs(node: Node): void {
  *
  * It does NOT preserve text-node boundaries — `<span>Hello {name}!</span>` is
  * three text nodes here but serializes to one run of characters, and parsing it
- * back yields a single node. Rather than spend bytes on separator comments the
- * way React does, hydration splits the run apart again; see hydrateText.
+ * back yields a single node. Rather than spend bytes on a separator comment per
+ * boundary, hydration splits the run apart again; see hydrateText.
  */
 /** Per-request data for a server render, so `requestContext()` returns real values. */
 export interface ServerRequestInit {
