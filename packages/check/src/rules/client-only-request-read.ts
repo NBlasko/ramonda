@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import { importedFromCore } from "./core-import";
 import { clientOnlyBecause } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
@@ -405,7 +405,7 @@ export const clientOnlyRequestRead = {
     };
 
     for (const member of cls.members) {
-      const name = member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
+      const name = memberName(member);
 
       const because = clientOnlyBecause(member, context);
       if (because !== undefined) {
