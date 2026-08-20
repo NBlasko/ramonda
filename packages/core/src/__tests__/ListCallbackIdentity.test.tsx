@@ -398,9 +398,16 @@ describe("nested lists, every combination of stable and inline", () => {
  * So the rule is one sentence and holds everywhere: a value a cached callback should follow has to be
  * `@state` or `@compute`.
  */
-describe("the boundary: a plain field is untrackable, in a list as anywhere else", () => {
+describe("the boundary: a plain field is untrackable, and a row is where that SHOWS", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
 
+  /**
+   * The two assertions below are the same field, read twice in one component, answering differently —
+   * so "a plain field behaves the same everywhere" is exactly what this does NOT show. `render()` runs
+   * whole, so the markup re-reads it; a reused row does not run at all. That is the one shape in which
+   * `@state`'s rule — reactive for anything `render()` shows — has teeth beyond memory, and
+   * `apps/docs/content/lists/index.md` states it because this asserts it.
+   */
   test("a stable callback reading a plain field keeps the first value, like a @compute would", async () => {
     @Host("div")
     class App extends Component {
