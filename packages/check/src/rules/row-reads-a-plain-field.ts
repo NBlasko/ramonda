@@ -6,6 +6,7 @@ import type { ModuleRule } from "./rule";
 // the same exemptions. It is imported rather than repeated because the repeat drifted: this rule
 // once exempted only `@created`, so it reported the constructor, the memo pattern and
 // `@destroyed`, and it treated `@persist` as reactive when nothing tracks it.
+import { heritage } from "./render-reach";
 import { staleFieldsOf } from "./stale-field";
 
 /**
@@ -227,13 +228,25 @@ export const rowReadsAPlainField = {
     if (listName === undefined) return found;
 
     const visitClass = (cls: ts.ClassDeclaration): void => {
+      /**
+       * This class and its BASES, because a base's member is the component's member.
+       *
+       * A row callback inherited from a shared base, showing a plain field declared on that base,
+       * is one instance and one stale row — and reading a single class body said nothing about it.
+       * Measured with a plant, on the same axis that had already found five rules stopping here.
+       *
+       * NEAREST first, so a subclass overriding the callback is the one that is judged.
+       */
+      const declaring = [cls, ...heritage(cls, context.resolve)];
       const members = new Map<string, ts.ClassElement>();
-      for (const member of cls.members) {
-        const name = memberName(member);
-        if (name !== undefined) members.set(name, member);
+      for (const declaringClass of declaring) {
+        for (const member of declaringClass.members) {
+          const name = memberName(member);
+          if (name !== undefined && !members.has(name)) members.set(name, member);
+        }
       }
       /** field → the member that writes it after the first render. Empty means nothing can be stale. */
-      const stale = staleFieldsOf(cls);
+      const stale = staleFieldsOf(cls, context.resolve);
       if (stale.size === 0) return;
       const component = cls.name?.text ?? "(anonymous)";
 

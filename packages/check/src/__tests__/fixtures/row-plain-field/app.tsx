@@ -328,3 +328,44 @@ export class OwnList extends Component {
     return <ul>{ownList(this.tasks, this.row)}</ul>;
   }
 }
+
+/**
+ * Reported: the callback and the field both on a BASE class — one instance, one row, one stale
+ * value. This rule read a single class body until it was planted against.
+ */
+export class RowBase extends Component<{ tasks: Task[] }> {
+  protected label = "old";
+
+  protected row(t: Task) {
+    return <li>{`${t.title} ${this.label}`}</li>;
+  }
+
+  bump() {
+    this.label = "new";
+  }
+
+  render() {
+    return <ul />;
+  }
+}
+
+export class RowsFromABase extends RowBase {
+  render() {
+    return <ul>{list(this.props.tasks, this.row)}</ul>;
+  }
+}
+
+/** Reported: the callback is an arrow FIELD rather than a method — a stable reference all the same. */
+export class ArrowFieldCallback extends Component<{ tasks: Task[] }> {
+  private label = "old";
+
+  private row = (t: Task) => <li>{`${t.title} ${this.label}`}</li>;
+
+  bump() {
+    this.label = "new";
+  }
+
+  render() {
+    return <ul>{list(this.props.tasks, this.row)}</ul>;
+  }
+}

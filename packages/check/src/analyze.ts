@@ -853,6 +853,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       moduleRules,
       file,
       (ruleId) => ({
+        resolve,
         unlessAnnotated: (site, make) => {
           const written = directiveAt(site);
           if (written === undefined) return make();

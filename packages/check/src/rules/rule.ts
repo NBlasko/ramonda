@@ -458,6 +458,16 @@ export interface ModuleContext {
    * has no premise left at a site where the bundler told the author and the author answered.
    */
   unlessAnnotated<Issue>(site: ts.Node, make: () => Issue): Issue | undefined;
+
+  /**
+   * Where a name was declared, the same question a class rule asks.
+   *
+   * Here because a module rule reads a FILE and the classes in it are still classes: a base's
+   * member is the component's member wherever it is written, and `row-reads-a-plain-field` was
+   * silent about a row callback inherited from one until this existed. The alternative was for one
+   * rule to reach for the checker on its own, which is the shape this package does not have.
+   */
+  resolve(id: ts.Node): ts.Symbol | undefined;
 }
 
 export interface RuleContext {
