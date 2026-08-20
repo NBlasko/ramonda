@@ -1584,6 +1584,33 @@ type ElementOwner = EventOwner & { [COMPONENT_RUNTIME]: ComponentRuntime };
 type KnownEvent<EventMap> = Extract<keyof EventMap, string> | (string & {});
 
 /**
+ * The two ways of naming an event that are PROVABLY wrong, refused with the fix in the error.
+ *
+ * Any other name passes, and that is the whole design: a custom event may be called anything —
+ * `my-event`, `save`, `ready` — so an unknown name is not evidence of a mistake and `clik` cannot be
+ * refused without refusing those too. Only what can be proved is stopped.
+ *
+ * **The JSX attribute, written where the event's own name belongs.** `@onElement("onclick")` listens
+ * for an event called `onclick`, which nothing dispatches — and it is the likelier mistake now that
+ * the JSX attribute IS `onclick`: one place takes the attribute, the other takes the event. Refused
+ * only when what follows `on` is an event this target actually has, so a custom `online` or `once`
+ * is untouched.
+ *
+ * **A known name in the wrong case.** `addEventListener` is case-sensitive, so `"MouseDown"` never
+ * fires. Refused only when the lower-cased name IS one of this target's events, which leaves a
+ * custom `DOMSomething` alone.
+ */
+type CheckedEvent<EventMap, Name extends string> = Name extends `on${infer Rest}`
+  ? Lowercase<Rest> extends Extract<keyof EventMap, string>
+    ? "write the event's own name, not the JSX attribute — `click`, not `onclick`"
+    : Name
+  : Name extends Lowercase<Name>
+    ? Name
+    : Lowercase<Name> extends Extract<keyof EventMap, string>
+      ? "an event name is lower case, and `addEventListener` is case-sensitive — `mousedown`, not `MouseDown`"
+      : Name;
+
+/**
  * The event a handler receives for the name it was registered with: `MouseEvent`
  * for "click", `KeyboardEvent` for "keydown". An unknown name falls back to
  * `Event`, which is all the DOM can promise about it.
@@ -1614,7 +1641,10 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
    */
   validateOwner?: (owner: object) => void,
 ) {
-  return <Name extends KnownEvent<EventMap>>(type: Name, options?: boolean | AddEventListenerOptions) => {
+  return <Name extends KnownEvent<EventMap>>(
+    type: CheckedEvent<EventMap, Name>,
+    options?: boolean | AddEventListenerOptions,
+  ) => {
     if (__DEV__) {
       assertEventType(type, decoratorName);
     }

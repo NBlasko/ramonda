@@ -55,8 +55,19 @@ spelling to write.
   `<my-widget>` can be upgraded; `<mywidget>` is an `HTMLUnknownElement` for ever and is usually a
   misspelling.
 
-**`@onElement` is unchanged and never had this to get wrong.** It takes the event's own name as a
-string — no prefix, nothing to capitalise — so `@onElement("my-event")` has always worked.
+**`@onElement` takes the event's own name and always did**, so `@onElement("my-event")` has always
+worked. What it now refuses is the two namings that are PROVABLY not an event — with the fix in the
+error, the way the JSX types do it:
+
+- `@onElement("onclick")` — the JSX attribute written where the event belongs, and the likelier
+  mistake now that the attribute IS `onclick`. Refused only when what follows `on` is an event this
+  target has, so a custom `online` or `once` is untouched.
+- `@onElement("MouseDown")` — `addEventListener` is case-sensitive, so it never fires. Refused only
+  when the lower-cased name is one of this target's events, which leaves a custom `DOMSomething`
+  alone.
+
+Everything else still passes, and that is the design rather than a gap: a custom event may be called
+anything, so `clik` cannot be refused without refusing `save` and `my-event` with it.
 
 **`@ramonda/check`** kept up in two places, both of which would have gone quiet:
 `client-only-request-read` recognised a handler by the CAPITAL after `on`, and

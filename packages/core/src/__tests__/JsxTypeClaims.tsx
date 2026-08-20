@@ -1,5 +1,5 @@
 import { Component } from "../base/Component";
-import { Host } from "../base/decorators";
+import { Host, onElement, onWindow } from "../base/decorators";
 
 /**
  * Everything the JSX types promise, in one file, pinned in both directions.
@@ -282,6 +282,52 @@ export class UnknownHost extends Component {
 @Host("div", (self: RefusedHostProps) => ({ onClick: self.handle }))
 export class RefusedHostProps extends Component {
   handle = () => {};
+  render() {
+    return <span />;
+  }
+}
+
+/**
+ * `@onElement` and its two siblings take the EVENT's own name, and refuse the two spellings that
+ * are provably not one.
+ *
+ * Any other name passes, which is the design rather than a gap: a custom event may be called
+ * anything, so `clik` cannot be refused without refusing `save` and `my-event` too. Only what can be
+ * proved is stopped — the JSX attribute written where the event belongs, and a known name in the
+ * wrong case, which `addEventListener` never matches.
+ */
+@Host("div")
+export class EventDecoratorNames extends Component {
+  @onElement("mousedown") pressed(event: MouseEvent) {
+    void event.clientX;
+  }
+  @onElement("my-event") custom(event: Event) {
+    void event.type;
+  }
+  @onElement("save") named(event: Event) {
+    void event.type;
+  }
+  @onElement("DOMSomething") capitalised(event: Event) {
+    void event.type;
+  }
+  @onWindow("online") back(event: Event) {
+    void event.type;
+  }
+  render() {
+    return <span />;
+  }
+}
+
+@Host("div")
+export class RefusedEventDecoratorNames extends Component {
+  // @ts-expect-error — the JSX attribute, where the event's own name belongs.
+  @onElement("onclick") wrong(event: Event) {
+    void event;
+  }
+  // @ts-expect-error — `addEventListener` is case-sensitive, so this never fires.
+  @onElement("MouseDown") miscased(event: Event) {
+    void event;
+  }
   render() {
     return <span />;
   }
