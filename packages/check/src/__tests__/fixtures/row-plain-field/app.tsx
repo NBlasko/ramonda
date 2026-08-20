@@ -1,4 +1,4 @@
-import { Component, list, state, compute, persist, created } from "../framework";
+import { Component, list, state, compute, persist, created, destroyed } from "../framework";
 
 interface Task {
   id: string;
@@ -88,19 +88,39 @@ export class Reactive extends Component {
   }
 }
 
-/** Silent: `@compute` and `@persist` are the other two that count. */
-export class ComputeAndPersist extends Component {
+/** Silent: a `@compute` is tracked, so a row that reads one wakes with it. */
+export class ComputeRead extends Component {
+  @state seen = 0;
+  tasks: Task[] = [];
+  bump() {
+    this.seen = 1;
+  }
+  @compute get total() {
+    return this.seen * 2;
+  }
+  row(t: Task) {
+    return <li>{t.title + this.total}</li>;
+  }
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/**
+ * Reported: `@persist` is NOT reactive.
+ *
+ * It carries a value across hydration without tracking it, so a row that shows one is as stale as a row
+ * showing a plain field. This fixture said the opposite until the shared judgement was extracted and
+ * `cached-read-of-a-plain-field` reported the very same field from its own side.
+ */
+export class PersistRead extends Component {
   @persist seen = 0;
   tasks: Task[] = [];
   bump() {
     this.seen = 1;
-    this.total = 2;
-  }
-  @compute get total() {
-    return this.seen;
   }
   row(t: Task) {
-    return <li>{t.title + this.total + this.seen}</li>;
+    return <li>{t.title + this.seen}</li>;
   }
   render() {
     return <ul>{list(this.tasks, this.row)}</ul>;
@@ -182,6 +202,50 @@ export class Annotated extends Component {
   row(t: Task) {
     // ramonda-check-ignore a hover count, stale until the row rebuilds is fine
     return <li>{t.title + this.hovers}</li>;
+  }
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Written in the CONSTRUCTOR — before the first render, so no row can be stale. */
+export class WrittenInConstructor extends Component {
+  label: string;
+  tasks: Task[] = [];
+  constructor() {
+    super();
+    this.label = "ready";
+  }
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** The memo pattern: written from inside `render()`. Advising `@state` here advises a loop. */
+export class MemoInRender extends Component {
+  cache: string | null = null;
+  tasks: Task[] = [];
+  row(t: Task) {
+    return <li>{t.title + (this.cache ?? "")}</li>;
+  }
+  render() {
+    if (!this.cache) this.cache = "built";
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Written in `@destroyed`, which runs after the last render. */
+export class WrittenInDestroyed extends Component {
+  label = "x";
+  tasks: Task[] = [];
+  @destroyed clean() {
+    this.label = "";
+  }
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
   }
   render() {
     return <ul>{list(this.tasks, this.row)}</ul>;

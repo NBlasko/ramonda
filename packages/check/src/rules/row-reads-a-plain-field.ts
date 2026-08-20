@@ -1,6 +1,12 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import type { ModuleRule } from "./rule";
+// The field judgement, shared with `cached-read-of-a-plain-field`. A row callback is a third
+// CACHED reader, so which fields can be stale and which writes count is the same question, with
+// the same exemptions. It is imported rather than repeated because the repeat drifted: this rule
+// once exempted only `@created`, so it reported the constructor, the memo pattern and
+// `@destroyed`, and it treated `@persist` as reactive when nothing tracks it.
+import { staleFieldsOf } from "./stale-field";
 
 /**
  * A `list()` row callback that shows a field nothing can track.
@@ -34,11 +40,12 @@ import type { ModuleRule } from "./rule";
  * **An inline callback.** A fresh reference every render, so the engine rebuilds every row and reads the
  * field again. Nothing to be stale.
  *
- * **A field nothing writes.** No write, no staleness — a `readonly` list of options held in a field is
- * the ordinary way to write that, and reporting it would report correct code.
- *
- * **A field only written in `@created`.** That runs before the first render, so every row is built after
- * the value is decided.
+ * **Anything `stale-field.ts` exempts**, which is the same list `cached-read-of-a-plain-field` uses: a
+ * field nothing writes, a write in the constructor or `@created` (both before the first render), a write
+ * from inside `render()` or a `@compute` (the memo pattern, where advising `@state` advises a loop), a
+ * write in `@destroyed` (after the last render), and a field holding a hook or a function. `@persist` is
+ * NOT among them — it is carried across hydration without being tracked, so a row that shows one is as
+ * stale as a row showing any other field.
  *
  * **A value that never reaches the output.** `this.socket.send(…)`, `this.observer.observe(el)`,
  * `this.cache.get(id)` used for its side effect — a plain field is the only home for anything a
@@ -71,26 +78,9 @@ export interface RowReadsAPlainFieldIssue {
   column: number;
 }
 
-/** Decorators that make a member reactive, so a row records reading it. */
-const REACTIVE = new Set(["state", "compute", "persist"]);
-
 /** A member's own name, when it has a plain one to go by. */
 function memberName(member: ts.ClassElement): string | undefined {
   return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
-}
-
-/** The decorator names written on a member, by the identifier as typed. */
-function decoratorNames(member: ts.ClassElement): string[] {
-  const names: string[] = [];
-  // `ts.getDecorators` wants a node the API knows CAN carry them; a `ClassElement` includes shapes
-  // that cannot (an index signature, a semicolon). Asking only the two that can keeps the cast out.
-  if (!ts.canHaveDecorators(member)) return names;
-  for (const decorator of ts.getDecorators(member) ?? []) {
-    const call = decorator.expression;
-    const id = ts.isCallExpression(call) ? call.expression : call;
-    if (ts.isIdentifier(id)) names.push(id.text);
-  }
-  return names;
 }
 
 /** `this.<name>`, and the name. */
@@ -122,38 +112,6 @@ function listLocalName(file: ts.SourceFile): string | undefined {
     }
   }
   return undefined;
-}
-
-/**
- * Which members are written somewhere other than their own initializer and `@created`.
- *
- * A field nothing assigns cannot go stale, and a field decided in `@created` is decided before the
- * first row exists. Both are the ordinary way to hold a constant on an instance, so both are silent.
- */
-function writtenMembers(cls: ts.ClassDeclaration): Set<string> {
-  const written = new Set<string>();
-  for (const member of cls.members) {
-    if (decoratorNames(member).includes("created")) continue;
-    const body = ts.isPropertyDeclaration(member) ? member.initializer : member;
-    if (body === undefined) continue;
-    (function look(node: ts.Node): void {
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-        const target = thisRead(node.left);
-        if (target !== undefined) written.add(target.name);
-      }
-      // `this.count++` and `this.total += n` move a value just as much as `=` does.
-      if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
-        const target = thisRead(node.operand);
-        if (target !== undefined) written.add(target.name);
-      }
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstCompoundAssignment) {
-        const target = thisRead(node.left);
-        if (target !== undefined) written.add(target.name);
-      }
-      ts.forEachChild(node, look);
-    })(body);
-  }
-  return written;
 }
 
 /**
@@ -266,14 +224,13 @@ export const rowReadsAPlainField = {
 
     const visitClass = (cls: ts.ClassDeclaration): void => {
       const members = new Map<string, ts.ClassElement>();
-      const reactive = new Set<string>(["props"]);
       for (const member of cls.members) {
         const name = memberName(member);
-        if (name === undefined) continue;
-        members.set(name, member);
-        if (decoratorNames(member).some((d) => REACTIVE.has(d))) reactive.add(name);
+        if (name !== undefined) members.set(name, member);
       }
-      const written = writtenMembers(cls);
+      /** field → the member that writes it after the first render. Empty means nothing can be stale. */
+      const stale = staleFieldsOf(cls);
+      if (stale.size === 0) return;
       const component = cls.name?.text ?? "(anonymous)";
 
       /** The stable callbacks handed to `list()` in this class. */
@@ -324,7 +281,7 @@ export const rowReadsAPlainField = {
               // A member called from here, whose own reads leave through this one.
               if (ts.isCallExpression(node.parent) && node.parent.expression === read.at) {
                 if (members.has(target) && leaves(node.parent)) walkMember(target);
-              } else if (!reactive.has(target) && written.has(target) && leaves(node)) {
+              } else if (stale.has(target) && leaves(node)) {
                 const issue = context.unlessAnnotated(read.at, () => ({
                   kind: "plain-field" as const,
                   component,

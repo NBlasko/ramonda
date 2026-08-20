@@ -1,6 +1,9 @@
 import ts from "typescript";
 import { isThisUse, positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
+// The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
+// can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
+import { nameOf, staleFieldsOf } from "./stale-field";
 import type { Rule } from "./rule";
 
 /**
@@ -76,32 +79,6 @@ export interface CachedReadOfAPlainFieldIssue {
 }
 
 /** A member's name when it has a plain one. */
-function nameOf(member: ts.ClassElement): string | undefined {
-  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
-}
-
-/**
- * The fields a cached reader may read without ever going stale.
- *
- * Everything reactive, plus the two shapes that are read in a compute constantly and are not data:
- * a hook instance, which has its own reactivity, and a function, which is `arrow-fields`' subject.
- */
-function trackedOrHarmless(member: ts.PropertyDeclaration): boolean {
-  if (hasDecorator(member, "state") || hasDecorator(member, "compute")) return true;
-
-  const written = member.initializer;
-  if (written === undefined) return false;
-  if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return true;
-
-  // `x = this.use(Thing)` — a hook, which carries its own reactivity.
-  return (
-    ts.isCallExpression(written) &&
-    ts.isPropertyAccessExpression(written.expression) &&
-    written.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
-    written.expression.name.getText() === "use"
-  );
-}
-
 /** Every `this.X` read anywhere under a node. */
 function fieldsReadIn(node: ts.Node): Set<string> {
   const found = new Set<string>();
@@ -121,55 +98,6 @@ function fieldsReadIn(node: ts.Node): Set<string> {
 
   walk(node);
   return found;
-}
-
-/** Every `this.X` WRITTEN anywhere under a node — `=`, `+=`, `++` alike. */
-function fieldsWrittenIn(node: ts.Node): Set<string> {
-  const found = new Set<string>();
-
-  const note = (target: ts.Expression): void => {
-    if (
-      ts.isPropertyAccessExpression(target) &&
-      target.expression.kind === ts.SyntaxKind.ThisKeyword &&
-      ts.isIdentifier(target.name)
-    ) {
-      found.add(target.name.text);
-    }
-  };
-
-  const walk = (at: ts.Node): void => {
-    if (
-      ts.isBinaryExpression(at) &&
-      at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-    ) {
-      note(at.left);
-    }
-    if (
-      (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
-      (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
-    ) {
-      note(at.operand);
-    }
-    ts.forEachChild(at, walk);
-  };
-
-  walk(node);
-  return found;
-}
-
-/**
- * Whether a write inside this member can leave a compute stale.
- *
- * `false` for everything that runs before the first render — the constructor, `@created` — and for
- * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
- * after the last render, so nothing is left to be stale.
- */
-function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
-  if (ts.isConstructorDeclaration(member)) return false;
-  if (hasDecorator(member, "created") || hasDecorator(member, "destroyed")) return false;
-  if (hasDecorator(member, "compute")) return false;
-  return nameOf(member) !== "render";
 }
 
 export const cachedReadOfAPlainField = {
@@ -202,25 +130,8 @@ export const cachedReadOfAPlainField = {
   },
 
   read(cls, { self }) {
-    /** The plain fields — everything a compute could go stale on. */
-    const plain = new Set<string>();
-    for (const member of cls.members) {
-      if (!ts.isPropertyDeclaration(member)) continue;
-      if (trackedOrHarmless(member)) continue;
-      const name = nameOf(member);
-      if (name !== undefined) plain.add(name);
-    }
-    if (plain.size === 0) return [];
-
-    /** field → the member that writes it after the first render. */
-    const writtenBy = new Map<string, string>();
-    for (const member of cls.members) {
-      if (!writesAfterTheFirstRender(member)) continue;
-      const where = nameOf(member) ?? "a method";
-      for (const field of fieldsWrittenIn(member)) {
-        if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
-      }
-    }
+    /** field → the member that writes it after the first render. Empty means nothing can be stale. */
+    const writtenBy = staleFieldsOf(cls);
     if (writtenBy.size === 0) return [];
 
     const found: CachedReadOfAPlainFieldIssue[] = [];

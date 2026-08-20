@@ -24,6 +24,9 @@ describe("a row reads a plain field", () => {
       "Reported.row:label",
       "ThroughALocal.row:label",
       "ThroughAMethod.cell:label",
+      // `@persist` carries a value across hydration without tracking it, so it is as stale as a plain
+      // field. This list said otherwise until the judgement was shared with the `@compute` rule.
+      "PersistRead.row:seen",
     ]);
   });
 
@@ -40,9 +43,12 @@ describe("a row reads a plain field", () => {
 
   test.each([
     ["Reactive", "`@state` records the read"],
-    ["ComputeAndPersist", "`@compute` and `@persist` count too"],
+    ["ComputeRead", "a `@compute` is tracked, so the row wakes with it"],
     ["NeverWritten", "no write, no staleness"],
     ["WrittenInCreated", "decided before the first row exists"],
+    ["WrittenInConstructor", "also before the first render"],
+    ["MemoInRender", "the memo pattern — advising `@state` there advises a loop"],
+    ["WrittenInDestroyed", "after the last render, so nothing is left to be stale"],
     ["InlineCallback", "every row is rebuilt anyway"],
     ["SideEffectOnly", "a plain field that never reaches the markup is the point of one"],
     ["Annotated", "the author wrote down why"],
