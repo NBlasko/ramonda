@@ -287,10 +287,7 @@ try {
     try {
       run("npm", ["ci", "--omit=dev", "--no-audit", "--no-fund"], { cwd: app });
     } catch (error) {
-      fail(
-        "`npm ci --omit=dev` failed — a production install of the generated project",
-        outputOf(error),
-      );
+      fail("`npm ci --omit=dev` failed — a production install of the generated project", outputOf(error));
     }
     await servesSomewhere();
     checks.push("a production install that serves");
