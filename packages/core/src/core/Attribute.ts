@@ -251,10 +251,10 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     enhancedNode._listeners ??= {};
     const listeners = enhancedNode._listeners;
 
-    if (listeners[type]) {
-      enhancedNode.removeEventListener(type, listeners[type]);
+    if (listeners[name]) {
+      enhancedNode.removeEventListener(type, listeners[name]);
     }
-    listeners[type] = value;
+    listeners[name] = value;
     enhancedNode.addEventListener(type, value);
 
     return;
@@ -338,11 +338,21 @@ function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next
 function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
   const nodeAttributes: Record<string, any> = {};
 
+  /**
+   * Handed back under the name the JSX WROTE, which is why `_listeners` is keyed by it.
+   *
+   * It used to hold the event TYPE and rebuild the name here, as `on` + the type with its first
+   * letter capitalised. That matched while the types spelled events `on${Capitalize<name>}` and
+   * stopped the moment they stopped: `click` came back as `onClick`, the next render's attributes
+   * said `onclick`, the two never compared equal — so every listener on the page was removed and
+   * re-attached on every render. Measured, two renders: `removes: click,my-event,click,my-event`.
+   *
+   * No rebuilding now, so nothing can be ambiguous either: `on:my-event` and `onmy-event` are two
+   * different attributes that happen to name one event, and a reconstruction from the type could
+   * only ever guess which was written.
+   */
   if (enhancedNode._listeners) {
-    Object.entries(enhancedNode._listeners).forEach(([key, val]) => {
-      const upperCaseKey = `on${key.charAt(0).toUpperCase() + key.slice(1)}`;
-      nodeAttributes[upperCaseKey] = val;
-    });
+    Object.assign(nodeAttributes, enhancedNode._listeners);
   }
 
   const keyValue = enhancedNode[KEY_SYM];
@@ -386,10 +396,9 @@ function removePreviousFromenhancedNode(
     if (!isInvisibleOnScreen(nextAttribute)) continue;
 
     if (name.startsWith("on")) {
-      const type = eventTypeOf(name);
       const listeners = enhancedNode._listeners ?? {};
-      enhancedNode.removeEventListener(type, previousAttributes[name]);
-      delete listeners[type];
+      enhancedNode.removeEventListener(eventTypeOf(name), previousAttributes[name]);
+      delete listeners[name];
     } else {
       removeByQualifiedName(enhancedNode, name);
     }

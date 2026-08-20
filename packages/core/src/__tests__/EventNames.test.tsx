@@ -1,7 +1,7 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { state } from "../base/decorators";
+import { Host, onElement, state } from "../base/decorators";
 
 /**
  * How an event is spelled in JSX, and what it attaches to.
@@ -144,6 +144,92 @@ describe("an event's name in JSX", () => {
     button.dispatchEvent(new Event("click"));
     button.dispatchEvent(new CustomEvent("my-event"));
     expect(seen).toEqual(["click", "custom"]);
+    dom.unmount();
+  });
+  /**
+   * A handler that has not changed is attached ONCE, however it is spelled.
+   *
+   * `_listeners` used to be keyed by the event TYPE, and the previous attributes were rebuilt from
+   * it as `on` + the type with its first letter capitalised. That matched while the types spelled
+   * events `on${Capitalize<name>}` and broke the moment they stopped: `click` came back as
+   * `onClick`, this render says `onclick`, the two never compare equal — so every listener on the
+   * page was removed and re-attached on every render. Measured before the fix, over two renders:
+   * `removes: click,my-event,click,my-event`.
+   */
+  test("a stable handler is not re-attached on every render", async () => {
+    class App extends Component {
+      @state n = 0;
+      handle = () => {};
+      render() {
+        return (
+          <button id="b" onclick={this.handle} on:my-event={this.handle}>
+            {this.n}
+          </button>
+        );
+      }
+    }
+    const dom = await getDOM<App>(<App />);
+    const button = dom.container.querySelector<HTMLElement>("#b")!;
+    const add = vi.spyOn(button, "addEventListener");
+    const remove = vi.spyOn(button, "removeEventListener");
+
+    dom.instance.n = 1;
+    await dom.settle();
+    dom.instance.n = 2;
+    await dom.settle();
+
+    expect(add.mock.calls.map((call) => call[0])).toEqual([]);
+    expect(remove.mock.calls.map((call) => call[0])).toEqual([]);
+    dom.unmount();
+  });
+
+  /**
+   * `@Host`'s props are the element's attributes, so they are typed as the element's — and the same
+   * spelling rule reaches them. They used to be `Record<string, unknown>`, which is the one place a
+   * camelCase handler still attached quietly: found by typing them, in `apps/docs/src/Markdown.tsx`.
+   */
+  test("a host's props take a handler under the same rule", async () => {
+    const seen: string[] = [];
+    @Host("div", () => ({ onclick: () => seen.push("host") }))
+    class App extends Component {
+      render() {
+        return <span>inside</span>;
+      }
+    }
+    const dom = await getDOM(<App />);
+    dom.container.firstElementChild!.dispatchEvent(new Event("click"));
+
+    expect(seen).toEqual(["host"]);
+    dom.unmount();
+  });
+
+  /**
+   * `@onElement` never had any of this to get wrong: it takes the event's own name as a STRING, so
+   * there is no prefix to add and nothing to capitalise. A name the DOM's map knows types the
+   * handler's parameter; any other string is accepted and hands over a plain `Event`, which is how
+   * a custom event has always worked here.
+   */
+  test("@onElement takes the event's name, custom ones included", async () => {
+    const seen: string[] = [];
+    @Host("div")
+    class App extends Component {
+      @onElement("my-event") custom(event: Event) {
+        seen.push(event.type);
+      }
+      @onElement("focusin") entered(event: FocusEvent) {
+        seen.push(event.type);
+      }
+      render() {
+        return <span>x</span>;
+      }
+    }
+    const dom = await getDOM(<App />);
+    const host = dom.container.firstElementChild!;
+
+    host.dispatchEvent(new CustomEvent("my-event"));
+    host.dispatchEvent(new Event("focusin"));
+
+    expect(seen).toEqual(["my-event", "focusin"]);
     dom.unmount();
   });
 });

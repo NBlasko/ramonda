@@ -1300,9 +1300,27 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * resolve to a different tag does not mutate the host; it fails to match in the
  * diff, and a fresh component is built in its place.
  */
-export function Host<C extends (new (...args: any[]) => object) & { readonly __isComponent: true }>(
-  tag: string | ((props: PropsOf<C>) => string),
-  props?: (self: InstanceOf<C>) => Record<string, unknown>,
+/**
+ * What a component's host element may be: an element the platform has, or a custom one.
+ *
+ * The platform's own names come from `JSX.IntrinsicElements`, so this list cannot drift from what
+ * the JSX accepts. Anything else has to carry a DASH, and that is not a house style — it is the
+ * rule for a custom element name, and it decides whether the browser will ever upgrade the tag.
+ * `<my-widget>` becomes a web component the moment one is defined; `<mywidget>` is an
+ * `HTMLUnknownElement` for ever, and is almost always a misspelling of a real tag.
+ *
+ * The runtime keeps its own check for the build that has no types — see `assertHostTag`.
+ */
+type HostTag = keyof JSX.IntrinsicElements | `${string}-${string}`;
+
+export function Host<
+  C extends (new (...args: any[]) => object) & { readonly __isComponent: true },
+  T extends HostTag = HostTag,
+>(
+  tag: T | ((props: PropsOf<C>) => string),
+  props?: (
+    self: InstanceOf<C>,
+  ) => T extends keyof JSX.IntrinsicElements ? JSX.IntrinsicElements[T] : Record<string, unknown>,
 ) {
   if (__DEV__) {
     assertHostTag(tag);

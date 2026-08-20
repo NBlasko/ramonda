@@ -40,6 +40,24 @@ read them off `bind` by hand rather than spreading it.
 The compiler finds every one of them: a camelCased event name is refused, and the error carries the
 spelling to write.
 
+**Two things found while checking the edges of this, both measured.**
+
+- **A stable handler was being re-attached on every render.** The node's listener map was keyed by
+  the event TYPE and the previous attributes were rebuilt from it as `on` + the type capitalised —
+  which matched the old spelling exactly and nothing at all after it, so every listener on the page
+  was removed and re-added on every pass. It is keyed by the attribute name now, so nothing is
+  rebuilt and nothing can be ambiguous. Two renders of a button with two handlers: `adds: []`,
+  `removes: []`.
+- **`@Host`'s props are typed now.** They were `Record<string, unknown>`, which made the host the
+  one place a camelCase handler still attached quietly — and typing them found exactly that in this
+  repository's own docs app. A `@Host` tag is also constrained: a platform element from
+  `JSX.IntrinsicElements`, or a custom one, which by the platform's own rule carries a DASH.
+  `<my-widget>` can be upgraded; `<mywidget>` is an `HTMLUnknownElement` for ever and is usually a
+  misspelling.
+
+**`@onElement` is unchanged and never had this to get wrong.** It takes the event's own name as a
+string — no prefix, nothing to capitalise — so `@onElement("my-event")` has always worked.
+
 **`@ramonda/check`** kept up in two places, both of which would have gone quiet:
 `client-only-request-read` recognised a handler by the CAPITAL after `on`, and
 `click-with-no-keyboard-path` looked for `ondoubleclick`, which is not a DOM event and never

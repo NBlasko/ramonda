@@ -154,6 +154,6 @@ describe("@memoizedHandler with an un-keyable argument", () => {
 
     const a = app.container.querySelector("#a") as HTMLButtonElement & { _listeners?: Record<string, unknown> };
     const b = app.container.querySelector("#b") as HTMLButtonElement & { _listeners?: Record<string, unknown> };
-    expect(a._listeners?.click).not.toBe(b._listeners?.click);
+    expect(a._listeners?.onclick).not.toBe(b._listeners?.onclick);
   });
 });

@@ -96,6 +96,8 @@ describe("decorator argument validation", () => {
 
   test("@Host rejects an invalid element name", () => {
     expect(() => {
+      // @ts-expect-error — the TYPE refuses it first: not a platform tag, and no dash to make it a
+      // custom element. This is the second net, for the build that has no types.
       @Host("9div")
       class Bad extends Component {
         render() {
@@ -108,6 +110,7 @@ describe("decorator argument validation", () => {
 
   test("@Host rejects an empty tag", () => {
     expect(() => {
+      // @ts-expect-error — refused by the type as well; see above.
       @Host("")
       class Bad extends Component {
         render() {

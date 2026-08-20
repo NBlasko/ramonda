@@ -1,4 +1,5 @@
 import { Component } from "../base/Component";
+import { Host } from "../base/decorators";
 
 /**
  * Everything the JSX types promise, in one file, pinned in both directions.
@@ -241,5 +242,47 @@ export class RefusedEventSpellings extends Component {
         <div onDblClick={() => {}} />
       </div>
     );
+  }
+}
+
+/**
+ * A component's host is a platform element or a custom one, and a custom one carries a DASH.
+ *
+ * The dash is the platform's rule rather than a preference: it is what makes a name a custom
+ * element, and what decides whether the browser will ever upgrade the tag. Without it the element
+ * is an `HTMLUnknownElement` for ever, which is what a misspelled real tag also produces.
+ *
+ * The props are the ELEMENT's, so the same spelling rule reaches them — they used to be
+ * `Record<string, unknown>`, which was the one place a camelCase handler still attached quietly.
+ */
+@Host("div", (self: PlatformHost) => ({ onclick: self.handle, className: "x" }))
+export class PlatformHost extends Component {
+  handle = (_event: PointerEvent) => {};
+  render() {
+    return <span />;
+  }
+}
+
+@Host("my-widget", () => ({ anything: "goes", "on:ready": () => {} }))
+export class CustomHost extends Component {
+  render() {
+    return <span />;
+  }
+}
+
+// @ts-expect-error — not a platform element, and no dash to make it a custom one.
+@Host("mywidget")
+export class UnknownHost extends Component {
+  render() {
+    return <span />;
+  }
+}
+
+// @ts-expect-error — a host's props are the element's attributes, under the same rule as the JSX.
+@Host("div", (self: RefusedHostProps) => ({ onClick: self.handle }))
+export class RefusedHostProps extends Component {
+  handle = () => {};
+  render() {
+    return <span />;
   }
 }
