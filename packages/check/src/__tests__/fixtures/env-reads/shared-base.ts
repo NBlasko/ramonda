@@ -5,6 +5,15 @@ export class ConfigBase extends Component {
   protected fromDb(): string {
     return process.env.DATABASE_URL ?? "";
   }
+
+  /** The ECMAScript private form of the same thing — as unreachable as the TypeScript one. */
+  #alsoFromDb(): string {
+    return process.env.REGION ?? "";
+  }
+
+  protected region(): string {
+    return this.#alsoFromDb();
+  }
   render() {
     return null;
   }

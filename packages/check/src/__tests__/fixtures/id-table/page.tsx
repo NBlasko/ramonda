@@ -18,6 +18,16 @@ class Anchored extends Component {
   }
 }
 
+/** The same, with a props callback that has a BLOCK body rather than a concise one. */
+@Host("section", () => {
+  return { id: "block-anchor" };
+})
+class BlockAnchored extends Component {
+  render() {
+    return <p>anchored from a block</p>;
+  }
+}
+
 @Host("article")
 class ProfileCard extends Component<{ id: string }> {
   render() {
@@ -68,6 +78,9 @@ export class Page extends Component {
             is on the page all the same. This used to be reported as a link to nowhere. */}
         <Anchored />
         <a href="#host-anchor">to the anchored section</a>
+        {/* Not reported either: the same id, written in a props callback with a BLOCK body. */}
+        <BlockAnchored />
+        <a href="#block-anchor">to the one written in a block</a>
       </main>
     );
   }

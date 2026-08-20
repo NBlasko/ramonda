@@ -142,6 +142,17 @@ describe("process.env in code the browser runs", () => {
     expect(serverEnv().map((issue) => issue.component)).not.toContain("ConfigBase");
   });
 
+  /**
+   * The `#` spelling of the same privacy, which carries no MODIFIER — so a check that read modifiers
+   * alone reported it, and named it `(anonymous)` while doing so because the shared `memberName`
+   * treated a `#field` as unnameable. Both found in review, by planting the `#` form of a shape the
+   * `private` form already handled.
+   */
+  test("a `#private` helper is excused like a `private` one, and is named when it is reported", () => {
+    expect(serverEnv().map((issue) => issue.component)).not.toContain("ConfigBase");
+    expect(serverEnv().map((issue) => issue.member)).not.toContain("(anonymous)");
+  });
+
   /** The control: a private helper a render DOES call stays reported, referenced as it is. */
   test("a private helper a render calls is still reported", () => {
     expect(serverEnv().map((issue) => issue.component)).toContain("HelperAlsoCalledInRender");

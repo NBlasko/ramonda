@@ -124,9 +124,15 @@ function serverOnlyMembers(cls: ts.ClassDeclaration, context: RuleContext): Set<
     const name = memberName(member);
     if (name === undefined || referenced.has(name)) continue;
     const modifiers = ts.canHaveModifiers(member) ? (ts.getModifiers(member) ?? []) : [];
-    const hidden = modifiers.some(
-      (modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword,
-    );
+    // `#name` carries no modifier — the `#` IS the privacy, and it is the stronger of the two: a
+    // `#` member cannot be named from outside the class at all, while `private` is TypeScript's
+    // word and a cast walks straight through it.
+    const hidden =
+      (member.name !== undefined && ts.isPrivateIdentifier(member.name)) ||
+      modifiers.some(
+        (modifier) =>
+          modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword,
+      );
     if (hidden) excused.add(name);
   }
 

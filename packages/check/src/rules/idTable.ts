@@ -248,11 +248,22 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
 
       const written = call.arguments[1];
       if (written === undefined) continue;
-      const body =
-        (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) && !ts.isBlock(written.body)
-          ? written.body
-          : undefined;
-      const object = body !== undefined && ts.isParenthesizedExpression(body) ? body.expression : body;
+      if (!ts.isArrowFunction(written) && !ts.isFunctionExpression(written)) continue;
+
+      /**
+       * Both bodies a props callback is written with: `() => ({ id })` and `() => { return { id } }`.
+       *
+       * Reading only the concise one left the second spelling missing — found in review by planting
+       * it, after the concise one had already been fixed. A block with anything other than one
+       * `return` of an object literal is not read: what it hands back is a value, and that is the
+       * dataflow this package refuses.
+       */
+      const returned = ts.isBlock(written.body)
+        ? written.body.statements.length === 1 && ts.isReturnStatement(written.body.statements[0])
+          ? written.body.statements[0].expression
+          : undefined
+        : written.body;
+      const object = returned !== undefined && ts.isParenthesizedExpression(returned) ? returned.expression : returned;
       if (object === undefined || !ts.isObjectLiteralExpression(object)) continue;
 
       for (const property of object.properties) {

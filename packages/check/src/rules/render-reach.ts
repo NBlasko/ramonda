@@ -223,7 +223,28 @@ function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
  * Measured with a plant, and the shape is not exotic: it is the one `arrow-fields` exists to talk
  * about, so a codebase that has any at all has them being called.
  */
-export function memberBody(member: ts.ClassElement): ts.Node | undefined {
+/**
+ * The NEAREST declaration of a member, which is the one that runs.
+ *
+ * A subclass overriding a base's method is ordinary, and walking both bodies reported the version
+ * that never runs — measured, with a base whose `stamp()` reads a clock and a subclass whose
+ * `stamp()` returns a constant. JS resolves a method by taking the first one up the chain, and so
+ * does this.
+ *
+ * `from` is where to start looking: the class itself for `this.`, and its BASES for `super.`, which
+ * is the whole meaning of the keyword.
+ */
+function nearest(from: readonly ts.ClassLikeDeclaration[], name: string): ts.ClassElement | undefined {
+  for (const declaring of from) {
+    for (const member of declaring.members) {
+      if (memberName(member) === name) return member;
+    }
+  }
+  return undefined;
+}
+
+export function memberBody(member: ts.ClassElement | undefined): ts.Node | undefined {
+  if (member === undefined) return undefined;
   if (ts.isMethodDeclaration(member)) return member.body;
   if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
     const written = member.initializer;
@@ -287,12 +308,9 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
         current.expression.kind === ts.SyntaxKind.ThisKeyword &&
         ts.isIdentifier(current.name)
       ) {
-        const name = current.name.text;
-        for (const declaring of own) {
-          for (const member of declaring.members) {
-            if (!ts.isGetAccessorDeclaration(member) || memberName(member) !== name) continue;
-            if (member.body) walk(member.body, [...through, name], true, depth + 1);
-          }
+        const found = nearest(own, current.name.text);
+        if (found !== undefined && ts.isGetAccessorDeclaration(found) && found.body) {
+          walk(found.body, [...through, current.name.text], true, depth + 1);
         }
       }
 
@@ -313,14 +331,11 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
           ts.isIdentifier(callee.name)
         ) {
           const name = callee.name.text;
-          // This class first, then its bases: a base is another class and the same object.
-          for (const declaring of own) {
-            for (const member of declaring.members) {
-              if (memberName(member) !== name) continue;
-              const body = memberBody(member);
-              if (body) walk(body, [...through, name], true, depth + 1);
-            }
-          }
+          // This class first, then its bases: a base is another class and the same object. `super.`
+          // starts at the bases, which is the whole meaning of the keyword.
+          const from = callee.expression.kind === ts.SyntaxKind.SuperKeyword ? own.slice(1) : own;
+          const body = memberBody(nearest(from, name));
+          if (body) walk(body, [...through, name], true, depth + 1);
         }
 
         /**
@@ -334,16 +349,14 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
         if (
           ts.isPropertyAccessExpression(callee) &&
           ts.isIdentifier(callee.expression) &&
-          ts.isIdentifier(callee.name) &&
-          own.some((declaring) => declaring.name?.text === (callee.expression as ts.Identifier).text)
+          ts.isIdentifier(callee.name)
         ) {
-          const name = callee.name.text;
-          for (const declaring of own) {
-            for (const member of declaring.members) {
-              if (memberName(member) !== name) continue;
-              const body = memberBody(member);
-              if (body) walk(body, [...through, name], false, depth + 1);
-            }
+          // RESOLVED, not matched by name: a class whose name happens to equal this one's is a
+          // different class, and this package does not guess about which declaration it is looking at.
+          const declared = reach.resolve(callee.expression)?.declarations?.[0];
+          if (declared !== undefined && own.includes(declared as ts.ClassLikeDeclaration)) {
+            const body = memberBody(nearest(own, callee.name.text));
+            if (body) walk(body, [...through, callee.name.text], false, depth + 1);
           }
         }
 

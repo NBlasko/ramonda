@@ -98,6 +98,21 @@ describe("a clock or a random number reached from a render", () => {
    * - a STATIC, walked with `this` meaning the constructor rather than the instance, so a write
    *   through it is nobody's state and only what does not depend on `this` is reported
    */
+  /**
+   * A subclass OVERRIDING a base's method: only the subclass's body runs, and walking both reported
+   * the version that never does. Found in review, with a base whose `stamp()` reads a clock and a
+   * subclass whose `stamp()` returns a constant.
+   *
+   * The lookup takes the NEAREST declaration now, which is how JS resolves a method — and `super.`
+   * starts at the BASES, which is the whole meaning of the keyword and is what keeps
+   * `ThroughSuper` reported.
+   */
+  test("an overridden base method is not walked, while super still reaches one", () => {
+    const found = run().findings["clock-read-while-rendering"];
+    expect(found.some((issue) => issue.component === "OverridesIt")).toBe(false);
+    expect(found.some((issue) => issue.through.includes("stampFromBase"))).toBe(true);
+  });
+
   test("an arrow field, a getter, a super call and a static are all reached", () => {
     const found = run().findings["clock-read-while-rendering"];
     const paths = found.map((issue) => issue.through.at(-1));

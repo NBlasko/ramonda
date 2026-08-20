@@ -35,6 +35,9 @@ describe("a fragment link pointing at nothing", () => {
   test("an id written in @Host props is an id the project carries", () => {
     const found = run("id-table").findings["fragment-link-to-nowhere"];
     expect(found.map((issue) => issue.target)).not.toContain("host-anchor");
+    // Both bodies a props callback is written with. The concise one was fixed first and the block
+    // one was still missing, which is what a review is for.
+    expect(found.map((issue) => issue.target)).not.toContain("block-anchor");
   });
 
   test("an id a template could have produced is not called missing", () => {

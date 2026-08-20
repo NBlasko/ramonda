@@ -178,5 +178,30 @@ class ThroughSuper extends DeepBase {
   }
 }
 
+/**
+ * NOT reported: a subclass OVERRIDING a base's method. Only the subclass's body runs, so the base's
+ * clock read is never reached — and walking both bodies reported it until the lookup started taking
+ * the nearest declaration, which is how JS resolves a method.
+ */
+class OverriddenBase extends Component {
+  stamp() {
+    return Date.now();
+  }
+  render() {
+    return <span />;
+  }
+}
+
+@Host("div")
+class OverridesIt extends OverriddenBase {
+  stamp() {
+    return 0;
+  }
+  render() {
+    return <p>{this.stamp()}</p>;
+  }
+}
+
+bootstrap(<OverridesIt />, null);
 bootstrap(<OtherPaths />, null);
 bootstrap(<ThroughSuper />, null);
