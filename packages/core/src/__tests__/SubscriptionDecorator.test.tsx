@@ -14,7 +14,7 @@ import { getDOM } from "../test/setup";
  * as long as the tab is open.
  */
 
-/** A minimal external store, standing in for Zustand and friends. */
+/** A minimal external store: read a value, subscribe, and get an unsubscribe function back. */
 function createStore<T>(initial: T) {
   let value = initial;
   const listeners = new Set<(value: T) => void>();

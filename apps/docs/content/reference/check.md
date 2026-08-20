@@ -138,7 +138,7 @@ rules**, so a rule cannot be added without appearing here.
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 
-**Warnings.** These print and the run still passes. 49 of them.
+**Warnings.** These print and the run still passes. 50 of them.
 
 | rule | reported when |
 |---|---|
@@ -162,6 +162,7 @@ rules**, so a rule cannot be added without appearing here.
 | `client-only-request-read` | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics) |
 | `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
+| `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |

@@ -4,12 +4,52 @@ import { isListNode } from "../vdom/guards";
 import { trackerContainer } from "../reactivity/tracker";
 import type { State } from "../reactivity/State";
 import { diagnose } from "../debug/diagnostics";
+import { checkRowStability, isStrictRender } from "../debug/renderStability";
 import { identityOf, stampIdentity, carryIdentity } from "./itemIdentity";
 import { createId } from "./createId";
 import type { Each, ItemRender } from "../base/list";
 
 /** Listener ids must be unique across every signal, not just within one list. */
 let scopeSequence = 0;
+
+/**
+ * DEV-only: builds the row a SECOND time and reports what came out different — RMD020, for the one
+ * position its double render cannot reach.
+ *
+ * `list()` is lazy on purpose: the second render rebuilds the descriptor, and the builder is called
+ * from here instead. So an inline handler or a rebuilt object inside a row was silent, while the
+ * same thing written outside a list was reported. This is the same check, in the only place that has
+ * two builds of a row to compare.
+ *
+ * ## Why HERE and not in `render()`
+ *
+ * Two reasons, and the second is the expensive one. A row built during `render()` would be built
+ * outside its item scope, so its signal reads would register against whatever tracker the render
+ * has — changing which dependencies exist, in development only. And it would build every row on
+ * every render, including the ones the engine was about to REUSE. Here, only a row that is actually
+ * being built is built twice, so a list whose rows are all reused pays nothing at all.
+ *
+ * ## The tracker is detached for the second build
+ *
+ * `null` — not the item scope, and not the enclosing one. The second vnode is thrown away, so its reads
+ * must not add dependencies that would invalidate rows nothing read, and must not land in an enclosing
+ * `@compute` either.
+ */
+function checkRow<T>(host: ListHost, item: T, render: ItemRender<T>, first: VNode | null | undefined): void {
+  if (!isStrictRender() || first === null || first === undefined) return;
+
+  const previous = trackerContainer.current;
+  trackerContainer.current = null;
+  let second: VNode | null | undefined;
+  try {
+    second = render(item);
+  } finally {
+    trackerContainer.current = previous;
+  }
+
+  if (second === null || second === undefined) return;
+  checkRowStability(host.name, "row", first, second);
+}
 
 /**
  * Names what came back instead of an element, in the words the writer would use.
@@ -434,6 +474,8 @@ export class ListEngine<T> {
       // and that tracker still has reads to collect after this returns.
       trackerContainer.current = previousTracker;
     }
+
+    if (__DEV__) checkRow(host, item, render, vnode);
 
     for (const dep of scope.deps) {
       dep[attach]({

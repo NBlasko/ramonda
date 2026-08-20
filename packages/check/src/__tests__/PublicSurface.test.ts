@@ -70,6 +70,7 @@ const EXPECTED_TYPES = [
   "ReferenceToAnIdThatIsNotThereIssue",
   "RoleMissingRequiredAriaIssue",
   "RoleTakesNoNameIssue",
+  "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",
   "ServerEnvInSharedCodeIssue",
   "RuleSummary",

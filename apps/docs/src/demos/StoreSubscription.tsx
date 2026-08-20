@@ -1,7 +1,8 @@
 import { Component, Host, createSubscriptionDecorator, mounted, state, updated } from "@ramonda/core";
 
-// An external store, standing in for Zustand or anything else that hands back an
-// unsubscribe function.
+// An external store: it holds a value, takes a listener, and hands back the function that
+// stops it. That last part is the only thing the decorator below needs — every store worth
+// subscribing to returns one, and it is what makes the cleanup possible.
 function createStore(initial: number) {
   let value = initial;
   const listeners = new Set<(value: number) => void>();
