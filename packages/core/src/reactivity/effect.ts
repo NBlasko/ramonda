@@ -6,12 +6,29 @@ import { reactivityScope } from "./tracker";
 
 export interface Effect {
   id: number;
-  effect: () => undefined | (() => void);
+  /**
+   * `unknown`, because that is what the runner actually requires: it guards with
+   * `typeof res === "function"` below and ignores anything else. Declared as
+   * `undefined | (() => void)` it claimed more than the code asks, and the gap was bridged by an
+   * `any` in `attachEffect` — a lifecycle method is free to return whatever it likes.
+   */
+  effect: () => unknown;
   deps: Set<State<unknown>>;
   shouldRebuild: boolean;
   cleanup: (() => void) | null;
   alwaysRebuild: boolean;
   mutated: Set<State<unknown>>;
+}
+
+/**
+ * A function came back from an effect, so it is treated as the cleanup.
+ *
+ * `typeof res === "function"` narrows `unknown` to `Function`, which TypeScript will not call — so the
+ * one assumption the runtime makes is named here instead of hidden in an `any` on `Effect.effect`: a
+ * function returned from a lifecycle is called with no arguments when the effect is torn down.
+ */
+function isCleanup(value: unknown): value is () => void {
+  return typeof value === "function";
 }
 
 export function runComponentEffects(component: BaseComponent<unknown>) {
@@ -46,7 +63,7 @@ export function runComponentEffects(component: BaseComponent<unknown>) {
     try {
       const res = eff.effect();
 
-      if (typeof res === "function") {
+      if (isCleanup(res)) {
         eff.cleanup = res;
       }
     } finally {

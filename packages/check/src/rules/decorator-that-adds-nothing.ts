@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
 /**
@@ -106,8 +106,10 @@ export const decoratorThatAddsNothing = {
     const found: DecoratorThatAddsNothingIssue[] = [];
 
     for (const member of cls.members) {
-      if (member.name === undefined || !ts.isIdentifier(member.name)) continue;
-      const memberName = member.name.text;
+      // Skipped rather than reported: this names the MEMBER in its report, so one it cannot name is
+      // one it cannot say anything useful about.
+      const named = memberName(member);
+      if (named === undefined) continue;
 
       /** capability → the decorator that claimed it first, which is the one that stays. */
       const claimed = new Map<string, string>();
@@ -124,7 +126,7 @@ export const decoratorThatAddsNothing = {
           if (already === name) continue;
           found.push({
             component: self.name,
-            member: memberName,
+            member: named,
             adds: name,
             already,
             capability,

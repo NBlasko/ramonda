@@ -15,6 +15,32 @@ import ts from "typescript";
  * Every issue any rule produces ends with a spread of this, which is why it is shared rather than
  * written per rule. Editors and the CLI both count from one; the compiler counts from zero.
  */
+/**
+ * What a class member is called, when it has a plain name to go by.
+ *
+ * The commonest reading in this package and, before it lived here, its most copied: four rules held a
+ * named function for it under two different names, and three more wrote the expression inline. Nothing
+ * had drifted yet — but the last thing two copies of one judgement did drift on was which writes leave a
+ * cached reader stale, and that was a defect rather than a tidiness question.
+ *
+ * `undefined` for a computed name (`[key]()`), a string-literal name and a private `#field`: those are
+ * members a rule cannot report BY NAME, and every caller skips them.
+ */
+export function memberName(member: ts.ClassElement): string | undefined {
+  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
+}
+
+/**
+ * A decorator's name, whatever spelling reached it — `@updated` or `@created({ … })`.
+ *
+ * `undefined` for anything that is not a plain identifier at the head, which includes a namespaced
+ * `@core.updated`: a rule that went by that spelling would be guessing at an alias.
+ */
+export function decoratorName(decorator: ts.Decorator): string | undefined {
+  const expression = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
+  return ts.isIdentifier(expression) ? expression.text : undefined;
+}
+
 export function positionOf(node: ts.Node): {
   file: string;
   line: number;

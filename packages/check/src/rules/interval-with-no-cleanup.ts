@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import { heritage } from "./render-reach";
 import type { Rule, RuleContext } from "./rule";
 
@@ -194,8 +194,8 @@ export const intervalWithNoCleanup = {
     const found: IntervalWithNoCleanupIssue[] = [];
 
     for (const member of cls.members) {
-      const memberName =
-        member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : "the class body";
+      // A member with no plain name is still walked — the fault is the uncleared interval.
+      const inMember = memberName(member) ?? "the class body";
 
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node) && isSetInterval(node, resolve)) {
@@ -215,7 +215,7 @@ export const intervalWithNoCleanup = {
            */
           const aSubclassMightClearIt = abstract && kept === "a property";
           if (!isCleared && !aSubclassMightClearIt) {
-            found.push({ component: self.name, member: memberName, kept, named, ...positionOf(node) });
+            found.push({ component: self.name, member: inMember, kept, named, ...positionOf(node) });
           }
         }
         ts.forEachChild(node, visit);

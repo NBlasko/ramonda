@@ -17,7 +17,7 @@ import type {
 } from "../types/vdom";
 import { addTaskToQueue } from "./Task";
 import { errorHandler } from "./errorHandler";
-import { areStringRecordsEqual } from "../helpers/areStringRecordsEqual";
+import { arePropsBagsEqual } from "../helpers/arePropsBagsEqual";
 import {
   DONE,
   TEXT_TYPE,
@@ -951,7 +951,7 @@ function createOrUpdateComponent(
   const decide = (component.constructor as { [PROPS_GATE]?: PropsGate })[PROPS_GATE];
   const takeProps = decide
     ? decide(component, componentRuntime.rawProps, nextProps)
-    : !areStringRecordsEqual(componentRuntime.rawProps, nextProps);
+    : !arePropsBagsEqual(componentRuntime.rawProps, nextProps);
 
   if (takeProps) {
     const prevRaw = componentRuntime.rawProps;

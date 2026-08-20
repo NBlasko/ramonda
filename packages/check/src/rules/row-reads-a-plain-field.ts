@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import type { ModuleRule } from "./rule";
 // The field judgement, shared with `cached-read-of-a-plain-field`. A row callback is a third
 // CACHED reader, so which fields can be stale and which writes count is the same question, with
@@ -79,11 +79,6 @@ export interface RowReadsAPlainFieldIssue {
   file: string;
   line: number;
   column: number;
-}
-
-/** A member's own name, when it has a plain one to go by. */
-function memberName(member: ts.ClassElement): string | undefined {
-  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
 }
 
 /** `this.<name>`, and the name. */

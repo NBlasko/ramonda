@@ -120,10 +120,14 @@ export type TypedNavigator<C extends RouteConfig> = Omit<
 
 /**
  * Mirror of core's `HookClassKind<T, undefined>` (not exported) — a no-props hook class.
- * `runtime: any` so it stays assignable to core's `use()` parameter (the runtime type is
- * core-internal; a hook caller never supplies it).
+ *
+ * `runtime: unknown` because a constructor PARAMETER is contravariant: for this to stay assignable to
+ * core's `use()` parameter, its runtime argument has to accept core's real `Runtime`, and the widest
+ * type accepts everything. `never` is the right bottom in a `extends new (...args: never[])` CONSTRAINT
+ * and exactly wrong here — measured, it refuses the real class. The runtime type itself is
+ * core-internal and a hook caller never supplies it.
  */
-type NoPropsHookClass<T> = new (runtime: any, props: undefined) => T;
+type NoPropsHookClass<T> = new (runtime: unknown, props: undefined) => T;
 
 export interface TypedRouterKit<C extends RouteConfig> {
   /** Mount once on the app-root component: `router = this.use(Router)`. Unchanged. */
