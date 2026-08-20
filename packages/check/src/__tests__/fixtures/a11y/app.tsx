@@ -73,3 +73,57 @@ class Gallery extends Component {
 }
 
 bootstrap(<Gallery />, null);
+
+/**
+ * Shapes the element rules may or may not recognise, planted to find out which.
+ *
+ * Nothing here is exotic: a bare JSX boolean, an icon-only link, an index key on a component row.
+ */
+@Host("div")
+class Shapes extends Component {
+  render() {
+    return (
+      <div>
+        {/* A bare JSX attribute IS `true`, and a `{true}` says the same thing. */}
+        <button type="button" aria-hidden>
+          hidden
+        </button>
+        <button type="button" aria-hidden={true}>
+          hidden
+        </button>
+        {/* Must stay silent: false is not a claim. */}
+        <div aria-hidden="false" tabIndex={0}>
+          shown
+        </div>
+
+        {/* A link whose only child is removed from the accessibility tree. */}
+        <a href="/star">
+          <span aria-hidden="true">★</span>
+        </a>
+        {/* Must stay silent: the icon is beside real text. */}
+        <a href="/home">
+          <span aria-hidden="true">★</span>Home
+        </a>
+        {/* Must stay silent: a component child is not readable from here. */}
+        <a href="/panel">
+          <Icon />
+        </a>
+
+        {/* A row keyed by its index, on a COMPONENT rather than a tag. */}
+        <ul>
+          {[1, 2].map((n, i) => (
+            <Icon key={i} />
+          ))}
+        </ul>
+      </div>
+    );
+  }
+}
+
+class Icon extends Component {
+  render() {
+    return <span>icon</span>;
+  }
+}
+
+bootstrap(<Shapes />, null);

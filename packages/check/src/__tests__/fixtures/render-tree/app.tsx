@@ -181,7 +181,57 @@ export class SecondRender extends Component {
   }
 }
 
-export class App extends Component {
+export /**
+ * A heading is what the accessibility tree calls one, which is not always what the tag says.
+ *
+ * `role-missing-required-aria` already asks a `role="heading"` for its `aria-level`, so a rule that
+ * read levels off tags alone would disagree with it about the same element.
+ */
+@Host("section")
+class HeadingsByRole extends Component {
+  render() {
+    return (
+      <section>
+        <h1>Title</h1>
+        {/* REPORTED — a heading at 3 after a heading at 1, written as a role. */}
+        <div role="heading" aria-level={3}>
+          A subsection of nothing
+        </div>
+      </section>
+    );
+  }
+}
+
+/** An `aria-level` wins over the tag, because the accessibility tree takes it. */
+@Host("section")
+class LevelOverridesTheTag extends Component {
+  render() {
+    return (
+      <section>
+        <h1>Title</h1>
+        {/* REPORTED — the tag says 2 and the tree says 4. */}
+        <h2 aria-level={4}>Deeper than it looks</h2>
+      </section>
+    );
+  }
+}
+
+/** A written role wins over the tag as well, so this is not a heading at all. */
+@Host("section")
+class NotAHeadingAnyMore extends Component {
+  render() {
+    return (
+      <section>
+        <h1>Title</h1>
+        {/* Not reported: `presentation` takes it out of the outline, so nothing follows an h1. */}
+        <h2 role="presentation">Just big text</h2>
+        <h2>A real one</h2>
+      </section>
+    );
+  }
+}
+
+class App extends Component {
   render() {
     return (
       <main>
@@ -199,6 +249,9 @@ export class App extends Component {
         <ComputedId />
         <FirstRender />
         <SecondRender />
+        <HeadingsByRole />
+        <LevelOverridesTheTag />
+        <NotAHeadingAnyMore />
       </main>
     );
   }

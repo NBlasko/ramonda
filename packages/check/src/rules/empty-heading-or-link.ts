@@ -1,5 +1,6 @@
 import { positionOf } from "../syntax";
-import { hasContent, openingOf } from "./element";
+import ts from "typescript";
+import { hasContent, openingOf, tagOf, trueAttr } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -12,6 +13,13 @@ import type { ElementRule } from "./rule";
  * present, reachable, and unusable.
  *
  * An `aria-label` answers for both, because that is what it is for.
+ *
+ * ## Empty in the ACCESSIBILITY tree, which is the tree this is about
+ *
+ * A link whose only child is `aria-hidden="true"` has content in the DOM and none where it counts —
+ * the icon-only link, which is the commonest way to write this fault and was silent here. It is
+ * provable without guessing: every child is hidden by a LITERAL claim, and nothing names the link.
+ * One readable word beside the icon, or a component child this cannot see into, and it says nothing.
  */
 export interface EmptyHeadingOrLinkIssue {
   /** `h1`–`h6`, or `a`. */
@@ -27,6 +35,43 @@ const HEADINGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
 
 /** Any of these names the element without text inside it. */
 const NAMES_IT = ["aria-label", "aria-labelledby", "title"];
+
+/**
+ * Whether everything inside is explicitly removed from the accessibility tree.
+ *
+ * The narrow half of "empty": `<a href="/x"><span aria-hidden="true">★</span></a>` reads as full in
+ * the DOM and is a blank row in the list of links a screen reader builds. Every child has to be
+ * hidden by a literal claim — one word of text beside the icon, or a child whose `aria-hidden` this
+ * cannot read, and the answer is no.
+ *
+ * A COMPONENT child answers no as well, and that is deliberate rather than incidental: what
+ * `<Icon />` renders is not in this file, so whether it announces anything is not knowable here.
+ */
+function everyChildIsHidden(children: readonly ts.JsxChild[]): boolean {
+  let hidden = 0;
+
+  for (const child of children) {
+    if (ts.isJsxText(child)) {
+      if (child.text.trim().length > 0) return false;
+      continue;
+    }
+    if (ts.isJsxExpression(child)) {
+      if (child.expression === undefined) continue;
+      if (ts.isStringLiteralLike(child.expression)) {
+        if (child.expression.text.trim().length > 0) return false;
+        continue;
+      }
+      return false;
+    }
+    if (!ts.isJsxElement(child) && !ts.isJsxSelfClosingElement(child)) return false;
+    // A component's markup is somewhere else, so nothing here can say what it announces.
+    if (tagOf(child) === undefined) return false;
+    if (trueAttr(child, "aria-hidden") !== true) return false;
+    hidden++;
+  }
+
+  return hidden > 0;
+}
 
 export const emptyHeadingOrLink = {
   id: "empty-heading-or-link",
@@ -65,8 +110,8 @@ export const emptyHeadingOrLink = {
     const kind = HEADINGS.has(tag) ? "heading" : tag === "a" ? "link" : undefined;
     if (kind === undefined) return [];
 
-    if (hasContent(children)) return [];
     if (NAMES_IT.some((name) => has(name))) return [];
+    if (hasContent(children) && !everyChildIsHidden(children)) return [];
 
     return [{ tag, kind, ...positionOf(openingOf(element)) }];
   },

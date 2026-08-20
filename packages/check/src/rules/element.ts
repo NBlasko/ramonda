@@ -100,6 +100,38 @@ export function hasContent(children: readonly ts.JsxChild[]): boolean {
 }
 
 /**
+ * An attribute read as a claim of TRUE — `aria-hidden`, `aria-hidden={true}`, `aria-hidden="true"`.
+ *
+ * Three spellings of one fact, and the framework renders all three the same: a bare JSX attribute
+ * IS `true`, and every one of them reaches the element as `aria-hidden="true"`. Reading only the
+ * string missed the two shorter ones, which is measured — `<button aria-hidden>` hides a focusable
+ * button and was reported by nothing.
+ *
+ * `undefined` for anything that is not one of the three, which is the silence contract:
+ * `aria-hidden={busy}` may be either and a rule that guessed would report the correct half of it.
+ */
+export function trueAttr(element: JsxElementLike, name: string): boolean | undefined {
+  for (const attribute of openingOf(element).attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+
+    const value = attribute.initializer;
+    // `aria-hidden` on its own — JSX reads a bare attribute as `{true}`.
+    if (value === undefined) return true;
+    if (ts.isStringLiteral(value)) return value.text === "true" ? true : value.text === "false" ? false : undefined;
+    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
+
+    const written = value.expression;
+    if (written.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (written.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isStringLiteralLike(written))
+      return written.text === "true" ? true : written.text === "false" ? false : undefined;
+    return undefined;
+  }
+  return undefined;
+}
+
+/**
  * An attribute read as a NUMBER — `tabIndex={0}`, `tabIndex="0"`, `tabIndex={-1}`.
  *
  * `attr` deliberately answers only for strings, because for most rules in this family a number is
