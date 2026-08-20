@@ -227,7 +227,7 @@ function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
  * Measured with a plant, and the shape is not exotic: it is the one `arrow-fields` exists to talk
  * about, so a codebase that has any at all has them being called.
  */
-function memberBody(member: ts.ClassElement): ts.Node | undefined {
+export function memberBody(member: ts.ClassElement): ts.Node | undefined {
   if (ts.isMethodDeclaration(member)) return member.body;
   if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
     const written = member.initializer;

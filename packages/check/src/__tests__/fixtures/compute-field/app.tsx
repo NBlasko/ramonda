@@ -128,5 +128,34 @@ class Priced extends Totals {
   }
 }
 
+/**
+ * The read is one hop away: the `@compute` calls a helper, and the helper reads the plain field.
+ *
+ * The claim is that a cached reader READS an ordinary field something writes after the first
+ * render — and a compute that reads it through a method of its own caches exactly the same stale
+ * answer. Planted to find out whether the rule follows the hop.
+ */
+class OneHopAway extends Component {
+  private rate = 1;
+
+  bump() {
+    this.rate = this.rate + 1;
+  }
+
+  private priced() {
+    return this.rate * 2;
+  }
+
+  /* Does this reach `rate`? */
+  @compute get total() {
+    return this.priced();
+  }
+
+  render() {
+    return <div onclick={() => this.bump()}>{String(this.total)}</div>;
+  }
+}
+
 bootstrap(<Cart />, null);
+bootstrap(<OneHopAway />, null);
 bootstrap(<Priced />, null);

@@ -19,5 +19,15 @@ is `state-written-while-rendering` and `clock-read-while-rendering` catching up 
 already said they did — they are the two rules built on the walk, and any rule built on it later
 inherits the four paths for nothing.
 
+**`cached-read-of-a-plain-field` had the same gap, one hop away.** Its claim is that a cached reader
+READS an ordinary field something writes after the first render, and it read the reader's own body:
+
+    private priced() { return this.rate * 2; }        // `rate` is a plain field
+    @compute get total() { return this.priced(); }    // reported nothing
+
+The cache is stale in exactly the same way — a `@compute` tracks the signals read while it
+evaluated, wherever they were read. It follows `this.method()` now, bounded and cycle-guarded, and
+`this.` only: a free function has no `this`, so there is no field of this component's for it to read.
+
 Nothing new is reported in this repository's four applications — the shapes are correct code there —
-and the fixture proves each one can speak.
+and the fixtures prove each path can speak.

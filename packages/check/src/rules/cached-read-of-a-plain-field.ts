@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { isThisUse, positionOf } from "../syntax";
-import { hasDecorator } from "./render-reach";
+import { hasDecorator, heritage, memberBody } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
 import { nameOf, staleFieldsOf } from "./stale-field";
@@ -80,23 +80,50 @@ export interface CachedReadOfAPlainFieldIssue {
 
 /** A member's name when it has a plain one. */
 /** Every `this.X` read anywhere under a node. */
-function fieldsReadIn(node: ts.Node): Set<string> {
+function fieldsReadIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[]): Set<string> {
   const found = new Set<string>();
+  const walked = new Set<ts.Node>();
 
-  const walk = (at: ts.Node): void => {
-    if (
-      ts.isPropertyAccessExpression(at) &&
-      at.expression.kind === ts.SyntaxKind.ThisKeyword &&
-      ts.isIdentifier(at.name)
-    ) {
-      // A CALL through `this` is a method, not a field read: `this.format(x)`.
-      const isCallee = ts.isCallExpression(at.parent) && at.parent.expression === at;
-      if (!isCallee) found.add(at.name.text);
-    }
-    ts.forEachChild(at, walk);
+  /**
+   * A CALL through `this` is a method rather than a field read — and the method is FOLLOWED, which
+   * is the half that was missing.
+   *
+   * `@compute get total() { return this.priced() }`, where `priced()` reads a plain `rate`, caches
+   * exactly the stale answer a direct read would: the compute tracks the signals read while it
+   * evaluated, wherever they were read. Reading only the compute's own body reported the version
+   * somebody writes on their first day and missed the version that ships. Measured with a plant.
+   *
+   * Bounded and cycle-guarded, and it follows `this.` only — a free function has no `this`, so
+   * there is no field of this component's for it to read.
+   */
+  const walk = (at: ts.Node, depth: number): void => {
+    if (depth > 6 || walked.has(at)) return;
+    walked.add(at);
+
+    (function look(current: ts.Node): void {
+      if (
+        ts.isPropertyAccessExpression(current) &&
+        current.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        ts.isIdentifier(current.name)
+      ) {
+        const name = current.name.text;
+        if (ts.isCallExpression(current.parent) && current.parent.expression === current) {
+          for (const cls of declaring) {
+            for (const member of cls.members) {
+              if (member.name === undefined || !ts.isIdentifier(member.name) || member.name.text !== name) continue;
+              const body = memberBody(member);
+              if (body) walk(body, depth + 1);
+            }
+          }
+        } else {
+          found.add(name);
+        }
+      }
+      ts.forEachChild(current, look);
+    })(at);
   };
 
-  walk(node);
+  walk(node, 0);
   return found;
 }
 
@@ -137,13 +164,15 @@ export const cachedReadOfAPlainField = {
      * this component's field, and goes stale in exactly the same way.
      */
     const writtenBy = staleFieldsOf(cls, resolve);
+    /** This class and its bases — what a `this.method()` hop out of a cached reader can land in. */
+    const declaring = [cls, ...heritage(cls, resolve)];
     if (writtenBy.size === 0) return [];
 
     const found: CachedReadOfAPlainFieldIssue[] = [];
 
     /** One reported read, whichever kind of cached reader found it. */
     const report = (node: ts.Node, reader: CachedReadOfAPlainFieldIssue["reader"], named: string): void => {
-      for (const field of fieldsReadIn(node)) {
+      for (const field of fieldsReadIn(node, declaring)) {
         const writer = writtenBy.get(field);
         if (writer === undefined) continue;
         found.push({ component: self.name, reader, named, field, writtenBy: writer, ...positionOf(node) });

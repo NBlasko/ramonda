@@ -24,7 +24,22 @@ describe("a cached read of a plain field", () => {
       "total:rate:start",
       "form:rate:start",
       "total:rate:bump",
+      "total:rate:bump",
     ]);
+  });
+
+  /**
+   * The read one hop away: the `@compute` calls a method of its own, and the METHOD reads the plain
+   * field. The cache is stale in exactly the same way — a compute tracks the signals read while it
+   * evaluated, wherever they were read — and reading only the compute's own body missed it.
+   *
+   * `this.` only. A free function has no `this`, so there is no field of this component's for it to
+   * read, which is what keeps the hop bounded.
+   */
+  test("a plain field read through a method the compute calls is reported", () => {
+    const found = run().findings["cached-read-of-a-plain-field"];
+    const hop = found.filter((issue) => issue.component === "OneHopAway");
+    expect(hop.map((issue) => `${issue.named}:${issue.field}`)).toEqual(["total:rate"]);
   });
 
   /**
@@ -52,7 +67,12 @@ describe("a cached read of a plain field", () => {
    */
   test("both kinds of reader are named for what they are", () => {
     const found = run().findings["cached-read-of-a-plain-field"];
-    expect(found.map((issue) => issue.reader)).toEqual(["a `@compute`", "a props callback", "a `@compute`"]);
+    expect(found.map((issue) => issue.reader)).toEqual([
+      "a `@compute`",
+      "a props callback",
+      "a `@compute`",
+      "a `@compute`",
+    ]);
   });
 
   /**
