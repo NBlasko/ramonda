@@ -92,7 +92,7 @@ They are not shades of wrong. Measured, one class per decorator:
 | written on `render` | what it did |
 |---|---|
 | `@compute` | Cached the render on the signals it read. State and props still reach the DOM — so it looks fine — and anything it read that is NOT a signal freezes the page: measured, a plain field left `old` on screen where the same component without the decorator showed `new`. Silent, which is why the guard is not waiting for a crash. |
-| `@memoized` | Did not throw. The render was memoised on arguments it does not have, and the component **never updated again** — a frozen page, and nothing said. |
+| `@memoized` | The same as `@compute` now: the render is cached, a state write still reaches the DOM (measured, `1` → `2`), and it freezes on anything the render read that is not a signal. It used to freeze on everything, before a memoised builder's reads invalidated their own entry. |
 | `@created`, `@mounted`, `@updated`, `@destroyed` | Registered the render as a lifecycle callback, so it ran outside the render pass as well as inside it. |
 | `@catchError` | Made the render the handler for errors thrown by its own subtree. |
 | `@state`, `@persist` | Mean "serialise me", which a render is not. |

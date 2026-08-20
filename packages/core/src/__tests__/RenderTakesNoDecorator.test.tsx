@@ -9,11 +9,14 @@ import type { RamondaNode } from "../types/vdom";
  * `abstract` — a build with no types refused nothing, and the two worst outcomes said nothing
  * either.
  *
- * Measured before the rule was written, one class per decorator:
- * - `@compute get render()` — `TypeError: component.render is not a function`, a raw throw out of
- *   the framework with no diagnostic.
- * - `@memoized render()` — no throw at all, and the component **never updates again**:
- *   `"0" -> "0"` after a state write that should have shown `1`.
+ * Measured, one class per decorator, and TWO of these have since changed — the note says which:
+ * - `@compute render()` — it CACHES. A state write and a props change still reach the DOM, and anything
+ *   the render read that is NOT a signal freezes: `__tests__/prod/ComputeOnRender.prod.test.tsx` has the
+ *   four measurements. It used to throw `component.render is not a function`, because the method form
+ *   installed an accessor; it installs a function now.
+ * - `@memoized render()` — no throw, and it CACHES: measured `"1" -> "2"`, because a memoised builder's
+ *   reads invalidate their own entry. It froze on everything before that existed, which is what the
+ *   sentence here used to say.
  * - `@created`, `@catchError`, `@state` — mounted and rendered, quietly meaning something else.
  *
  * A class body is evaluated when the module is imported, so each case is built inside its own

@@ -18,10 +18,13 @@ function fail(decorator: string, message: string): never {
  * nothing.
  *
  * Measured, one class per decorator:
- * - `@compute get render()` turns the method into a cached PROPERTY, so the framework's
- *   `component.render()` dies with `TypeError: component.render is not a function` — before a page
- *   appears, with no diagnostic of any kind.
- * - `@memoized render()` is worse, because it does not throw. The render is memoised on its
+ * - `@compute render()` CACHES the render on the signals it read. State and props still reach the DOM,
+ *   so it looks like it works — and anything the render read that is not a signal freezes the page:
+ *   measured, a plain field left `old` on screen while the same component without the decorator showed
+ *   `new`. Silent, and re-measured in `__tests__/prod/ComputeOnRender.prod.test.tsx` after the method form
+ *   started installing a function; before that it installed an accessor and the page died loudly with
+ *   `component.render is not a function`.
+ * - `@memoized render()` is the same shape. The render is memoised on its
  *   arguments, it has none, and the component **never updates again**: measured `"0" -> "0"` after
  *   a state write that should have shown `1`. A frozen page and nothing said.
  * - `@created`, `@mounted`, `@updated`, `@destroyed` register the render as a lifecycle callback,
@@ -37,10 +40,10 @@ export function assertNotRender(decorator: string, name: string | symbol): void 
   if (name !== "render") return;
   fail(
     decorator,
-    `\`render\` takes no decorator. It is the method the framework calls to build your element, and ` +
-      `a decorator either replaces it — \`@compute\` makes it a property, and rendering dies with ` +
-      `"component.render is not a function" — or quietly changes when it runs. Put the behaviour on a ` +
-      `member of its own and call it from \`render\`.`,
+    `\`render\` takes no decorator. It is the method the framework calls to build your element, and a ` +
+      `decorator either caches it — \`@compute\` and \`@memoized\` both do, and the page then freezes on ` +
+      `anything the render read that is not a signal — or quietly changes when it runs. Put the behaviour ` +
+      `on a member of its own and call it from \`render\`.`,
   );
 }
 
