@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { hookNamed, isThisUse, positionOf } from "../syntax";
 import { hasDecorator, heritage } from "./render-reach";
-import { freshnessOf, shorten, stablePropsOf } from "./fresh-object-in-props";
+import { freshnessOf, shorten } from "./follow-value";
+import { stablePropsOf } from "./fresh-object-in-props";
 import type { Rule, RuleContext } from "./rule";
 
 /**

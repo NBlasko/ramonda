@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import { freshnessOf, returnedBy, shorten } from "./fresh-object-in-props";
+import { freshnessOf, returnedBy, shorten } from "./follow-value";
 import type { Rule } from "./rule";
 
 /**

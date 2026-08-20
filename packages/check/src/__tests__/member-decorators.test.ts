@@ -51,7 +51,34 @@ describe("a memoized handler that cannot be keyed", () => {
   test("a call with a provably unkeyable argument is reported, cast and all", () => {
     const found = run().findings["unkeyable-memoized-argument"];
     const calls = found.filter((issue) => issue.where === "a call");
-    expect(calls.map((issue) => issue.passed)).toEqual(["an object", "null", "an object"]);
+    expect(calls.map((issue) => issue.passed)).toEqual([
+      "an object",
+      "null",
+      "an object",
+      "an object",
+      "an object",
+      "an object",
+      "an object",
+    ]);
+  });
+
+  /**
+   * The argument is FOLLOWED, which four planted shapes proved it was not.
+   *
+   * A local one line up, an object a helper returns, a module-level `const` and one arm of a
+   * ternary were all silent — and every one of them throws `RMD047` at runtime. The walk goes to
+   * the declaration behind a name, never to its type, so `this.pick(row)` and `this.pick(row.id)`
+   * still look the same from here.
+   *
+   * The module const is the one worth naming: `fresh-object-in-props` treats it as the FIX, because
+   * that rule asks whether a value is rebuilt. This asks what a value IS, and an object built once
+   * is still an object.
+   */
+  test("an object reached through a local, a helper, a const or a branch is reported", () => {
+    const found = run().findings["unkeyable-memoized-argument"];
+    const calls = found.filter((issue) => issue.where === "a call" && issue.component === "Panel");
+
+    expect(calls).toHaveLength(6);
   });
 
   /**
@@ -80,6 +107,6 @@ describe("a memoized handler that cannot be keyed", () => {
    */
   test("an argument this cannot read is left alone", () => {
     const found = run().findings["unkeyable-memoized-argument"];
-    expect(found).toHaveLength(5);
+    expect(found).toHaveLength(9);
   });
 });
