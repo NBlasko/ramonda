@@ -77,20 +77,20 @@ class Table extends Component {
         <Row conf={makeConf() as { dense: boolean }} label="cast" />
         {/* REPORTED as per-row — one literal in the callback is one child per row that cannot be skipped. */}
         {this.rows.map((row) => (
-          <Row conf={{ dense: true }} label={row.id} />
+          <Row conf={{ dense: true }} label={row.id} key={row.id} />
         ))}
         {/* REPORTED as per-row — a local inside the callback is rebuilt for each one. */}
         {list(this.rows, (row) => {
           const perRow = { dense: row.id === "x" };
-          return <Row conf={perRow} label={row.id} />;
+          return <Row conf={perRow} label={row.id} key={row.id} />;
         })}
         {/* Not reported: the row itself is as stable as the array holding it. */}
         {list(this.rows, (row) => (
-          <Row conf={row} label={row.id} />
+          <Row conf={row} label={row.id} key={row.id} />
         ))}
         {/* Not reported: a field of the row, same. */}
         {list(this.rows, (row) => (
-          <Row conf={row.conf} label={row.id} />
+          <Row conf={row.conf} label={row.id} key={row.id} />
         ))}
         {/*
           Not reported: a JSX element handed over as a prop, or written as children. Both really are

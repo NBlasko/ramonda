@@ -138,7 +138,7 @@ rules**, so a rule cannot be added without appearing here.
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 
-**Warnings.** These print and the run still passes. 50 of them.
+**Warnings.** These print and the run still passes. 51 of them.
 
 | rule | reported when |
 |---|---|
@@ -160,6 +160,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |
 | `context-consumed-above-its-provider` | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics) |
 | `client-only-request-read` | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics) |
+| `fresh-object-in-hook-props` | a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change |
 | `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
 | `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |

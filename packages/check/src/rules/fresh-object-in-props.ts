@@ -144,7 +144,7 @@ const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
  */
 const HOPS = 20;
 
-interface Built {
+export interface Built {
   kind: "object" | "array";
   /** Where it is built, when that is not the line the prop is on. */
   builtIn: string | undefined;
@@ -181,7 +181,7 @@ interface Built {
  * the silence contract: a prop read from `this.props`, a field, a parameter — none of those is
  * knowable from here, and a maybe is the one thing this may never report.
  */
-function freshnessOf(
+export function freshnessOf(
   expression: ts.Expression,
   resolve: ElementContext["resolve"],
   depth: number,
@@ -329,7 +329,7 @@ function insideAList(node: ts.Node): boolean {
 }
 
 /** The written form, kept to one readable line — the report quotes the source, not a shape. */
-function shorten(node: ts.Expression): string {
+export function shorten(node: ts.Expression): string {
   const text = node.getText().replace(/\s+/g, " ");
   return text.length <= 32 ? text : `${text.slice(0, 29)}…`;
 }
@@ -362,7 +362,7 @@ function insideAFunction(node: ts.Node): boolean {
  * Bounded at four hops and cycle-guarded, the same as everywhere else this package follows a
  * heritage chain.
  */
-function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve"]): ReadonlySet<string> {
+export function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve"]): ReadonlySet<string> {
   const found = new Set<string>();
   const seen = new Set<ts.Node>();
 
