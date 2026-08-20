@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
-import { stateFieldsOf } from "./render-reach";
+import { heritage, stateFieldsOf } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
@@ -72,26 +72,27 @@ const MUTATORS: ReadonlySet<string> = new Set([
  * may not wrap it. Silence is the only honest answer there, and it is also what keeps a `Date` or a
  * `Map` out of this rule, exactly as the guard keeps them out of its own.
  */
-function guardedFields(cls: ts.ClassDeclaration, state: ReadonlySet<string>): ReadonlySet<string> {
+function guardedFields(classes: readonly ts.ClassLikeDeclaration[], state: ReadonlySet<string>): ReadonlySet<string> {
   const found = new Set<string>();
 
-  for (const member of cls.members) {
-    if (!ts.isPropertyDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name) || !state.has(member.name.text)) continue;
+  for (const declaring of classes)
+    for (const member of declaring.members) {
+      if (!ts.isPropertyDeclaration(member)) continue;
+      if (!ts.isIdentifier(member.name) || !state.has(member.name.text)) continue;
 
-    const written = member.initializer;
-    if (written !== undefined) {
-      if (ts.isArrayLiteralExpression(written) || ts.isObjectLiteralExpression(written)) {
+      const written = member.initializer;
+      if (written !== undefined) {
+        if (ts.isArrayLiteralExpression(written) || ts.isObjectLiteralExpression(written)) {
+          found.add(member.name.text);
+        }
+        continue;
+      }
+      // `@state rows: Row[] = …` with no initializer still says it is an array.
+      const annotation = member.type;
+      if (annotation !== undefined && (ts.isArrayTypeNode(annotation) || ts.isTypeLiteralNode(annotation))) {
         found.add(member.name.text);
       }
-      continue;
     }
-    // `@state rows: Row[] = …` with no initializer still says it is an array.
-    const annotation = member.type;
-    if (annotation !== undefined && (ts.isArrayTypeNode(annotation) || ts.isTypeLiteralNode(annotation))) {
-      found.add(member.name.text);
-    }
-  }
 
   return found;
 }
@@ -134,7 +135,12 @@ export const stateMutatedInPlace = {
   },
 
   read(cls, { self, resolve }) {
-    const guarded = guardedFields(cls, stateFieldsOf(cls, resolve));
+    // The BASES too, and this was the half that was missing: `stateFieldsOf` already walked the
+    // chain, so an inherited field was known to be STATE — while what it HOLDS was read from this
+    // class body alone, so a `@state rows: Row[]` on a base guarded nothing and `this.rows.push(x)`
+    // in the subclass went unreported. Measured, with the plant in the fixture.
+    const declared = [cls, ...heritage(cls, resolve)];
+    const guarded = guardedFields(declared, stateFieldsOf(cls, resolve));
     if (guarded.size === 0) return [];
 
     const found: StateMutatedInPlaceIssue[] = [];

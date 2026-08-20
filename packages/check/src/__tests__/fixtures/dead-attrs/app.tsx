@@ -19,7 +19,7 @@ class Page extends Component {
         <form acceptCharset="utf-8" />
         {/* REPORTED — lowercase is exactly as dead, and passes the types through the index signature. */}
         <form acceptcharset="utf-8" />
-        {/* REPORTED — React's uncontrolled pair, which has no attributes at all. */}
+        {/* REPORTED — a controlled/uncontrolled pair this framework does not have, so no attributes at all. */}
         <input defaultValue="v" />
         <input defaultChecked="true" />
         {/* REPORTED — properties, not attributes. */}

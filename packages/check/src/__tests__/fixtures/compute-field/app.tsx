@@ -81,7 +81,7 @@ class Cart extends Component {
 
   render() {
     return (
-      <div onClick={() => this.bump()}>
+      <div onclick={() => this.bump()}>
         {this.label}
         {String(this.total)}
         {String(this.heavy)}
@@ -92,4 +92,41 @@ class Cart extends Component {
   }
 }
 
+/**
+ * The field on a BASE, the write and the read on the subclass — one instance, one stale cache.
+ *
+ * The plain-field set and the "who writes it" pass both read a single class body, so a shared base
+ * holding the field made every one of these invisible.
+ */
+class Totals extends Component {
+  protected rate = 1;
+  @state open = true;
+
+  render() {
+    return <div />;
+  }
+}
+
+class Priced extends Totals {
+  bump() {
+    /* An ordinary write, after the first render. */
+    this.rate = this.rate + 1;
+  }
+
+  /* REPORTED — `rate` is the base's plain field, and this cache never hears about the write. */
+  @compute get total() {
+    return this.rate * 2;
+  }
+
+  /* Not reported: the base declares `open` as @state, so the chain says it is tracked. */
+  @compute get label() {
+    return this.open ? "open" : "shut";
+  }
+
+  render() {
+    return <div onclick={() => this.bump()}>{String(this.total)}</div>;
+  }
+}
+
 bootstrap(<Cart />, null);
+bootstrap(<Priced />, null);

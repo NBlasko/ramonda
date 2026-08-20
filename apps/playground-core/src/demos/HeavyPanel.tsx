@@ -17,7 +17,7 @@ export default class HeavyPanel extends Component<{ title?: string }> {
         <p className="label">loaded module</p>
         <strong>{this.props.title ?? "HeavyPanel"}</strong>
         <p className="muted small">A real component with its own state — it was not part of the initial bundle.</p>
-        <button onClick={this.bump}>clicked {this.clicks}×</button>
+        <button onclick={this.bump}>clicked {this.clicks}×</button>
       </div>
     );
   }

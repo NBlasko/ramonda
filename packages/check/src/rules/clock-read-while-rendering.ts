@@ -81,6 +81,11 @@ export const clockReadWhileRendering = {
       "mark it `@persist` so the client restores the server's value rather than taking a new one.\n\n" +
       "`new Date(value)` is not reported — parsing a timestamp is deterministic. It is the\n" +
       "argument-less `new Date()` that asks what time it is.\n\n" +
+      "The runtime answers only part of this. `RMD021` watches the RANDOM half and deliberately\n" +
+      "leaves the clock alone — the platform reads the clock behind your back, so a guard on it\n" +
+      "reports calls the app never made. `new Date()` is caught by `RMD020` as a fresh identity, and\n" +
+      "`Date.now()` only when a hydration disagrees (`RMD007`); in a client-only app nothing catches\n" +
+      "it at all. That gap is what this rule is for.\n\n" +
       "This is a warning today and an error in a later version.",
   },
 

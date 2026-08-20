@@ -73,8 +73,13 @@ export interface RenderReach {
  *
  * Bounded, because a chain that resolves in a ring would otherwise not end — and four is more
  * heritage than any component here has.
+ *
+ * Exported because three other rules ask the same question about the same chain, and each of them
+ * was wrong without it: a component's contexts, its cleanup and its state are the component's
+ * wherever the member is written down. See `one-provider-per-component`,
+ * `context-consumed-above-its-provider` and `interval-with-no-cleanup`.
  */
-function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve"]): ts.ClassLikeDeclaration[] {
+export function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve"]): ts.ClassLikeDeclaration[] {
   const chain: ts.ClassLikeDeclaration[] = [];
   let at: ts.ClassLikeDeclaration | undefined = cls;
 

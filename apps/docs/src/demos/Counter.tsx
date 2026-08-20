@@ -15,7 +15,7 @@ export class Counter extends Component {
     return (
       <p className="demo-row">
         {/* Methods are bound for you, so passing one as a handler just works. */}
-        <button type="button" onClick={this.increment}>
+        <button type="button" onclick={this.increment}>
           count is {this.count}
         </button>
       </p>

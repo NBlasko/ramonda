@@ -134,8 +134,8 @@ export function restoreWindowObjectChanges() {
  * **Why they are not the same file.** That package depends on `@ramonda/core`.
  * Core's tests depending on it back would be a dependency cycle: pnpm would
  * resolve it, and `turbo run build` — whose `^build` follows devDependencies too
- * — would refuse it. React has the same split for the same reason; its own tests
- * do not run on the published testing library.
+ * — would refuse it. A framework whose own tests ran on its published testing
+ * library would have the same cycle to answer for.
  *
  * So this stays, deliberately small, and the two share what actually matters:
  * `flushSync` from `src/testing.ts`, which is the seam the package sits on. The

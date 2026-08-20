@@ -71,7 +71,7 @@ export function diffAndMerge(
  * `reorderChildren` — which runs after the unclaimed nodes have been unmounted.
  * Appending here instead meant a replacement was in the document while the node
  * it replaces was still being torn down, so `@destroyed` saw both: measured as
- * `document: 1|2` where React's `componentWillUnmount` sees only `1`.
+ * `document: 1|2` where it must see only `1`.
  *
  * `parent` is taken but not written to: the DEV placement check needs to know
  * where the node is going, and this is the only moment both are in hand.
@@ -1256,8 +1256,8 @@ function createComponent(
     // therefore see a half-initialised component and has to tolerate that —
     // `runCleanup` already isolates a throwing cleanup so one bad @destroyed
     // cannot take the rest with it. Leaking less was preferred to the more
-    // predictable rule (React's: skip cleanup for a component that never
-    // finished mounting).
+    // predictable rule of skipping cleanup for a component that never finished
+    // mounting.
     lifecycleCleanupManagement(component);
     throw e;
   } finally {

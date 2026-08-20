@@ -53,9 +53,25 @@ describe("a row built from data with no key", () => {
 });
 
 describe("`class` where `className` was meant", () => {
-  test("is reported on a host element and not on a component", () => {
+  /**
+   * A COMPONENT is reported too, and it used to be skipped — on the reasoning that `<Panel class=…>`
+   * is a prop that component declared and its own business. Measured against the framework: the
+   * `class` → `className` rename runs for every tag, so the component never receives `class` at all
+   * and a `class` prop it declared reads `undefined` on every render.
+   */
+  test("is reported on a host element and on a component alike", () => {
     const found = run().findings["class-instead-of-classname"];
-    expect(found.map((issue) => issue.tag)).toEqual(["span"]);
+    expect(found.map((issue) => `${issue.tag}${issue.onComponent ? " (component)" : ""}`)).toEqual([
+      "span",
+      "span",
+      "Panel (component)",
+    ]);
+  });
+
+  /** The one case that loses something: the rename cannot happen, so the `class` goes nowhere. */
+  test("the element carrying `className` as well is marked as dropped, and it alone", () => {
+    const found = run().findings["class-instead-of-classname"];
+    expect(found.map((issue) => issue.dropped)).toEqual([false, true, false]);
   });
 });
 

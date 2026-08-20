@@ -16,8 +16,8 @@ import { state } from "../base/decorators";
  * whole job is this, never heard about it.
  *
  * A boundary that is already displaying its fallback therefore declines the next
- * error and lets it travel — which is the same thing React does, and the only
- * answer that keeps "an unhandled error reaches the top" true.
+ * error and lets it travel, which is the only answer that keeps "an unhandled
+ * error reaches the top" true.
  *
  * The last two tests are the other half: declining must not become "stops
  * catching". A healthy boundary still catches, and one that has been `reset` is

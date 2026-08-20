@@ -13,7 +13,7 @@ class Foo extends Component {
   render() {
     return (
       <div>
-        <button onClick={this.increment}>{this.value}</button>
+        <button onclick={this.increment}>{this.value}</button>
       </div>
     );
   }
@@ -33,7 +33,7 @@ class App extends Component {
       <div>
         <h1>Ramonda Playground 🌸</h1>
         <p>The framework is running.</p>
-        <button onClick={this.handleClick}>{this.isOn ? "on" : "off"}</button>
+        <button onclick={this.handleClick}>{this.isOn ? "on" : "off"}</button>
         <Foo />
       </div>
     );

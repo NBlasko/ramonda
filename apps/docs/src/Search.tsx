@@ -145,7 +145,7 @@ export class Search extends Component {
   render(): RamondaNode {
     if (!this.open) {
       return (
-        <button type="button" className="search-open" onClick={this.openSearch}>
+        <button type="button" className="search-open" onclick={this.openSearch}>
           Search <kbd>/</kbd>
         </button>
       );
@@ -153,14 +153,14 @@ export class Search extends Component {
 
     return (
       <div className="search">
-        <div className="search-backdrop" onClick={this.close} />
+        <div className="search-backdrop" onclick={this.close} />
         <div className="search-panel">
           {/*
             Backdrop and Escape close the panel, but a fullscreen mobile panel
             has neither a tappable backdrop nor an Escape key — so this is the
             only exit there. Hidden on desktop, where the other two suffice.
           */}
-          <button type="button" className="search-close" onClick={this.close} aria-label="Close search">
+          <button type="button" className="search-close" onclick={this.close} aria-label="Close search">
             ✕
           </button>
           <input
@@ -170,7 +170,7 @@ export class Search extends Component {
             aria-label="Search the documentation"
             placeholder="Search the documentation…"
             value={this.query}
-            onInput={this.onInput}
+            oninput={this.onInput}
           />
           {this.unavailable ? (
             <p className="search-note">
@@ -189,7 +189,7 @@ export class Search extends Component {
               cancellation. A click bubbles, so one handler on the list does it,
               and the row component needs no callback prop at all.
             */
-            <ul className="search-results" onClick={this.close}>
+            <ul className="search-results" onclick={this.close}>
               {/*
                 `list()`, not `results.map(...)`. This is the shape the function
                 exists for: the list is CONDITIONAL — it only exists when the

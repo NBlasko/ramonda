@@ -121,14 +121,14 @@ describe("extending a component (no constructor anywhere)", () => {
         this.clicks++;
       }
       render() {
-        return <span onClick={this.handleClick}>{this.clicks}</span>;
+        return <span onclick={this.handleClick}>{this.clicks}</span>;
       }
     }
 
     @Host("button")
     class FancyButton extends BaseButton {
       override render() {
-        return <span onClick={this.handleClick}>fancy:{this.clicks}</span>;
+        return <span onclick={this.handleClick}>fancy:{this.clicks}</span>;
       }
     }
 

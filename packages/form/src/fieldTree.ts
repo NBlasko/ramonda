@@ -85,7 +85,7 @@ const NOT_A_CHILD = new Set(["then", "catch", "finally", "constructor", "prototy
  *
  * **A node is created once and handed back forever after**, and that is not an
  * optimisation — it is what keeps the framework quiet. A fresh node per access means a
- * fresh `bind.onInput` per access, and RMD020 compares a vnode's attributes key by key
+ * fresh `bind.oninput` per access, and RMD020 compares a vnode's attributes key by key
  * (`core/src/debug/renderStability.ts`): a handler whose identity changed is reported, and
  * really is removed and re-added on the element every render. With the cache, `onInput` is
  * one bound method per field for the life of the form.
@@ -140,7 +140,7 @@ export class FieldTree {
   /**
    * Drops what an array no longer has: the cached node and handle for every row at or past `from`.
    *
-   * A node is created once and kept forever, which is what keeps `bind.onInput` one function per field
+   * A node is created once and kept forever, which is what keeps `bind.oninput` one function per field
    * (see above) — but "forever" was also true of a row that had been removed. Measured on a form grown
    * to 5000 rows of two fields and then shrunk: **15002 nodes and 10001 handles** still held, one per
    * index the array had ever reached, and each handle carries two bound closures and a row cache.
@@ -253,8 +253,8 @@ export class FieldHandle {
 
     const common = {
       name: this.name,
-      onInput: this.onInputBound,
-      onBlur: this.onBlurBound,
+      oninput: this.onInputBound,
+      onblur: this.onBlurBound,
       "aria-invalid": invalid,
     };
 

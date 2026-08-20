@@ -40,7 +40,7 @@ class SignupForm extends Component {
     const f = this.form.fields;
 
     return (
-      <form noValidate onSubmit={this.form.submit}>
+      <form noValidate onsubmit={this.form.submit}>
         <label>
           Nickname
           <input {...f.nick.$.bind} {...html("nick")} />

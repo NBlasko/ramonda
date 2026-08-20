@@ -88,11 +88,11 @@ export class StoreSubscription extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.like}>
+          <button type="button" onclick={this.like}>
             like
           </button>
           {this.mounted ? <LikeCount /> : <span className="demo-note">unmounted</span>}
-          <button type="button" onClick={this.toggle}>
+          <button type="button" onclick={this.toggle}>
             {this.mounted ? "unmount it" : "mount it"}
           </button>
         </p>

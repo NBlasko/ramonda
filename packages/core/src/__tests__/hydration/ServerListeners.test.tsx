@@ -43,7 +43,7 @@ describe("event listeners and the server", () => {
       handle() {}
       render() {
         return (
-          <li onClick={this.handle} onFocus={this.handle}>
+          <li onclick={this.handle} onfocus={this.handle}>
             row
           </li>
         );
@@ -85,7 +85,7 @@ describe("event listeners and the server", () => {
       }
       render() {
         return (
-          <button id="b" onClick={this.press}>
+          <button id="b" onclick={this.press}>
             {this.label}
           </button>
         );
@@ -117,7 +117,7 @@ describe("event listeners and the server", () => {
         return (
           <ul>
             {this.rows.map((row) => (
-              <li key={row} onClick={() => {}}>
+              <li key={row} onclick={() => {}}>
                 {row}
               </li>
             ))}

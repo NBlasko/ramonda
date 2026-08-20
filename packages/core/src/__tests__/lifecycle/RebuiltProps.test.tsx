@@ -142,7 +142,7 @@ describe("a rebuilt reference in a props bag", () => {
       render() {
         childRenders++;
         return (
-          <button type="button" onClick={this.props.onSave}>
+          <button type="button" onclick={this.props.onSave}>
             child
           </button>
         );
@@ -193,7 +193,7 @@ describe("a rebuilt reference in a props bag", () => {
       render() {
         childRenders++;
         return (
-          <button type="button" onClick={this.props.onSave}>
+          <button type="button" onclick={this.props.onSave}>
             child
           </button>
         );

@@ -62,8 +62,8 @@ const text = (row: PanelRow): string =>
 
 /** Drives a field the way a control does: through the handler `bind` puts on the element. */
 function type(form: Form<typeof schema>, field: "name" | "email", value: string): void {
-  const bind = form.fields[field].$.bind as { onInput: (event: Event) => void };
-  bind.onInput({ target: { value, type: "text" } } as unknown as Event);
+  const bind = form.fields[field].$.bind as { oninput: (event: Event) => void };
+  bind.oninput({ target: { value, type: "text" } } as unknown as Event);
 }
 
 afterEach(() => {

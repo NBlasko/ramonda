@@ -131,7 +131,7 @@ private todo = this.use(Query<Todo, readonly ["todo", number]>, (self: TodoCard)
 expression](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-7.html#instantiation-expressions),
 which names a generic class's type arguments without calling it. It compiles away entirely.
 
-Naming the type does the most work on a **mutation**, where `onSuccess`, `onError` and
+Naming the type does the most work on a **mutation**, where `onSuccess`, `onerror` and
 `onSettled` would each need an annotation otherwise — and where it types `mutate`'s own
 parameter, which nothing else can do:
 

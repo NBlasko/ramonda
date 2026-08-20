@@ -69,9 +69,9 @@ function describe(value: unknown): string {
  * touched. While none of those changed and the item is the same object, the
  * mapper does not run again and the diff does not walk into its subtree.
  *
- * This is what Solid gets from never re-running the component body. Ramonda does
- * re-render, so the equivalent has to be per item and explicit — but the effect
- * is the same: work is proportional to what changed, not to the list length.
+ * Ramonda re-renders a component body, so this cannot fall out of never running it
+ * again — it has to be per item and explicit. The effect is what matters: work is
+ * proportional to what changed, not to the list length.
  */
 interface ItemScope<T> {
   listenerId: number;

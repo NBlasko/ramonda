@@ -40,14 +40,14 @@ export class MemoHandlers extends Component {
           {list(this.items, (name: string) => (
             <li>
               {name}{" "}
-              <button type="button" onClick={this.remove(name)}>
+              <button type="button" onclick={this.remove(name)}>
                 remove
               </button>
             </li>
           ))}
         </ul>
         <p className="demo-row">
-          <button type="button" onClick={this.compareIdentity}>
+          <button type="button" onclick={this.compareIdentity}>
             this.remove("apples") twice →
           </button>
           <span className="demo-note">{this.lastIdentityCheck}</span>

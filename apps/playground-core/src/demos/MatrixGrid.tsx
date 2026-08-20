@@ -62,7 +62,7 @@ export class MatrixGrid extends Component {
       <div className="matrix-wrap">
         <div className="row">
           <h3>Matrix — two lists in one component</h3>
-          <button onClick={this.toggleC}>toggle Col C</button>
+          <button onclick={this.toggleC}>toggle Col C</button>
         </div>
         {/* List #1: column headers */}
         <div className="matrix" style={this.gridStyle}>

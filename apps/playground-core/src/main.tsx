@@ -57,8 +57,8 @@ class NavBar extends Component {
         <Link href="/diagnostics" className="navlink">
           Diagnostics
         </Link>
-        <button onClick={this.route.back}>← Back</button>
-        <button onClick={this.route.forward}>Forward →</button>
+        <button onclick={this.route.back}>← Back</button>
+        <button onclick={this.route.forward}>Forward →</button>
         <code className="path">{this.route.pathname}</code>
       </nav>
     );
@@ -91,7 +91,7 @@ class App extends Component {
           <div className="row">
             <h1>Ramonda 🌸</h1>
             <ThemedBadge />
-            <button onClick={this.toggleTheme}>toggle theme</button>
+            <button onclick={this.toggleTheme}>toggle theme</button>
             <span className="muted small">devtools: 🌸 badge / Alt+D → COMPONENTS</span>
           </div>
           <NavBar />

@@ -122,7 +122,7 @@ class ProfileCard extends Component<{ id: string; label: string }> {
           status <code>{p.status}</code> · fetch <code>{p.fetchStatus}</code>
           {p.isRestored ? " · from the server" : ""}
         </p>
-        <button onClick={this.refresh}>refetch (ignores staleTime)</button>
+        <button onclick={this.refresh}>refetch (ignores staleTime)</button>
       </div>
     );
   }
@@ -170,8 +170,8 @@ class FlakyCard extends Component {
           failures so far: <strong>{String(q.failureCount)}</strong>
         </p>
         <div className="row">
-          <button onClick={this.arm(1)}>fail once, then recover</button>
-          <button onClick={this.arm(9)}>fail past the retry limit</button>
+          <button onclick={this.arm(1)}>fail once, then recover</button>
+          <button onclick={this.arm(9)}>fail past the retry limit</button>
         </div>
       </div>
     );
@@ -225,8 +225,8 @@ class TodoPanel extends Component {
         {/* `each` takes null/undefined, so there is no `?? []` rebuilt every render. */}
         <ul>{list(this.list.data, this.renderTodo)}</ul>
         <div className="row">
-          <input value={this.draft} aria-label="New todo" placeholder="new todo" onInput={this.typed} />
-          <button disabled={this.add.isPending} onClick={this.submit}>
+          <input value={this.draft} aria-label="New todo" placeholder="new todo" oninput={this.typed} />
+          <button disabled={this.add.isPending} onclick={this.submit}>
             {this.add.isPending ? "saving…" : "add"}
           </button>
         </div>
@@ -260,7 +260,7 @@ export class QueryPage extends Component {
 
   renderPerson(id: string) {
     return (
-      <button disabled={this.id === id} onClick={this.select(id)}>
+      <button disabled={this.id === id} onclick={this.select(id)}>
         {id}
       </button>
     );
@@ -327,7 +327,7 @@ export class QueryPage extends Component {
           <div className="row">
             <h3>1 · cache, dedup, and a key that moves</h3>
             {list(PEOPLE_IDS, this.renderPerson)}
-            <button onClick={this.toggleSecond}>{this.second ? "one observer" : "two observers"}</button>
+            <button onclick={this.toggleSecond}>{this.second ? "one observer" : "two observers"}</button>
           </div>
           <p className="muted small">
             Switch person and come back: within <code>staleTime</code> (10s) the cache answers and the log stays quiet.
@@ -357,9 +357,9 @@ export class QueryPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>4 · triggers</h3>
-            <button onClick={this.togglePolling}>{this.pollMs ? "stop polling" : "poll every 2s"}</button>
-            <button onClick={this.invalidateProfiles}>invalidate ["profile"]</button>
-            <button onClick={this.signOut}>sign out (client.remove)</button>
+            <button onclick={this.togglePolling}>{this.pollMs ? "stop polling" : "poll every 2s"}</button>
+            <button onclick={this.invalidateProfiles}>invalidate ["profile"]</button>
+            <button onclick={this.signOut}>sign out (client.remove)</button>
           </div>
           <p className="muted small">
             Click away from this window and back: a STALE query refreshes on focus, a fresh one does not — so an alt-tab
@@ -377,7 +377,7 @@ export class QueryPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>5 · the cache, as it is right now</h3>
-            <button onClick={this.clearLog}>clear the log</button>
+            <button onclick={this.clearLog}>clear the log</button>
           </div>
           <table className="grid-table">
             <thead>

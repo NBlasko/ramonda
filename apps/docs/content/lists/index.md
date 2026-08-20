@@ -312,7 +312,7 @@ class Panel extends Component {
   @state active = TABS[0];
 
   renderTab(name: string) {
-    return <button type="button" onClick={this.select(name)}>{name}</button>;
+    return <button type="button" onclick={this.select(name)}>{name}</button>;
   }
   render() {
     return <nav>{list(TABS, this.renderTab)}</nav>;

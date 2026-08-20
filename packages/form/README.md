@@ -47,7 +47,7 @@ class Signup extends Component {
   render() {
     const email = this.form.fields.email.$;
     return (
-      <form onSubmit={this.form.submit}>
+      <form onsubmit={this.form.submit}>
         <input {...email.bind} />
         {email.error && <span>{email.error}</span>}
         <button disabled={this.form.isSubmitting}>Sign up</button>

@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { memberName } from "../syntax";
-import { hasDecorator } from "./render-reach";
+import { hasDecorator, heritage } from "./render-reach";
+import type { RuleContext } from "./rule";
 
 /**
  * Which of a class's fields a CACHED reader can go stale on — the judgement two rules ask.
@@ -103,24 +104,45 @@ export function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
  * The answer: field name → the member that writes it after the first render.
  *
  * Empty when nothing can be stale, which is the common case and the cheap exit for both callers.
+ *
+ * ## The BASES are asked too, and both halves have to ask
+ *
+ * A component's fields are the component's wherever they are declared, so a plain field on a shared
+ * base — written by a method here and read by a `@compute` here — goes stale in exactly the same
+ * way. Reading one class body made the whole fault invisible, and it had to be fixed in BOTH halves
+ * to be fixed at all: knowing an inherited field is plain says nothing without knowing what writes
+ * it, and the other way round.
+ *
+ * Upward only. A class cannot know who extends it, so a `@compute` on a base reading a field its
+ * subclass writes stays out of reach — and out of the claim.
+ *
+ * `resolve` is optional because a MODULE rule has none: `row-reads-a-plain-field` reads a file
+ * rather than a class, so its context answers no questions about declarations. It gets the class's
+ * own fields, which is what both rules had before, and the base-class case is the class rule's.
  */
-export function staleFieldsOf(cls: ts.ClassDeclaration): Map<string, string> {
+export function staleFieldsOf(cls: ts.ClassDeclaration, resolve?: RuleContext["resolve"]): Map<string, string> {
+  const declared = resolve === undefined ? [cls] : [cls, ...heritage(cls, resolve)];
+
   const plain = new Set<string>();
-  for (const member of cls.members) {
-    if (!ts.isPropertyDeclaration(member)) continue;
-    if (trackedOrHarmless(member)) continue;
-    const name = memberName(member);
-    if (name !== undefined) plain.add(name);
+  for (const declaring of declared) {
+    for (const member of declaring.members) {
+      if (!ts.isPropertyDeclaration(member)) continue;
+      if (trackedOrHarmless(member)) continue;
+      const name = memberName(member);
+      if (name !== undefined) plain.add(name);
+    }
   }
 
   const writtenBy = new Map<string, string>();
   if (plain.size === 0) return writtenBy;
 
-  for (const member of cls.members) {
-    if (!writesAfterTheFirstRender(member)) continue;
-    const where = memberName(member) ?? "a method";
-    for (const field of fieldsWrittenIn(member)) {
-      if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
+  for (const declaring of declared) {
+    for (const member of declaring.members) {
+      if (!writesAfterTheFirstRender(member)) continue;
+      const where = memberName(member) ?? "a method";
+      for (const field of fieldsWrittenIn(member)) {
+        if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
+      }
     }
   }
   return writtenBy;

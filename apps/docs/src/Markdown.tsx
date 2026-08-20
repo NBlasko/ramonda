@@ -30,7 +30,7 @@ interface MarkdownProps {
  * The host takes the click handler, so a link to a section of THIS page is handled where the click
  * lands rather than by watching the URL for it.
  */
-@Host("div", (self: Markdown) => ({ onClick: self.onLinkClick }))
+@Host("div", (self: Markdown) => ({ onclick: self.onLinkClick }))
 export class Markdown extends Component<MarkdownProps> {
   /**
    * The route, read from the ROUTER rather than from `window.location`.

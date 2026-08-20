@@ -104,7 +104,7 @@ describe("decorators", () => {
         return (
           <ul>
             {this.ids.map((i) => (
-              <li onClick={this.pick(i)}>{i}</li>
+              <li onclick={this.pick(i)}>{i}</li>
             ))}
           </ul>
         );
@@ -115,7 +115,7 @@ describe("decorators", () => {
     // Read the handler off the DOM — calling pick(3) here would mark it used
     // and rescue it from the very cleanup being tested.
     const lis = Array.from(app.container.querySelectorAll("li")) as any[];
-    const first = lis[2]._listeners?.click;
+    const first = lis[2]._listeners?.onclick;
     expect(typeof first).toBe("function");
 
     app.instance.ids = [1, 2];
@@ -124,7 +124,7 @@ describe("decorators", () => {
     // Collected, so the map cannot grow forever on a long-lived component.
     expect(app.instance.pick(3)).not.toBe(first);
     // And the ones still on screen keep their identity.
-    expect(app.instance.pick(1)).toBe(lis[0]._listeners?.click);
+    expect(app.instance.pick(1)).toBe(lis[0]._listeners?.onclick);
   });
 
   test("@persist holds a value without making it reactive", async () => {

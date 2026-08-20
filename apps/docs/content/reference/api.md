@@ -184,7 +184,7 @@ Server-only — never imported from client code. See [rendering modes](/ssr/mode
 |---|---|
 | `defineServer(routes, config, opts?)` | Per-route render modes, keyed exhaustively by path. `config` — `{ prerender?, revalidate? }` per route; `opts.defaultMode`. |
 | `routePlan(server)` | Partitions the routes into `{ static, isr, server, needsData }` for the build. |
-| `createIsrCache({ plan, store, render, onError?, now? })` | The ISR cache. `serve(path)` gives `{ html, mode }` — fresh, stale-while-revalidate, or a cold render — and `undefined` for a path that is not an ISR route. [Where ISR pages are kept](/ssr/modes#where-isr-pages-are-kept) |
+| `createIsrCache({ plan, store, render, onerror?, now? })` | The ISR cache. `serve(path)` gives `{ html, mode }` — fresh, stale-while-revalidate, or a cold render — and `undefined` for a path that is not an ISR route. [Where ISR pages are kept](/ssr/modes#where-isr-pages-are-kept) |
 | `memoryStore()` | Keeps baked pages in this process. One instance, or development. |
 | `fileStore({ dir })` | Keeps baked pages in a directory: survives a restart, shared by instances that mount it. Writes atomically. |
 

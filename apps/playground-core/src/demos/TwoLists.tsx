@@ -65,13 +65,13 @@ export class TwoLists extends Component {
         <div className="col">
           <div className="row">
             <h3>To do ({this.todo.length})</h3>
-            <button onClick={this.addTodo}>add</button>
+            <button onclick={this.addTodo}>add</button>
           </div>
           <ul className="tasks">
             {list(this.todo, (t: Task) => (
               <li className="task">
                 <span>{t.title}</span>
-                <button onClick={this.finish(t.id)}>done →</button>
+                <button onclick={this.finish(t.id)}>done →</button>
               </li>
             ))}
           </ul>
@@ -81,7 +81,7 @@ export class TwoLists extends Component {
           <ul className="tasks">
             {list(this.done, (t: Task) => (
               <li className="task done">
-                <button onClick={this.reopen(t.id)}>← undo</button>
+                <button onclick={this.reopen(t.id)}>← undo</button>
                 <span>{t.title}</span>
               </li>
             ))}

@@ -34,7 +34,7 @@ export class RouteInfo extends Component {
           <Link href="/routing?from=demo" className="link">
             → back here, with a query
           </Link>
-          <button type="button" onClick={this.route.back}>
+          <button type="button" onclick={this.route.back}>
             ← back
           </button>
         </p>

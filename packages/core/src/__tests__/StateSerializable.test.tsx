@@ -96,7 +96,7 @@ describe("RMD019: @state that cannot be serialized", () => {
     @Host("div")
     class Child extends Component<{ onDo: () => void }> {
       render() {
-        return <button onClick={this.props.onDo}>x</button>;
+        return <button onclick={this.props.onDo}>x</button>;
       }
     }
 

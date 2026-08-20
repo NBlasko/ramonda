@@ -255,7 +255,7 @@ redirect, so it does not guess.
 ## Submitting
 
 ```tsx
-<form onSubmit={this.form.submit}>
+<form onsubmit={this.form.submit}>
 ```
 
 `submit` calls `preventDefault`, marks every field so held-back messages appear, validates, and

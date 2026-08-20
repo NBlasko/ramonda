@@ -70,9 +70,9 @@ export class DiagnosticsPage extends Component {
         </p>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0">
-          <button onClick={this.writeToProps}>one error (RMD004)</button>
-          <button onClick={this.writeThree}>three errors</button>
-          <button onClick={this.crash}>throw from a handler</button>
+          <button onclick={this.writeToProps}>one error (RMD004)</button>
+          <button onclick={this.writeThree}>three errors</button>
+          <button onclick={this.crash}>throw from a handler</button>
         </div>
 
         <p className="muted">

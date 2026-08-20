@@ -133,8 +133,8 @@ export interface FieldApi<T> {
 
 export interface CommonBind {
   readonly name: string;
-  readonly onInput: (event: Event) => void;
-  readonly onBlur: (event: Event) => void;
+  readonly oninput: (event: Event) => void;
+  readonly onblur: (event: Event) => void;
   readonly "aria-invalid": boolean | undefined;
 }
 
@@ -267,8 +267,8 @@ export interface FormProps<S extends StandardSchemaV1> {
    * **One parameter, by choice rather than by constraint.** A second `ctx` argument was
    * measured and works; `setError` and `reset` sit on the form instead because a class
    * component always has `this.form` in scope, so a context object would be a second way
-   * to reach what is already reachable. (The React libraries pass one because a function
-   * component has no instance to reach for.)
+   * to reach what is already reachable. (A library built around function components passes one
+   * because there is no instance to reach for.)
    *
    * A handler may drop the parameter entirely — `onSubmit: () => {}` type-checks.
    */

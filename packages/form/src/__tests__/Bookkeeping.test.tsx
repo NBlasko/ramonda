@@ -253,7 +253,7 @@ describe("the shared empty message list", () => {
  * What the field tree keeps, and what it lets go of.
  *
  * A node is created once and handed back for the life of the form, deliberately: a fresh one per access
- * is a fresh `bind.onInput` per access, which RMD020 reports and which really does re-attach the
+ * is a fresh `bind.oninput` per access, which RMD020 reports and which really does re-attach the
  * listener. But "for the life of the form" was also true of a row that had been REMOVED — so a form that
  * once showed ten thousand rows went on holding a node and a handle for every one of them, each handle
  * carrying two bound closures and a row cache.

@@ -76,7 +76,7 @@ describe("@memoizedHandler", () => {
         return (
           <ul>
             {this.items.map((v) => (
-              <li onClick={this.getClickHandler(v)}>{v}</li>
+              <li onclick={this.getClickHandler(v)}>{v}</li>
             ))}
           </ul>
         );

@@ -40,7 +40,7 @@ describe("a memoized handler whose builder read a signal", () => {
       render() {
         return (
           <div>
-            <button type="button" id="b" onClick={this.pick("a")}>
+            <button type="button" id="b" onclick={this.pick("a")}>
               go
             </button>
             <span id="t">{this.tick}</span>

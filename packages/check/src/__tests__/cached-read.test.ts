@@ -23,7 +23,26 @@ describe("a cached read of a plain field", () => {
     expect(found.map((issue) => `${issue.named}:${issue.field}:${issue.writtenBy}`)).toEqual([
       "total:rate:start",
       "form:rate:start",
+      "total:rate:bump",
     ]);
+  });
+
+  /**
+   * The field on a BASE, the write and the cached read on the subclass — one instance, one stale
+   * cache. Both halves of this rule read a single class body, so a shared base holding the field
+   * made the whole fault invisible. Upward only: a base cannot know who extends it, so a `@compute`
+   * on a base reading a field the subclass writes is out of reach and out of the claim.
+   */
+  test("a plain field inherited from a base goes stale the same way", () => {
+    const found = run().findings["cached-read-of-a-plain-field"];
+    const mine = found.filter((issue) => issue.component === "Priced");
+    expect(mine.map((issue) => `${issue.named}:${issue.field}`)).toEqual(["total:rate"]);
+  });
+
+  /** `@state` on the base is tracked, and the chain is what says so. */
+  test("state declared on a base is not a plain field", () => {
+    const found = run().findings["cached-read-of-a-plain-field"];
+    expect(found.some((issue) => issue.field === "open")).toBe(false);
   });
 
   /**
@@ -33,7 +52,7 @@ describe("a cached read of a plain field", () => {
    */
   test("both kinds of reader are named for what they are", () => {
     const found = run().findings["cached-read-of-a-plain-field"];
-    expect(found.map((issue) => issue.reader)).toEqual(["a `@compute`", "a props callback"]);
+    expect(found.map((issue) => issue.reader)).toEqual(["a `@compute`", "a props callback", "a `@compute`"]);
   });
 
   /**

@@ -290,9 +290,9 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * - a field the user has **not** touched takes the new value
    * - a field the user **has** touched keeps what was typed
    *
-   * Which is what anyone asking for this wants, and what React Hook Form arrived at as `values` +
-   * `keepDirtyValues`. Losing what somebody is halfway through typing because a request came back is
-   * the failure worth designing against; showing them a stale empty box is the other one.
+   * Which is what anyone asking for this wants, and where every library that has answered it ends
+   * up. Losing what somebody is halfway through typing because a request came back is the failure
+   * worth designing against; showing them a stale empty box is the other one.
    *
    * "Touched" here means **edited** — `changedKeys`, or a value that has moved away from the
    * defaults it was built from. Not `touchedKeys`: that means BLURRED, and a field somebody tabbed
@@ -627,7 +627,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     // validation, addressed to whatever now sits at those indexes.
     this.forgetUnder(path, { keepSelf: true });
     // And the field nodes for rows the array no longer has. A node is kept for the life of the form on
-    // purpose — it is what keeps `bind.onInput` one function per field — but that was also true of a row
+    // purpose — it is what keeps `bind.oninput` one function per field — but that was also true of a row
     // that had been removed, so a form that once showed ten thousand rows held a node and a handle for
     // every one of them afterwards. Both trees, since a watched field reads through the quiet one.
     if (items.length < was) {
@@ -720,7 +720,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * Without it, a submit on an invalid form does nothing visible when the messages are below the
    * fold — the reader presses the button again, and again. For someone using a screen reader there
    * is no signal at all, which makes this accessibility rather than polish. Every serious form
-   * library does it, and React Hook Form has it on by default.
+   * library does it, and the ones worth copying have it on by default.
    *
    * **DOM order, not schema order.** The issues arrive in whatever order the validator walked, and
    * that is not what is on screen. Walking the form's own controls answers with the first one the

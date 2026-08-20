@@ -59,7 +59,7 @@ describe("a `.map()` region, whose rows are already built", () => {
         return (
           <ul>
             {TWO.map((t) => (
-              <li key={t.id} onClick={() => t.id}>
+              <li key={t.id} onclick={() => t.id}>
                 {t.id}
               </li>
             ))}
@@ -70,7 +70,7 @@ describe("a `.map()` region, whose rows are already built", () => {
 
     await getDOM<Page>(<Page />);
 
-    expect(reported()).toContain("li.onClick");
+    expect(reported()).toContain("li.onclick");
     expect(reported()).toContain("the source is the same");
   });
 
@@ -114,7 +114,7 @@ describe("a `.map()` region, whose rows are already built", () => {
         return (
           <ul>
             {FIFTY.map((t) => (
-              <li key={t.id} onClick={() => t.id}>
+              <li key={t.id} onclick={() => t.id}>
                 {t.id}
               </li>
             ))}
@@ -141,7 +141,7 @@ describe("a `.map()` region, whose rows are already built", () => {
         return (
           <ul>
             {many.map((t, i) => (
-              <li key={t.id} onClick={i === many.length - 1 ? () => t.id : undefined}>
+              <li key={t.id} onclick={i === many.length - 1 ? () => t.id : undefined}>
                 {t.id}
               </li>
             ))}
@@ -152,14 +152,14 @@ describe("a `.map()` region, whose rows are already built", () => {
 
     await getDOM<Page>(<Page />);
 
-    expect(reported()).toContain("li.onClick");
+    expect(reported()).toContain("li.onclick");
     expect(reports()).toBe(1);
   });
 
   test("an array literal with two DIFFERENT mistakes still reports both", async () => {
     class Page extends Component {
       render() {
-        return <ul>{[<li onClick={() => 1}>a</li>, <li data-x={{ n: 1 } as never}>b</li>]}</ul>;
+        return <ul>{[<li onclick={() => 1}>a</li>, <li data-x={{ n: 1 } as never}>b</li>]}</ul>;
       }
     }
 
@@ -175,7 +175,7 @@ describe("a `list()` row, built by the engine", () => {
   test("an inline handler inside a row callback is reported", async () => {
     class Page extends Component {
       row(t: Task) {
-        return <li onClick={() => t.id}>{t.id}</li>;
+        return <li onclick={() => t.id}>{t.id}</li>;
       }
       render() {
         return <ul>{list(TWO, this.row)}</ul>;
@@ -184,7 +184,7 @@ describe("a `list()` row, built by the engine", () => {
 
     await getDOM<Page>(<Page />);
 
-    expect(reported()).toContain("row > li.onClick");
+    expect(reported()).toContain("row > li.onclick");
     expect(reported()).toContain("the source is the same");
   });
 
@@ -194,7 +194,7 @@ describe("a `list()` row, built by the engine", () => {
         return (
           <ul>
             {list(TWO, (t) => (
-              <li onClick={() => t.id}>{t.id}</li>
+              <li onclick={() => t.id}>{t.id}</li>
             ))}
           </ul>
         );
@@ -203,7 +203,7 @@ describe("a `list()` row, built by the engine", () => {
 
     await getDOM<Page>(<Page />);
 
-    expect(reported()).toContain("row > li.onClick");
+    expect(reported()).toContain("row > li.onclick");
   });
 
   test("a row whose every value is stable is not reported", async () => {
@@ -212,7 +212,7 @@ describe("a `list()` row, built by the engine", () => {
         return;
       }
       row(t: Task) {
-        return <li onClick={this.pick}>{t.id}</li>;
+        return <li onclick={this.pick}>{t.id}</li>;
       }
       render() {
         return <ul>{list(TWO, this.row)}</ul>;
@@ -227,7 +227,7 @@ describe("a `list()` row, built by the engine", () => {
   test("fifty rows is ONE report", async () => {
     class Page extends Component {
       row(t: Task) {
-        return <li onClick={() => t.id}>{t.id}</li>;
+        return <li onclick={() => t.id}>{t.id}</li>;
       }
       render() {
         return <ul>{list(FIFTY, this.row)}</ul>;

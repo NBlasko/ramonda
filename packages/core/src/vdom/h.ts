@@ -18,9 +18,8 @@ import { reportFunctionTag, reportUnkeyedArrayChildren } from "../debug/jsxRules
  * and a caller's array merged into the component's own children, so the
  * component's chrome could be claimed as part of it.
  *
- * React does not have this problem because it never flattens: a nested array is
- * reconciled as its own unit with its own key space. This does the same, reusing
- * the region machinery the child record already has.
+ * So nothing is flattened: a nested array is reconciled as its own unit with its
+ * own key space, reusing the region machinery the child record already has.
  *
  * A group is identified by its ORDINAL among the arrays in these children, which
  * is stable because JSX structure is, and the ORIGIN pins it to the component

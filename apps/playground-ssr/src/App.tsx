@@ -20,7 +20,7 @@ class Counter extends Component {
     return (
       <p>
         {/* Rendered on the server as 0, then interactive after hydration. */}
-        <button id="bump" onClick={this.bump}>
+        <button id="bump" onclick={this.bump}>
           clicked {this.clicks} times
         </button>
       </p>
@@ -91,7 +91,7 @@ class NoticeStack extends Component {
       <ul id="notices">
         <li id="notice-origin">{this.origin}</li>
         <li>
-          <button id="reverse-notices" onClick={this.reverse}>
+          <button id="reverse-notices" onclick={this.reverse}>
             reverse
           </button>
         </li>

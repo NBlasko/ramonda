@@ -18,7 +18,7 @@ is first rendered, so the page starts light.
   loadedProps={{ note: "hello" }}
   onLoading={<p>loading…</p>}
   errorFallback={({ error, retry }) => (
-    <p>Could not load it. <button onClick={retry}>retry</button></p>
+    <p>Could not load it. <button onclick={retry}>retry</button></p>
   )}
 />
 ```

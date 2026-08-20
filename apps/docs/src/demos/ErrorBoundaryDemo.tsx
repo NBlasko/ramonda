@@ -50,7 +50,7 @@ export class ErrorBoundaryDemo extends Component {
     return (
       <p className="demo-error">
         Caught: {message}{" "}
-        <button type="button" onClick={this.retry}>
+        <button type="button" onclick={this.retry}>
           retry
         </button>
       </p>
@@ -66,7 +66,7 @@ export class ErrorBoundaryDemo extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.toggle}>
+          <button type="button" onclick={this.toggle}>
             {this.crash ? "fix it" : "break it"}
           </button>
           <span className="demo-note">this row is outside the boundary</span>

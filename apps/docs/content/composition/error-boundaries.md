@@ -15,7 +15,7 @@ working, and shows a fallback in place of the broken part.
 <ErrorBoundary
   fallback={({ message, reset }) => (
     <p className="error">
-      Something broke: {message} <button onClick={reset}>try again</button>
+      Something broke: {message} <button onclick={reset}>try again</button>
     </p>
   )}
 >

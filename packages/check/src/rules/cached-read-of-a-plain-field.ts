@@ -129,9 +129,14 @@ export const cachedReadOfAPlainField = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
-    /** field → the member that writes it after the first render. Empty means nothing can be stale. */
-    const writtenBy = staleFieldsOf(cls);
+  read(cls, { self, resolve }) {
+    /**
+     * field → the member that writes it after the first render. Empty means nothing can be stale.
+     *
+     * `resolve` is handed over so the BASES are asked as well: a plain field on a shared base is
+     * this component's field, and goes stale in exactly the same way.
+     */
+    const writtenBy = staleFieldsOf(cls, resolve);
     if (writtenBy.size === 0) return [];
 
     const found: CachedReadOfAPlainFieldIssue[] = [];
