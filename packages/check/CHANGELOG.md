@@ -1,5 +1,658 @@
 # @ramonda/check
 
+## 0.11.0
+
+### Minor Changes
+
+- 1c3d169: Three rules read one class body where the fault spans a base class and its subclass. Found by
+  planting the shapes each rule's claim implies and measuring, then checking the answer against what
+  core does at runtime.
+
+  A component's fields initialise base-first, on ONE instance, so what a base declares is the
+  component's as much as what it declares itself.
+
+  - **`one-provider-per-component`** missed a Provider inherited from a base beside one mounted here.
+    Measured in core: that pair **throws `RMD056`** — "a component publishes a context on ONE object" —
+    and the rule that exists to say so before it ships said nothing. The report now names the base the
+    first one came from, because a line number in another file does not.
+  - **`context-consumed-above-its-provider`** missed a consumer inherited from a base, which is
+    _always_ above a provider mounted here. Measured: core reports `RMD057`. Two halves in two class
+    bodies are ordered by the chain now; two in one body are still ordered by source position.
+  - **`interval-with-no-cleanup`** reported an interval the component does clear, when the
+    `clearInterval` is on a base — a false positive on the documented shape. The chain is read upward
+    now.
+  - **`state-mutated-in-place`** was half-walked, which is worse than not walked: `stateFieldsOf`
+    already knew an inherited field was `@state`, while what it HOLDS was read from the subclass's own
+    body — so a `@state rows: Row[] = []` on a base guarded nothing and `this.rows.push(x)` went
+    unreported.
+  - **`cached-read-of-a-plain-field`** read one class body for both halves — which fields are plain,
+    and which are written after the first render — so a plain field on a shared base made the whole
+    fault invisible.
+
+  **Reported once per fault, not once per class that inherits it.** Walking the chain made a pair
+  written on a shared base visible from every subclass as well, so one line was reported for the base
+  and again for each class extending it. One half has to be declared on the class being reported;
+  both on a base is that base's own fault, and its own pass says so.
+
+  The chain is walked upward only, and that decides one deliberate silence: a class cannot know who
+  extends it, so an **abstract** class keeping a timer id on a property is no longer reported. It is
+  never mounted on its own, and any subclass may be the one clearing it. A concrete base keeps its
+  report — `<Base />` alone really does leak — and an id kept nowhere or in a local stays certain
+  either way, because no subclass can reach either.
+
+  `heritage()` is exported from `render-reach` rather than copied three more times; it was already the
+  answer to this question for `render()`'s reach and for `@state`.
+
+- 147dd09: **A `@compute` method is now a method.** Both forms are real, and each is typed as what it installs:
+
+  ```tsx
+  @compute get total() { … }   // this.total    — an accessor, so it IS the value
+  @compute total() { … }       // this.total()  — a function that returns the value
+  ```
+
+  Before this, a method had an **accessor** installed, so the member was declared `() => R` while it held an
+  `R`. That is a type lie in both directions, and both were measured: reading it as the value it is was a
+  type error, and calling it — which the type allowed — threw `total is not a function`. The
+  `alternatives` block on `/concepts/compute` taught the call.
+
+  So the choice between a getter and a method is a real one again, and the `get` is not ceremony: it decides
+  how you read the value, and both readings are true. One cache, one set of dependencies, one invalidation —
+  measured: each form runs its body once for two reads, and once more after a write.
+
+  **And neither form takes an argument, refused in three places** — the type first, then the two nets behind
+  it. A `@compute` caches one value per
+  component, so there is no key: an argument would be accepted and ignored, and the second call with a
+  different argument would hand back the first call's answer — a wrong number, silently.
+
+  - The framework throws when the class definition runs, **in every build** rather than in development only,
+    because the failure is a wrong value rather than a slower one.
+  - `@ramonda/check` reports it before the build, as the new **`compute-takes-no-arguments`** rule, at error
+    severity. The class definition running is the first import of the module, so a component behind a route
+    nobody opened would otherwise ship with the fault and throw for whoever opens that route.
+  - The **type** refuses it first, and that is the earliest net: a function declaring a parameter is not
+    assignable to one that declares none, so `compute`'s own `(this: T) => R` is enough — measured,
+    `@compute withArg(k: number)` is `TS1241`. The rule and the runtime are for a project with no types, a
+    `@ts-ignore`, or a cast.
+
+  `@memoized` is the decorator keyed BY arguments, and every one of the three messages says so.
+
+- 8524f00: A new rule: **`row-reads-a-plain-field`** — a `list()` row callback that puts a field nothing can track
+  into the markup.
+
+  A row is rebuilt when something it READ has moved, and the reads are recorded while the callback runs.
+  A plain field is not a signal, so nothing is recorded and nothing marks the row. Measured, one field read
+  twice in one component: `new` in the markup outside the list, `old` in the row.
+
+  **This is the only place the check can live.** A plain field read is a property access and leaves no
+  trace, so the runtime has nothing to observe — and the double render compares two calls in one tick,
+  where the field holds the same value both times. The declaration is the only evidence there is.
+
+  **Every silence is a decision, and half the fixture is silences.** An inline callback (every row rebuilds
+  anyway). A field nothing writes. A field written only in `@created`, which runs before the first row. And
+  a read that never reaches the markup — `this.socket.send(…)`, `this.observer.observe(el)` — because a
+  plain field is the only home for anything that cannot be JSON, and `@state` and `@persist` must be.
+
+  **And it says what it cannot see.** `<li>{labelOf(this)}</li>` hands the component to a function that
+  reads it elsewhere, so the reads are not in this declaration. Rather than going quiet, the rule reports the
+  shape — a proven fact rather than a guessed defect — which is what makes the guarantee sayable: a row
+  callback either reads its members where this can see them, or it says it does not. Measured across this
+  monorepo, 53 calls take a bare `this` and every one is inside the framework itself; none in application
+  code, none in a row callback.
+
+  A warning rather than an error, because one thing is not provable from the declaration: WHEN the write
+  happens. A write that also replaces the array rebuilds every row anyway.
+
+  Zero reports across `apps/docs`, both playgrounds, `core`, `query`, `router`, `form` and `devtools`, with a
+  planted violation confirming the rule is reachable rather than silently gated.
+
+- 3724467: Every diagnostic's prose read against the code that raises it. Six were saying something the code
+  does not do, and one of them was reporting working code.
+
+  **`RMD039` had it backwards.** It said `class` "is passed through to the element as an unknown
+  attribute and the styling it names never applies". `class` has been renamed to `className` before
+  the vnode is built since the first commit, so the element is styled and the page is fine — measured:
+  `<p class="lead">` renders `class="lead"`. What the rename cannot save is the two cases the
+  diagnostic never mentioned, and the report now says which one it found:
+
+  - `className` on the same element wins, and the `class` is **dropped** without a word.
+  - A COMPONENT is renamed too, so `<Panel class="muted" />` arrives as `className` — a `class` prop
+    that component declared reads `undefined` on every render, for ever.
+
+  `@ramonda/check`'s `class-instead-of-classname` repeated the false claim three times and skipped
+  components on the reasoning that "what it does with it is its own business". **It now reports a
+  component as well**, and `ClassInsteadOfClassNameIssue` carries `onComponent` and `dropped` so the
+  report can say which of the three it is.
+
+  **`RMD021` promised a clock it has never watched.** The guard patches `Math.random`,
+  `crypto.randomUUID` and `crypto.getRandomValues`, and deliberately nothing else — the platform reads
+  the clock behind your back, so a guard on it reports calls the app never made. The title said "A
+  clock or a random number" and the fix was half about clocks. It now names the randomness it watches,
+  the FOUR phases it fires in (render, `@compute`, a `@memoized` builder, a hook's props
+  callback — the prose named two), and where the clock is actually caught. `clock-read-while-rendering`
+  says the same from its side, because the client-only clock gap is the reason that rule exists.
+
+  **`RMD010` named a parent it deliberately does not report.** "list elements" were in its list of
+  parents that accept only specific children; `<ul>`, `<ol>`, `<dl>` and `<p>` are exactly the ones it
+  stays quiet about, because the parser leaves an unknown element inside them alone.
+
+  **`RMD033` gave one outcome for three.** A function is dropped, a bigint or a cycle never reaches the
+  blob, and a `Date` or a `Map` SURVIVES as a string or a plain object — so the field is not missing,
+  it is the wrong type, and the first method call on it throws.
+
+  **`RMD003` never mentioned its own opt-out** — `createContext(value, { optional: true })`, for a
+  context whose default is the answer rather than a stand-in.
+
+  **`RMD015` and `RMD004` called a hook's props "options"**, a word that appears nowhere else in the
+  API, the docs, or the `TypeError` the write throws.
+
+  Three stale docstrings went with them: a props write "is always a no-op" (it throws in every build),
+  `RMD023` needing "at least one component" (it asks any unkeyed element for a key), and the two above.
+  A fix text is prose nothing asserts, so `DiagnosticProse.test.tsx` now pins the claims that can be:
+  the rename styles the element, `Date.now()` raises no `RMD021`, and a default host in a `<ul>` is
+  silent while one in a `<table>` is not.
+
+- 22f1b07: `fresh-object-in-props` follows the value instead of matching the shape.
+
+  The literal written straight into the attribute is the shape people write first, and it is not the
+  one that survives a refactor. Both of these were planted and both were silent:
+
+  ```tsx
+  const conf = { dense: true }; // one line up, inside render()
+  return <Row conf={conf} />;
+
+  return <Row conf={makeConf()} />; // a helper in another file
+  ```
+
+  They are the same object built at the same moment, and both are now reported. A call is followed
+  through the import and only reported when what comes back is a literal built INSIDE it, so a helper
+  handing back an object it holds stays silent — as does a module-level `const`, which is the
+  documented fix. A `@compute` is never followed, because caching is the whole of what it does.
+
+  A helper that calls a helper is followed the same way, however deep it goes — pinned at twelve hops,
+  which is further than anyone writes on purpose. A low bound looks careful and is not: a chain the
+  walk abandons is reported as nothing at all, and nothing is what a clean codebase looks like. What
+  stops a runaway is the cycle guard, so mutual recursion terminates and reports nothing.
+
+  A branch is followed on both sides, which is where the most common shape of all lives:
+  `conf={this.conf ?? { dense: true }}` hands the child a fresh object on every render where the left
+  is missing, and so does an arm of a ternary. A helper written as an arrow is the same helper — `const makeConf = () => ({ dense: true })` was a
+  plain miss until it was planted — and a cast does not hide it either.
+
+  The report now quotes the line — `<Row conf={local}>`, `<Row conf={makeConf()}>` — and names the
+  function the literal is actually IN, rather than printing `{…}` for everything. For a chain that is
+  the innermost one: `conf={chainConf()}` already says `chainConf`, and where the reader needs to go
+  is `level3`.
+
+  It is also the one element rule still asked about an element that SPREADS. The family-wide silence
+  is about an attribute that is MISSING — `<img {...rest} />` may well carry its `alt` — and that
+  does not transfer: a spread cannot un-build an object literal written beside it. What it can do is
+  overwrite it, so order decides. Written after the last spread, nothing can take the prop away and
+  it is reported; written before one, it may never reach the child and this stays quiet.
+
+  A literal inside a `map` or a `list` callback is reported in its own words: it is built once per
+  ROW, so no row can be skipped when the list renders again. The advice differs there too — a value
+  derived from the row cannot be lifted to a constant, so what is offered is `@StableProps` on the row
+  component, or a `@compute` that maps the array once. The row itself, `conf={row}`, is as stable as
+  the array holding it and is never reported.
+
+- 252bc6e: New rule: `fresh-object-in-hook-props` — an object or array literal written into a hook's props,
+  which is where a context value is written.
+
+  `fresh-object-in-props` reports the literal a PARENT writes in JSX. This is the same fault one door
+  along: `this.use(ThemeProvider, () => ({ conf: { dense: true }, tick: this.tick }))`. Every prop is
+  a signal, so a rebuilt object is a changed prop — and for a Provider that reaches every consumer of
+  the key, however far down the tree it sits.
+
+  Measured in `ContextValueIdentity.test.tsx`, counting a consumer that reads only `conf` while a
+  DIFFERENT key of the same provider moves three times:
+
+  | the callback                                                 | renders after mount | after three changes |
+  | ------------------------------------------------------------ | ------------------- | ------------------- |
+  | `() => ({ conf: { dense: true }, tick: this.tick })`         | 1                   | **4**               |
+  | the same, with `@StableProps("conf")` on the provider        | 1                   | **1**               |
+  | `() => ({ conf: { dense: true }, tick: 0 })` — reads nothing | 1                   | **1**               |
+
+  The third row is the shape of the rule. The props callback is cached on the signals it read, so one
+  that reads none is called once at mount and the literal inside it keeps one identity for the life of
+  the component — which is not a fault, and is what `apps/playground-core` relies on for its query
+  defaults. So the rule asks for two things and needs both: a literal among the props, and a reactive
+  read that can make the callback run again — `@state`, a `@compute`, anything under `this.props`, or
+  a field holding another hook. All four are measured; a read it cannot classify is silence.
+
+  Two more silences: a key the hook DECLARED with `@StableProps` (a Provider takes the declaration on
+  a subclass, since `createContext` hands back a class), and any hook reached through a `.d.ts` —
+  declaration files carry no decorators, so `@StableProps` on an installed hook is invisible from
+  outside its own source, and a rule that cannot tell a missing declaration from an invisible one may
+  not report either.
+
+- 48f8389: New rule: `fresh-value-from-a-watch-selector` — a `@watchProp` selector that builds the value it
+  returns.
+
+  A selector's value is compared with `Object.is`, so an object or an array built inside the selector
+  is never equal to the one before it and the watcher fires on every props change, with `previous` and
+  `next` holding the same contents. Measured in `WatchSelectorIdentity.test.tsx`, two watchers on one
+  child while an UNRELATED prop moved three times:
+
+  | the selector          | fired |
+  | --------------------- | ----- |
+  | `(p) => p.q`          | **0** |
+  | `(p) => ({ q: p.q })` | **3** |
+
+  `q` never changed once. `@watchProp`'s own documentation warned about this shape; nothing reported
+  it.
+
+  **It is an error rather than a warning**, unlike `fresh-object-in-props`, which costs work while the
+  page stays right. A `@watchProp` body is where an app refetches, resets a form, cancels a request —
+  firing it when nothing changed is wrong, not slow. And there is no reading of a built selector value
+  that was intended: one that always says CHANGED is one that does nothing, which is why `arrow-fields`
+  is an error for the same sentence.
+
+  Two silences: a selector that READS an object (`(p) => p.filter`) hands back whatever the parent gave
+  it, and if the parent rebuilds it that is `fresh-object-in-props` at the call site; and a
+  subscription's ARGUMENTS, which look like the same shape and are not — a decorator's arguments are
+  evaluated once when the class is defined, measured as one object shared by every instance for the
+  life of the class, so this never asks about them.
+
+- 9877247: `fresh-object-in-props` knows about `@StableProps` now.
+
+  An object literal in a component's props is a fresh reference every render — unless the component
+  that receives it has declared the prop a value, and then the framework compares it by content and
+  hands the child back the identity it already had. The literal at the call site is the documented way
+  to write it at that point, so reporting it would be reporting the fix:
+
+      @StableProps("conf")
+      class Settled extends Component<{ conf: Conf }> {}
+
+      <Settled conf={{ dense: true }} />     // no longer reported
+      <Row conf={{ dense: true }} />         // still reported — Row declares nothing
+
+  It is the same move `RMD020` makes at runtime, for the same reason: the two nets have to agree about
+  what the framework now supports.
+
+  The declaration is RESOLVED through the checker rather than matched by name — a class whose name
+  happens to equal this one's is a different class — and read through the heritage chain, because
+  `@StableProps` merges along it: a base that declares `conf` settles it for every subclass.
+
+  `ElementContext` carries `resolve` for it, which every other context already had.
+
+### Patch Changes
+
+- c52a3ef: **Breaking: an event handler is now `on` plus the event's own name — `onclick`, not `onClick`.**
+
+  The old spelling was never the camelCase it looked like. Handlers were derived from the element's
+  `on…` PROPERTIES and renamed to `` `on${Capitalize<name>}` ``, and the DOM's event types are single
+  lowercase tokens — so what the types actually offered was `onMouseenter`, `onKeydown`,
+  `onDblclick`. The natural `onMouseEnter` was a hard error and the accepted spelling was one nobody
+  would guess. It survived unnoticed because every event this repository writes is ONE word, where
+  capitalising the first letter happens to give the right answer.
+
+  Handlers come from the DOM's event MAP now. Nothing is capitalised, so there is nothing to get
+  wrong, and the old spellings are refused with a message naming the one to use.
+
+  **Three things this fixes.**
+
+  - **Five standard events had no spelling at all.** `focusin`, `focusout`, `compositionstart`,
+    `compositionupdate` and `compositionend` have no `on…` property, so the old mapping could not see
+    them: `onFocusIn` was a type error and lowercase `onfocusin` fell through to `any`. They are
+    ordinary — `focusin` is what you reach for BECAUSE `focus` does not bubble, and `composition*` is
+    IME input. All five are typed now.
+  - **`on:` attaches a name verbatim**, for the events `on…` cannot spell — a custom event with a
+    dash, which is what a web component dispatches by convention. `<x-thing on:my-event={…} />`.
+    Before this, `on-my-event` typechecked and attached a listener for `-my-event`, an event nothing
+    in the world dispatches. Measured: the handler never ran.
+  - **Every handler's parameter is typed from the event map**, so `onclick` hands you a
+    `PointerEvent` and `oncompositionstart` a `CompositionEvent`, with no annotation.
+
+  **What to change.** Lowercase the event props on host elements: `onClick` → `onclick`,
+  `onSubmit` → `onsubmit`, `onInput` → `oninput`. A component's own props are untouched — an
+  `onSelect` you declared is yours and keeps its name. `@ramonda/form`'s `bind` follows the same
+  rule: `CommonBind.onInput` and `.onBlur` are now `oninput` and `onblur`, which matters only if you
+  read them off `bind` by hand rather than spreading it.
+
+  The compiler finds every one of them: a camelCased event name is refused, and the error carries the
+  spelling to write.
+
+  **Two things found while checking the edges of this, both measured.**
+
+  - **A stable handler was being re-attached on every render.** The node's listener map was keyed by
+    the event TYPE and the previous attributes were rebuilt from it as `on` + the type capitalised —
+    which matched the old spelling exactly and nothing at all after it, so every listener on the page
+    was removed and re-added on every pass. It is keyed by the attribute name now, so nothing is
+    rebuilt and nothing can be ambiguous. Two renders of a button with two handlers: `adds: []`,
+    `removes: []`.
+  - **`@Host`'s props are typed now.** They were `Record<string, unknown>`, which made the host the
+    one place a camelCase handler still attached quietly — and typing them found exactly that in this
+    repository's own docs app. A `@Host` tag is also constrained: a platform element from
+    `JSX.IntrinsicElements`, or a custom one, which by the platform's own rule carries a DASH.
+    `<my-widget>` can be upgraded; `<mywidget>` is an `HTMLUnknownElement` for ever and is usually a
+    misspelling.
+
+  **`@onElement` takes the event's own name and always did**, so `@onElement("my-event")` has always
+  worked. What it now refuses is the two namings that are PROVABLY not an event — with the fix in the
+  error, the way the JSX types do it:
+
+  - `@onElement("onclick")` — the JSX attribute written where the event belongs, and the likelier
+    mistake now that the attribute IS `onclick`. Refused only when what follows `on` is an event this
+    target has, so a custom `online` or `once` is untouched.
+  - `@onElement("MouseDown")` — `addEventListener` is case-sensitive, so it never fires. Refused only
+    when the lower-cased name is one of this target's events, which leaves a custom `DOMSomething`
+    alone.
+
+  Everything else still passes, and that is the design rather than a gap: a custom event may be called
+  anything, so `clik` cannot be refused without refusing `save` and `my-event` with it.
+
+  **`@ramonda/check`** kept up in two places, both of which would have gone quiet:
+  `client-only-request-read` recognised a handler by the CAPITAL after `on`, and
+  `click-with-no-keyboard-path` looked for `ondoubleclick`, which is not a DOM event and never
+  matched anything.
+
+- a3bdc67: The accessibility family reads a value that was declared elsewhere.
+
+  `element.ts`'s `attr` read a string literal and nothing else, and **every element rule reads through
+  it** — so `role={ROLE}` where `const ROLE = "button"` was invisible to forty rules at once. Measured
+  with `fixtures/one-hop`: `unknown-role`, `positive-tabindex` and `link-without-a-destination` all
+  reported the literal and went silent one hop away. `numberAttr` had the same hole for `tabIndex` and
+  `aria-level`, and `lossyIn` had it for `@persist cache = makeCache()`.
+
+  **A branch and a call are deliberately not followed here**, which is the opposite of what the
+  fault-finding rules want. `alt={ok ? "" : "a cat"}` has no single answer, and taking the first arm
+  would report an element that is right half the time. `fresh-object-in-props` follows both, because
+  there ANY path that builds is the whole fault. The shared walk now takes both as parameters.
+
+  `arrow-fields` was on the same list and is not a gap: it reports a function LITERAL in a field and
+  leaves a field initialised from a call alone on purpose, because `debounce(this.save, 200)` is
+  legitimate and a walk that followed the call would report the arrow inside `debounce`. That decision
+  now has a test, so it is not undone by someone working down the list.
+
+  No new findings in `apps/docs`, the three playgrounds, or `router`, `query` and `form`.
+
+- 62e44db: Four shapes the element rules had an opinion about and did not recognise. None is exotic; each was
+  planted and measured, and each has its opposite in the fixture — the shape that must stay silent is
+  what says a rule got sharper rather than louder.
+
+  **`aria-hidden` written as a boolean.** `aria-hidden`, `aria-hidden={true}` and `aria-hidden="true"`
+  are one fact spelled three ways, and the framework renders all three the same. Only the string was
+  read, so `<button aria-hidden>` hid a focusable button and was reported by nothing. A shared
+  `trueAttr` reads all three, and `aria-hidden="false"` is still not a claim.
+
+  **A link whose only content is hidden.** `<a href="/x"><span aria-hidden="true">★</span></a>` is full
+  in the DOM and a blank row in the list of links a screen reader builds — the icon-only link, which
+  is the commonest way to write this fault. `empty-heading-or-link` is about the accessibility tree, so
+  it asks about that tree now: every child hidden by a LITERAL claim, and nothing naming the link. One
+  readable word beside the icon, or a component child it cannot see into, and it says nothing.
+
+  **An index key on a COMPONENT row.** `row-without-a-key` already asks a component for a key, for the
+  reason that decides both — a component is what HOLDS the state that lands on the wrong row — while
+  `index-as-key` skipped them, leaving the family disagreeing about the same list and the rule silent
+  where the key matters most.
+
+  **A heading that is not a tag.** `role-missing-required-aria` already asks a `role="heading"` for its
+  `aria-level`, so `heading-skips-a-level` reading levels off tags alone left the two disagreeing about
+  the same element. It reads the accessibility tree's answer now: `role="heading"` counts, an
+  `aria-level` wins over the tag, and a written role wins over the tag entirely — so an
+  `<h2 role="presentation">` is out of the outline. A heading whose level cannot be read breaks the
+  chain rather than being stepped over, exactly as one that may not be there does. The report quotes
+  what is on the line, because calling a `<div role="heading" aria-level={3}>` an `<h3>` would send a
+  reader looking for a tag that is not there.
+
+  Nothing new is reported in this repository's four applications.
+
+- 70b134b: **`@memoizedHandler` is `@memoized`.** It caches a value as readily as a handler, and the old name hid
+  that from the people who needed it.
+
+  Measured: `@memoized cfg(id) { return { id } }` returns the same object for the same argument, one build.
+  Nothing ever restricted it to functions, and nothing warned — so a row that needs a stable object had the
+  same problem and the same answer, under a name that said `Handler`.
+
+  **The cost of the old name was not confusion, it was non-discovery — and the diagnostics proved it.** The
+  `object` verdict of `RMD020` and `RMD022` advised "a `@compute` getter, a field, or a module constant".
+  None of those can hold one value PER ITEM: a `@compute` belongs to the component, not to the row. So a
+  developer whose object was rebuilt per row was given advice that cannot work, and the only tool that works
+  was called something else. Both advices now name `@memoized` for that case.
+
+  `/concepts/events` says it too — the section is "A handler, or a value, per item", with the object example
+  and the reason nothing else reaches it.
+
+  **Migration is a rename and nothing else:** `@memoizedHandler` → `@memoized`. The behaviour, the cache
+  key, the eviction and the tracking are unchanged. `@ramonda/check`'s reports and advice use the new name,
+  and `unkeyable-memoized-argument` keeps its id — it already read "memoized".
+
+- d493c19: An audit of the rule set, and one thing it found: **"what is this member called" was answered in seven
+  places, under two names.**
+
+  Four rules held a named function for it — `memberName` in `render-reach`, `server-env-in-shared-code` and
+  `row-reads-a-plain-field`, `nameOf` in `stale-field` — and three more wrote the expression inline. Both it
+  and `decoratorName`, which had two copies, now live in `syntax.ts`, whose whole description is functions
+  that "answer one question about a node and take no context to do it".
+
+  Nothing had drifted yet. What makes this worth doing rather than tidying is that the last two copies of
+  one judgement DID drift, within a day of each other, and the second one was wrong in four ways — each copy
+  passing its own fixture the whole time. `scripts/dev/find-duplicate-helpers.mjs` finds the next one in a
+  second; run it after adding a rule.
+
+  **The consolidation itself exposed a live one.** In `interval-with-no-cleanup`, the member's name and the
+  interval variable's name are both natural to call `named`, and renaming the outer one to match its new
+  import made `member:` carry the interval's name instead. Only the `| undefined` on one of them made it a
+  type error rather than a wrong report.
+
+  **What else the audit checked, all clean:** every one of the 56 rules is named by a test; no rule mentions
+  an `RMD` code in prose that it should have declared as `alsoReportedAs` (all three mentions are
+  contrasts — `RMD010` watches something narrower, `RMD043` a different case, `RMD020` a consequence); every
+  rule's tests bound their output rather than only asserting positives; the one rule with a `needs` gate can
+  open it; and no two rules report one line as the same fault — the sixteen shared lines are dense fixtures
+  where two independent faults sit together.
+
+- aa03d76: `row-reads-a-plain-field` and `cached-read-of-a-plain-field` now share one judgement about which fields
+  can go stale, instead of holding two copies of it.
+
+  The two rules landed within a day of each other on separate branches, and the second copy was worse in
+  four ways — all four found by running the older rule against the newer one's fixture:
+
+  - a field written in the **constructor** was reported, though that runs before the first render;
+  - the **memo pattern** — `if (!this.cache) this.cache = expensive()` inside `render()` — was reported,
+    where advising `@state` advises a loop;
+  - a field written in **`@destroyed`** was reported, after the last render, with nothing left to be stale;
+  - and **`@persist` was treated as reactive**, which is a MISS rather than a false report: it carries a
+    value across hydration without tracking it, so a row that shows one is exactly as stale as a row
+    showing a plain field. The other rule reported that same field from its own side, which is what proved
+    it.
+
+  `rules/stale-field.ts` is that one judgement: which fields a cached reader can go stale on, and which
+  writes count. A `@compute`, a hook's props callback and a stable `list()` row callback are three cached
+  readers with one question between them. The rules stay separate, because the readers are found in
+  different places and the fixes differ — a row can be made inline, a `@compute` cannot.
+
+  No behaviour change to `cached-read-of-a-plain-field`: its 363 tests pass unchanged.
+
+- d9304e8: The accessibility tables are read to REPORT, so a wrong entry reports correct markup and a missing
+  one misses a fault. They were compared against machine-readable transcriptions of the specifications
+  — `aria-query` and `dom-accessibility-api` — rather than read again.
+
+  **Most of them were already right, and that is the useful half of the result.** Every ARIA role,
+  every abstract role, every `aria-*` attribute, and every token set matches the specification exactly.
+  Where the tables have extras — `comment` and `suggestion` as roles, `aria-colindextext` and
+  `aria-rowindextext` — they are ARIA 1.3 names the transcription has not caught up with, and having
+  them means not reporting valid markup.
+
+  **`role-takes-no-name` reported correct markup on `<time>`.** It is named from AUTHOR in both
+  transcriptions, and giving a machine date a human name is the documented use of the element:
+  `<time datetime="2026-03-03" aria-label="3 March 2026">`. The entry is gone. `mark` stays on a split
+  verdict, with the reason written down: `aria-query` transcribes the spec's characteristics table
+  field by field and gives it `nameFrom: ["prohibited"]`.
+
+  **`control-with-no-label` was missing three of HTML's labelable elements** — `meter`, `progress` and
+  `output`. Each renders a value and nothing else, so without a name a reader is told "50%" with no
+  word for what is at 50%. They are labelable exactly as an `<input>` is, and every way of naming one
+  is the same way. `<button>` stays out on purpose: a button is named by what is inside it. The report
+  says what a reader is actually told, which differs for a value and for an empty box.
+
+  **`tag-needs-its-parent` was missing ruby annotation** — `<rt>` and `<rp>` belong directly inside
+  `<ruby>` and nowhere else, now that `<rtc>` has been removed from the standard. `<area>` stays out
+  for the opposite reason, and it is the shape worth remembering: it needs a `<map>` ANCESTOR rather
+  than a `<map>` parent, so `<map><p><area /></p></map>` is legal and an entry would report it.
+
+  Two omissions from `ROLE_REQUIRES` are now written down as decisions rather than left to look like
+  oversights: `treeitem`'s `aria-selected`, which moved between ARIA 1.1 and 1.2 exactly as `option`'s
+  did, and `combobox`'s `aria-controls`, which points at a popup that does not exist while the
+  combobox is collapsed. And the two token LISTS, `aria-relevant` and `aria-dropeffect`, are named as
+  the values no closed set can judge without splitting them first.
+
+- 6a2817a: The last of the audit: the id table, `duplicate-id` and `head-tags-collide`.
+
+  **The id table could not see an id written in `@Host` props, and reported a working link as broken.**
+
+      @Host("section", () => ({ id: "overview" }))
+      class Overview extends Component { … }
+
+      <a href="#overview">…</a>        // reported: "nothing in the project carries id=overview"
+
+  That id is on the page and is in no JSX element, so the walk — which reads elements — never found
+  it. The table reads a `@Host` props object now, under the same rules it reads an element by: a
+  literal is an id, a template's head is a prefix, and an id it cannot READ silences the family
+  exactly as an unreadable one on a host element does. The shape became likelier the day `@Host`'s
+  props became typed as the element's attributes.
+
+  **`duplicate-id` counted a COMPONENT's `id`, which is as often a datum as a DOM id.**
+  `<ProfileCard id={user.id} />` hands it to `getProfile()` and it never reaches the document.
+  `idTable` had already decided this for the other two rules and decided it the other way round, which
+  is the point: adding a component's literal id to the set of KNOWN ids can only make a rule quieter,
+  while counting it as a CLAIM on one can only make this rule louder. The safe direction differs
+  because the reading does. Nothing is lost — a component's id reaches the document only by being
+  written onto a host element, and that host element is in the source too.
+
+  **Two `Head` hooks are not a collision, and that is now written down with the measurement.** They
+  merge into the same map, so a `name="robots"` in each collides exactly as two in one list do — the
+  document keeps one `<meta>` and it carries the LAST value. What differs is the reading: two entries
+  in one array express nothing by being two, while two hooks express an override, which is how a base
+  class sets a page's defaults and a subclass replaces one of them.
+
+- 044b5d0: `row-reads-a-plain-field` read a single class body, so a row callback inherited from a shared base —
+  showing a plain field declared on that base — was silent. One instance, one row, one stale value,
+  and nothing said so.
+
+  It was the newest rule in the package and the only one the heritage sweep had not been run against.
+  Planted, measured, fixed: the callback is looked up nearest-first up the chain, and the field
+  judgement is asked with the chain too.
+
+  **`ModuleContext` carries `resolve` now**, which is what made it possible. A module rule reads a
+  FILE, and the classes in it are still classes — a base's member is the component's member wherever
+  it is written. The alternative was one rule reaching for the type checker on its own, which is not a
+  shape this package has.
+
+- d37539b: The render walk claimed "by any path" and followed one kind of call. Four more were planted, and
+  every one of them reported nothing:
+
+  - an arrow **field** — `helper = () => { … }` — which is a property rather than a method, so the
+    lookup for a `MethodDeclaration` ended the walk without a word. Not an exotic shape: it is the one
+    `arrow-fields` exists to talk about, so a codebase that has any at all has them being called.
+  - a **getter**, which is read rather than called. `{this.total}` runs `get total()` right there, so
+    a clock read or a state write inside it happens during the render exactly as one in a method does.
+  - **`super.method()`**, whose callee is not `this`.
+  - a **static**, `App.helper()` — walked with `this` meaning the constructor rather than the
+    instance, so a write through it is nobody's state and only what does not depend on `this` counts.
+
+  The runtime reports all four, because `renderPhase.component` is set whatever the path was. So this
+  is `state-written-while-rendering` and `clock-read-while-rendering` catching up with what they
+  already said they did — they are the two rules built on the walk, and any rule built on it later
+  inherits the four paths for nothing.
+
+  **`cached-read-of-a-plain-field` had the same gap, one hop away.** Its claim is that a cached reader
+  READS an ordinary field something writes after the first render, and it read the reader's own body:
+
+      private priced() { return this.rate * 2; }        // `rate` is a plain field
+      @compute get total() { return this.priced(); }    // reported nothing
+
+  The cache is stale in exactly the same way — a `@compute` tracks the signals read while it
+  evaluated, wherever they were read. It follows `this.method()` now, bounded and cycle-guarded, and
+  `this.` only: a free function has no `this`, so there is no field of this component's for it to read.
+
+  Nothing new is reported in this repository's four applications — the shapes are correct code there —
+  and the fixtures prove each path can speak.
+
+- 96b46f5: Three more rules asked how far they look, on the axis that has found something every time: what a
+  `this.helper()` hop, and a helper in another file, cost the claim.
+
+  **`server-env-in-shared-code` had a FALSE POSITIVE, on the shape its own advice recommends.** Its
+  stance for a member nothing in the class references is "it may be called from anywhere, so it is not
+  excused on silence" — which is true of a PUBLIC member and not of a `protected` one, whose callers
+  can only be this class chain. And the chain is walked upward, never down. So a base holding
+  `protected fromDb() { return process.env.DATABASE_URL }`, called only from a server-only lifecycle
+  in the subclass, was reported as browser code — as an ERROR. Measured with a plant.
+
+  An unreferenced `private` or `protected` member is excused now. A `private` one with no reference in
+  its own class cannot be called by anything at all; a `protected` one can only be called by a
+  subclass this cannot see. Everything referenced is judged exactly as before — a private helper a
+  `render()` calls is still reported.
+
+  The miss this leaves is written into the rule rather than left to be discovered: a subclass calling
+  such a helper from `render()` is a real fault and is reported by nothing.
+
+  **`unwatched-fields` had the same false positive, and it is an ERROR too.** A hook belongs to the
+  INSTANCE, so a base's `this.use(Field, …)` subscribes the subclass exactly as its own would — and
+  reading one class body made a subclass that reads what its base watches a reported fault on working
+  code. The watch is looked for up the chain now.
+
+  **`unkeyable-memoized-argument` missed every call to an inherited handler.** A `@memoized` on
+  a base is the subclass's handler, on the same instance and with the same cache, so
+  `this.pick({ id })` down there THROWS `RMD047` at runtime exactly as it would up here — and nothing
+  said so. Calls are matched against the chain now, while the DECLARATION half stays where it is
+  written, so a base's unkeyable parameter is reported once rather than again for every subclass.
+
+  **`browser-url` and `dom-writes` reach a helper on the class and stop at the file boundary**, and
+  that is now a decision on the record instead of an accident. Both were measured: a read or a write
+  one `this.method()` away IS found; a utility in another file is not. Following the import would name
+  a component that did not write the line, in a file it does not own, once per caller — these reports
+  carry no path to say otherwise, which is exactly why the two rules that DO follow imports have one.
+
+- 1b8dbbd: `unkeyable-memoized-argument` follows the argument instead of matching its shape.
+
+  Four shapes were planted and all four were silent, and every one of them throws `RMD047` at
+  runtime:
+
+  ```tsx
+  const local = { id: row.id };
+  this.pick(local); // an object one line up
+  this.pick(keyFor(row.id)); // one a helper returns
+  this.pick(SHARED_KEY); // a module-level const
+  this.pick(open ? { id } : "k");
+  ```
+
+  The rule stated its boundary as "an identifier could hold a string, and asking what it holds is a
+  question about types". That is true of an identifier nothing declares; it is not true of one
+  declared two lines up as `{ id }`. The walk goes to the DECLARATION behind a name, never to its
+  type, so `this.pick(row)` and `this.pick(row.id)` still look the same from here and both stay
+  silent.
+
+  A module-level `const` counts here and not in `fresh-object-in-props`, which is the one place the
+  two questions part: that rule asks whether a value is REBUILT, so a module const is the fix; this
+  asks what a value IS, and an object built once at module scope is still an object.
+
+  The walk itself moved to `follow-value.ts`, shared by the four rules that now ask it.
+
+- 657915e: What the review of this branch found — four defects, three of them the same shape: a spelling the
+  audit had already handled, planted again in its other form.
+
+  **A subclass OVERRIDING a base's method had both bodies walked**, so a clock read in the version that
+  never runs was reported. Pre-existing, and widened by this branch's `super.` support. The lookup
+  takes the NEAREST declaration now, which is how JS resolves a method — and `super.` starts at the
+  BASES, which is the whole meaning of the keyword.
+
+  **A static was matched by NAME**, so a class whose name happened to equal the component's would have
+  been walked as if it were the component. It is resolved now: this package does not guess about which
+  declaration it is looking at.
+
+  **A `@Host` props callback with a BLOCK body** — `() => { return { id: "x" } }` — was not read, so the
+  id it writes was missing from the table and the link to it was reported as going nowhere. The
+  concise body had been fixed; this is the same fault in its other spelling.
+
+  **A `#private` member cost every rule something, and all of it silent.** The shared `memberName`
+  treated `#field` as unnameable — true of a computed name, and not of this one — so
+  `server-env-in-shared-code` reported one as `(anonymous)` and could not excuse it, the render walk
+  never followed `this.#helper()`, and `stale-field` could not see one go stale. A `#` member also
+  carries no `private` MODIFIER, which is what the new excuse read, so the `#` spelling of an excused
+  helper was reported while the `private` one was not. Both fixed: `#name` is a name, and `#` is
+  privacy the stronger way — a cast walks straight through `private` and cannot touch a `#`.
+
 ## 0.10.0
 
 ### Minor Changes

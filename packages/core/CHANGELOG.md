@@ -1,5 +1,507 @@
 # @ramonda/core
 
+## 0.21.0
+
+### Minor Changes
+
+- bc89e75: **`@compute` and `@memoized` are allowed on `render`**, and a cached render is NOTED rather than warned
+  about.
+
+  The ban existed because `@compute` used to turn `render` into a property and the page died with
+  `component.render is not a function`. The method form installs a function now, so that is gone — and the
+  ban was protecting nobody anyway: `@compute get body()` returned from `render` does exactly the same thing
+  and was always legal. Measured, the wrapper blinds `RMD020` and freezes on a plain field identically. A rule
+  that costs one wrapper to step around teaches that the rule is arbitrary.
+
+  **What replaced it is one `info` line, once per component**, with no diagnostic code:
+
+  > `<Board />` has a cached render, so RMD020 cannot compare its output — an inline handler, an object
+  > rebuilt in place and a value that does not come from state go unreported in the render itself. A
+  > `list()` row is still checked, because the list builds each row twice on its own. And a cached render
+  > refreshes only when a SIGNAL it read moves, so anything else it reads keeps its old value. All of it is
+  > the deal; nothing here is wrong.
+
+  A `list()` row keeps its cover, and that is measured: `listEngine` builds each row twice itself, so a
+  handler built per row is still reported while the render around it is cached.
+
+  Not a warning, because caching a render is a deliberate choice and a warning on one of those is how a
+  codebase learns to scroll past warnings. Not a code, because a code puts it in the list of faults to sweep
+  for.
+
+  **It asks the decorator, not the output.** Identity was the first attempt and it has false positives,
+  measured: `render() { return this.props.children }` and `render() { return A_CONSTANT }` also hand back one
+  object and hide nothing the parent did not already check. The cost of asking the decorator is stated rather
+  than hidden — a `@compute` body returned from `render` is the same deal and is not noted, because at that
+  point nothing distinguishes it from those two.
+
+  The ban stays for every decorator where it still means something: `@created`, `@mounted`, `@updated`,
+  `@destroyed` change when the render runs, `@catchError` makes it the handler for its own subtree, and
+  `@state`/`@persist` mean "serialise me", which a render is not.
+
+- 147dd09: **A `@compute` method is now a method.** Both forms are real, and each is typed as what it installs:
+
+  ```tsx
+  @compute get total() { … }   // this.total    — an accessor, so it IS the value
+  @compute total() { … }       // this.total()  — a function that returns the value
+  ```
+
+  Before this, a method had an **accessor** installed, so the member was declared `() => R` while it held an
+  `R`. That is a type lie in both directions, and both were measured: reading it as the value it is was a
+  type error, and calling it — which the type allowed — threw `total is not a function`. The
+  `alternatives` block on `/concepts/compute` taught the call.
+
+  So the choice between a getter and a method is a real one again, and the `get` is not ceremony: it decides
+  how you read the value, and both readings are true. One cache, one set of dependencies, one invalidation —
+  measured: each form runs its body once for two reads, and once more after a write.
+
+  **And neither form takes an argument, refused in three places** — the type first, then the two nets behind
+  it. A `@compute` caches one value per
+  component, so there is no key: an argument would be accepted and ignored, and the second call with a
+  different argument would hand back the first call's answer — a wrong number, silently.
+
+  - The framework throws when the class definition runs, **in every build** rather than in development only,
+    because the failure is a wrong value rather than a slower one.
+  - `@ramonda/check` reports it before the build, as the new **`compute-takes-no-arguments`** rule, at error
+    severity. The class definition running is the first import of the module, so a component behind a route
+    nobody opened would otherwise ship with the fault and throw for whoever opens that route.
+  - The **type** refuses it first, and that is the earliest net: a function declaring a parameter is not
+    assignable to one that declares none, so `compute`'s own `(this: T) => R` is enough — measured,
+    `@compute withArg(k: number)` is `TS1241`. The rule and the runtime are for a project with no types, a
+    `@ts-ignore`, or a cast.
+
+  `@memoized` is the decorator keyed BY arguments, and every one of the three messages says so.
+
+- c52a3ef: **Breaking: an event handler is now `on` plus the event's own name — `onclick`, not `onClick`.**
+
+  The old spelling was never the camelCase it looked like. Handlers were derived from the element's
+  `on…` PROPERTIES and renamed to `` `on${Capitalize<name>}` ``, and the DOM's event types are single
+  lowercase tokens — so what the types actually offered was `onMouseenter`, `onKeydown`,
+  `onDblclick`. The natural `onMouseEnter` was a hard error and the accepted spelling was one nobody
+  would guess. It survived unnoticed because every event this repository writes is ONE word, where
+  capitalising the first letter happens to give the right answer.
+
+  Handlers come from the DOM's event MAP now. Nothing is capitalised, so there is nothing to get
+  wrong, and the old spellings are refused with a message naming the one to use.
+
+  **Three things this fixes.**
+
+  - **Five standard events had no spelling at all.** `focusin`, `focusout`, `compositionstart`,
+    `compositionupdate` and `compositionend` have no `on…` property, so the old mapping could not see
+    them: `onFocusIn` was a type error and lowercase `onfocusin` fell through to `any`. They are
+    ordinary — `focusin` is what you reach for BECAUSE `focus` does not bubble, and `composition*` is
+    IME input. All five are typed now.
+  - **`on:` attaches a name verbatim**, for the events `on…` cannot spell — a custom event with a
+    dash, which is what a web component dispatches by convention. `<x-thing on:my-event={…} />`.
+    Before this, `on-my-event` typechecked and attached a listener for `-my-event`, an event nothing
+    in the world dispatches. Measured: the handler never ran.
+  - **Every handler's parameter is typed from the event map**, so `onclick` hands you a
+    `PointerEvent` and `oncompositionstart` a `CompositionEvent`, with no annotation.
+
+  **What to change.** Lowercase the event props on host elements: `onClick` → `onclick`,
+  `onSubmit` → `onsubmit`, `onInput` → `oninput`. A component's own props are untouched — an
+  `onSelect` you declared is yours and keeps its name. `@ramonda/form`'s `bind` follows the same
+  rule: `CommonBind.onInput` and `.onBlur` are now `oninput` and `onblur`, which matters only if you
+  read them off `bind` by hand rather than spreading it.
+
+  The compiler finds every one of them: a camelCased event name is refused, and the error carries the
+  spelling to write.
+
+  **Two things found while checking the edges of this, both measured.**
+
+  - **A stable handler was being re-attached on every render.** The node's listener map was keyed by
+    the event TYPE and the previous attributes were rebuilt from it as `on` + the type capitalised —
+    which matched the old spelling exactly and nothing at all after it, so every listener on the page
+    was removed and re-added on every pass. It is keyed by the attribute name now, so nothing is
+    rebuilt and nothing can be ambiguous. Two renders of a button with two handlers: `adds: []`,
+    `removes: []`.
+  - **`@Host`'s props are typed now.** They were `Record<string, unknown>`, which made the host the
+    one place a camelCase handler still attached quietly — and typing them found exactly that in this
+    repository's own docs app. A `@Host` tag is also constrained: a platform element from
+    `JSX.IntrinsicElements`, or a custom one, which by the platform's own rule carries a DASH.
+    `<my-widget>` can be upgraded; `<mywidget>` is an `HTMLUnknownElement` for ever and is usually a
+    misspelling.
+
+  **`@onElement` takes the event's own name and always did**, so `@onElement("my-event")` has always
+  worked. What it now refuses is the two namings that are PROVABLY not an event — with the fix in the
+  error, the way the JSX types do it:
+
+  - `@onElement("onclick")` — the JSX attribute written where the event belongs, and the likelier
+    mistake now that the attribute IS `onclick`. Refused only when what follows `on` is an event this
+    target has, so a custom `online` or `once` is untouched.
+  - `@onElement("MouseDown")` — `addEventListener` is case-sensitive, so it never fires. Refused only
+    when the lower-cased name is one of this target's events, which leaves a custom `DOMSomething`
+    alone.
+
+  Everything else still passes, and that is the design rather than a gap: a custom event may be called
+  anything, so `clik` cannot be refused without refusing `save` and `my-event` with it.
+
+  **`@ramonda/check`** kept up in two places, both of which would have gone quiet:
+  `client-only-request-read` recognised a handler by the CAPITAL after `on`, and
+  `click-with-no-keyboard-path` looked for `ondoubleclick`, which is not a DOM event and never
+  matched anything.
+
+- 70b134b: **`@memoizedHandler` is `@memoized`.** It caches a value as readily as a handler, and the old name hid
+  that from the people who needed it.
+
+  Measured: `@memoized cfg(id) { return { id } }` returns the same object for the same argument, one build.
+  Nothing ever restricted it to functions, and nothing warned — so a row that needs a stable object had the
+  same problem and the same answer, under a name that said `Handler`.
+
+  **The cost of the old name was not confusion, it was non-discovery — and the diagnostics proved it.** The
+  `object` verdict of `RMD020` and `RMD022` advised "a `@compute` getter, a field, or a module constant".
+  None of those can hold one value PER ITEM: a `@compute` belongs to the component, not to the row. So a
+  developer whose object was rebuilt per row was given advice that cannot work, and the only tool that works
+  was called something else. Both advices now name `@memoized` for that case.
+
+  `/concepts/events` says it too — the section is "A handler, or a value, per item", with the object example
+  and the reason nothing else reaches it.
+
+  **Migration is a rename and nothing else:** `@memoizedHandler` → `@memoized`. The behaviour, the cache
+  key, the eviction and the tracking are unchanged. `@ramonda/check`'s reports and advice use the new name,
+  and `unkeyable-memoized-argument` keeps its id — it already read "memoized".
+
+- 0a5df09: **`@StableProps` goes on a component now**, and means there what it means on a hook: _these props
+  are values, compare them by content._
+
+  An object written in the JSX is a new object every render, so `<Panel filter={{ q: "open" }} />`
+  hands the child a changed prop every time and re-renders it forever. Measured: 5 parent renders, 5
+  child renders, for markup where nothing moved. Declaring the prop settles it:
+
+      @StableProps("filter", "flags")
+      export class Panel extends Component<{ filter: { q: string }; flags: string[] }> {}
+
+  Now the same markup re-renders the child **zero** times, and contents that really do move still
+  reach it — a declaration is not a freeze.
+
+  **It takes names, not a rule, and that is the point.** The other control a component had was
+  `@ShouldUpdateOnPropsChange`, which takes a PREDICATE — a thing an app can get wrong in the
+  direction that matters, a component that stops rendering when it should. The worst a wrong name here
+  can do is fail to type-check, and the names are checked against the component's own props exactly as
+  they are for a hook.
+
+  **The double render knows about it.** `RMD020` reports a value the second render built afresh, which
+  is precisely what an object literal in JSX is — so reporting it on a declared prop would be
+  reporting the fix the diagnostic's own advice recommends. It skips declared props now, and still
+  reports an undeclared one.
+
+  **Beside `@ShouldUpdateOnPropsChange`, the order is settled and tested.** `resolveStable` runs
+  first, so a hand-written gate is handed the SETTLED props — `previous.filter !== next.filter` sees
+  "the same" when the contents match, which is what the declaration promised. Resolving after the gate
+  would mean a component taking props identical to the ones it already had.
+
+  Under the hood it is the same `resolveStable` a hook's props already went through: the diff hands
+  back the identity the component already had while the contents match, so the bag comparison, the
+  signals and `@watchProp` all see what they would see if the parent had never rebuilt it. Nothing
+  downstream needed a special case, and a class that declares nothing skips the work entirely.
+
+  A function prop is still left alone — two closures with the same body are not equal by any
+  comparison that is safe to make — and contents are compared to a bounded depth, so a deeply nested
+  literal gets a fresh reference rather than a wrong one.
+
+- db7f1b0: RMD020 reaches inside a row. An inline handler or a rebuilt object on a `.map()`ed row, or in a `list()`
+  row callback, was silent — the same thing written by hand was reported.
+
+  **Why it was silent, which is one cause with two halves.** `h.ts` wraps any array in children position
+  into the same `IS_LIST`-branded shape a `list()` descriptor has, and the comparison had one branch for
+  both: compare `each`, stop. That is right for a descriptor, whose builder has not run and whose rows do
+  not exist yet. A `.map()` region is the opposite — its rows are already built and sitting in `vnodes`, in
+  both outputs — and they were discarded. So `<li onClick={() => …}>` was reported when written by hand and
+  silent the moment it came from an array.
+
+  **Two fixes, in the two places that have something to compare.**
+
+  A region's rows are compared where the render output is walked, which costs no BUILDS: nobody builds
+  anything that was not built anyway. Each row is checked on its own budget rather than sharing one with its
+  neighbours, because sharing truncated — measured, a 1000-row `.map()` whose only mistake was on the last
+  row went unreported.
+
+  A `list()` row is built by the engine during the diff, so `listEngine.ts` builds it a second time there —
+  with the tracker detached, so the throwaway build adds no dependencies — and compares. That is also the
+  cheap place:
+
+  ```
+  100 rows, a stable callback, mount then three more renders
+  check on:   200 row builds on mount, 200 after the three
+  check off:  100                      100
+  ```
+
+  Twice for a row that is **built**, nothing for one that is reused. A list whose rows are steady pays
+  nothing after the first render, and `configureDev({ strictRender: false })` turns off the second build
+  along with everything else.
+
+  **One consequence to expect:** a row callback with a side effect performs it twice in development, exactly
+  as a `render()` already did.
+
+  **One report per callback, not per row.** The row index is left out of the path deliberately —
+  `diagnose` keys a report by owner, path and kind, so an index would turn one mistake into one report per
+  row. Rows that are wrong in _different_ ways still separate themselves, because the tag and the attribute
+  name are in the path.
+
+### Patch Changes
+
+- 64c5f15: `/concepts/compute` taught a line that throws.
+
+  The "getter or a method" block read `total() {} // this.total()` — a call. Measured: `@compute` installs an
+  accessor, so a method stops being callable. `this.total` holds the value; `this.total()` throws
+  `total is not a function`.
+
+  **Nothing caught it because the claim was in a comment.** `check-examples` compiles the code in a block,
+  and `// this.total()` is prose. The page now says both forms are read as a property, and why: the method
+  form is a spelling, not a different kind of thing.
+
+  It also says what follows from that, which was the missing half — a `@compute` method takes no parameters
+  because nothing would ever pass one, and `@memoized` is the decorator keyed by arguments.
+
+  Pinned in `DecoratorValidation.test.tsx`: the property holds the value, and calling it throws.
+  `/concepts/caching` shows both forms too — it had the method form in one table cell while every example was
+  a getter, which is how a reader concludes the getter is the only shape.
+
+- 89efb35: `@compute` refuses a method that declares a parameter, in the build that has no types.
+
+  A typed build already refuses it — `compute`'s target is `(this: T) => R`, so a parameter is `TS1241` —
+  and that half is now pinned in `__tests__/DecoratorTypeClaims.tsx`. Bypass the type and it was silent:
+  measured under vitest, which transpiles rather than checks, `@compute times(n: number)` left `this.times`
+  holding **`NaN`**, with the body run once for `n === undefined`. `@compute` on a method installs an
+  accessor, so nothing was ever going to pass an argument.
+
+  It says which decorator does take one, because that is the line between the two: **`@compute` is keyed by
+  nothing, `@memoized` is keyed by its arguments.** The parameter list is where they are told apart, and
+  asking whether the two names collide is what turned this up.
+
+- fbb552f: The guarantee about list rows is documented for what it covers, and the one boundary is documented next to
+  it. No behaviour changed.
+
+  The lists page said "what you never get is a stale row", without qualification — and you can, in one shape
+  that core's own test already asserts. `ListCallbackIdentity.test.tsx` reads the same non-`@state` field
+  twice in one component, once in the markup and once in a stable row callback, and the two answers differ:
+  `render()` runs whole and re-reads it, a reused row does not run at all. The test called that "the
+  documented behaviour" while nothing documented it.
+
+  So the promise is stated for what it is — every signal a row reads while it is built is recorded against
+  that row, and a write marks exactly the rows that read it — and the boundary is stated with the reason it
+  looks like it works until the callback becomes a method. The fix is the one `@state` already gives: mark the
+  field, or leave the callback inline, which rebuilds every row and so reads it again.
+
+- cc70e51: `@StableProps` settles children, and it is now written down that it does.
+
+  Measured rather than assumed, in `ChildrenAreProps.test.tsx`: a component given children renders
+  four times over three renders of its parent, where a childless one renders once. A rendered node is
+  built during the render, so children are a fresh value every time and the shallow comparison can
+  never match them — even when the children are a piece of static text. A node handed over as a prop,
+  `header={<Header />}`, is the same thing wearing a different hat.
+
+  Nothing changed in the runtime; `children` was always a prop and `@StableProps` always named props.
+  What was missing is that anyone would think to write it:
+
+  ```tsx
+  @StableProps("children", "header")
+  export class Panel extends Component<{
+    header?: unknown;
+    children?: unknown;
+  }> {}
+  ```
+
+  The tests pin the behaviour, including that it is not a freeze — children that really change still
+  arrive, and so does content nested deeper than the comparison goes. Also measured: a slot taking the
+  component CLASS, `view={Header}`, costs nothing to begin with, because a class is the same reference
+  for the life of the module.
+
+- 3724467: Every diagnostic's prose read against the code that raises it. Six were saying something the code
+  does not do, and one of them was reporting working code.
+
+  **`RMD039` had it backwards.** It said `class` "is passed through to the element as an unknown
+  attribute and the styling it names never applies". `class` has been renamed to `className` before
+  the vnode is built since the first commit, so the element is styled and the page is fine — measured:
+  `<p class="lead">` renders `class="lead"`. What the rename cannot save is the two cases the
+  diagnostic never mentioned, and the report now says which one it found:
+
+  - `className` on the same element wins, and the `class` is **dropped** without a word.
+  - A COMPONENT is renamed too, so `<Panel class="muted" />` arrives as `className` — a `class` prop
+    that component declared reads `undefined` on every render, for ever.
+
+  `@ramonda/check`'s `class-instead-of-classname` repeated the false claim three times and skipped
+  components on the reasoning that "what it does with it is its own business". **It now reports a
+  component as well**, and `ClassInsteadOfClassNameIssue` carries `onComponent` and `dropped` so the
+  report can say which of the three it is.
+
+  **`RMD021` promised a clock it has never watched.** The guard patches `Math.random`,
+  `crypto.randomUUID` and `crypto.getRandomValues`, and deliberately nothing else — the platform reads
+  the clock behind your back, so a guard on it reports calls the app never made. The title said "A
+  clock or a random number" and the fix was half about clocks. It now names the randomness it watches,
+  the FOUR phases it fires in (render, `@compute`, a `@memoized` builder, a hook's props
+  callback — the prose named two), and where the clock is actually caught. `clock-read-while-rendering`
+  says the same from its side, because the client-only clock gap is the reason that rule exists.
+
+  **`RMD010` named a parent it deliberately does not report.** "list elements" were in its list of
+  parents that accept only specific children; `<ul>`, `<ol>`, `<dl>` and `<p>` are exactly the ones it
+  stays quiet about, because the parser leaves an unknown element inside them alone.
+
+  **`RMD033` gave one outcome for three.** A function is dropped, a bigint or a cycle never reaches the
+  blob, and a `Date` or a `Map` SURVIVES as a string or a plain object — so the field is not missing,
+  it is the wrong type, and the first method call on it throws.
+
+  **`RMD003` never mentioned its own opt-out** — `createContext(value, { optional: true })`, for a
+  context whose default is the answer rather than a stand-in.
+
+  **`RMD015` and `RMD004` called a hook's props "options"**, a word that appears nowhere else in the
+  API, the docs, or the `TypeError` the write throws.
+
+  Three stale docstrings went with them: a props write "is always a no-op" (it throws in every build),
+  `RMD023` needing "at least one component" (it asks any unkeyed element for a key), and the two above.
+  A fix text is prose nothing asserts, so `DiagnosticProse.test.tsx` now pins the claims that can be:
+  the rename styles the element, `Date.now()` raises no `RMD021`, and a default host in a `<ul>` is
+  silent while one in a `<table>` is not.
+
+- c6d2a30: A third pass over `any`: **60 → 38**, still zero `as any` — and the answer to a question item 33 had left
+  open.
+
+  **`never[]`, not `unknown[]`, is the bound a lifecycle decorator wants.** `@updated` and
+  `@deferHydration` declared `value: (...args: any[]) => void`, with a comment saying a repo-wide
+  type-check could not prove `unknown[]` safe. Measured on the shape nothing here contains:
+
+  ```
+  any[]      accepts `@updated after(n: number)`, and is `any`
+  unknown[]  REFUSES it — TS1241, because a parameter is contravariant
+  never[]    accepts it, and is not `any`
+  ```
+
+  So the signature did not need to lose its parameters; it needed the right bottom type. The same applies to
+  every constructor CONSTRAINT — `@Host`, `@ShouldUpdateOnPropsChange`, and the `InstanceOf`/`PropsOf`/
+  `HookPropsOf` helpers. `src/__tests__/DecoratorTypeClaims.tsx` pins it: put `unknown[]` back and two
+  `TS1241`s appear, which is what a false green looked like.
+
+  **And the opposite direction, which is the other half of the rule.** `@ramonda/router`'s
+  `NoPropsHookClass` needed `unknown`, not `never`: it types a VALUE that must accept core's real
+  `Runtime`, and a parameter typed `never` refuses it. `never` is right in a constraint, `unknown` is right
+  in a value's parameter, and `any` was standing in for both.
+
+  **Three types that were claiming the wrong thing, found because an `any` had been hiding them:**
+
+  - `Effect.effect` was `() => undefined | (() => void)` while the runner guards with
+    `typeof res === "function"` and ignores anything else. It is `() => unknown` now, with the one
+    assumption named in an `isCleanup` predicate instead of bridged by an `any` in `attachEffect`.
+  - `ComponentRuntime.rawProps` was `RenderableProps<any>`, which is the props SHAPE — but every reader
+    treats it as a bag, and `debug/inspector.ts` already declared it as one. Typed
+    `Record<string | symbol, unknown>`, it also deletes the two casts in `Component.ts` that said so.
+  - `areStringRecordsEqual` took `Record<string, string | undefined>` and its one caller passes props,
+    whose values are handlers and objects. Renamed `arePropsBagsEqual`, over `unknown` — the body only
+    counts keys and compares with `!==`.
+
+  `EnhancedHTMLNode._listeners` is `Record<string, EventListener>`, which is exactly what goes in and comes
+  out of `add`/`removeEventListener`.
+
+  The counting script now lives at `scripts/dev/count-any.mjs` rather than in a scratch directory, because
+  the last two passes' numbers were not comparable once their script was gone.
+
+- 62cdeb3: A page for the two caching decorators: `/concepts/caching` — "One per component, or one per item".
+
+  `@compute` and `@memoized` look alike from outside. Both hold a result, both hand back the same thing
+  until a signal their body read has moved — and that shared machinery is the visible part, which is why
+  people reach for the wrong one. The page leads with what actually separates them: **the key**. `@compute`
+  is keyed by nothing, so there is one value per component; `@memoized` is keyed by its arguments, so there
+  is one per argument.
+
+  So the decision is one question with no grey area — _is there one of this value per component, or one per
+  item?_ — and the page says why a `@compute` cannot do the second: it has exactly one slot, so there is
+  nowhere to put a value per row.
+
+  It also covers what the similarity really is (both watch the signals their body read, both freeze what the
+  builder captured), that a typed build refuses `@compute` with a parameter so the wrong choice cannot be
+  made by accident, that `@memoized` caches a value as readily as a handler, that the arguments have to be
+  keyable, and when the answer is neither.
+
+  `/concepts/timers` and `/concepts/refs` move down one place to make room after `/concepts/compute`.
+
+- f99f11a: `@StableProps` now type-checks on a context Provider.
+
+  It always WORKED there — declaring a key takes a consumer from four renders to one, measured in
+  `ContextValueIdentity.test.tsx` — but it would not compile, which is the worst way for a gate to be
+  wrong: the recommended fix was a type error.
+
+  `createContext` hands back `new (owner, options: T) => BaseHook<T> & Readonly<T>`, and `BaseHook`
+  carries no props phantom the way `Hook` does. So the decorator fell through to its COMPONENT branch,
+  which reads the props off the constructor's first parameter — and for a hook that parameter is the
+  runtime. Every name was then "not a prop of this class".
+
+  It is told apart by its RETURN, like the branch beside it, so a component cannot reach it. Putting
+  the phantom on `BaseHook` instead was tried and reverted: reading the type parameter makes the class
+  variant in it, and `this.use()`'s overloads stopped resolving for every hook in the repo.
+
+- 497e452: The scaffold check prints why a command failed. It was swallowing the reason.
+
+  `String(error.stdout ?? error.stderr ?? error)` looks like a fallback chain and is not one: `??` falls
+  through only on `null` and `undefined`, and a command that writes its error to stderr leaves `stdout` as
+  `""`. So the detail was the empty string, `if (detail)` was false, and the check printed a headline with
+  nothing under it — which is exactly what a CI run did:
+
+  ```
+  [scaffold] `npm ci --omit=dev` failed — a production install of the generated project
+  Error: Process completed with exit code 1.
+  ```
+
+  Both streams are read now, and the tail is 60 lines rather than 25 — an `npm ci` failure puts its useful
+  line above a wall of flag documentation. Planted to prove it: with the lockfile removed, npm's own output
+  now reaches the log, and before this it did not.
+
+  This is the whole change. It does not fix that CI run — that run's reason is gone, because it was never
+  printed — it makes the next one say so.
+
+- cf9fda9: `/concepts/lifecycle` documents what `@updated` is for beyond measuring: it is the signal a browser view
+  transition waits for.
+
+  A CSS transition needs the element to exist while it plays, and removing a row takes the node out — so the
+  exit never runs. `document.startViewTransition` snapshots the old frame instead, and waits for your
+  callback's promise to resolve once the DOM matches the new state. That is `@updated`, exactly, so the
+  pattern needs nothing new: six lines of app code.
+
+  **And it says what not to do.** Updates are batched on a microtask, so awaiting a few turns inside the
+  callback happens to be enough — measured, and "happens to be" is the whole problem with it. Both edges are
+  written down too: a change that schedules no render never fires `@updated`, so the callback needs a
+  deadline as a net; and in a cascade the first `@updated` resolves before the last pass.
+
+  The playground has it as a hook rather than a decorator — `apps/playground-core/src/demos/ViewTransition.tsx`
+  — because the framework already has the signal, and the half that needs thought is `view-transition-name`
+  in a stylesheet, which no decorator can reach.
+
+- dc3368d: **`@memoized` on two methods of one component returned the same handler.** The second method's
+  call ran the first one's body — no diagnostic, nothing thrown.
+
+  The cache is one map per instance, shared by every memoized method on it, and the key was built from the
+  arguments alone. So `removeFor(1)` and `editFor(1)` collided:
+
+  ```
+  removeFor(1) === editFor(1)     // true
+  remove(); edit();               // "remove:1", "remove:1"
+  ```
+
+  That is the commonest shape there is in a list row — several per-item handlers keyed by the same id. The
+  member's name is part of the key now, separated by a NUL (`\u0000`) because a caller's own string goes
+  straight into the key and `editFor("remove")` could otherwise land on `removeFor`'s entry. A test pins
+  that case too.
+
+  **How it was found, which is the part worth repeating.** A playground page with three buttons per row —
+  remove, remove-after-a-class, remove-inside-a-view-transition — where all three did the same thing. Every
+  existing test used one memoized method per component, so nothing in core's 1174 tests could see it.
+
+- 370c92f: `/reference/decorators` said `@compute` on `render` "turned the method into a cached property, so rendering
+  died with `component.render is not a function`". That crash is gone, and what replaced it is worse in the
+  way that matters.
+
+  The method form installs a function now, so `render` stays callable. Measured in a production run, where
+  the development guard is stripped:
+
+  - a state write still reaches the DOM — the render is cached on the signals it read, and state is one;
+  - so does a props change;
+  - and a **plain field freezes the page**. The same component without the decorator shows `new`; the
+    computed one keeps `old`, because nothing it read had moved.
+
+  So the guard exists because this fails **silently**, not because it crashes — the old symptom was loud and
+  immediate. And the type does not refuse it either: `@compute render()` is exactly the shape `compute`
+  accepts, which makes `assertNotRender` the only net, and that one is stripped from production.
+
+  `__tests__/prod/ComputeOnRender.prod.test.tsx` holds all four measurements, with the undecorated control
+  beside the computed one — that pair is what makes the freeze a fact rather than an argument.
+
 ## 0.20.0
 
 ### Minor Changes
