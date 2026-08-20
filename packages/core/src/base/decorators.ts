@@ -19,6 +19,7 @@ import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
+import { markCachedRender } from "../debug/cachedRender";
 import { reportFault } from "../debug/fault";
 import { claimMember } from "../debug/claimMember";
 import { computePhase } from "../debug/renderPhase";
@@ -1063,6 +1064,8 @@ export function memoized<T extends (...args: any[]) => any>(
 
   context.addInitializer(function () {
     if (__DEV__) claimMember(this, String(context.name), "memoized", "memoized");
+    // As for `@compute` — see `debug/cachedRender.ts`.
+    if (__DEV__ && context.name === "render") markCachedRender(this);
 
     let instanceMap = memoMap.get(this);
 
@@ -1895,6 +1898,9 @@ export function compute<T, R>(
     const internalId = createId();
 
     if (__DEV__) claimMember(this, String(context.name), "compute", "computed");
+    // Allowed on `render`, and this is what it costs: RMD020 compares two renders, and a cache makes
+    // them one object. Marked here, where the decision was made — see `debug/cachedRender.ts`.
+    if (__DEV__ && context.name === "render") markCachedRender(this);
 
     const cache = {
       value: null as R | null,
