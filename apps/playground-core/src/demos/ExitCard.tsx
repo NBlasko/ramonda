@@ -12,6 +12,7 @@ export interface ExitCardProps {
   onRemove: () => void;
   onRemoveAfterClass: () => void;
   onRemoveInTransition: () => void;
+  onRemoveWithUpdated: () => void;
   say: (line: string) => void;
 }
 
@@ -57,14 +58,17 @@ export class ExitCard extends Component<ExitCardProps> {
       <li className={this.props.leaving ? "exit-card leaving" : "exit-card"}>
         <strong>{this.props.card.label}</strong>
         <span className="exit-actions">
-          <button type="button" onClick={this.props.onRemove}>
+          <button type="button" onclick={this.props.onRemove}>
             remove
           </button>
-          <button type="button" onClick={this.props.onRemoveAfterClass}>
+          <button type="button" onclick={this.props.onRemoveAfterClass}>
             class, then remove
           </button>
-          <button type="button" onClick={this.props.onRemoveInTransition}>
-            view transition
+          <button type="button" onclick={this.props.onRemoveInTransition}>
+            vt + microtasks
+          </button>
+          <button type="button" onclick={this.props.onRemoveWithUpdated}>
+            vt + @updated
           </button>
         </span>
       </li>

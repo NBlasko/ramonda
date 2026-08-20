@@ -1,4 +1,4 @@
-import { Component, list, memoizedHandler, mounted, state } from "@ramonda/core";
+import { Component, list, memoizedHandler, mounted, state, updated } from "@ramonda/core";
 import { type Card, ExitCard } from "../demos/ExitCard";
 
 let next = 1;
@@ -80,6 +80,47 @@ export class ExitPage extends Component {
     }, 3000);
   }
 
+  /**
+   * 4. The same, with `@updated` as the signal instead of a guess.
+   *
+   * The drain is `drainBuilds()` then `flushPostCommit()` then `flushUpdated()`, in a loop until nothing
+   * is left — so `@updated` runs AFTER the DOM has been written for that pass. It is already the
+   * "the document now matches the state I wrote" signal, which is exactly what the browser is waiting
+   * for. Awaiting a fixed number of microtasks, as button 3 does, only happens to be enough.
+   *
+   * Six lines, no new framework surface, and the resolve point is visible rather than hidden in a wrapper.
+   */
+  private settle?: () => void;
+
+  @updated committed() {
+    const settle = this.settle;
+    this.settle = undefined;
+    settle?.();
+  }
+
+  removeWithUpdated(id: number) {
+    const start = (document as Document & { startViewTransition?: unknown }).startViewTransition;
+    if (typeof start !== "function") {
+      this.readout = "this browser has no `document.startViewTransition`";
+      return;
+    }
+
+    const transition = (start as (cb: () => Promise<void> | void) => { updateCallbackDone: Promise<void> }).call(
+      document,
+      () =>
+        new Promise<void>((resolve) => {
+          this.settle = resolve;
+          this.drop(id);
+        }),
+    );
+
+    void transition.updateCallbackDone.then(() => {
+      this.readout = this.cards.every((card) => card.id !== id)
+        ? "`@updated` resolved the callback — the commit was inside the transition, and nothing was guessed"
+        : "`@updated` never fired for this write — the signal is not the one to use";
+    });
+  }
+
   /** 3. The browser snapshots the frame; the removal happens inside. */
   removeInTransition(id: number) {
     const start = (document as Document & { startViewTransition?: unknown }).startViewTransition;
@@ -128,6 +169,11 @@ export class ExitPage extends Component {
     return () => this.removeInTransition(id);
   }
 
+  @memoizedHandler
+  removeWithUpdatedFor(id: number) {
+    return () => this.removeWithUpdated(id);
+  }
+
   render() {
     return (
       <section className="page">
@@ -138,10 +184,10 @@ export class ExitPage extends Component {
         </p>
 
         <p>
-          <button type="button" onClick={this.add}>
+          <button type="button" onclick={this.add}>
             add a card
           </button>{" "}
-          <button type="button" onClick={this.clearLog}>
+          <button type="button" onclick={this.clearLog}>
             clear the log
           </button>
         </p>
@@ -154,6 +200,7 @@ export class ExitPage extends Component {
               onRemove={this.removeNowFor(card.id)}
               onRemoveAfterClass={this.removeAfterClassFor(card.id)}
               onRemoveInTransition={this.removeInTransitionFor(card.id)}
+              onRemoveWithUpdated={this.removeWithUpdatedFor(card.id)}
               say={this.say}
             />
           ))}
