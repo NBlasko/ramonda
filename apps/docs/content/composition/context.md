@@ -74,6 +74,45 @@ a [`@compute`](/concepts/compute).
 answered the question of where its values come from. Mount the provider above the
 subtree from the start; if the value is what changes, change the value.
 
+## An object as a value, and the callback that builds it
+
+A key holding an object literal is a **new object every time the callback runs**, and a new object
+is a changed key — so every consumer of it wakes, however far down the tree it sits and however
+unchanged the contents are. A consumer reading only `conf`, while `tick` moves three times:
+
+```tsx
+class App extends Component {
+  @state tick = 0;
+  provider = this.use(ThemeProvider, (self: App) => ({ conf: { dense: true }, tick: self.tick }));
+}
+```
+
+Four renders where one was enough. The fix is on the PROVIDER, which is the thing that knows
+whether a key is a value or an identity. `createContext` hands back a class, so declare it on a
+subclass of that:
+
+```tsx
+@StableProps("conf")
+class ConfProvider extends ThemeProvider {}
+```
+
+Now the callback writes the plain literal and no consumer wakes for it. Contents that really move
+still arrive — a declaration is not a freeze.
+
+**A callback that reads nothing is called once.** It is cached on the signals it read, so one that
+reads no state, no `@compute`, no prop and no other hook runs at mount and never again — and a
+literal inside it keeps one identity for the life of the component. That is the shape to reach for
+when the value never changes, and it needs no declaration at all:
+
+```tsx
+class Root extends Component {
+  provider = this.use(ThemeProvider, () => ({ conf: { dense: true } }));
+}
+```
+
+`ramonda-check` reports the first shape and stays quiet about the last one, as
+`fresh-object-in-hook-props`.
+
 ## The default is a real fallback
 
 The object you pass to `createContext` fills in any key a provider doesn't supply —
