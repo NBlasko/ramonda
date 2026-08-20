@@ -268,7 +268,21 @@ describe("a name on a role that takes none", () => {
       "p/paragraph: aria-label",
       "div/generic: aria-label",
       "div/generic: aria-labelledby",
+      "mark/mark: aria-label",
     ]);
+  });
+
+  /**
+   * `<time>` was on this table and should never have been: it is named from AUTHOR in both
+   * machine-readable transcriptions of the spec, and giving a machine date a human name is the
+   * documented use of the element. A wrong entry in a table read to REPORT is a report on correct
+   * markup — found by comparing the table against `aria-query` and `dom-accessibility-api` rather
+   * than by reading it again.
+   */
+  test("a time with a name is not reported, and a mark still is", () => {
+    const tags = found().map((issue) => issue.tag);
+    expect(tags).not.toContain("time");
+    expect(tags).toContain("mark");
   });
 
   /**
@@ -310,6 +324,6 @@ describe("a name on a role that takes none", () => {
 
   test("it says whether the role was written or came from the tag", () => {
     expect(found().filter((issue) => issue.from === "role")).toHaveLength(2);
-    expect(found().filter((issue) => issue.from === "tag")).toHaveLength(5);
+    expect(found().filter((issue) => issue.from === "tag")).toHaveLength(6);
   });
 });

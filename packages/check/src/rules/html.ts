@@ -9,6 +9,10 @@ import { tagOf } from "./element";
  * set — a `<tr>` has exactly four places it may be, and there is no arguing about it. The looser
  * parts of the content model are left out on purpose: "flow content" and "phrasing content" admit
  * so much that a rule over them would spend its life reporting correct markup.
+ *
+ * **An ANCESTOR requirement is not a parent requirement**, which is why `<area>` is absent: it needs
+ * a `<map>` above it somewhere, and `<map><p><area /></p></map>` is legal. This table is read
+ * against the DIRECT parent, so an entry for it would report correct markup.
  */
 export const NEEDS_PARENT: Readonly<Record<string, readonly string[]>> = {
   tr: ["table", "thead", "tbody", "tfoot"],
@@ -31,6 +35,10 @@ export const NEEDS_PARENT: Readonly<Record<string, readonly string[]>> = {
   li: ["ul", "ol", "menu"],
   source: ["audio", "video", "picture"],
   track: ["audio", "video"],
+  // Ruby annotation. Both go directly inside `<ruby>` and nowhere else — `<rtc>` was the other
+  // answer and has been removed from the standard, so the set really is closed.
+  rt: ["ruby"],
+  rp: ["ruby"],
 };
 
 /**

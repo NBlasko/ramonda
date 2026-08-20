@@ -54,8 +54,18 @@ export const LABELS_A_CONTROL: ReadonlySet<string> = new Set(["for", "htmlFor"])
  */
 export const NAMES_ITSELF: ReadonlySet<string> = new Set(["submit", "reset", "button", "hidden", "image"]);
 
-/** The elements a reader has to be told the purpose of, because nothing about them says it. */
-const CONTROLS: ReadonlySet<string> = new Set(["input", "select", "textarea"]);
+/**
+ * The elements a reader has to be told the purpose of, because nothing about them says it.
+ *
+ * HTML's labelable elements, minus `button`. A button is named by what is INSIDE it — the text on
+ * it is its name — so a button with content is never nameless, and one with none is an empty
+ * element rather than an unlabelled control.
+ *
+ * `meter`, `progress` and `output` are here for the reason the other three are: each renders a
+ * value and nothing else, so a reader is told "50%" with no word for what is at 50%. They are
+ * labelable exactly as an `<input>` is, and every way of naming one is the same way.
+ */
+const CONTROLS: ReadonlySet<string> = new Set(["input", "select", "textarea", "meter", "progress", "output"]);
 
 /** The attributes that give an element a name outright, rather than by pointing at one. */
 const NAMES_IT_DIRECTLY: ReadonlySet<string> = new Set(["aria-label", "aria-labelledby", "title"]);

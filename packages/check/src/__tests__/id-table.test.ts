@@ -107,14 +107,28 @@ describe("a project with an id this cannot read", () => {
 describe("a form control with no label", () => {
   test("only the controls with nothing naming them are reported", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    expect(found.map((issue) => issue.tag)).toEqual(["input", "textarea"]);
+    expect(found.map((issue) => issue.tag)).toEqual(["input", "textarea", "progress", "meter", "output"]);
+  });
+
+  /**
+   * The subject is HTML's labelable set, and three of it were missing: `meter`, `progress` and
+   * `output` each render a value and nothing else, so without a name a reader is told "50%" with no
+   * word for what is at 50%. They are labelable exactly as an `<input>` is.
+   *
+   * `<button>` stays out, and that is the line: a button is named by what is INSIDE it.
+   */
+  test("the value-showing controls are reported too, and a button is not", () => {
+    const found = run("id-table").findings["control-with-no-label"];
+    const tags = found.map((issue) => issue.tag);
+    expect(tags).toContain("progress");
+    expect(tags).not.toContain("button");
   });
 
   /** Four ways to be named, and each is written in the fixture beside the ones that are not. */
   test("a for, a wrapping label, aria and title all count as a name", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    // Fifteen controls in the fixture; two are nameless.
-    expect(found).toHaveLength(2);
+    // Twenty controls in the fixture; five are nameless.
+    expect(found).toHaveLength(5);
   });
 
   /**
@@ -125,14 +139,14 @@ describe("a form control with no label", () => {
    */
   test("a control named through either spelling is not called nameless", () => {
     const found = run("id-table").findings["control-with-no-label"];
-    expect(found).toHaveLength(2);
+    expect(found).toHaveLength(5);
   });
 
   test("a placeholder is not called nameless — it is its own report", () => {
     const findings = run("id-table").findings;
     expect(findings["named-only-by-a-placeholder"].map((issue) => issue.tag)).toEqual(["input"]);
     // And the placeholder-only one is NOT in the other rule's list.
-    expect(findings["control-with-no-label"]).toHaveLength(2);
+    expect(findings["control-with-no-label"]).toHaveLength(5);
   });
 
   /**
