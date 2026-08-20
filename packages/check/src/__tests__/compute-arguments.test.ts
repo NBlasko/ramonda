@@ -14,9 +14,10 @@ const run = () => analyzeProject(join(here, "fixtures", "compute-arguments", "ts
  * when the class definition runs — but that is when the module is first imported, so a component behind a
  * route nobody opened ships with the fault. This reports it before the build.
  *
- * The type cannot: `compute`'s target is `(this: T) => R`, and a method with a parameter is assignable to
- * that through contravariance — the same reason `(...args: never[])` is the right bound for a lifecycle
- * decorator.
+ * The type refuses it first — measured, `@compute withArg(k: number)` is `TS1241`, because a function that
+ * declares a parameter is not assignable to one that declares none. So this rule is the second net, for a
+ * project with no types or a `@ts-ignore`, exactly as `attribute-that-does-nothing` is beside the JSX
+ * types.
  */
 describe("a @compute that takes an argument", () => {
   test("every declaration is reported, with the parameter to delete", () => {

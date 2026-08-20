@@ -328,17 +328,16 @@ describe("decorator target validation", () => {
  * argument gets the first call's answer, with nothing thrown and nothing logged. That is a wrong number on
  * a page, which is why the check is outside `__DEV__`.
  *
- * The type cannot catch it. `compute`'s target is `(this: T) => R`, and a method with a parameter is
- * assignable to that through contravariance — the same reason `(...args: never[])` is the right bound for a
- * lifecycle decorator. `@ramonda/check`'s `compute-takes-no-arguments` reports it before the build; this is
- * the net for what is already running.
+ * The type refuses it too — `@compute withArg(k: number)` is `TS1241`, which is why the shape below needs
+ * a `@ts-expect-error` to be written at all. This is the net for a project with no types, and
+ * `@ramonda/check`'s `compute-takes-no-arguments` is the one that reports it before the build.
  */
 describe("@compute with a parameter", () => {
   test("is refused, and names the decorator that takes one", () => {
     expect(() => {
       class Bad extends Component {
         @state factor = 2;
-        // @ts-expect-error — the runtime guard is the point; the type accepts this shape.
+        // @ts-expect-error — the TYPE refuses this too; the directive is how the runtime guard gets tested.
         @compute
         times(n: number) {
           return n * this.factor;
@@ -349,6 +348,32 @@ describe("@compute with a parameter", () => {
       }
       return Bad;
     }).toThrow(/\[@compute\].*declares 1 parameter.*@memoized/s);
+  });
+
+  test("neither form can be assigned over", async () => {
+    // A getter with no setter throws; the method form was `writable: true` at first and accepted the
+    // assignment, replacing the compute with the value. A derived member is not a place to put one.
+    class Fine extends Component {
+      @state n = 2;
+      @compute get doubled() {
+        return this.n * 2;
+      }
+      @compute tripled() {
+        return this.n * 3;
+      }
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Fine>(<Fine />);
+    const reach = app.instance as unknown as Record<string, unknown>;
+    expect(() => {
+      reach.doubled = 1;
+    }).toThrow();
+    expect(() => {
+      reach.tripled = 1;
+    }).toThrow();
   });
 
   test("both parameterless forms are accepted, and each is read the way it is written", async () => {

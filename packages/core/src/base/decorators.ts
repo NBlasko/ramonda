@@ -2014,7 +2014,10 @@ export function compute<T, R>(
       context.name,
       context.kind === "getter"
         ? { get: read, configurable: true, enumerable: true }
-        : { value: () => read(), configurable: true, enumerable: true, writable: true },
+        : // Not writable, so the two forms answer an assignment the same way. A getter with no setter
+          // throws on `this.total = 1`; measured, `writable: true` accepted it and replaced the compute
+          // with the number. A derived value is not a place to put one.
+          { value: () => read(), configurable: true, enumerable: true, writable: false },
     );
 
     // Cleanup when the component is destroyed.

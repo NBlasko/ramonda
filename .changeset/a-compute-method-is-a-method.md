@@ -19,7 +19,8 @@ So the choice between a getter and a method is a real one again, and the `get` i
 how you read the value, and both readings are true. One cache, one set of dependencies, one invalidation —
 measured: each form runs its body once for two reads, and once more after a write.
 
-**And neither form takes an argument, refused in three places.** A `@compute` caches one value per
+**And neither form takes an argument, refused in three places** — the type first, then the two nets behind
+it. A `@compute` caches one value per
 component, so there is no key: an argument would be accepted and ignored, and the second call with a
 different argument would hand back the first call's answer — a wrong number, silently.
 
@@ -28,8 +29,9 @@ different argument would hand back the first call's answer — a wrong number, s
 - `@ramonda/check` reports it before the build, as the new **`compute-takes-no-arguments`** rule, at error
   severity. The class definition running is the first import of the module, so a component behind a route
   nobody opened would otherwise ship with the fault and throw for whoever opens that route.
-- The type cannot: `compute`'s target is `(this: T) => R`, and a method with a parameter is assignable to
-  that through contravariance — the same reason `(...args: never[])` is the right bound for a lifecycle
-  decorator.
+- The **type** refuses it first, and that is the earliest net: a function declaring a parameter is not
+  assignable to one that declares none, so `compute`'s own `(this: T) => R` is enough — measured,
+  `@compute withArg(k: number)` is `TS1241`. The rule and the runtime are for a project with no types, a
+  `@ts-ignore`, or a cast.
 
 `@memoized` is the decorator keyed BY arguments, and every one of the three messages says so.

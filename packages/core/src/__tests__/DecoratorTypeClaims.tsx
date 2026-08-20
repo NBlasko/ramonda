@@ -109,9 +109,9 @@ class SubscriptionClaims extends Component {
  * before — a method had an accessor installed, so it was typed `() => number` while holding a `number`,
  * and reading it as the number it was is exactly the line that failed.
  *
- * A PARAMETER is refused, and only by the runtime — `(this: T) => R` accepts a method with a parameter
- * through contravariance, the same reason `never[]` is the bound above. `DecoratorValidation.test.tsx` has
- * that half.
+ * A PARAMETER is refused here as well: a function that declares one is not assignable to `(this: T) => R`,
+ * which declares none. `DecoratorValidation.test.tsx` covers the runtime net behind it, for a project with
+ * no types.
  */
 class ComputeClaims extends Component {
   @state factor = 2;
@@ -122,6 +122,12 @@ class ComputeClaims extends Component {
 
   @compute tripled(): number {
     return this.factor * 3;
+  }
+
+  // @ts-expect-error — a method that DECLARES a parameter is not assignable to one that declares none.
+  @compute
+  withArg(k: number) {
+    return k * this.factor;
   }
 
   /** The getter is read, the method is called, and neither needs a cast. */

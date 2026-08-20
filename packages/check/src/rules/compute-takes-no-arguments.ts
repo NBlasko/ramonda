@@ -18,9 +18,11 @@ import type { Rule } from "./rule";
  * and throws in front of whoever gets there first. This reports it before it is built, which is the whole
  * axis this package sits on.
  *
- * The type does not catch it: `compute`'s target is `(this: T) => R`, and a method with a parameter is
- * assignable to that through contravariance — the same reason `(...args: never[])` is the right bound for
- * a lifecycle decorator. So there is no earlier net than this one.
+ * **The type refuses it first**, and this rule is the second net rather than the only one. Measured:
+ * `@compute withArg(k: number)` is `TS1241` — a function declaring a parameter is not assignable to one
+ * that declares none, so `compute`'s own `(this: T) => R` is the earliest check there is. What is left for
+ * a rule is a project with no types, a `@ts-ignore`, or a cast — the same role `attribute-that-does-nothing`
+ * plays beside the JSX types.
  *
  * ## What to write instead
  *
