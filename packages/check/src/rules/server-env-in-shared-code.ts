@@ -85,7 +85,6 @@ function serverOnlyMembers(cls: ts.ClassDeclaration, context: RuleContext): Set<
     const name = memberName(member);
     if (name !== undefined && isServerOnly(member, context)) excused.add(name);
   }
-  if (excused.size === 0) return excused;
 
   /** Which members hold a `this.<name>` reference, so a helper can be asked who calls it. */
   const callers = new Map<string, Set<string>>();
@@ -106,6 +105,37 @@ function serverOnlyMembers(cls: ts.ClassDeclaration, context: RuleContext): Set<
       ts.forEachChild(node, look);
     })(member);
   }
+
+  /**
+   * A `private` or `protected` member NOTHING in this class references, which is a different
+   * silence from the one below it and the reason this runs before the loop.
+   *
+   * The stance for a member with no reference is "it may be called from anywhere, so it is not
+   * excused on silence" — and that is right for a PUBLIC one. It is not right once a class has
+   * subclasses: `protected` narrows the callers to this chain, and a chain is walked upward here,
+   * never down. So a base's `protected fromDb()` whose only caller is a server-only lifecycle in a
+   * subclass was reported as browser code — measured, on the very shape this rule's advice
+   * recommends, one class further along.
+   *
+   * `private` is quieter still: with no reference in its own class, nothing anywhere can call it.
+   *
+   * **The miss this leaves, written down rather than discovered.** A subclass that calls such a
+   * helper from `render()` is a real fault and is reported by nothing: the read is on the base,
+   * which cannot see the caller, and the subclass's pass does not walk the base's members. A miss
+   * is the safe direction here and a false ERROR on a working pattern is not.
+   */
+  const referenced = new Set(callers.keys());
+  for (const member of cls.members) {
+    const name = memberName(member);
+    if (name === undefined || referenced.has(name)) continue;
+    const modifiers = ts.canHaveModifiers(member) ? (ts.getModifiers(member) ?? []) : [];
+    const hidden = modifiers.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword,
+    );
+    if (hidden) excused.add(name);
+  }
+
+  if (excused.size === 0) return excused;
 
   for (let changed = true; changed; ) {
     changed = false;

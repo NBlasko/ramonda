@@ -44,7 +44,7 @@ describe("an environment variable read but never exposed", () => {
   test("it points at the name, on the line the name is written", () => {
     const issue = found().find((each) => each.name === "VITE_API_URL");
     expect(issue?.file).toBe(join(here, "fixtures", "env-reads", "app.tsx"));
-    expect(issue?.line).toBe(7);
+    expect(issue?.line).toBe(8);
   });
 
   test("what stays silent, and why each one is silent", () => {
@@ -123,5 +123,27 @@ describe("process.env in code the browser runs", () => {
 
   test('an explicit { env: "server" } is the one excuse there is', () => {
     expect(serverEnv().map((issue) => issue.component)).not.toContain("ReadsProcessOnTheServer");
+  });
+
+  /**
+   * The excuse across a CLASS boundary, which was a false positive on the shape this rule's own
+   * advice recommends — one class further along.
+   *
+   * `ConfigBase` holds `protected fromDb()`, and its only caller is a server-only lifecycle in the
+   * subclass. Nothing in the base references it, and the stance for an unreferenced member was "it
+   * may be called from anywhere" — true of a PUBLIC one, and not true of a `protected` one, whose
+   * callers can only be this chain. The chain is walked upward here, never down.
+   *
+   * The miss this leaves is written down in the rule: a subclass calling such a helper from
+   * `render()` is a real fault and is reported by nothing. A miss is the safe direction here; a
+   * false ERROR on a working pattern is not.
+   */
+  test("a base's protected helper, called only from a server-only subclass member, is not reported", () => {
+    expect(serverEnv().map((issue) => issue.component)).not.toContain("ConfigBase");
+  });
+
+  /** The control: a private helper a render DOES call stays reported, referenced as it is. */
+  test("a private helper a render calls is still reported", () => {
+    expect(serverEnv().map((issue) => issue.component)).toContain("HelperAlsoCalledInRender");
   });
 });

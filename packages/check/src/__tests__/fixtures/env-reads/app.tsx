@@ -1,5 +1,6 @@
 import { bootstrap, Component, state } from "../framework";
 import { created } from "@ramonda/core";
+import { ConfigBase } from "./shared-base";
 
 /** ✗ Vite's prefix, which Ramonda's build no longer exposes — the migration hazard. */
 export class FromVite extends Component {
@@ -191,3 +192,18 @@ export class App extends Component {
 }
 
 bootstrap(<App />, null);
+
+/**
+ * The excuse across a class boundary: the helper is on a BASE and its only caller is a server-only
+ * lifecycle down here. Planted to find out whether the excuse walk sees it.
+ */
+export class DelegatesToABase extends ConfigBase {
+  @state data = "";
+  @created({ env: "server" })
+  load() {
+    this.data = this.fromDb();
+  }
+  render() {
+    return <p>{this.data}</p>;
+  }
+}

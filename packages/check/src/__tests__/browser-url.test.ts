@@ -23,8 +23,24 @@ describe("a component reading the browser's URL", () => {
       "window.location.search -> searchParams",
       // Nothing on the router answers `origin`, and none is invented for it.
       "window.location.origin -> —",
+      // One `this.method()` away, which is where a read like this actually lives.
+      "location.pathname -> pathname",
     ]);
-    expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(new Set(["Astray"]));
+    expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(new Set(["Astray", "ViaAHelper"]));
+  });
+
+  /**
+   * How far it looks: the whole class, and no further.
+   *
+   * A read in a helper the component calls is found. A utility in ANOTHER FILE is not, and that is
+   * a decision — this report names a component and a line with nothing to say how the two are
+   * connected, so following the import would name a component that did not write the line, once per
+   * caller. The two rules that DO follow imports carry a `through` path for exactly that reason.
+   */
+  test("a read one this.method() away is found, and one across a file boundary is not", () => {
+    const components = run("browser-url").findings["browser-url"].map((issue) => issue.component);
+    expect(components).toContain("ViaAHelper");
+    expect(components).not.toContain("ViaAnotherFile");
   });
 
   /**
