@@ -185,6 +185,18 @@ export interface ElementRule<Issue> {
   id: string;
   report: Report<Issue>;
   needs?: string;
+  /**
+   * Whether this rule is still asked about an element that SPREADS.
+   *
+   * The family-wide silence exists because a spread may CARRY the attribute a rule is about — an
+   * `<img {...rest} />` may well have its `alt` — and nothing here can say whether it does. That
+   * argument is about an attribute that is missing, and it does not transfer to a rule about an
+   * attribute that is plainly THERE: a spread cannot un-build an object literal written beside it.
+   *
+   * A rule setting this takes on the whole guard itself, including which attributes a spread may
+   * overwrite, and may only report what is provable in spite of it.
+   */
+  evenWhenSpreading?: true;
   read(element: JsxElementLike, context: ElementContext): Issue[];
 }
 

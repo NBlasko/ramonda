@@ -438,10 +438,15 @@ export function applyClass(
 /**
  * Every active element rule over one JSX element.
  *
- * **A spreading element is handed to nobody.** `<img {...rest} />` may carry the very attribute a
- * rule is about, and nothing static can say whether it does — so the silence contract applies to
- * the whole family at once, here, rather than being remembered by each of forty rules. It is the
- * same argument as `needs` and `exempt`: a guard every rule needs is a guard a rule can forget.
+ * **A spreading element is handed to almost nobody.** `<img {...rest} />` may carry the very
+ * attribute a rule is about, and nothing static can say whether it does — so the silence contract
+ * applies to the whole family at once, here, rather than being remembered by each of forty rules.
+ * It is the same argument as `needs` and `exempt`: a guard every rule needs is a guard a rule can
+ * forget.
+ *
+ * The exception is a rule declaring `evenWhenSpreading`, which is for a question a spread cannot
+ * answer either way: a spread may supply an attribute that is MISSING, but it cannot un-build an
+ * object literal written beside it. Such a rule takes on the guard itself.
  *
  * The context is built ONCE and shared. Forty rules asking "is there an `alt`" would otherwise walk
  * the same attribute list forty times.
@@ -453,8 +458,8 @@ export function applyElement(
   resolve: ElementContext["resolve"],
 ): void {
   const context = contextFor(element, resolve);
-  if (context.spreads) return;
-  for (const rule of active) collect(findings, rule, rule.read(element, context));
+  const asked = context.spreads ? active.filter((rule) => "evenWhenSpreading" in rule) : active;
+  for (const rule of asked) collect(findings, rule, rule.read(element, context));
 }
 
 /**

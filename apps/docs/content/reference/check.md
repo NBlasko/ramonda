@@ -181,7 +181,7 @@ rules**, so a rule cannot be added without appearing here.
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
-| `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
+| `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
 | `attribute-that-does-nothing` | an attribute is written whose name reaches the DOM verbatim and that nothing reads |

@@ -1,10 +1,19 @@
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "fresh-props", "tsconfig.json"));
+
+/** The 1-based line an element's label sits on, so a test can name a site rather than an index. */
+const lineOf = (label: string) => {
+  const source = readFileSync(join(here, "fixtures", "fresh-props", "app.tsx"), "utf8").split("\n");
+  const at = source.findIndex((line) => line.includes(label));
+  if (at < 0) throw new Error(`no line in the fixture holds ${label}`);
+  return at + 1;
+};
 
 /**
  * A literal written into a component's props.
@@ -26,6 +35,10 @@ describe("a prop rebuilt on every render", () => {
       "Row.conf:object",
       "Row.conf:object",
       "Row.tags:array",
+      "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
     ]);
   });
 
@@ -49,6 +62,10 @@ describe("a prop rebuilt on every render", () => {
       "maybeConf(true) @ `maybeConf`",
       "makeConf() as { dense: boolean } @ `makeConf`",
       '["new", "hot"]',
+      "this.dense ? { dense: true } …",
+      "this.dense ? { dense: true } …",
+      "this.maybe ?? { dense: true }",
+      "{ dense: true }",
     ]);
   });
 
@@ -113,6 +130,33 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
+   * A branch builds on the path it takes, and that path is the fault. `conf={this.conf ?? {…}}` is
+   * the shape that matters most — a fallback default is written constantly, and it hands the child
+   * a fresh object on every render where the left is missing.
+   */
+  test("a ternary arm and a `??` fallback are both reported", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written.filter((one) => one.startsWith("this.dense ?"))).toHaveLength(2);
+    expect(written).toContain("this.maybe ?? { dense: true }");
+  });
+
+  /**
+   * A spread, which every other element rule treats as a reason to say nothing at all.
+   *
+   * That silence is about an attribute that is MISSING — `<img {...rest} />` may well carry its
+   * `alt`. It does not transfer here: a spread cannot un-build an object literal written beside it.
+   * What it CAN do is overwrite it, so order decides. Before the last spread the prop may never
+   * reach the child and this stays quiet; after it, nothing can take it away.
+   */
+  test("a literal after the last spread is reported, and one before it is not", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const onLine = (label: string) => found.filter((issue) => issue.line === lineOf(label)).length;
+
+    expect(onLine('label="g"')).toBe(1);
+    expect(onLine('label="f"')).toBe(0);
+  });
+
+  /**
    * The two silences that keep the hop provable. A MODULE-level const is built once — that is the
    * documented fix — and a helper handing back an object it holds is a stable reference. Reporting
    * either would be reporting the fix.
@@ -152,7 +196,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Twenty elements in the fixture and nine reported, so a leak shows as a count.
-    expect(found).toHaveLength(9);
+    // Twenty-four elements in the fixture and thirteen reported, so a leak shows as a count.
+    expect(found).toHaveLength(13);
   });
 });

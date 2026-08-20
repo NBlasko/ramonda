@@ -24,10 +24,18 @@ which is further than anyone writes on purpose. A low bound looks careful and is
 walk abandons is reported as nothing at all, and nothing is what a clean codebase looks like. What
 stops a runaway is the cycle guard, so mutual recursion terminates and reports nothing.
 
-A helper written as an arrow is the same helper — `const makeConf = () => ({ dense: true })` was a
+A branch is followed on both sides, which is where the most common shape of all lives:
+`conf={this.conf ?? { dense: true }}` hands the child a fresh object on every render where the left
+is missing, and so does an arm of a ternary. A helper written as an arrow is the same helper — `const makeConf = () => ({ dense: true })` was a
 plain miss until it was planted — and a cast does not hide it either.
 
 The report now quotes the line — `<Row conf={local}>`, `<Row conf={makeConf()}>` — and names the
 function the literal is actually IN, rather than printing `{…}` for everything. For a chain that is
 the innermost one: `conf={chainConf()}` already says `chainConf`, and where the reader needs to go
 is `level3`.
+
+It is also the one element rule still asked about an element that SPREADS. The family-wide silence
+is about an attribute that is MISSING — `<img {...rest} />` may well carry its `alt` — and that
+does not transfer: a spread cannot un-build an object literal written beside it. What it can do is
+overwrite it, so order decides. Written after the last spread, nothing can take the prop away and
+it is reported; written before one, it may never reach the child and this stays quiet.

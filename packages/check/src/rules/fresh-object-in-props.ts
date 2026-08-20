@@ -52,6 +52,12 @@ import type { ElementRule, ElementContext } from "./rule";
  * hands back an object it holds**, which is the same fix behind a function call. The distinction
  * both times is where the literal is BUILT, not where it is written.
  *
+ * **An attribute a SPREAD may overwrite.** `<Row conf={{…}} {...rest} />` builds the object, but
+ * whether the child ever sees it depends on what `rest` holds, and a prop that never arrives is not
+ * this fault. Written AFTER the last spread it cannot be taken away, and it is reported — which is
+ * why this is the one element rule that is still asked about a spreading element: a spread may
+ * supply an attribute that is missing, but it cannot un-build one that is plainly there.
+ *
  * **Recursion.** A helper that calls itself, directly or through another, never hands back a value
  * at all; the walk terminates on the cycle guard and reports nothing.
  *
@@ -82,6 +88,13 @@ export interface FreshObjectInPropsIssue {
   line: number;
   column: number;
 }
+
+/** Operators that hand back one side or the other, so a literal on either side is built. */
+const CHOOSES: ReadonlySet<ts.SyntaxKind> = new Set([
+  ts.SyntaxKind.QuestionQuestionToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.AmpersandAmpersandToken,
+]);
 
 /** Props the framework consumes itself, so nothing is handed on and nothing is compared. */
 const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
@@ -117,6 +130,8 @@ interface Built {
  * - **A LOCAL one line up.** `const conf = { dense: true }` at the top of `render()` is the same
  *   object built at the same moment, moved for readability. Only a local counts: a module-level
  *   `const` is built ONCE, which is the documented fix and must stay silent.
+ * - **A BRANCH with one on either side.** `conf={flag ? { dense: true } : STABLE}` and
+ *   `conf={this.conf ?? { dense: true }}` build on the path they take, and that path is the fault.
  * - **A CALL that builds one.** `conf={makeConf()}`, wherever `makeConf` lives — `resolve` follows
  *   the import, and follows it again through a helper that calls a helper. Only when what comes
  *   back is a literal built INSIDE the chain: one handing back an object it HOLDS is a stable
@@ -132,9 +147,8 @@ interface Built {
  *
  * Cycle-guarded, and bounded at `HOPS` — set deeper than hand-written code goes, because a chain
  * the walk abandons is reported as nothing at all. Everything else answers `undefined`, which is
- * the silence contract: a
- * prop read from `this.props`, a field, a parameter, a ternary — none of those is knowable from
- * here, and a maybe is the one thing this may never report.
+ * the silence contract: a prop read from `this.props`, a field, a parameter — none of those is
+ * knowable from here, and a maybe is the one thing this may never report.
  */
 function freshnessOf(
   expression: ts.Expression,
@@ -161,6 +175,20 @@ function freshnessOf(
     if (declaration.initializer === undefined) return undefined;
     const inner = freshnessOf(declaration.initializer, resolve, depth + 1, seen);
     return inner === undefined ? undefined : { kind: inner.kind, builtIn: inner.builtIn ?? `\`${written.text}\`` };
+  }
+
+  // A branch builds on the path it takes, and that path is the whole fault: `conf={props.conf ?? {
+  // dense: true }}` hands over a fresh object on every render where the left is missing. Either
+  // side counts, the same as a helper with more than one return.
+  if (ts.isConditionalExpression(written)) {
+    return (
+      freshnessOf(written.whenTrue, resolve, depth + 1, seen) ??
+      freshnessOf(written.whenFalse, resolve, depth + 1, seen)
+    );
+  }
+
+  if (ts.isBinaryExpression(written) && CHOOSES.has(written.operatorToken.kind)) {
+    return freshnessOf(written.left, resolve, depth + 1, seen) ?? freshnessOf(written.right, resolve, depth + 1, seen);
   }
 
   if (ts.isCallExpression(written)) {
@@ -313,7 +341,7 @@ export const freshObjectInProps = {
   report: {
     severity: "warn",
     reportedWhen:
-      "a component is handed an object or array built during the render — written in the attribute, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match",
+      "a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match",
     heading: (found) => `${found.length} prop(s) rebuilt on every render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -327,8 +355,9 @@ export const freshObjectInProps = {
       "Comparison cannot match, and the child renders again whenever its parent does, whether or\n" +
       "not anything about it changed. Measured: one child goes from one render to two; a list of a\n" +
       "thousand rows is a thousand children that cannot be skipped.\n\n" +
-      "Moving the literal does not fix it. A `const` at the top of `render()` and a helper that\n" +
-      "returns a literal are the same object built at the same moment, and both are reported.\n\n" +
+      "Moving the literal does not fix it. A `const` at the top of `render()`, an arm of a ternary,\n" +
+      "a fallback behind `??`, and a helper that returns a literal — however many helpers deep — are\n" +
+      "all the same object built at the same moment, and all of them are reported.\n\n" +
       "Where the value never changes, lift it out of the render — a module constant, or a field on\n" +
       "the class. Where it is derived from state or props, a `@compute` gives you the same value\n" +
       "back until something it reads changes, which is exactly what comparison needs.\n\n" +
@@ -341,6 +370,8 @@ export const freshObjectInProps = {
       "This is a warning today and an error in a later version.",
   },
 
+  evenWhenSpreading: true,
+
   read(element, { tag, resolve }) {
     // A host element has no props to compare. `tag` is `undefined` exactly when this names a
     // component, which is the only case with a comparison to defeat.
@@ -349,9 +380,23 @@ export const freshObjectInProps = {
     const opening = openingOf(element);
     const component = opening.tagName.getText();
     const settled = stablePropsOf(opening.tagName, resolve);
+    const attributes = opening.attributes.properties;
     const found: FreshObjectInPropsIssue[] = [];
 
-    for (const attribute of opening.attributes.properties) {
+    /**
+     * Everything up to and including the last spread is left alone.
+     *
+     * JSX applies attributes in written order, so a spread AFTER one may overwrite it — and a prop
+     * that never reaches the child is not this fault, however wastefully it is built. Written after
+     * the last spread, nothing can take it away, and the fault is provable in spite of the spread.
+     */
+    const lastSpread = attributes.reduce(
+      (at, attribute, index) => (ts.isJsxSpreadAttribute(attribute) ? index : at),
+      -1,
+    );
+
+    for (const [index, attribute] of attributes.entries()) {
+      if (index < lastSpread) continue;
       if (!ts.isJsxAttribute(attribute)) continue;
 
       const name = attribute.name.getText();

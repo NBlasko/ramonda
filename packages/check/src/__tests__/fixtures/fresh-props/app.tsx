@@ -37,6 +37,8 @@ class Row extends Component<{ conf: unknown; tags: unknown; label: string }> {
 class Table extends Component {
   @state dense = false;
 
+  @state maybe: { dense: boolean } | null = null;
+
   @compute get conf() {
     return { dense: this.dense };
   }
@@ -84,8 +86,16 @@ class Table extends Component {
         </div>
         {/* Not reported: `key` and `ref` are read by the framework rather than passed on. */}
         <Row key={"k"} label="e" />
-        {/* Not reported: a spread may carry anything, so no rule is handed this element. */}
+        {/* REPORTED — a ternary where both arms build. */}
+        <Row conf={this.dense ? { dense: true } : { dense: false }} label="ternary" />
+        {/* REPORTED — one arm builds, and that arm is the whole fault. */}
+        <Row conf={this.dense ? { dense: true } : STABLE} label="ternary-half" />
+        {/* REPORTED — the common default: a fallback literal behind `??`. */}
+        <Row conf={this.maybe ?? { dense: true }} label="fallback" />
+        {/* Not reported: a spread AFTER it may overwrite it, and a prop that never arrives is not this fault. */}
         <Row conf={{ dense: true }} {...rest} label="f" />
+        {/* REPORTED — after the last spread, so nothing can take it away. */}
+        <Row {...rest} conf={{ dense: true }} label="g" />
       </div>
     );
   }
