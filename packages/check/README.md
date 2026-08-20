@@ -76,6 +76,25 @@ missing provider — is not reported here, exactly as it is not reported at runt
 
 For the dynamic remainder, the framework reports `RMD003` when the component **mounts**.
 
+## Adding a rule
+
+A rule is a CLAIM, and the claim has to survive more shapes than the one it was written against.
+
+`.claude/skills/writing-a-static-rule/SKILL.md` is the list, and every entry on it is there because
+it found a real gap. The first time the whole ladder was run against one rule — a value one line up,
+a helper in another file, a helper calling a helper, an arrow helper, a cast, a ternary arm, a `??`
+fallback, a spread, a per-row callback — it found **nine**, in a rule that already had tests, a
+fixture and a documented boundary.
+
+The method is one sentence: **plant the shape, then measure**. Never read the code and reason about
+it. A rule that reports nothing looks exactly like a clean codebase, so a gap costs nothing to ship
+and is invisible afterwards.
+
+`src/rules/follow-value.ts` is the walk that answers most of the list — it goes to the DECLARATION
+behind a name, never to its type, which is what keeps this package's promise while still reaching a
+value written somewhere else. `src/__tests__/one-hop-away.test.ts` is the standing inventory of the
+rules that do not use it yet.
+
 ## As a library
 
 ```ts
