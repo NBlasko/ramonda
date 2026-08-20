@@ -43,7 +43,7 @@ describe("state written by something a render reaches", () => {
   /**
    * The four shapes it must stay quiet about, and the third is the one that matters most.
    *
-   * `@memoizedHandler pick(id) { return () => { this.n += 1; } }` is called BY the render — so the
+   * `@memoized pick(id) { return () => { this.n += 1; } }` is called BY the render — so the
    * walk is right to follow it — and what it returns runs on a click. A first version of this rule
    * walked into everything that was not written directly as a JSX attribute, and it reported five
    * places in this repository, every one of them that idiom. A checker that reports a first-class

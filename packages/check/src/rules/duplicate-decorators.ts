@@ -50,7 +50,7 @@ export interface DuplicateDecoratorIssue {
    * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). Nothing is lost;
    *   the spelling is redundant.
    * - `redundant` — the second changes nothing at all (`@state`, `@compute`, `@persist`,
-   *   `@memoizedHandler`). No dead code and no behaviour to look for; delete the extras.
+   *   `@memoized`). No dead code and no behaviour to look for; delete the extras.
    */
   effect: "refuses" | "displaces" | "merges" | "redundant";
   /**
@@ -97,7 +97,7 @@ const MERGING = new Set(["StableProps"]);
  * behaviour difference that does not exist.
  *
  * Measured in core rather than assumed: `@state @state n = 1` renders once per write with the right
- * value, `@compute @compute` runs its body once for two reads, and `@persist` and `@memoizedHandler`
+ * value, `@compute @compute` runs its body once for two reads, and `@persist` and `@memoized`
  * behave identically doubled. So it is redundancy, which is why it reads as a warning rather than a
  * broken program — the author believed something that is not so, and nothing downstream is wrong.
  *
@@ -105,7 +105,7 @@ const MERGING = new Set(["StableProps"]);
  * follow several props, and each application does real work. See `DecoratorReach.test.tsx`, which pins
  * that it runs once per changed prop.
  */
-const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoizedHandler"]);
+const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoized"]);
 
 /**
  * Which declaration is in effect, said per decorator KIND, because the two are opposite.

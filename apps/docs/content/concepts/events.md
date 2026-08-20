@@ -48,7 +48,7 @@ An inline arrow — `onclick={(e) => …}` — types `e` for you, and that is th
 thing it does better. It also builds a new function on every render, so the listener
 is removed and re-added on the element every time, and a development build reports it
 (`RMD020`). Annotate the method instead; when a handler has to be built per item,
-[`@memoizedHandler`](#a-handler-per-item) caches it by its arguments.
+[`@memoized`](#a-handler-or-a-value-per-item) caches it by its arguments.
 
 ### An event whose name `on…` cannot spell
 
@@ -108,15 +108,15 @@ Development warns you when this bites.
 `@onWindow` and `@onDocument` also work on a [Hook](/hooks); `@onElement`
 does not, because a hook has no element of its own.
 
-## A handler per item
+## A handler, or a value, per item
 
 A row usually needs a handler that knows *which* row it is, and the obvious way to
 write that is a closure per item — which is a new function on every render, re-attached
-to every button, every time. `@memoizedHandler` caches the function **by its
+to every button, every time. `@memoized` caches the function **by its
 arguments, per instance**, so asking twice gives the same function back:
 
 ```tsx
-@memoizedHandler
+@memoized
 remove(name: string) {
   return () => {
     this.items = this.items.filter((item) => item !== name);
@@ -136,13 +136,31 @@ id from the item.
 Entries whose arguments were not asked for during a render are dropped, so the cache
 follows the list instead of growing with every value ever seen.
 
+**It caches a value as readily as a function**, and that is why it is not called
+`@memoizedHandler` any more. A row that needs a stable object — a config bag, a query
+key, props for a child — has the same problem and the same answer:
+
+```tsx
+@memoized
+config(id: string) {
+  return { id, href: `/rows/${id}` };
+}
+
+// in render:
+<Row cfg={this.config(row.id)} />
+```
+
+Nothing else reaches this case. A `@compute` belongs to the **component**, not to the
+row, so it cannot hold one value per item; a field and a module constant cannot either.
+That is what `RMD020` and `RMD022` mean when they report an object rebuilt per row.
+
 ## What the cache is allowed to remember
 
 The method runs **once per key** and never again, so anything it reads before returning the handler is
 closed into that handler and would be frozen there:
 
 ```tsx
-@memoizedHandler
+@memoized
 remove(name: string) {
   const mode = this.mode;                  // read while BUILDING the handler
   return () => this.apply(mode, name);

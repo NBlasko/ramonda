@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
-import { compute, memoizedHandler, state, watchProp } from "../base/decorators";
+import { compute, memoized, state, watchProp } from "../base/decorators";
 import { StableProps } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -233,11 +233,11 @@ describe("RMD022", () => {
     expect(reported()).not.toContain("RMD022");
   });
 
-  test("@memoizedHandler in a bag is stable for the same arguments", async () => {
+  test("@memoized in a bag is stable for the same arguments", async () => {
     class Panel extends Component {
       @state picked = "";
 
-      @memoizedHandler
+      @memoized
       choose(id: string) {
         return () => {
           this.picked = id;

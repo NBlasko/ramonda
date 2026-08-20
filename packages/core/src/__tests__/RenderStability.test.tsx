@@ -4,7 +4,7 @@ import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import type { RamondaNode } from "../types/vdom";
 import { list } from "../base/list";
-import { compute, memoizedHandler, state } from "../base/decorators";
+import { compute, memoized, state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { configureDev } from "../index";
 
@@ -84,11 +84,11 @@ describe("RMD020 — values built inside render()", () => {
     expect(reported()).not.toContain("RMD020");
   });
 
-  test("@memoizedHandler is not reported — it is the cure, not the disease", async () => {
+  test("@memoized is not reported — it is the cure, not the disease", async () => {
     class Row extends Component {
       @state selected = 0;
 
-      @memoizedHandler
+      @memoized
       select(id: number) {
         return () => {
           this.selected = id;

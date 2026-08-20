@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { catchError, compute, created, memoizedHandler, mounted, state } from "../base/decorators";
+import { catchError, compute, created, memoized, mounted, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import type { RamondaNode } from "../types/vdom";
 
@@ -12,7 +12,7 @@ import type { RamondaNode } from "../types/vdom";
  * Measured before the rule was written, one class per decorator:
  * - `@compute get render()` — `TypeError: component.render is not a function`, a raw throw out of
  *   the framework with no diagnostic.
- * - `@memoizedHandler render()` — no throw at all, and the component **never updates again**:
+ * - `@memoized render()` — no throw at all, and the component **never updates again**:
  *   `"0" -> "0"` after a state write that should have shown `1`.
  * - `@created`, `@catchError`, `@state` — mounted and rendered, quietly meaning something else.
  *
@@ -43,7 +43,7 @@ describe("render takes no decorator", () => {
   test("the one that froze the page in silence", () => {
     refused(() => {
       class Frozen extends Component {
-        @memoizedHandler
+        @memoized
         render(): RamondaNode {
           return <span>x</span>;
         }

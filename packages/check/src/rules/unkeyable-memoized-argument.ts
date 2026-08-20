@@ -4,7 +4,7 @@ import { hasDecorator } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
- * A `@memoizedHandler` called with something a cache key cannot hold.
+ * A `@memoized` called with something a cache key cannot hold.
  *
  * The decorator caches by its ARGUMENTS, and a key can hold a string, a number or a boolean —
  * exactly those three, which is what `describeUnkeyableArgs` in `base/decorators.ts` decides by.
@@ -85,7 +85,7 @@ export const unkeyableMemoizedArgument = {
   report: {
     severity: "warn",
     reportedWhen:
-      "a `@memoizedHandler` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean",
+      "a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean",
     alsoReportedAs: ["RMD047"],
     heading: (found) => `${found.length} memoized handler call(s) that cannot be cached:`,
     lines: (issue) => [
@@ -95,7 +95,7 @@ export const unkeyableMemoizedArgument = {
       } ${issue.passed} — a cache key holds a string, a number or a boolean.`,
     ],
     advice:
-      "`@memoizedHandler` caches by its arguments, and a key can hold a string, a number or a\n" +
+      "`@memoized` caches by its arguments, and a key can hold a string, a number or a\n" +
       "boolean. An object cannot: comparing it by value is not something the cache can do, and\n" +
       "keying on its identity would miss every time — a fresh object per render fills the map and\n" +
       "hands back a new handler on every pass, which is the churn the decorator exists to prevent.\n\n" +
@@ -114,7 +114,7 @@ export const unkeyableMemoizedArgument = {
     const memoized = new Map<string, ts.MethodDeclaration>();
     for (const member of cls.members) {
       if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
-      if (hasDecorator(member, "memoizedHandler")) memoized.set(member.name.text, member);
+      if (hasDecorator(member, "memoized")) memoized.set(member.name.text, member);
     }
     if (memoized.size === 0) return [];
 

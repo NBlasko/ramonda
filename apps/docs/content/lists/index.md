@@ -302,7 +302,7 @@ Either is a fine choice. `list()` is the one that scales.
 const TABS = ["overview", "activity", "settings"];
 
 class Panel extends Component {
-  @memoizedHandler
+  @memoized
   select(name: string) {
     return () => {
       this.active = name;

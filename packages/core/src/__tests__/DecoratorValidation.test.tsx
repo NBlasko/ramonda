@@ -10,7 +10,7 @@ import {
   state,
   persist,
   compute,
-  memoizedHandler,
+  memoized,
 } from "../base/decorators";
 import { Component } from "../base/Component";
 
@@ -215,7 +215,7 @@ describe("decorator argument validation", () => {
  * - `@persist` on a method — no error; same missing blob entry, nothing said so.
  * - `@compute` on a field — no error; the field initializer was installed as the
  *   getter body.
- * - `@memoizedHandler` on a field — the only one that failed, as
+ * - `@memoized` on a field — the only one that failed, as
  *   `Cannot read properties of undefined (reading 'get')`, which names neither
  *   the decorator nor the member.
  *
@@ -261,17 +261,17 @@ describe("decorator target validation", () => {
     }).not.toThrow();
   });
 
-  test("@memoizedHandler rejects a field", () => {
+  test("@memoized rejects a field", () => {
     expect(() => {
       class Bad extends Component {
         // @ts-expect-error — runtime guard is the point.
-        @memoizedHandler value = 1;
+        @memoized value = 1;
         render() {
           return <div />;
         }
       }
       return Bad;
-    }).toThrow(/\[@memoizedHandler\].*Can only decorate a method.*`value` is a field/s);
+    }).toThrow(/\[@memoized\].*Can only decorate a method.*`value` is a field/s);
   });
 
   test("@compute rejects a field", () => {

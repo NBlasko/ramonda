@@ -3,7 +3,7 @@ import {
   Host,
   bootstrap,
   created,
-  memoizedHandler,
+  memoized,
   mounted,
   persist,
   state,
@@ -37,17 +37,17 @@ class Panel extends Component {
   @state plain = 0;
 
   /* REPORTED — declared to take an object, so no call to it can ever be keyed. */
-  @memoizedHandler byObject(arg: { id: string }) {
+  @memoized byObject(arg: { id: string }) {
     return () => arg.id;
   }
 
   /* REPORTED — declared to take an array. */
-  @memoizedHandler byArray(arg: string[]) {
+  @memoized byArray(arg: string[]) {
     return () => arg.length;
   }
 
   /* Not reported: a type reference says nothing this can read without asking for a type. */
-  @memoizedHandler byRef(arg: string) {
+  @memoized byRef(arg: string) {
     return () => arg;
   }
 

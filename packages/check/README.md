@@ -170,7 +170,7 @@ differs, and pointing a reader at the wrong thing is worse than pointing them at
 | `@Host` | **throws** (`RMD045`) — two element names have no union | there is no live line to look for |
 | `@catchError` · `@ShouldUpdateOnPropsChange` | one wins, the rest are dead code (`RMD032`, `RMD040`) | **which** one is live |
 | `@StableProps` | both apply; the result is the union (`RMD046`) | nothing is lost, write it as one call |
-| `@state` · `@compute` · `@persist` · `@memoizedHandler` | nothing at all | delete the extras |
+| `@state` · `@compute` · `@persist` · `@memoized` | nothing at all | delete the extras |
 
 ```text
 [ramonda-check] 2 class(es) declaring a single-use decorator twice:

@@ -1,4 +1,4 @@
-import { Component, destroyed, list, memoizedHandler, mounted, state } from "@ramonda/core";
+import { Component, destroyed, list, memoized, mounted, state } from "@ramonda/core";
 import { type Card, ExitCard } from "../demos/ExitCard";
 import { ViewTransition } from "../demos/ViewTransition";
 
@@ -146,26 +146,26 @@ export class ExitPage extends Component {
    * One stable handler per card, per kind.
    *
    * An inline arrow in the row would be a fresh function every render, which is what `RMD020` reports and
-   * what makes a row rebuild. `@memoizedHandler` caches by the argument, per member, per instance — and
+   * what makes a row rebuild. `@memoized` caches by the argument, per member, per instance — and
    * three per-item handlers keyed by the same id is exactly the shape that found the cache-key bug this
    * page was written to demonstrate something else entirely.
    */
-  @memoizedHandler
+  @memoized
   removeNowFor(id: number) {
     return () => this.removeNow(id);
   }
 
-  @memoizedHandler
+  @memoized
   removeAfterClassFor(id: number) {
     return () => this.removeAfterClass(id);
   }
 
-  @memoizedHandler
+  @memoized
   removeInTransitionFor(id: number) {
     return () => this.removeInTransition(id);
   }
 
-  @memoizedHandler
+  @memoized
   removeWithUpdatedFor(id: number) {
     return () => this.removeWithUpdated(id);
   }

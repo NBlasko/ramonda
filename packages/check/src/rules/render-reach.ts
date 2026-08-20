@@ -159,10 +159,10 @@ export function entryPoints(cls: ts.ClassDeclaration): { member: ts.ClassElement
  *
  * Stated this way round on purpose, and the first version was not — it walked into everything
  * except a function written directly as a JSX attribute. Measured against this repository, that
- * reported five places, and every one of them was `@memoizedHandler`:
+ * reported five places, and every one of them was `@memoized`:
  *
  * ```tsx
- * @memoizedHandler finish(id: number) {
+ * @memoized finish(id: number) {
  *   return () => { this.todo = …; this.done = …; };   // ← reported, and correct
  * }
  * render() { return <button onClick={this.finish(t.id)}>done</button>; }

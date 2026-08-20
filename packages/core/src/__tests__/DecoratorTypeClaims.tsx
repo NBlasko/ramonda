@@ -4,7 +4,7 @@ import {
   deferHydration,
   Host,
   interval,
-  memoizedHandler,
+  memoized,
   onDocument,
   onWindow,
   state,
@@ -64,8 +64,8 @@ class ParameterClaims extends Component {
     return this.count * 2;
   }
 
-  /** `@memoizedHandler` keeps its argument and return types — the caller gets a real handler. */
-  @memoizedHandler pick(id: number) {
+  /** `@memoized` keeps its argument and return types — the caller gets a real handler. */
+  @memoized pick(id: number) {
     return () => {
       void id;
     };

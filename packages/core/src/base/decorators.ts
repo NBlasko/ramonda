@@ -66,7 +66,7 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
 /**
  * The internal primitive every effect-shaped decorator is built on. It stays
  * internal because two of its three parameters are things no app should hold:
- * `alwaysRebuild` (only `@memoizedHandler` has a use for it) and a raw effect
+ * `alwaysRebuild` (only `@memoized` has a use for it) and a raw effect
  * body with no contract about what it returns.
  *
  * `createSubscriptionDecorator` is the public door onto it — same machinery, with the
@@ -1046,7 +1046,7 @@ const cleanUp = (instanceMap: Map<string, MemoEntry>) => {
  */
 let memoizedMemberSequence = 0;
 
-export function memoizedHandler<T extends (...args: any[]) => any>(
+export function memoized<T extends (...args: any[]) => any>(
   target: T,
   context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime }, T>,
 ): T {
@@ -1054,14 +1054,14 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
     // On a field this already failed, but as `Cannot read properties of
     // undefined (reading 'get')` from inside the framework — an error that names
     // neither the decorator nor the member it was put on.
-    assertMethod(context.kind, "memoizedHandler", context.name);
+    assertMethod(context.kind, "memoized", context.name);
   }
 
   const originalMethod = target;
   const member = ++memoizedMemberSequence;
 
   context.addInitializer(function () {
-    if (__DEV__) claimMember(this, String(context.name), "memoizedHandler", "memoized");
+    if (__DEV__) claimMember(this, String(context.name), "memoized", "memoized");
 
     let instanceMap = memoMap.get(this);
 
@@ -1119,7 +1119,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
           `<${owner} /> called ${String(context.name)} with ${describeUnkeyableArgs(args)}.`,
         );
         throw new Error(
-          `[RMD047] @memoizedHandler on ${owner}.${String(
+          `[RMD047] @memoized on ${owner}.${String(
             context.name,
           )} was called with an argument it cannot build a cache key from: ${describeUnkeyableArgs(args)}. ` +
             `A key can hold a string, a number or a boolean — an object cannot be compared by value, and keying ` +
@@ -1142,7 +1142,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
         reportFault(
           "RMD047",
           `${(this as { constructor: { name: string } }).constructor.name}:${String(context.name)}`,
-          "@memoizedHandler was called with an argument it cannot build a cache key from, so it is not memoised.",
+          "@memoized was called with an argument it cannot build a cache key from, so it is not memoised.",
         );
       }
       return originalMethod.call(this, ...args);
@@ -1151,7 +1151,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
     /**
      * The MEMBER is part of the key, and leaving it out was a silent wrong answer.
      *
-     * One map per INSTANCE is shared by every `@memoizedHandler` on it, so keying by the arguments
+     * One map per INSTANCE is shared by every `@memoized` on it, so keying by the arguments
      * alone made two methods collide on the same argument. Measured: with `removeFor(id)` and
      * `editFor(id)` on one component, `removeFor(1) === editFor(1)` and calling the second ran the
      * first's body — twice `remove:1`, no diagnostic, nothing thrown. The commonest shape in a list
@@ -1506,7 +1506,7 @@ type HookPropsOf<C> = C extends new (runtime: never, options: infer Q) => unknow
  * **Functions.** Two closures with the same body are not equal by any comparison that is
  * safe to make, so a listed function prop is left exactly as it came and RMD022 still
  * reports it — unstable AND silent would be the worst of both. Pass a bound method
- * instead, or `@memoizedHandler` when it has to be built per argument.
+ * instead, or `@memoized` when it has to be built per argument.
  *
  * Contents are compared to a bounded depth, so a deeply nested literal gets a fresh
  * reference rather than a wrong one — the safe direction.

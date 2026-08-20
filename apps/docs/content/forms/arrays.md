@@ -105,7 +105,7 @@ agree on every key, or hydration throws the rows away and rebuilds them.
 A handler built from an index points at the wrong row one render later. Build it from the id:
 
 ```tsx
-@memoizedHandler
+@memoized
 removeTag(id: string) {
   return () => {
     const rows = this.form.fields.tags.$.rows;
@@ -115,7 +115,7 @@ removeTag(id: string) {
 }
 ```
 
-`@memoizedHandler` caches by arguments, so the same row gets the same function every render and
+`@memoized` caches by arguments, so the same row gets the same function every render and
 the listener is never re-attached.
 
 ## A rule about one row

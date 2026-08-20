@@ -1,4 +1,4 @@
-import { Component, Head, Host, list, memoizedHandler, type RamondaNode } from "@ramonda/core";
+import { Component, Head, Host, list, memoized, type RamondaNode } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 /**
@@ -126,12 +126,12 @@ export class SignupPage extends Component {
   /**
    * One remove handler per ROW ID, not per index.
    *
-   * `@memoizedHandler` caches by its arguments, so the same row keeps the same function across
+   * `@memoized` caches by its arguments, so the same row keeps the same function across
    * renders and the listener is never re-attached. Keyed by the id rather than the index for
    * the same reason the ids exist at all: remove the first tag and every index below it shifts,
    * so a handler built from an index would be pointing at its neighbour a render later.
    */
-  @memoizedHandler
+  @memoized
   removeTag(id: string) {
     return () => {
       const rows = this.form.fields.tags.$.rows;

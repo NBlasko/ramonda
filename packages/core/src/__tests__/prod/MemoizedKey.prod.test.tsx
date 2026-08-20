@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, Host, state, bootstrap, unmount, memoizedHandler } from "../../index";
+import { Component, Host, state, bootstrap, unmount, memoized } from "../../index";
 import { flushSync, getComponentInstance } from "../../testing";
 
 /**
@@ -36,7 +36,7 @@ describe("production: a handler key that cannot be built", () => {
     class Panel extends Component {
       @state label = "one";
 
-      @memoizedHandler
+      @memoized
       pick(id: unknown) {
         return () => calls.push(id);
       }
@@ -94,7 +94,7 @@ describe("production: a handler key that cannot be built", () => {
       @state tick = 0;
       handlers: unknown[] = [];
 
-      @memoizedHandler
+      @memoized
       pick(id: string) {
         return () => id;
       }

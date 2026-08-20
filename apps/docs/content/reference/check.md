@@ -145,7 +145,7 @@ rules**, so a rule cannot be added without appearing here.
 | `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics), [`RMD018`](/reference/diagnostics) |
 | `state-mutated-in-place` | a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires — also [`RMD005`](/reference/diagnostics), [`RMD048`](/reference/diagnostics) |
 | `decorator-that-adds-nothing` | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics) |
-| `unkeyable-memoized-argument` | a `@memoizedHandler` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
+| `unkeyable-memoized-argument` | a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
 | `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
 | `cached-read-of-a-plain-field` | a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale — also [`RMD027`](/reference/diagnostics) |
 | `browser-url` | a component reads `window.location` in a project whose router already holds the answer |

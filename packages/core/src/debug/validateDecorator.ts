@@ -21,7 +21,7 @@ function fail(decorator: string, message: string): never {
  * - `@compute get render()` turns the method into a cached PROPERTY, so the framework's
  *   `component.render()` dies with `TypeError: component.render is not a function` — before a page
  *   appears, with no diagnostic of any kind.
- * - `@memoizedHandler render()` is worse, because it does not throw. The render is memoised on its
+ * - `@memoized render()` is worse, because it does not throw. The render is memoised on its
  *   arguments, it has none, and the component **never updates again**: measured `"0" -> "0"` after
  *   a state write that should have shown `1`. A frozen page and nothing said.
  * - `@created`, `@mounted`, `@updated`, `@destroyed` register the render as a lifecycle callback,

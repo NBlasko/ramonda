@@ -1,5 +1,5 @@
 import { Panel } from "./inherited";
-import { Component, Host, bootstrap, compute, list, memoizedHandler, mounted, state } from "../framework";
+import { Component, Host, bootstrap, compute, list, memoized, mounted, state } from "../framework";
 import { plainLabel, stampedLabel } from "./format";
 
 declare const items: { id: string; label: string }[];
@@ -31,7 +31,7 @@ class Impure extends Component {
   }
 
   /** NOT reported: a handler factory. What it returns runs on a click. */
-  @memoizedHandler
+  @memoized
   pick(id: string) {
     return () => {
       this.n += 1;

@@ -1,4 +1,4 @@
-import { Component, Host, list, state, memoizedHandler } from "@ramonda/core";
+import { Component, Host, list, state, memoized } from "@ramonda/core";
 
 /** Module scope, so `each` is the SAME array every render — a fresh literal would be a new value
  *  each time and cost the list the identity it mints from its items. */
@@ -44,7 +44,7 @@ export class HostTag extends Component {
     );
   }
 
-  @memoizedHandler
+  @memoized
   select(next: string) {
     return () => {
       this.as = next;

@@ -2,11 +2,11 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
-import { compute, memoizedHandler, state } from "../base/decorators";
+import { compute, memoized, state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
- * RMD021 — randomness generated while a render, a `@compute` or a `@memoizedHandler`
+ * RMD021 — randomness generated while a render, a `@compute` or a `@memoized`
  * builder is running.
  *
  * It watches the CALL rather than the value, which is what makes it catch things
@@ -82,11 +82,11 @@ describe("RMD021", () => {
     expect(reported()).toContain("Panel.token");
   });
 
-  test("in a @memoizedHandler builder it is attributed to the builder, not the render", async () => {
+  test("in a @memoized builder it is attributed to the builder, not the render", async () => {
     class Row extends Component {
       @state picked = "";
 
-      @memoizedHandler
+      @memoized
       choose(id: string) {
         // Read while BUILDING, so it is cached with the handler — every click uses
         // this one value.
