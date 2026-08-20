@@ -294,5 +294,17 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
  */
 export function couldExist(target: string, project: ProjectContext): boolean {
   if (project.ids.has(target)) return true;
+  /**
+   * The one quadratic path in the package — references × prefixes — and it is measured rather than
+   * feared.
+   *
+   * Its worst case is a project where every id is a template and every reference resolves to
+   * nothing, so every scan runs to the end. Generated at 4,000 components: 8,000 references against
+   * 4,000 prefixes, 32 million comparisons, and the WHOLE run was 1.5 s and still linear against the
+   * component count. A prefix fails on its first character, which is why.
+   *
+   * Written down so the shape is not a surprise if a project ever arrives that is large enough for
+   * it to matter. The fix at that point is a trie, not a rewrite.
+   */
   return project.prefixes.some((prefix) => target.startsWith(prefix));
 }
