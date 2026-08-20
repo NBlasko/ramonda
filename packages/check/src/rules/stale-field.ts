@@ -95,6 +95,15 @@ export function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
 }
 
 /**
+ * A GETTER over a plain field is not found, and that is the honest limit of this.
+ *
+ * `private raw = "x"; get label() { return this.raw }` — a cached reader that shows `this.label` is as
+ * stale as one that shows `this.raw`, and measured, both rules go quiet: only a `PropertyDeclaration`
+ * becomes a candidate below, and a getter is not one. Following it means deciding what a getter returns,
+ * which is the dataflow this package refuses. Written down rather than left to be discovered.
+ */
+
+/**
  * The answer: field name → the member that writes it after the first render.
  *
  * Empty when nothing can be stale, which is the common case and the cheap exit for both callers.

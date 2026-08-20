@@ -1,4 +1,5 @@
-import { Component, list, state, compute, persist, created, destroyed } from "../framework";
+import { Component, list, state, compute, persist, created, destroyed } from "@ramonda/core";
+import { list as ownList } from "./own-list";
 
 interface Task {
   id: string;
@@ -249,5 +250,75 @@ export class WrittenInDestroyed extends Component {
   }
   render() {
     return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Reported: the callback is a class-field arrow, which is a stable reference too. */
+export class ArrowCallback extends Component {
+  label = "old";
+  tasks: Task[] = [];
+  bump() {
+    this.label = "new";
+  }
+  row = (t: Task) => <li>{t.title + this.label}</li>;
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/**
+ * Reported as unanalysable: `this` handed to a SIBLING member.
+ *
+ * The callee being in this very class does not help — `fmt` reads through its parameter, and nothing
+ * here follows a parameter. That is why the report says "through a parameter" rather than "outside this
+ * declaration", which would be false here.
+ */
+export class ThisToASibling extends Component {
+  label = "old";
+  tasks: Task[] = [];
+  bump() {
+    this.label = "new";
+  }
+  fmt(owner: unknown) {
+    return String(owner);
+  }
+  row(t: Task) {
+    return <li>{t.title + this.fmt(this)}</li>;
+  }
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Silent: a plain getter is not a `PropertyDeclaration`, so it is not a candidate. See `stale-field.ts`. */
+export class GetterOverAField extends Component {
+  private raw = "old";
+  tasks: Task[] = [];
+  bump() {
+    this.raw = "new";
+  }
+  get label() {
+    return this.raw;
+  }
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Silent: the app's OWN `list`, from its own module. The specifier is the evidence, not the name. */
+export class OwnList extends Component {
+  label = "old";
+  tasks: Task[] = [];
+  bump() {
+    this.label = "new";
+  }
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+  render() {
+    return <ul>{ownList(this.tasks, this.row)}</ul>;
   }
 }

@@ -130,6 +130,32 @@ describe("a `.map()` region, whose rows are already built", () => {
     expect(reports()).toBe(1);
   });
 
+  test("a thousand rows with the mistake on the LAST one is still reported", async () => {
+    // The walk's node budget bounds one deep or wide TREE. Shared across a run of rows it truncated
+    // instead: measured, this went silent at around row 500. Each row is its own walk now, the way a
+    // `list()` row already was.
+    const many = Array.from({ length: 1000 }, (_, i) => ({ id: `r${i}` }));
+
+    class Page extends Component {
+      render() {
+        return (
+          <ul>
+            {many.map((t, i) => (
+              <li key={t.id} onClick={i === many.length - 1 ? () => t.id : undefined}>
+                {t.id}
+              </li>
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    await getDOM<Page>(<Page />);
+
+    expect(reported()).toContain("li.onClick");
+    expect(reports()).toBe(1);
+  });
+
   test("an array literal with two DIFFERENT mistakes still reports both", async () => {
     class Page extends Component {
       render() {

@@ -54,9 +54,12 @@ import { staleFieldsOf } from "./stale-field";
  *
  * ## The one thing it cannot see, which it says out loud
  *
- * `<li>{labelOf(this)}</li>` hands the component to a function that reads it somewhere else. The reads
- * are then not in this declaration and this cannot answer for them — so rather than going quiet on a
- * shape it cannot analyse, it reports the shape. That is a proven fact (`this` left) rather than a
+ * `<li>{labelOf(this)}</li>` hands the component over as a value, so the row's reads happen through a
+ * PARAMETER — `owner.label` rather than `this.label` — and nothing here follows that. It is the same
+ * whether the callee is a foreign function or a method of this very class, which is why the report says
+ * "through a parameter" and not "outside this declaration": a sibling method is inside the declaration
+ * and still unfollowable this way. Rather than going quiet on a shape it cannot analyse, it reports the
+ * shape. That is a proven fact (`this` left) rather than a
  * guessed defect, and it is what makes the guarantee sayable: **a row callback either reads its members
  * where this can see them, or it says it does not.** Measured across this monorepo, 53 calls take a bare
  * `this` and every one is inside the framework itself — none in application code, none in a row
@@ -92,18 +95,24 @@ function thisRead(node: ts.Node): { name: string; at: ts.PropertyAccessExpressio
 }
 
 /**
- * The local name this file gave `list`, or `undefined` when it did not import one.
+ * The local name this file gave core's `list`, or `undefined` when it did not import one.
  *
- * By the module specifier the reader typed rather than by the name: an app is entitled to its own
- * function called `list`, and the import statement is the evidence. Same reason `late-request-read`
- * goes by the specifier.
+ * By the module SPECIFIER the reader typed rather than by the name — the same reasoning as
+ * `core-import.ts`, which cannot be reused here: it needs `resolveLocal`, and a `ModuleRule`'s
+ * context carries only `unlessAnnotated`. An app is entitled to its own function called `list`, and
+ * an earlier version of this accepted any relative import so a fixture could say `../framework`,
+ * which would have reported `import { list } from "../utils"` as if it were the framework's. The
+ * fixture maps the specifier in its `tsconfig.json` instead, which is what every other fixture does.
+ *
+ * A namespace import — `import * as core from "@ramonda/core"`, then `core.list(…)` — is not found,
+ * and goes quiet rather than guessing.
  */
 function listLocalName(file: ts.SourceFile): string | undefined {
   for (const statement of file.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
     const from = statement.moduleSpecifier;
     if (!ts.isStringLiteral(from)) continue;
-    if (from.text !== "@ramonda/core" && !from.text.startsWith("..")) continue;
+    if (from.text !== "@ramonda/core" && !from.text.startsWith("@ramonda/core/")) continue;
     const bindings = statement.importClause?.namedBindings;
     if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
     for (const element of bindings.elements) {
@@ -189,8 +198,8 @@ export const rowReadsAPlainField = {
           ]
         : [
             `  ${issue.file}:${issue.line}:${issue.column}`,
-            `    <${issue.component}>.${issue.through} hands \`this\` to \`${issue.name}\`, so what the row`,
-            `    reads is decided outside this declaration and cannot be checked here.`,
+            `    <${issue.component}>.${issue.through} hands \`this\` to \`${issue.name}\` as a value, so the`,
+            `    row's reads happen through a parameter and cannot be checked here.`,
             `    Pass the values instead: \`${issue.name}(this.someField)\`.`,
           ],
     advice:

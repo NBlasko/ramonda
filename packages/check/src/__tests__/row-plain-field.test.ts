@@ -27,6 +27,8 @@ describe("a row reads a plain field", () => {
       // `@persist` carries a value across hydration without tracking it, so it is as stale as a plain
       // field. This list said otherwise until the judgement was shared with the `@compute` rule.
       "PersistRead.row:seen",
+      // A class-field arrow is a stable reference too, so its rows are reused just the same.
+      "ArrowCallback.row:label",
     ]);
   });
 
@@ -38,7 +40,13 @@ describe("a row reads a plain field", () => {
   test("`this` leaving is reported as unanalysable, not guessed at", () => {
     const found = run().findings["row-reads-a-plain-field"];
     const opaque = found.filter((i) => i.kind === "opaque-call");
-    expect(opaque.map((i) => `${i.component}:${i.name}`)).toEqual(["HandsThisOut:labelOf"]);
+    expect(opaque.map((i) => `${i.component}:${i.name}`)).toEqual([
+      "HandsThisOut:labelOf",
+      // A SIBLING member is no better: it reads through its parameter, and nothing follows a
+      // parameter. The message says "through a parameter" for exactly this case, because "outside
+      // this declaration" would be false when the callee is in the same class.
+      "ThisToASibling:this.fmt",
+    ]);
   });
 
   test.each([
@@ -52,6 +60,8 @@ describe("a row reads a plain field", () => {
     ["InlineCallback", "every row is rebuilt anyway"],
     ["SideEffectOnly", "a plain field that never reaches the markup is the point of one"],
     ["Annotated", "the author wrote down why"],
+    ["GetterOverAField", "a getter is not a field — the stated limit of `stale-field.ts`"],
+    ["OwnList", "the app's own `list`, found by the specifier rather than the name"],
   ])("%s is silent — %s", (component) => {
     const found = run().findings["row-reads-a-plain-field"];
     expect(found.filter((i) => i.component === component)).toEqual([]);

@@ -804,7 +804,10 @@ non-determinism, which the previous-render comparison never could — RMD007 see
 same class of mistake, but only after a hydration mismatch has already happened.
 
 **Where it reaches.** A `.map()`, a `filter` and an array literal all arrive as one branded region
-holding rows the render already built, so those rows are compared at no extra cost — the comparison
+holding rows the render already built, so those rows are compared at no extra cost — each on its own
+budget, because sharing one truncated: measured, a 1000-row `.map()` whose only mistake was on the last
+row went unreported. The `MAX_NODES` bound is there to stop one deep or wide TREE from being expensive,
+and a run of rows is neither — the comparison
 used to have a single branch for that shape and a `list()` descriptor, and it was written for the
 descriptor, so mapped rows were thrown away. A `list()` row cannot be compared from a render at all,
 because the builder is called by the engine during the diff; `listEngine.ts` builds it a second time

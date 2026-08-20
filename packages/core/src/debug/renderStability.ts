@@ -43,9 +43,11 @@ import { diagnose } from "./diagnostics";
  *
  * ## The one hazard, and the switch
  *
- * A render with a side effect runs it twice. `RMD001` already makes a state write
+ * A render with a side effect runs it twice — and so does a `list()` row callback, which
+ * `listEngine.ts` builds twice for the same reason. `RMD001` already makes a state write
  * there an error, so "render is pure" is the framework's position — but a
- * `fetch()` or a `console.log` in render really will happen twice in development.
+ * `fetch()` or a `console.log` in a render, or in a row, really will happen twice in
+ * development.
  * That is the check working, not a malfunction.
  *
  * An app turns it off with `configureDev({ strictRender: false })` — the devtools and
@@ -257,15 +259,22 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
     const aRows = (a as { vnodes?: unknown }).vnodes;
     const bRows = (b as { vnodes?: unknown }).vnodes;
     if (Array.isArray(aRows) && Array.isArray(bRows)) {
-      // Every row gets the SAME path — no index. `diagnose` keys a report by owner, path and kind,
-      // so an index turns one mistake in one `.map()` callback into one report per row: measured, a
-      // two-row list reported twice and a ten-thousand-row list would have reported ten thousand
-      // times. Rows that differ in SHAPE still separate themselves, because the tag and the
-      // attribute name are in the path.
+      /**
+       * Each row is its OWN walk, with its own budget — the same way `listEngine.ts` checks a
+       * `list()` row, and for the same reason. Sharing the enclosing budget truncated: measured, a
+       * 1000-row `.map()` whose only mistake was on the LAST row went unreported, because
+       * `MAX_NODES` ran out around row 500. That bound exists to stop one deep or wide TREE from
+       * being expensive, and a run of rows is neither — both renders had already built every one of
+       * them, so comparing them is the cheap half.
+       *
+       * Every row also gets the SAME path — no index. `diagnose` keys a report by owner, path and
+       * kind, so an index turns one mistake in one callback into one report per row: measured, a
+       * two-row list reported twice. Rows that differ in SHAPE still separate themselves, because
+       * the tag and the attribute name are in the path.
+       */
       const shared = Math.min(aRows.length, bRows.length);
       for (let i = 0; i < shared; i++) {
-        if (walk.budget <= 0) return;
-        compareNode(aRows[i], bRows[i], path, depth + 1, walk);
+        checkRowStability(walk.owner, path, aRows[i], bRows[i]);
       }
       return;
     }
