@@ -26,7 +26,7 @@ import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
 import { registerCompute, type ComputeCounters } from "../debug/computeStats";
 import { STABLE_PROPS } from "../helpers/constants";
-import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
+import type { PROPS_TYPE } from "../types/HookTypes";
 import {
   assertMethod,
   assertField,
@@ -1463,15 +1463,29 @@ type PropsOfInstance<T> = T extends { props: infer P } ? P : T extends { [PROPS_
 type PropsOf<C> = C extends new (props: infer P, ...rest: never[]) => unknown ? P : never;
 
 /**
- * A hook's props, read off its construct signature — `new (runtime, options: Q) => …`.
+ * The props `@StableProps` checks its names against, for a COMPONENT or a HOOK.
  *
- * The constraint on the decorated class is `=> BaseHook<any>` rather than `=> object`, and
- * that is what rejects a COMPONENT at compile time: a component instance has no
- * `HOOK_RUNTIME`, so it is not structurally a hook. Constraining the parameters instead
- * does not work — a component's constructor is `(props, context)`, and `keyof` of a loose
- * context type accepts any name, so every check passed.
+ * Read off the CONSTRUCTOR rather than off the instance, and that is not a preference: in a
+ * decorator position a loose constraint makes the class parameter fall back to its bound, so an
+ * instance-shaped reader answers `never` and every correct call fails. The old signature had the
+ * same note for the same reason, one branch narrower.
+ *
+ * A hook is told from a component by its RETURN — `PROPS_TYPE` is the phantom a hook carries
+ * because its `props` is `protected` and therefore structurally invisible. Constraining the
+ * parameters instead does not work: a component's constructor is `(props, context)` and a hook's is
+ * `(runtime, options)`, so the shapes are indistinguishable from the left.
  */
-type HookPropsOf<C> = C extends new (runtime: never, options: infer Q) => unknown ? Q : never;
+type DeclarablePropsOf<C> = C extends new (
+  runtime: never,
+  options: infer Q,
+) => { [PROPS_TYPE]?: unknown }
+  ? Q
+  : C extends new (
+        props: infer P,
+        ...rest: never[]
+      ) => unknown
+    ? P
+    : never;
 
 /**
  * Declares which of a hook's props are **values** rather than references — so the
@@ -1520,43 +1534,41 @@ type HookPropsOf<C> = C extends new (runtime: never, options: infer Q) => unknow
  * **It merges with what a parent class declared** rather than replacing it, so a subclass
  * adds to the list and cannot silently drop what the parent relied on.
  *
- * **Hooks only.** A component fails to type-check here, and throws in every build as the
- * backstop for a build with no types: a component's props come from the parent's JSX and
- * are compared by the diff, which is a different mechanism with its own control
- * (`@ShouldUpdateOnPropsChange`).
+ * **Components too, and by the same sentence.** A component's props arrive from the parent's
+ * JSX, where an object literal is a fresh reference on every render — so `<Panel filter={{ q }} />`
+ * hands the child a changed prop every time and re-renders it forever. Declaring `filter` a value
+ * settles it there exactly as it settles a hook's: the diff hands back the identity it already
+ * had while the contents match, and the child is not re-rendered at all.
  *
- * **The names are type-checked** against the hook's props — `@StableProps("kye")` is a
- * compile error that names `"kye"` — with no type argument to write at the call site.
+ * What it deliberately is NOT is a rule the app writes. `@ShouldUpdateOnPropsChange` takes a
+ * predicate, and a predicate is a thing an app can get wrong in the direction that matters — a
+ * component that stops rendering when it should. This takes NAMES: the framework does the
+ * comparing, and the worst a wrong name can do is fail to type-check.
+ *
+ * **The names are type-checked** against the props of whatever it is on — `@StableProps("kye")` is
+ * a compile error that names `"kye"` — with no type argument to write at the call site.
  */
 export function StableProps<const K extends readonly string[]>(...keys: K) {
   if (__DEV__) {
     assertStablePropKeys(keys as readonly string[]);
   }
 
-  return <C extends new (runtime: never, options: never) => BaseHook<unknown>>(
+  return <C extends new (...args: any[]) => object>(
     ctor: C &
-      // The names are checked against the hook's OWN props: `C` is inferred from the
-      // decorated class, and when a name is not one of its props the parameter type gains a
-      // property the class cannot have, so the error names the offending key. Checked
-      // through `keyof` rather than by assignability, so an OPTIONAL prop counts as a prop.
+      // The names are checked against the props of whatever this is on: the INSTANCE type is what
+      // both base classes agree about — `BaseComponent.props` is public and a hook's is carried in
+      // a phantom — so one reader answers for both. Checked through `keyof` rather than by
+      // assignability, so an OPTIONAL prop counts as a prop.
       //
-      // Written this way round because `Q` cannot be inferred from a constructor PARAMETER:
-      // measured, it falls back to its constraint, and every call then failed — including
-      // the correct ones.
-      ([K[number]] extends [keyof HookPropsOf<C>]
+      // Written this way round because a props type cannot be inferred from a constructor
+      // PARAMETER: measured, it falls back to its constraint, and every call then failed —
+      // including the correct ones.
+      ([K[number]] extends [keyof DeclarablePropsOf<C>]
         ? unknown
         : {
-            "@StableProps was given a name that is not a prop of this hook": K[number];
+            "@StableProps was given a name that is not a prop of this class": K[number];
           }),
   ) => {
-    if (isComponentClass(ctor)) {
-      throw new Error(
-        `[Ramonda] @StableProps is for hooks, not components. A component's props come from the parent's ` +
-          `JSX and are compared by the diff — use @ShouldUpdateOnPropsChange to control that. Move the ` +
-          `decorator to the hook whose props these are, or drop it.`,
-      );
-    }
-
     /**
      * Two `@StableProps` on ONE class: reported, and MERGED rather than refused.
      *

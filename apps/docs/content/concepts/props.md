@@ -65,9 +65,11 @@ always changes what the component shows. It does not matter which props `render(
 actually reads; a change to any of them re-renders.
 
 The comparison is shallow — each prop by `===` — so passing the same values again
-costs nothing, and re-renders only when something really changed. Two ways to go
+costs nothing, and re-renders only when something really changed. Three ways to go
 finer when you need to:
 
+- To pass an **object or an array written in the JSX**, declare it a value with
+  `@StableProps` — see below.
 - To **skip** the re-render for some prop changes, gate it with
   [`@ShouldUpdateOnPropsChange`](/reference/api) — a rare tool, for a prop that is
   rebuilt every parent render but rarely matters. Refusing an update **drops it
@@ -79,6 +81,42 @@ finer when you need to:
   changes — read it inside a [`@compute`](/concepts/compute), a `@watchProp` (below),
   or an [a subscription](/concepts/subscriptions); those *do* track the individual props they
   read, exactly like state.
+
+## A prop that is a value
+
+An object written in the JSX is a **new object every render**, so a shallow comparison sees a
+change every time and the child re-renders forever:
+
+```tsx
+<Panel filter={{ q: "open" }} />
+```
+
+The component that RECEIVES it can say that the prop is a value rather than an identity, and the
+framework then hands it back the object it already had for as long as the contents match:
+
+```tsx
+@StableProps("filter")
+export class Panel extends Component<{ filter: { q: string } }> {}
+```
+
+Now the call site writes the plain literal and the child is not re-rendered at all. Contents that
+really move still reach it — a declaration is not a freeze.
+
+It takes as many names as you like — `@StableProps("filter", "flags")` — and a subclass that
+declares more **adds** to what its parent declared.
+
+**Why the receiving component declares it, and not the call site.** Whether a prop is a value or an
+identity is that component's knowledge, and declaring it once settles every call site. It is also
+why this takes NAMES rather than a rule: `@ShouldUpdateOnPropsChange` takes a predicate, and a
+predicate is a thing an app can get wrong in the direction that matters — a component that stops
+rendering when it should. The worst a wrong name here can do is fail to type-check.
+
+**A function is not settled by it.** Two closures with the same body are not equal by any
+comparison that is safe to make, so a listed function prop is left exactly as it came. Pass a bound
+method — `onSelect={this.select}` — or `@memoizedHandler` when it has to be built per row.
+
+**Contents are compared to a bounded depth**, so a deeply nested literal gets a fresh reference
+rather than a wrong one, which is the safe direction: it re-renders, exactly as it does today.
 
 ## Reacting to a specific prop changing
 

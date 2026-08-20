@@ -1,3 +1,4 @@
+import { STABLE_PROPS } from "../helpers/constants";
 import { devFlags } from "../config";
 import { isPlainObject, valueEqualThorough } from "../helpers/valueEqual";
 import { isListNode } from "../vdom/guards";
@@ -309,7 +310,23 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
     const here = path ? `${path} > ${tag}` : tag;
 
     if (aNode.attributes && bNode.attributes) {
-      compareAttributes(aNode.attributes, bNode.attributes, here, walk);
+      /**
+       * A prop the CHILD declared with `@StableProps` is not a rebuilt value, whatever the two
+       * renders produced.
+       *
+       * The literal really is a fresh object each time — that is what this check sees — and the
+       * diff hands the child back the identity it already had, so nothing downstream is re-run.
+       * Reporting it would be reporting the fix the diagnostic's own advice recommends, on the
+       * markup the declaration exists to make writable.
+       *
+       * Read off the CLASS in the vnode, so a subclass inherits its base's list through the static
+       * chain exactly as the diff reads it.
+       */
+      const declared =
+        typeof aNode.name === "function"
+          ? (aNode.name as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS]
+          : undefined;
+      compareAttributes(aNode.attributes, bNode.attributes, here, walk, false, 0, declared);
     }
 
     const aChildren = aNode.children ?? (aNode.attributes?.children as unknown[] | undefined);
@@ -340,11 +357,14 @@ function compareAttributes(
   walk: Walk,
   skipFunctions = false,
   depth = 0,
+  declared?: readonly string[],
 ): void {
   for (const key of Object.keys(a)) {
     if (walk.budget <= 0) return;
     // `children` is walked as a tree, not compared as an attribute.
     if (depth === 0 && key === "children") continue;
+    // A prop the receiving component declared a VALUE — see the note at the call site.
+    if (depth === 0 && declared !== undefined && declared.includes(key)) continue;
 
     const aValue = a[key];
     const bValue = b[key];

@@ -680,20 +680,31 @@ describe("@StableProps is type-checked at the decoration site", () => {
     expect([Fine, Both, Typo].length).toBe(3);
   });
 
-  test("a component is rejected twice over: by the compiler, and at decoration time", () => {
-    expect(() => {
-      // @ts-expect-error — a component instance is not structurally a hook (no
-      // HOOK_RUNTIME), which is what makes this a compile error and not just a runtime one.
-      @StableProps("key")
-      class NotAHook extends Component<Shape> {
-        render() {
-          return <div />;
-        }
+  /**
+   * A COMPONENT takes it too, and the names are checked against ITS props.
+   *
+   * It used to throw here and point at `@ShouldUpdateOnPropsChange` instead. That decorator takes a
+   * PREDICATE, which is a thing an app can get wrong in the direction that matters — a component
+   * that stops rendering when it should. This takes names, so the worst a mistake can do is fail to
+   * type-check.
+   */
+  test("a component takes it, and its own props are what the names are checked against", () => {
+    @StableProps("key")
+    class Panel extends Component<Shape> {
+      render() {
+        return <div />;
       }
-      return NotAHook;
-      // The throw is the backstop for a build with no types, and it points at the
-      // mechanism a component actually has.
-    }).toThrow(/@StableProps is for hooks, not components/);
+    }
+
+    // @ts-expect-error — "kye" is not a prop of Shape, on a component exactly as on a hook.
+    @StableProps("kye")
+    class Typo extends Component<Shape> {
+      render() {
+        return <div />;
+      }
+    }
+
+    expect([Panel, Typo].length).toBe(2);
   });
 
   test("a hook with no props rejects any name", () => {

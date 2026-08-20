@@ -29,7 +29,7 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
 | [`@catchError`](/composition/error-boundaries) | both | **component only** | **no** — a subclass may override |
 | [`@ShouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — a subclass may override |
-| [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | **hook only** | **no** — it takes a list |
+| [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | both | **no** — it takes a list |
 | [`@Host`](/concepts/host) | both | **component only** | **no** |
 | [`@onElement`](/concepts/events) | **client only**² | **component only** | yes |
 | [`@onWindow` / `@onDocument`](/concepts/events) | **client only**² | component · hook | yes |
@@ -75,10 +75,10 @@ a lint you can talk past — the second exists because the first is not there in
 | `@onElement` | It binds a listener to the component's host element. A hook has none. Use `@onWindow` / `@onDocument`, which work on both. |
 | `@ShouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
 
-One goes the other way. **`@StableProps` is hooks only**, and refused twice in the same way: a
-hook's props are rebuilt by its own callback on every owner render, which is the situation it
-answers. A component's props come from the parent's JSX and are compared by the diff, where
-`@ShouldUpdateOnPropsChange` is the control.
+**`@StableProps` goes on both**, and means one thing on each: *these props are values, compare
+them by content.* A hook's props are rebuilt by its own callback on every owner render; a
+component's are rebuilt by the parent's JSX. Both are a fresh reference for contents that did not
+move, and both are settled by naming the prop.
 
 ## `render` takes none
 
