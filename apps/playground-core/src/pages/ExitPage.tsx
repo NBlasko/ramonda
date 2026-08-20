@@ -1,4 +1,4 @@
-import { Component, list, memoizedHandler, mounted, state } from "@ramonda/core";
+import { Component, destroyed, list, memoizedHandler, mounted, state } from "@ramonda/core";
 import { type Card, ExitCard } from "../demos/ExitCard";
 import { ViewTransition } from "../demos/ViewTransition";
 
@@ -72,10 +72,27 @@ export class ExitPage extends Component {
   }
 
   /** 2. The workaround: mark it, wait for the stylesheet's duration, then remove. */
+  /**
+   * The id lives on a property so `@destroyed` can reach it.
+   *
+   * `@timeout` cannot express this — it fires relative to MOUNT, and this starts on a click. A raw timer
+   * is allowed for exactly that reason, and the framework's condition is this one: keep the id where
+   * teardown can clear it, or the timer outlives the component and writes into something that is gone
+   * (`RMD008` drops the write, so the symptom is a handler that quietly does nothing).
+   *
+   * That this demo needs a timer at all is the cost it exists to show.
+   */
+  private pending?: number;
+
+  @destroyed stopPending() {
+    if (this.pending !== undefined) window.clearTimeout(this.pending);
+  }
+
   removeAfterClass(id: number) {
     this.leaving = id;
     this.readout = "marked `.leaving`, removing in 3s — a timer the app has to keep in step with the CSS";
-    window.setTimeout(() => {
+    this.pending = window.setTimeout(() => {
+      this.pending = undefined;
       this.leaving = null;
       this.drop(id);
     }, 3000);
@@ -174,6 +191,7 @@ export class ExitPage extends Component {
         <ul className="exit-list">
           {list(this.cards, (card) => (
             <ExitCard
+              key={String(card.id)}
               card={card}
               leaving={this.leaving === card.id}
               onRemove={this.removeNowFor(card.id)}

@@ -140,6 +140,7 @@ class Board extends Component {
   }
 
   remove(id: string) {
+    // The mechanism, and only that: a real one needs the deadline below as well.
     document.startViewTransition(
       () =>
         new Promise<void>((resolve) => {
@@ -155,9 +156,11 @@ class Board extends Component {
 inside the callback happens to be enough — and "happens to be" is the whole problem with it. `@updated`
 runs after the DOM has been written for that pass, which is the thing the browser is waiting for.
 
-**Two edges worth knowing.** If the change schedules no render at all, `@updated` never fires and the
-callback never settles, so give it a deadline as a net. And in a cascade — an `@updated` whose body writes
-state — the first one resolves before the last pass; for removing a row it is one pass.
+**Three edges worth knowing**, and the snippet above shows the mechanism rather than all three. If the
+change schedules no render at all, `@updated` never fires and the callback never settles, so give it a
+deadline as a net. In a cascade — an `@updated` whose body writes state — the first one resolves before the
+last pass; for removing a row it is one pass. And `@updated` says "a commit happened", not "*your* commit
+happened", so a render already scheduled when you start the transition settles the callback early.
 
 The playground has this as a hook, in `apps/playground-core/src/demos/ViewTransition.tsx`, with the
 deadline and the fallback for a browser that has no `startViewTransition`. It is app code on purpose: the

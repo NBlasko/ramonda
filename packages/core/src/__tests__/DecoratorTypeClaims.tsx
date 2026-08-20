@@ -1,5 +1,15 @@
 import { Component } from "../base/Component";
-import { compute, deferHydration, Host, memoizedHandler, state, updated } from "../base/decorators";
+import {
+  compute,
+  deferHydration,
+  Host,
+  interval,
+  memoizedHandler,
+  onDocument,
+  onWindow,
+  state,
+  updated,
+} from "../base/decorators";
 
 /**
  * What the decorator signatures promise about the METHODS they are put on, pinned in both directions.
@@ -70,6 +80,27 @@ class ParameterClaims extends Component {
   }
 }
 
+/**
+ * The subscription family declares its event parameter, and this is the likeliest casualty of a future
+ * "tightening": `createSubscriptionDecorator`'s `Handler` carries the same bottom-typed rest, and every
+ * one of these is written WITH a parameter in real code.
+ */
+class SubscriptionClaims extends Component {
+  @onWindow("resize") onResize(event: UIEvent) {
+    void event;
+  }
+
+  @onDocument("click") onClick(event: MouseEvent) {
+    void event;
+  }
+
+  @interval(100) tick() {}
+
+  render() {
+    return <div />;
+  }
+}
+
 /** `@Host` takes a COMPONENT class, and the constraint is the same bottom-typed constructor. */
 @Host("section")
 class Hosted extends Component<{ id: string }> {
@@ -85,5 +116,6 @@ class NotAComponent {}
 class Rejected extends NotAComponent {}
 
 void ParameterClaims;
+void SubscriptionClaims;
 void Hosted;
 void Rejected;

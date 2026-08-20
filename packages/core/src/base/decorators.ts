@@ -1037,6 +1037,15 @@ const cleanUp = (instanceMap: Map<string, MemoEntry>) => {
   }
 };
 
+/**
+ * One per DECORATED METHOD, minted where the decorator runs.
+ *
+ * The member's NAME is not unique enough: `String(context.name)` renders two distinct symbols with the
+ * same description as the same string, so `Symbol("pick")` and another `Symbol("pick")` collided exactly
+ * the way two named methods did. A token cannot.
+ */
+let memoizedMemberSequence = 0;
+
 export function memoizedHandler<T extends (...args: any[]) => any>(
   target: T,
   context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime }, T>,
@@ -1049,6 +1058,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
   }
 
   const originalMethod = target;
+  const member = ++memoizedMemberSequence;
 
   context.addInitializer(function () {
     if (__DEV__) claimMember(this, String(context.name), "memoizedHandler", "memoized");
@@ -1139,7 +1149,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
     }
 
     /**
-     * The member's name is part of the key, and leaving it out was a silent wrong answer.
+     * The MEMBER is part of the key, and leaving it out was a silent wrong answer.
      *
      * One map per INSTANCE is shared by every `@memoizedHandler` on it, so keying by the arguments
      * alone made two methods collide on the same argument. Measured: with `removeFor(id)` and
@@ -1147,10 +1157,14 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
      * first's body — twice `remove:1`, no diagnostic, nothing thrown. The commonest shape in a list
      * row is exactly that: several per-item handlers keyed by the same id.
      *
+     * A minted token rather than `String(context.name)`, because a name is not unique: two distinct
+     * symbols with the same description render as one string, and two symbol-named methods collided
+     * again — the same fault, one shape over.
+     *
      * A `\u0000` separator rather than `:` or `|`, because `buildKey` puts a caller's own string
-     * straight into the key — `editFor("remove")` could otherwise land on `removeFor`'s entry.
+     * straight into the key and a separator a caller can type is a separator a caller can forge.
      */
-    const scoped = `${String(context.name)}\u0000${key}`;
+    const scoped = `${member}\u0000${key}`;
     const instanceMap = memoMap.get(this)!;
     let entry = instanceMap.get(scoped);
 

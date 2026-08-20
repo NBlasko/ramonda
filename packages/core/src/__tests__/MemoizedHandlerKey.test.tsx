@@ -223,6 +223,45 @@ describe("two memoized methods on one component", () => {
     expect(app.instance.a(1)).not.toBe(app.instance.a(2));
   });
 
+  /**
+   * Two symbols with the same DESCRIPTION are two members, and the first fix did not see it.
+   *
+   * Keying by `String(context.name)` renders both as `"Symbol(pick)"`, so they collided exactly the way
+   * two named methods did — the same fault, one shape over. The key carries a token minted per decorated
+   * method instead, which a name cannot be.
+   */
+  test("two symbol-named methods whose symbols share a description", async () => {
+    const calls: string[] = [];
+    const A = Symbol("pick");
+    const B = Symbol("pick");
+
+    class Panel extends Component {
+      @memoizedHandler
+      [A](id: number) {
+        return () => calls.push(`A:${id}`);
+      }
+
+      @memoizedHandler
+      [B](id: number) {
+        return () => calls.push(`B:${id}`);
+      }
+
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Panel>(<Panel />);
+    const reach = app.instance as unknown as Record<symbol, (n: number) => () => void>;
+    const a = reach[A](1);
+    const b = reach[B](1);
+
+    expect(a).not.toBe(b);
+    a();
+    b();
+    expect(calls).toEqual(["A:1", "B:1"]);
+  });
+
   /** A caller's own string goes straight into the key, so the separator has to be one they cannot type. */
   test("an argument that spells another member's name does not collide with it", async () => {
     const calls: string[] = [];

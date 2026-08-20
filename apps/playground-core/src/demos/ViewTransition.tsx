@@ -1,4 +1,4 @@
-import { Hook, updated } from "@ramonda/core";
+import { destroyed, Hook, updated } from "@ramonda/core";
 
 /**
  * Runs a state change inside a browser view transition, so an exit animates.
@@ -28,6 +28,13 @@ import { Hook, updated } from "@ramonda/core";
  * callback would never settle. The deadline below exists for that case only. It is not how the timing
  * works, which is the difference from counting microtasks: there, the timer WAS the mechanism.
  *
+ * ## The one edge it cannot see
+ *
+ * `@updated` fires for EVERY commit, not for this change's commit. So a render already scheduled when
+ * `run` is called settles the callback before this change is written, and the browser compares a frame too
+ * early. Nothing here can tell the two apart — the framework's signal is "a commit happened", and asking
+ * for "your commit happened" is what a core-side wrapper would be able to do.
+ *
  * ## Where this belongs
  *
  * Not in `@ramonda/core`. It is six lines of app code around a browser API, and the framework has the
@@ -37,6 +44,25 @@ import { Hook, updated } from "@ramonda/core";
  */
 export class ViewTransition extends Hook {
   private settle?: () => void;
+  /**
+   * The deadline's id, on a property so `@destroyed` can reach it.
+   *
+   * `@timeout` cannot express this — it fires relative to MOUNT, and this starts when `run` is called. A
+   * raw timer is allowed on the framework's condition, which is exactly this: teardown has to be able to
+   * clear it, or it outlives the component and settles a promise nobody is waiting for.
+   */
+  private deadlineId?: number;
+
+  @destroyed stopDeadline() {
+    this.clearDeadline();
+  }
+
+  private clearDeadline() {
+    if (this.deadlineId !== undefined) {
+      window.clearTimeout(this.deadlineId);
+      this.deadlineId = undefined;
+    }
+  }
 
   /** Fires after the DOM has been written for this pass — see the note above. */
   @updated committed() {
@@ -46,6 +72,7 @@ export class ViewTransition extends Hook {
   private resolve() {
     const settle = this.settle;
     this.settle = undefined;
+    this.clearDeadline();
     settle?.();
   }
 
@@ -65,6 +92,11 @@ export class ViewTransition extends Hook {
     }
 
     const transition = document.startViewTransition(() => {
+      // A run that starts while another is still waiting settles the earlier one first. Its `change`
+      // already ran — the write is queued — so holding its callback open would only make the browser
+      // wait out the deadline on a transition it has moved past. Measured before this: two clicks 120ms
+      // apart both landed, and the first callback stayed pending for the full second.
+      this.resolve();
       const settled = new Promise<void>((resolve) => {
         this.settle = resolve;
       });
@@ -72,7 +104,8 @@ export class ViewTransition extends Hook {
       return Promise.race([
         settled,
         new Promise<void>((resolve) => {
-          window.setTimeout(() => {
+          this.deadlineId = window.setTimeout(() => {
+            this.deadlineId = undefined;
             this.settle = undefined;
             resolve();
           }, deadline);
