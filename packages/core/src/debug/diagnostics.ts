@@ -357,7 +357,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // error, not warning: development stops at it, and in production the handler is rebuilt on every
     // render — so everything it is passed to re-renders with it, for the life of the page.
     severity: "error",
-    title: "A memoized handler was given an argument it cannot key on",
+    title: "A `@memoized` member was given an argument it cannot key on",
     fix: "@memoized caches by the ARGUMENTS, and a cache key can hold a string, a number or a boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its identity would miss every time — a fresh object per render would fill the map and hand back a new handler on every pass, which is the churn the decorator exists to prevent. Pass the primitive the object stands for — `row.id` rather than `row` — and read the rest inside the handler. Development throws so the mistake is not shipped; production builds the handler and moves on WITHOUT caching that call, so the page keeps working and only the memoisation is lost.",
   },
   RMD048: {

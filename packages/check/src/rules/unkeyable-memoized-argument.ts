@@ -36,7 +36,7 @@ import type { Rule } from "./rule";
 export interface UnkeyableMemoizedArgumentIssue {
   /** The component or hook. */
   component: string;
-  /** The memoized handler. */
+  /** The memoized member — it may hand back a value rather than a handler. */
   member: string;
   /** What was passed, or what the parameter is declared to take. */
   passed: string;
@@ -87,7 +87,7 @@ export const unkeyableMemoizedArgument = {
     reportedWhen:
       "a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean",
     alsoReportedAs: ["RMD047"],
-    heading: (found) => `${found.length} memoized handler call(s) that cannot be cached:`,
+    heading: (found) => `${found.length} @memoized call(s) that cannot be cached:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       `    <${issue.component}>'s \`${issue.member}\` ${
@@ -110,7 +110,7 @@ export const unkeyableMemoizedArgument = {
   },
 
   read(cls, { self }) {
-    /** name → the parameters it declares, for every memoized handler on this class. */
+    /** name → the parameters it declares, for every `@memoized` member on this class. */
     const memoized = new Map<string, ts.MethodDeclaration>();
     for (const member of cls.members) {
       if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;

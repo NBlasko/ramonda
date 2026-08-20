@@ -136,9 +136,8 @@ id from the item.
 Entries whose arguments were not asked for during a render are dropped, so the cache
 follows the list instead of growing with every value ever seen.
 
-**It caches a value as readily as a function**, and that is why it is not called
-`@memoizedHandler` any more. A row that needs a stable object — a config bag, a query
-key, props for a child — has the same problem and the same answer:
+**It caches a value as readily as a function.** A row that needs a stable object — a
+config bag, a query key, props for a child — has the same problem and the same answer:
 
 ```tsx
 @memoized
