@@ -197,7 +197,7 @@ interface PropsCache {
   addDep(s: State<unknown>): void;
 }
 
-export function useCommon<T extends BaseHook<any>, P>(
+export function useCommon<T extends BaseHook<unknown>, P>(
   that: BaseComponent<P> | BaseHook<HookProps>,
   hook: HookClassKind<T, any>,
   hookProps?: unknown,
@@ -360,7 +360,7 @@ export function useCommon<T extends BaseHook<any>, P>(
   }
 
   // Track child hook instances in use() order — deterministic tree for hydration.
-  const owner = that as { [CHILD_HOOKS]?: BaseHook<any>[] };
+  const owner = that as { [CHILD_HOOKS]?: BaseHook<unknown>[] };
   let childHooks = owner[CHILD_HOOKS];
   if (!childHooks) {
     childHooks = [];

@@ -1,4 +1,4 @@
-import type { Context, RenderableProps } from "../types/commonTypes";
+import type { Context } from "../types/commonTypes";
 import type { Effect } from "../reactivity/effect";
 import type { BaseComponent, MaybeEnhancedNode, LifecycleEntry, WatchPropEntry } from "../types/vdom";
 import { createId } from "../helpers/createId";
@@ -58,7 +58,16 @@ export interface Runtime {
 
 export interface ComponentRuntime {
   depth: number;
-  rawProps: RenderableProps<any>;
+  /**
+   * The props as they arrived, keyed — not `RenderableProps<P>`.
+   *
+   * Every reader treats it as a bag and nothing reads a declared field off it: the props proxy looks up
+   * one key at a time, the diff walks `for (const key in …)` comparing old against new, and
+   * `debug/inspector.ts` already declared it as `Record<string, unknown>`. Typed as the props shape it
+   * needed an `any` to be indexed at all, plus two casts in `Component.ts` saying what it really was.
+   * Symbols are in the key type because the proxy forwards those too.
+   */
+  rawProps: Record<string | symbol, unknown>;
   /**
    * The method `@catchError` declared, if any — the seam `errorHandler` walks the
    * parent chain looking for. Held per instance because the handler is bound to
@@ -164,9 +173,12 @@ export const createRuntime = (that: BaseComponent<unknown>, context: Context): R
   return runtime;
 };
 
-export const createComponentRuntime = (rawProps: unknown, env: RenderEnv = "client"): ComponentRuntime => {
+export const createComponentRuntime = (
+  rawProps: Record<string | symbol, unknown> | undefined,
+  env: RenderEnv = "client",
+): ComponentRuntime => {
   return {
-    rawProps: rawProps ?? ({} as RenderableProps<any>),
+    rawProps: rawProps ?? {},
     depth: 1,
     propsSignals: new Map<string, State<unknown>>(),
     env,

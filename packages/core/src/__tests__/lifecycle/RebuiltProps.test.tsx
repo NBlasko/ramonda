@@ -228,7 +228,7 @@ describe("a rebuilt reference in a props bag", () => {
      * This is the case the whole cache was worth building for, and it used to read 3 and 3.
      *
      * The chain was: the bag's closure is fresh each render → the compute reading it is
-     * invalidated → the derived function has a new identity → `areStringRecordsEqual` sees a
+     * invalidated → the derived function has a new identity → `arePropsBagsEqual` sees a
      * changed prop → the child is queued. Three renders of a child, with nothing having actually
      * changed, from one `onSave` written the obvious way. RMD020 could not see it either, because
      * in a strict double render the compute is cached between the two calls and both get the same

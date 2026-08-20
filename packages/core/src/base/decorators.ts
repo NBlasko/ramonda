@@ -89,7 +89,11 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * first application that did. Whether these lifecycles should take a parameter at all is a question
  * about the API, not about this annotation.
  */
-function attachEffect(instance: { [GLOBAL_RUNTIME]: Runtime }, value: (...args: any[]) => any, alwaysRebuild: boolean) {
+function attachEffect(
+  instance: { [GLOBAL_RUNTIME]: Runtime },
+  value: (...args: never[]) => unknown,
+  alwaysRebuild: boolean,
+) {
   const effectId = createId();
 
   const newEffect: Effect = {
@@ -375,7 +379,7 @@ export function state(_value: unknown, context: EnhancedClassFieldDecoratorConte
  * measure, store, render with it. Guard it, or it loops — a runaway is reported as
  * RMD009 in development and stopped in production.
  */
-export function updated(value: (...args: any[]) => void, context: EnhancedClassMethodDecoratorContext) {
+export function updated(value: (...args: never[]) => void, context: EnhancedClassMethodDecoratorContext) {
   if (__DEV__) {
     assertMethod(context.kind, "updated", context.name);
   }
@@ -552,7 +556,7 @@ export function catchError<This extends CatchErrorOwner>(
 /** runtime -> the class that last declared its error handler. DEV only. */
 const catchErrorOwners = new WeakMap<object, object | undefined>();
 
-export function deferHydration(value: (...args: any[]) => unknown, context: EnhancedClassMethodDecoratorContext) {
+export function deferHydration(value: (...args: never[]) => unknown, context: EnhancedClassMethodDecoratorContext) {
   if (__DEV__) {
     assertMethod(context.kind, "deferHydration", context.name);
   }
@@ -604,7 +608,7 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
  * hatch rather than an optimisation to reach for.
  */
 export function ShouldUpdateOnPropsChange<
-  C extends (new (...args: any[]) => object) & { readonly __isComponent: true },
+  C extends (new (...args: never[]) => object) & { readonly __isComponent: true },
 >(decide: (self: InstanceOf<C>, previous: PropsOf<C>, next: PropsOf<C>) => boolean) {
   if (__DEV__) {
     assertPropsGate(decide);
@@ -1300,7 +1304,7 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * resolve to a different tag does not mutate the host; it fails to match in the
  * diff, and a fresh component is built in its place.
  */
-export function Host<C extends (new (...args: any[]) => object) & { readonly __isComponent: true }>(
+export function Host<C extends (new (...args: never[]) => object) & { readonly __isComponent: true }>(
   tag: string | ((props: PropsOf<C>) => string),
   props?: (self: InstanceOf<C>) => Record<string, unknown>,
 ) {
@@ -1391,7 +1395,7 @@ export function Host<C extends (new (...args: any[]) => object) & { readonly __i
  * from an unannotated arrow before the class is ever looked at, which is why `@Host` used to
  * need `(self: Card)` spelled out.
  */
-type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
+type InstanceOf<C> = C extends new (...args: never[]) => infer I ? I : never;
 
 /**
  * The props of a component or a hook INSTANCE — which is what a method decorator has to
@@ -1402,7 +1406,7 @@ type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
  * carries the type in a phantom (`PROPS_TYPE`).
  */
 type PropsOfInstance<T> = T extends { props: infer P } ? P : T extends { [PROPS_TYPE]?: infer P } ? P : never;
-type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : never;
+type PropsOf<C> = C extends new (props: infer P, ...rest: never[]) => unknown ? P : never;
 
 /**
  * A hook's props, read off its construct signature — `new (runtime, options: Q) => …`.
@@ -1413,7 +1417,7 @@ type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : ne
  * does not work — a component's constructor is `(props, context)`, and `keyof` of a loose
  * context type accepts any name, so every check passed.
  */
-type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q : never;
+type HookPropsOf<C> = C extends new (runtime: never, options: infer Q) => unknown ? Q : never;
 
 /**
  * Declares which of a hook's props are **values** rather than references — so the
@@ -1475,7 +1479,7 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
     assertStablePropKeys(keys as readonly string[]);
   }
 
-  return <C extends new (runtime: any, options: any) => BaseHook<any>>(
+  return <C extends new (runtime: never, options: never) => BaseHook<unknown>>(
     ctor: C &
       // The names are checked against the hook's OWN props: `C` is inferred from the
       // decorated class, and when a name is not one of its props the parameter type gains a
