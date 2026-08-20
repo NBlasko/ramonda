@@ -135,7 +135,7 @@ describe("RMD021 — randomness, and no clock", () => {
 
     const fix = of("RMD021")?.fix ?? "";
     expect(fix).toContain("@compute");
-    expect(fix).toContain("@memoizedHandler");
+    expect(fix).toContain("@memoized");
     expect(fix).toContain("props callback");
     expect(fix).toContain("render()");
     unmount();

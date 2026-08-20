@@ -29,7 +29,7 @@
  *
  * - **RMD017**, a deferred hydration that never resumed. The server's markup is still on screen, so
  *   the page looks finished; the subtree has no listeners and answers nothing.
- * - **RMD047**, `@memoizedHandler` with no key. Development throws, which is how it is meant to be
+ * - **RMD047**, `@memoized` with no key. Development throws, which is how it is meant to be
  *   caught — but a build that shipped without being run rebuilds the handler on every render, and
  *   everything it is passed to re-renders with it, for the life of the page.
  *

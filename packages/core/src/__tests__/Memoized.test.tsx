@@ -1,16 +1,16 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, memoizedHandler } from "../base/decorators";
+import { state, memoized } from "../base/decorators";
 import { Component } from "../base/Component";
 
-describe("@memoizedHandler", () => {
+describe("@memoized", () => {
   test("returns same function reference for same args across renders", async () => {
     const refs: Record<string, Function[]> = { a: [], b: [] };
 
     class Comp extends Component {
       @state tick = 0;
 
-      @memoizedHandler
+      @memoized
       getHandler(id: string) {
         return () => id;
       }
@@ -40,7 +40,7 @@ describe("@memoizedHandler", () => {
     const capturedRefs: Function[] = [];
 
     class Comp extends Component {
-      @memoizedHandler
+      @memoized
       getHandler(id: number) {
         return () => id;
       }
@@ -67,7 +67,7 @@ describe("@memoizedHandler", () => {
     class Comp extends Component {
       @state items = [10, 20, 30];
 
-      @memoizedHandler
+      @memoized
       getClickHandler(value: number) {
         return () => results.push(value);
       }
@@ -99,7 +99,7 @@ describe("@memoizedHandler", () => {
     class Comp extends Component {
       @state showExtra = true;
 
-      @memoizedHandler
+      @memoized
       getHandler(id: string) {
         return () => id;
       }
@@ -142,7 +142,7 @@ describe("@memoizedHandler", () => {
     const refs: Function[] = [];
 
     class Comp extends Component {
-      @memoizedHandler
+      @memoized
       getHandler(a: string, b: number, c: boolean) {
         return () => `${a}-${b}-${c}`;
       }

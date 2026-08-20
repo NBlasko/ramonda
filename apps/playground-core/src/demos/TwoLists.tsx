@@ -1,4 +1,4 @@
-import { Component, memoizedHandler, state, list } from "@ramonda/core";
+import { Component, memoized, state, list } from "@ramonda/core";
 
 interface Task {
   id: number;
@@ -23,7 +23,7 @@ export class TwoLists extends Component {
   @state done: Task[] = [makeTask("ship list()")];
 
   /**
-   * Keyed by the task's `id` — not by the task itself, because `@memoizedHandler`
+   * Keyed by the task's `id` — not by the task itself, because `@memoized`
    * builds its cache key from primitives and throws on an object. The body resolves
    * the task from the CURRENT array when the click happens, so a reorder cannot make
    * a cached handler act on the wrong row, and identity still decides what moves
@@ -36,7 +36,7 @@ export class TwoLists extends Component {
    * The alternative is a fresh arrow per row per render, which RMD020 reports: each
    * one is removed and re-added on its button every time the parent renders.
    */
-  @memoizedHandler
+  @memoized
   finish(id: number) {
     return () => {
       const task = this.todo.find((t) => t.id === id);
@@ -46,7 +46,7 @@ export class TwoLists extends Component {
     };
   }
 
-  @memoizedHandler
+  @memoized
   reopen(id: number) {
     return () => {
       const task = this.done.find((t) => t.id === id);

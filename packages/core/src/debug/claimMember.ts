@@ -19,7 +19,7 @@ import { diagnose } from "./diagnostics";
  * measured as doing real work twice, which is the point of putting two on one method. And the pairs that
  * make no sense at all already throw, from `assertField` / `assertMethod` / `assertMethodOrGetter`, with a
  * message naming the member: `@state @compute`, `@compute @persist`, `@state @watchProp`,
- * `@memoizedHandler @compute`. This code exists for the gap between those two sets.
+ * `@memoized @compute`. This code exists for the gap between those two sets.
  *
  * ## Why a CAPABILITY rather than a decorator name
  *

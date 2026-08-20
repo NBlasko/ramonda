@@ -1,4 +1,4 @@
-import { Component, Host, list, memoizedHandler } from "@ramonda/core";
+import { Component, Host, list, memoized } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 // A whole form: fields, a cross-field rule, an array with rows that keep their
@@ -72,7 +72,7 @@ export class FormDemo extends Component {
   // Keyed by the row's ID rather than its index: remove the first tag and every
   // index below it shifts, so a handler built from an index would be pointing at
   // its neighbour a render later.
-  @memoizedHandler
+  @memoized
   removeTag(id: string) {
     return () => {
       const rows = this.form.fields.tags.$.rows;
@@ -87,7 +87,7 @@ export class FormDemo extends Component {
 
   // `move` rather than remove-then-insert: the row keeps its id, so it keeps its element and
   // whatever you had typed or selected in it.
-  @memoizedHandler
+  @memoized
   moveTagUp(id: string) {
     return () => {
       const rows = this.form.fields.tags.$.rows;

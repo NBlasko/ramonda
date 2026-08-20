@@ -20,7 +20,7 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@state`](/concepts/state) | both | component · hook | yes — one per field |
 | [`@persist`](/ssr/env) | both | component · hook | yes — one per field |
 | [`@compute`](/concepts/compute) | both | component · hook | yes |
-| [`@memoizedHandler`](/reference/api) | both | component · hook | yes |
+| [`@memoized`](/reference/api) | both | component · hook | yes |
 | [`@created`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
 | [`@mounted`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
 | [`@destroyed`](/concepts/lifecycle) | client in practice¹ | component · hook | yes, reverse order |
@@ -92,7 +92,7 @@ They are not shades of wrong. Measured, one class per decorator:
 | written on `render` | what it did |
 |---|---|
 | `@compute` | Turned the method into a cached property, so rendering died with `component.render is not a function` — before a page appeared, and with no diagnostic. |
-| `@memoizedHandler` | Did not throw. The render was memoised on arguments it does not have, and the component **never updated again** — a frozen page, and nothing said. |
+| `@memoized` | Did not throw. The render was memoised on arguments it does not have, and the component **never updated again** — a frozen page, and nothing said. |
 | `@created`, `@mounted`, `@updated`, `@destroyed` | Registered the render as a lifecycle callback, so it ran outside the render pass as well as inside it. |
 | `@catchError` | Made the render the handler for errors thrown by its own subtree. |
 | `@state`, `@persist` | Mean "serialise me", which a render is not. |

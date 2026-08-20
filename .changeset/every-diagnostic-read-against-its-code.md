@@ -25,7 +25,7 @@ report can say which of the three it is.
 `crypto.randomUUID` and `crypto.getRandomValues`, and deliberately nothing else — the platform reads
 the clock behind your back, so a guard on it reports calls the app never made. The title said "A
 clock or a random number" and the fix was half about clocks. It now names the randomness it watches,
-the FOUR phases it fires in (render, `@compute`, a `@memoizedHandler` builder, a hook's props
+the FOUR phases it fires in (render, `@compute`, a `@memoized` builder, a hook's props
 callback — the prose named two), and where the clock is actually caught. `clock-read-while-rendering`
 says the same from its side, because the client-only clock gap is the reason that rule exists.
 

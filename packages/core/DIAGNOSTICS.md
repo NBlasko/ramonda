@@ -823,7 +823,7 @@ which is exactly where handlers live.
 
 Building the second output is safe: `buildRenderOutput` produces vnodes and nothing
 else — components are constructed by the diff, `hostTag` is already cached, a render
-registers no signal dependencies, and `@memoizedHandler` returns the same function
+registers no signal dependencies, and `@memoized` returns the same function
 for the same arguments, so it reads as stable rather than as a fault.
 
 **Not** a hook's props callback. That was implemented and then removed after auditing what it

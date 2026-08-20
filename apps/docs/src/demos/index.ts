@@ -78,7 +78,7 @@ export const demoTitles: Record<string, string> = {
   EffectCleanup: "Cleanup — what a subscription returns",
   WatchPropDemo: "@watchProp — reacting to a prop",
   ThemeContextDemo: "Context — a value without threading",
-  MemoHandlers: "@memoizedHandler — stable handler identity",
+  MemoHandlers: "@memoized — stable handler identity",
   StoreSubscription: "createSubscriptionDecorator — external stores",
   ErrorBoundaryDemo: "ErrorBoundary — containing a failure",
   PersistDemo: "@persist — a value from the server",

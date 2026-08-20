@@ -4,7 +4,7 @@ import {
   deferHydration,
   Host,
   interval,
-  memoizedHandler,
+  memoized,
   onDocument,
   onWindow,
   state,
@@ -64,8 +64,8 @@ class ParameterClaims extends Component {
     return this.count * 2;
   }
 
-  /** `@memoizedHandler` keeps its argument and return types — the caller gets a real handler. */
-  @memoizedHandler pick(id: number) {
+  /** `@memoized` keeps its argument and return types — the caller gets a real handler. */
+  @memoized pick(id: number) {
     return () => {
       void id;
     };
@@ -101,6 +101,45 @@ class SubscriptionClaims extends Component {
   }
 }
 
+/**
+ * `@compute` takes a getter OR a method, and each is typed as what it installs.
+ *
+ * A getter becomes an accessor, so it is the value. A method stays a function that returns the value. Both
+ * are read below with no cast, which is the claim: the declared type matches what is there. It did not
+ * before — a method had an accessor installed, so it was typed `() => number` while holding a `number`,
+ * and reading it as the number it was is exactly the line that failed.
+ *
+ * A PARAMETER is refused here as well: a function that declares one is not assignable to `(this: T) => R`,
+ * which declares none. `DecoratorValidation.test.tsx` covers the runtime net behind it, for a project with
+ * no types.
+ */
+class ComputeClaims extends Component {
+  @state factor = 2;
+
+  @compute get doubled(): number {
+    return this.factor * 2;
+  }
+
+  @compute tripled(): number {
+    return this.factor * 3;
+  }
+
+  // @ts-expect-error — a method that DECLARES a parameter is not assignable to one that declares none.
+  @compute
+  withArg(k: number) {
+    return k * this.factor;
+  }
+
+  /** The getter is read, the method is called, and neither needs a cast. */
+  reads(): number {
+    return this.doubled + this.tripled();
+  }
+
+  render() {
+    return <div />;
+  }
+}
+
 /** `@Host` takes a COMPONENT class, and the constraint is the same bottom-typed constructor. */
 @Host("section")
 class Hosted extends Component<{ id: string }> {
@@ -115,6 +154,7 @@ class NotAComponent {}
 @Host("section")
 class Rejected extends NotAComponent {}
 
+void ComputeClaims;
 void ParameterClaims;
 void SubscriptionClaims;
 void Hosted;

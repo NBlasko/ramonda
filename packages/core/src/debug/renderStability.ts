@@ -172,9 +172,10 @@ const DETAIL: Record<Kind, (owner: string, path: string) => string> = {
 
 const FIX: Record<Kind, string> = {
   handler:
-    "Give the function a stable identity: a bound method (`onClick={this.submit}`), or `@memoizedHandler` when it has to be built per item — that caches by its arguments, per instance.",
+    "Give the function a stable identity: a bound method (`onClick={this.submit}`), or `@memoized` when it has to be built per item — that caches by its arguments, per instance.",
   object:
-    "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.",
+    "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.\n" +
+    "PER ITEM, none of those works — a `@compute` belongs to the component, not to the row. `@memoized` is the one that does: it caches by its arguments, per instance, and it caches a value as readily as a handler.",
   instance:
     "Construct it once and keep it: a field, a `@compute` getter, or a module constant. If it is a clock — `new Date()` — decide the value once in `@created` and keep it in `@state`, so a server render and its hydration agree (RMD007).",
   nondeterministic:
@@ -193,7 +194,7 @@ interface Walk {
  * Building the second is safe: `buildRenderOutput` produces vnodes and nothing
  * else — components are constructed by the diff, `hostTag` is already cached, a
  * render registers no signal dependencies (re-rendering is driven by the listener
- * attached when a signal is created), and `@memoizedHandler` returns the same
+ * attached when a signal is created), and `@memoized` returns the same
  * function for the same arguments, so it shows up as stable rather than as a fault.
  */
 export function checkRenderStability(component: BaseComponent, first: unknown, second: unknown): void {

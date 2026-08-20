@@ -1,4 +1,4 @@
-import { Component, Host, list, memoizedHandler, state } from "@ramonda/core";
+import { Component, Host, list, memoized, state } from "@ramonda/core";
 import { Query, QueryClientProvider, type FetchContext } from "@ramonda/query";
 
 interface Profile {
@@ -102,7 +102,7 @@ export class QueryDemo extends Component {
     );
   }
 
-  @memoizedHandler
+  @memoized
   select(id: string) {
     return () => {
       this.id = id;

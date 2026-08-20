@@ -1,6 +1,6 @@
-import { Component, Host, state, memoizedHandler, list } from "@ramonda/core";
+import { Component, Host, state, memoized, list } from "@ramonda/core";
 
-// @memoizedHandler caches a function by its arguments, per instance. Ask for
+// @memoized caches a function by its arguments, per instance. Ask for
 // `this.remove("a")` twice and you get the SAME function both times.
 //
 // That matters because a fresh closure per render is a changing prop: the diff
@@ -20,7 +20,7 @@ export class MemoHandlers extends Component {
   // people copy, and the version worth copying is the one that stays correct
   // when the row gains state later.
 
-  @memoizedHandler
+  @memoized
   remove(name: string) {
     return () => {
       this.items = this.items.filter((item) => item !== name);

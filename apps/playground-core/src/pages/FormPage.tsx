@@ -1,4 +1,4 @@
-import { Component, list, memoizedHandler, state } from "@ramonda/core";
+import { Component, list, memoized, state } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 /**
@@ -143,7 +143,7 @@ class ProfileForm extends Component {
    * cache key holds a string, a number or a boolean, so that call could never be memoised — and in
    * development it throws, the moment the list has a row in it.
    */
-  @memoizedHandler
+  @memoized
   private removeTag(index: number): () => void {
     return () => this.form.fields.tags.$.remove(index);
   }

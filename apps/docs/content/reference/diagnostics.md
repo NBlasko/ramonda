@@ -336,7 +336,7 @@ on the element on every render, and a function passed to a child re-renders that
 <button onclick={this.save}>           // ✓ a bound method
 ```
 
-For a handler that must be built per item, [`@memoizedHandler`](/concepts/events) caches it by its
+For a handler that must be built per item, [`@memoized`](/concepts/events) caches it by its
 arguments, per instance — so the second render hands back the same function and nothing is reported.
 
 **An object or array built in place**, with the same contents. A child receiving it re-renders every
@@ -439,7 +439,7 @@ differently in each, so the message differs with it:
 - **In a [`@compute`](/concepts/compute)** it is quieter and worse: the answer is
   cached, so the value is frozen at the moment it was first asked for, and only a
   dependency the compute actually READ can refresh it — which may be never.
-- **In a [`@memoizedHandler`](/concepts/events) builder** it is cached *with the
+- **In a [`@memoized`](/concepts/events) builder** it is cached *with the
   handler*, keyed by the arguments, so every call to that handler uses the one value.
   The builder runs during a render, so without its own report the fix would look like a
   render problem.
@@ -497,7 +497,7 @@ Three findings, three fixes:
   declares the prop a value and settles it for every call site at once.
 - **a function** — a bound method (`fetch: self.load`) reads `this` when it is called, so
   there is nothing to capture and the identity never changes;
-  [`@memoizedHandler`](/concepts/events) when it has to be built per argument. A
+  [`@memoized`](/concepts/events) when it has to be built per argument. A
   declaration cannot help here: two closures with the same body are not equal by any
   comparison that is safe to make, so a declared function prop is still reported.
 - **different contents from two calls in one tick** — the callback is not a function of
@@ -1061,20 +1061,20 @@ extend it.
 ## RMD047 — A memoized handler was given an argument it cannot key on
 
 ```tsx expect-error
-@memoizedHandler
+@memoized
 pick(row: Row) {          // reported: a Row cannot be part of a cache key
   return () => this.select(row.id);
 }
 ```
 
 ```tsx
-@memoizedHandler
+@memoized
 pick(id: string) {        // the way: key on the primitive, read the rest inside
   return () => this.select(id);
 }
 ```
 
-`@memoizedHandler` caches by the ARGUMENTS, and a cache key can hold a string, a number or a
+`@memoized` caches by the ARGUMENTS, and a cache key can hold a string, a number or a
 boolean. An object cannot: comparing it by value is not something the cache can do, and keying on its
 identity would miss every time — a fresh object per render would fill the map and hand back a new
 handler on every pass, which is the churn the decorator exists to prevent.
@@ -1169,7 +1169,7 @@ is both `@created` and `@updated`, a handler on `@onWindow` and `@onDocument`, a
 for writing two.
 
 And the pairs that make no sense at all never reach this code: `@state` with `@compute`, `@compute` with
-`@persist`, `@state` with `@watchProp`, `@memoizedHandler` with `@compute` all **throw**, naming the member
+`@persist`, `@state` with `@watchProp`, `@memoized` with `@compute` all **throw**, naming the member
 and what it is, because one of the two is on the wrong kind of member entirely.
 
 Reported once per member, not once per instance — a list of a thousand rows says it once.

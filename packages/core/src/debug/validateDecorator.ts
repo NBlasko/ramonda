@@ -21,7 +21,7 @@ function fail(decorator: string, message: string): never {
  * - `@compute get render()` turns the method into a cached PROPERTY, so the framework's
  *   `component.render()` dies with `TypeError: component.render is not a function` — before a page
  *   appears, with no diagnostic of any kind.
- * - `@memoizedHandler render()` is worse, because it does not throw. The render is memoised on its
+ * - `@memoized render()` is worse, because it does not throw. The render is memoised on its
  *   arguments, it has none, and the component **never updates again**: measured `"0" -> "0"` after
  *   a state write that should have shown `1`. A frozen page and nothing said.
  * - `@created`, `@mounted`, `@updated`, `@destroyed` register the render as a lifecycle callback,
@@ -70,15 +70,38 @@ export function assertField(kind: string, decorator: string, name: string | symb
 }
 
 /**
- * @compute is the one decorator that legitimately takes either — a method called
- * as `this.total()` or a getter read as `this.total`. Both are cached the same
- * way, so both are allowed and everything else is not.
+ * The decorator makes sense on a method or a getter, and the two install different things.
+ *
+ * A getter becomes an accessor, so what you read is the value. A METHOD stays a function that returns the
+ * value — which is what keeps its declared type true. Installing an accessor for a method was a type lie in
+ * both directions: `this.total` was declared `() => number` while it held a `number`, so reading it as the
+ * number it is was an error and calling it threw. Measured on both, and the fix was to make the method form
+ * behave like one rather than to remove it.
  */
 export function assertMethodOrGetter(kind: string, decorator: string, name: string | symbol): void {
   assertNotRender(decorator, name);
   if (kind !== "method" && kind !== "getter") {
     fail(decorator, `Can only decorate a method or a getter, but \`${String(name)}\` is a ${kind}.`);
   }
+}
+
+/**
+ * A `@compute` METHOD takes no arguments, because its cache is keyed by nothing.
+ *
+ * One value per component is the whole shape of it, so an argument would be accepted and ignored — the
+ * second call with a different argument would hand back the first call's answer. `@memoized` is the
+ * decorator keyed BY arguments, and this says so rather than letting the two be confused silently.
+ *
+ * `fn.length` counts declared parameters up to the first default or rest, so `times(n = 1)` slips through.
+ * That case has a usable value in the body, which is the less wrong of the two.
+ */
+export function assertNoParameters(fn: unknown, decorator: string, name: string | symbol): void {
+  if (typeof fn !== "function" || fn.length === 0) return;
+  fail(
+    decorator,
+    `\`${String(name)}\` declares ${fn.length} parameter(s), and a ${decorator} caches one value per ` +
+      "component — an argument would be ignored. Use `@memoized` for a value keyed by its arguments.",
+  );
 }
 
 /** @interval(ms) / @timeout(ms) */

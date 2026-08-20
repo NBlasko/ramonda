@@ -1,9 +1,9 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, memoizedHandler } from "../index";
+import { Component, Host, state, memoized } from "../index";
 
 /**
- * What `@memoizedHandler` does with an argument it cannot build a cache key from.
+ * What `@memoized` does with an argument it cannot build a cache key from.
  *
  * A key can hold a string, a number or a boolean. An object cannot: comparing it
  * by value is not something the cache can do, and keying on its identity would
@@ -13,9 +13,9 @@ import { Component, Host, state, memoizedHandler } from "../index";
  *
  * Production does not, and the split is deliberate: it used to throw there too,
  * from inside a render, so one handler receiving an object took the whole page
- * down. `MemoizedHandlerKey.prod.test.tsx` is the other half of this pair.
+ * down. `MemoizedKey.prod.test.tsx` is the other half of this pair.
  */
-describe("@memoizedHandler with an un-keyable argument", () => {
+describe("@memoized with an un-keyable argument", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
@@ -35,7 +35,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
 
     @Host("div")
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       pick(row: unknown) {
         return () => row;
       }
@@ -51,7 +51,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
   test("development throws, naming the method and the argument", async () => {
     @Host("div")
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       pick(row: unknown) {
         return () => row;
       }
@@ -63,7 +63,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
 
     // The message has to carry three things, or it is the old one with more words:
     // whose handler it is, which argument, and what to do instead.
-    await expect(getDOM(<Panel />)).rejects.toThrow(/@memoizedHandler on Panel\.pick/);
+    await expect(getDOM(<Panel />)).rejects.toThrow(/@memoized on Panel\.pick/);
     await expect(getDOM(<Panel />)).rejects.toThrow(/#1 \(object\)/);
     await expect(getDOM(<Panel />)).rejects.toThrow(/row\.id.*rather than.*row/);
   });
@@ -71,7 +71,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
   test("it names the position of the offending argument among several", async () => {
     @Host("div")
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       pick(_a: string, _b: number, _c: unknown) {
         return () => null;
       }
@@ -87,7 +87,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
   test("null is named as null rather than as an object", async () => {
     @Host("div")
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       pick(_row: unknown) {
         return () => null;
       }
@@ -106,7 +106,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
       @state tick = 0;
       seen: unknown[] = [];
 
-      @memoizedHandler
+      @memoized
       pick(id: string, on: boolean, n: number) {
         return () => `${id}${on}${n}`;
       }
@@ -130,7 +130,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
   test("different keyable arguments get different handlers", async () => {
     @Host("div")
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       pick(id: string) {
         return () => id;
       }
@@ -159,7 +159,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
 });
 
 /**
- * Two `@memoizedHandler` methods on one component, called with the same argument.
+ * Two `@memoized` methods on one component, called with the same argument.
  *
  * The cache is one map per INSTANCE, shared by every memoized method on it, and the key used to be built
  * from the arguments alone — so two methods collided. Measured before the member's name went into the
@@ -175,12 +175,12 @@ describe("two memoized methods on one component", () => {
     const calls: string[] = [];
 
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       removeFor(id: number) {
         return () => calls.push(`remove:${id}`);
       }
 
-      @memoizedHandler
+      @memoized
       editFor(id: number) {
         return () => calls.push(`edit:${id}`);
       }
@@ -202,12 +202,12 @@ describe("two memoized methods on one component", () => {
 
   test("each is still memoised, per member and per argument", async () => {
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       a(id: number) {
         return () => id;
       }
 
-      @memoizedHandler
+      @memoized
       b(id: number) {
         return () => id;
       }
@@ -236,12 +236,12 @@ describe("two memoized methods on one component", () => {
     const B = Symbol("pick");
 
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       [A](id: number) {
         return () => calls.push(`A:${id}`);
       }
 
-      @memoizedHandler
+      @memoized
       [B](id: number) {
         return () => calls.push(`B:${id}`);
       }
@@ -267,12 +267,12 @@ describe("two memoized methods on one component", () => {
     const calls: string[] = [];
 
     class Panel extends Component {
-      @memoizedHandler
+      @memoized
       remove(id: string) {
         return () => calls.push(`remove:${id}`);
       }
 
-      @memoizedHandler
+      @memoized
       edit(id: string) {
         return () => calls.push(`edit:${id}`);
       }

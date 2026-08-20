@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
 import { Hook } from "../../base/Hook";
-import { Host, state, deferHydration, memoizedHandler } from "../../base/decorators";
+import { Host, state, deferHydration, memoized } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { bootstrap, unmount } from "../../index";
@@ -61,7 +61,7 @@ class Stuck extends Component {
 class Panel extends Component {
   @state label = "one";
 
-  @memoizedHandler
+  @memoized
   pick(id: unknown) {
     return () => id;
   }

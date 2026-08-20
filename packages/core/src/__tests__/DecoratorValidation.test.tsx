@@ -10,9 +10,10 @@ import {
   state,
   persist,
   compute,
-  memoizedHandler,
+  memoized,
 } from "../base/decorators";
 import { Component } from "../base/Component";
+import { getDOM } from "../test/setup";
 
 /**
  * Decorator arguments are fixed at the source — they cannot depend on runtime
@@ -215,7 +216,7 @@ describe("decorator argument validation", () => {
  * - `@persist` on a method — no error; same missing blob entry, nothing said so.
  * - `@compute` on a field — no error; the field initializer was installed as the
  *   getter body.
- * - `@memoizedHandler` on a field — the only one that failed, as
+ * - `@memoized` on a field — the only one that failed, as
  *   `Cannot read properties of undefined (reading 'get')`, which names neither
  *   the decorator nor the member.
  *
@@ -261,17 +262,17 @@ describe("decorator target validation", () => {
     }).not.toThrow();
   });
 
-  test("@memoizedHandler rejects a field", () => {
+  test("@memoized rejects a field", () => {
     expect(() => {
       class Bad extends Component {
         // @ts-expect-error — runtime guard is the point.
-        @memoizedHandler value = 1;
+        @memoized value = 1;
         render() {
           return <div />;
         }
       }
       return Bad;
-    }).toThrow(/\[@memoizedHandler\].*Can only decorate a method.*`value` is a field/s);
+    }).toThrow(/\[@memoized\].*Can only decorate a method.*`value` is a field/s);
   });
 
   test("@compute rejects a field", () => {
@@ -287,13 +288,10 @@ describe("decorator target validation", () => {
     }).toThrow(/\[@compute\].*Can only decorate a method or a getter.*`value` is a field/s);
   });
 
-  test("@compute accepts both a method and a getter", () => {
+  test("@compute accepts a getter", () => {
     expect(() => {
       class Fine extends Component {
         @state count = 1;
-        @compute doubled() {
-          return this.count * 2;
-        }
         @compute get tripled() {
           return this.count * 3;
         }
@@ -303,5 +301,97 @@ describe("decorator target validation", () => {
       }
       return Fine;
     }).not.toThrow();
+  });
+});
+
+/**
+ * A `@compute` method that declares a parameter — the SECOND net, not the first.
+ *
+ * A typed build already refuses it: `compute`'s target is `(this: T) => R`, so a method with a parameter
+ * fails as `TS1241`, the same contravariance that decides every bound in `DecoratorTypeClaims.tsx` — which
+ * is where that half is pinned, because a class body written here would EXECUTE and trip the guard below
+ * instead of the compiler.
+ *
+ * The runtime guard is for the build that has no types, or a cast, and it was silent there: measured in
+ * vitest — which transpiles rather than checks — `@compute times(n: number)` left `this.times` holding
+ * `NaN`, with the body run once for `n === undefined`. That is the same reason `attribute-that-does-nothing`
+ * exists beside the JSX types.
+ *
+ * Found by asking whether `@memoized` and `@compute` collide as names. They do not, and the parameter list
+ * is exactly where they are told apart.
+ */
+/**
+ * A `@compute` that declares a parameter, refused in EVERY build.
+ *
+ * Both forms are legitimate — a getter becomes an accessor, a method stays a function that returns the
+ * value — and neither has a key. So an argument is accepted and ignored: the second call with a different
+ * argument gets the first call's answer, with nothing thrown and nothing logged. That is a wrong number on
+ * a page, which is why the check is outside `__DEV__`.
+ *
+ * The type refuses it too — `@compute withArg(k: number)` is `TS1241`, which is why the shape below needs
+ * a `@ts-expect-error` to be written at all. This is the net for a project with no types, and
+ * `@ramonda/check`'s `compute-takes-no-arguments` is the one that reports it before the build.
+ */
+describe("@compute with a parameter", () => {
+  test("is refused, and names the decorator that takes one", () => {
+    expect(() => {
+      class Bad extends Component {
+        @state factor = 2;
+        // @ts-expect-error — the TYPE refuses this too; the directive is how the runtime guard gets tested.
+        @compute
+        times(n: number) {
+          return n * this.factor;
+        }
+        render() {
+          return <div />;
+        }
+      }
+      return Bad;
+    }).toThrow(/\[@compute\].*declares 1 parameter.*@memoized/s);
+  });
+
+  test("neither form can be assigned over", async () => {
+    // A getter with no setter throws; the method form was `writable: true` at first and accepted the
+    // assignment, replacing the compute with the value. A derived member is not a place to put one.
+    class Fine extends Component {
+      @state n = 2;
+      @compute get doubled() {
+        return this.n * 2;
+      }
+      @compute tripled() {
+        return this.n * 3;
+      }
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Fine>(<Fine />);
+    const reach = app.instance as unknown as Record<string, unknown>;
+    expect(() => {
+      reach.doubled = 1;
+    }).toThrow();
+    expect(() => {
+      reach.tripled = 1;
+    }).toThrow();
+  });
+
+  test("both parameterless forms are accepted, and each is read the way it is written", async () => {
+    class Fine extends Component {
+      @state n = 2;
+      @compute get doubled() {
+        return this.n * 2;
+      }
+      @compute tripled() {
+        return this.n * 3;
+      }
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Fine>(<Fine />);
+    expect(app.instance.doubled).toBe(4);
+    expect(app.instance.tripled()).toBe(6);
   });
 });

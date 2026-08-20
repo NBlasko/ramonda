@@ -11,7 +11,7 @@ import { valueEqualThorough } from "../helpers/valueEqual";
  *
  * `render()` and a props callback are the same kind of thing: code the framework calls,
  * unconditionally, on every render, whose result is compared against the last one. The
- * framework solved that for `render()` — `@memoizedHandler` for functions, `list()` for
+ * framework solved that for `render()` — `@memoized` for functions, `list()` for
  * mapped children — so that writing the natural thing is also the efficient thing. A bag
  * had no such answer, and the churn is not cosmetic: every prop is a signal, so a fresh
  * reference is a change. Measured in core's tests, across three renders of the owner: a
@@ -80,9 +80,9 @@ const DETAIL: Record<Kind, (owner: string, key: string) => string> = {
 
 const FIX: Record<Kind, string> = {
   handler:
-    "A bound method instead of a closure: `fetch: self.load`, where `load()` reads `this.props` when it is called, so there is nothing to capture and the identity never changes. `@memoizedHandler` when it has to be built per argument.",
+    "A bound method instead of a closure: `fetch: self.load`, where `load()` reads `this.props` when it is called, so there is nothing to capture and the identity never changes. `@memoized` when it has to be built per argument.",
   object:
-    'Hold it somewhere that HAS an identity and hand that over: a `@compute` (`@compute get key() { return ["user", this.props.id] }`), a field, a module constant — so the callback passes a value along instead of building one. A `@compute` holding the whole bag does it for every value in it at once. If you own the hook, `@StableProps("key")` declares the prop a value and settles it for every call site.',
+    'Hold it somewhere that HAS an identity and hand that over: a `@compute` (`@compute get key() { return ["user", this.props.id] }`), a field, a module constant — so the callback passes a value along instead of building one. A `@compute` holding the whole bag does it for every value in it at once. If you own the hook, `@StableProps("key")` declares the prop a value and settles it for every call site.\nPER ITEM, a `@compute` cannot help — it belongs to the component, not to the row. `@memoized` does: it caches by its arguments, and a value is as welcome as a handler.',
   instance:
     "Construct it once and hand that one over: a field, a `@compute`, or a module constant. A `Date` is the common case and rarely wants to be a prop at all — decide the moment once in `@created` and keep it in `@state` (or `@persist`, so it survives hydration).",
   nondeterministic:

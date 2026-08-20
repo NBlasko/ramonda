@@ -3,7 +3,7 @@ import { computePhase, renderPhase } from "./renderPhase";
 
 /**
  * DEV-only: catches randomness generated while a `render()`, a `@compute`, a
- * `@memoizedHandler` builder or a hook's props callback is running.
+ * `@memoized` builder or a hook's props callback is running.
  *
  * ## Why a second check next to RMD020
  *
@@ -74,7 +74,7 @@ function patch(host: object, key: string, label: string): void {
 }
 
 /**
- * The phase a `@memoizedHandler` builder is running in, if any.
+ * The phase a `@memoized` builder is running in, if any.
  *
  * Its own marker rather than sharing the render one, because the consequence is
  * different: a handler is cached by its arguments, so whatever the builder captured is
