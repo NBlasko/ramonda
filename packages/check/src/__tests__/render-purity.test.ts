@@ -24,6 +24,7 @@ describe("state written by something a render reaches", () => {
       "label via render → stamp",
       "n via render",
       "hits via render → count",
+      "n via render → viaArrowField",
     ]);
   });
 
@@ -53,7 +54,18 @@ describe("state written by something a render reaches", () => {
     const found = run().findings["state-written-while-rendering"];
     // `cache` is not state; `@mounted` is never reached from a render; the two handlers run later.
     expect(found.some((issue) => issue.field === "cache")).toBe(false);
-    expect(found).toHaveLength(5);
+    expect(found).toHaveLength(6);
+  });
+
+  /**
+   * An arrow FIELD is a property, not a method — and `this.helper()` looked for a method, so the
+   * walk ended there without a word. It is not an exotic shape: it is the one `arrow-fields` exists
+   * to talk about, so a codebase that has any at all has them being called.
+   */
+  test("a write inside an arrow field the render calls is reported", () => {
+    const found = run().findings["state-written-while-rendering"];
+    const viaField = found.find((issue) => issue.through.includes("viaArrowField"));
+    expect(viaField?.component).toBe("OtherPaths");
   });
 });
 
@@ -68,7 +80,31 @@ describe("a clock or a random number reached from a render", () => {
       "Math.random() via render",
       "new Date() via render",
       "Date.now() via render → decorate → stampedLabel",
+      "Date.now() via render → viaArrowField",
+      "Date.now() via render → viaStatic",
+      "Date.now() via render → viaGetter",
+      "Date.now() via render → stampFromBase",
     ]);
+  });
+
+  /**
+   * Four ways of reaching a render that are not a `this.method()` call, and every one of them was
+   * missed against a claim that says "by any path". Each was planted and measured; the runtime
+   * reports all four, because `renderPhase.component` is set whatever the path was.
+   *
+   * - an arrow FIELD, which is a property rather than a method
+   * - a GETTER, which is read rather than called — `{this.total}` runs its body right there
+   * - `super.method()`, whose callee is not `this`
+   * - a STATIC, walked with `this` meaning the constructor rather than the instance, so a write
+   *   through it is nobody's state and only what does not depend on `this` is reported
+   */
+  test("an arrow field, a getter, a super call and a static are all reached", () => {
+    const found = run().findings["clock-read-while-rendering"];
+    const paths = found.map((issue) => issue.through.at(-1));
+    expect(paths).toContain("viaArrowField");
+    expect(paths).toContain("viaGetter");
+    expect(paths).toContain("viaStatic");
+    expect(paths).toContain("stampFromBase");
   });
 
   /**
@@ -77,7 +113,7 @@ describe("a clock or a random number reached from a render", () => {
    * DOES rather than where it came from.
    */
   test("parsing a timestamp and a deterministic import are not reported", () => {
-    expect(run().findings["clock-read-while-rendering"]).toHaveLength(3);
+    expect(run().findings["clock-read-while-rendering"]).toHaveLength(7);
   });
 });
 
