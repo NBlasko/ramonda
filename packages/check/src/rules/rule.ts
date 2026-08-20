@@ -74,8 +74,14 @@ export interface Report<Issue> {
    * left the rule's reach. Naming the code here lets the reference link the two without a second
    * list to keep in step — and lets the generator refuse a code the diagnostics page does not
    * document.
+   *
+   * **A LIST, because one rule can answer several codes.** `duplicate-decorators` covers four of
+   * them — a single-use decorator written twice is `RMD032`, `RMD040`, `RMD045` or `RMD046`
+   * depending on which decorator it was — and it named none, because this field held one string.
+   * The prose in the rule said so and nothing machine-readable did, so the reference linked neither
+   * way. Found by grepping every rule for codes it mentions and comparing against what it declares.
    */
-  alsoReportedAs?: string;
+  alsoReportedAs?: string | readonly string[];
 
   /** The line that opens the section, given everything this rule found. */
   heading(found: readonly Issue[]): string;
@@ -106,6 +112,20 @@ export interface Rule<Issue> {
    * and so the registry can answer "which rules is this project even running" without calling any.
    */
   needs?: string;
+
+  /**
+   * Whether this rule's fault only exists when something renders on a server.
+   *
+   * The second gate, and it reads the same way as {@link Rule.needs}: a rule declaring it is not
+   * SKIPPED in a browser-only project, it is not part of the run. `@state` holding a `Map` is
+   * perfectly correct with no hydration blob to cross, so a rule about it has no premise there —
+   * the same relationship a rule about the router has with a project that has no router.
+   *
+   * Decided from IMPORTS, once, by the same argument `needs` is: core's server entries
+   * (`renderToString`, `renderPage`, `renderStatic`) or `hydrateRoot`, which is the client half of
+   * the same story — a project that hydrates was rendered on a server by definition.
+   */
+  needsServerRendering?: boolean;
 
   /**
    * An id prefix this rule never fires inside.

@@ -60,13 +60,14 @@ describe("a link with nowhere to go", () => {
       "empty fragment:true",
       "javascript::false",
       "no href:false",
+      "empty href:false",
     ]);
   });
 
   test("a real destination, one this cannot read, and an anchor target are all silent", () => {
     const found = run().findings["link-without-a-destination"];
-    // Nine `<a>` in the fixture and five reported, so a leak is a count rather than a line number.
-    expect(found).toHaveLength(5);
+    // Ten `<a>` in the fixture and six reported, so a leak is a count rather than a line number.
+    expect(found).toHaveLength(6);
   });
 });
 

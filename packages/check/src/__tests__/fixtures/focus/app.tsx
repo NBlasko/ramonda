@@ -93,6 +93,11 @@ class Links extends Component {
         {/* REPORTED — no `href` and no handler either; it is text that looks like a link. */}
         <a>Nowhere</a>
 
+        {/* REPORTED — an EMPTY href resolves to this page, so following it reloads: worse than the
+            bare `#` above rather than the same. Found by auditing the claim ("one that goes
+            nowhere") against the code, which enumerated only `#` and `javascript:`. */}
+        <a href="">Empty</a>
+
         {/* Not reported: a real destination. */}
         <a href="/pricing">Pricing</a>
         {/* Not reported: a fragment that names something is the point of a table of contents. */}

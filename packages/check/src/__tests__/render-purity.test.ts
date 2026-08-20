@@ -23,7 +23,21 @@ describe("state written by something a render reaches", () => {
       "n via render",
       "label via render → stamp",
       "n via render",
+      "hits via render → count",
     ]);
+  });
+
+  /**
+   * The reach used to stop at the class's own members, so an INHERITED method was never followed
+   * and state declared on a base was not state as far as the rule was concerned. Both were gaps
+   * rather than decisions — a base is another class and the same object — and both were found by
+   * planting the write and watching nothing be reported.
+   */
+  test("a write through an inherited method, to state declared on the base, is reported", () => {
+    const found = run().findings["state-written-while-rendering"];
+    const inherited = found.find((issue) => issue.field === "hits");
+    expect(inherited?.through).toEqual(["render", "count"]);
+    expect(inherited?.file).toContain("inherited.tsx");
   });
 
   /**
@@ -39,7 +53,7 @@ describe("state written by something a render reaches", () => {
     const found = run().findings["state-written-while-rendering"];
     // `cache` is not state; `@mounted` is never reached from a render; the two handlers run later.
     expect(found.some((issue) => issue.field === "cache")).toBe(false);
-    expect(found).toHaveLength(4);
+    expect(found).toHaveLength(5);
   });
 });
 

@@ -1,5 +1,592 @@
 # @ramonda/core
 
+## 0.20.0
+
+### Minor Changes
+
+- c779b40: A cached callback can no longer serve a stale value — `list()`'s rows and `@memoizedHandler`.
+
+  Two caches in the framework decided when to re-run a callback from the signals that callback READ. Reads
+  are tracked wherever they happen — any call depth, any module, measured through two helpers in a second
+  file. What neither cache could see is a value read OUTSIDE the callback and closed over, and both served
+  it for ever.
+
+  **`list()`.** A row callback that captured a local kept the first value for the life of the list:
+
+  ```tsx
+  const label = this.label;
+  list(rows, () => <li>{label}</li>); // "old", for ever
+  ```
+
+  Measured: `"old"` in the row where the same field in the markup beside it read `"new"`. A `@state`
+  signal read one line too high behaves identically — the trigger was never "a plain field", it was "not
+  read inside the callback".
+
+  Nothing can look inside a closure and enumerate what it captured, so the engine goes by what it can see:
+  **a callback whose reference is new might have captured anything, so its rows are rebuilt; a callback
+  that cannot capture a render's locals keeps the fast path.** Measured over three renders — a class
+  method gives 1 distinct reference, a module-level function 1, an inline arrow 3 — so one identity check
+  separates every form with nothing static and no guessing. The whole-list skip is gated on it too, which
+  is the half that is easy to miss: it returns the cached node without calling the callback at all.
+
+  **What it costs, measured at 10 000 rows over five re-renders:** the stable form does 0 row builds and
+  the inline form 50 000 — and **both do 5 DOM writes.** The diff finds the rows identical and touches
+  nothing, so the price is closures and small objects and never the document. Wall clock could not answer
+  it here and is not quoted: jsdom swung wider than the effect, and one attempt was outright invalid.
+
+  **`@memoizedHandler`.** The same shape. The cache is keyed by the arguments, so the method runs once per
+  key and whatever it read on that call is frozen into the handler. Measured: a builder reading
+  `this.prefix` served `"old:a"` on every click while `prefix` already said `"new"`. The builder now runs
+  inside a tracker and a change to anything it read **drops that one entry** — per entry, not the map,
+  which is what keeps a handler built for other arguments identical:
+
+  ```tsx
+  pick(id) { let val = 0; if (id === 2) { val = this.mode; } return () => …; }
+  ```
+
+  `pick(1)` read nothing, so its function never changes. Only `pick(2)` is rebuilt. Both halves are pinned,
+  and wiping the map instead fails the second.
+
+  **What the review caught, and it was the important half.** The first version of the memo fix REPLACED the
+  enclosing tracker instead of forwarding to it, so the builder's reads were visible to nothing: the entry
+  was dropped when the signal moved, but the region holding the handler was never invalidated and the stale
+  handler stayed in the DOM. Measured in the decorator's canonical use — one handler per list row —
+  `"old:a"` on both clicks. The deps are now forwarded through `trackDependency` on the way out, on the hit
+  path as much as the miss path, exactly as `@compute` and the props cache do and for the reason they
+  document. And the per-entry subscriptions are released from `clearReactives` on destroy, which the first
+  version also missed: a builder reading a signal that outlives the component left its listener attached
+  for the life of the page.
+
+  **Free for correct code, in both places.** A row callback written as a method, and a handler builder that
+  reads nothing, track nothing and are never invalidated — which is the whole purpose of each cache. When a
+  signal WAS read, a rebuild is the honest answer: the row or the handler behaves differently now.
+
+  **A pre-existing fault came with the review and is fixed here**, because it lives in the same set of
+  remembered fields: `list(undefined, …)` returned an empty node while still remembering the array from the
+  pass before, so handing the same array back later matched the whole-list skip against that empty node and
+  the rows never returned. Measured on `main` as well: `rows → undefined → the same rows` gave 2 rows, then
+  0, then 0. Pinned for both callback forms.
+
+  Both halves are real runtime code rather than development checks, and the production bundle grew by
+  **146 B gzipped** — 21043 → 21189, measured by bundling `core`'s entry with `--define:__DEV__=false`
+  against the same file on `main`.
+
+  Ten tests across `ListCallbackIdentity.test.tsx` and `MemoizedHandlerStaleness.test.tsx`, including the
+  four nested-list combinations (both inline, both stable, only outer, only inner) and the boundary that is
+  NOT fixed and now says so: a stable callback reading a plain field still caches it, exactly as a
+  `@compute` over a plain field does.
+
+  Seven existing tests moved their mapper to a method, because that is now the form the cache applies to —
+  their intent is unchanged and each says why beside itself. Documented on `/lists` and `/concepts/events`.
+
+- 9b905c3: An `async` lifecycle that rejects now says so — at build time and at runtime.
+
+  **The finding.** An `async` `@created` or `@mounted` that rejects is not caught by an error
+  boundary, reports nothing, and becomes an unhandled rejection. Measured against a boundary that
+  catches the synchronous version of the same throw:
+
+  | lifecycle                | boundary catches                                 | reported    |
+  | ------------------------ | ------------------------------------------------ | ----------- |
+  | sync `@mounted` throws   | yes — the fallback renders                       | —           |
+  | `async @mounted` rejects | **no** — the page renders as though it succeeded | **nothing** |
+
+  `@mounted async load()` fetching data is a documented pattern, so this is the commonest async path
+  there is: the fetch fails, the `@state` it meant to fill stays at its initial value, the empty state
+  shows, and nothing anywhere says the method ran and failed.
+
+  **The boundary not catching it is deliberate and has not changed.** The rejection arrives at an
+  arbitrary later moment, when the page is already interactive and there is no render left to fail;
+  replacing what the reader is using with a fallback then is the worse outcome. What changed is the
+  silence.
+
+  - **`RMD059`** reports it at runtime, naming the component, the member and the phase. The handler
+    is **development-only** and the original promise is returned untouched, so the server's work drain
+    sees exactly what it saw before. In development the report replaces the raw unhandled rejection
+    and carries more than it did: the component, the member, the lifecycle, the fix text, and the
+    error object itself — `diagnose` logs `data` raw, so the stack is one expand away. A production
+    build attaches nothing at all and the rejection surfaces exactly as it always has.
+  - **`unguarded-async-lifecycle`** reports it before it ships: an `async` lifecycle that awaits with
+    no `try` and no `.catch` anywhere in its body. Zero reports across every app and package here.
+
+  The rule is deliberately coarse about what counts as handled — any `try`, any `.catch`. Whether the
+  `try` actually covers the awaits is a control-flow question, and being wrong about it means
+  reporting a method that handles its own failure, which is the one kind of mistake this package
+  treats as fatal. A method that never awaits is not reported either: it can only throw
+  synchronously, and that the lifecycle runner already catches.
+
+  The fix both of them point at is the same, and it is not a bigger boundary: catch it where it
+  happens and put the failure in `@state`, which is the only way to tell the reader anything.
+
+- 9ef4b4f: `async render()` is now reported statically as `async-render` and at runtime as **RMD060**.
+
+  **Why, when the type system already refuses it.** Because a type is a defence only while nobody
+  casts it away, and this one is defeated by a single comment. Measured:
+
+  | written as                                            | `tsc`            |
+  | ----------------------------------------------------- | ---------------- |
+  | `async render()`                                      | TS2416 — refused |
+  | `render = async () => …`                              | TS2416 — refused |
+  | `async render()` under a `@ts-ignore`                 | **compiles**     |
+  | `async render()` on a base class loosened by one cast | **compiles**     |
+
+  Two of the four ship, and what ships is not a graceful failure. Measured by running it: the diff is
+  handed a promise where a node belongs and throws `TypeError: component is not a constructor` from
+  inside `DiffAndMerge` — a stack of framework frames naming neither the component nor `render()`.
+
+  The rule is an **error** rather than a warning, which departs from "a new rule is a warning first".
+  No `async render()` is correct, so nothing correct can be reported, and the alternative to failing
+  the build is that same `TypeError` in somebody's browser.
+
+  RMD060 is raised in development from where `render()`'s own return value is still in hand, before it
+  is wrapped in a host element — asked one level up, the question cannot be asked at all, because the
+  wrapper is a node whatever is inside it. Production is unchanged.
+
+- 915505f: `htmlFor` now writes the `for` attribute. It used to write nothing.
+
+  `concepts/jsx` states the pair as one rule — "`class` and `for` are keywords in JavaScript, so JSX
+  borrows the DOM property names instead: `className` and `htmlFor`" — and only half of it was
+  implemented. An HTML attribute is written through `setAttribute`, which lowercases the name, and
+  `className` was special-cased into `class` while its twin was not.
+
+  Measured, not inferred: `<label htmlFor="a">` rendered `htmlfor="a"`, and `label.htmlFor` read `""`.
+  The label was associated with nothing — no error, no warning, in markup that typechecks and looks
+  correct. Both the DOM and the server path go through the same writer, so both were affected.
+
+  `<label for="a">` always worked and still does; the read-back path normalizes both to the spelling
+  the JSX uses, so a diff compares like with like. Removal goes through `for` as well — removing it
+  under the JSX's name would have been the same no-op `className` documents beside its own.
+
+  Found while writing `control-with-no-label`, which had been built around an attribute that did
+  nothing.
+
+- d8e6d01: `<img>`, `<area>` and `<iframe>` now have to be named, in the types.
+
+  These are the elements with nothing inside them to work them out from, so the name is the content
+  rather than a nicety. Any of `alt`, `aria-label`, `aria-labelledby` or `title` satisfies it —
+  `<iframe>` takes the last three, since `alt` is not one of its attributes.
+
+  **A union rather than `alt: string`**, deliberately. `unnamed-image` already accepts all four, and a
+  type demanding `alt` alone would refuse `<img aria-label="…">` — markup the checker calls correct.
+  A type and a rule disagreeing about the same line is worse than either being slightly lax. `alt=""`
+  satisfies it, which is right: it is the documented way to say "decoration, skip me", and that is a
+  decision somebody made rather than one they forgot.
+
+  **What it does to a spread is the point.** `<img {...rest} />` with an untyped bag is refused,
+  because nothing about that bag says a name is in it — and that is exactly the case the checker
+  cannot speak about, since a spreading element is handed to no rule at all. The two halves cover each
+  other instead of overlapping. A spread whose TYPE carries a name passes, which is the shape a
+  wrapper component should have anyway.
+
+  Measured across every app and package here: zero errors, scaffold templates unaffected, and the
+  documentation's own examples typecheck unchanged. The production bundle is byte-identical — types
+  are erased.
+
+  **A spread is not restricted.** The requirement is about the name, and anything that proves one is
+  there satisfies it — the spread's own type, or an attribute written beside it:
+
+  ```tsx
+  <img {...anything} alt="written out" />   // fine — the name is right there
+  <img {...imgProps} />                     // fine — the type carries one of the four
+  <img {...bag} />                          // refused — nothing says a name is in it
+  ```
+
+  Controls are untouched: nothing is required on an `<input>`, `<select>` or `<textarea>`, so a form's
+  `bind` spread goes on exactly as before.
+
+  All of it is pinned by `packages/core/src/__tests__/JsxTypeClaims.tsx`, which states every claim in
+  both directions — shapes that must compile, and shapes under `@ts-expect-error` that must not. A
+  directive that stops being necessary is itself an error, so relaxing any of this fails the typecheck
+  rather than passing quietly. Verified by relaxing the image requirement (four directives went
+  unused) and one refused name (one did).
+
+- 328e9fd: A second pass over `any`, and the `__isComponent` probe written once.
+
+  **Counted the same way each time, and the method is now written down so the next pass is
+  comparable:** every published package's `src`, tests and `.d.ts` excluded, comments and string
+  literals stripped, `any` matched as a word. **105 → 60, and `as any` stays at zero.** The 111 quoted
+  by the previous pass came from a script that no longer exists, so 105 is this script's reading of the
+  same tree before this change, not a claim that six went missing.
+
+  What went, each measured rather than assumed:
+
+  - **`State<any>`, all eleven of them** — the tracker's dependency sets, `propsSignals`,
+    `@compute`'s cache. `State<unknown>` accepts a `State<number>` because `set` is declared as a
+    method and methods are bivariant, so nothing at the edges had to change. Core's type-check covers
+    175 test files with concrete signal types in them, which is what makes this a real green.
+  - **`BaseComponent<any>`, all ten** — the task queue, the lifecycle walks, the effect runner.
+    `BaseComponent<unknown>` works; `BaseComponent<never>` does not, and the error says why — `props`
+    is read, so `never` is the wrong end. `testing.ts` gets away with `never` because there it is a
+    RETURN type.
+  - **The props bag inside `useCommon`** is now a named `Bag = Record<string, unknown>` — build,
+    compare, cache and hand on, all by key, nothing reading into a value. Typing it named a state the
+    code had left unsaid: `PropsCache.bag` was `undefined` until the first build, which is now the
+    shared `NO_BAG` beside the `isDirty` flag that already says when the bag is meaningful.
+  - **`Lazy` is `() => Promise<Record<string, unknown>>`** rather than `Promise<any>`, so the module
+    namespace a page loader resolves is typed and `res[namedExport]` is `unknown` at the point where
+    the code already asks `typeof component !== "function"`. Proved against the real shape:
+    `() => import("./mod")` is assignable. `apps/docs`' generated loader map now imports `Lazy` instead
+    of restating the signature, which is what caught this at all.
+  - **`@state`'s ignored initializer, its setter, `buildKey`, `describeUnkeyableArgs`, `memoMap`'s key,
+    `hooksOptions`, `componentFactory`'s props** — each of these took `any` where the code only ever
+    passes the value on or asks `typeof` about it.
+  - **`@memoizedHandler`'s context is `ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime }, T>`**
+    rather than bare, so the initializer's `this` is typed by the context instead of by `any`. It also
+    refuses the decorator on a class the framework does not own, which is a class it never worked on.
+
+  **`isComponentClass` in `vdom/guards.ts`.** The same probe was written five ways — four carrying
+  `as unknown as { __isComponent?: boolean }` and one taking its argument as `any`. `@Host`,
+  `@ShouldUpdateOnPropsChange`, `@StableProps` and `lazy`'s `toRenderable` now ask it once, and the
+  casts have nowhere left to be. Four casts and one `any` gone. Breaking the predicate on purpose fails
+  **290 of core's 1122 tests**, so it is under a gate rather than beside one.
+
+  `h.ts` is the one caller that keeps its own probe, and the reason is written beside it: `name` there
+  is `ComponentKind | UnsupportedTagFn`, and `UnsupportedTagFn` is `(props: never) => RamondaNode`,
+  which TypeScript will not separate from a construct signature — so the predicate narrows to a union
+  of the two and the cast comes straight back.
+
+  **Where `any` earns its keep, so the next pass does not repeat the experiment:**
+  `@compute`'s `addInitializer(function (this: any))` cannot be typed from the context, because
+  `ClassMethodDecoratorContext<This, …>` declares `this` as the unconstrained `This`; typing it costs
+  two casts inside and constraining `This` is a surface change rather than a tightening. The same is
+  true of `@memoizedHandler`'s returned handler, which has to stay assignable to the method's own `T`.
+  The rest are inference and constraint positions — `new (...args: any[]) => infer I`,
+  `Record<string, any>` on JSX attributes and on a decorator context's instance type — where `unknown[]`
+  is refused for the reason `decorators.ts` already records.
+
+  **A MINOR rather than a patch, because two of these narrow a published type.** `Lazy` no longer
+  accepts a promise of anything — a `lazy` that resolved the component itself rather than a module
+  namespace stops type-checking, and it never worked at runtime either (`res[namedExport]` was
+  `undefined` and threw "Missing named export"). And `@memoizedHandler`'s context now requires the class
+  to carry the framework's runtime, which refuses the decorator on a class it never worked on. Neither
+  changes behaviour, and both are refusals a build will show you.
+
+  Behaviour is unchanged: 1122 of core's tests pass, and all 28 `check-types` tasks are green.
+
+- 4a95896: One Provider of a context per component, refused rather than reported — and the scope pattern that replaces it.
+
+  RMD056 reported this; it now **throws in every build**, like a write to props (RMD004, RMD015) and a
+  plain-object props bag (RMD055). A component publishes a context on ONE object, so a second Provider
+  replaces the first and hands every descendant the second whichever part of the tree it is in — while
+  the component itself can still read both through its own hooks. **The one place that made the mistake
+  is the one place it looks fine**, which is exactly why a development-only report was not enough: it
+  left production doing it silently.
+
+  Found on this repository the day RMD056 landed: `@ramonda/form` mounts two `Form` hooks on one
+  component in two of its own tests, and a descendant reading its form through the context bound to the
+  second. Measured — submit the first form and its own `submitCount` is 1 while a descendant `FormState`
+  reads 0.
+
+  **Nothing is declared for it, and `single` is a different axis.** `single` says whether NESTING is a
+  fault — two on one path, on different components — and a context that welcomes nesting (a theme, a
+  form) is still broken by two on one component. So this takes no option: there is no version of it an
+  author would choose. Splitting the keys between two Providers is not a way out either, and the types
+  already close it — a Provider takes `options: T` whole.
+
+  **What replaces it, measured rather than asserted.** A component that renders `this.props.children`
+  scopes its context to what is inside it, so two of them side by side are two independent scopes and a
+  consumer in each finds its own with nothing passed down. That works because a context object is created
+  from the component that RENDERS a node, not the one whose source contains it — so a child handed in as
+  `children` inherits the wrapper's context. This is React's `<Provider>` element in Ramonda's terms; the
+  difference is that 1-1 and no fragments mean the wrapper is one real element rather than none. Pinned in
+  core's `Diagnostics.test.tsx`, because the refusal rests on it.
+
+  **`one-provider-per-component` in `@ramonda/check`** says it before anything runs — an ERROR rather than
+  the usual warning-first, and deliberately: the runtime does not warn either, it throws, and a warning
+  would call a crashing line survivable. It sees only a pair written directly, resolved through the
+  `BindingElement` each name came from, so an import alias is transparent and two contexts of the same
+  shape stay two; a Provider wrapped in a hook class of its own — `Form`, `QueryClientProvider` — is the
+  runtime's to catch. Zero hits across `apps/docs`, the playground, form, query and router. The pair
+  resolution moved to `rules/context-pair.ts` now that two rules share it.
+
+  `@ramonda/form`'s two tests are restructured onto one form per component, which loses no coverage: "two
+  forms cannot reach each other's state" and "focus stays inside the form it was submitted from" are
+  exactly as testable with two components, and that is what an app writes anyway.
+
+  **Two things to know before upgrading, and neither is comfortable.**
+
+  **The check rule does not cover the case that motivated this.** It sees only a pair written directly, and
+  `Form` and `QueryClientProvider` wrap their Provider in a hook of their own — which is exactly the shape
+  found in this repository. So for the arrangement most likely to be in an app, there is no pre-flight
+  warning: the throw arrives when the component is constructed. Fixing that needs the graph to follow a
+  Provider through a hook class, which is a bigger piece and is not attempted here.
+
+  **It throws even where nothing was reading the context.** Two `Form`s on one component that are only ever
+  reached directly — `this.first.fields.email.$.bind`, no descendant `FormState` — were working, and now
+  they stop. That is the same trade RMD055 made: the form is refused where it happens to be harmless,
+  because whether it is harmless depends on what a descendant does later, and nothing at the publish site
+  can see that. The migration is one component per Provider, and `focus after a failed submit` in
+  `@ramonda/form` is the worked example.
+
+  Documented where a reader looks: a new section on `/composition/context`, which never taught subtree
+  scoping at all, plus `/forms/fields` and the RMD056 reference.
+
+- c583271: The JSX types now refuse five attribute names that reach the DOM verbatim and do nothing, with the
+  correct spelling written into the error.
+
+  An HTML attribute is given to `setAttribute` as it stands, which lowercases it. Exactly two names
+  are aliased on the way, because they are reserved words: `className` → `class`, `htmlFor` → `for`.
+  Everything else is written as HTML spells it — **including the hyphens**. So a camelCase name whose
+  real attribute is spelled differently arrives as something no browser reads. It renders, it does
+  nothing, and there is nothing on the page to see.
+
+  Measured by rendering every camelCase name a JSX author might reach for and reading back what landed
+  in the document. These six came back dead; the rest (`readOnly`, `maxLength`, `tabIndex`, `colSpan`,
+  `srcdoc`, `datetime`, `contentEditable`, and the rest) all lowercase correctly and are untouched:
+
+  | refused                    | write instead                                                                                   |
+  | -------------------------- | ----------------------------------------------------------------------------------------------- |
+  | `httpEquiv`                | `http-equiv`                                                                                    |
+  | `acceptCharset`            | `accept-charset`                                                                                |
+  | `defaultValue`             | `value` — the attribute **is** the initial value; there is no controlled/uncontrolled pair here |
+  | `defaultChecked`           | `checked`                                                                                       |
+  | `innerHTML`, `textContent` | the element's children                                                                          |
+
+  The refusal is a string literal type rather than `never`, so the error carries the answer:
+  TypeScript prints the expected type, and the expected type is the advice.
+
+  ```
+  Type '"refresh"' is not assignable to type '"write `http-equiv`, with the hyphen, as HTML spells it"'.
+  ```
+
+  Kept short deliberately — the error is read in an editor tooltip and on one terminal line, which is
+  the most cramped place any of this project's prose appears.
+
+  Refused rather than aliased on purpose. `class` and `for` are aliased because they are reserved
+  words, and that rule is complete — nothing here is reserved, and `http-equiv` is writable exactly as
+  HTML spells it. Aliasing would turn a two-name exception into a list that grows forever.
+
+  Zero errors across every app and package in this repository, and the production bundle is
+  byte-identical: types are erased.
+
+- 35920e5: RMD020 and RMD022 report a `Date`, a `Map`, a `Set` or a class instance built inside a render — and an
+  inline function inside an object prop is named as the handler it is.
+
+  **A gap that two files documented as covered.** `classify` asked `isPlainObject`, which is
+  `Object.prototype`-or-null and nothing else, so any value with a prototype fell through to "this
+  difference says nothing about how it was built". Measured, `new Date()` was reported in no position at
+  all — not as a component prop, not as a DOM attribute, not as a child — while `debug/purityGuard.ts`
+  listed it under "what covers the clock then" as _"RMD020, every time (a fresh object has a fresh
+  identity)"_, and `renderStability.ts` said the same. Being a fresh object only helps if the comparison
+  looks at it.
+
+  There is a new `instance` verdict for it, separate from `object` because the contents genuinely are not
+  read: `valueEqual` walks own enumerable keys and a `Map`'s entries are not those. So it says the object
+  is FRESH rather than claiming it matched. Two different prototypes from two calls in one tick stays
+  non-determinism — a render that builds its own `class` is exactly that.
+
+  **And a report that named the wrong fault.** `cfg={{ fn: () => 1 }}` was reported as _"produced a
+  different value … so the value does not come from state"_, advising a hunt for a `new Date()` or a
+  `Math.random()` in an app containing neither — the two bags differ only in a closure's identity. A plain
+  object prop whose contents are not equal is now descended into, so each key answers for itself and the
+  report says `cfg.fn`, "the source is the same". A differing _set_ of keys is not a rebuild and stays
+  non-determinism. `children` one level down is an ordinary key, not a tree.
+
+  Nothing that was quiet becomes loud by accident: a stable field, a `@compute` or a module constant passes
+  `Object.is` long before any of this, so only a value constructed during the render can reach it.
+
+- e1cd3aa: `RMD033` now catches what it has always said it catches.
+
+  Its `fix` text reads: "a function, a class instance, a **Map** or a **Date** is lost on the way".
+  The implementation was a `try`/`catch` around `JSON.stringify`, which only ever sees a THROW — and
+  none of those throw. Measured by round-tripping every common type through the hydration blob:
+
+  ```
+  new Map([["k", 7]])  ->  "{}"            every entry gone
+  new Set([1, 2])      ->  "{}"            every entry gone
+  new Date(0)          ->  "1970-01-…"     a string, so .getTime() throws on the client
+  ```
+
+  All three crossed **silently**, with no diagnostic at all, and the page then failed later with a
+  `TypeError` on a method the value no longer had. A `Date` in state is not an exotic case; it is the
+  ordinary shape of a created-at field.
+
+  The check now asks about the SHAPE rather than matching a list of types: anything that is not a
+  plain object, an array or a primitive comes back from the blob without its prototype and usually
+  without its contents. That covers `Map`, `Set`, `Date`, `RegExp`, `URL` and any class instance,
+  including the ones nobody thought to list. It recurses, bounded, because the commonest shape of all
+  is a plain object holding one — `{ createdAt: new Date() }` travels as an object whose date has
+  quietly become a string.
+
+  No new diagnostic code: `RMD033` already meant this. Development-only, on the serializer's
+  once-per-render path rather than the per-write one.
+
+- e501d2d: `RMD058` — the request blob could not be read.
+
+  `hydrateRoot` reads the values a page opted into from an attribute the server stamped on the root
+  element. When that string does not parse, nothing is restored: every `requestContext().get(key)` on
+  the client answers `undefined`, including keys that were exposed correctly. That was already the
+  behaviour and it is the right one — a page that renders with a value missing beats a page that does
+  not render, which is the same stance `RMD036` takes for the state blob.
+
+  **What was missing is the report.** Silence here is expensive, because two other diagnostics fire in
+  its place and both point away from the cause. Measured on a page whose blob was mangled after it was
+  served: `RMD025` says the key was not exposed — it was — and `RMD007` reports the render mismatch
+  that follows, whose advice is about clocks and random numbers. The page looks correct throughout,
+  because the server's markup is still on screen. A reader is sent to add `exposeToClient` to a key
+  that already has it, and then to hunt non-determinism that is not there.
+
+  `RMD058` is the one that says what actually happened. Its test asserts the other two beside it —
+  neither is a bug, each is right about what it can see, and this is the code that explains them.
+
+  A warning rather than an error, matching `RMD036`.
+
+### Patch Changes
+
+- 2deb04b: A context consumed above its provider is reported — RMD057 at runtime, `context-consumed-above-its-provider` before anything runs.
+
+  A consumer resolves its channel ONCE, when it is constructed, and hooks are constructed in
+  field-declaration order. So on a component that also provides, which value the consumer reads is
+  decided by which of the two lines is written first. Measured on a component under an ancestor
+  provider: `"ancestor"` with the consumer declared first, `"mine"` with the provider declared first.
+  Two field declarations, and nothing said so.
+
+  **Only the consumer-first order is reported, and that is a measurement rather than a preference.**
+  Reporting both fired **14 times across `@ramonda/query`'s own tests** — every one of them on
+  `this.use(QueryClientProvider)` followed by `this.use(Query, …)`, which is mount-a-client-then-query-
+  on-it and the arrangement the packages are built around. Reporting only the consumer-first order fires
+  **nowhere in this repository**. Both directions are pinned: silencing the check fails the report test,
+  and reporting the other order fails the provide-then-use test.
+
+  **A warning rather than an error, in both places.** The arrangement has a legitimate reading — read
+  the outer value and provide a derived one, which works only in this order — as well as a mistake, a
+  consumer written one line too early. Nothing can tell them apart, so it says what it found and leaves
+  the devtools panel's alert alone.
+
+  The consumer's one-shot lookup is deliberate and is not what changed: it is what lets RMD003 report
+  when a consumer MOUNTS rather than on its first read, including down a branch nobody clicked.
+
+  **The rule and the diagnostic reach different cases, on purpose.** The rule speaks before anything
+  runs, including for a component nobody has opened, and it sees only a pair written directly — `const
+[P, C] = createContext(…)` with both halves handed to `this.use` in one class, resolved through the
+  `BindingElement` each name came from, so an import alias is transparent and two contexts of the same
+  shape stay two contexts. A provider wrapped in a hook of its own, the way `QueryClientProvider` wraps
+  one, is invisible to it and is what the runtime diagnostic catches. Nested hooks are included there:
+  a hook is handed its owner's runtime, so a consumer inside a hook inside the providing component is
+  the same ambiguity.
+
+  **And a sentence in the documentation that this proved wrong.** `/composition/context` said the
+  reversed order "reads the default forever, and says so with `RMD003`". That is true only with no
+  provider on any ancestor; with one, it reads that ancestor's value and RMD003 does not fire — which is
+  the whole reason RMD057 exists. Corrected, with the way out that does not depend on the order at all:
+  read through the provider hook, which reads as well as publishes.
+
+- 59bf7b5: The `Context` type says what a context is, and the object two publishers share is under a gate.
+
+  `Context` was declared `Record<string | number, State<any>>`. Nothing has stored a `State` there
+  since a context became one signal per key, and one of its two publishers keys by a symbol, which
+  that declaration does not even permit — so both of them cast their way past it, and a cast is what
+  lets one place quietly break the other. It is now `Record<string | number | symbol, unknown>`, and
+  the invariant lives on it in one place: a component's object is created FROM its parent's, so a read
+  walks up to the nearest ancestor that published; a publish lands as an OWN property, so a sibling
+  reading the same ancestor never sees it. Two casts deleted, one `State<any>` gone, and the
+  `Object.create` in `createComponent` typed instead of `any`. Every read keeps its cast, which is the
+  publisher naming the shape it published.
+
+  No helper was added. What both publishers do is `context[key]` and `context[key] = value`, and a
+  function around either is a call-site wrapper — the honest type is what makes them safe, not a
+  second way to spell them.
+
+  **Measured by breaking it on purpose.** Replacing `Object.create(parentContext || null)` with the
+  parent's own object — the change anyone would make to save an allocation — failed **2 of core's 1116
+  tests, both about `Head`**; the same break in the hydration creator failed **none of the 1121**. So
+  the context half of the mechanism was unguarded in both places and the hydration half entirely.
+  `ContextIsOnePerComponent.test.tsx` holds six cases for the two publishers together — sibling
+  isolation, the chain across wrappers a provider does not sit on, the nearer provider shadowing for
+  its own branch only, a change still arriving down the chain, a `Head` and a context sharing one
+  object undisturbed, and the same isolation after a real server render and hydration. Against those
+  breaks it now fails 3 of 6 and 1 of 6.
+
+  Behaviour is unchanged: 1121 of core's tests pass before and after.
+
+- 55e5c90: RMD056: one context provided twice by the same component.
+
+  A component publishes a context on ONE object — its own — so a second Provider of the same context
+  replaced the first under the same key, and every descendant read the second. Nothing said so.
+
+  **Measured before it was written.** `first = this.use(ThemeProvider, () => ({ theme: "first" }))` and
+  `second = this.use(ThemeProvider, () => ({ theme: "second" }))` on one component: the descendant reads
+  `"second"`, while the component itself reads `first.theme === "first"` and
+  `second.theme === "second"`. That is what hid it — a Provider provides AND reads, so the component
+  that made the mistake is the one place it looks fine.
+
+  The check is `Object.hasOwn(owner.context, contextId)`, and own-ness is the whole question. A context
+  object is `Object.create(parentContext)`, so a Provider ABOVE this component leaves the key inherited
+  here rather than own — that is nesting, it is ordinary, and it stays silent. Only a second publish on
+  one component makes the key own. Both directions are under a gate: silencing the check fails the
+  report test, and widening it to `in` fails the nesting test, which is the mistake the shorter spelling
+  would make.
+
+  **It reports rather than throwing**, unlike a plain-object props bag (RMD055). There a shipped bundle
+  would go on serving a value nobody set; here the page has one deterministic reading, and refusing it
+  would break an app that has been living with the first Provider ignored. Severity `error`, so the
+  devtools panel raises its alert, and a later version can refuse.
+
+  **It fires twice on this repository, and both are real.** `@ramonda/form`'s tests mount two `Form`
+  hooks on one component — `Focus.test.tsx` and `Validation.test.tsx` both do it deliberately — and a
+  `Form` publishes itself on the form context so descendants can find it. So the second form replaces
+  the first, and **a descendant that reaches its form through the context binds to the second one
+  whichever form's markup it is in**. Measured: submit the first form and its own `submitCount` is 1
+  while a descendant `FormState` reads 0. Form's own tests do not catch it because they all reach the
+  forms directly, as `this.a` and `this.b`. That is `@ramonda/form`'s to fix and is not touched here;
+  the diagnostic is what found it.
+
+  Deduped per context and owning component. DEV only — the check and its message are inside `__DEV__`,
+  and measured on a production bundle of `Context.ts`: `consumedBy`, both probes, the report function,
+  `diagnose` and both codes are absent.
+
+- 6ce885e: The ten-second watch armed for a deferred subtree is now cleared when that subtree resumes.
+
+  It was harmless in the sense that mattered least: the callback re-checks `hydrationPending` and
+  `isDestroyed`, so it could never report falsely — which is exactly why nobody noticed. What it did
+  was hold on. The timer's closure holds the component, and `unref` (the only thing that used to be
+  done about it) is **Node-only**, so in a browser every deferred subtree kept its component alive for
+  ten seconds after it was finished with. A page full of them holds a page full of dead components.
+
+  Cleared at the top of `resumeHydration`, above its early returns rather than beside the successful
+  path: the watch is over the moment the promise settles, whichever way it settled, and a subtree that
+  resumed into a torn-down component has answered the question just as much as one that rendered.
+
+  The armed timers live in a `WeakMap` rather than on the component runtime — every component would
+  carry that field while only a deferred subtree ever arms a timer, and an entry keyed by the
+  component needs no teardown of its own. +115 bytes raw in the production bundle.
+
+  Asserted by counting the timer, because the diagnostic cannot: a resumed subtree produces no report
+  whether the timer is cleared or not. The test fails without the fix.
+
+- 1f0ea2a: RMD020 and RMD022 descend into an **array** prop as well as an object one.
+
+  `cols={[{ key: "name", render: () => … }]}` — a table's column definitions — reported _"produced a
+  different value … so the value does not come from state"_ against the whole array, which sends the reader
+  looking for a `Math.random()` that is not there. The two arrays differ only because a closure inside item
+  0 does. It reports `cols[0].render`, "the source is the same".
+
+  An array whose _length_ disagrees between the two calls is not a rebuild, so that stays non-determinism —
+  the same rule the object side already applied to a differing set of keys.
+
+- f30286d: Two diagnostics were telling readers the wrong thing, found while auditing which of them could be
+  answered statically.
+
+  **`RMD042` reported working code, and carried `RMD043`'s advice while doing it.**
+
+  It fired for every `@onElement` on a default host. Most of those work: measured — a click on a child
+  of a boxless host reaches the listener, because bubbling needs an ancestor rather than a box. It now
+  fires only for an event that does not bubble, which is one dispatched at its target and nowhere
+  else: `mouseenter` needs a box to enter, `focus` needs something focusable.
+
+  And the advice was wrong twice over. Its fix text was, word for word, the paragraph about `Head` matching `<meta>` tags by `name`,
+  `property` or `http-equiv` — copied from `RMD043`, and never noticed, because a fix text is only read
+  by somebody who already has the problem. It now explains the boxless host, and says why a bubbling
+  event is not this fault.
+
+  **`RMD041` described a mechanism that does not exist.** It said "the selector matched nothing", and
+  advised attaching to the host instead — but the three event decorators take no selector. They resolve
+  to `window`, to `document`, or to the component's own host, so the only way to reach that report is
+  `@onElement` on a component whose host was not there when the effect ran. The advice now says that,
+  and says what to look at when it repeats.
+
+  Neither was reachable by a test: a fix text is prose nothing asserts. They were found by reading each
+  diagnostic against what raises it.
+
 ## 0.19.0
 
 ### Minor Changes

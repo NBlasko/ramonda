@@ -115,13 +115,6 @@ const PROFILE_BLANK: Profile = { name: "", bio: "", tags: ["ramonda"] };
 
 class ProfileForm extends Component {
   /**
-   * Bound per argument, so the row's × is the SAME function across renders.
-   *
-   * `onClick={() => f.tags.$.remove(row.index)}` is a fresh closure every render, which RMD020
-   * reports — and this page should be the model rather than the counter-example.
-   */
-  @memoizedHandler
-  /**
    * A METHOD rather than an arrow written in `render()`, which is the form a list should reach for.
    *
    * An inline callback is a fresh function every render, so the engine cannot know what it closed over
@@ -139,6 +132,18 @@ class ProfileForm extends Component {
     );
   }
 
+  /**
+   * Bound per argument, so the row's × is the SAME function across renders.
+   *
+   * `onClick={() => f.tags.$.remove(row.index)}` is a fresh closure every render, which RMD020
+   * reports — and this page should be the model rather than the counter-example.
+   *
+   * The decorator sat on `tagRow` until `unkeyable-memoized-argument` said so: a doc comment written
+   * between the two had left it on the member above, which takes an OBJECT and returns markup. A
+   * cache key holds a string, a number or a boolean, so that call could never be memoised — and in
+   * development it throws, the moment the list has a row in it.
+   */
+  @memoizedHandler
   private removeTag(index: number): () => void {
     return () => this.form.fields.tags.$.remove(index);
   }

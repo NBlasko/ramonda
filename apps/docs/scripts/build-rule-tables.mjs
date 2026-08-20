@@ -60,7 +60,10 @@ const ISSUES_END = "[issues:end]: #";
  * this script exists to end.
  */
 function row(rule) {
-  const also = rule.alsoReportedAs ? ` — also [\`${rule.alsoReportedAs}\`](/reference/diagnostics)` : "";
+  // A rule may answer several codes — `duplicate-decorators` answers four — so every one is linked.
+  const codes = rule.alsoReportedAs ?? [];
+  const also =
+    codes.length > 0 ? ` — also ${codes.map((code) => `[\`${code}\`](/reference/diagnostics)`).join(", ")}` : "";
   return `| \`${rule.id}\` | ${rule.reportedWhen}${also} |`;
 }
 
@@ -81,8 +84,9 @@ const warnings = rules.filter((rule) => rule.severity === "warn");
  */
 const documented = readFileSync(diagnostics, "utf8");
 const missing = rules
-  .filter((rule) => rule.alsoReportedAs && !documented.includes(rule.alsoReportedAs))
-  .map((rule) => `${rule.id} names ${rule.alsoReportedAs}`);
+  .flatMap((rule) => (rule.alsoReportedAs ?? []).map((code) => ({ rule, code })))
+  .filter(({ code }) => !documented.includes(code))
+  .map(({ rule, code }) => `${rule.id} names ${code}`);
 if (missing.length > 0) {
   console.error(
     `[rules] ${missing.length} rule(s) name a diagnostic the reference does not document:\n` +

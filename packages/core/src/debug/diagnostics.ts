@@ -316,12 +316,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD041: {
     severity: "warning",
     title: "A listener with no target",
-    fix: "The handler is never attached, so the event it waits for cannot arrive. The selector matched nothing at the moment the listener was set up, which usually means the element is rendered conditionally or arrives later — attach to the host and let the event bubble, or move the listener to where the element certainly exists.",
+    fix: "The handler is never attached, so the event it waits for cannot arrive. `@onWindow` and `@onDocument` resolve to the globals, so this is `@onElement` on a component whose host element was not there when the listener was set up — the effect runs on mount, and a component torn down or replaced in the same tick can reach it with nothing to attach to. It is not something the source can be read for: there is no selector, only the component's own host. If it happens repeatedly, the component is being mounted and unmounted faster than it is being rendered, and that is the thing to look at rather than the listener.",
   },
   RMD042: {
     severity: "warning",
     title: "The default host cannot be the direct target of this event",
-    fix: '`<ramonda-host>` is `display: contents`, so it generates no box: events that bubble from children still reach it, but anything tied to a box — pointer position, hover, focus on the host itself — never will. Give the component a real host tag with `@Host("div")` if the event needs one.',
+    fix: 'Without `@Host` a component\'s host element is `<ramonda-host style="display: contents">`, and that is the point of it: it takes part in no layout, so the markup inside lands in the parent\'s grid or flex row as if the component were not there. What it has no part in is being a TARGET — `display: contents` generates no box, so nothing can be over it and nothing can enter it. An event that BUBBLES is unaffected: a click on a child reaches this listener perfectly well, because an ancestor is all a bubbling listener needs, and that is why one is not reported. This event does not bubble, so it is dispatched at its target and nowhere else — and it never arrives here at all. Give the component a real element with `@Host("div")`, or move the listener onto the element that should carry it and hand it a handler in the markup. `ramonda-check` reports the same pair before it ships, as `listener-on-the-default-host`.',
   },
   RMD043: {
     severity: "warning",
