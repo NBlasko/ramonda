@@ -1,4 +1,5 @@
 import { Component, bootstrap } from "../framework";
+import { currentPath } from "./where";
 // The import is what says this project HAS a router; without one, `location` is the only place the
 // answer lives and none of this would be reported.
 import { Router } from "@ramonda/router";
@@ -58,6 +59,30 @@ class Leaving extends Component {
   }
 }
 
+/**
+ * Two hops the claim may or may not cover: a helper on the class, and a utility in another file.
+ * Planted to find out which of them the rule reaches.
+ */
+class ViaAHelper extends Component {
+  private where(): string {
+    return location.pathname;
+  }
+  render() {
+    return <span>{this.where()}</span>;
+  }
+}
+
+/**
+ * NOT reported, and it is a decision: this report names a component and a line with nothing to say
+ * how the two are connected, so following the import would name a component that did not write the
+ * line, once per caller. See the rule's docstring.
+ */
+class ViaAnotherFile extends Component {
+  render() {
+    return <span>{currentPath()}</span>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
@@ -65,6 +90,8 @@ class App extends Component {
         <Astray />
         <Careful />
         <Leaving />
+        <ViaAHelper />
+        <ViaAnotherFile />
       </div>
     );
   }

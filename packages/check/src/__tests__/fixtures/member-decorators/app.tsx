@@ -68,4 +68,26 @@ class Panel extends Component {
   }
 }
 
+/**
+ * The handler on a BASE, the call in the subclass — one instance, one cache.
+ *
+ * Planted to find out whether the call-site half sees a `@memoized` it did not declare.
+ */
+class HandlerBase extends Component {
+  @memoized pick(key: string) {
+    return () => void key;
+  }
+  render() {
+    return <span />;
+  }
+}
+
+class CallsTheBase extends HandlerBase {
+  render() {
+    /* An object where a key belongs, through a handler the BASE declares. */
+    return <span onclick={this.pick({ id: "x" } as never)} />;
+  }
+}
+
 bootstrap(<Panel />, null);
+bootstrap(<CallsTheBase />, null);

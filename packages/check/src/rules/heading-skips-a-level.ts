@@ -1,5 +1,6 @@
 import { positionOf } from "../syntax";
-import type { TreeRule } from "./rule";
+import { numberAttr, stringAttr } from "./element";
+import type { TreeNode, TreeRule } from "./rule";
 
 /**
  * A heading that jumps more than one level below the heading before it.
@@ -17,8 +18,17 @@ import type { TreeRule } from "./rule";
 export interface HeadingSkipsALevelIssue {
   /** The level written — `3` for an `<h3>`. */
   level: number;
+  /**
+   * How the heading is written, so the report quotes the source.
+   *
+   * A level is not always a tag: `<div role="heading" aria-level={3}>` is a heading at 3, and a
+   * report calling it `<h3>` would send a reader looking for a tag that is not on the line.
+   */
+  as: string;
   /** The level of the heading before it. */
   after: number;
+  /** How THAT one is written, for the same reason. */
+  afterAs: string;
   /** The line that heading is on. */
   afterAtLine: number;
   file: string;
@@ -27,10 +37,35 @@ export interface HeadingSkipsALevelIssue {
 }
 
 /** `h1`…`h6`, as the level they name. */
-function levelOf(tag: string | undefined): number | undefined {
-  if (tag === undefined) return undefined;
-  const match = /^h([1-6])$/.exec(tag);
-  return match ? Number(match[1]) : undefined;
+/**
+ * What level this element is in the OUTLINE, which is not always what its tag says.
+ *
+ * Three answers, and the third is the one that keeps this exact:
+ *
+ * - a number — it is a heading at that level
+ * - `"not a heading"` — skip it entirely
+ * - `"unknown"` — it IS a heading and its level cannot be read, so the chain has to break rather
+ *   than step over it, exactly as a heading that may not be there does
+ *
+ * `role="heading"` counts, because it is a heading everywhere it matters: `role-missing-required-aria`
+ * already asks such an element for its `aria-level`, so the pair would otherwise disagree about
+ * whether a `<div role="heading" aria-level={3}>` is one. And a written role WINS over the tag —
+ * `<h2 role="presentation">` is not a heading at all — which is the same principle
+ * `role-takes-no-name` reads a role by.
+ *
+ * `aria-level` wins over the tag as well, because the accessibility tree takes it: `<h2
+ * aria-level={4}>` is at 4.
+ */
+function levelOf(node: TreeNode): number | "not a heading" | "unknown" {
+  const written = stringAttr(node.element, "role");
+  const fromTag = node.tag === undefined ? undefined : /^h([1-6])$/.exec(node.tag);
+
+  if (written !== undefined && written !== "heading") return "not a heading";
+  if (written === undefined && !fromTag) return "not a heading";
+
+  const stated = numberAttr(node.element, "aria-level");
+  if (stated !== undefined) return stated >= 1 ? stated : "unknown";
+  return fromTag ? Number(fromTag[1]) : "unknown";
 }
 
 /**
@@ -56,7 +91,7 @@ export const headingSkipsALevel = {
       `  ${issue.file}:${issue.line}:${issue.column}`,
       // "on this line" when they share one — otherwise the report sends a reader to the line they
       // are already looking at. Same fault, and the same way of finding it, as `duplicate-id`.
-      `    <h${issue.level}> follows the <h${issue.after}> ${
+      `    ${issue.as} follows the ${issue.afterAs} ${
         issue.afterAtLine === issue.line ? "earlier on this line" : `on line ${issue.afterAtLine}`
       }, so the outline`,
       // Read from the printed report, not from the code: the first version said "claims a level
@@ -76,11 +111,18 @@ export const headingSkipsALevel = {
 
   read({ elements }) {
     const found: HeadingSkipsALevelIssue[] = [];
-    let previous: { level: number; line: number } | undefined;
+    let previous: { level: number; line: number; as: string } | undefined;
 
     for (const node of elements) {
-      const level = levelOf(node.tag);
-      if (level === undefined) continue;
+      const level = levelOf(node);
+      if (level === "not a heading") continue;
+
+      // A heading whose level cannot be read breaks the chain, for the same reason one that may not
+      // be there does: stepping over it invents an adjacency the page does not have.
+      if (level === "unknown") {
+        previous = undefined;
+        continue;
+      }
 
       /**
        * A heading that may not be there BREAKS the chain rather than being skipped over.
@@ -96,10 +138,15 @@ export const headingSkipsALevel = {
       }
 
       const where = positionOf(node.element);
+      // Quoted as written: `<h3>` when it is a tag, and the role-and-level pair when it is not.
+      const as =
+        node.tag !== undefined && `h${level}` === node.tag
+          ? `<${node.tag}>`
+          : `<${node.tag ?? "?"} aria-level={${level}}>`;
       if (previous !== undefined && level - previous.level > 1) {
-        found.push({ level, after: previous.level, afterAtLine: previous.line, ...where });
+        found.push({ level, as, after: previous.level, afterAs: previous.as, afterAtLine: previous.line, ...where });
       }
-      previous = { level, line: where.line };
+      previous = { level, line: where.line, as };
     }
 
     return found;

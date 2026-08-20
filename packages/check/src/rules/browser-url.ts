@@ -14,6 +14,16 @@ import type { Rule } from "./rule";
  * The router also answers questions the URL does not: `#tab=film` is route state and
  * `#a-section` names an element, a distinction `location.hash` hands over as one string to be
  * sniffed.
+ *
+ * ## How far it looks, which is the whole class and no further
+ *
+ * Every member, so a read in a helper the component calls is found — measured, with the read one
+ * `this.method()` away. A utility in ANOTHER FILE is not followed, and that is a decision rather
+ * than a gap: this report names a component and a line, with nothing to say how the two are
+ * connected. Following an import means naming a component that did not write the line, in a file it
+ * does not own, once per caller — five components calling one helper would be five reports of one
+ * line. The two rules that DO follow imports carry a `through` path for exactly that reason, and
+ * they start at `render()` rather than at every member.
  */
 export interface BrowserUrlIssue {
   /** The class that reads it. */

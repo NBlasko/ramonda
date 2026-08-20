@@ -38,6 +38,14 @@ export class Names extends Component {
         <div role={this.role} aria-label="Maybe" />
         {/* Not reported: a component's prop is not markup yet. */}
         <Panel aria-label="Filters" />
+        {/* Not reported, and it USED to be: `time` is named from AUTHOR, in `aria-query`'s
+            transcription of the characteristics table and in `dom-accessibility-api` alike. Giving
+            a machine date a human name is the documented use of this element. */}
+        <time datetime="2026-03-03" aria-label="3 March 2026">
+          2026-03-03
+        </time>
+        {/* REPORTED — `mark` is prohibited, on the field-level transcription of the spec table. */}
+        <mark aria-label="Match">hit</mark>
       </div>
     );
   }

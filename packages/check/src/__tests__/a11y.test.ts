@@ -48,7 +48,7 @@ describe("accessibility rules over JSX elements", () => {
 
   test("an empty heading and an empty link are reported, and a named one is not", () => {
     const found = run().findings["empty-heading-or-link"];
-    expect(found.map((issue) => `${issue.kind}:${issue.tag}`)).toEqual(["heading:h2", "link:a"]);
+    expect(found.map((issue) => `${issue.kind}:${issue.tag}`)).toEqual(["heading:h2", "link:a", "link:a"]);
   });
 
   /**
@@ -256,6 +256,61 @@ describe("a role missing what the specification requires of it", () => {
  * have one. A `<div>` is `generic` — the role for an element with no meaning — so there is nothing
  * for a name to name, and the attribute does nothing at all.
  */
+/**
+ * The shapes these rules had an opinion about and did not recognise, each planted and measured.
+ *
+ * None of them is exotic: a bare JSX boolean, an icon-only link, an index key on a component row.
+ * Each was silent before, and each has its opposite beside it in the fixture — the shape that must
+ * stay silent is what says the rule got sharper rather than louder.
+ */
+describe("the shapes an element rule has to recognise", () => {
+  /**
+   * `aria-hidden`, `aria-hidden={true}` and `aria-hidden="true"` are one fact spelled three ways,
+   * and the framework renders all three the same. Reading only the string missed the two shorter
+   * ones — `<button aria-hidden>` hides a focusable button and was reported by nothing.
+   */
+  test("a bare `aria-hidden` and a `{true}` are the same claim as the string", () => {
+    const found = run().findings["aria-hidden-on-focusable"];
+    expect(found).toHaveLength(2);
+    expect(found.every((issue) => issue.tag === "button")).toBe(true);
+  });
+
+  /** `aria-hidden="false"` is not a claim, and a rule that read it as one would report the fix. */
+  test("a false is not a claim, whatever else is on the element", () => {
+    const found = run().findings["aria-hidden-on-focusable"];
+    expect(found.some((issue) => issue.because === "tabIndex")).toBe(false);
+  });
+
+  /**
+   * A link whose only child is `aria-hidden="true"` is full in the DOM and blank in the tree a
+   * screen reader reads — the icon-only link, which is the commonest way to write this fault.
+   */
+  test("a link whose only content is hidden is empty where it counts", () => {
+    const found = run().findings["empty-heading-or-link"];
+    expect(found.filter((issue) => issue.kind === "link")).toHaveLength(2);
+  });
+
+  /**
+   * The two silences that keep it provable: one readable word beside the icon, and a COMPONENT
+   * child whose markup is somewhere else.
+   */
+  test("an icon beside text, and a component child, both stay silent", () => {
+    // Three links in the plant and one report: the icon-only one. Counting is what says so —
+    // a line number would say it too and would move with the fixture.
+    const links = run().findings["empty-heading-or-link"].filter((issue) => issue.kind === "link");
+    expect(links).toHaveLength(2);
+  });
+
+  /**
+   * A COMPONENT row is asked for a real key too. `row-without-a-key` already asks one, for the
+   * reason that decides both: a component is what HOLDS the state that lands on the wrong row.
+   */
+  test("an index key on a component row is reported", () => {
+    const found = run().findings["index-as-key"];
+    expect(found.map((issue) => issue.tag)).toContain("Icon");
+  });
+});
+
 describe("a name on a role that takes none", () => {
   const found = () => run().findings["role-takes-no-name"];
 
@@ -268,7 +323,21 @@ describe("a name on a role that takes none", () => {
       "p/paragraph: aria-label",
       "div/generic: aria-label",
       "div/generic: aria-labelledby",
+      "mark/mark: aria-label",
     ]);
+  });
+
+  /**
+   * `<time>` was on this table and should never have been: it is named from AUTHOR in both
+   * machine-readable transcriptions of the spec, and giving a machine date a human name is the
+   * documented use of the element. A wrong entry in a table read to REPORT is a report on correct
+   * markup — found by comparing the table against `aria-query` and `dom-accessibility-api` rather
+   * than by reading it again.
+   */
+  test("a time with a name is not reported, and a mark still is", () => {
+    const tags = found().map((issue) => issue.tag);
+    expect(tags).not.toContain("time");
+    expect(tags).toContain("mark");
   });
 
   /**
@@ -310,6 +379,6 @@ describe("a name on a role that takes none", () => {
 
   test("it says whether the role was written or came from the tag", () => {
     expect(found().filter((issue) => issue.from === "role")).toHaveLength(2);
-    expect(found().filter((issue) => issue.from === "tag")).toHaveLength(5);
+    expect(found().filter((issue) => issue.from === "tag")).toHaveLength(6);
   });
 });

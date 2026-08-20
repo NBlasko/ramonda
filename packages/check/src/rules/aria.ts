@@ -237,6 +237,15 @@ export const NO_ARIA: ReadonlySet<string> = new Set([
  * `string` is absent for the same reason from the other side: `aria-label` takes any string, so
  * every value is correct and a table entry would say nothing.
  *
+ * `token LIST` — `aria-relevant` and `aria-dropeffect`, the only two there are. A list is
+ * space-separated, so `aria-relevant="additions text"` is correct and a closed set cannot say so
+ * without splitting the value first. Both are rare enough that the miss is worth less than the
+ * machinery, and naming them here is what keeps it a decision.
+ *
+ * Verified attribute by attribute against `aria-query` rather than read again: every `boolean`,
+ * `integer`, `number`, `token` and `tristate` attribute the specification has is here, and every
+ * token set matches it exactly.
+ *
  * ## Which way it is allowed to be wrong
  *
  * The same way the tables above are. A rule reading this reports a value that is NOT permitted, so
@@ -314,8 +323,18 @@ export const ARIA_VALUES: ReadonlyMap<string, AriaValue> = new Map<string, AriaV
  *
  * So this is deliberately SHORT. Every role whose requirement is conditional in the specification
  * is left out — `separator` needs `aria-valuenow` only when it is focusable, and nothing static can
- * say whether it is. So is every role whose requirement moved between 1.1 and 1.2, `option` and
- * `spinbutton` among them: a requirement people disagree about is not one to fail a build over.
+ * say whether it is. So is every role whose requirement moved between 1.1 and 1.2: `option`,
+ * `treeitem` and `spinbutton` among them, where `aria-selected` and `aria-valuenow` became
+ * conditional on the widget being multi-select or having a value at all. A requirement people
+ * disagree about is not one to fail a build over.
+ *
+ * `combobox` is the same call at the level of one attribute. The specification requires
+ * `aria-controls` beside `aria-expanded`, and the popup a combobox controls does not exist while it
+ * is collapsed — so a correct collapsed combobox has no id to point at. Only `aria-expanded` is
+ * asked for here.
+ *
+ * Compared entry by entry against `aria-query`'s `requiredProps`, which is where the three
+ * omissions above were confirmed to be omissions rather than oversights.
  *
  * What is left is the set where a role without the attribute has no meaning at all — a checkbox
  * that cannot say whether it is checked, a heading with no level, a slider with no value.
@@ -356,6 +375,20 @@ export const STATE_FROM_THE_ELEMENT: ReadonlySet<string> = new Set(["input", "me
  * Source: **WAI-ARIA 1.2**, where each role's characteristics table says whether *Name From
  * author* is permitted, and these say **prohibited**.
  *
+ * Checked against two machine-readable transcriptions rather than read once — `aria-query`'s
+ * `nameFrom` field and `dom-accessibility-api`'s own prohibited list — because a wrong entry here
+ * reports correct markup. That found `time`, which was on this list and is named from AUTHOR in
+ * both: `<time datetime="…" aria-label="3 March 2026">` is not merely legal, it is how a machine
+ * date is given a human one. It is gone.
+ *
+ * `mark` stays on a split verdict, and the reason is written down so it is not re-litigated:
+ * `aria-query` transcribes the spec's characteristics table field by field and gives it
+ * `nameFrom: ["prohibited"]`, while `dom-accessibility-api` keeps a hand-written list that predates
+ * the role. The field-level transcription is the better evidence.
+ *
+ * `none` is on this list and on neither of theirs, because `aria-query` marks only `presentation`
+ * — they are one role under two names, which is exactly what the note below says.
+ *
  * ## Why this slice of the role matrix and not the whole thing
  *
  * The full matrix — which `aria-*` each of ninety roles supports — is the most dangerous table this
@@ -381,7 +414,6 @@ export const NAME_PROHIBITED: ReadonlySet<string> = new Set([
   "strong",
   "subscript",
   "superscript",
-  "time",
 ]);
 
 /**
@@ -419,5 +451,4 @@ export const NAME_PROHIBITED_TAGS: ReadonlyMap<string, string> = new Map([
   ["strong", "strong"],
   ["sub", "subscript"],
   ["sup", "superscript"],
-  ["time", "time"],
 ]);

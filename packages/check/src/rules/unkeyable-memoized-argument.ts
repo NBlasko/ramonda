@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import { hasDecorator } from "./render-reach";
+import { hasDecorator, heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
@@ -109,12 +109,28 @@ export const unkeyableMemoizedArgument = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
-    /** name → the parameters it declares, for every `@memoized` member on this class. */
+  read(cls, { self, resolve }) {
+    /** name → the handler, for every memoized one THIS class declares. */
+    const declaredHere = new Map<string, ts.MethodDeclaration>();
+    /**
+     * The same, plus the ones a base declares — which is what a CALL has to be matched against.
+     *
+     * A `@memoized` on a base is the subclass's handler, on the same instance and with the
+     * same cache: `this.pick({ id })` down here THROWS `RMD047` at runtime exactly as it would up
+     * there. Matching calls against one class body missed every one of them; measured with a plant.
+     *
+     * The two maps are separate because the halves belong in different places. A DECLARATION is
+     * reported where it is written — once — or a base's bad parameter would be reported again for
+     * every class extending it, which is the shape this axis has already produced once.
+     */
     const memoized = new Map<string, ts.MethodDeclaration>();
-    for (const member of cls.members) {
-      if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
-      if (hasDecorator(member, "memoized")) memoized.set(member.name.text, member);
+    for (const declaring of [cls, ...heritage(cls, resolve)]) {
+      for (const member of declaring.members) {
+        if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
+        if (!hasDecorator(member, "memoized")) continue;
+        if (!memoized.has(member.name.text)) memoized.set(member.name.text, member);
+        if (declaring === cls) declaredHere.set(member.name.text, member);
+      }
     }
     if (memoized.size === 0) return [];
 
@@ -122,7 +138,7 @@ export const unkeyableMemoizedArgument = {
 
     // The declaration half first: a parameter that can never be a key makes every call one fault,
     // and saying it once at the declaration is more useful than saying it at each call site.
-    for (const [name, method] of memoized) {
+    for (const [name, method] of declaredHere) {
       for (const parameter of method.parameters) {
         const passed = certainlyUnkeyableType(parameter.type);
         if (passed === undefined) continue;

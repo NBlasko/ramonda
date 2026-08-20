@@ -88,6 +88,16 @@ describe("two head tags that are one tag", () => {
    * Identity is the import, not the name. An app is entitled to its own `Head`, and reporting
    * inside it would be reporting the reader's own code for the framework's rule.
    */
+  /**
+   * Two `Head` hooks are not this rule's subject, and the mechanism is identical — measured against
+   * core: the document keeps one `<meta name="robots">` and it carries the LAST value. What differs
+   * is the reading. Two entries in one array express nothing by being two; two hooks express an
+   * override, which is how a base sets a page's defaults and a subclass replaces one of them.
+   */
+  test("a collision across two Head hooks is composition, not this", () => {
+    expect(found().some((issue) => issue.component === "TwoHeads")).toBe(false);
+  });
+
   test("an app's own Head of the same name is left alone", () => {
     expect(found().some((issue) => issue.component === "OwnHead")).toBe(false);
   });

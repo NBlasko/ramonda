@@ -1,4 +1,5 @@
-import { Component, bootstrap, state } from "../framework";
+import { Component, bootstrap, mounted, state } from "../framework";
+import { applyTheme } from "./theme";
 
 declare const document: {
   body: {
@@ -77,6 +78,29 @@ class Building extends Component {
   }
 }
 
+/** The same two hops, for the write half. */
+class WritesViaAHelper extends Component {
+  private paint(): void {
+    document.body.classList.add("dark");
+  }
+  @mounted go() {
+    this.paint();
+  }
+  render() {
+    return <span>helper</span>;
+  }
+}
+
+/** NOT reported, for the reason in the rule's docstring — the report has no path to offer. */
+class WritesViaAnotherFile extends Component {
+  @mounted go() {
+    applyTheme(true);
+  }
+  render() {
+    return <span>import</span>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
@@ -84,6 +108,8 @@ class App extends Component {
         <Astray />
         <Commanding />
         <Building />
+        <WritesViaAHelper />
+        <WritesViaAnotherFile />
       </div>
     );
   }

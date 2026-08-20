@@ -36,6 +36,20 @@ import { memberName } from "../syntax";
  * was the one item there that was a gap rather than a decision: a base is another class and the
  * same object, so `this` still means the component, and a `render()` reaching a write through an
  * inherited method reported nothing at all. Found by planting it.
+ *
+ * ## Four more paths that were gaps, all found the same way
+ *
+ * The claim is "reached from a render, BY ANY PATH", and only a `this.method()` call was followed.
+ * Each of these was planted and reported nothing; the runtime catches all four, because
+ * `renderPhase.component` is set whatever the path was.
+ *
+ * - An arrow **field** — `helper = () => { … }` — which is a property rather than a method, so the
+ *   lookup for a `MethodDeclaration` found nothing. See {@link memberBody}.
+ * - A **getter**, which is READ rather than called: `{this.total}` runs its body right there.
+ * - **`super.method()`**, whose callee is not `this`.
+ * - A **static**, `App.helper()`. Walked with `insideTheClass` false, because inside a static
+ *   `this` is the constructor rather than the instance — so a write through it is nobody's state,
+ *   while a clock read is still a clock read.
  */
 
 /** How deep the call chain is followed before giving up. Deep enough for real code, bounded. */
@@ -200,6 +214,45 @@ function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   return false;
 }
 
+/**
+ * What a member's body is, when the member has one that a call runs.
+ *
+ * A METHOD is the obvious half. The other is an arrow FIELD — `helper = () => { … }` — which is a
+ * property rather than a method and was reached by nothing: `this.helper()` looked for a
+ * `MethodDeclaration` and found a `PropertyDeclaration`, so the walk ended there without a word.
+ * Measured with a plant, and the shape is not exotic: it is the one `arrow-fields` exists to talk
+ * about, so a codebase that has any at all has them being called.
+ */
+/**
+ * The NEAREST declaration of a member, which is the one that runs.
+ *
+ * A subclass overriding a base's method is ordinary, and walking both bodies reported the version
+ * that never runs — measured, with a base whose `stamp()` reads a clock and a subclass whose
+ * `stamp()` returns a constant. JS resolves a method by taking the first one up the chain, and so
+ * does this.
+ *
+ * `from` is where to start looking: the class itself for `this.`, and its BASES for `super.`, which
+ * is the whole meaning of the keyword.
+ */
+function nearest(from: readonly ts.ClassLikeDeclaration[], name: string): ts.ClassElement | undefined {
+  for (const declaring of from) {
+    for (const member of declaring.members) {
+      if (memberName(member) === name) return member;
+    }
+  }
+  return undefined;
+}
+
+export function memberBody(member: ts.ClassElement | undefined): ts.Node | undefined {
+  if (member === undefined) return undefined;
+  if (ts.isMethodDeclaration(member)) return member.body;
+  if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
+    const written = member.initializer;
+    if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written.body;
+  }
+  return undefined;
+}
+
 /** The body of whatever a call names, when that is a function this program declares. */
 function bodyOf(declaration: ts.Declaration | undefined): ts.Node | undefined {
   if (declaration === undefined) return undefined;
@@ -239,24 +292,71 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
 
       reach.visit(current, through, insideTheClass);
 
+      /**
+       * A GETTER, which is READ rather than called.
+       *
+       * `{this.total}` in a render runs `get total()` right there, so a clock read or a state write
+       * inside it happens during the render exactly as one in a method would — and the runtime
+       * reports it, because `renderPhase.component` is set whatever the path was. Following only
+       * calls missed every one of them. Measured with a plant.
+       *
+       * Only a name this class or a base declares as a getter is followed, so `this.props.x` and
+       * every other ordinary read costs one member lookup and nothing else.
+       */
+      if (
+        ts.isPropertyAccessExpression(current) &&
+        current.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        ts.isIdentifier(current.name)
+      ) {
+        const found = nearest(own, current.name.text);
+        if (found !== undefined && ts.isGetAccessorDeclaration(found) && found.body) {
+          walk(found.body, [...through, current.name.text], true, depth + 1);
+        }
+      }
+
       if (ts.isCallExpression(current)) {
         const callee = current.expression;
 
-        // `this.helper()` — a method on this very class, so `this` still means the component.
+        /**
+         * `this.helper()` and `super.helper()` — the same object either way, so `this` still means
+         * the component and `insideTheClass` stays true.
+         *
+         * `super` was a gap rather than a decision: the callee is not `this`, so a subclass calling
+         * a base's method through it reached nothing at all.
+         */
         if (
           ts.isPropertyAccessExpression(callee) &&
-          callee.expression.kind === ts.SyntaxKind.ThisKeyword &&
+          (callee.expression.kind === ts.SyntaxKind.ThisKeyword ||
+            callee.expression.kind === ts.SyntaxKind.SuperKeyword) &&
           ts.isIdentifier(callee.name)
         ) {
           const name = callee.name.text;
-          // This class first, then its bases: a base is another class and the same object, so
-          // `this` still means the component and `insideTheClass` stays true.
-          for (const declaring of own) {
-            for (const member of declaring.members) {
-              if (memberName(member) !== name) continue;
-              const body = ts.isMethodDeclaration(member) ? member.body : undefined;
-              if (body) walk(body, [...through, name], true, depth + 1);
-            }
+          // This class first, then its bases: a base is another class and the same object. `super.`
+          // starts at the bases, which is the whole meaning of the keyword.
+          const from = callee.expression.kind === ts.SyntaxKind.SuperKeyword ? own.slice(1) : own;
+          const body = memberBody(nearest(from, name));
+          if (body) walk(body, [...through, name], true, depth + 1);
+        }
+
+        /**
+         * `App.helper()` — a static on this class or one of its bases.
+         *
+         * Walked with `insideTheClass` FALSE, and that is the whole of what makes it safe: inside a
+         * static, `this` is the constructor rather than the instance, so a write through it is not
+         * the component's state. What is still worth finding there is everything that does not
+         * depend on `this` — a clock, a random number, a call to something else.
+         */
+        if (
+          ts.isPropertyAccessExpression(callee) &&
+          ts.isIdentifier(callee.expression) &&
+          ts.isIdentifier(callee.name)
+        ) {
+          // RESOLVED, not matched by name: a class whose name happens to equal this one's is a
+          // different class, and this package does not guess about which declaration it is looking at.
+          const declared = reach.resolve(callee.expression)?.declarations?.[0];
+          if (declared !== undefined && own.includes(declared as ts.ClassLikeDeclaration)) {
+            const body = memberBody(nearest(own, callee.name.text));
+            if (body) walk(body, [...through, callee.name.text], false, depth + 1);
           }
         }
 

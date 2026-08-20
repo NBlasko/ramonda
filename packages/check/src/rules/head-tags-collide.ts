@@ -21,6 +21,18 @@ import type { Rule } from "./rule";
  * The `description` shorthand is collected before the `meta` list, so a description written both
  * ways is this fault in its commonest shape — and the one that is lost is the shorthand, which is
  * the line that reads like the page's own description.
+ *
+ * ## Two `Head` hooks are not this, and the mechanism is identical
+ *
+ * `Head` merges every mounted one into the same map, so a `name="robots"` in two of them collides
+ * exactly as two in one list do — measured: one `<meta>` reaches the document and it carries the
+ * LAST value. What differs is not the machinery but whether there is a reading. Two entries in one
+ * array have none: nothing is expressed by writing the same identity twice in a row. Two hooks do —
+ * the later OVERRIDES the earlier, which is how a base class sets a page's defaults and a subclass
+ * replaces one of them, and reporting it would report the pattern working as intended.
+ *
+ * So the subject is one options object, and the claim says so. A collision across two hooks is
+ * deliberate composition until something says otherwise, and nothing here can.
  */
 export interface HeadTagsCollideIssue {
   /** The class holding the `Head`. */

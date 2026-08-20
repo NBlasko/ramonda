@@ -51,7 +51,26 @@ describe("a memoized handler that cannot be keyed", () => {
   test("a call with a provably unkeyable argument is reported, cast and all", () => {
     const found = run().findings["unkeyable-memoized-argument"];
     const calls = found.filter((issue) => issue.where === "a call");
-    expect(calls.map((issue) => issue.passed)).toEqual(["an object", "null"]);
+    expect(calls.map((issue) => issue.passed)).toEqual(["an object", "null", "an object"]);
+  });
+
+  /**
+   * The handler on a BASE, the call in the subclass — one instance, one cache.
+   *
+   * `this.pick({ id })` down here THROWS `RMD047` at runtime exactly as it would up there, and
+   * matching calls against one class body missed every one of them.
+   *
+   * The DECLARATION half stays where it is written: a base's unkeyable parameter is reported once,
+   * at the base, rather than again for every class extending it.
+   */
+  test("a call to a handler the BASE declares is reported, and the declaration is not doubled", () => {
+    const found = run().findings["unkeyable-memoized-argument"];
+    const inherited = found.filter((issue) => issue.component === "CallsTheBase");
+    expect(inherited.map((issue) => `${issue.member}:${issue.where}`)).toEqual(["pick:a call"]);
+    expect(found.filter((issue) => issue.where === "the declaration").map((issue) => issue.component)).toEqual([
+      "Panel",
+      "Panel",
+    ]);
   });
 
   /**
@@ -61,6 +80,6 @@ describe("a memoized handler that cannot be keyed", () => {
    */
   test("an argument this cannot read is left alone", () => {
     const found = run().findings["unkeyable-memoized-argument"];
-    expect(found).toHaveLength(4);
+    expect(found).toHaveLength(5);
   });
 });
