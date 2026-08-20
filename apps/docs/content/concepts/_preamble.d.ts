@@ -21,6 +21,16 @@ declare global {
     render(): any;
   }
 
+  /** A row's data, and the component that draws one — the caching page compares one value against one per row. */
+  interface RowItem {
+    id: string;
+    name: string;
+  }
+  class RowView extends Component<any> {
+    [key: string]: any;
+    render(): any;
+  }
+
   /** A store outside Ramonda — the thing `@onStore` and a custom decorator subscribe to. */
   interface ThemeState {
     theme: "light" | "dark";
