@@ -54,6 +54,47 @@ export class Menu extends Component {
 }
 ```
 
+Those attributes are the **element's own**, typed from the tag you named — so they follow
+exactly the rules the JSX follows. An event handler is `on` plus the event's name:
+
+```tsx
+@Host("nav", (self: Toolbar) => ({ onclick: self.toggle }))
+export class Toolbar extends Component {
+  toggle() {}
+}
+```
+
+Writing it any other way is refused, with the spelling to use in the error:
+
+```tsx expect-error
+@Host("nav", (self: Wrong) => ({ onClick: self.toggle }))
+export class Wrong extends Component {
+  toggle() {}
+}
+```
+
+## The tag: an element the platform has, or a custom one with a dash
+
+`@Host` takes any element the JSX takes, and one more kind: a **custom element**, whose name
+must contain a **dash**.
+
+```tsx
+@Host("my-widget")
+export class Widget extends Component {}
+```
+
+Without the dash it is refused:
+
+```tsx expect-error
+@Host("mywidget")
+export class NotAWidget extends Component {}
+```
+
+That is the platform's rule rather than a house style, and it decides something real:
+`<my-widget>` is a name the browser will **upgrade** the moment a custom element is defined
+for it, while `<mywidget>` is an `HTMLUnknownElement` for ever — which is also what a
+misspelled real tag produces. The dash is what tells the two apart.
+
 ## Letting the caller choose the element
 
 The tag can be a function of the props, so whoever uses the component picks:
