@@ -70,7 +70,7 @@ class Panel extends Component {
     // An object cannot be part of a cache key. Development throws on this; production degrades.
     const bad = this.pick({ id: 7 } as unknown as string);
     return (
-      <button type="button" onClick={bad}>
+      <button type="button" onclick={bad}>
         {this.label}
       </button>
     );

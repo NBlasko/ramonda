@@ -103,7 +103,7 @@ export class FormDemo extends Component {
     const confirm = f.confirm.$;
 
     return (
-      <form className="demo-form" onSubmit={this.form.submit}>
+      <form className="demo-form" onsubmit={this.form.submit}>
         <label>
           Email
           <input {...email.bind} />
@@ -128,17 +128,17 @@ export class FormDemo extends Component {
             {list(f.tags.$.rows, (row) => (
               <li>
                 <input {...row.field.$.bind} />
-                <button type="button" onClick={this.moveTagUp(row.id)} disabled={row.index === 0}>
+                <button type="button" onclick={this.moveTagUp(row.id)} disabled={row.index === 0}>
                   up
                 </button>
-                <button type="button" onClick={this.removeTag(row.id)}>
+                <button type="button" onclick={this.removeTag(row.id)}>
                   remove
                 </button>
                 {row.field.$.error ? <em className="demo-error">{row.field.$.error}</em> : null}
               </li>
             ))}
           </ul>
-          <button type="button" onClick={this.addTag}>
+          <button type="button" onclick={this.addTag}>
             add a tag
           </button>
         </fieldset>

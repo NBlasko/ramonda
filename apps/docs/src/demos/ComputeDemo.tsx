@@ -60,9 +60,9 @@ export class ComputeDemo extends Component {
             aria-label="Filter the items"
             placeholder="filter"
             value={this.filter}
-            onInput={this.onFilter}
+            oninput={this.onFilter}
           />
-          <button type="button" onClick={this.addItem}>
+          <button type="button" onclick={this.addItem}>
             add an item
           </button>
         </p>

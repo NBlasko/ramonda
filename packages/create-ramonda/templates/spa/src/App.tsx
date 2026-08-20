@@ -26,7 +26,7 @@ export class App extends Component {
         <h1>Ramonda</h1>
         <p className="tagline">Explicit. Predictable. Readable.</p>
 
-        <button type="button" onClick={this.increment}>
+        <button type="button" onclick={this.increment}>
           count is {this.count}
         </button>
 

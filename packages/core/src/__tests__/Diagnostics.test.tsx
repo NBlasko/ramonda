@@ -277,8 +277,7 @@ describe("DEV diagnostics", () => {
   /**
    * The arrangement that replaces it: one Provider per component, each handed the subtree it is for.
    *
-   * This is React's Provider in Ramonda's terms, and it works because a context object is created
-   * from the component that RENDERS a node — so a child passed as `children` inherits the wrapper's
+   * It works because a context object is created from the component that RENDERS a node — so a child passed as `children` inherits the wrapper's
    * context rather than the context of whoever wrote the JSX. Measured here rather than asserted in
    * prose, because the whole refusal above rests on it.
    */

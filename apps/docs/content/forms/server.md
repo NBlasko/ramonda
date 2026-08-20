@@ -87,7 +87,7 @@ Because the markup carries `name` and `value`, a server-rendered form posts corr
 bundle blocked or still loading. Point the `<form>` at an endpoint and let the browser do it:
 
 ```tsx
-<form action="/api/signup" method="post" onSubmit={this.form.submit}>
+<form action="/api/signup" method="post" onsubmit={this.form.submit}>
 ```
 
 `submit` calls `preventDefault`, so once the page is interactive your handler runs and the

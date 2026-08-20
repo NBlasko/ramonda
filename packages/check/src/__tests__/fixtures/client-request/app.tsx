@@ -93,7 +93,7 @@ export class HandlerMethod extends Component {
   }
   render() {
     return (
-      <button type="button" onClick={this.save}>
+      <button type="button" onclick={this.save}>
         save
       </button>
     );
@@ -104,7 +104,7 @@ export class HandlerMethod extends Component {
 export class InlineHandler extends Component {
   render() {
     return (
-      <button type="button" onClick={() => track(requestContext().cookies.get("session"))}>
+      <button type="button" onclick={() => track(requestContext().cookies.get("session"))}>
         inline
       </button>
     );
@@ -201,7 +201,7 @@ export class HandlerAlsoCalledOnTheServer extends Component {
   }
   render() {
     return (
-      <button type="button" onClick={this.refresh}>
+      <button type="button" onclick={this.refresh}>
         refresh
       </button>
     );

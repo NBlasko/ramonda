@@ -41,7 +41,7 @@ export class LazyPanel extends Component {
     return (
       <p className="demo-error">
         Could not load it: {String(error)}{" "}
-        <button type="button" onClick={retry}>
+        <button type="button" onclick={retry}>
           retry
         </button>
       </p>
@@ -52,7 +52,7 @@ export class LazyPanel extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.toggle}>
+          <button type="button" onclick={this.toggle}>
             {this.show ? "unload it" : "load it again"}
           </button>
           <span className="demo-note">

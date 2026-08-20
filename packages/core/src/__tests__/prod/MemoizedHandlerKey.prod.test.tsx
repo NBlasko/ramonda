@@ -48,10 +48,10 @@ describe("production: a handler key that cannot be built", () => {
         const good = this.pick("7");
         return (
           <div>
-            <button id="bad" onClick={bad}>
+            <button id="bad" onclick={bad}>
               {this.label}
             </button>
-            <button id="good" onClick={good}>
+            <button id="good" onclick={good}>
               ok
             </button>
           </div>

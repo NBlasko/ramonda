@@ -68,7 +68,7 @@ export class Counter extends Component {
   }
 
   render() {
-    return <button onClick={this.increment}>count is {this.count}</button>;
+    return <button onclick={this.increment}>count is {this.count}</button>;
   }
 }
 ```
@@ -82,8 +82,8 @@ Walk through it:
   special: change it, and Ramonda updates the page to match.
 - **`increment()`** — a method that adds one. `this.count` is how a class refers to
   its own field.
-- **`onClick={this.increment}`** — run `increment` when the button is clicked. The
-  prop is `onClick`, camelCase — a JSX spelling, not HTML's lowercase `onclick`
+- **`onclick={this.increment}`** — run `increment` when the button is clicked. The
+  prop is `onclick`, camelCase — a JSX spelling, not HTML's lowercase `onclick`
   ([more on that](/concepts/events)).
 - **`{this.count}`** — inside JSX, curly braces drop a value into the text, so the
   button always shows the current number.
@@ -104,7 +104,7 @@ actually differ. The component is not rebuilt; it just describes itself anew.
 (Several changes in one go become a single update, so it stays fast — but that is
 Ramonda's job, not yours.)
 
-**Handing over the method works.** `onClick={this.increment}` keeps working because
+**Handing over the method works.** `onclick={this.increment}` keeps working because
 Ramonda ties your methods to the component for you. No extra ceremony to wire up a
 click.
 

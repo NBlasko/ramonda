@@ -13,8 +13,7 @@
  *
  * A commit is the hottest path there is, and a profiler that samples it always is a tax on every
  * development build whether or not anybody looks. So it is off, and the whole cost while off is one
- * boolean test per drain and one per build — the same shape React's profiler has, for the same
- * reason.
+ * boolean test per drain and one per build.
  *
  * Measured, and measured properly — the first attempt ran "off" then "on" once each and reported
  * recording as FASTER, because a warm-up drift of that size swamps the effect. Alternating the two and

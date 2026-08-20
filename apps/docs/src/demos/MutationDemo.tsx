@@ -97,7 +97,7 @@ export class MutationDemo extends Component {
         <ul>{list(this.list.data, this.renderTodo)}</ul>
 
         <p className="demo-row">
-          <input value={this.draft} aria-label="New todo" placeholder="new todo" onInput={this.onDraftInput} />
+          <input value={this.draft} aria-label="New todo" placeholder="new todo" oninput={this.onDraftInput} />
           <button type="submit" disabled={this.add.isPending}>
             {this.add.isPending ? "saving…" : "add"}
           </button>

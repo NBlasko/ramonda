@@ -218,9 +218,8 @@ class Page extends Component {
 ```
 
 Both `Badge`es use a plain `this.use(ThemeConsumer)` and each reads its own scope, with nothing passed
-down. If you have written React, this is the `<Provider>` element you already know — Ramonda spells it
-as a component because the framework is 1-1 and has no fragments, so the wrapper is one real element
-rather than none.
+down. This is the provider-as-an-element arrangement, spelled as a component: the framework is 1-1 and
+has no fragments, so the wrapper is one real element rather than none.
 
 **Why it works is worth knowing**, because it is not obvious from the JSX. A context object is created
 from the component that **renders** a node, not from the one whose source contains it — so a child

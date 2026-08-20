@@ -38,17 +38,75 @@ export type HookClassKind<T, R> = new (runtime: Runtime, options: R) => T;
 
 type BaseElements = HTMLElement | SVGElement | SVGRect;
 
-type ObservableEvents<T extends BaseElements> = {
-  [K in keyof T as K extends `on${infer EventName}`
-    ? `on${Capitalize<EventName>}`
-    : // biome-ignore lint/complexity/noBannedTypes: This is how it works
-      K]: T[K] extends Function ? T[K] : T[K];
+/**
+ * The element's own properties, as attributes — everything except the `on…` half.
+ *
+ * Handlers used to come from here too, renamed to `on${Capitalize<name>}`, and that was measured to
+ * do something other than it looked like: the DOM's event types are single lowercase tokens, so
+ * capitalising the first letter produces `onMouseenter`, `onKeydown`, `onDblclick`. The natural
+ * spellings were hard errors and the accepted ones were unguessable — unnoticed for as long as it
+ * was because every event this repository writes is ONE word, where `onclick` capitalises correctly.
+ *
+ * They come from the DOM's event MAP now (see {@link EventHandlers}), which is a better source in
+ * three ways: nothing has to be capitalised, it is the authoritative list of what
+ * `addEventListener` accepts, and it holds the five events with no `on…` property at all.
+ */
+type DomProperties<T extends BaseElements> = {
+  // biome-ignore lint/complexity/noBannedTypes: This is how it works
+  [K in keyof T as K extends `on${string}` ? never : K]: T[K] extends Function ? T[K] : T[K];
+};
+
+/**
+ * Every event `addEventListener` accepts on an element, spelled the way the DOM spells it.
+ *
+ * `onclick`, `onmouseenter`, `onfocusin` — the event's own name with `on` in front, which is what
+ * the runtime does in reverse (`Attribute.ts`, `eventTypeOf`). One spelling, derived, no list.
+ *
+ * The media map is here as well because `<video>` and `<audio>` add two of their own; everything
+ * else a media element fires is already on `GlobalEventHandlers`.
+ */
+type EventHandlers = {
+  [K in keyof (HTMLElementEventMap & HTMLMediaElementEventMap) as `on${K}`]: (
+    ev: (HTMLElementEventMap & HTMLMediaElementEventMap)[K],
+  ) => void;
+};
+
+/**
+ * A listener for an event the first spelling cannot reach.
+ *
+ * `on` + a lowercase name covers every STANDARD event, because all 107 of them are single lowercase
+ * tokens. It cannot reach a custom event with a dash or a capital — `my-event`, the convention a web
+ * component dispatches by — and the attempt used to be silent: `on-my-event` typechecked and
+ * attached a listener for `-my-event`, which nothing ever fires.
+ *
+ * So the rest of the name is handed through untouched: `<x-thing on:my-event={…} />`. `Event` is
+ * the honest type — a custom event's detail is the app's own, and this cannot know it.
+ */
+type VerbatimEvents = {
+  [name: `on:${string}`]: (ev: Event) => void;
+};
+
+/**
+ * The spelling this used to accept, refused with the one that replaced it.
+ *
+ * Generated from the same map, so it cannot fall out of step. One entry per event, and it is
+ * exactly the form the old mapping produced: `onClick` for the single-word events, which is also
+ * what somebody used to another JSX dialect types, and `onMouseenter` for the rest, which is what
+ * anybody who wrote against the old types has in their source. Both land on the same sentence, and
+ * the sentence names the spelling to use.
+ *
+ * It cannot cover `onMouseEnter`, because nothing can produce that string from `"mouseenter"` —
+ * that one is an ordinary "not assignable", which is as much as a type can say about a name it
+ * cannot spell.
+ */
+type RefusedEventCasing = {
+  [K in keyof HTMLElementEventMap as `on${Capitalize<K>}`]: "write the event name in lowercase, as the DOM spells it — `onclick`, `onmouseenter`";
 };
 
 /**
  * Names that typecheck and do nothing, refused here with the reason in the error.
  *
- * `ObservableEvents<T>` maps every property of the DOM interface, so a PROPERTY that is not an
+ * `DomProperties<T>` maps every property of the DOM interface, so a PROPERTY that is not an
  * attribute is accepted as one. An HTML attribute is written through `setAttribute`, which
  * lowercases the name — so `innerHTML` arrives as `innerhtml`, an attribute nothing reads. Measured
  * for every camelCase name a JSX author might reach for; these are the ones that came back dead.
@@ -68,8 +126,8 @@ type ObservableEvents<T extends BaseElements> = {
  * `class` and `for` are aliased because they are RESERVED WORDS — that is the whole rule
  * `concepts/jsx` states, and it is complete. Nothing here is reserved: `http-equiv` and
  * `accept-charset` are writable exactly as HTML spells them, and `value` and `checked` are the
- * attributes React's `default*` pair stands in for. Aliasing them would turn a two-name exception
- * into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
+ * attributes a `default*` spelling would be standing in for. Aliasing them would turn a two-name
+ * exception into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
  */
 interface RefusedNames {
   innerHTML: "write the markup as children — `innerHTML` is not an attribute";
@@ -92,10 +150,10 @@ export interface RefusedOnForm {
 }
 
 /**
- * React's uncontrolled-input pair, which this framework does not have.
+ * The `defaultValue` / `defaultChecked` pair, which this framework does not have.
  *
- * There is no controlled/uncontrolled distinction here: the `value` and `checked` attributes ARE
- * the initial state, and a render decides them like any other attribute.
+ * There is no controlled/uncontrolled distinction here for them to mark: the `value` and `checked`
+ * attributes ARE the initial state, and a render decides them like any other attribute.
  */
 export interface RefusedOnFields {
   defaultValue: "write `value` — the attribute IS the initial value";
@@ -150,7 +208,9 @@ export type NamedImage = { alt: string } | { "aria-label": string } | { "aria-la
 export type NamedFrame = { title: string } | { "aria-label": string } | { "aria-labelledby": string };
 
 export type RamondaArgs<T extends BaseElements> = Partial<
-  | ObservableEvents<T>
+  | DomProperties<T>
+  | EventHandlers
+  | VerbatimEvents
   | {
       [val: Lowercase<string>]: any;
       style: string | Record<string, string | undefined>;
@@ -158,7 +218,8 @@ export type RamondaArgs<T extends BaseElements> = Partial<
       ref: RefTarget<T>;
     }
 > &
-  Partial<RefusedNames>;
+  Partial<RefusedNames> &
+  Partial<RefusedEventCasing>;
 
 export interface SVGArguments extends SVGGraphicsElement {
   width: string | number;
@@ -173,15 +234,15 @@ export interface SVGArguments extends SVGGraphicsElement {
  * **Ramonda writes SVG attribute names verbatim** — `setAttributeNS(null, name)`
  * with no translation — because the JSX is meant to be the DOM. So the name to
  * write is the one SVG defines: `stroke-width` and `fill-opacity` are dashed,
- * `viewBox` and `gradientUnits` are camelCase. React's `strokeWidth` is React's
- * invention and is correctly rejected here; it would also not work at runtime,
- * since SVG attribute names are case-sensitive and `strokeWidth` is not one.
+ * `viewBox` and `gradientUnits` are camelCase. There is no second spelling to learn
+ * and nothing to translate: `strokeWidth` is not an SVG attribute name, so the types
+ * reject it, and it would not work at runtime either — SVG names are case-sensitive.
  *
  * Dashed and all-lowercase names (`stroke-width`, `cx`, `d`, `points`) already
  * pass through the index signature in `RamondaArgs`. These do not, and for a
  * reason worth stating: each of them IS a property on the corresponding DOM
  * interface, typed as `SVGAnimatedEnumeration`, `SVGAnimatedLength` and friends.
- * The mapped `ObservableEvents` type therefore claims the name with the animated
+ * The mapped `DomProperties` type therefore claims the name with the animated
  * type, and a plain `gradientUnits="userSpaceOnUse"` fails to assign. Declaring
  * them here as strings gives the literal a branch it can match.
  */
@@ -264,7 +325,8 @@ export interface SVGCamelCaseAttributes {
  * the DOM interface with an animated type, and an intersection of
  * `SVGAnimatedLength` with `string` is `never` — so the DOM's version has to be
  * removed before ours is added, rather than merged with it. What survives from
- * `ObservableEvents` is the event handlers, which is the part worth keeping.
+ * `DomProperties` is everything that is not a handler; the handlers come from `EventHandlers`,
+ * which is the same for every element.
  */
 export type SVGArgs<T extends SVGElement> = Partial<
   SVGCamelCaseAttributes & {
@@ -272,7 +334,9 @@ export type SVGArgs<T extends SVGElement> = Partial<
     style: string | Record<string, string | undefined>;
     key: string | number;
     ref: RefTarget<T>;
-  } & Omit<ObservableEvents<T>, keyof SVGCamelCaseAttributes | Lowercase<string>>
+  } & Omit<DomProperties<T>, keyof SVGCamelCaseAttributes | Lowercase<string>> &
+    EventHandlers &
+    VerbatimEvents
 >;
 
 export interface RamondaEvent<T extends EventTarget | null = any> extends Event {

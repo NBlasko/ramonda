@@ -22,11 +22,10 @@ function captureDiagnostics() {
 /**
  * Composition where a wrapper element is illegal.
  *
- * React reaches for a fragment here, because its unit of reuse is a function and
- * functions cannot extend one another — so reuse means nesting, and nesting
- * costs an element unless a fragment hides it. Ramonda's units of reuse are the
- * class and the Hook, neither of which nests, so the wrapper never appears and
- * there is nothing for a fragment to hide.
+ * Where the unit of reuse is a function, reuse means NESTING — functions cannot
+ * extend one another — and nesting costs an element unless a fragment hides it.
+ * Ramonda's units of reuse are the class and the Hook, neither of which nests, so
+ * the wrapper never appears and there is nothing for a fragment to hide.
  */
 describe("composition inside a <tr>, where only <td> is legal", () => {
   let captured: ReturnType<typeof captureDiagnostics>;
@@ -80,8 +79,9 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
 
   test("@Host is inherited, so behaviour composes by extending", async () => {
     // "Someone styled a <td> and we want to add to it, but it must stay a <td>."
-    // In React that means nesting, which needs a fragment. Here the subclass IS
-    // the same one element — HOST_META is a static, so it comes down the chain.
+    // Reuse by nesting would need a fragment to hide the extra element. Here the
+    // subclass IS the same one element — HOST_META is a static, so it comes down
+    // the chain.
     @Host("td")
     class BaseCell extends Component<{ label?: string }> {
       protected decorate(v: string) {

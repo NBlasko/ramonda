@@ -45,7 +45,7 @@ export class WatchPropDemo extends Component {
   // Cached by its argument, so the buttons keep their handlers across renders.
   renderChoice(id: string) {
     return (
-      <button type="button" disabled={this.userId === id} onClick={this.select(id)}>
+      <button type="button" disabled={this.userId === id} onclick={this.select(id)}>
         {id}
       </button>
     );

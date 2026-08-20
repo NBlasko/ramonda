@@ -27,7 +27,8 @@ describe("navigator: race-free updateState", () => {
   test("two sequential updaters serialize over the freshest state", () => {
     const { read, nav } = makeRouter();
 
-    // In a React closure the 2nd would read stale state and drop `a`.
+    // Read through a closure over the previous state, the 2nd would see a stale
+    // one and drop `a`. These serialize over the freshest instead.
     nav.updateState((p) => ({
       ...p,
       queryParams: { ...p.queryParams, a: "1" },

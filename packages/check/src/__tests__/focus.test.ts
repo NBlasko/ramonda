@@ -80,13 +80,19 @@ describe("a link with nowhere to go", () => {
 describe("a click handler with no keyboard path", () => {
   test("a pointer-only handler on a plain element is reported", () => {
     const found = run().findings["click-with-no-keyboard-path"];
-    expect(found.map((issue) => `${issue.tag}:${issue.handler}`)).toEqual(["div:onClick", "span:onMouseDown"]);
+    expect(found.map((issue) => `${issue.tag}:${issue.handler}`)).toEqual([
+      "div:onclick",
+      "span:onmousedown",
+      // The OLD spelling, kept on purpose: core's types refuse it now, but a project with no types
+      // still compiles it and the rule has to see it. The lookup is lower-cased, so both arrive.
+      "span:onMouseUp",
+    ]);
   });
 
   test("a wrapper around a real control is left alone", () => {
     const found = run().findings["click-with-no-keyboard-path"];
     // Nine elements in that component carry a handler or look like they might; two are reported.
-    expect(found).toHaveLength(2);
+    expect(found).toHaveLength(3);
   });
 
   /**
@@ -100,6 +106,6 @@ describe("a click handler with no keyboard path", () => {
   test("an empty element is a backdrop, not a control", () => {
     const found = run().findings["click-with-no-keyboard-path"];
     expect(found.some((issue) => issue.tag === "div" && issue.handler === "onClick" && found.length > 2)).toBe(false);
-    expect(found).toHaveLength(2);
+    expect(found).toHaveLength(3);
   });
 });

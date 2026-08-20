@@ -56,21 +56,163 @@ export interface ClientOnlyRequestReadIssue {
 }
 
 /**
- * Whether a JSX attribute name is an event handler — `onClick`, `onInput`, `onPointerDown`.
+ * Every event type the DOM's own event maps list for an element, a media element or the window.
  *
- * The CAPITAL after `on` is required, and that is narrower than the runtime, which takes any
- * `on…` and lowercases the rest (`Attribute.ts`: `name.startsWith("on")`, then
- * `name.substring(2).toLowerCase()`). So `onclick={…}` works in an untyped project and is missed
- * here.
+ * Generated once from `lib.dom.d.ts` — the union of `GlobalEventHandlersEventMap`,
+ * `ElementEventMap`, `HTMLElementEventMap`, `HTMLMediaElementEventMap` and
+ * `WindowEventHandlersEventMap` — because the question this asks is "did the reader mean an event",
+ * and only a name the DOM has answers it.
  *
- * Kept narrow on purpose. The capital is what the TYPES offer — `RamondaArgs` maps events to
- * `on${Capitalize<EventName>}` — so it is what a reader writes, and dropping it would make `only`
- * and `once` read as event attributes. Those are ordinary prop names, and a rule that treated
- * `only={() => …}` as browser-only would report correct code. A miss is the safe direction here; a
- * false report is not.
+ * The alternative was a shape test, and it does not work: `only` and `once` begin with `on` and are
+ * ordinary props, so `only={() => …}` would read as a browser-only path and report correct code.
+ *
+ * If it drifts behind a new DOM event, the failure is a MISS, which is the safe direction here — the
+ * report is about a read that cannot work, and staying quiet about one is better than inventing one.
+ */
+const DOM_EVENTS: ReadonlySet<string> = new Set([
+  "abort",
+  "afterprint",
+  "animationcancel",
+  "animationend",
+  "animationiteration",
+  "animationstart",
+  "auxclick",
+  "beforeinput",
+  "beforematch",
+  "beforeprint",
+  "beforetoggle",
+  "beforeunload",
+  "blur",
+  "cancel",
+  "canplay",
+  "canplaythrough",
+  "change",
+  "click",
+  "close",
+  "compositionend",
+  "compositionstart",
+  "compositionupdate",
+  "contextlost",
+  "contextmenu",
+  "contextrestored",
+  "copy",
+  "cuechange",
+  "cut",
+  "dblclick",
+  "drag",
+  "dragend",
+  "dragenter",
+  "dragleave",
+  "dragover",
+  "dragstart",
+  "drop",
+  "durationchange",
+  "emptied",
+  "ended",
+  "error",
+  "focus",
+  "focusin",
+  "focusout",
+  "formdata",
+  "fullscreenchange",
+  "fullscreenerror",
+  "gamepadconnected",
+  "gamepaddisconnected",
+  "gotpointercapture",
+  "hashchange",
+  "input",
+  "invalid",
+  "keydown",
+  "keypress",
+  "keyup",
+  "languagechange",
+  "load",
+  "loadeddata",
+  "loadedmetadata",
+  "loadstart",
+  "lostpointercapture",
+  "message",
+  "messageerror",
+  "mousedown",
+  "mouseenter",
+  "mouseleave",
+  "mousemove",
+  "mouseout",
+  "mouseover",
+  "mouseup",
+  "offline",
+  "online",
+  "pagehide",
+  "pagereveal",
+  "pageshow",
+  "pageswap",
+  "paste",
+  "pause",
+  "play",
+  "playing",
+  "pointercancel",
+  "pointerdown",
+  "pointerenter",
+  "pointerleave",
+  "pointermove",
+  "pointerout",
+  "pointerover",
+  "pointerrawupdate",
+  "pointerup",
+  "popstate",
+  "progress",
+  "ratechange",
+  "rejectionhandled",
+  "reset",
+  "resize",
+  "scroll",
+  "scrollend",
+  "securitypolicyviolation",
+  "seeked",
+  "seeking",
+  "select",
+  "selectionchange",
+  "selectstart",
+  "slotchange",
+  "stalled",
+  "storage",
+  "submit",
+  "suspend",
+  "timeupdate",
+  "toggle",
+  "touchcancel",
+  "touchend",
+  "touchmove",
+  "touchstart",
+  "transitioncancel",
+  "transitionend",
+  "transitionrun",
+  "transitionstart",
+  "unhandledrejection",
+  "unload",
+  "volumechange",
+  "waiting",
+  "webkitanimationend",
+  "webkitanimationiteration",
+  "webkitanimationstart",
+  "webkittransitionend",
+  "wheel",
+]);
+
+/**
+ * Whether a JSX attribute name is an event handler — `onclick`, `oninput`, `on:my-event`.
+ *
+ * It asks for the name to be one the DOM has, and that is what keeps it from reading an ordinary
+ * prop as an event. `only` and `once` start with `on` and are not handlers; a rule that treated
+ * `only={() => …}` as browser-only would report correct code.
+ *
+ * It used to ask for a CAPITAL after `on` instead, which was right while the types spelled events
+ * `on${Capitalize<name>}` and became wrong the moment they stopped: `onclick` — now the only
+ * spelling — has no capital, so every handler in every project would have been missed.
  */
 function isEventAttribute(name: string): boolean {
-  return name.length > 2 && name.startsWith("on") && name[2] === name[2].toUpperCase();
+  if (name.startsWith("on:")) return name.length > 3;
+  return name.startsWith("on") && DOM_EVENTS.has(name.slice(2).toLowerCase());
 }
 
 /** The JSX event attribute this node sits inside, if any — however deeply. */

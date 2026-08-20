@@ -35,18 +35,19 @@ JSX *looks* like HTML, but what you type is not HTML text — it compiles to fun
 calls, and the names are keys on those calls. That is why a few of them differ from
 the HTML you may know. Three rules cover almost everything.
 
-**Events are camelCase, with an `on` prefix.** The browser's event is called `click`;
-in plain HTML the attribute is `onclick`, all lowercase. In JSX you pass a handler as
-`onClick` — capital `C`:
+**An event handler is `on` plus the event's own name.** The browser's event is called
+`click`, so the prop is `onclick`:
 
 ```tsx
-<button onClick={this.save}>Save</button>
+<button onclick={this.save}>Save</button>
 ```
 
-The shape is always `on` + the event name with each word capitalised: `onInput`,
-`onSubmit`, `onKeyDown`, `onPointerMove`. Lowercase `onclick` will **not** work — it
-is a different key, and nothing listens to it. See [events](/concepts/events) for
-what you can pass and how `this` stays bound.
+Nothing is translated, so there is nothing to learn: `oninput`, `onsubmit`,
+`onkeydown`, `onpointermove`, `onmouseenter`. Whatever you would hand to
+`addEventListener`, put `on` in front of it. A camelCased `onMouseEnter` is refused,
+and the error names the spelling to use. See [events](/concepts/events) for what you
+can pass, how `this` stays bound, and how to reach a custom event whose name has a dash
+in it.
 
 **Two attributes sidestep JavaScript's reserved words.** `class` and `for` are
 keywords in JavaScript, so JSX borrows the DOM property names instead — `className`
@@ -122,10 +123,10 @@ the real element one to one:
 </svg>
 ```
 
-> **Written JSX before?** The `onClick` and `className` / `htmlFor` conventions will
-> feel familiar. The one habit to drop is SVG: Ramonda leaves SVG attribute names
-> literal instead of camelCasing them, so `stroke-width` stays `stroke-width`, not
-> `strokeWidth`.
+> **Written JSX before?** `className` and `htmlFor` will feel familiar. Two habits to
+> drop, and they are the same habit: names here are the real ones. Event props are
+> lowercase — `onclick`, `onmouseenter`, not `onMouseEnter` — and SVG attributes stay
+> literal, so `stroke-width` is `stroke-width`, not `strokeWidth`.
 
 ## Children
 

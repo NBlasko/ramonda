@@ -27,9 +27,9 @@ export class RefFocus extends Component {
           type="text"
           aria-label="Anything you like"
           placeholder="type here"
-          onInput={this.onInput}
+          oninput={this.onInput}
         />
-        <button type="button" onClick={this.focusInput}>
+        <button type="button" onclick={this.focusInput}>
           focus it
         </button>
         <span className="demo-note">{this.length} characters</span>

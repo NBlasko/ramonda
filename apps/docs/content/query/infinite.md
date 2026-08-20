@@ -38,7 +38,7 @@ class Feed extends Component<{ tag: string }> {
         {list(this.feed.pages, (item) => <PostPageView item={item} />)}
         <button
           type="button"
-          onClick={this.feed.fetchNextPage}
+          onclick={this.feed.fetchNextPage}
           disabled={!this.feed.hasNextPage || this.feed.isFetchingNextPage}
         >
           {this.feed.isFetchingNextPage ? "loading…" : "more"}

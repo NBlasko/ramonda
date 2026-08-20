@@ -15,7 +15,8 @@ import type { ElementRule } from "./rule";
  * Measured, one render of every camelCase name a JSX author might reach for, reading back what
  * landed in the document: `httpEquiv` arrives as `httpequiv` while the attribute is `http-equiv`;
  * `acceptCharset` as `acceptcharset` against `accept-charset`; `defaultValue` and `defaultChecked`
- * are React's uncontrolled pair and have no attributes at all; `innerHTML` and `textContent` are
+ * mark a controlled/uncontrolled distinction this framework does not have, and have no attributes
+ * at all; `innerHTML` and `textContent` are
  * properties rather than attributes. All six render, none does anything, and none is visible on the
  * page as being wrong.
  *

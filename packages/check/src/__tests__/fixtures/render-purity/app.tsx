@@ -54,11 +54,11 @@ class Impure extends Component {
     return (
       <div>
         {/* NOT reported: an arrow handed to an attribute runs on the event. */}
-        <button type="button" onClick={() => (this.n += 1)}>
+        <button type="button" onclick={() => (this.n += 1)}>
           up
         </button>
         {/* NOT reported: the factory is called now, but its RESULT runs on the click. */}
-        <button type="button" onClick={this.pick("a")}>
+        <button type="button" onclick={this.pick("a")}>
           pick
         </button>
         {/* REPORTED — a callback passed to `list` runs during the render. */}

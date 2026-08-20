@@ -36,7 +36,7 @@ export class Menu extends Component {
   render() {
     return (
       <div>
-        <button onClick={this.menu.toggle}>{this.menu.open ? "Close" : "Open"}</button>
+        <button onclick={this.menu.toggle}>{this.menu.open ? "Close" : "Open"}</button>
         {this.menu.open ? <ul>…</ul> : null}
       </div>
     );
@@ -183,7 +183,7 @@ class Toolbar extends Hook<{ actions: Action[] }> {
   }
 
   renderAction(action: Action) {
-    return <button disabled={this.busy} onClick={this.runner(action.id)}>{action.label}</button>;
+    return <button disabled={this.busy} onclick={this.runner(action.id)}>{action.label}</button>;
   }
 
   buttons() {

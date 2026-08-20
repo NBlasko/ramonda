@@ -132,10 +132,10 @@ defence for exactly this, and worth running whichever way you configure it.
 That is the whole of it. There is no factory to name, nothing to inject into every module, and no
 `global.d.ts` declaring an identifier your source never mentions.
 
-`"react-jsx"` is TypeScript's name for the **automatic** runtime, and it pulls in nothing from
-React: the compiler adds one import per file, and `jsxImportSource` says where from. So a `.tsx`
-file that writes `<p/>` gets `import { jsx } from "@ramonda/core/jsx-runtime"` at the top, written
-for it.
+`"react-jsx"` is TypeScript's own name for the **automatic** runtime — the name is historical and
+nothing comes with it. The compiler adds one import per file, and `jsxImportSource` says where from.
+So a `.tsx` file that writes `<p/>` gets `import { jsx } from "@ramonda/core/jsx-runtime"` at the
+top, written for it.
 
 The classic transform is what needs a name in scope, and a name in scope is a name that can be
 taken. A bundler injects an identifier **only if it is not already bound**, so a helper of your own

@@ -52,7 +52,7 @@ export function reportOrphanedUpdate(component: BaseComponent): void {
 /**
  * How many times one component may be rebuilt in a single drain before we stop
  * it. A cascade (a parent updating a child that syncs a prop back) settles in a
- * handful of passes; nothing legitimate needs fifty. Same number React uses.
+ * handful of passes; nothing legitimate needs fifty.
  */
 const MAX_BUILDS_PER_DRAIN = 50;
 

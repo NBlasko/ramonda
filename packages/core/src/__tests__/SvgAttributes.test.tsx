@@ -8,8 +8,8 @@ import { Component, Host } from "../index";
  * Ramonda writes an SVG attribute name **verbatim** — `setAttributeNS(null,
  * name, value)`, no translation — because the JSX is meant to be the DOM. So the
  * name to write is the one SVG itself defines: `stroke-width` is dashed,
- * `viewBox` and `gradientUnits` are camelCase. React's `strokeWidth` is React's
- * invention; it is rejected by the types here and would not work at runtime
+ * `viewBox` and `gradientUnits` are camelCase. `strokeWidth` is not an SVG
+ * attribute name at all: the types reject it, and it would not work at runtime
  * either, since SVG attribute names are case-sensitive.
  *
  * This file is checked twice over. **Compiling it is half the test** — every

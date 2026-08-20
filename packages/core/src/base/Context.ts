@@ -167,8 +167,7 @@ export function createContext<T extends object>(
        *
        * ## What to write instead
        *
-       * Put each Provider on its own component and hand it the subtree it is for, which is React's
-       * Provider in Ramonda's terms:
+       * Put each Provider on its own component and hand it the subtree it is for:
        *
        * ```tsx
        * @Host("div")

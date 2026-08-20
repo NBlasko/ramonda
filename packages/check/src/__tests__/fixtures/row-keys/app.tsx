@@ -74,11 +74,15 @@ class Styles extends Component {
   render() {
     return (
       <div>
-        {/* REPORTED — Ramonda reads className. */}
+        {/* REPORTED — renamed to className, so the source does not say what the element gets. */}
         <span class="muted">styled by nothing</span>
         {/* Not reported. */}
         <span className="muted">styled</span>
-        {/* Not reported: on a component, `class` is a prop that component declared. */}
+        {/* REPORTED, and the sharp one — `className` wins and this `class` is dropped. */}
+        <span class="muted" className="loud">
+          one of these two
+        </span>
+        {/* REPORTED — a component is renamed too, so a `class` prop it declared reads undefined. */}
         <Panel class="muted" />
       </div>
     );

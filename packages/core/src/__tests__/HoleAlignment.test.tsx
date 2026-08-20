@@ -95,7 +95,7 @@ describe("a child that renders nothing", () => {
    *
    * When the hole count CHANGES the child list genuinely changes length, and unkeyed children
    * are matched by position — so the siblings after the new node take each other's places.
-   * React reconciles the same way for the same reason, and the answer is the same: `key`.
+   * Any diff matching unkeyed children by position does the same, and the answer is `key`.
    *
    * What the fix above guarantees is the other case, which is not a trade-off at all: a hole
    * whose presence does not change between two renders must cost nothing.

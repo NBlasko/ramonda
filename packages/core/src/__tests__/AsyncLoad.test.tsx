@@ -183,7 +183,7 @@ describe("AsyncLoad", () => {
               seenAttempt = attempt;
               seenMessage = (error as Error).message;
               return (
-                <button className="retry" onClick={retry}>
+                <button className="retry" onclick={retry}>
                   retry
                 </button>
               );

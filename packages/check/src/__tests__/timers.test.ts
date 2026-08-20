@@ -22,14 +22,37 @@ describe("an interval nothing clears", () => {
       "a property:tick",
       // The fourth is `SameName`'s, asserted on its own below.
       "a property:id",
+      // The fifth is the abstract base's LOCAL — see the chain tests at the bottom.
+      "a local:local",
     ]);
+  });
+
+  /**
+   * The heritage chain, and it is walked in one direction only.
+   *
+   * Upward it is read: a base's `@destroyed stop() { clearInterval(this.handle) }` clears an
+   * interval its subclass started, on the same instance. Reading one class body reported that pair.
+   *
+   * Downward there is nothing to read — a class does not know who extends it. So an ABSTRACT class
+   * keeping an id on a property goes quiet: it is never mounted on its own, and any subclass may be
+   * the one clearing it, which makes the report a guess. A local is certain either way.
+   */
+  test("a base that clears what a subclass started is silent", () => {
+    const found = run().findings["interval-with-no-cleanup"];
+    expect(found.some((issue) => issue.component === "StartsBelow")).toBe(false);
+  });
+
+  test("an abstract base keeps its report for a local and loses it for a property", () => {
+    const found = run().findings["interval-with-no-cleanup"];
+    const mine = found.filter((issue) => issue.component === "StartsAbove");
+    expect(mine.map((issue) => `${issue.kept}:${issue.named ?? "-"}`)).toEqual(["a local:local"]);
   });
 
   /** The documented shape — a property `@destroyed` clears — must never be reported. */
   test("a property something clears, and the decorator, are both silent", () => {
     const found = run().findings["interval-with-no-cleanup"];
     expect(found.some((issue) => issue.named === "kept")).toBe(false);
-    expect(found).toHaveLength(4);
+    expect(found).toHaveLength(5);
   });
 
   /**

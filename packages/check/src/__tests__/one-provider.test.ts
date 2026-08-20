@@ -23,7 +23,39 @@ describe("one Provider of a context per component", () => {
     expect(found().map((issue) => `${issue.component}: ${issue.context}`)).toEqual([
       "ProvidesTwice: Theme",
       "ProvidesTwiceRenamed: Theme",
+      "ProvidesAgain: Theme",
+      "BothOnTheBase: Theme",
     ]);
+  });
+
+  /**
+   * Once per fault, not once per class that inherits it.
+   *
+   * Walking the chain made a pair written on a shared base visible from every subclass too — so one
+   * line was reported for the base and again for each class extending it. The SECOND provider has to
+   * be declared HERE; both on a base is that base's own fault, and its own pass says so.
+   */
+  test("a pair written on a base is reported once, by the base", () => {
+    expect(found().filter((each) => each.component === "InheritsBoth")).toEqual([]);
+    expect(found().filter((each) => each.component === "BothOnTheBase")).toHaveLength(1);
+  });
+
+  /**
+   * A BASE CLASS is the same component, and this was missed: the rule read one class body, so a
+   * Provider inherited from a base and another mounted here were never seen as two.
+   *
+   * Measured against core rather than reasoned about — mounting the pair below THROWS `RMD056`,
+   * which is the crash this rule exists to say first.
+   */
+  test("a Provider inherited from a base is the first of the two", () => {
+    const issue = found().find((each) => each.component === "ProvidesAgain");
+    expect(issue?.provider).toBe("ThemeProvider");
+    expect(issue?.firstOn).toBe("ProvidesOnABase");
+  });
+
+  /** A DIFFERENT context on the subclass is two channels, not two of one. */
+  test("a base and a subclass providing different contexts is silent", () => {
+    expect(found().some((each) => each.component === "ProvidesAnother")).toBe(false);
   });
 
   /** It points at the SECOND one — the line that throws and the one to move — and names the first. */

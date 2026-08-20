@@ -147,7 +147,7 @@ describe("defaults that arrive late", () => {
     // the decision is `changedKeys` — and this is the case that separates the two.
     const { form, arrive, unmount } = mount();
     try {
-      form.fields.email.$.bind.onBlur(new Event("blur"));
+      form.fields.email.$.bind.onblur(new Event("blur"));
       arrive({ ...EMPTY, email: "fetched@example.com" });
 
       expect(form.values.email).toBe("fetched@example.com");
@@ -434,7 +434,7 @@ describe("what the form says about itself afterwards", () => {
     const { form, arrive, unmount } = mount();
     try {
       // Blur it so `errorsAt` will actually show what the schema found.
-      form.fields.name.$.bind.onBlur(new Event("blur"));
+      form.fields.name.$.bind.onblur(new Event("blur"));
       expect(form.fields.name.$.errors).toEqual(["a name is required"]);
 
       arrive({ ...EMPTY, name: "Ada" });

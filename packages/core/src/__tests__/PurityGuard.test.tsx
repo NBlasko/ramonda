@@ -97,7 +97,7 @@ describe("RMD021", () => {
       }
 
       render() {
-        return <button type="button" onClick={this.choose("a")} />;
+        return <button type="button" onclick={this.choose("a")} />;
       }
     }
 
@@ -150,7 +150,7 @@ describe("RMD021", () => {
 
       render() {
         return (
-          <button type="button" onClick={this.pick}>
+          <button type="button" onclick={this.pick}>
             {this.token || "pick"}
           </button>
         );

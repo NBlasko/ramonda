@@ -100,10 +100,10 @@ export class SlotsPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>1 · array slot (list)</h3>
-            <button onClick={this.prependGuest}>prepend</button>
-            <button onClick={this.addGuest}>append</button>
-            <button onClick={this.removeFirstGuest}>remove first</button>
-            <button onClick={this.reverseGuests}>reverse</button>
+            <button onclick={this.prependGuest}>prepend</button>
+            <button onclick={this.addGuest}>append</button>
+            <button onclick={this.removeFirstGuest}>remove first</button>
+            <button onclick={this.reverseGuests}>reverse</button>
           </div>
           <p className="muted small">
             No <code>key</code> written anywhere — the list mints identity from the guest object itself. Reverse and the
@@ -120,9 +120,9 @@ export class SlotsPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>2 · hand-written array slot, no keys</h3>
-            <button onClick={this.addManual}>add</button>
-            <button onClick={this.dropManual}>drop last</button>
-            <button onClick={this.reverseManual}>reverse</button>
+            <button onclick={this.addManual}>add</button>
+            <button onclick={this.dropManual}>drop last</button>
+            <button onclick={this.reverseManual}>reverse</button>
           </div>
           <p className="muted small">
             A plain <code>.map()</code>, unkeyed. The panel's HEAD/FOOT stay intact whatever happens here, because the
@@ -140,7 +140,7 @@ export class SlotsPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>3 · single element, named prop, can be null</h3>
-            <button onClick={this.toggleIcon}>{this.showIcon ? "hide" : "show"} the slot</button>
+            <button onclick={this.toggleIcon}>{this.showIcon ? "hide" : "show"} the slot</button>
           </div>
           <p className="muted small">
             Not an array, so there is no structure to group. Hide and show it a few times: FOOT keeps its counter,
@@ -153,8 +153,8 @@ export class SlotsPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>4 · plain tags, slot nested inside an object</h3>
-            <button onClick={this.addPlain}>add</button>
-            <button onClick={this.reversePlain}>reverse</button>
+            <button onclick={this.addPlain}>add</button>
+            <button onclick={this.reversePlain}>reverse</button>
           </div>
           <p className="muted small">
             No components in the slot at all, and it arrives as <code>slots.body</code> — proof the guarantee does not
@@ -167,8 +167,8 @@ export class SlotsPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>5 · text slot between elements</h3>
-            <button onClick={this.editText}>change the text</button>
-            <button onClick={this.toggleBefore}>{this.showBefore ? "remove" : "restore"} the element before it</button>
+            <button onclick={this.editText}>change the text</button>
+            <button onclick={this.toggleBefore}>{this.showBefore ? "remove" : "restore"} the element before it</button>
           </div>
           <p className="muted small">
             Text has no tag and no key. Removing the element in front of it shifts every position after it — the case

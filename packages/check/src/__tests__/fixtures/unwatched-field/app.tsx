@@ -40,7 +40,7 @@ class WriteOnly extends Component<{ of: any }> {
     this.props.of.$.set("");
   }
   render() {
-    return <button onClick={this.clear}>clear</button>;
+    return <button onclick={this.clear}>clear</button>;
   }
 }
 

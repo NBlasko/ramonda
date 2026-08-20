@@ -1300,9 +1300,29 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * resolve to a different tag does not mutate the host; it fails to match in the
  * diff, and a fresh component is built in its place.
  */
-export function Host<C extends (new (...args: any[]) => object) & { readonly __isComponent: true }>(
-  tag: string | ((props: PropsOf<C>) => string),
-  props?: (self: InstanceOf<C>) => Record<string, unknown>,
+/**
+ * What a component's host element may be: an element the platform has, or a custom one.
+ *
+ * The platform's own names come from `JSX.IntrinsicElements`, so this list cannot drift from what
+ * the JSX accepts. Anything else has to carry a DASH, and that is not a house style — it is the
+ * rule for a custom element name, and it decides whether the browser will ever upgrade the tag.
+ * `<my-widget>` becomes a web component the moment one is defined; `<mywidget>` is an
+ * `HTMLUnknownElement` for ever, and is almost always a misspelling of a real tag.
+ *
+ * The runtime's own check is looser on purpose — it asks only for a plausible element name, and a
+ * net that never REFUSES what the type allows cannot make a typed build behave differently from an
+ * untyped one. See `assertHostTag`.
+ */
+type HostTag = keyof JSX.IntrinsicElements | `${string}-${string}`;
+
+export function Host<
+  C extends (new (...args: any[]) => object) & { readonly __isComponent: true },
+  T extends HostTag = HostTag,
+>(
+  tag: T | ((props: PropsOf<C>) => string),
+  props?: (
+    self: InstanceOf<C>,
+  ) => T extends keyof JSX.IntrinsicElements ? JSX.IntrinsicElements[T] : Record<string, unknown>,
 ) {
   if (__DEV__) {
     assertHostTag(tag);
@@ -1566,6 +1586,33 @@ type ElementOwner = EventOwner & { [COMPONENT_RUNTIME]: ComponentRuntime };
 type KnownEvent<EventMap> = Extract<keyof EventMap, string> | (string & {});
 
 /**
+ * The two ways of naming an event that are PROVABLY wrong, refused with the fix in the error.
+ *
+ * Any other name passes, and that is the whole design: a custom event may be called anything —
+ * `my-event`, `save`, `ready` — so an unknown name is not evidence of a mistake and `clik` cannot be
+ * refused without refusing those too. Only what can be proved is stopped.
+ *
+ * **The JSX attribute, written where the event's own name belongs.** `@onElement("onclick")` listens
+ * for an event called `onclick`, which nothing dispatches — and it is the likelier mistake now that
+ * the JSX attribute IS `onclick`: one place takes the attribute, the other takes the event. Refused
+ * only when what follows `on` is an event this target actually has, so a custom `online` or `once`
+ * is untouched.
+ *
+ * **A known name in the wrong case.** `addEventListener` is case-sensitive, so `"MouseDown"` never
+ * fires. Refused only when the lower-cased name IS one of this target's events, which leaves a
+ * custom `DOMSomething` alone.
+ */
+type CheckedEvent<EventMap, Name extends string> = Name extends `on${infer Rest}`
+  ? Lowercase<Rest> extends Extract<keyof EventMap, string>
+    ? "write the event's own name, not the JSX attribute — `click`, not `onclick`"
+    : Name
+  : Name extends Lowercase<Name>
+    ? Name
+    : Lowercase<Name> extends Extract<keyof EventMap, string>
+      ? "an event name is lower case, and `addEventListener` is case-sensitive — `mousedown`, not `MouseDown`"
+      : Name;
+
+/**
  * The event a handler receives for the name it was registered with: `MouseEvent`
  * for "click", `KeyboardEvent` for "keydown". An unknown name falls back to
  * `Event`, which is all the DOM can promise about it.
@@ -1596,7 +1643,10 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
    */
   validateOwner?: (owner: object) => void,
 ) {
-  return <Name extends KnownEvent<EventMap>>(type: Name, options?: boolean | AddEventListenerOptions) => {
+  return <Name extends KnownEvent<EventMap>>(
+    type: CheckedEvent<EventMap, Name>,
+    options?: boolean | AddEventListenerOptions,
+  ) => {
     if (__DEV__) {
       assertEventType(type, decoratorName);
     }

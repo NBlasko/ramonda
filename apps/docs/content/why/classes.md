@@ -33,7 +33,7 @@ the collision can't happen.)
 
 ## Why your methods are already bound
 
-`onClick={this.increment}` works — you don't write a constructor or an arrow-field to
+`onclick={this.increment}` works — you don't write a constructor or an arrow-field to
 keep `this`. Ramonda binds your methods to the instance when the component is built.
 
 That is not only convenience: a decorator can't be applied to an arrow-function field,

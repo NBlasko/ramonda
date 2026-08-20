@@ -53,7 +53,7 @@ export class EffectCleanup extends Component {
 
   renderChannel(name: string) {
     return (
-      <button type="button" disabled={this.channel === name} onClick={this.switchTo(name)}>
+      <button type="button" disabled={this.channel === name} onclick={this.switchTo(name)}>
         {name}
       </button>
     );

@@ -107,7 +107,7 @@ class ProductRow extends Component<{
   render() {
     const p = this.props.item;
     return (
-      <button type="button" className="row" onClick={this.pick}>
+      <button type="button" className="row" onclick={this.pick}>
         <strong>{p.title}</strong>
         <span className="meta">
           {p.brand ?? p.category} · ${String(p.price)} · ★{String(p.rating)}
@@ -216,7 +216,7 @@ class ProductDetail extends Component<{ id: number }> {
           ${String(p.data?.price ?? 0)} · ★{String(p.data?.rating ?? 0)}
           {p.isFetching ? " · refreshing…" : ""}
         </p>
-        <button type="button" id="refresh-product" onClick={this.refresh} disabled={p.isPlaceholder}>
+        <button type="button" id="refresh-product" onclick={this.refresh} disabled={p.isPlaceholder}>
           invalidate this product
         </button>
       </div>
@@ -302,7 +302,7 @@ export class ProductsPage extends Component {
             <button
               type="button"
               id="load-more"
-              onClick={this.loadMore}
+              onclick={this.loadMore}
               disabled={!feed.hasNextPage || feed.isFetchingNextPage}
             >
               {feed.isFetchingNextPage ? "loading…" : "load more"}

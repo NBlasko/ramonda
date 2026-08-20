@@ -75,7 +75,7 @@ export class DocPage extends Component<DocPageProps> {
         errorFallback={({ retry }) => (
           <p className="demo-error">
             This page could not be loaded.{" "}
-            <button type="button" onClick={retry}>
+            <button type="button" onclick={retry}>
               retry
             </button>
           </p>

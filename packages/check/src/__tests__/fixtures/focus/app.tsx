@@ -83,9 +83,9 @@ class Links extends Component {
     return (
       <nav>
         {/* REPORTED — no `href`, and a handler where the destination should be. */}
-        <a onClick={() => {}}>Open</a>
+        <a onclick={() => {}}>Open</a>
         {/* REPORTED — a destination that is this page. */}
-        <a href="#" onClick={() => {}}>
+        <a href="#" onclick={() => {}}>
           Toggle
         </a>
         {/* REPORTED — not a destination, and the shape a CSP refuses first. */}
@@ -126,28 +126,32 @@ class Cards extends Component {
     return (
       <section>
         {/* REPORTED — a pointer and nothing else. */}
-        <div onClick={() => {}}>Open</div>
+        <div onclick={() => {}}>Open</div>
         {/* REPORTED — `onMouseDown` is the same fault. */}
-        <span onMouseDown={() => {}}>Drag</span>
+        <span onmousedown={() => {}}>Drag</span>
+        {/* Reported too, and it is the OLD spelling on purpose: the framework's types refuse
+            `onMouseUp` now, but a project with no types still compiles it and the rule has to see
+            it. The lookup is lower-cased, so both reach the same answer. */}
+        <span onMouseUp={() => {}}>Also drag</span>
 
         {/* Not reported: a button is all three things already. */}
-        <button onClick={() => {}}>Open</button>
+        <button onclick={() => {}}>Open</button>
         {/* Not reported: a key handler is a keyboard path. */}
-        <div onClick={() => {}} onKeyDown={() => {}} role="button" tabIndex={0}>
+        <div onclick={() => {}} onkeydown={() => {}} role="button" tabIndex={0}>
           Open
         </div>
         {/* Not reported: somebody is building the path by hand; picking at a half-built one is a
             different rule from this one. */}
-        <div onClick={() => {}} role="button">
+        <div onclick={() => {}} role="button">
           Open
         </div>
         {/* Not reported: the real control is one level in. */}
-        <div className="card" onClick={() => {}}>
+        <div className="card" onclick={() => {}}>
           <h3>Title</h3>
           <a href="/read">Read more</a>
         </div>
         {/* Not reported: a COMPONENT renders who-knows-what, so nothing here is certain. */}
-        <div onClick={() => {}}>
+        <div onclick={() => {}}>
           <Cards />
         </div>
         {/* Not reported: no handler at all. */}
@@ -155,7 +159,7 @@ class Cards extends Component {
         {/* Not reported: nothing inside it, so it is a backdrop rather than a control. Found by
             running the first version of this rule against the documentation site, where both of its
             reports were exactly this and both were correct. */}
-        <div className="backdrop" onClick={() => {}} />
+        <div className="backdrop" onclick={() => {}} />
       </section>
     );
   }

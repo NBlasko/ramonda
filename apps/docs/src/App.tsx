@@ -59,10 +59,10 @@ class Sidebar extends Component<SidebarProps> {
 
   render(): RamondaNode {
     return [
-      <button type="button" className="drawer-close" onClick={this.close} aria-label="Close navigation">
+      <button type="button" className="drawer-close" onclick={this.close} aria-label="Close navigation">
         ✕
       </button>,
-      <div className="sidebar-inner" data-pagefind-ignore onClick={this.onClick}>
+      <div className="sidebar-inner" data-pagefind-ignore onclick={this.onClick}>
         {list(grouped, this.renderGroup)}
       </div>,
     ] as RamondaNode;
@@ -98,7 +98,7 @@ export class App extends Component {
           <button
             type="button"
             className="nav-toggle"
-            onClick={this.toggleMenu}
+            onclick={this.toggleMenu}
             aria-label="Toggle navigation"
             aria-expanded={this.menuOpen ? "true" : "false"}
           >
@@ -122,7 +122,7 @@ export class App extends Component {
             <RouteOutlet routes={routes} />
           </main>
           {/* Tap-outside to dismiss the drawer; only rendered while it is open. */}
-          {this.menuOpen ? <div className="sidebar-backdrop" onClick={this.closeMenu} /> : null}
+          {this.menuOpen ? <div className="sidebar-backdrop" onclick={this.closeMenu} /> : null}
         </div>
       </div>
     );

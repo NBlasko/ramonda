@@ -24,7 +24,7 @@ class TodoElement extends Component<Props> {
     return (
       <div data-testid="todo-item">
         <span>{todo}</span>
-        <button onClick={() => handleRemove(todo)} data-testid={todo} style="cursor:pointer">
+        <button onclick={() => handleRemove(todo)} data-testid={todo} style="cursor:pointer">
           [X]
         </button>
       </div>
@@ -59,10 +59,10 @@ class TodoApp extends Component {
     return (
       <div>
         <h1>Todo List</h1>
-        <button onClick={this.handleAddNewTodo} key="klik-div" style="cursor:pointer; color: blue;">
+        <button onclick={this.handleAddNewTodo} key="klik-div" style="cursor:pointer; color: blue;">
           Klikni
         </button>
-        <input onInput={this.handleInput} value={this.todo} placeholder="kucaj ovde" />
+        <input oninput={this.handleInput} value={this.todo} placeholder="kucaj ovde" />
         <div className="list">
           {this.todoList.map((item) => (
             <div key={item}>

@@ -60,7 +60,7 @@ function createPropsProxy<P extends ComponentProps>(component: Component<P>) {
       // Props are read-only: the getter always reads rawProps, so a write here
       // has nothing to write to and used to be swallowed silently.
       //
-      // Throws in every build, matching Hook options (RMD015) — the two are the
+      // Throws in every build, matching a hook's props (RMD015) — the two are the
       // same mistake and behaved differently for no reason a user could see.
       // This is enforcement, not diagnostics: it lives OUTSIDE `if (__DEV__)` so
       // behaviour cannot differ between builds, while the DEV diagnostic below

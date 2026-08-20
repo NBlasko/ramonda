@@ -12,7 +12,7 @@ describe("Event Handlers", () => {
         log.push("click");
       }
       render() {
-        return <button onClick={this.handleClick}>x</button>;
+        return <button onclick={this.handleClick}>x</button>;
       }
     }
 
@@ -35,7 +35,7 @@ describe("Event Handlers", () => {
       }
 
       render() {
-        return <button onClick={this.mode === "a" ? this.handleA : this.handleB}>x</button>;
+        return <button onclick={this.mode === "a" ? this.handleA : this.handleB}>x</button>;
       }
     }
 
@@ -63,7 +63,7 @@ describe("Event Handlers", () => {
       }
 
       render() {
-        return <button onClick={this.active ? this.handleClick : null}>x</button>;
+        return <button onclick={this.active ? this.handleClick : null}>x</button>;
       }
     }
 
@@ -91,7 +91,7 @@ describe("Event Handlers", () => {
       }
 
       render() {
-        return <button onClick={this.active ? this.handleClick : undefined}>x</button>;
+        return <button onclick={this.active ? this.handleClick : undefined}>x</button>;
       }
     }
 
@@ -114,7 +114,7 @@ describe("Event Handlers", () => {
 
     class Inner extends Component<{ onClick: () => void }> {
       render() {
-        return <button onClick={this.props.onClick}>x</button>;
+        return <button onclick={this.props.onClick}>x</button>;
       }
     }
 

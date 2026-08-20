@@ -25,7 +25,7 @@ class Counter extends Component {
   }
 
   render() {
-    return <span onClick={this.bump}>clicked {this.clicks} times</span>;
+    return <span onclick={this.bump}>clicked {this.clicks} times</span>;
   }
 }
 ```
@@ -117,7 +117,7 @@ a throw in `render()` or in `@created` itself. So it may see a half-initialised
 instance and has to tolerate that. The alternative, skipping cleanup for a
 component that never finished, leaks whatever `@created` already took.
 
-**Every method is bound to its instance**, so `onClick={this.handleClick}` works
+**Every method is bound to its instance**, so `onclick={this.handleClick}` works
 with no constructor and no `.bind(this)` — including methods inherited from a
 base class.
 
@@ -126,7 +126,7 @@ left unbound, as "internal by convention". That was removed, because the
 convention is not this framework's to claim. typescript-eslint's
 `naming-convention` rule is commonly set to `leadingUnderscore: "require"` for
 private members, so a project with that rule wrote `private _apply()` and got a
-method that silently did not bind — `onClick={this._apply}` then lost `this`,
+method that silently did not bind — `onclick={this._apply}` then lost `this`,
 with no error and no diagnostic. A lint rule chosen for unrelated reasons broke
 the framework's central promise about methods.
 

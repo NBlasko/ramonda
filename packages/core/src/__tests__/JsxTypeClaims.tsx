@@ -1,4 +1,5 @@
 import { Component } from "../base/Component";
+import { Host, onElement, onWindow } from "../base/decorators";
 
 /**
  * Everything the JSX types promise, in one file, pinned in both directions.
@@ -25,8 +26,8 @@ declare const caption: string;
 declare const bind: {
   readonly name: string;
   readonly value: string;
-  readonly onInput: (event: Event) => void;
-  readonly onBlur: (event: Event) => void;
+  readonly oninput: (event: Event) => void;
+  readonly onblur: (event: Event) => void;
   readonly "aria-invalid": boolean | undefined;
 };
 
@@ -189,5 +190,145 @@ export class ControlSpreads extends Component {
         <form {...loose} />
       </div>
     );
+  }
+}
+
+/**
+ * Event names, which are the DOM's own with `on` in front — nothing translated, nothing capitalised.
+ *
+ * The handlers used to come from the element's `on…` PROPERTIES, renamed to `on${Capitalize<name>}`.
+ * The DOM's event types are single lowercase tokens, so that produced `onMouseenter`, `onKeydown`,
+ * `onDblclick` — the natural spellings were hard errors and the accepted ones were unguessable. It
+ * survived because every event this repository writes happens to be one word.
+ *
+ * They come from the DOM's event MAP now, which needs no capitalisation and holds the five events
+ * that have no property at all.
+ */
+export class EventNames extends Component {
+  render() {
+    return (
+      <div>
+        <button onclick={(event) => event.clientX} />
+        <div onmouseenter={(event) => event.clientY} />
+        <input oninput={(event) => event.type} />
+
+        {/* The five with no `on…` property, which nothing here could name before. */}
+        <div onfocusin={(event) => event.relatedTarget} />
+        <div onfocusout={(event) => event.relatedTarget} />
+        <input oncompositionstart={(event) => event.data} />
+        <input oncompositionupdate={(event) => event.data} />
+        <input oncompositionend={(event) => event.data} />
+
+        {/* `on:` takes the rest of the name exactly as written, for an event `on…` cannot spell. */}
+        <div on:my-event={(event) => event.type} />
+        <div on:DOMSomething={(event) => event.type} />
+      </div>
+    );
+  }
+}
+
+/** The spellings this used to accept, each refused with the one that replaced it. */
+export class RefusedEventSpellings extends Component {
+  render() {
+    return (
+      <div>
+        {/* @ts-expect-error — the DOM has no `onClick`; the message names `onclick`. */}
+        <button onClick={() => {}} />
+        {/* @ts-expect-error — what the old mapping produced, and nobody would guess. */}
+        <div onMouseenter={() => {}} />
+        {/* @ts-expect-error — the spelling other frameworks use, which the DOM does not have. */}
+        <div onMouseEnter={() => {}} />
+        {/* @ts-expect-error — `dblclick` is the event; `ondoubleclick` names nothing. */}
+        <div onDblClick={() => {}} />
+      </div>
+    );
+  }
+}
+
+/**
+ * A component's host is a platform element or a custom one, and a custom one carries a DASH.
+ *
+ * The dash is the platform's rule rather than a preference: it is what makes a name a custom
+ * element, and what decides whether the browser will ever upgrade the tag. Without it the element
+ * is an `HTMLUnknownElement` for ever, which is what a misspelled real tag also produces.
+ *
+ * The props are the ELEMENT's, so the same spelling rule reaches them — they used to be
+ * `Record<string, unknown>`, which was the one place a camelCase handler still attached quietly.
+ */
+@Host("div", (self: PlatformHost) => ({ onclick: self.handle, className: "x" }))
+export class PlatformHost extends Component {
+  handle = (_event: PointerEvent) => {};
+  render() {
+    return <span />;
+  }
+}
+
+@Host("my-widget", () => ({ anything: "goes", "on:ready": () => {} }))
+export class CustomHost extends Component {
+  render() {
+    return <span />;
+  }
+}
+
+// @ts-expect-error — not a platform element, and no dash to make it a custom one.
+@Host("mywidget")
+export class UnknownHost extends Component {
+  render() {
+    return <span />;
+  }
+}
+
+// @ts-expect-error — a host's props are the element's attributes, under the same rule as the JSX.
+@Host("div", (self: RefusedHostProps) => ({ onClick: self.handle }))
+export class RefusedHostProps extends Component {
+  handle = () => {};
+  render() {
+    return <span />;
+  }
+}
+
+/**
+ * `@onElement` and its two siblings take the EVENT's own name, and refuse the two spellings that
+ * are provably not one.
+ *
+ * Any other name passes, which is the design rather than a gap: a custom event may be called
+ * anything, so `clik` cannot be refused without refusing `save` and `my-event` too. Only what can be
+ * proved is stopped — the JSX attribute written where the event belongs, and a known name in the
+ * wrong case, which `addEventListener` never matches.
+ */
+@Host("div")
+export class EventDecoratorNames extends Component {
+  @onElement("mousedown") pressed(event: MouseEvent) {
+    void event.clientX;
+  }
+  @onElement("my-event") custom(event: Event) {
+    void event.type;
+  }
+  @onElement("save") named(event: Event) {
+    void event.type;
+  }
+  @onElement("DOMSomething") capitalised(event: Event) {
+    void event.type;
+  }
+  @onWindow("online") back(event: Event) {
+    void event.type;
+  }
+  render() {
+    return <span />;
+  }
+}
+
+@Host("div")
+export class RefusedEventDecoratorNames extends Component {
+  // @ts-expect-error — the JSX attribute, where the event's own name belongs.
+  @onElement("onclick") wrong(event: Event) {
+    void event;
+  }
+  // @ts-expect-error — `addEventListener` is case-sensitive, so this never fires.
+  @onElement("MouseDown") miscased(event: Event) {
+    void event;
+  }
+  render() {
+    return <span />;
   }
 }

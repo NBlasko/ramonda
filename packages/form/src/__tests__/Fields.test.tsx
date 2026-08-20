@@ -100,7 +100,7 @@ const SEED: Shape = {
 
 describe("the field tree", () => {
   test("a node has ONE identity, however it is reached", () => {
-    // The whole design rests on this. A fresh node per access is a fresh `bind.onInput` per
+    // The whole design rests on this. A fresh node per access is a fresh `bind.oninput` per
     // access, which RMD020 reports and which really does re-attach the listener every render.
     const { fields } = tree(SEED);
 
@@ -122,8 +122,8 @@ describe("the field tree", () => {
 
     // The object is rebuilt — JSX flattens a spread, so only what is INSIDE is compared.
     expect(first).not.toBe(second);
-    expect(first.onInput).toBe(second.onInput);
-    expect(first.onBlur).toBe(second.onBlur);
+    expect(first.oninput).toBe(second.oninput);
+    expect(first.onblur).toBe(second.onblur);
     expect(first.name).toBe(second.name);
     expect(first.value).toBe(second.value);
   });
@@ -204,9 +204,9 @@ describe("the field tree", () => {
   test("an input event is read according to the control `bind` asked for", () => {
     const { h, fields } = tree(SEED);
 
-    handler(fields.email.$.bind, "onInput")(inputEvent("text", { value: "z@z.z" }));
-    handler(fields.agree.$.bind, "onInput")(inputEvent("checkbox", { checked: true }));
-    handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "41" }));
+    handler(fields.email.$.bind, "oninput")(inputEvent("text", { value: "z@z.z" }));
+    handler(fields.agree.$.bind, "oninput")(inputEvent("checkbox", { checked: true }));
+    handler(fields.age.$.bind, "oninput")(inputEvent("number", { value: "41" }));
 
     expect((h.values as Shape).email).toBe("z@z.z");
     expect((h.values as Shape).agree).toBe(true);
@@ -217,7 +217,7 @@ describe("the field tree", () => {
     // NaN poisons arithmetic silently. `""` is a value the schema can report on.
     const { h, fields } = tree(SEED);
 
-    handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "" }));
+    handler(fields.age.$.bind, "oninput")(inputEvent("number", { value: "" }));
 
     expect((h.values as Shape).age).toBe("");
   });
@@ -251,7 +251,7 @@ describe("the field tree", () => {
       const { h, fields } = tree({ ...SEED, when: new Date(2026, 7, 7, hour, 30, 0) });
       const shown = fields.when.$.bind.value as string;
 
-      handler(fields.when.$.bind, "onInput")(inputEvent("date", { value: shown }));
+      handler(fields.when.$.bind, "oninput")(inputEvent("date", { value: shown }));
 
       const after = (h.values as Shape).when;
       expect(after).toBeInstanceOf(Date);
@@ -265,7 +265,7 @@ describe("the field tree", () => {
   test("picking a different day moves to that day, and only that day", () => {
     const { h, fields } = tree({ ...SEED, when: new Date(2026, 7, 7, 9, 15, 0) });
 
-    handler(fields.when.$.bind, "onInput")(inputEvent("date", { value: "2026-12-31" }));
+    handler(fields.when.$.bind, "oninput")(inputEvent("date", { value: "2026-12-31" }));
 
     const after = (h.values as Shape).when;
     expect([after.getFullYear(), after.getMonth(), after.getDate()]).toEqual([2026, 11, 31]);
@@ -286,13 +286,13 @@ describe("the field tree", () => {
     const { h, fields } = tree(SEED);
     expect(fields.age.$.bind).toMatchObject({ type: "number", value: 30 });
 
-    handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "" }));
+    handler(fields.age.$.bind, "oninput")(inputEvent("number", { value: "" }));
     expect((h.values as Shape).age).toBe("");
 
     expect(fields.age.$.bind).toMatchObject({ type: "number", value: "" });
 
     // And typing into it again produces a NUMBER, because the control it reads from is still one.
-    handler(fields.age.$.bind, "onInput")(inputEvent("number", { value: "7" }));
+    handler(fields.age.$.bind, "oninput")(inputEvent("number", { value: "7" }));
     expect((h.values as Shape).age).toBe(7);
   });
 
@@ -301,7 +301,7 @@ describe("the field tree", () => {
     expect(fields.when.$.bind).toMatchObject({ type: "date" });
 
     // A date input that the reader clears hands back `""`, which no `Date` branch would match.
-    handler(fields.when.$.bind, "onInput")(inputEvent("date", { value: "" }));
+    handler(fields.when.$.bind, "oninput")(inputEvent("date", { value: "" }));
     expect(fields.when.$.bind).toMatchObject({ type: "date", value: "" });
   });
 
@@ -310,7 +310,7 @@ describe("the field tree", () => {
     // input waiting to be filled.
     const { h, fields } = tree(SEED);
 
-    handler(fields.email.$.bind, "onInput")(inputEvent("text", { value: "" }));
+    handler(fields.email.$.bind, "oninput")(inputEvent("text", { value: "" }));
 
     expect((h.values as Shape).email).toBe("");
     expect(Object.hasOwn(fields.email.$.bind, "type")).toBe(false);
@@ -320,7 +320,7 @@ describe("the field tree", () => {
     const { h, fields } = tree(SEED);
 
     expect(fields.email.$.touched).toBe(false);
-    handler(fields.email.$.bind, "onBlur")(new Event("blur"));
+    handler(fields.email.$.bind, "onblur")(new Event("blur"));
 
     expect(fields.email.$.touched).toBe(true);
     expect(h.writes).toEqual([]);
@@ -341,7 +341,7 @@ describe("the field tree", () => {
  * index signature leaked into the whole program and silently disarmed two of
  * `Types.test.tsx`'s negative cases, which is the opposite of what a test file should do.
  */
-function handler(bind: object, key: "onInput" | "onBlur"): (event: Event) => void {
+function handler(bind: object, key: "oninput" | "onblur"): (event: Event) => void {
   return (bind as Record<string, (event: Event) => void>)[key] as (event: Event) => void;
 }
 

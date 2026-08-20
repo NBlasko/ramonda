@@ -11,7 +11,7 @@ export class ShowcasePage extends Component {
       <div className="page">
         <div className="row">
           <h2>Decorator showcase</h2>
-          <button onClick={this.bumpSource}>bump source ({this.source})</button>
+          <button onclick={this.bumpSource}>bump source ({this.source})</button>
         </div>
         <section className="grid">
           <div className="panel">

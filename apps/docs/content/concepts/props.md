@@ -51,7 +51,7 @@ export class Row extends Component<{ item: Item; onRemove: (id: string) => void 
   }
 
   render() {
-    return <button onClick={this.remove}>remove</button>;
+    return <button onclick={this.remove}>remove</button>;
   }
 }
 ```

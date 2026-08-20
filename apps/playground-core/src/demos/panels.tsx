@@ -58,9 +58,9 @@ export class Counter extends Component {
       <div>
         <p className="label">@state · @compute · nested hooks (CounterHook → HistoryHook)</p>
         <div className="row">
-          <button onClick={this.counter.decrement}>−</button>
+          <button onclick={this.counter.decrement}>−</button>
           <strong className="big">{this.counter.count}</strong>
-          <button onClick={this.counter.increment}>+</button>
+          <button onclick={this.counter.increment}>+</button>
           <span className="muted">doubled: {this.doubled}</span>
         </div>
         <p className="muted">history (last 5): {this.counter.hist.history.join(", ") || "—"}</p>

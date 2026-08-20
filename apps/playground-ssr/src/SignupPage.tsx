@@ -174,7 +174,7 @@ export class SignupPage extends Component {
           ids below are here for `scripts/smoke.mjs` to aim at, not because a form needs them.
         </p>
 
-        <form id="signup" onSubmit={this.form.submit}>
+        <form id="signup" onsubmit={this.form.submit}>
           <label>
             Email
             <input id="email" {...email.bind} />
@@ -234,14 +234,14 @@ export class SignupPage extends Component {
               {list(f.tags.$.rows, (row) => (
                 <li>
                   <input className="tag" {...row.field.$.bind} />
-                  <button type="button" className="remove-tag ghost" onClick={this.removeTag(row.id)}>
+                  <button type="button" className="remove-tag ghost" onclick={this.removeTag(row.id)}>
                     remove
                   </button>
                   {row.field.$.error ? <em className="err">{row.field.$.error}</em> : null}
                 </li>
               ))}
             </ul>
-            <button type="button" id="add-tag" className="ghost" onClick={this.addTag}>
+            <button type="button" id="add-tag" className="ghost" onclick={this.addTag}>
               add a tag
             </button>
           </fieldset>
@@ -257,7 +257,7 @@ export class SignupPage extends Component {
                 </li>
               ))}
             </ul>
-            <button type="button" className="ghost" onClick={this.addContact}>
+            <button type="button" className="ghost" onclick={this.addContact}>
               add a contact
             </button>
           </fieldset>
@@ -272,7 +272,7 @@ export class SignupPage extends Component {
             <button type="submit" disabled={this.form.isSubmitting}>
               {this.form.isSubmitting ? "Sending\u2026" : "Sign up"}
             </button>
-            <button type="button" onClick={this.resetAll}>
+            <button type="button" onclick={this.resetAll}>
               Reset
             </button>
           </p>

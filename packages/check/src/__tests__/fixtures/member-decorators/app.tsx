@@ -55,14 +55,14 @@ class Panel extends Component {
     return (
       <ul>
         {/* REPORTED — a literal argument, and a cast changes nothing about what is passed. */}
-        <li onClick={this.byRef({ id: "x" } as never)}>a</li>
+        <li onclick={this.byRef({ id: "x" } as never)}>a</li>
         {/* REPORTED — null is not a key either. */}
-        <li onClick={this.byRef(null as never)}>b</li>
+        <li onclick={this.byRef(null as never)}>b</li>
         {/* Not reported: an expression this cannot read. `this.byRef(row.id)` is right and
             `this.byRef(row)` is the fault, and they look the same from here. */}
-        <li onClick={this.byRef(rows[0].id)}>c</li>
+        <li onclick={this.byRef(rows[0].id)}>c</li>
         {/* Not reported: a primitive. */}
-        <li onClick={this.byRef("k")}>d</li>
+        <li onclick={this.byRef("k")}>d</li>
       </ul>
     );
   }

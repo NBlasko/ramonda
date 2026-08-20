@@ -49,7 +49,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD010` | error | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
 | `RMD013` | error | A list item produced nothing |
-| `RMD015` | error | A hook wrote to its own options |
+| `RMD015` | error | A hook wrote to its own props |
 | `RMD016` | error | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
 | `RMD018` | error | State written during a `@compute` |
@@ -276,8 +276,8 @@ component. So the two are independent axes, and this one takes no option because
 there is no version of it an author would choose.
 
 **What to write instead: one Provider per component, each given the subtree it
-is for.** That is React's Provider in Ramonda's terms — a component that renders
-`this.props.children` scopes the context to what is inside it:
+is for.** A component that renders `this.props.children` scopes the context to
+what is inside it:
 
 ```tsx
 @Host("div")
@@ -344,7 +344,7 @@ It throws explicitly rather than returning `false`, because a `false` return
 throws only in strict mode — so "always" would not have been true for a caller
 outside a module.
 
-Hook options are the same mistake and now behave identically; see RMD015.
+A hook's props are the same mistake and now behave identically; see RMD015.
 
 ### RMD005 — Array in state mutated in place
 
@@ -418,8 +418,8 @@ node-by-node (landing on the right text by luck). Any naive RMD007 would have
 fired on nearly every real component — the exact "warning developers learn to
 ignore" this file is written against. `hydrateText` now slices its own share off
 the front with `splitText`, restoring the boundary the vnode expects and leaving
-the remainder for the next child. That costs zero SSR bytes (React spends
-`<!---->` separators here) and makes the check *more* precise: the server node
+the remainder for the next child. That costs zero SSR bytes — a separator comment
+per boundary is the alternative — and makes the check *more* precise: the server node
 must **start with** the text we rendered, and anything else is real divergence.
 
 On a real text mismatch the fused remainder is split off at the rendered length
@@ -490,7 +490,7 @@ infinite loop. (This was a real bug in the first draft: the counter lived in a
 WeakMap that was never reset.) A test drives 60 updates across 60 drains and
 expects silence.
 
-50 is React's number and leaves room for a real cascade to settle.
+50 leaves room for a real cascade to settle and is nowhere near ordinary work.
 
 **Self-writing effects were already safe.** `runComponentEffects` detaches deps
 that the effect mutated itself, so an effect writing the signal it reads runs
@@ -499,7 +499,7 @@ test, since it is the reason the obvious one-effect repro does nothing.
 
 The guard is DEV-only. In production an update loop still freezes the tab, on the
 bet that a loop this violent shows up the first time the code runs. Adding a cheap
-counter to the production drain (React throws there) is a live question — see the
+counter to the production drain, and throwing there, is a live question — see the
 roadmap.
 
 ### RMD010 — The default host is not allowed in this parent
@@ -626,7 +626,7 @@ class TableApp extends Component {
 
 **The Hook's one real cost:** it shares its owner's runtime, so its state writes
 re-render the **owner**, not itself. It has no re-render boundary of its own.
-That is the single thing React's stateful component has and a Hook does not.
+A re-render boundary is the single thing a component has and a Hook does not.
 
 | you need | use | you get |
 |---|---|---|
@@ -659,8 +659,8 @@ all.
 The reuse question, concretely: *ten `<td>`s in a row, and the first three want
 special behaviour as one reusable piece — what wrapper do I use?*
 
-**None.** React needs a fragment here because its unit of reuse is a function,
-and functions cannot extend one another: reuse means nesting, nesting costs an
+**None.** A fragment is needed here only where the unit of reuse is a function,
+because functions cannot extend one another: reuse means nesting, nesting costs an
 element, and the fragment hides it. Ramonda's units are the **class** and the
 **Hook**. Neither nests, so the wrapper never appears — there is nothing for a
 fragment to hide.
@@ -704,11 +704,11 @@ that reads as missing DATA rather than as a bug in the row.
 
 It used to report a colliding `key` callback as well. That option is gone: a key is written
 on the vnode now, and two rows carrying the same one is `RMD002`.
-### RMD015 — Hook options assigned by the hook that received them
+### RMD015 — A hook's props assigned by the hook that received them
 
-Options belong to whoever called `this.use(...)`. The options proxy serves each
-key from the owner's signal on every read, so an assignment inside the hook has
-nothing to write to.
+A hook's props belong to whoever called `this.use(...)`. The props proxy serves
+each key from the owner's signal on every read, so an assignment inside the hook
+has nothing to write to.
 
 Before this code existed the write landed on the proxy's empty target and was
 **never seen again** — no error, and because the get trap kept serving the

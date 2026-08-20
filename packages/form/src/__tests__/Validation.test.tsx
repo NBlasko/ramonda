@@ -390,7 +390,7 @@ describe("validation", () => {
       form.fields.email.$.set("");
       expect(form.fields.email.$.error).toBeUndefined();
 
-      form.fields.email.$.bind.onBlur?.(new Event("blur"));
+      form.fields.email.$.bind.onblur?.(new Event("blur"));
       expect(form.fields.email.$.error).toBe("required");
     } finally {
       unmount();
@@ -528,8 +528,8 @@ describe("validation", () => {
     /**
      * ONE form per component, which is the only arrangement there is: a component publishes a context
      * on one object, so a second Form on the same one is refused (RMD056). Two side by side are two
-     * components, which is also React's shape — a Provider is a subtree there, and here a component
-     * that renders `this.props.children` is the same thing.
+     * components: a component that renders `this.props.children` scopes its context to what is
+     * inside it, so each of the two finds its own.
      */
     class OneForm extends Component<{ take: (form: Form<typeof schema>) => void }> {
       private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: (_v) => {} }));
