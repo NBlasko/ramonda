@@ -100,6 +100,29 @@ export function hasContent(children: readonly ts.JsxChild[]): boolean {
 }
 
 /**
+ * One attribute read as a STRING, without building the whole context for the element.
+ *
+ * `contextFor` is documented as computed once per element and shared across the family — so a rule
+ * outside that family calling it is a second build of the same thing, per element, for one
+ * question. `numberAttr` and `trueAttr` are the same shape for the same reason.
+ */
+export function stringAttr(element: JsxElementLike, name: string): string | undefined {
+  for (const attribute of openingOf(element).attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+
+    const value = attribute.initializer;
+    if (value === undefined) return undefined;
+    if (ts.isStringLiteral(value)) return value.text;
+    if (ts.isJsxExpression(value) && value.expression !== undefined && ts.isStringLiteralLike(value.expression)) {
+      return value.expression.text;
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+/**
  * An attribute read as a claim of TRUE — `aria-hidden`, `aria-hidden={true}`, `aria-hidden="true"`.
  *
  * Three spellings of one fact, and the framework renders all three the same: a bare JSX attribute

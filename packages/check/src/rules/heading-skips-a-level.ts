@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import { contextFor, numberAttr } from "./element";
+import { numberAttr, stringAttr } from "./element";
 import type { TreeNode, TreeRule } from "./rule";
 
 /**
@@ -57,12 +57,11 @@ export interface HeadingSkipsALevelIssue {
  * aria-level={4}>` is at 4.
  */
 function levelOf(node: TreeNode): number | "not a heading" | "unknown" {
-  const written = contextFor(node.element).attr("role");
+  const written = stringAttr(node.element, "role");
   const fromTag = node.tag === undefined ? undefined : /^h([1-6])$/.exec(node.tag);
 
   if (written !== undefined && written !== "heading") return "not a heading";
-  if (written === undefined && fromTag === null) return "not a heading";
-  if (written === undefined && fromTag === undefined) return "not a heading";
+  if (written === undefined && !fromTag) return "not a heading";
 
   const stated = numberAttr(node.element, "aria-level");
   if (stated !== undefined) return stated >= 1 ? stated : "unknown";
