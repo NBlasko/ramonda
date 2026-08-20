@@ -81,15 +81,26 @@ function ensureStringContextName(contextName: string | symbol, decoratorName: st
  * from a click handler stayed silent, then fired on an unrelated `@state` change.
  * That is why every decorator here registers from `addInitializer`.
  *
- * **`value: (...args: any[]) => any` here and on every decorator below, and `unknown[]` is not an
- * option.** Measured: a method declared with a parameter — `@updated after(n: number)` — is
- * assignable to `(...args: any[]) => void` and NOT to `(...args: unknown[]) => void`, which fails as
- * TS1241, "unable to resolve signature of method decorator". Narrowing it type-checks across this
- * whole repository, because nothing here declares a parameter on such a method; it would refuse the
- * first application that did. Whether these lifecycles should take a parameter at all is a question
- * about the API, not about this annotation.
+ * **`(...args: never[])` here and on every decorator below, and `unknown[]` is the trap.** A parameter
+ * is contravariant, so the bound has to be the BOTTOM type for every method to fit. Measured on
+ * `@updated after(n: number)`, which is a shape nothing in this repository declares:
+ *
+ * ```
+ * any[]      accepts it, and is `any`
+ * unknown[]  REFUSES it — TS1241, "unable to resolve signature of method decorator"
+ * never[]    accepts it, and is not `any`
+ * ```
+ *
+ * `unknown[]` type-checks across this whole repository and would refuse the first application that
+ * declared such a parameter — a false green, and the reason `__tests__/DecoratorTypeClaims.tsx` pins
+ * the shape rather than trusting a repo-wide pass. So these lifecycles keep their parameters; what
+ * was wrong was the annotation, not the API.
  */
-function attachEffect(instance: { [GLOBAL_RUNTIME]: Runtime }, value: (...args: any[]) => any, alwaysRebuild: boolean) {
+function attachEffect(
+  instance: { [GLOBAL_RUNTIME]: Runtime },
+  value: (...args: never[]) => unknown,
+  alwaysRebuild: boolean,
+) {
   const effectId = createId();
 
   const newEffect: Effect = {
@@ -375,7 +386,7 @@ export function state(_value: unknown, context: EnhancedClassFieldDecoratorConte
  * measure, store, render with it. Guard it, or it loops — a runaway is reported as
  * RMD009 in development and stopped in production.
  */
-export function updated(value: (...args: any[]) => void, context: EnhancedClassMethodDecoratorContext) {
+export function updated(value: (...args: never[]) => void, context: EnhancedClassMethodDecoratorContext) {
   if (__DEV__) {
     assertMethod(context.kind, "updated", context.name);
   }
@@ -552,7 +563,7 @@ export function catchError<This extends CatchErrorOwner>(
 /** runtime -> the class that last declared its error handler. DEV only. */
 const catchErrorOwners = new WeakMap<object, object | undefined>();
 
-export function deferHydration(value: (...args: any[]) => unknown, context: EnhancedClassMethodDecoratorContext) {
+export function deferHydration(value: (...args: never[]) => unknown, context: EnhancedClassMethodDecoratorContext) {
   if (__DEV__) {
     assertMethod(context.kind, "deferHydration", context.name);
   }
@@ -604,7 +615,7 @@ export function deferHydration(value: (...args: any[]) => unknown, context: Enha
  * hatch rather than an optimisation to reach for.
  */
 export function ShouldUpdateOnPropsChange<
-  C extends (new (...args: any[]) => object) & { readonly __isComponent: true },
+  C extends (new (...args: never[]) => object) & { readonly __isComponent: true },
 >(decide: (self: InstanceOf<C>, previous: PropsOf<C>, next: PropsOf<C>) => boolean) {
   if (__DEV__) {
     assertPropsGate(decide);
@@ -1026,6 +1037,15 @@ const cleanUp = (instanceMap: Map<string, MemoEntry>) => {
   }
 };
 
+/**
+ * One per DECORATED METHOD, minted where the decorator runs.
+ *
+ * The member's NAME is not unique enough: `String(context.name)` renders two distinct symbols with the
+ * same description as the same string, so `Symbol("pick")` and another `Symbol("pick")` collided exactly
+ * the way two named methods did. A token cannot.
+ */
+let memoizedMemberSequence = 0;
+
 export function memoizedHandler<T extends (...args: any[]) => any>(
   target: T,
   context: ClassMethodDecoratorContext<{ [GLOBAL_RUNTIME]: Runtime }, T>,
@@ -1038,6 +1058,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
   }
 
   const originalMethod = target;
+  const member = ++memoizedMemberSequence;
 
   context.addInitializer(function () {
     if (__DEV__) claimMember(this, String(context.name), "memoizedHandler", "memoized");
@@ -1127,8 +1148,25 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
       return originalMethod.call(this, ...args);
     }
 
+    /**
+     * The MEMBER is part of the key, and leaving it out was a silent wrong answer.
+     *
+     * One map per INSTANCE is shared by every `@memoizedHandler` on it, so keying by the arguments
+     * alone made two methods collide on the same argument. Measured: with `removeFor(id)` and
+     * `editFor(id)` on one component, `removeFor(1) === editFor(1)` and calling the second ran the
+     * first's body — twice `remove:1`, no diagnostic, nothing thrown. The commonest shape in a list
+     * row is exactly that: several per-item handlers keyed by the same id.
+     *
+     * A minted token rather than `String(context.name)`, because a name is not unique: two distinct
+     * symbols with the same description render as one string, and two symbol-named methods collided
+     * again — the same fault, one shape over.
+     *
+     * A `\u0000` separator rather than `:` or `|`, because `buildKey` puts a caller's own string
+     * straight into the key and a separator a caller can type is a separator a caller can forge.
+     */
+    const scoped = `${member}\u0000${key}`;
     const instanceMap = memoMap.get(this)!;
-    let entry = instanceMap.get(key);
+    let entry = instanceMap.get(scoped);
 
     if (entry) {
       entry.used = true;
@@ -1173,7 +1211,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
 
       const fresh: MemoEntry = { fn: fn as (...a: any[]) => any, used: true };
       entry = fresh;
-      instanceMap.set(key, fresh);
+      instanceMap.set(scoped, fresh);
 
       if (collected.size > 0) {
         const listenerId = createId();
@@ -1187,9 +1225,9 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
         const invalidate = (): void => {
           // Only if this entry is still the one under that key. A later build for the same key
           // replaced it, and dropping the replacement would throw away a handler this never watched.
-          if (instanceMap.get(key) !== fresh) return;
+          if (instanceMap.get(scoped) !== fresh) return;
           releaseMemoEntry(fresh);
-          instanceMap.delete(key);
+          instanceMap.delete(scoped);
         };
         for (const dep of collected) dep[attach]({ id: listenerId, onChange: invalidate });
       }
@@ -1316,7 +1354,7 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
 type HostTag = keyof JSX.IntrinsicElements | `${string}-${string}`;
 
 export function Host<
-  C extends (new (...args: any[]) => object) & { readonly __isComponent: true },
+  C extends (new (...args: never[]) => object) & { readonly __isComponent: true },
   T extends HostTag = HostTag,
 >(
   tag: T | ((props: PropsOf<C>) => string),
@@ -1411,7 +1449,7 @@ export function Host<
  * from an unannotated arrow before the class is ever looked at, which is why `@Host` used to
  * need `(self: Card)` spelled out.
  */
-type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
+type InstanceOf<C> = C extends new (...args: never[]) => infer I ? I : never;
 
 /**
  * The props of a component or a hook INSTANCE — which is what a method decorator has to
@@ -1422,7 +1460,7 @@ type InstanceOf<C> = C extends new (...args: any[]) => infer I ? I : never;
  * carries the type in a phantom (`PROPS_TYPE`).
  */
 type PropsOfInstance<T> = T extends { props: infer P } ? P : T extends { [PROPS_TYPE]?: infer P } ? P : never;
-type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : never;
+type PropsOf<C> = C extends new (props: infer P, ...rest: never[]) => unknown ? P : never;
 
 /**
  * A hook's props, read off its construct signature — `new (runtime, options: Q) => …`.
@@ -1433,7 +1471,7 @@ type PropsOf<C> = C extends new (props: infer P, ...rest: any[]) => any ? P : ne
  * does not work — a component's constructor is `(props, context)`, and `keyof` of a loose
  * context type accepts any name, so every check passed.
  */
-type HookPropsOf<C> = C extends new (runtime: any, options: infer Q) => any ? Q : never;
+type HookPropsOf<C> = C extends new (runtime: never, options: infer Q) => unknown ? Q : never;
 
 /**
  * Declares which of a hook's props are **values** rather than references — so the
@@ -1495,7 +1533,7 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
     assertStablePropKeys(keys as readonly string[]);
   }
 
-  return <C extends new (runtime: any, options: any) => BaseHook<any>>(
+  return <C extends new (runtime: never, options: never) => BaseHook<unknown>>(
     ctor: C &
       // The names are checked against the hook's OWN props: `C` is inferred from the
       // decorated class, and when a name is not one of its props the parameter type gains a

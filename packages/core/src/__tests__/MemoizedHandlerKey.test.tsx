@@ -157,3 +157,134 @@ describe("@memoizedHandler with an un-keyable argument", () => {
     expect(a._listeners?.onclick).not.toBe(b._listeners?.onclick);
   });
 });
+
+/**
+ * Two `@memoizedHandler` methods on one component, called with the same argument.
+ *
+ * The cache is one map per INSTANCE, shared by every memoized method on it, and the key used to be built
+ * from the arguments alone — so two methods collided. Measured before the member's name went into the
+ * key: `removeFor(1) === editFor(1)`, and calling the second ran the FIRST one's body. Twice
+ * `remove:1`, no diagnostic, nothing thrown.
+ *
+ * It is the commonest shape there is in a list row: several per-item handlers keyed by the same id. It
+ * was found by building a playground page with three buttons per row and watching all three do the same
+ * thing.
+ */
+describe("two memoized methods on one component", () => {
+  test("the same argument does not make them the same handler", async () => {
+    const calls: string[] = [];
+
+    class Panel extends Component {
+      @memoizedHandler
+      removeFor(id: number) {
+        return () => calls.push(`remove:${id}`);
+      }
+
+      @memoizedHandler
+      editFor(id: number) {
+        return () => calls.push(`edit:${id}`);
+      }
+
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Panel>(<Panel />);
+    const remove = app.instance.removeFor(1);
+    const edit = app.instance.editFor(1);
+
+    expect(remove).not.toBe(edit);
+    remove();
+    edit();
+    expect(calls).toEqual(["remove:1", "edit:1"]);
+  });
+
+  test("each is still memoised, per member and per argument", async () => {
+    class Panel extends Component {
+      @memoizedHandler
+      a(id: number) {
+        return () => id;
+      }
+
+      @memoizedHandler
+      b(id: number) {
+        return () => id;
+      }
+
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Panel>(<Panel />);
+    expect(app.instance.a(1)).toBe(app.instance.a(1));
+    expect(app.instance.b(1)).toBe(app.instance.b(1));
+    expect(app.instance.a(1)).not.toBe(app.instance.a(2));
+  });
+
+  /**
+   * Two symbols with the same DESCRIPTION are two members, and the first fix did not see it.
+   *
+   * Keying by `String(context.name)` renders both as `"Symbol(pick)"`, so they collided exactly the way
+   * two named methods did — the same fault, one shape over. The key carries a token minted per decorated
+   * method instead, which a name cannot be.
+   */
+  test("two symbol-named methods whose symbols share a description", async () => {
+    const calls: string[] = [];
+    const A = Symbol("pick");
+    const B = Symbol("pick");
+
+    class Panel extends Component {
+      @memoizedHandler
+      [A](id: number) {
+        return () => calls.push(`A:${id}`);
+      }
+
+      @memoizedHandler
+      [B](id: number) {
+        return () => calls.push(`B:${id}`);
+      }
+
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Panel>(<Panel />);
+    const reach = app.instance as unknown as Record<symbol, (n: number) => () => void>;
+    const a = reach[A](1);
+    const b = reach[B](1);
+
+    expect(a).not.toBe(b);
+    a();
+    b();
+    expect(calls).toEqual(["A:1", "B:1"]);
+  });
+
+  /** A caller's own string goes straight into the key, so the separator has to be one they cannot type. */
+  test("an argument that spells another member's name does not collide with it", async () => {
+    const calls: string[] = [];
+
+    class Panel extends Component {
+      @memoizedHandler
+      remove(id: string) {
+        return () => calls.push(`remove:${id}`);
+      }
+
+      @memoizedHandler
+      edit(id: string) {
+        return () => calls.push(`edit:${id}`);
+      }
+
+      render() {
+        return <div />;
+      }
+    }
+
+    using app = await getDOM<Panel>(<Panel />);
+    app.instance.edit("remove")();
+    app.instance.remove("edit")();
+    expect(calls).toEqual(["edit:remove", "remove:edit"]);
+  });
+});

@@ -37,13 +37,13 @@ function createPropsProxy<P extends ComponentProps>(component: Component<P>) {
   return new Proxy({} as RenderableProps<P>, {
     get: (_, key: string | symbol) => {
       if (typeof key === "symbol") {
-        return (component[COMPONENT_RUNTIME].rawProps as Record<symbol, unknown>)[key];
+        return component[COMPONENT_RUNTIME].rawProps[key];
       }
       const componentRuntime = component[COMPONENT_RUNTIME];
 
       let sig = componentRuntime.propsSignals.get(key);
       if (!sig) {
-        const value = (componentRuntime.rawProps as Record<string, unknown>)[key];
+        const value = componentRuntime.rawProps[key];
         const runtime = component[GLOBAL_RUNTIME];
         sig = new State(value, {
           listener: {

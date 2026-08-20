@@ -12,10 +12,15 @@ export type { RenderEnv };
 interface EnhancedElement {
   _componentInstance?: BaseComponent<unknown>;
   _componentDefinition?: ComponentClassKind;
-  _listeners?: Record<string, any>;
+  /**
+   * What was attached, so it can be removed again — and `EventListener` rather than `any` because that
+   * is the only thing put in or taken out: `Attribute.ts` hands each value straight to
+   * `addEventListener` and the stored one back to `removeEventListener`.
+   */
+  _listeners?: Record<string, EventListener>;
   value?: any;
   [IS_SVG]?: boolean;
-  [KEY_SYM]?: any;
+  [KEY_SYM]?: unknown;
   /** The JSX child slot this node was built for. See SLOT_SYM. */
   [SLOT_SYM]?: number;
   [CHILD_RECORD]?: RecordEntry[];

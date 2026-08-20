@@ -119,7 +119,7 @@ export function changeInitialUrlPath(pathname: string) {
 export function restoreWindowObjectChanges() {
   Object.keys(window).forEach((key) => {
     if (!(key in originalWindow)) {
-      delete (window as Record<string, any>)[key];
+      Reflect.deleteProperty(window, key);
     }
   });
 

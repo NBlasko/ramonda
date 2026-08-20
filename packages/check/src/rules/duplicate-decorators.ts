@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { decoratorName, positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
 /**
@@ -106,12 +106,6 @@ const MERGING = new Set(["StableProps"]);
  * that it runs once per changed prop.
  */
 const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoizedHandler"]);
-
-/** The name of a decorator, whether it is bare (`@catchError`) or called (`@Host("div")`). */
-function decoratorName(decorator: ts.Decorator): string | undefined {
-  const expression = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
-  return ts.isIdentifier(expression) ? expression.text : undefined;
-}
 
 /**
  * Which declaration is in effect, said per decorator KIND, because the two are opposite.

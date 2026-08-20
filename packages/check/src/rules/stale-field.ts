@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { memberName } from "../syntax";
 import { hasDecorator, heritage } from "./render-reach";
 import type { RuleContext } from "./rule";
 
@@ -18,11 +19,6 @@ import type { RuleContext } from "./rule";
  * as reactive — which is a MISS, since `@persist` is carried across hydration without being tracked.
  * This module is that copy being deleted.
  */
-
-/** A member's own name, when it has a plain one to go by. */
-export function nameOf(member: ts.ClassElement): string | undefined {
-  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
-}
 
 /**
  * The fields a cached reader may read without ever going stale.
@@ -92,7 +88,7 @@ export function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
   if (ts.isConstructorDeclaration(member)) return false;
   if (hasDecorator(member, "created") || hasDecorator(member, "destroyed")) return false;
   if (hasDecorator(member, "compute")) return false;
-  return nameOf(member) !== "render";
+  return memberName(member) !== "render";
 }
 
 /**
@@ -132,7 +128,7 @@ export function staleFieldsOf(cls: ts.ClassDeclaration, resolve?: RuleContext["r
     for (const member of declaring.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
       if (trackedOrHarmless(member)) continue;
-      const name = nameOf(member);
+      const name = memberName(member);
       if (name !== undefined) plain.add(name);
     }
   }
@@ -143,7 +139,7 @@ export function staleFieldsOf(cls: ts.ClassDeclaration, resolve?: RuleContext["r
   for (const declaring of declared) {
     for (const member of declaring.members) {
       if (!writesAfterTheFirstRender(member)) continue;
-      const where = nameOf(member) ?? "a method";
+      const where = memberName(member) ?? "a method";
       for (const field of fieldsWrittenIn(member)) {
         if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
       }

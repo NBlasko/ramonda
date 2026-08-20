@@ -20,10 +20,15 @@
  */
 const IGNORED_IN_COMPARISON = "ref";
 
-export function areStringRecordsEqual(
-  obj1: Record<string, string | undefined>,
-  obj2: Record<string, string | undefined>,
-): boolean {
+/**
+ * Shallow equality over two props bags, by key and by `!==`.
+ *
+ * `unknown` values, not `string | undefined`. The name and the old signature both said strings, and its
+ * ONE caller passes a component's props — a handler, an object, a vnode. The body never treated them as
+ * strings either: it counts keys, asks `in`, and compares with `!==`. What kept the mismatch invisible
+ * was `rawProps` being typed `RenderableProps<any>` on the runtime, so anything was assignable.
+ */
+export function arePropsBagsEqual(obj1: Record<string, unknown>, obj2: Record<string, unknown>): boolean {
   const keys1 = Object.keys(obj1);
   const keys2 = Object.keys(obj2);
 
