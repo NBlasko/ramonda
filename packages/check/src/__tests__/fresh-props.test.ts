@@ -23,6 +23,22 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
+   * A prop the component DECLARED with `@StableProps` is not this fault — the declaration is the
+   * answer to this report, so reporting it would be reporting the fix. The framework compares that
+   * prop by content and hands the child back the identity it already had, which is why `RMD020`
+   * skips it at runtime for the same reason.
+   *
+   * The declaration is resolved through the checker rather than matched by name, and read through
+   * the class chain, because `@StableProps` merges along it.
+   */
+  test("a declared prop is not reported, on the class or on one that inherits it", () => {
+    const components = run().findings["fresh-object-in-props"].map((issue) => issue.component);
+    expect(components).not.toContain("Settled");
+    expect(components).not.toContain("SettledBase");
+    expect(components).toContain("Row");
+  });
+
+  /**
    * The exclusion that decides whether this is shippable: `<div style={{ color: "red" }}>` is
    * written constantly and is not this fault — a host element hands nothing to a component, so
    * there is no comparison to defeat.

@@ -29,7 +29,10 @@ export function tagOf(element: JsxElementLike): string | undefined {
 }
 
 /** Builds the context an element rule reads. */
-export function contextFor(element: JsxElementLike): ElementContext {
+export function contextFor(
+  element: JsxElementLike,
+  resolve: ElementContext["resolve"] = () => undefined,
+): ElementContext {
   const attributes = openingOf(element).attributes.properties;
 
   let spreads = false;
@@ -47,6 +50,7 @@ export function contextFor(element: JsxElementLike): ElementContext {
   const tag = tagOf(element);
 
   return {
+    resolve,
     tag,
     // The tag as WRITTEN decides this, not the lowercased one: SVG tag names are case-sensitive,
     // and `<clipPath>` is the SVG element while `<clippath>` is an unknown HTML one.

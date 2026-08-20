@@ -410,6 +410,18 @@ export interface ElementContext {
   attr(name: string): string | undefined;
 
   /**
+   * Where a name was declared — the same question a class rule asks.
+   *
+   * One rule needs it: `fresh-object-in-props` has to reach the COMPONENT a literal is handed to,
+   * because a prop that component declared with `@StableProps` is settled by content and the
+   * literal is then the documented way to write it. Reporting it would be reporting the fix.
+   *
+   * It costs nothing to carry: the analyzer holds one `resolve` and hands the same function to
+   * every context it builds.
+   */
+  resolve(id: ts.Node): ts.Symbol | undefined;
+
+  /**
    * Whether the element spreads props — `<img {...rest} />`.
    *
    * **The silence contract, in one flag.** A spread may carry the very attribute a rule is about,

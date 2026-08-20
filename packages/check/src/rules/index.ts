@@ -9,6 +9,7 @@ import type {
   Rule,
   RuleContext,
   TreeRule,
+  ElementContext,
 } from "./rule";
 import { contextFor } from "./element";
 import { treeFor } from "./tree";
@@ -449,8 +450,9 @@ export function applyElement(
   active: readonly (typeof ELEMENT_RULES)[number][],
   element: JsxElementLike,
   findings: Findings,
+  resolve: ElementContext["resolve"],
 ): void {
-  const context = contextFor(element);
+  const context = contextFor(element, resolve);
   if (context.spreads) return;
   for (const rule of active) collect(findings, rule, rule.read(element, context));
 }
