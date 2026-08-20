@@ -29,7 +29,16 @@ let consumerRenders = 0;
 
 const [BaseProvider, Consumer] = createContext({ conf: { dense: false } as { dense: boolean }, tick: 0 });
 
-/** A Provider takes the declaration on a SUBCLASS: `createContext` hands back a class, not a site. */
+/**
+ * A Provider takes the declaration on a SUBCLASS: `createContext` hands back a class, not a site.
+ *
+ * This did not type-check until the decorator was taught the shape. `createContext` returns
+ * `new (owner, options: T) => BaseHook<T> & Readonly<T>`, and `BaseHook` carries no props phantom,
+ * so the decorator fell through to its COMPONENT branch and read the props off the first
+ * parameter — which is the runtime. It worked perfectly at runtime the whole time, which is the
+ * worst way for a gate to be wrong: the fix below is the one the docs and `@ramonda/check` both
+ * recommend, and it was a compile error.
+ */
 @StableProps("conf")
 class SettledProvider extends BaseProvider {}
 
@@ -42,7 +51,7 @@ class Badge extends Component {
 }
 
 /** Ticks an owner three times and answers how many times the CONSUMER rendered in total. */
-async function consumerRendersOver(Owner: new () => Component & { tick: number }) {
+async function consumerRendersOver(Owner: new (...args: any[]) => Component & { tick: number }) {
   consumerRenders = 0;
   const dom = await getDOM<Component & { tick: number }>(<Owner />);
   await dom.settle();

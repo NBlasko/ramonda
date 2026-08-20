@@ -26,7 +26,7 @@ import { memoPhase } from "../debug/purityGuard";
 import { recordCompute } from "../debug/computeChurn";
 import { registerCompute, type ComputeCounters } from "../debug/computeStats";
 import { STABLE_PROPS } from "../helpers/constants";
-import type { PROPS_TYPE } from "../types/HookTypes";
+import type { BaseHook, PROPS_TYPE } from "../types/HookTypes";
 import {
   assertMethod,
   assertField,
@@ -1474,6 +1474,17 @@ type PropsOf<C> = C extends new (props: infer P, ...rest: never[]) => unknown ? 
  * because its `props` is `protected` and therefore structurally invisible. Constraining the
  * parameters instead does not work: a component's constructor is `(props, context)` and a hook's is
  * `(runtime, options)`, so the shapes are indistinguishable from the left.
+ *
+ * **The second branch is for a hook that is not reached through `Hook`.** `createContext` hands
+ * back `new (owner, options: T) => BaseHook<T> & Readonly<T>`, and `BaseHook` carries no phantom —
+ * so a context Provider fell through to the COMPONENT branch, which reads the props off the first
+ * parameter, and that parameter is the runtime. `@StableProps("conf")` on a Provider was a compile
+ * error while working perfectly at runtime: measured in `ContextValueIdentity.test.tsx`, declaring
+ * the key takes a consumer from four renders to one. Told apart by the RETURN again rather than by
+ * the parameters, so a component cannot reach it.
+ *
+ * Putting the phantom on `BaseHook` instead was tried and reverted: reading the parameter makes the
+ * class variant in it, and `this.use()`'s overloads stopped resolving for every hook in the repo.
  */
 type DeclarablePropsOf<C> = C extends new (
   runtime: never,
@@ -1481,11 +1492,16 @@ type DeclarablePropsOf<C> = C extends new (
 ) => { [PROPS_TYPE]?: unknown }
   ? Q
   : C extends new (
-        props: infer P,
-        ...rest: never[]
-      ) => unknown
-    ? P
-    : never;
+        runtime: never,
+        options: infer Q,
+      ) => BaseHook<unknown>
+    ? Q
+    : C extends new (
+          props: infer P,
+          ...rest: never[]
+        ) => unknown
+      ? P
+      : never;
 
 /**
  * Declares which of a hook's props are **values** rather than references — so the
