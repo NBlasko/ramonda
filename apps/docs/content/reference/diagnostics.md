@@ -385,6 +385,27 @@ apart, so a millisecond clock reads the same both times. Measured over 200,000 t
 hydration are milliseconds to seconds apart. The two checks cover the class between them; neither
 covers it alone.
 
+**A CACHED render is noted, not reported.** `@compute` and `@memoized` are allowed on `render`, and a
+cached render hands back one answer for both calls — so an inline handler, a rebuilt object and a
+non-deterministic read all go unreported inside it. Caching a render is a deliberate choice, so this is not
+a warning and carries no code: it is one `info` line, once per component, saying what the check can no
+longer see.
+
+```tsx
+@compute
+render() { … }   // an info line: RMD020 cannot see inside this component any more
+```
+
+The note names a second cost too: a cached render refreshes only when a **signal** it read moves, so
+anything else it reads keeps its old value — measured, a plain field left the old text on screen where an
+uncached render showed the new one. To keep the check, cache the expensive **data** in a `@compute` and read
+it from an ordinary `render`.
+
+It is asked of the decorator, not of the output, and that is deliberate: `render() { return
+this.props.children }` and `render() { return A_CONSTANT }` also hand back one object, and neither hides
+anything. A `@compute` body returned from `render` has the same cost and is **not** noted, for the same
+reason — nothing distinguishes it from those two.
+
 **Where it reaches, and the one place it cannot.** Every row of a `.map()`, a `filter` or an array
 literal is compared — those rows are built by the render, so both renders have them, and each row is
 checked in full rather than sharing one budget with its neighbours. A `list()` row is
