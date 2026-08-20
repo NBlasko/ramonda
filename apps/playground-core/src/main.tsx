@@ -1,4 +1,5 @@
 import { Component, bootstrap, state } from "@ramonda/core";
+import "./exit.css";
 import { Router, RouteOutlet } from "@ramonda/router";
 import { Link, Navigator } from "./routes";
 import { QueryClientProvider } from "@ramonda/query";
@@ -34,6 +35,9 @@ class NavBar extends Component {
         </Link>
         <Link href="/slots" className="navlink">
           Slots
+        </Link>
+        <Link href="/exit" className="navlink">
+          exit
         </Link>
         <Link href="/async" className="navlink">
           Async

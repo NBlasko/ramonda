@@ -1131,8 +1131,21 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
       return originalMethod.call(this, ...args);
     }
 
+    /**
+     * The member's name is part of the key, and leaving it out was a silent wrong answer.
+     *
+     * One map per INSTANCE is shared by every `@memoizedHandler` on it, so keying by the arguments
+     * alone made two methods collide on the same argument. Measured: with `removeFor(id)` and
+     * `editFor(id)` on one component, `removeFor(1) === editFor(1)` and calling the second ran the
+     * first's body — twice `remove:1`, no diagnostic, nothing thrown. The commonest shape in a list
+     * row is exactly that: several per-item handlers keyed by the same id.
+     *
+     * A `\u0000` separator rather than `:` or `|`, because `buildKey` puts a caller's own string
+     * straight into the key — `editFor("remove")` could otherwise land on `removeFor`'s entry.
+     */
+    const scoped = `${String(context.name)}\u0000${key}`;
     const instanceMap = memoMap.get(this)!;
-    let entry = instanceMap.get(key);
+    let entry = instanceMap.get(scoped);
 
     if (entry) {
       entry.used = true;
@@ -1177,7 +1190,7 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
 
       const fresh: MemoEntry = { fn: fn as (...a: any[]) => any, used: true };
       entry = fresh;
-      instanceMap.set(key, fresh);
+      instanceMap.set(scoped, fresh);
 
       if (collected.size > 0) {
         const listenerId = createId();
@@ -1191,9 +1204,9 @@ export function memoizedHandler<T extends (...args: any[]) => any>(
         const invalidate = (): void => {
           // Only if this entry is still the one under that key. A later build for the same key
           // replaced it, and dropping the replacement would throw away a handler this never watched.
-          if (instanceMap.get(key) !== fresh) return;
+          if (instanceMap.get(scoped) !== fresh) return;
           releaseMemoEntry(fresh);
-          instanceMap.delete(key);
+          instanceMap.delete(scoped);
         };
         for (const dep of collected) dep[attach]({ id: listenerId, onChange: invalidate });
       }

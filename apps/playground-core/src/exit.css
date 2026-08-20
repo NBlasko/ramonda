@@ -1,0 +1,69 @@
+/*
+ * The exit demo's styles, in a real stylesheet rather than a <style> the page renders.
+ *
+ * The demo is about what happens to a transition when a node is removed. Rendering the stylesheet from
+ * the component would put a second question in the way — whether that works — so Vite injects this and
+ * the page has one variable.
+ *
+ * Three seconds, so the difference is impossible to miss.
+ */
+.exit-list {
+  list-style: none;
+  padding: 0;
+  max-width: 34rem;
+}
+
+.exit-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.8rem;
+  margin: 0.4rem 0;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: #fff;
+  transition:
+    opacity 3s ease,
+    transform 3s ease,
+    background-color 3s ease;
+}
+
+.exit-card.leaving {
+  opacity: 0.05;
+  transform: translateX(220px);
+  background-color: #ffd9d9;
+}
+
+.exit-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.exit-readout {
+  padding: 0.6rem 0.8rem;
+  background: #f4f4f8;
+  border-left: 3px solid #6b4de6;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+/* The root snapshot is what animates when a card is removed inside a view transition: the card itself
+   is already gone by then, which is the whole point. Three seconds here too. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 3s;
+}
+
+.exit-log {
+  padding: 0.6rem 0.8rem;
+  background: #1e1e24;
+  color: #d8d8e0;
+  border-radius: 6px;
+  max-width: 34rem;
+  min-height: 6rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+}
