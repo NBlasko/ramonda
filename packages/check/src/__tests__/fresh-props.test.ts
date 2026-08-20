@@ -23,25 +23,13 @@ const lineOf = (label: string) => {
  * the same object passed each time it stays at one. So it is the literal and nothing else.
  */
 describe("a prop rebuilt on every render", () => {
-  test("an object and an array literal are both reported", () => {
+  test("an object and an array literal are both reported, and nothing else is", () => {
     const found = run().findings["fresh-object-in-props"];
-    expect(found.map((issue) => `${issue.component}.${issue.prop}:${issue.kind}`)).toEqual([
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.tags:array",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-      "Row.conf:object",
-    ]);
+
+    // A tally rather than a list: every entry names the same component and prop, so a list of them
+    // would say nothing that the ledger below does not say better.
+    expect(found.filter((issue) => issue.kind === "array").map((issue) => issue.prop)).toEqual(["tags"]);
+    expect(found.every((issue) => issue.component === "Row")).toBe(true);
   });
 
   /**
@@ -65,6 +53,8 @@ describe("a prop rebuilt on every render", () => {
       "makeConf() as { dense: boolean } @ `makeConf`",
       "{ dense: true }",
       "perRow @ `perRow`",
+      "{ dense: true }",
+      "{ dense: true }",
       '["new", "hot"]',
       "this.dense ? { dense: true } …",
       "this.dense ? { dense: true } …",
@@ -178,6 +168,29 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
+   * Children, and a node handed over as a prop.
+   *
+   * Both are rebuilt every render and both really do defeat comparison — `ChildrenAreProps.test.tsx`
+   * in core measures four renders where a childless component has one. Neither is reported, because
+   * every composed element on the page is this: a rule that reported them would report the whole
+   * app, and the fix is a decision about the component rather than about the call site.
+   *
+   * The literal INSIDE either one is still reported, because that one is a choice. Both nested
+   * `conf` literals below are among the findings.
+   */
+  test("children and a node as a prop are silent, but a literal inside one is not", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const on = (label: string) => found.filter((issue) => issue.line === lineOf(label));
+
+    // One finding on the line, and it is the INNER `conf` — the outer prop holding the whole
+    // element is silent, or its `written` would start with a `<`.
+    expect(on('label="vnode"').map((issue) => issue.written)).toEqual(["{ dense: true }"]);
+    // The element with children is silent; the element written inside it is not.
+    expect(on('label="kids"')).toEqual([]);
+    expect(on('label="nested"').map((issue) => issue.written)).toEqual(["{ dense: true }"]);
+  });
+
+  /**
    * The two silences that keep the hop provable. A MODULE-level const is built once — that is the
    * documented fix — and a helper handing back an object it holds is a stable reference. Reporting
    * either would be reporting the fix.
@@ -217,7 +230,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Twenty-eight elements in the fixture and fifteen reported, so a leak shows as a count.
-    expect(found).toHaveLength(15);
+    // Thirty-two elements in the fixture and seventeen reported, so a leak shows as a count.
+    expect(found).toHaveLength(17);
   });
 });

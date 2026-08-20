@@ -56,6 +56,18 @@ import type { ElementRule, ElementContext } from "./rule";
  * rather than matched by name, and through the class chain: `@StableProps` merges along it, so a
  * base's list settles a subclass's props exactly as its own does.
  *
+ * **Children, and a JSX element handed over as a prop.** Both are rebuilt every render and both
+ * really do defeat comparison — measured in `ChildrenAreProps.test.tsx`: a `<Panel>text</Panel>`
+ * renders four times over three renders of its parent, where a component given no children renders
+ * once. It is not reported because it is not a mistake anyone made on that line: EVERY composed
+ * element on the page is this, and a rule that reported them would report the whole app. The fix is
+ * a decision about the component rather than about the call site — `@StableProps` names `children`
+ * like any other prop, and a slot declared as a component CLASS is already stable, because a class
+ * is the same reference forever.
+ *
+ * The literal INSIDE either one is still reported. `header={<Row conf={{ dense: true }} />}` is
+ * walked as its own element, and the `conf` on it is a choice like any other.
+ *
  * **A module-level `const`**, which is built once and is the documented fix — and **a helper that
  * hands back an object it holds**, which is the same fix behind a function call. The distinction
  * both times is where the literal is BUILT, not where it is written.

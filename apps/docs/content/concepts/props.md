@@ -120,6 +120,20 @@ rendering when it should. The worst a wrong name here can do is fail to type-che
 comparison that is safe to make, so a listed function prop is left exactly as it came. Pass a bound
 method — `onSelect={this.select}` — or `@memoizedHandler` when it has to be built per row.
 
+**Children are a prop, and they can be declared too.** A rendered node is built during the render,
+so anything a parent writes between the tags is a fresh value every time — a component given
+children re-renders whenever its parent does, even when the children are a piece of static text.
+The same goes for a node handed over as a prop, `header={<Header />}`. Both are named like any
+other prop:
+
+```tsx
+@StableProps("children", "header")
+export class Panel extends Component<{ header?: unknown; children?: unknown }> {}
+```
+
+A slot that takes the component CLASS rather than a rendered node — `view={Header}` — costs nothing
+to begin with, because a class is the same reference for the life of the module.
+
 **Contents are compared to a bounded depth**, so a deeply nested literal gets a fresh reference
 rather than a wrong one, which is the safe direction: it re-renders, exactly as it does today.
 

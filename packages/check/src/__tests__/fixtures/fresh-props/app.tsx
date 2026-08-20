@@ -92,6 +92,19 @@ class Table extends Component {
         {list(this.rows, (row) => (
           <Row conf={row.conf} label={row.id} />
         ))}
+        {/*
+          Not reported: a JSX element handed over as a prop, or written as children. Both really are
+          rebuilt every render — measured in `ChildrenAreProps.test.tsx`, three parent renders and
+          three child renders — but so is every composed element on the page, and a rule that
+          reported them would report the whole app. The fix is `@StableProps` on the child, which is
+          a decision about the component and not about this line.
+
+          The literal INSIDE either one is still reported, because that one is a choice.
+        */}
+        <Row conf={<Row conf={{ dense: true }} label="inner" />} label="vnode" />
+        <Row conf={STABLE} label="kids">
+          <Row conf={{ dense: true }} label="nested" />
+        </Row>
         {/* REPORTED — an array is the same fault. */}
         <Row tags={["new", "hot"]} label="b" />
 
