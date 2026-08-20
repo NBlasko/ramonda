@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { decoratorName } from "../syntax";
 import { importedFromCore } from "./core-import";
 import type { RuleContext } from "./rule";
 
@@ -34,12 +35,6 @@ export const CLIENT_ONLY_DECORATORS = new Map<string, string>([
 
 /** The lifecycle decorators, which run on BOTH sides unless the call says otherwise. */
 export const LIFECYCLE_DECORATORS = new Set(["created", "mounted", "destroyed"]);
-
-/** The decorator's name, whatever spelling reached it — `@updated` or `@created({ … })`. */
-function decoratorName(decorator: ts.Decorator): string | undefined {
-  const expression = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
-  return ts.isIdentifier(expression) ? expression.text : undefined;
-}
 
 /** `{ env: "client" }` on a lifecycle decorator, which is what narrows it to one side. */
 function envOf(decorator: ts.Decorator): string | undefined {

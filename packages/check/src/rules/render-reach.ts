@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { memberName } from "../syntax";
 
 /**
  * Everything a render can reach — not everything a render is written to contain.
@@ -56,11 +57,6 @@ export interface RenderReach {
   /** Called for every node inside anything the render reaches. */
   visit(node: ts.Node, through: readonly string[], insideTheClass: boolean): void;
   resolve(id: ts.Node): ts.Symbol | undefined;
-}
-
-/** The name a member is declared with, or `undefined` for a computed one. */
-function memberName(member: ts.ClassElement): string | undefined {
-  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
 }
 
 /**

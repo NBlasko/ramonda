@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import { isServerOnly } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
 
@@ -56,11 +56,6 @@ function processEnvRead(node: ts.Node, context: RuleContext): ts.Node | undefine
   const target = node.expression;
   if (!ts.isIdentifier(target) || target.text !== "process") return undefined;
   return context.resolve(target) === undefined ? node : undefined;
-}
-
-/** A member's own name, when it has a plain one to go by. */
-function memberName(member: ts.ClassElement): string | undefined {
-  return member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
 }
 
 /**

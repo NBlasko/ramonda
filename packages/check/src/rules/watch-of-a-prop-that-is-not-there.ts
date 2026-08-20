@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import type { Rule, RuleContext } from "./rule";
 
 /**
@@ -223,8 +223,8 @@ export const watchOfAPropThatIsNotThere = {
     const names = [...declared].sort();
 
     for (const member of cls.members) {
-      const memberName = member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
-      if (memberName === undefined) continue;
+      const named = memberName(member);
+      if (named === undefined) continue;
 
       for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
         const call = decorator.expression;
@@ -238,7 +238,7 @@ export const watchOfAPropThatIsNotThere = {
 
           found.push({
             component: self.name,
-            member: memberName,
+            member: named,
             prop,
             declared: names,
             ...positionOf(selector),

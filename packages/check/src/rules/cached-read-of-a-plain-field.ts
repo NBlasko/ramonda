@@ -1,9 +1,9 @@
 import ts from "typescript";
-import { isThisUse, positionOf } from "../syntax";
+import { isThisUse, memberName, positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
-import { nameOf, staleFieldsOf } from "./stale-field";
+import { staleFieldsOf } from "./stale-field";
 import type { Rule } from "./rule";
 
 /**
@@ -147,7 +147,7 @@ export const cachedReadOfAPlainField = {
 
     for (const member of cls.members) {
       if (hasDecorator(member, "compute")) {
-        const named = nameOf(member);
+        const named = memberName(member);
         if (named !== undefined) report(member, "a `@compute`", named);
         continue;
       }
@@ -167,7 +167,7 @@ export const cachedReadOfAPlainField = {
       if (factory === undefined) continue;
       if (!ts.isArrowFunction(factory) && !ts.isFunctionExpression(factory)) continue;
 
-      const named = nameOf(member);
+      const named = memberName(member);
       if (named !== undefined) report(factory, "a props callback", named);
     }
 

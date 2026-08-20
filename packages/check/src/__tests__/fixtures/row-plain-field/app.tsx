@@ -253,7 +253,13 @@ export class WrittenInDestroyed extends Component {
   }
 }
 
-/** Reported: the callback is a class-field arrow, which is a stable reference too. */
+/**
+ * Reported: the callback is a class-field arrow, which is a stable reference too.
+ *
+ * `arrow-fields` reports this line as well, and both are right about different things: that rule says the
+ * arrow buys nothing over a method, this one says the field it shows is not `@state`. Making it a method
+ * silences the first and leaves the second, which is the point.
+ */
 export class ArrowCallback extends Component {
   label = "old";
   tasks: Task[] = [];

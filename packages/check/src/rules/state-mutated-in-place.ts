@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import { stateFieldsOf } from "./render-reach";
 import type { Rule } from "./rule";
 
@@ -140,8 +140,8 @@ export const stateMutatedInPlace = {
     const found: StateMutatedInPlaceIssue[] = [];
 
     for (const member of cls.members) {
-      const memberName =
-        member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : "the class body";
+      // A member with no plain name is still walked — the fault is the mutation, not where it sits.
+      const named = memberName(member) ?? "the class body";
       // `@created` runs before the first render, and the runtime guard reports there too — see the
       // note on faithfulness above. Nothing is excluded.
       const visit = (node: ts.Node): void => {
@@ -154,7 +154,7 @@ export const stateMutatedInPlace = {
               component: self.name,
               field,
               did: `${method.text}()`,
-              member: memberName,
+              member: named,
               ...positionOf(node),
             });
           }
@@ -173,7 +173,7 @@ export const stateMutatedInPlace = {
               const did = ts.isPropertyAccessExpression(target)
                 ? `\`${target.name.getText()}\` written`
                 : "an index written";
-              found.push({ component: self.name, field, did, member: memberName, ...positionOf(node) });
+              found.push({ component: self.name, field, did, member: named, ...positionOf(node) });
             }
           }
         }
