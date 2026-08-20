@@ -1,3 +1,4 @@
+import { resolveStable } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
 import type {
   BaseComponent,
@@ -30,6 +31,7 @@ import {
   ORIGIN_SYM,
   REF_SYM,
   PROPS_GATE,
+  STABLE_PROPS,
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { isListNode } from "../vdom/guards";
@@ -938,14 +940,26 @@ function createOrUpdateComponent(
 
   if (!component) return createComponent(vnode, placeholderComponent);
 
-  const nextProps = vnode.attributes ?? {};
+  /**
+   * `@StableProps` on a COMPONENT, applied here because here is where the parent's JSX arrives.
+   *
+   * An object literal in JSX is a fresh reference on every render, so `<Panel filter={{ q }} />`
+   * hands the child a changed prop every time and re-renders it forever. A declared prop gets back
+   * the identity it already had while its contents match — the same `resolveStable` a hook's props
+   * go through, and the same reason: one declaration, one behaviour.
+   *
+   * Before every comparison below rather than inside one, so nothing downstream needs a special
+   * case: once the reference is the previous one, the bag comparison, the signals and `@watchProp`
+   * all see what they would see if the parent had never rebuilt it.
+   */
+  const componentRuntime = component[COMPONENT_RUNTIME];
+  const declaredStable = (component.constructor as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
+  const nextProps = resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
 
   // Before the props comparison, and independent of it: a ref is not data the
   // component renders from, so it is neither compared with the props nor gated
   // on them changing.
   applyRefFromProps(enhancedNode, nextProps.ref);
-
-  const componentRuntime = component[COMPONENT_RUNTIME];
   // Read off the CLASS, so a subclass inherits its base's rule through the static
   // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.
   const decide = (component.constructor as { [PROPS_GATE]?: PropsGate })[PROPS_GATE];

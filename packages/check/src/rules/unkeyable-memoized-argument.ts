@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { follow, type Looking } from "./follow-value";
 import { hasDecorator, heritage } from "./render-reach";
-import type { Rule } from "./rule";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * A `@memoized` called with something a cache key cannot hold.
@@ -26,12 +27,24 @@ import type { Rule } from "./rule";
  * keyable, so the decorator can never memoise anything at all — a fault in the declaration rather
  * than in one call site.
  *
+ * ## The argument is FOLLOWED, not just matched
+ *
+ * A cast and a parenthesis change nothing about what is passed, and neither do three shapes that
+ * were planted here and were all silent: an object built one line up, one a helper returns, and one
+ * arm of a ternary. The walk is `follow-value.ts`, shared with `fresh-object-in-props` — it goes to
+ * the DECLARATION behind a name, never to its type.
+ *
+ * A module-level `const` counts here and does not there, which is the one place the two questions
+ * part. That rule asks whether a value is REBUILT, so a module const is the fix; this asks what a
+ * value IS, and an object built once at module scope is still an object and the runtime still
+ * throws for it.
+ *
  * ## Where it stays quiet
  *
- * An argument this cannot read: an identifier, a call, a property access. `this.pick(row.id)` is
- * fine and `this.pick(row)` is the fault, and nothing here can tell one from the other without
- * asking for a type — which this package does not do. The literal shapes above are the ones it can
- * prove, and a type reference in an annotation (`arg: Row`) is left alone for the same reason.
+ * An argument whose declaration this cannot reach: a parameter, a property access, a name nothing
+ * in the program declares. `this.pick(row.id)` is fine and `this.pick(row)` is the fault, and those
+ * two do look the same from here — telling them apart means asking for a type, which this package
+ * does not do. A type reference in an annotation (`arg: Row`) is left alone for the same reason.
  */
 export interface UnkeyableMemoizedArgumentIssue {
   /** The component or hook. */
@@ -48,26 +61,52 @@ export interface UnkeyableMemoizedArgumentIssue {
 }
 
 /**
- * What an argument certainly is, when the source says so; `undefined` when it does not.
+ * What an expression certainly is, when the source says so; `undefined` when it does not.
  *
- * Only shapes that cannot be anything else. An identifier could hold a string, and asking what it
- * holds is a question about types.
+ * Only shapes that cannot be anything else. An identifier is not one of them HERE — it is handled
+ * by the walk below, which follows it to its declaration rather than guessing at its type.
  */
-function certainlyUnkeyable(written: ts.Expression): string | undefined {
-  // `{ id } as never`, `({ id })` — a cast and a parenthesis change nothing about what is passed,
-  // and both are written. Found by planting one and watching the rule stay quiet.
-  let argument = written;
-  while (ts.isAsExpression(argument) || ts.isSatisfiesExpression(argument) || ts.isParenthesizedExpression(argument)) {
-    argument = argument.expression;
-  }
+const UNKEYABLE: Looking<string> = {
+  leaf: (argument) => {
+    if (ts.isObjectLiteralExpression(argument)) return "an object";
+    if (ts.isArrayLiteralExpression(argument)) return "an array";
+    if (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) return "a function";
+    if (ts.isNewExpression(argument)) return "an instance";
+    if (argument.kind === ts.SyntaxKind.NullKeyword) return "null";
+    if (ts.isIdentifier(argument) && argument.text === "undefined") return "undefined";
+    return undefined;
+  },
+  /**
+   * A module-level `const` counts, and this is where the two walks part.
+   *
+   * `fresh-object-in-props` asks whether a value is REBUILT, so a module const is the FIX and it
+   * stops there. This asks what a value IS — and an object built once, at module scope, is still an
+   * object, still not something a cache key can hold, and the runtime still throws for it.
+   */
+  throughModuleScope: true,
+  /**
+   * One arm is enough, and so is one `return`. An object passed on the path taken is an object the
+   * cache is handed, and the runtime throws for it on that path.
+   */
+  throughBranches: true,
+  throughCalls: true,
+  throughMutableBindings: true,
+};
 
-  if (ts.isObjectLiteralExpression(argument)) return "an object";
-  if (ts.isArrayLiteralExpression(argument)) return "an array";
-  if (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) return "a function";
-  if (ts.isNewExpression(argument)) return "an instance";
-  if (argument.kind === ts.SyntaxKind.NullKeyword) return "null";
-  if (ts.isIdentifier(argument) && argument.text === "undefined") return "undefined";
-  return undefined;
+/**
+ * What an argument certainly is, following it to where it came from.
+ *
+ * A cast and a parenthesis change nothing about what is passed, and neither does a local, a helper
+ * that returns one, or an arm of a ternary — all four were PLANTED, and all four were silent. The
+ * boundary this rule used to state, "an identifier could hold a string", is true of an identifier
+ * nothing declares; it is not true of one declared two lines up as `{ id }`.
+ *
+ * `this.pick(row.id)` is still right and `this.pick(row)` is still the fault, and those two still
+ * look the same from here — a parameter, a property access and an unresolvable name all answer
+ * `undefined`, which is the silence contract.
+ */
+function certainlyUnkeyable(written: ts.Expression, resolve: RuleContext["resolve"]): string | undefined {
+  return follow(written, resolve, UNKEYABLE)?.value;
 }
 
 /** The same question about a parameter's ANNOTATION, which decides every call at once. */
@@ -162,7 +201,7 @@ export const unkeyableMemoizedArgument = {
       ) {
         const name = node.expression.name.text;
         for (const argument of node.arguments) {
-          const passed = certainlyUnkeyable(argument);
+          const passed = certainlyUnkeyable(argument, resolve);
           if (passed === undefined) continue;
           found.push({ component: self.name, member: name, passed, where: "a call", ...positionOf(argument) });
         }

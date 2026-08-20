@@ -814,7 +814,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const elementRules = activate(ELEMENT_RULES, imported, rendersOnServer);
 
   const readElements = (node: ts.Node): void => {
-    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings);
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings, resolve);
     ts.forEachChild(node, readElements);
   };
 
@@ -847,12 +847,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
-    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings);
+    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolve);
 
     applyModule(
       moduleRules,
       file,
       (ruleId) => ({
+        resolve,
         unlessAnnotated: (site, make) => {
           const written = directiveAt(site);
           if (written === undefined) return make();

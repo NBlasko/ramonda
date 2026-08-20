@@ -9,6 +9,7 @@ import type {
   Rule,
   RuleContext,
   TreeRule,
+  ElementContext,
 } from "./rule";
 import { contextFor } from "./element";
 import { treeFor } from "./tree";
@@ -29,6 +30,8 @@ import { emptyHeadingOrLink } from "./empty-heading-or-link";
 import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
 import { linkWithoutADestination } from "./link-without-a-destination";
+import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
+import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { accessKey } from "./access-key";
@@ -120,6 +123,11 @@ export { emptyHeadingOrLink, type EmptyHeadingOrLinkIssue } from "./empty-headin
 export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
 export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
+export { freshObjectInHookProps, type FreshObjectInHookPropsIssue } from "./fresh-object-in-hook-props";
+export {
+  freshValueFromAWatchSelector,
+  type FreshValueFromAWatchSelectorIssue,
+} from "./fresh-value-from-a-watch-selector";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
 export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
 export { accessKey, type AccessKeyIssue } from "./access-key";
@@ -206,6 +214,8 @@ export const CLASS_RULES = [
   clientOnlyRequestRead,
   oneProviderPerComponent,
   serverEnvInSharedCode,
+  freshObjectInHookProps,
+  freshValueFromAWatchSelector,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
@@ -440,10 +450,15 @@ export function applyClass(
 /**
  * Every active element rule over one JSX element.
  *
- * **A spreading element is handed to nobody.** `<img {...rest} />` may carry the very attribute a
- * rule is about, and nothing static can say whether it does — so the silence contract applies to
- * the whole family at once, here, rather than being remembered by each of forty rules. It is the
- * same argument as `needs` and `exempt`: a guard every rule needs is a guard a rule can forget.
+ * **A spreading element is handed to almost nobody.** `<img {...rest} />` may carry the very
+ * attribute a rule is about, and nothing static can say whether it does — so the silence contract
+ * applies to the whole family at once, here, rather than being remembered by each of forty rules.
+ * It is the same argument as `needs` and `exempt`: a guard every rule needs is a guard a rule can
+ * forget.
+ *
+ * The exception is a rule declaring `evenWhenSpreading`, which is for a question a spread cannot
+ * answer either way: a spread may supply an attribute that is MISSING, but it cannot un-build an
+ * object literal written beside it. Such a rule takes on the guard itself.
  *
  * The context is built ONCE and shared. Forty rules asking "is there an `alt`" would otherwise walk
  * the same attribute list forty times.
@@ -452,10 +467,11 @@ export function applyElement(
   active: readonly (typeof ELEMENT_RULES)[number][],
   element: JsxElementLike,
   findings: Findings,
+  resolve: ElementContext["resolve"],
 ): void {
-  const context = contextFor(element);
-  if (context.spreads) return;
-  for (const rule of active) collect(findings, rule, rule.read(element, context));
+  const context = contextFor(element, resolve);
+  const asked = context.spreads ? active.filter((rule) => "evenWhenSpreading" in rule) : active;
+  for (const rule of asked) collect(findings, rule, rule.read(element, context));
 }
 
 /**
@@ -488,8 +504,13 @@ export function applyModule(
  * because it walks the whole tree and decides for every element whether it is really on the page.
  * A rule doing that itself would be doing it again for every other rule in the family.
  */
-export function applyTree(active: readonly (typeof TREE_RULES)[number][], root: ts.Node, findings: Findings): void {
+export function applyTree(
+  active: readonly (typeof TREE_RULES)[number][],
+  root: ts.Node,
+  findings: Findings,
+  resolve: ElementContext["resolve"],
+): void {
   if (active.length === 0) return;
-  const tree = treeFor(root);
+  const tree = treeFor(root, resolve);
   for (const rule of active) collect(findings, rule, rule.read(tree));
 }

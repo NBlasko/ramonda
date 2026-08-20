@@ -112,10 +112,13 @@ function probeProps(that: object, hookName: string, hookProps: unknown): Bag {
  * the previous render's value for that key, when the two are equal.
  *
  * Runs in every build, not only development: this is the behaviour `@StableProps` promises, and
- * the diagnostic that recommends it is separate. A hook that declared nothing skips the whole
+ * the diagnostic that recommends it is separate. A class that declared nothing skips the whole
  * loop, which is the common case.
+ *
+ * Shared with the diff, which does the same for a COMPONENT's props — the declaration means one
+ * thing wherever it is written, and two copies of it would be two chances to disagree.
  */
-function resolveStable(next: Bag, prev: Bag | undefined, declared: readonly string[] | undefined): Bag {
+export function resolveStable(next: Bag, prev: Bag | undefined, declared: readonly string[] | undefined): Bag {
   if (declared === undefined) return next;
 
   let resolved: Bag | undefined;

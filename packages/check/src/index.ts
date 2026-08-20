@@ -32,6 +32,8 @@ export type {
   Findings,
   HeadingSkipsALevelIssue,
   FragmentLinkToNowhereIssue,
+  FreshObjectInHookPropsIssue,
+  FreshValueFromAWatchSelectorIssue,
   FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
   IntervalWithNoCleanupIssue,

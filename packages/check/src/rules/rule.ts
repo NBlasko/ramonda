@@ -185,6 +185,18 @@ export interface ElementRule<Issue> {
   id: string;
   report: Report<Issue>;
   needs?: string;
+  /**
+   * Whether this rule is still asked about an element that SPREADS.
+   *
+   * The family-wide silence exists because a spread may CARRY the attribute a rule is about — an
+   * `<img {...rest} />` may well have its `alt` — and nothing here can say whether it does. That
+   * argument is about an attribute that is missing, and it does not transfer to a rule about an
+   * attribute that is plainly THERE: a spread cannot un-build an object literal written beside it.
+   *
+   * A rule setting this takes on the whole guard itself, including which attributes a spread may
+   * overwrite, and may only report what is provable in spite of it.
+   */
+  evenWhenSpreading?: true;
   read(element: JsxElementLike, context: ElementContext): Issue[];
 }
 
@@ -410,6 +422,18 @@ export interface ElementContext {
   attr(name: string): string | undefined;
 
   /**
+   * Where a name was declared — the same question a class rule asks.
+   *
+   * One rule needs it: `fresh-object-in-props` has to reach the COMPONENT a literal is handed to,
+   * because a prop that component declared with `@StableProps` is settled by content and the
+   * literal is then the documented way to write it. Reporting it would be reporting the fix.
+   *
+   * It costs nothing to carry: the analyzer holds one `resolve` and hands the same function to
+   * every context it builds.
+   */
+  resolve(id: ts.Node): ts.Symbol | undefined;
+
+  /**
    * Whether the element spreads props — `<img {...rest} />`.
    *
    * **The silence contract, in one flag.** A spread may carry the very attribute a rule is about,
@@ -458,6 +482,16 @@ export interface ModuleContext {
    * has no premise left at a site where the bundler told the author and the author answered.
    */
   unlessAnnotated<Issue>(site: ts.Node, make: () => Issue): Issue | undefined;
+
+  /**
+   * Where a name was declared, the same question a class rule asks.
+   *
+   * Here because a module rule reads a FILE and the classes in it are still classes: a base's
+   * member is the component's member wherever it is written, and `row-reads-a-plain-field` was
+   * silent about a row callback inherited from one until this existed. The alternative was for one
+   * rule to reach for the checker on its own, which is the shape this package does not have.
+   */
+  resolve(id: ts.Node): ts.Symbol | undefined;
 }
 
 export interface RuleContext {

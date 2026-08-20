@@ -72,12 +72,20 @@ describe("two elements claiming one id", () => {
 });
 
 describe("a heading that skips a level", () => {
+  /**
+   * `h3 → h6` is the planted one, and it is `aria-level={DEEP}` rather than a literal.
+   *
+   * The tree family built its element contexts with NO `resolve` at all, so it read a literal and
+   * nothing else while the code it shares with the element family said it followed a name. The
+   * parameter had a default, and a default is a guard a caller can forget — it is required now.
+   */
   test("every skip is reported, with the level it came after", () => {
     expect(headings().map((issue) => `h${issue.after} → h${issue.level}`)).toEqual([
       "h1 → h3",
       "h2 → h5",
       "h1 → h4",
       "h1 → h3",
+      "h3 → h6",
       "h1 → h4",
       "h1 → h3",
     ]);
@@ -104,7 +112,7 @@ describe("a heading that skips a level", () => {
 
   /** Markup written in a plain helper is markup all the same — the third report above is one. */
   test("a render outside a class is read too", () => {
-    expect(headings()).toHaveLength(6);
+    expect(headings()).toHaveLength(7);
   });
 
   /**

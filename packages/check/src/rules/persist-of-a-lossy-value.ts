@@ -2,7 +2,7 @@ import ts from "typescript";
 import { positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
 import { BECOMES, lossyIn } from "./lossyValue";
-import type { Rule } from "./rule";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * `@persist` on a field holding something JSON cannot carry.
@@ -46,8 +46,11 @@ export interface PersistOfALossyValueIssue {
 }
 
 /** What a field holds, when that can be read off the source; `undefined` when it cannot. */
-function lossyValueOf(member: ts.PropertyDeclaration): { holds: string; becomes: string } | undefined {
-  if (member.initializer !== undefined) return lossyIn(member.initializer);
+function lossyValueOf(
+  member: ts.PropertyDeclaration,
+  resolve: RuleContext["resolve"],
+): { holds: string; becomes: string } | undefined {
+  if (member.initializer !== undefined) return lossyIn(member.initializer, resolve);
 
   /**
    * No initializer, so the ANNOTATION is the only thing written. Read as syntax: `Map<string, T>`
@@ -92,7 +95,7 @@ export const persistOfALossyValue = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     const found: PersistOfALossyValueIssue[] = [];
 
     for (const member of cls.members) {
@@ -100,7 +103,7 @@ export const persistOfALossyValue = {
       if (!hasDecorator(member, "persist")) continue;
       if (!ts.isIdentifier(member.name)) continue;
 
-      const lossy = lossyValueOf(member);
+      const lossy = lossyValueOf(member, resolve);
       if (lossy === undefined) continue;
 
       found.push({ component: self.name, field: member.name.text, ...lossy, ...positionOf(member) });

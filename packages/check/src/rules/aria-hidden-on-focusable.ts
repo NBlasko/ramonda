@@ -86,7 +86,7 @@ export const ariaHiddenOnFocusable = {
     // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
     // `tabIndex={-1}` takes a `<button>` back out of it. A rule that asked the tag first would
     // report `<button aria-hidden="true" tabIndex={-1}>`, which is the correct way to write this.
-    const tabIndex = numberAttr(element, "tabIndex");
+    const tabIndex = numberAttr(element, "tabIndex", context.resolve);
     if (tabIndex !== undefined) {
       return tabIndex >= 0 ? [{ tag, because: "tabIndex" as const, ...positionOf(openingOf(element)) }] : [];
     }

@@ -13,6 +13,14 @@ import {
 
 declare const rows: { id: string; label: string }[];
 
+/** A key built in a helper, which is how an object reaches a cache without looking like one. */
+function keyFor(id: string): { id: string } {
+  return { id };
+}
+
+/** Built once at module scope — stable, and still not something a key can hold. */
+const SHARED_KEY = { id: "x" };
+
 /**
  * Two decorators on one member, and a memoized handler that cannot be keyed.
  *
@@ -52,6 +60,7 @@ class Panel extends Component {
   }
 
   render() {
+    const local = { id: "x" };
     return (
       <ul>
         {/* REPORTED — a literal argument, and a cast changes nothing about what is passed. */}
@@ -63,6 +72,14 @@ class Panel extends Component {
         <li onclick={this.byRef(rows[0].id)}>c</li>
         {/* Not reported: a primitive. */}
         <li onclick={this.byRef("k")}>d</li>
+        {/* REPORTED — an object one line up; the argument is followed to where it came from. */}
+        <li onclick={this.byRef(local as never)}>e</li>
+        {/* REPORTED — an object a helper returns. */}
+        <li onclick={this.byRef(keyFor("x") as never)}>f</li>
+        {/* REPORTED — a module const: STABLE, and still not something a key can hold. */}
+        <li onclick={this.byRef(SHARED_KEY as never)}>g</li>
+        {/* REPORTED — one arm of a ternary is enough; that path throws. */}
+        <li onclick={this.byRef((rows.length ? { id: "x" } : "k") as never)}>h</li>
       </ul>
     );
   }

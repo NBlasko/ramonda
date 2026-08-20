@@ -85,6 +85,47 @@ onClick(event: MouseEvent) {}
 Each attaches when the component appears and removes itself when the component goes
 away — no cleanup to write, and no way to leave one dangling.
 
+**They take the event's own name, not the prop.** There is no `on` in front of it here —
+the prop on an element is `onclick` and the decorator's argument is `"click"`. A name the
+target has types the handler's parameter for you; any other string is accepted and hands
+over a plain `Event`, which is how a custom event works:
+
+```tsx
+@Host("div")
+export class Thing extends Component {
+  @onElement("my-event")
+  onCustom(event: Event) {
+    void event;
+  }
+  render() {
+    return <span />;
+  }
+}
+```
+
+Two spellings are refused, because neither can ever fire — `onclick` is the JSX prop rather
+than the event, and `addEventListener` is case-sensitive. The error names the one to use:
+
+```tsx expect-error
+@Host("div")
+export class Wrong extends Component {
+  @onElement("onclick")
+  a(event: Event) {
+    void event;
+  }
+  @onElement("MouseDown")
+  b(event: Event) {
+    void event;
+  }
+  render() {
+    return <span />;
+  }
+}
+```
+
+Anything else passes. A custom event may be called anything, so `"clik"` cannot be refused
+without refusing `"save"` and `"my-event"` with it.
+
 ```demo:WindowSize
 ```
 

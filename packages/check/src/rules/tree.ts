@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { contextFor } from "./element";
-import type { JsxElementLike, TreeContext, TreeNode } from "./rule";
+import type { ElementContext, JsxElementLike, TreeContext, TreeNode } from "./rule";
 
 /**
  * One render's markup, gathered once for every rule in the tree family.
@@ -72,7 +72,7 @@ export function rootsIn(file: ts.SourceFile): (ts.JsxElement | ts.JsxFragment | 
  * Document order is source order, which is what `forEachChild` already gives: a rule about heading
  * levels is a rule about the order a reader meets them in, and that is the order they are written.
  */
-export function treeFor(root: ts.Node): TreeContext {
+export function treeFor(root: ts.Node, resolve: ElementContext["resolve"]): TreeContext {
   const elements: TreeNode[] = [];
 
   (function look(node: ts.Node, conditional: boolean): void {
@@ -80,7 +80,7 @@ export function treeFor(root: ts.Node): TreeContext {
 
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
       const element = node as JsxElementLike;
-      elements.push({ ...contextFor(element), element, alwaysPresent: !here });
+      elements.push({ ...contextFor(element, resolve), element, alwaysPresent: !here });
     }
 
     ts.forEachChild(node, (child) => look(child, here));

@@ -29,7 +29,23 @@ describe("a row reads a plain field", () => {
       "PersistRead.row:seen",
       // A class-field arrow is a stable reference too, so its rows are reused just the same.
       "ArrowCallback.row:label",
+      // A base's callback showing a base's field: one instance, one row, one stale value.
+      "RowsFromABase.row:label",
+      "ArrowFieldCallback.row:label",
     ]);
+  });
+
+  /**
+   * The callback and the field on a BASE class — planted because the heritage axis had already
+   * found five other rules stopping at a single class body, and this was the newest code in the
+   * package. It stopped there too.
+   *
+   * A `ModuleRule` had no way to ask where a name was declared, which is why: `ModuleContext` now
+   * carries `resolve`, the same question a class rule asks.
+   */
+  test("a row callback inherited from a base is judged with the base's fields", () => {
+    const found = run().findings["row-reads-a-plain-field"];
+    expect(found.map((issue) => issue.component)).toContain("RowsFromABase");
   });
 
   test("the report names the callback, because that is why rows are reused", () => {
