@@ -80,11 +80,15 @@ For the dynamic remainder, the framework reports `RMD003` when the component **m
 
 A rule is a CLAIM, and the claim has to survive more shapes than the one it was written against.
 
-`.claude/skills/writing-a-static-rule/SKILL.md` is the list, and every entry on it is there because
-it found a real gap. The first time the whole ladder was run against one rule — a value one line up,
-a helper in another file, a helper calling a helper, an arrow helper, a cast, a ternary arm, a `??`
-fallback, a spread, a per-row callback — it found **nine**, in a rule that already had tests, a
-fixture and a documented boundary.
+`.claude/skills/writing-a-static-rule/SKILL.md` is the checklist, in the order to walk it. Every case
+on it is transcribed from a fixture and a test in this package, and every one is there because it
+found a real gap: where the value came from (a local, a helper, a chain, an arrow, a cast, a branch,
+a `??`, module scope), where it is written (a row callback, a spread, children, a hook's props
+callback, a decorator's arguments), whose it is (a base class, a `.d.ts`, the declaration versus the
+call), and the shapes that look like the fault and are not.
+
+The first rule taken through all of it failed **nine** cases — and it already had tests, a fixture
+and a documented boundary.
 
 The method is one sentence: **plant the shape, then measure**. Never read the code and reason about
 it. A rule that reports nothing looks exactly like a clean codebase, so a gap costs nothing to ship
