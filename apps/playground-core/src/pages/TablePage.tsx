@@ -69,10 +69,10 @@ export class TablePage extends Component {
           COMPONENTS to watch.
         </p>
         <div className="row">
-          <button onClick={this.addRow}>append row</button>
-          <button onClick={this.prependRow}>prepend row</button>
-          <button onClick={this.removeFirst}>remove first</button>
-          <button onClick={this.shuffle}>reverse</button>
+          <button onclick={this.addRow}>append row</button>
+          <button onclick={this.prependRow}>prepend row</button>
+          <button onclick={this.removeFirst}>remove first</button>
+          <button onclick={this.shuffle}>reverse</button>
         </div>
         <table className="grid-table">
           <thead>

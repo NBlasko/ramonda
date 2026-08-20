@@ -22,7 +22,7 @@ class TaskRow extends Component<{ item: Task }> {
     return (
       <span className={this.props.item.done ? "done" : ""}>
         {this.props.item.title}{" "}
-        <button type="button" onClick={this.bump}>
+        <button type="button" onclick={this.bump}>
           clicked {this.clicks}×
         </button>
       </span>
@@ -60,10 +60,10 @@ export class ListDemo extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.shuffle}>
+          <button type="button" onclick={this.shuffle}>
             reverse the list
           </button>
-          <button type="button" onClick={this.add}>
+          <button type="button" onclick={this.add}>
             add one
           </button>
           <span className="demo-note">click a few counters, then reverse — each count moves with its task</span>

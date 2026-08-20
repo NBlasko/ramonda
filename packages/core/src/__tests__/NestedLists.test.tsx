@@ -74,7 +74,7 @@ class TablePage extends Component {
       <div className="page">
         <h2>Table</h2>
         <div className="row">
-          <button onClick={this.prependRow}>prepend</button>
+          <button onclick={this.prependRow}>prepend</button>
         </div>
         <table className="grid-table">
           <tbody>

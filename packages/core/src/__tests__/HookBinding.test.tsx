@@ -25,7 +25,7 @@ describe("Hook", () => {
     class C extends Component {
       c = this.use(Counter);
       render() {
-        return <span onClick={this.c.inc}>{this.c.n}</span>;
+        return <span onclick={this.c.inc}>{this.c.n}</span>;
       }
     }
 

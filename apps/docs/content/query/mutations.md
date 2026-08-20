@@ -48,7 +48,7 @@ class AddTodo extends Component {
   render() {
     return (
       <div>
-        <input value={this.draft} onInput={this.typed} />
+        <input value={this.draft} oninput={this.typed} />
         <button type="submit" disabled={this.add.isPending}>
           {this.add.isPending ? "saving…" : "add"}
         </button>
@@ -155,7 +155,7 @@ deeper — two levels in, the hand-written version is three spreads and a `map`.
 |---|---|
 | `onMutate(vars, ctx)` | Before the request. Return a function to make it the rollback |
 | `onSuccess(data, vars, ctx)` | After success, after `invalidates` has run |
-| `onError(error, vars, ctx)` | After failure, after the rollback |
+| `onerror(error, vars, ctx)` | After failure, after the rollback |
 | `onSettled(vars, ctx)` | After either — for the spinner nobody wants to leave up |
 
 Each receives `ctx.client`, so a handler can invalidate, write or read the cache

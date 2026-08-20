@@ -390,7 +390,7 @@ describe("validation", () => {
       form.fields.email.$.set("");
       expect(form.fields.email.$.error).toBeUndefined();
 
-      form.fields.email.$.bind.onBlur?.(new Event("blur"));
+      form.fields.email.$.bind.onblur?.(new Event("blur"));
       expect(form.fields.email.$.error).toBe("required");
     } finally {
       unmount();

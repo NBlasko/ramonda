@@ -132,19 +132,19 @@ export class LensSharing extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.rename}>
+          <button type="button" onclick={this.rename}>
             rename post 102
           </button>
-          <button type="button" onClick={this.addTag}>
+          <button type="button" onclick={this.addTag}>
             add a tag
           </button>
-          <button type="button" onClick={this.fork}>
+          <button type="button" onclick={this.fork}>
             both, with .and()
           </button>
-          <button type="button" onClick={this.writeSameValue}>
+          <button type="button" onclick={this.writeSameValue}>
             write the same value
           </button>
-          <button type="button" onClick={this.reset}>
+          <button type="button" onclick={this.reset}>
             reset
           </button>
         </p>

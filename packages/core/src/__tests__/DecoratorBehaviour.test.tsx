@@ -104,7 +104,7 @@ describe("decorators", () => {
         return (
           <ul>
             {this.ids.map((i) => (
-              <li onClick={this.pick(i)}>{i}</li>
+              <li onclick={this.pick(i)}>{i}</li>
             ))}
           </ul>
         );

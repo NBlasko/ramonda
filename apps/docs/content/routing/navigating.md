@@ -24,8 +24,8 @@ export class Toolbar extends Component {
   render() {
     return (
       <nav>
-        <button onClick={this.route.back}>← Back</button>
-        <button onClick={this.showPlayer}>Player 9</button>
+        <button onclick={this.route.back}>← Back</button>
+        <button onclick={this.showPlayer}>Player 9</button>
       </nav>
     );
   }
@@ -50,7 +50,7 @@ you ask with `{ scroll: true }`.
 
 ## The methods are already bound
 
-`onClick={this.route.back}` works as-is — the hook's methods are bound to it, so
+`onclick={this.route.back}` works as-is — the hook's methods are bound to it, so
 passing one as a handler keeps working. No `() => this.route.back()` wrapper needed.
 
 ## `push` or `<Link>`?
@@ -80,7 +80,7 @@ export class App extends Component {
   render() {
     return (
       <div className="app">
-        <button onClick={this.goHome}>{this.router.pathname}</button>
+        <button onclick={this.goHome}>{this.router.pathname}</button>
         <RouteOutlet routes={routes} />
       </div>
     );

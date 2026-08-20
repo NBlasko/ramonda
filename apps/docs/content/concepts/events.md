@@ -12,25 +12,30 @@ a form.
 
 ## On an element you render
 
-Pass a handler as a prop. Event props are **camelCase with an `on` prefix** —
-`onClick`, `onInput`, `onSubmit` — a [JSX naming convention](/concepts/jsx), not the
-lowercase HTML `onclick`. The browser's event is `click`; the prop you write is
-`onClick`.
+Pass a handler as a prop. An event prop is **`on` plus the event's own name**, exactly
+as the browser spells it — `onclick`, `oninput`, `onmouseenter`, `onfocusin`. There is
+no second vocabulary to learn and nothing is translated: whatever you would pass to
+`addEventListener`, put `on` in front of it.
+
+That is why it is lowercase. `onMouseEnter` is a convention from elsewhere, and this
+framework refuses it rather than quietly accepting a name the DOM does not have — the
+error names the spelling to use.
 
 ```tsx
 render() {
-  return <button onClick={this.increment}>+1</button>;
+  return <button onclick={this.increment}>+1</button>;
 }
 ```
 
 `this.increment` is a method on your component. **Ramonda ties your methods to the
-component for you**, so handing one to `onClick` just works — `this` still means the
+component for you**, so handing one to `onclick` just works — `this` still means the
 component inside it. No constructor, no arrow-function fields, no `.bind(this)`. (A
 method whose name starts with `_` is left unbound, if you ever want to opt out.)
 
 If your handler needs the event, annotate its parameter with the matching DOM event
-type. `onInput` hands you a plain `Event` — read `event.target` for the value;
-`onClick` a `PointerEvent` (a `MouseEvent` with pointer details, so `clientX` and
+type — or leave it out, because the type is already known: every handler's parameter is
+typed from the DOM's own event map. `oninput` hands you a plain `Event` — read
+`event.target` for the value; `onclick` a `PointerEvent` (a `MouseEvent` with pointer details, so `clientX` and
 `button` are there too):
 
 ```tsx
@@ -39,11 +44,27 @@ onInput(event: Event) {
 }
 ```
 
-An inline arrow — `onClick={(e) => …}` — types `e` for you, and that is the only
+An inline arrow — `onclick={(e) => …}` — types `e` for you, and that is the only
 thing it does better. It also builds a new function on every render, so the listener
 is removed and re-added on the element every time, and a development build reports it
 (`RMD020`). Annotate the method instead; when a handler has to be built per item,
 [`@memoizedHandler`](#a-handler-per-item) caches it by its arguments.
+
+### An event whose name `on…` cannot spell
+
+`on` plus the name covers every standard event, because all of them are a single
+lowercase word. A **custom** event usually is not — a web component dispatches
+`my-event`, with a dash — and `onmy-event` reads as a typo while `on-my-event` would
+listen for `-my-event`, which nothing dispatches.
+
+So write it after a colon and it is taken exactly as it stands:
+
+```tsx
+<x-thing on:my-event={this.handle} />
+```
+
+The handler receives a plain `Event`; a custom event's `detail` is your own, so cast it
+to the shape you dispatched.
 
 ## On window, document, or the component's own element
 
@@ -103,7 +124,7 @@ remove(name: string) {
 }
 
 // in render:
-<button onClick={this.remove(name)}>remove</button>
+<button onclick={this.remove(name)}>remove</button>
 ```
 
 The decorated method **returns** the handler rather than being one — that is what
@@ -152,7 +173,7 @@ what keeps the listener from being re-attached — and what stops
 
 | the target is… | use |
 |---|---|
-| an element in your `render()` | a prop: `onClick={this.handle}` |
+| an element in your `render()` | a prop: `onclick={this.handle}` |
 | `window` or `document` | `@onWindow` / `@onDocument` |
 | the component's own element | `@onElement` |
 

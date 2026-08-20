@@ -56,10 +56,10 @@ export class LifecycleLog extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.toggle}>
+          <button type="button" onclick={this.toggle}>
             {this.shown ? "unmount it" : "mount it"}
           </button>
-          <button type="button" onClick={this.clear}>
+          <button type="button" onclick={this.clear}>
             clear log
           </button>
         </p>

@@ -97,7 +97,7 @@ export class AsyncPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>1 · load on demand</h3>
-            <button onClick={this.toggleModule}>{this.showModule ? "unmount it" : "load the module"}</button>
+            <button onclick={this.toggleModule}>{this.showModule ? "unmount it" : "load the module"}</button>
           </div>
           <p className="muted small">
             Load it, click its button a few times, unmount it, and load it again — the second time there is no network
@@ -117,7 +117,7 @@ export class AsyncPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>2 · a load that fails</h3>
-            <button onClick={this.toggleBroken}>
+            <button onclick={this.toggleBroken}>
               {this.showBroken ? "hide" : "ask for an export that is not there"}
             </button>
           </div>
@@ -139,7 +139,7 @@ export class AsyncPage extends Component {
                   <span className="muted small">
                     attempt {attempt}: {(error as Error).message}
                   </span>
-                  <button onClick={retry}>retry (will fail again)</button>
+                  <button onclick={retry}>retry (will fail again)</button>
                 </div>
               )}
             />
@@ -149,7 +149,7 @@ export class AsyncPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>3 · a retry that works</h3>
-            <button onClick={this.toggleFlaky}>{this.showFlaky ? "hide" : "load something flaky"}</button>
+            <button onclick={this.toggleFlaky}>{this.showFlaky ? "hide" : "load something flaky"}</button>
           </div>
           <p className="muted small">
             This one fails the first two times on purpose, like a bad connection. Press retry twice and it comes up. The
@@ -172,7 +172,7 @@ export class AsyncPage extends Component {
                   <span className="muted small">
                     attempt {attempt} failed: {(error as Error).message}
                   </span>
-                  <button onClick={retry}>retry</button>
+                  <button onclick={retry}>retry</button>
                 </div>
               )}
             />
@@ -182,8 +182,8 @@ export class AsyncPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>4 · unmounted while still loading</h3>
-            <button onClick={this.toggleRace}>{this.showRace ? "unmount NOW" : "start a slow load"}</button>
-            <button onClick={this.finishSlowLoad}>let it finish</button>
+            <button onclick={this.toggleRace}>{this.showRace ? "unmount NOW" : "start a slow load"}</button>
+            <button onclick={this.finishSlowLoad}>let it finish</button>
           </div>
           <p className="muted small">
             The load hangs until you release it, so you own the race. Two orders to try:
@@ -211,7 +211,7 @@ export class AsyncPage extends Component {
         <section className="slotcase">
           <div className="row">
             <h3>5 · is a FAILED import memoized?</h3>
-            <button onClick={this.toggleMemo}>{this.showMemo ? "hide" : "run the experiment"}</button>
+            <button onclick={this.toggleMemo}>{this.showMemo ? "hide" : "run the experiment"}</button>
           </div>
           <p className="muted small">
             The open question behind "should retrying be automatic". This imports a URL that does not exist, so the
@@ -249,7 +249,7 @@ export class AsyncPage extends Component {
                   <span className="muted small">
                     attempt {attempt} failed: {(error as Error).message}
                   </span>
-                  <button onClick={retry}>retry</button>
+                  <button onclick={retry}>retry</button>
                 </div>
               )}
             />

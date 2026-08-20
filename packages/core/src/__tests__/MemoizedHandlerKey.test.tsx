@@ -40,7 +40,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
         return () => row;
       }
       render() {
-        return <button onClick={this.pick({ id: 7 } as unknown as string)}>x</button>;
+        return <button onclick={this.pick({ id: 7 } as unknown as string)}>x</button>;
       }
     }
 
@@ -57,7 +57,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
       }
 
       render() {
-        return <button onClick={this.pick({ id: 7 } as unknown as string)}>x</button>;
+        return <button onclick={this.pick({ id: 7 } as unknown as string)}>x</button>;
       }
     }
 
@@ -77,7 +77,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
       }
 
       render() {
-        return <button onClick={this.pick("a", 1, [] as unknown as string)}>x</button>;
+        return <button onclick={this.pick("a", 1, [] as unknown as string)}>x</button>;
       }
     }
 
@@ -93,7 +93,7 @@ describe("@memoizedHandler with an un-keyable argument", () => {
       }
 
       render() {
-        return <button onClick={this.pick(null as unknown as string)}>x</button>;
+        return <button onclick={this.pick(null as unknown as string)}>x</button>;
       }
     }
 
@@ -138,10 +138,10 @@ describe("@memoizedHandler with an un-keyable argument", () => {
       render() {
         return (
           <div>
-            <button id="a" onClick={this.pick("a")}>
+            <button id="a" onclick={this.pick("a")}>
               a
             </button>
-            <button id="b" onClick={this.pick("b")}>
+            <button id="b" onclick={this.pick("b")}>
               b
             </button>
           </div>

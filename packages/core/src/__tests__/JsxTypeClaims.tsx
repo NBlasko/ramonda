@@ -25,8 +25,8 @@ declare const caption: string;
 declare const bind: {
   readonly name: string;
   readonly value: string;
-  readonly onInput: (event: Event) => void;
-  readonly onBlur: (event: Event) => void;
+  readonly oninput: (event: Event) => void;
+  readonly onblur: (event: Event) => void;
   readonly "aria-invalid": boolean | undefined;
 };
 
@@ -187,6 +187,58 @@ export class ControlSpreads extends Component {
         <input {...loose} />
         <div {...loose} />
         <form {...loose} />
+      </div>
+    );
+  }
+}
+
+/**
+ * Event names, which are the DOM's own with `on` in front — nothing translated, nothing capitalised.
+ *
+ * The handlers used to come from the element's `on…` PROPERTIES, renamed to `on${Capitalize<name>}`.
+ * The DOM's event types are single lowercase tokens, so that produced `onMouseenter`, `onKeydown`,
+ * `onDblclick` — the natural spellings were hard errors and the accepted ones were unguessable. It
+ * survived because every event this repository writes happens to be one word.
+ *
+ * They come from the DOM's event MAP now, which needs no capitalisation and holds the five events
+ * that have no property at all.
+ */
+export class EventNames extends Component {
+  render() {
+    return (
+      <div>
+        <button onclick={(event) => event.clientX} />
+        <div onmouseenter={(event) => event.clientY} />
+        <input oninput={(event) => event.type} />
+
+        {/* The five with no `on…` property, which nothing here could name before. */}
+        <div onfocusin={(event) => event.relatedTarget} />
+        <div onfocusout={(event) => event.relatedTarget} />
+        <input oncompositionstart={(event) => event.data} />
+        <input oncompositionupdate={(event) => event.data} />
+        <input oncompositionend={(event) => event.data} />
+
+        {/* `on:` takes the rest of the name exactly as written, for an event `on…` cannot spell. */}
+        <div on:my-event={(event) => event.type} />
+        <div on:DOMSomething={(event) => event.type} />
+      </div>
+    );
+  }
+}
+
+/** The spellings this used to accept, each refused with the one that replaced it. */
+export class RefusedEventSpellings extends Component {
+  render() {
+    return (
+      <div>
+        {/* @ts-expect-error — the DOM has no `onClick`; the message names `onclick`. */}
+        <button onClick={() => {}} />
+        {/* @ts-expect-error — what the old mapping produced, and nobody would guess. */}
+        <div onMouseenter={() => {}} />
+        {/* @ts-expect-error — the spelling other frameworks use, which the DOM does not have. */}
+        <div onMouseEnter={() => {}} />
+        {/* @ts-expect-error — `dblclick` is the event; `ondoubleclick` names nothing. */}
+        <div onDblClick={() => {}} />
       </div>
     );
   }

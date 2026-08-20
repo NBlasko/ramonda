@@ -53,7 +53,7 @@ export class ThemeContextDemo extends Component {
     return (
       <div>
         <p className="demo-row">
-          <button type="button" onClick={this.toggle}>
+          <button type="button" onclick={this.toggle}>
             toggle theme
           </button>
         </p>

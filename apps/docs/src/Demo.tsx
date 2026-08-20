@@ -46,7 +46,7 @@ export class Demo extends Component<DemoProps> {
           </h3>
         ) : null}
         <div className="demo-stage">{__h(component as never, null) as ComponentChild}</div>
-        <button type="button" className="demo-toggle" onClick={this.toggle}>
+        <button type="button" className="demo-toggle" onclick={this.toggle}>
           {this.open ? "▾ hide source" : "▸ show source"} <span className="demo-file">{name}.tsx</span>
         </button>
         {this.open ? <CodeBlock node={source} className="code-block-demo" pagefindIgnore={true} /> : null}

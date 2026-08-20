@@ -38,7 +38,7 @@ export class HostTag extends Component {
   // Cached by its argument, so each button keeps one handler across renders.
   renderChoice(tag: string) {
     return (
-      <button type="button" disabled={this.as === tag} onClick={this.select(tag)}>
+      <button type="button" disabled={this.as === tag} onclick={this.select(tag)}>
         as="{tag}"
       </button>
     );

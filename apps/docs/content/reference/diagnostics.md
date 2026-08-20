@@ -332,8 +332,8 @@ fresh. That is not just an allocation: an event handler whose identity changed i
 on the element on every render, and a function passed to a child re-renders that child.
 
 ```tsx
-<button onClick={() => this.save()}>   // ✗ a new function every render
-<button onClick={this.save}>           // ✓ a bound method
+<button onclick={() => this.save()}>   // ✗ a new function every render
+<button onclick={this.save}>           // ✓ a bound method
 ```
 
 For a handler that must be built per item, [`@memoizedHandler`](/concepts/events) caches it by its

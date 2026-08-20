@@ -133,8 +133,8 @@ export interface FieldApi<T> {
 
 export interface CommonBind {
   readonly name: string;
-  readonly onInput: (event: Event) => void;
-  readonly onBlur: (event: Event) => void;
+  readonly oninput: (event: Event) => void;
+  readonly onblur: (event: Event) => void;
   readonly "aria-invalid": boolean | undefined;
 }
 

@@ -36,7 +36,7 @@ class HomePage extends Component {
         </svg>
         <h1>Ramonda</h1>
         <p className="tagline">Server-rendered, then hydrated.</p>
-        <button type="button" onClick={this.increment}>
+        <button type="button" onclick={this.increment}>
           count is {this.count}
         </button>
         <p className="hint">This page is prerendered at build time — pure static HTML.</p>

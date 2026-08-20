@@ -19,7 +19,7 @@ class Badge extends Component<{ label: string }> {
 
   render() {
     return (
-      <button type="button" className="demo-badge" onClick={this.bump}>
+      <button type="button" className="demo-badge" onclick={this.bump}>
         {this.decorate(`${this.props.label} · ${this.clicks}`)}
       </button>
     );

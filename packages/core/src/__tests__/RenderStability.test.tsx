@@ -49,7 +49,7 @@ describe("RMD020 — values built inside render()", () => {
       @state count = 0;
       render() {
         return (
-          <button type="button" onClick={() => this.count++}>
+          <button type="button" onclick={() => this.count++}>
             {String(this.count)}
           </button>
         );
@@ -73,7 +73,7 @@ describe("RMD020 — values built inside render()", () => {
       }
       render() {
         return (
-          <button type="button" onClick={this.bump}>
+          <button type="button" onclick={this.bump}>
             {String(this.count)}
           </button>
         );
@@ -98,8 +98,8 @@ describe("RMD020 — values built inside render()", () => {
       render() {
         return (
           <ul>
-            <li onClick={this.select(1)}>one</li>
-            <li onClick={this.select(2)}>two</li>
+            <li onclick={this.select(1)}>one</li>
+            <li onclick={this.select(2)}>two</li>
           </ul>
         );
       }
@@ -220,7 +220,7 @@ describe("RMD020 — values built inside render()", () => {
       @state count = 0;
       render() {
         return (
-          <button type="button" onClick={() => this.count++}>
+          <button type="button" onclick={() => this.count++}>
             {String(this.count)}
           </button>
         );
@@ -246,7 +246,7 @@ describe("RMD020 — values built inside render()", () => {
         return (
           <div>
             {this.open ? (
-              <button type="button" onClick={() => (this.open = false)}>
+              <button type="button" onclick={() => (this.open = false)}>
                 close
               </button>
             ) : null}

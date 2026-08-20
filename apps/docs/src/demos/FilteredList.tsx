@@ -20,7 +20,7 @@ class PersonRow extends Component<{ item: Person }> {
   render() {
     return (
       <span>
-        <button type="button" className="star" aria-pressed={this.starred ? "true" : "false"} onClick={this.toggleStar}>
+        <button type="button" className="star" aria-pressed={this.starred ? "true" : "false"} onclick={this.toggleStar}>
           {this.starred ? "★" : "☆"}
         </button>{" "}
         {this.props.item.name} <span className="demo-note">{this.props.item.role}</span>
@@ -66,7 +66,7 @@ export class FilteredList extends Component {
             aria-label="Filter by name or role"
             placeholder="filter by name or role"
             value={this.query}
-            onInput={this.onInput}
+            oninput={this.onInput}
           />
           <span className="demo-note">
             star a row, then filter — a row that stays keeps its own star, and no row inherits one from a person the

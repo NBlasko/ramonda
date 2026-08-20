@@ -69,7 +69,7 @@ f.settings.at(keyFromRuntime);   // a key not known until runtime
 <input {...f.email.$.bind} />
 ```
 
-That spread supplies `name`, `value`, `onInput`, `onBlur` and `aria-invalid`. The handlers are
+That spread supplies `name`, `value`, `oninput`, `onblur` and `aria-invalid`. The handlers are
 built once per field and reused, so spreading it on every render does not re-attach a listener.
 
 **The shape follows the value's type**, so `checked` and `value` cannot be swapped by accident:
@@ -105,7 +105,7 @@ class SignupForm extends Component {
   private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }));
 
   onEmailInput(event: Event): void {
-    this.form.fields.email.$.bind.onInput(event);
+    this.form.fields.email.$.bind.oninput(event);
     this.searchAsYouType(event);
   }
 
@@ -114,7 +114,7 @@ class SignupForm extends Component {
   }
 
   render() {
-    return <input {...this.form.fields.email.$.bind} onInput={this.onEmailInput} />;
+    return <input {...this.form.fields.email.$.bind} oninput={this.onEmailInput} />;
   }
 }
 ```
@@ -181,7 +181,7 @@ And the call site hands over one prop, typed by the schema:
 ```
 
 **`Field` is required, not an optimisation.** Without it such a component never re-renders: a field
-node is one cached object for the life of the form — deliberately, so `bind.onInput` keeps its
+node is one cached object for the life of the form — deliberately, so `bind.oninput` keeps its
 identity — so the component's props never change and the diff skips it. Its message would never
 appear, and a write from anywhere else would never reach its input.
 
@@ -345,7 +345,7 @@ class Page extends Component {
 
   @compute get body() {
     return (
-      <form onSubmit={this.form.submit}>
+      <form onsubmit={this.form.submit}>
         <Rows of={this.form.fields.contacts} />
         <SaveButton />
       </form>

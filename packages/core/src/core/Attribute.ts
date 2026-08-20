@@ -247,7 +247,7 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   if (name.startsWith("on")) {
     if (onServer) return;
 
-    const type = name.substring(2).toLowerCase();
+    const type = eventTypeOf(name);
     enhancedNode._listeners ??= {};
     const listeners = enhancedNode._listeners;
 
@@ -358,6 +358,23 @@ function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
   return nodeAttributes;
 }
 
+/**
+ * The event type an `on…` attribute names.
+ *
+ * Two spellings, and the second exists because the first cannot express every event. `onclick` is
+ * the DOM's own name with `on` in front, lowercased — which is exact, because every one of the 107
+ * event types in the DOM's element maps is already all-lowercase, so lowercasing can never corrupt
+ * one. Measured, all of them.
+ *
+ * `on:` hands the rest through UNTOUCHED, for a name the first form cannot reach: a custom event
+ * with a dash or a capital in it. `<x-thing on:my-event={…} />` listens for `my-event`, because
+ * `onmy-event` reads as a typo and `on-my-event` used to attach to `-my-event` — a listener for an
+ * event nothing dispatches, which is the fault this closes.
+ */
+function eventTypeOf(name: string): string {
+  return name.startsWith("on:") ? name.slice(3) : name.substring(2).toLowerCase();
+}
+
 function removePreviousFromenhancedNode(
   enhancedNode: EnhancedHTMLNode,
   previousAttributes: NodeAttributes,
@@ -369,7 +386,7 @@ function removePreviousFromenhancedNode(
     if (!isInvisibleOnScreen(nextAttribute)) continue;
 
     if (name.startsWith("on")) {
-      const type = name.substring(2).toLowerCase();
+      const type = eventTypeOf(name);
       const listeners = enhancedNode._listeners ?? {};
       enhancedNode.removeEventListener(type, previousAttributes[name]);
       delete listeners[type];

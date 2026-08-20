@@ -45,7 +45,7 @@ class SignupForm extends Component {
     const f = this.form.fields;
 
     return (
-      <form onSubmit={this.form.submit}>
+      <form onsubmit={this.form.submit}>
         <label>
           Email
           <input {...f.email.$.bind} />
@@ -81,7 +81,7 @@ second place to describe the shape and no generic to write by hand.
 typo is a compile error and renaming a schema field breaks the render rather than silently
 producing `undefined`. See [Fields](/forms/fields).
 
-**`bind` is everything the input needs.** `name`, `value`, `onInput`, `onBlur`, and the right
+**`bind` is everything the input needs.** `name`, `value`, `oninput`, `onblur`, and the right
 `type` for what the field holds. Spread it and stop thinking about it.
 
 ## Try it
@@ -124,7 +124,7 @@ this.use(Form, () => ({ schema, defaultValues, onSubmit: this.save }));
 | `isDirty` | Whether anything has been edited. |
 | `isSubmitting` | True while `onSubmit` is in flight. |
 | `submitCount` | How many times submit has been attempted. |
-| `submit(event?)` | Hand it straight to `onSubmit={…}`; it calls `preventDefault`, and focuses the first invalid field. |
+| `submit(event?)` | Hand it straight to `onsubmit={…}`; it calls `preventDefault`, and focuses the first invalid field. |
 | `reset(values?)` | Back to the defaults, or to the values you pass. |
 | `setError(path, message)` | A message from somewhere the schema cannot see — usually the server. |
 

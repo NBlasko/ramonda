@@ -57,7 +57,7 @@ class SignInForm extends Component {
       <div className="panel">
         <p className="label">sign in · validateOn: "change"</p>
 
-        <form onSubmit={this.form.submit}>
+        <form onsubmit={this.form.submit}>
           <label>
             email
             <input {...f.email.$.bind} type="email" />
@@ -125,7 +125,7 @@ class ProfileForm extends Component {
     return (
       <div className="row">
         <input {...(row.field.$.bind as Record<string, unknown>)} />
-        <button type="button" onClick={this.removeTag(row.index)}>
+        <button type="button" onclick={this.removeTag(row.index)}>
           ×
         </button>
       </div>
@@ -179,7 +179,7 @@ class ProfileForm extends Component {
       <div className="panel">
         <p className="label">profile · validateOn: "submit"</p>
 
-        <form onSubmit={this.form.submit}>
+        <form onsubmit={this.form.submit}>
           <label>
             name
             <input {...f.name.$.bind} />
@@ -194,12 +194,12 @@ class ProfileForm extends Component {
 
           <p className="label">tags</p>
           {list(f.tags.$.rows, this.tagRow)}
-          <button type="button" onClick={this.addTag}>
+          <button type="button" onclick={this.addTag}>
             + tag
           </button>
 
           <button type="submit">Save</button>
-          <button type="button" onClick={this.resetForm}>
+          <button type="button" onclick={this.resetForm}>
             Reset
           </button>
         </form>

@@ -96,7 +96,7 @@ export class QueryDemo extends Component {
   // Cached by its argument: the same button keeps the same handler across renders.
   renderChoice(id: string) {
     return (
-      <button type="button" disabled={this.id === id} onClick={this.select(id)}>
+      <button type="button" disabled={this.id === id} onclick={this.select(id)}>
         {id}
       </button>
     );
@@ -122,7 +122,7 @@ export class QueryDemo extends Component {
       <div>
         <p className="demo-row">
           {list(USERS, this.renderChoice)}
-          <button type="button" onClick={this.toggleSecond}>
+          <button type="button" onclick={this.toggleSecond}>
             {this.twice ? "one card" : "two cards"}
           </button>
         </p>

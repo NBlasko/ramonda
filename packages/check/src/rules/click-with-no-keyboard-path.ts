@@ -73,8 +73,13 @@ const INTERACTIVE: ReadonlySet<string> = new Set([
   "option",
 ]);
 
-/** The handlers a pointer alone can deliver. `onMouseDown` and `onDoubleClick` are the same fault. */
-const POINTER_ONLY: ReadonlySet<string> = new Set(["onclick", "onmousedown", "onmouseup", "ondoubleclick"]);
+/**
+ * The handlers a pointer alone can deliver. `onmousedown` and `ondblclick` are the same fault.
+ *
+ * `ondblclick`, not `ondoubleclick`: the DOM event is `dblclick`, so `ondoubleclick` named nothing
+ * and matched nothing — a set entry that had never been able to fire.
+ */
+const POINTER_ONLY: ReadonlySet<string> = new Set(["onclick", "onmousedown", "onmouseup", "ondblclick"]);
 
 /** Whether any keyboard handler is written at all. Which one is not this rule's business. */
 function hasAKeyHandler(opening: ts.JsxOpeningLikeElement): boolean {

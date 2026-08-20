@@ -51,7 +51,7 @@ interface Watchable {
  * - A hook's `@state` belongs to the component that used the hook, so the form's counter wakes the
  *   form's owner and nobody else. A child reading through the field tree is subscribed to nothing.
  * - And the child's props never change: a field node is ONE cached object for the life of the form,
- *   deliberately — a fresh one per access means a fresh `bind.onInput` per access, which RMD020
+ *   deliberately — a fresh one per access means a fresh `bind.oninput` per access, which RMD020
  *   reports and which really does re-attach the listener on every render. So the props diff has
  *   nothing to notice, and the child is skipped entirely.
  *

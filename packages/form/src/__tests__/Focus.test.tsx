@@ -52,7 +52,7 @@ function mount(defaults: Values, order: (keyof Values)[] = ["email", "nick", "ag
       const fields = this.f.fields;
 
       return (
-        <form onSubmit={this.f.submit}>
+        <form onsubmit={this.f.submit}>
           {order.map((name) => (
             <input key={name} {...fields[name].$.bind} />
           ))}
@@ -154,7 +154,7 @@ describe("focus after a failed submit", () => {
         form = this.f;
         const fields = this.f.fields;
         return (
-          <form onSubmit={this.f.submit}>
+          <form onsubmit={this.f.submit}>
             <input {...fields.email.$.bind} disabled />
             <input {...fields.nick.$.bind} />
           </form>
@@ -189,7 +189,7 @@ describe("focus after a failed submit", () => {
 
       render(): RamondaNode {
         return (
-          <form id={this.props.id} onSubmit={this.form.submit}>
+          <form id={this.props.id} onsubmit={this.form.submit}>
             <input id={this.props.input} {...this.form.fields.email.$.bind} />
           </form>
         );
@@ -254,7 +254,7 @@ describe("focus after a failed submit", () => {
 
       render(): RamondaNode {
         return (
-          <form onSubmit={this.f.submit}>
+          <form onsubmit={this.f.submit}>
             <input {...this.f.fields.email.$.bind} />
           </form>
         );
@@ -307,7 +307,7 @@ describe("focus after a failed submit", () => {
 
       render(): RamondaNode {
         return (
-          <form onSubmit={this.f.submit}>
+          <form onsubmit={this.f.submit}>
             <input {...this.f.fields.rows[0].$.bind} />
             <input {...this.f.fields.rows[1].$.bind} />
           </form>
