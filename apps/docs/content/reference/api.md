@@ -28,7 +28,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `SAME_ITEM` | The option for a lens `set` that replaces a list item with the same item rebuilt, so it keeps its element and its component. [Lens](/lens#editing-an-item-and-replacing-one) |
 | `merge(previous, next, identity?)` | Keeps the previous value where the new one equals it, so a refetch is not a change. With `identity`, rows are paired across a reorder or a resize and a changed row keeps its identity. [Lists](/lists#refetched-data-and-objects-that-are-re-created) |
 | `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |
-| `@StableProps(...names)` | Declares which of a hook's props are values, so a caller writes the plain literal. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) |
+| `@StableProps(...names)` | Declares which props are values, so a caller writes the plain literal. On a hook and on a component alike. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) · [A prop that is a value](/concepts/props#a-prop-that-is-a-value) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
 | `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
@@ -103,7 +103,7 @@ anyway under a server DOM shim.
 | | |
 |---|---|
 | `@watchProp(selector)` | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| `@ShouldUpdateOnPropsChange` | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). Components only; runs only on prop changes. |
+| `@ShouldUpdateOnPropsChange` | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). For ignoring a change that really happened — a prop merely rebuilt with equal contents is `@StableProps`' job. Components only. |
 | `@deferHydration` | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 | `@catchError` | Declares the method that handles an error thrown anywhere below this component. Return `false` to decline it and let the next one above take over. Components only; one per class ([RMD032](/reference/diagnostics#rmd032-more-than-one-catcherror-on-a-component)). |
 
