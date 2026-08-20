@@ -18,8 +18,39 @@ describe("a prop rebuilt on every render", () => {
     const found = run().findings["fresh-object-in-props"];
     expect(found.map((issue) => `${issue.component}.${issue.prop}:${issue.kind}`)).toEqual([
       "Row.conf:object",
+      "Row.conf:object",
+      "Row.conf:object",
       "Row.tags:array",
     ]);
+  });
+
+  /**
+   * The literal is the shape people write first, and it is not the one that survives a refactor.
+   * Both of these were planted and both were silent: moving the object one line up, and moving it
+   * into a helper in another file, are the same object built at the same moment.
+   *
+   * The report quotes what is on the LINE and names where the value comes from, because calling
+   * `conf={local}` a `conf={{…}}` sends a reader looking for a brace that is not there.
+   */
+  test("a local one line up and a helper in another file are the same fault", () => {
+    const found = run().findings["fresh-object-in-props"];
+    expect(found.map((issue) => `${issue.written}${issue.builtIn ? ` @ ${issue.builtIn}` : ""}`)).toEqual([
+      "{ dense: true }",
+      "local @ `local`",
+      "makeConf() @ `makeConf`",
+      '["new", "hot"]',
+    ]);
+  });
+
+  /**
+   * The two silences that keep the hop provable. A MODULE-level const is built once — that is the
+   * documented fix — and a helper handing back an object it holds is a stable reference. Reporting
+   * either would be reporting the fix.
+   */
+  test("a module const and a helper that hands one back are both silent", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written).not.toContain("STABLE");
+    expect(written).not.toContain("sharedConf()");
   });
 
   /**
@@ -51,7 +82,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Seven elements in the fixture and two reported, so a leak shows as a count.
-    expect(found).toHaveLength(2);
+    // Eleven elements in the fixture and four reported, so a leak shows as a count.
+    expect(found).toHaveLength(4);
   });
 });

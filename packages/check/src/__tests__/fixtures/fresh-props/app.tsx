@@ -1,5 +1,7 @@
 import { StableProps, Component, Host, bootstrap, compute, state } from "../framework";
 
+import { makeConf, sharedConf } from "./make";
+
 declare const rest: Record<string, unknown>;
 
 const STABLE = { dense: true };
@@ -40,10 +42,17 @@ class Table extends Component {
   }
 
   render() {
+    const local = { dense: true };
     return (
       <div>
         {/* REPORTED — a fresh object every render. */}
         <Row conf={{ dense: true }} label="a" />
+        {/* REPORTED — the same fresh object, built one line earlier. */}
+        <Row conf={local} label="local" />
+        {/* REPORTED — built by a helper in another file, which `resolve` follows. */}
+        <Row conf={makeConf()} label="helper" />
+        {/* Not reported: the helper hands back one object it built once, which is a stable reference. */}
+        <Row conf={sharedConf()} label="shared" />
         {/* Not reported: `conf` is declared a value, so the literal costs nothing. */}
         <Settled conf={{ dense: true }} label="settled" />
         {/* Not reported either: the declaration is inherited. */}
