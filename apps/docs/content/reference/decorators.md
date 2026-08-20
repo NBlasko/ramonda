@@ -91,7 +91,7 @@ They are not shades of wrong. Measured, one class per decorator:
 
 | written on `render` | what it did |
 |---|---|
-| `@compute` | Turned the method into a cached property, so rendering died with `component.render is not a function` — before a page appeared, and with no diagnostic. |
+| `@compute` | Cached the render on the signals it read. State and props still reach the DOM — so it looks fine — and anything it read that is NOT a signal freezes the page: measured, a plain field left `old` on screen where the same component without the decorator showed `new`. Silent, which is why the guard is not waiting for a crash. |
 | `@memoized` | Did not throw. The render was memoised on arguments it does not have, and the component **never updated again** — a frozen page, and nothing said. |
 | `@created`, `@mounted`, `@updated`, `@destroyed` | Registered the render as a lifecycle callback, so it ran outside the render pass as well as inside it. |
 | `@catchError` | Made the render the handler for errors thrown by its own subtree. |
