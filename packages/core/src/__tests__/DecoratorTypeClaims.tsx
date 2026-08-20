@@ -102,13 +102,16 @@ class SubscriptionClaims extends Component {
 }
 
 /**
- * A `@compute` takes NO arguments, and the type is what says so first.
+ * `@compute` takes a getter OR a method, and each is typed as what it installs.
  *
- * `compute`'s target is `(this: T) => R`, so a method declaring a parameter is `TS1241` — the same
- * contravariance that decides the bounds above. That matters because it is the line between the two
- * caching decorators: `@compute` is keyed by nothing, `@memoized` is keyed by its arguments. Bypass the
- * type and the runtime refuses it too (`assertNoParameters`), which was silent until 2026-08-20: it left
- * the property holding `NaN`.
+ * A getter becomes an accessor, so it is the value. A method stays a function that returns the value. Both
+ * are read below with no cast, which is the claim: the declared type matches what is there. It did not
+ * before — a method had an accessor installed, so it was typed `() => number` while holding a `number`,
+ * and reading it as the number it was is exactly the line that failed.
+ *
+ * A PARAMETER is refused, and only by the runtime — `(this: T) => R` accepts a method with a parameter
+ * through contravariance, the same reason `never[]` is the bound above. `DecoratorValidation.test.tsx` has
+ * that half.
  */
 class ComputeClaims extends Component {
   @state factor = 2;
@@ -117,14 +120,13 @@ class ComputeClaims extends Component {
     return this.factor * 2;
   }
 
-  /** A method with none is fine — it becomes a property holding the value. */
   @compute tripled(): number {
     return this.factor * 3;
   }
 
-  // @ts-expect-error — a parameter cannot be passed to something read as a value.
-  @compute times(n: number) {
-    return n * this.factor;
+  /** The getter is read, the method is called, and neither needs a cast. */
+  reads(): number {
+    return this.doubled + this.tripled();
   }
 
   render() {

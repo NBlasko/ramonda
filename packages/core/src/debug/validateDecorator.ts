@@ -61,30 +61,6 @@ export function assertMethod(kind: string, decorator: string, name: string | sym
   }
 }
 
-/**
- * A `@compute` method takes no arguments, and one silently produced a wrong value.
- *
- * **A typed build already refuses it** — `compute`'s target is `(this: T) => R`, so a parameter is `TS1241`.
- * This is the second net, for a build with no types or a cast, and it was silent there: measured under
- * vitest, which transpiles rather than checks, `@compute times(n: number)` left `this.times` holding
- * **`NaN`**, with the body run once for `n` undefined. Same role `attribute-that-does-nothing` plays beside
- * the JSX types.
- *
- * `@memoized` is the decorator keyed BY arguments; `@compute` is the one keyed by nothing, and the
- * parameter list is where the two are told apart.
- *
- * `fn.length` counts declared parameters up to the first default or rest, so `times(n = 1)` slips through.
- * That case still has a usable value in the body, which is the less wrong of the two.
- */
-export function assertNoParameters(fn: unknown, decorator: string, name: string | symbol): void {
-  if (typeof fn !== "function" || fn.length === 0) return;
-  fail(
-    decorator,
-    `\`${String(name)}\` declares ${fn.length} parameter(s), and a ${decorator} is read as a value rather than called — ` +
-      "so nothing would ever pass one. Use `@memoized` for a value keyed by its arguments.",
-  );
-}
-
 /** The decorator only makes sense on a field. */
 export function assertField(kind: string, decorator: string, name: string | symbol): void {
   assertNotRender(decorator, name);
@@ -94,15 +70,38 @@ export function assertField(kind: string, decorator: string, name: string | symb
 }
 
 /**
- * @compute is the one decorator that legitimately takes either — a method called
- * as `this.total()` or a getter read as `this.total`. Both are cached the same
- * way, so both are allowed and everything else is not.
+ * The decorator makes sense on a method or a getter, and the two install different things.
+ *
+ * A getter becomes an accessor, so what you read is the value. A METHOD stays a function that returns the
+ * value — which is what keeps its declared type true. Installing an accessor for a method was a type lie in
+ * both directions: `this.total` was declared `() => number` while it held a `number`, so reading it as the
+ * number it is was an error and calling it threw. Measured on both, and the fix was to make the method form
+ * behave like one rather than to remove it.
  */
 export function assertMethodOrGetter(kind: string, decorator: string, name: string | symbol): void {
   assertNotRender(decorator, name);
   if (kind !== "method" && kind !== "getter") {
     fail(decorator, `Can only decorate a method or a getter, but \`${String(name)}\` is a ${kind}.`);
   }
+}
+
+/**
+ * A `@compute` METHOD takes no arguments, because its cache is keyed by nothing.
+ *
+ * One value per component is the whole shape of it, so an argument would be accepted and ignored — the
+ * second call with a different argument would hand back the first call's answer. `@memoized` is the
+ * decorator keyed BY arguments, and this says so rather than letting the two be confused silently.
+ *
+ * `fn.length` counts declared parameters up to the first default or rest, so `times(n = 1)` slips through.
+ * That case has a usable value in the body, which is the less wrong of the two.
+ */
+export function assertNoParameters(fn: unknown, decorator: string, name: string | symbol): void {
+  if (typeof fn !== "function" || fn.length === 0) return;
+  fail(
+    decorator,
+    `\`${String(name)}\` declares ${fn.length} parameter(s), and a ${decorator} caches one value per ` +
+      "component — an argument would be ignored. Use `@memoized` for a value keyed by its arguments.",
+  );
 }
 
 /** @interval(ms) / @timeout(ms) */

@@ -44,25 +44,28 @@ This is the fine-grained tracking that [state](/concepts/state) on its own does 
 do: changing a `@state` field re-renders the whole component, but a `@compute` only
 recalculates when one of *its own* reads changed.
 
-## A getter or a method
+## A getter or a method, and each is read the way it is written
 
-Both work, both cache the same way, and **both are read as a property**:
+Both work, both cache the same way, and each is typed as what it installs:
 
 ```tsx alternatives
 @compute
-get total() {} // this.total
+get total() {} // this.total — an accessor, so it IS the value
 
 @compute
-total() {} // this.total — not this.total()
+total() {} // this.total() — a function that returns the value
 ```
 
-`@compute` installs an accessor, so a method stops being callable: `this.total()` throws
-`total is not a function`. The method form is a spelling, not a different kind of thing —
-use a getter for a value, a method when the name is a verb.
+Use a getter for a value, a method when the name is a verb. Whichever you pick, the
+declared type is true: a getter's type is the value's, and a method's is `() => value`.
+That is what the `get` decides — how you read it, not whether it is cached.
 
-That is also why a `@compute` method takes no parameters: nothing would ever pass one. A
-parameter is a type error, and a build with no types refuses it too. When a value has to
-differ per argument, [`@memoized`](/concepts/caching) is the decorator keyed by them.
+**Neither takes an argument.** A `@compute` caches one value per component, so there is no
+key for an argument to go in: it would be accepted and ignored, and the second call with a
+different argument would hand back the first call's answer. So it is refused — by the
+framework in every build, and by
+[`ramonda-check`](/reference/check) before the build. When the value has to differ per
+argument, [`@memoized`](/concepts/caching) is the decorator keyed by them.
 
 ## It must not change anything
 

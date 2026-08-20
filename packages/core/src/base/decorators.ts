@@ -1872,10 +1872,20 @@ export function compute<T, R>(
     // and cached it. It works by accident until the field's initializer reads
     // anything at all.
     assertMethodOrGetter(context.kind, "compute", context.name);
-    // A parameter is the writer expecting to CALL it, and a `@compute` method is not callable — measured,
-    // it left the property holding `NaN` with nothing reported. See `assertNoParameters`.
-    assertNoParameters(target, "compute", context.name);
   }
+
+  /**
+   * OUTSIDE `__DEV__`, unlike every other check here, and that is deliberate.
+   *
+   * A `@compute` caches ONE value per component, so an argument is accepted and then ignored: the second
+   * call with a different argument hands back the first call's answer. Nothing throws, nothing is logged,
+   * and the number on the page is simply wrong. A silently wrong value is the class of fault RMD056 is also
+   * refused in every build for.
+   *
+   * It costs one `fn.length` per decorated member per class DEFINITION — once, not per instance, not per
+   * read. `@memoized` is the decorator keyed by arguments, and the message says so.
+   */
+  assertNoParameters(target, "compute", context.name);
 
   const originalMethod = target;
 
@@ -1920,76 +1930,92 @@ export function compute<T, R>(
       cache.isDirty = true;
     };
 
-    Object.defineProperty(this, context.name, {
-      get() {
-        if (__DEV__ && counters) {
-          // Counted at the top, before the branch clears the flag. A compute whose reads are all
-          // misses is paying for a cache it never uses — not necessarily wrong, which is why this
-          // is a number in the panel rather than a diagnostic. See `debug/computeStats.ts`.
-          if (cache.isDirty) counters.misses++;
-          else counters.hits++;
+    /**
+     * One reader, installed two ways.
+     *
+     * A GETTER becomes an accessor, so `this.total` IS the value. A METHOD stays a function that
+     * returns it, so `this.total()` is the value — and that is what keeps the declared type true.
+     * Installing an accessor for a method was a lie in both directions: the member was typed
+     * `() => R` while it held an `R`, so reading it as the value was an error and calling it threw
+     * `is not a function`. Measured on both before this branch existed.
+     *
+     * Both forms share this one cache, these dependencies and this invalidation. The choice is how you
+     * read it, not what it does — which is why `get` is not ceremony.
+     */
+    const read = (): R | null => {
+      if (__DEV__ && counters) {
+        // Counted at the top, before the branch clears the flag. A compute whose reads are all
+        // misses is paying for a cache it never uses — not necessarily wrong, which is why this
+        // is a number in the panel rather than a diagnostic. See `debug/computeStats.ts`.
+        if (cache.isDirty) counters.misses++;
+        else counters.hits++;
+      }
+      if (cache.isDirty) {
+        // Synchronously detach from the old State dependencies.
+        for (const dep of cache.deps) {
+          dep[detach](internalId);
         }
-        if (cache.isDirty) {
-          // Synchronously detach from the old State dependencies.
-          for (const dep of cache.deps) {
-            dep[detach](internalId);
-          }
-          cache.deps.clear();
+        cache.deps.clear();
 
-          // Make this cache object the active tracker.
-          const prevTracker = trackerContainer.current;
-          trackerContainer.current = cache;
+        // Make this cache object the active tracker.
+        const prevTracker = trackerContainer.current;
+        trackerContainer.current = cache;
 
-          // Name this compute as the active one, so a state write inside its
-          // body can be reported against it (RMD018). Saved and restored like
-          // the tracker, so a nested read unwinds back to the outer compute.
-          const prevComputePhase = __DEV__ ? computePhase.label : undefined;
-          if (__DEV__) {
-            computePhase.label = `${displayName(this)}.${String(context.name)}`;
-          }
-
-          try {
-            // Run the original getter — this is where cache.deps gets filled.
-            cache.value = originalMethod.call(this);
-            cache.isDirty = false;
-
-            // RMD024: recomputing to the same answer, over and over, means the cache is doing
-            // nothing — see computeChurn.ts for why neither RMD020 nor RMD022 can see it.
-            if (__DEV__) recordCompute(this as object, String(context.name), cache.value);
-          } finally {
-            // Restore the previous tracker — it matters for nested @compute
-            // reads, where an inner one would otherwise steal the outer's deps.
-            trackerContainer.current = prevTracker;
-            if (__DEV__) computePhase.label = prevComputePhase;
-          }
-
-          // Subscribe to the new dependencies synchronously, so a later write
-          // can invalidate this cache.
-          for (const dep of cache.deps) {
-            dep[attach]({
-              id: internalId,
-              onChange: invalidate,
-            });
-          }
+        // Name this compute as the active one, so a state write inside its
+        // body can be reported against it (RMD018). Saved and restored like
+        // the tracker, so a nested read unwinds back to the outer compute.
+        const prevComputePhase = __DEV__ ? computePhase.label : undefined;
+        if (__DEV__) {
+          computePhase.label = `${displayName(this)}.${String(context.name)}`;
         }
 
-        // Whatever this compute depends on, whoever is reading it depends on
-        // too. Without this, a cache HIT touches no State at all, so the reader
-        // records nothing and never invalidates: a @compute reading another
-        // @compute returned a stale value forever. Runs on the hit path as well
-        // as the miss path — the hit is exactly the broken case.
-        //
-        // Through `trackDependency` rather than the tracker directly, because a
-        // reader can also be an EFFECT, and an effect reading a fresh compute
-        // used to subscribe to nothing at all — the deps went to the tracker
-        // scope, which an effect is not in.
-        for (const dep of cache.deps) trackDependency(dep);
+        try {
+          // Run the original getter — this is where cache.deps gets filled.
+          cache.value = originalMethod.call(this);
+          cache.isDirty = false;
 
-        return cache.value;
-      },
-      configurable: true,
-      enumerable: true,
-    });
+          // RMD024: recomputing to the same answer, over and over, means the cache is doing
+          // nothing — see computeChurn.ts for why neither RMD020 nor RMD022 can see it.
+          if (__DEV__) recordCompute(this as object, String(context.name), cache.value);
+        } finally {
+          // Restore the previous tracker — it matters for nested @compute
+          // reads, where an inner one would otherwise steal the outer's deps.
+          trackerContainer.current = prevTracker;
+          if (__DEV__) computePhase.label = prevComputePhase;
+        }
+
+        // Subscribe to the new dependencies synchronously, so a later write
+        // can invalidate this cache.
+        for (const dep of cache.deps) {
+          dep[attach]({
+            id: internalId,
+            onChange: invalidate,
+          });
+        }
+      }
+
+      // Whatever this compute depends on, whoever is reading it depends on
+      // too. Without this, a cache HIT touches no State at all, so the reader
+      // records nothing and never invalidates: a @compute reading another
+      // @compute returned a stale value forever. Runs on the hit path as well
+      // as the miss path — the hit is exactly the broken case.
+      //
+      // Through `trackDependency` rather than the tracker directly, because a
+      // reader can also be an EFFECT, and an effect reading a fresh compute
+      // used to subscribe to nothing at all — the deps went to the tracker
+      // scope, which an effect is not in.
+      for (const dep of cache.deps) trackDependency(dep);
+
+      return cache.value;
+    };
+
+    Object.defineProperty(
+      this,
+      context.name,
+      context.kind === "getter"
+        ? { get: read, configurable: true, enumerable: true }
+        : { value: () => read(), configurable: true, enumerable: true, writable: true },
+    );
 
     // Cleanup when the component is destroyed.
     runtime.clearReactives.push(() => {

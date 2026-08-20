@@ -288,13 +288,10 @@ describe("decorator target validation", () => {
     }).toThrow(/\[@compute\].*Can only decorate a method or a getter.*`value` is a field/s);
   });
 
-  test("@compute accepts both a method and a getter", () => {
+  test("@compute accepts a getter", () => {
     expect(() => {
       class Fine extends Component {
         @state count = 1;
-        @compute doubled() {
-          return this.count * 2;
-        }
         @compute get tripled() {
           return this.count * 3;
         }
@@ -324,18 +321,43 @@ describe("decorator target validation", () => {
  * is exactly where they are told apart.
  */
 /**
- * A `@compute` METHOD is read as a property, not called.
+ * A `@compute` that declares a parameter, refused in EVERY build.
  *
- * The documentation said otherwise — `/concepts/compute` showed `total() {} // this.total()` — and nothing
- * caught it, because a comment inside a code block is prose: `check-examples` compiles the code, and the
- * claim was in the `//`. Measured: `this.total` holds the value and `this.total()` throws `is not a
- * function`. Pinned here so the sentence cannot drift back.
+ * Both forms are legitimate — a getter becomes an accessor, a method stays a function that returns the
+ * value — and neither has a key. So an argument is accepted and ignored: the second call with a different
+ * argument gets the first call's answer, with nothing thrown and nothing logged. That is a wrong number on
+ * a page, which is why the check is outside `__DEV__`.
+ *
+ * The type cannot catch it. `compute`'s target is `(this: T) => R`, and a method with a parameter is
+ * assignable to that through contravariance — the same reason `(...args: never[])` is the right bound for a
+ * lifecycle decorator. `@ramonda/check`'s `compute-takes-no-arguments` reports it before the build; this is
+ * the net for what is already running.
  */
-describe("a @compute method", () => {
-  test("holds the value and is not callable", async () => {
-    class Panel extends Component {
+describe("@compute with a parameter", () => {
+  test("is refused, and names the decorator that takes one", () => {
+    expect(() => {
+      class Bad extends Component {
+        @state factor = 2;
+        // @ts-expect-error — the runtime guard is the point; the type accepts this shape.
+        @compute
+        times(n: number) {
+          return n * this.factor;
+        }
+        render() {
+          return <div />;
+        }
+      }
+      return Bad;
+    }).toThrow(/\[@compute\].*declares 1 parameter.*@memoized/s);
+  });
+
+  test("both parameterless forms are accepted, and each is read the way it is written", async () => {
+    class Fine extends Component {
       @state n = 2;
-      @compute total() {
+      @compute get doubled() {
+        return this.n * 2;
+      }
+      @compute tripled() {
         return this.n * 3;
       }
       render() {
@@ -343,41 +365,8 @@ describe("a @compute method", () => {
       }
     }
 
-    using app = await getDOM<Panel>(<Panel />);
-    const read = app.instance as unknown as { total: unknown };
-    expect(read.total).toBe(6);
-    expect(() => (read.total as () => unknown)()).toThrow(/not a function/);
-  });
-});
-
-describe("@compute with a parameter", () => {
-  test("and the runtime refuses it too, for the build that has no types", () => {
-    const bare = compute as unknown as (fn: unknown, context: unknown) => unknown;
-    expect(() =>
-      bare(
-        function times(n: number) {
-          return n;
-        },
-        { kind: "method", name: "times", addInitializer() {} },
-      ),
-    ).toThrow(/parameter/);
-  });
-
-  test("a getter is untouched, and so is a method with none", () => {
-    expect(() => {
-      class Panel extends Component {
-        @state n = 1;
-        @compute get doubled() {
-          return this.n * 2;
-        }
-        @compute tripled() {
-          return this.n * 3;
-        }
-        render() {
-          return <div />;
-        }
-      }
-      void Panel;
-    }).not.toThrow();
+    using app = await getDOM<Fine>(<Fine />);
+    expect(app.instance.doubled).toBe(4);
+    expect(app.instance.tripled()).toBe(6);
   });
 });

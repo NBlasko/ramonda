@@ -41,6 +41,7 @@ const EXPECTED_TYPES = [
   "CachedReadOfAPlainFieldIssue",
   "ContextConsumedAboveItsProviderIssue",
   "ControlWithNoLabelIssue",
+  "ComputeTakesNoArgumentsIssue",
   "ContextIssue",
   "DecoratorThatAddsNothingIssue",
   "DomWriteIssue",
