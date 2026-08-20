@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { heritage } from "./render-reach";
 import type { Rule, RuleContext } from "./rule";
 
 /**
@@ -30,9 +31,19 @@ import type { Rule, RuleContext } from "./rule";
  *   can ever clear it.
  * - **The id goes into a local.** A local dies with the call that made it, so unless the same
  *   function clears it, nothing can reach it afterwards — `@destroyed` least of all.
- * - **The id goes onto `this`, and no `clearInterval` in the class ever names that property.**
- *   This is the documented shape done half way, which is the one worth catching: somebody followed
- *   the advice as far as the property and stopped.
+ * - **The id goes onto `this`, and no `clearInterval` in the class OR ITS BASES ever names that
+ *   property.** This is the documented shape done half way, which is the one worth catching:
+ *   somebody followed the advice as far as the property and stopped.
+ *
+ * ## The chain is walked upward, and that decides one silence
+ *
+ * A base's members are the component's members, so a `@destroyed` on a shared base clearing
+ * `this.id` answers an interval its subclass started. Reading one class alone missed that.
+ *
+ * Downward there is nothing to read: a class does not know who extends it. So an ABSTRACT class
+ * keeping an id on a property goes unreported — it is never mounted on its own, and any subclass
+ * may be the one that clears it. A concrete class keeps its report, because `<Base />` on its own
+ * really does leak. An id kept nowhere or in a local is certain either way: no subclass can reach it.
  */
 export interface IntervalWithNoCleanupIssue {
   /** The component or hook. */
@@ -72,7 +83,10 @@ function isSetInterval(call: ts.CallExpression, resolve: RuleContext["resolve"])
  * would ever find. It only errs towards silence, so it is not a false report — but a muddled set is
  * the kind of thing a later reader has to re-derive, and keeping them apart costs one line.
  */
-function clearedNames(cls: ts.ClassDeclaration): { properties: ReadonlySet<string>; locals: ReadonlySet<string> } {
+function clearedNames(classes: readonly ts.ClassLikeDeclaration[]): {
+  properties: ReadonlySet<string>;
+  locals: ReadonlySet<string>;
+} {
   const properties = new Set<string>();
   const locals = new Set<string>();
 
@@ -104,7 +118,7 @@ function clearedNames(cls: ts.ClassDeclaration): { properties: ReadonlySet<strin
     ts.forEachChild(node, visit);
   };
 
-  for (const member of cls.members) ts.forEachChild(member, visit);
+  for (const declaring of classes) for (const member of declaring.members) ts.forEachChild(member, visit);
   return { properties, locals };
 }
 
@@ -173,7 +187,10 @@ export const intervalWithNoCleanup = {
   },
 
   read(cls, { self, resolve }) {
-    const cleared = clearedNames(cls);
+    // The BASES too: a shared base's `@destroyed stop() { clearInterval(this.id) }` clears an
+    // interval its subclass started, on the same instance. Reading one class alone reported it.
+    const cleared = clearedNames([cls, ...heritage(cls, resolve)]);
+    const abstract = cls.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword) === true;
     const found: IntervalWithNoCleanupIssue[] = [];
 
     for (const member of cls.members) {
@@ -187,6 +204,19 @@ export const intervalWithNoCleanup = {
           // and a property is only answered by a property, a local only by a local.
           const isCleared =
             named !== undefined && (kept === "a property" ? cleared.properties.has(named) : cleared.locals.has(named));
+          /**
+           * An ABSTRACT class keeping the id on a property is the one shape this cannot answer. The
+           * chain is walked upward, never down, so a subclass clearing the property is invisible —
+           * and an abstract class is never mounted on its own, which is what makes the report a
+           * guess rather than a fact. A concrete base IS mountable, so it keeps its report.
+           *
+           * Only the property shape: an id kept nowhere, or in a local that dies with the call, is
+           * beyond any subclass's reach and stays certain.
+           */
+          if (abstract && kept === "a property" && !isCleared) {
+            ts.forEachChild(node, visit);
+            return;
+          }
           if (!isCleared) {
             found.push({ component: self.name, member: memberName, kept, named, ...positionOf(node) });
           }

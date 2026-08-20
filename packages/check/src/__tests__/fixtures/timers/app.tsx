@@ -82,5 +82,64 @@ class Once extends Component {
   }
 }
 
+/**
+ * The chain, both ways.
+ *
+ * A base's members are the component's members, so a `@destroyed` on a shared base answers an
+ * interval its subclass started. Reading one class body missed that and reported the subclass.
+ */
+@Host("div")
+abstract class Clearing extends Component {
+  protected handle = 0;
+
+  @destroyed stop() {
+    clearInterval(this.handle);
+  }
+}
+
+/** Not reported: the base clears `this.handle`, on the same instance. */
+@Host("div")
+class StartsBelow extends Clearing {
+  @mounted start() {
+    this.handle = setInterval(() => {}, 1000);
+  }
+  render() {
+    return <div />;
+  }
+}
+
+/**
+ * The other direction, which cannot be read: a class does not know who extends it. An ABSTRACT one
+ * is never mounted on its own, so a property it never clears may be cleared by any subclass — and
+ * reporting it would be a guess. A local or a discarded id stays certain, because no subclass can
+ * reach either.
+ */
+@Host("div")
+abstract class StartsAbove extends Component {
+  protected handle = 0;
+
+  @mounted start() {
+    /* Not reported: abstract, and a subclass may be the one clearing `this.handle`. */
+    this.handle = setInterval(() => {}, 1000);
+
+    /* REPORTED even here — a local dies with the call, whoever extends this. */
+    const local = setInterval(() => {}, 1000);
+    void local;
+  }
+}
+
+/** It IS cleared, one class down — which is the pair the upward walk cannot see. */
+@Host("div")
+class ClearsAbove extends StartsAbove {
+  @destroyed stop() {
+    clearInterval(this.handle);
+  }
+  render() {
+    return <div />;
+  }
+}
+
 bootstrap(<Ticker />, null);
 bootstrap(<Once />, null);
+bootstrap(<StartsBelow />, null);
+bootstrap(<ClearsAbove />, null);

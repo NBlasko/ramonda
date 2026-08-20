@@ -23,7 +23,26 @@ describe("one Provider of a context per component", () => {
     expect(found().map((issue) => `${issue.component}: ${issue.context}`)).toEqual([
       "ProvidesTwice: Theme",
       "ProvidesTwiceRenamed: Theme",
+      "ProvidesAgain: Theme",
     ]);
+  });
+
+  /**
+   * A BASE CLASS is the same component, and this was missed: the rule read one class body, so a
+   * Provider inherited from a base and another mounted here were never seen as two.
+   *
+   * Measured against core rather than reasoned about — mounting the pair below THROWS `RMD056`,
+   * which is the crash this rule exists to say first.
+   */
+  test("a Provider inherited from a base is the first of the two", () => {
+    const issue = found().find((each) => each.component === "ProvidesAgain");
+    expect(issue?.provider).toBe("ThemeProvider");
+    expect(issue?.firstOn).toBe("ProvidesOnABase");
+  });
+
+  /** A DIFFERENT context on the subclass is two channels, not two of one. */
+  test("a base and a subclass providing different contexts is silent", () => {
+    expect(found().some((each) => each.component === "ProvidesAnother")).toBe(false);
   });
 
   /** It points at the SECOND one — the line that throws and the one to move — and names the first. */

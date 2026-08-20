@@ -28,7 +28,29 @@ describe("a context consumed above its provider", () => {
       "ConsumerFirst: Theme",
       "WithAFieldBetween: Size",
       "RenamedBindings: Theme",
+      "ProvidesUnderIt: Theme",
     ]);
+  });
+
+  /**
+   * A BASE CLASS is part of the order, and it used to be missed entirely: the rule read one class
+   * body, so a consumer inherited from a base and a provider mounted here were never compared.
+   *
+   * Field initialisers run base-first on ONE instance, which makes the inherited consumer always the
+   * earlier of the two. Measured against core: this pair reports `RMD057` at runtime, and the rule
+   * that claims to say it first said nothing.
+   */
+  test("a consumer inherited from a base is above a provider mounted here", () => {
+    const issue = found().find((each) => each.component === "ProvidesUnderIt");
+    expect(issue?.consumer).toBe("ThemeConsumer");
+    expect(issue?.provider).toBe("ThemeProvider");
+    // Named, because the two halves are in two class bodies and a line number alone would not say.
+    expect(issue?.providerOn).toBeUndefined();
+  });
+
+  /** The other order across the chain is the arrangement the packages are built around. */
+  test("a base that provides and a subclass that consumes is silent", () => {
+    expect(found().some((each) => each.component === "ProvidesThenConsumes")).toBe(false);
   });
 
   /**

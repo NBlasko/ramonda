@@ -118,6 +118,45 @@ export class ConsumesTwice extends Component {
   }
 }
 
+/**
+ * A base and its subclass are ONE component: field initialisers run base-first on one instance.
+ * Core throws `RMD056` for the pair below and reports `RMD057` for the one after it — measured —
+ * while this rule read a single class body and said nothing about either.
+ */
+export class ProvidesOnABase extends Component {
+  base = this.use(ThemeProvider, () => ({ color: "slate" }));
+  render() {
+    return <p>provider on a base</p>;
+  }
+}
+
+/** ✗ The base publishes Theme and so does this: two Providers on one object. */
+export class ProvidesAgain extends ProvidesOnABase {
+  accent = this.use(ThemeProvider, () => ({ color: "amber" }));
+}
+
+/** ✓ A DIFFERENT context on the subclass is two channels, not two of one. */
+export class ProvidesAnother extends ProvidesOnABase {
+  size = this.use(SizeProvider, () => ({ size: "m" }));
+}
+
+export class ConsumesOnABase extends Component {
+  outer = this.use(ThemeConsumer);
+  render() {
+    return <p>consumer on a base</p>;
+  }
+}
+
+/** ✗ The consumer is on the base, so it resolves before this provider exists. */
+export class ProvidesUnderIt extends ConsumesOnABase {
+  own = this.use(ThemeProvider, () => ({ color: "amber" }));
+}
+
+/** ✓ The other order across the chain: the base provides, this consumes. */
+export class ProvidesThenConsumes extends ProvidesOnABase {
+  reads = this.use(ThemeConsumer);
+}
+
 export class App extends Component {
   render() {
     return (
@@ -133,6 +172,10 @@ export class App extends Component {
         <ProvidesTwice />
         <ProvidesTwiceRenamed />
         <ConsumesTwice />
+        <ProvidesAgain />
+        <ProvidesAnother />
+        <ProvidesUnderIt />
+        <ProvidesThenConsumes />
       </main>
     );
   }

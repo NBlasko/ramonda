@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { hookNamed, isThisUse, positionOf } from "../syntax";
 import { contextHalfOf } from "./context-pair";
+import { heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
@@ -22,6 +23,11 @@ import type { Rule } from "./rule";
  * `BindingElement` each name came from — so an import alias is transparent and two contexts of the
  * same shape stay two contexts. A Provider wrapped in a hook class of its own, the way
  * `QueryClientProvider` and `Form` wrap theirs, is invisible here; that case is the runtime's.
+ *
+ * **A BASE CLASS counts, and it was missed.** Field initialisers run base-first on ONE instance, so
+ * a component whose base mounts the Provider and which mounts another is one component publishing
+ * twice — measured against core, which throws `RMD056` for exactly that pair while this rule said
+ * nothing. The chain is walked furthest ancestor first, which is the order the hooks are built in.
  */
 export interface OneProviderPerComponentIssue {
   /** The class holding both. */
@@ -32,6 +38,8 @@ export interface OneProviderPerComponentIssue {
   provider: string;
   /** The line of the FIRST one, so a reader can see both. */
   firstAtLine: number;
+  /** The base class the first one is inherited from, or `undefined` when both are written here. */
+  firstOn: string | undefined;
   /** The SECOND one's position — the line that throws, and the one to move. */
   file: string;
   line: number;
@@ -51,8 +59,11 @@ export const oneProviderPerComponent = {
     heading: (found) => `${found.length} component(s) providing one context twice:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}> — a second \`${issue.provider}\` for "${issue.context}", after line`,
-      `    ${issue.firstAtLine}. This throws when the component is constructed.`,
+      `    <${issue.component}> — a second \`${issue.provider}\` for "${issue.context}", after ${
+        issue.firstOn === undefined
+          ? `line ${issue.firstAtLine}`
+          : `the one <${issue.firstOn}> mounts on line ${issue.firstAtLine}`
+      }. This throws when the component is constructed.`,
     ],
     advice:
       "A component publishes a context on ONE object, so the second Provider replaces the first and\n" +
@@ -69,50 +80,65 @@ export const oneProviderPerComponent = {
       "twice. Splitting the keys between two Providers is not a way out: a Provider takes its options\n" +
       "whole, so the second replaces the channel and the first half falls back to the default.\n\n" +
       "NESTING is untouched. A Provider on a descendant shadows the one above it for its own branch,\n" +
-      "which is ordinary — only two on the SAME component are refused.",
+      "which is ordinary — only two on the SAME component are refused.\n\n" +
+      "A BASE CLASS is the same component. Its fields initialise first, on the same instance, so a\n" +
+      "Provider inherited from a base and another mounted here are two on one object — move one of\n" +
+      "them onto a component of its own rather than up or down the chain.",
   },
 
   read(cls, context) {
     const found: OneProviderPerComponentIssue[] = [];
 
-    /** Per context, the first Provider field this class declares. */
-    const first = new Map<ts.VariableDeclaration, { name: string; label?: string; at: ts.PropertyDeclaration }>();
+    /** Per context, the first Provider field this component declares — its bases included. */
+    const first = new Map<
+      ts.VariableDeclaration,
+      { name: string; label?: string; at: ts.PropertyDeclaration; on: string | undefined }
+    >();
 
     /**
-     * FIELD initialisers only, in source order — because that is the order the hooks are constructed
-     * in, and it decides which of the two throws. A `this.use` inside a method runs when the method
-     * is called, which this cannot place against a field, so it is not counted.
+     * FIELD initialisers only, in the order they are CONSTRUCTED — because that is what decides
+     * which of the two throws. A `this.use` inside a method runs when the method is called, which
+     * this cannot place against a field, so it is not counted.
+     *
+     * Furthest ancestor first, then this class: a subclass's fields initialise after its base's, so
+     * a Provider inherited from a base is always the first of the two.
      */
-    for (const member of cls.members) {
-      if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
+    const chain = [...heritage(cls, context.resolve)].reverse();
+    for (const declaring of [...chain, cls]) {
+      const inherited = declaring === cls ? undefined : (declaring.name?.text ?? "a base class");
+      for (const member of declaring.members) {
+        if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
 
-      const visit = (node: ts.Node): void => {
-        if (ts.isCallExpression(node) && isThisUse(node)) {
-          const named = node.arguments[0];
-          const half = named === undefined ? undefined : contextHalfOf(hookNamed(named), context);
-          // Index 0 is the Provider. A Consumer twice is harmless — it reads, it publishes nothing.
-          if (half !== undefined && half.index === 0) {
-            const earlier = first.get(half.pair);
-            if (earlier === undefined) {
-              first.set(half.pair, {
-                name: half.name,
-                ...(half.label === undefined ? {} : { label: half.label }),
-                at: member,
-              });
-            } else {
-              found.push({
-                component: context.self.name,
-                context: half.label ?? half.name,
-                provider: half.name,
-                firstAtLine: positionOf(earlier.at).line,
-                ...positionOf(member),
-              });
+        const visit = (node: ts.Node): void => {
+          if (ts.isCallExpression(node) && isThisUse(node)) {
+            const named = node.arguments[0];
+            const half = named === undefined ? undefined : contextHalfOf(hookNamed(named), context);
+            // Index 0 is the Provider. A Consumer twice is harmless — it reads, it publishes nothing.
+            if (half !== undefined && half.index === 0) {
+              const earlier = first.get(half.pair);
+              if (earlier === undefined) {
+                first.set(half.pair, {
+                  name: half.name,
+                  ...(half.label === undefined ? {} : { label: half.label }),
+                  at: member,
+                  on: inherited,
+                });
+              } else {
+                found.push({
+                  component: context.self.name,
+                  context: half.label ?? half.name,
+                  provider: half.name,
+                  firstAtLine: positionOf(earlier.at).line,
+                  firstOn: earlier.on,
+                  ...positionOf(member),
+                });
+              }
             }
           }
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(member.initializer);
+          ts.forEachChild(node, visit);
+        };
+        visit(member.initializer);
+      }
     }
 
     return found;

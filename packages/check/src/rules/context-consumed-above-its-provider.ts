@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { hookNamed, isThisUse, positionOf } from "../syntax";
 import { type ContextHalf, contextHalfOf } from "./context-pair";
+import { heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
@@ -30,6 +31,12 @@ import type { Rule } from "./rule";
  * class — because that is what it can prove; a provider wrapped in a hook of its own, the way
  * `QueryClientProvider` wraps one, is invisible here and is exactly what the runtime diagnostic
  * catches.
+ *
+ * **A BASE CLASS is part of the order, and it was missed.** A base's fields initialise before the
+ * subclass's, on the same instance, so a consumer inherited from a base is ALWAYS above a provider
+ * mounted here — measured against core, which reports `RMD057` for that pair while this rule said
+ * nothing. Where two halves come from different classes the chain decides the order; where they are
+ * written in one class the source position does, as it always did.
  */
 export interface ContextConsumedAboveItsProviderIssue {
   /** The class holding both halves. */
@@ -41,6 +48,8 @@ export interface ContextConsumedAboveItsProviderIssue {
   /** The provider binding's name, and the line it is declared on. */
   provider: string;
   providerAtLine: number;
+  /** The base class the provider is mounted on, or `undefined` when both halves are written here. */
+  providerOn: string | undefined;
   /** The CONSUMER's position — the line that reads the value the author did not expect. */
   file: string;
   line: number;
@@ -62,7 +71,9 @@ export const contextConsumedAboveItsProvider = {
     heading: (found) => `${found.length} context(s) consumed above the provider on the same component:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}> — \`${issue.consumer}\` resolves before \`${issue.provider}\` on line`,
+      `    <${issue.component}> — \`${issue.consumer}\` resolves before \`${issue.provider}\`${
+        issue.providerOn === undefined ? "" : ` on <${issue.providerOn}>`
+      }, which on line`,
       `    ${issue.providerAtLine} publishes "${issue.context}", so it reads an ancestor's value.`,
     ],
     advice:
@@ -79,6 +90,8 @@ export const contextConsumedAboveItsProvider = {
       "source says which of the two it is, which is why this is reported rather than failed.\n\n" +
       "The other order is not reported: `this.use(QueryClientProvider)` followed by\n" +
       "`this.use(Query, …)` is mount-a-client-then-query-on-it, and that is what the packages do.\n\n" +
+      "A BASE CLASS is part of the order. Its fields initialise first, so a consumer inherited from a\n" +
+      "base is always above a provider mounted here, however the two files are laid out.\n\n" +
       "This is a warning today and an error in a later version.",
   },
 
@@ -86,33 +99,42 @@ export const contextConsumedAboveItsProvider = {
     const found: ContextConsumedAboveItsProviderIssue[] = [];
 
     /** Per context, the first half of each kind this class declares, and the FIELD that declared it. */
-    type Declared = ContextHalf & { at: ts.PropertyDeclaration };
+    type Declared = ContextHalf & { at: ts.PropertyDeclaration; rank: number; on: string | undefined };
     const seen = new Map<ts.VariableDeclaration, { provider?: Declared; consumer?: Declared }>();
 
     /**
-     * FIELD initializers only, in the order they are written — because that is the order the hooks
-     * are constructed in, and the order is the whole question. A `this.use` inside a method runs
-     * when the method is called, which this cannot place relative to a field, so it is not counted.
+     * FIELD initializers only, in the order they are CONSTRUCTED — because the order is the whole
+     * question. A `this.use` inside a method runs when the method is called, which this cannot place
+     * relative to a field, so it is not counted.
+     *
+     * Furthest ancestor first, then this class, and the position in this walk is what orders two
+     * halves — `getStart()` compares nothing meaningful across two files.
      */
-    for (const member of cls.members) {
-      if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
+    let rank = 0;
+    const chain = [...heritage(cls, context.resolve)].reverse();
+    for (const declaring of [...chain, cls]) {
+      const inherited = declaring === cls ? undefined : (declaring.name?.text ?? "a base class");
+      for (const member of declaring.members) {
+        rank++;
+        if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
 
-      const visit = (node: ts.Node): void => {
-        if (ts.isCallExpression(node) && isThisUse(node)) {
-          const named = node.arguments[0];
-          const half = named === undefined ? undefined : contextHalfOf(hookNamed(named), context);
-          if (half !== undefined) {
-            const entry = seen.get(half.pair) ?? {};
-            // The FIRST of each kind. A second provider on one component is its own fault (RMD056),
-            // and taking the first here keeps this rule answering only its own question.
-            if (half.index === 0) entry.provider ??= { ...half, at: member };
-            else entry.consumer ??= { ...half, at: member };
-            seen.set(half.pair, entry);
+        const visit = (node: ts.Node): void => {
+          if (ts.isCallExpression(node) && isThisUse(node)) {
+            const named = node.arguments[0];
+            const half = named === undefined ? undefined : contextHalfOf(hookNamed(named), context);
+            if (half !== undefined) {
+              const entry = seen.get(half.pair) ?? {};
+              // The FIRST of each kind. A second provider on one component is its own fault (RMD056),
+              // and taking the first here keeps this rule answering only its own question.
+              if (half.index === 0) entry.provider ??= { ...half, at: member, rank, on: inherited };
+              else entry.consumer ??= { ...half, at: member, rank, on: inherited };
+              seen.set(half.pair, entry);
+            }
           }
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(member.initializer);
+          ts.forEachChild(node, visit);
+        };
+        visit(member.initializer);
+      }
     }
 
     for (const { provider, consumer } of seen.values()) {
@@ -120,13 +142,15 @@ export const contextConsumedAboveItsProvider = {
       // Both halves on one component, and the consumer first. The other way round is the arrangement
       // the packages are built around and is deliberately silent. Compared by POSITION in the source
       // rather than by line, so two on one line still have an order.
-      if (consumer.at.getStart() >= provider.at.getStart()) continue;
+      if (consumer.rank > provider.rank) continue;
+      if (consumer.rank === provider.rank && consumer.at.getStart() >= provider.at.getStart()) continue;
       found.push({
         component: context.self.name,
         context: consumer.label ?? consumer.name,
         consumer: consumer.name,
         provider: provider.name,
         providerAtLine: positionOf(provider.at).line,
+        providerOn: provider.on,
         // The CONSUMER's field, not the `this.use` inside it — the field is the line a reader moves.
         ...positionOf(consumer.at),
       });
