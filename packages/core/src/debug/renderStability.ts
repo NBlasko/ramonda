@@ -203,7 +203,9 @@ export function checkRenderStability(component: BaseComponent, first: unknown, s
   const walk: Walk = { owner: component.constructor.name, budget: MAX_NODES };
 
   /**
-   * A cached render is the one shape this cannot look into, so it says so instead of comparing.
+   * A cached render is the one shape this cannot look into, so it says so instead of comparing. It is the
+   * render's OWN output that goes unchecked — a `list()` row is built twice by `listEngine`, not by the
+   * two calls here, so rows keep their cover and the note says so.
    *
    * `@compute render()` and `@memoized render()` are allowed — see `debug/cachedRender.ts` for why
    * forbidding them protected nobody — and the two outputs are then one object, so every comparison below
@@ -224,10 +226,11 @@ export function checkRenderStability(component: BaseComponent, first: unknown, s
     if (announceCachedRenderOnce(component)) {
       ramondaLog(
         "info",
-        `<${walk.owner} /> has a cached render, so RMD020 cannot see inside it — an inline handler, an ` +
-          `object rebuilt in place and a value that does not come from state all go unreported here. A ` +
-          `cached render also refreshes only when a SIGNAL it read moves, so anything else it reads keeps ` +
-          `its old value. Both are the deal; nothing here is wrong.`,
+        `<${walk.owner} /> has a cached render, so RMD020 cannot compare its output — an inline handler, ` +
+          `an object rebuilt in place and a value that does not come from state go unreported in the ` +
+          `render itself. A \`list()\` row is still checked, because the list builds each row twice on ` +
+          `its own. And a cached render refreshes only when a SIGNAL it read moves, so anything else it ` +
+          `reads keeps its old value. All of it is the deal; nothing here is wrong.`,
       );
     }
     return;

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../base/Component";
 import { compute, memoized, state } from "../base/decorators";
+import { list } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { configureDev } from "../index";
 import { getDOM } from "../test/setup";
@@ -63,6 +64,35 @@ describe("a cached render", () => {
     expect(said()).not.toContain("Ramonda Warning");
     // The point of the verdict: the handler inside is NOT what it reports, because it never saw it.
     expect(said()).not.toContain("the source is the same");
+  });
+
+  /**
+   * The note says the render's OWN output is uncompared, and this is why the qualification is in it: a
+   * `list()` row is built twice by `listEngine`, not by the two calls to `render`, so a handler built per
+   * row is still reported while the render around it is cached. Both messages arrive in the same console.
+   */
+  test("a `list()` row keeps its cover under a cached render", async () => {
+    class CachedList extends Component {
+      @state items = [{ id: 1 }, { id: 2 }];
+      @compute
+      render() {
+        return (
+          <ul>
+            {list(this.items, (it) => (
+              <li key={it.id} onclick={() => this.items.push(it)} />
+            ))}
+          </ul>
+        );
+      }
+    }
+
+    await getDOM<CachedList>(<CachedList />);
+
+    expect(said()).toContain("has a cached render");
+    expect(said()).toContain("A `list()` row is still checked");
+    // And it IS still checked: the row handler is reported, by RMD020, from inside a cached render.
+    expect(said()).toContain("RMD020");
+    expect(said()).toContain("row > li.onclick");
   });
 
   test("@memoized on render is noted the same way", async () => {

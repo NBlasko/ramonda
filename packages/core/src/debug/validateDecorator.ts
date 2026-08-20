@@ -43,8 +43,10 @@ function fail(decorator: string, message: string): never {
  * measured, it blinds RMD020 exactly as `@compute render()` does, and freezes on a plain field exactly the
  * same way. So the ban cost one wrapper and taught that the rule was arbitrary.
  *
- * What replaced it is a report rather than a refusal: RMD020 says when a render handed back the same tree
- * twice, because that is the case it cannot see into — and it says it for the wrapper too.
+ * What replaced it is a note rather than a refusal: RMD020 says, once per component, that it can no longer
+ * see into this render. It is asked of the DECORATOR, so the wrapper — a `@compute` body returned from
+ * `render()` — pays the same cost and is not noted; `debug/cachedRender.ts` says why nothing can tell it
+ * apart from two legitimate shapes.
  */
 const CACHING = new Set(["compute", "memoized"]);
 
@@ -56,7 +58,8 @@ export function assertNotRender(decorator: string, name: string | symbol): void 
     `\`render\` does not take this decorator. It is the method the framework calls to build your element, ` +
       `and this one changes when it runs or means something else entirely. Put the behaviour on a member ` +
       `of its own and call it from \`render\`. (\`@compute\` and \`@memoized\` ARE allowed: they cache the ` +
-      `result, which RMD020 reports so you know it can no longer see inside this render.)`,
+      `result, and development says so once per component, so you know RMD020 can no longer compare this ` +
+      `render's output.)`,
   );
 }
 

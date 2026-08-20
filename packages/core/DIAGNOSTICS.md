@@ -778,8 +778,10 @@ constructed `Date`/`Map`/`Set`/class instance — or does not come from state at
 
 **Four verdicts:** `handler`, `object`, `instance`, `nondeterministic`. **A CACHED render is noted instead**
 — on the log channel at `info`, once per component, with no code: `@compute` and `@memoized` are allowed on
-`render`, a cached render hands back one answer for both calls, and everything inside it goes unreported.
-A warning would be scolding a deliberate choice. Asked of the decorator rather than of the output —
+`render`, a cached render hands back one answer for both calls, and what the render itself built goes
+unreported. A `list()` row keeps its cover — `listEngine` builds each row twice on its own — so a handler
+built per row is still reported under a cached render, measured. A warning would be scolding a deliberate
+choice. Asked of the decorator rather than of the output —
 `render() { return this.props.children }` and a render returning a module constant also hand back one
 object and hide nothing, measured — so a `@compute` body returned from `render` is NOT noted, for that same
 reason. `instance` is

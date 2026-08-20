@@ -4,7 +4,9 @@
  * `@compute render()` and `@memoized render()` are allowed — forbidding them protected nobody, because a
  * `@compute` body returned from `render` does the same thing and was always legal. What they cost is this
  * check: it calls `render()` twice and compares, and a cache makes the two outputs one object, so an inline
- * handler, an object rebuilt in place and a non-deterministic read all go unreported.
+ * handler, an object rebuilt in place and a non-deterministic read go unreported in the render itself. A
+ * `list()` row is the exception and keeps its cover: `listEngine` builds each row twice on its own, so it
+ * still reports a handler built per row even when the render around it is cached.
  *
  * ## An `info` line, not a warning, and not a diagnostic code
  *

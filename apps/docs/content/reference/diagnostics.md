@@ -387,9 +387,10 @@ covers it alone.
 
 **A CACHED render is noted, not reported.** `@compute` and `@memoized` are allowed on `render`, and a
 cached render hands back one answer for both calls — so an inline handler, a rebuilt object and a
-non-deterministic read all go unreported inside it. Caching a render is a deliberate choice, so this is not
-a warning and carries no code: it is one `info` line, once per component, saying what the check can no
-longer see.
+non-deterministic read go unreported in the render itself. Caching a render is a deliberate choice, so this
+is not a warning and carries no code: it is one `info` line, once per component, saying what the check can no
+longer see. A `list()` row is the exception and keeps its cover, because the list builds each row twice on
+its own — measured, an inline row handler is still reported under a cached render.
 
 ```tsx
 @compute

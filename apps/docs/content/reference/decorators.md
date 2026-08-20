@@ -87,8 +87,8 @@ defined. Unlike the three refusals above — which hold in every build — this 
 other decorator-argument checks, all of which are compiled out of production. The mistake is fixed
 at the source, so the moment you write it is the only moment worth refusing it.
 
-They are not all shades of wrong, and two of them are allowed now — `@compute` and `@memoized` cache the
-render, which `RMD020` reports rather than refuses. Measured, one class per decorator:
+They are not all shades of wrong, and two of them are allowed — `@compute` and `@memoized` cache the
+render, and development notes what that costs instead of refusing it. Measured, one class per decorator:
 
 | written on `render` | what it did |
 |---|---|
