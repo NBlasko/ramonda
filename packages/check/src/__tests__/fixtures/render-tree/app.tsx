@@ -231,6 +231,31 @@ class NotAHeadingAnyMore extends Component {
   }
 }
 
+/**
+ * An `id` on a COMPONENT, twice. Planted to find out whether it is read as a DOM id.
+ *
+ * `idTable` already decided that an unreadable `id` on a component does NOT silence the family,
+ * because a component's `id` is frequently a data prop — `<ProfileCard id={user.id} />` — rather
+ * than an element's id. The same question arrives here.
+ */
+@Host("div")
+class TwoComponentIds extends Component {
+  render() {
+    return (
+      <div>
+        <Panel id="a" />
+        <Panel id="a" />
+      </div>
+    );
+  }
+}
+
+class Panel extends Component {
+  render() {
+    return <span>panel</span>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
@@ -252,6 +277,7 @@ class App extends Component {
         <HeadingsByRole />
         <LevelOverridesTheTag />
         <NotAHeadingAnyMore />
+        <TwoComponentIds />
       </main>
     );
   }

@@ -10,6 +10,14 @@ declare const profileId: string;
  * both rules across the whole project. Found by running against `apps/docs`, where
  * `<ProfileCard id={this.id} />` hands its id to `getProfile()` and never touches the DOM.
  */
+/** A component whose HOST carries the id — written in `@Host` props, not in any JSX element. */
+@Host("section", () => ({ id: "host-anchor" }))
+class Anchored extends Component {
+  render() {
+    return <p>anchored</p>;
+  }
+}
+
 @Host("article")
 class ProfileCard extends Component<{ id: string }> {
   render() {
@@ -55,6 +63,11 @@ export class Page extends Component {
             and here it is. If it were forwarded to a host element, that host element would be in
             the source too and would silence the family on its own terms. */}
         <ProfileCard id={profileId} />
+
+        {/* Not reported: the id is written in `@Host` props rather than in any JSX element, and it
+            is on the page all the same. This used to be reported as a link to nowhere. */}
+        <Anchored />
+        <a href="#host-anchor">to the anchored section</a>
       </main>
     );
   }

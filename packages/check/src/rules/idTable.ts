@@ -229,8 +229,55 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
     });
   };
 
+  /**
+   * An id written in `@Host` props, which is on the page and is in no JSX element.
+   *
+   * `@Host("section", () => ({ id: "overview" }))` puts `id="overview"` on the component's own host
+   * — a real id that a fragment link resolves against and that nothing in any render shows. The
+   * table used to miss it entirely, so `<a href="#overview">` was reported as going nowhere.
+   * Measured with a plant, and the shape got likelier the day `@Host`'s props became typed as the
+   * element's attributes.
+   *
+   * An id here that cannot be READ silences the family, exactly as an unreadable one on a host
+   * element in JSX does — it is the same kind of claim about the same kind of element.
+   */
+  const readHostProps = (cls: ts.ClassLikeDeclaration): void => {
+    for (const decorator of ts.getDecorators(cls) ?? []) {
+      const call = decorator.expression;
+      if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || call.expression.text !== "Host") continue;
+
+      const written = call.arguments[1];
+      if (written === undefined) continue;
+      const body =
+        (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) && !ts.isBlock(written.body)
+          ? written.body
+          : undefined;
+      const object = body !== undefined && ts.isParenthesizedExpression(body) ? body.expression : body;
+      if (object === undefined || !ts.isObjectLiteralExpression(object)) continue;
+
+      for (const property of object.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const key =
+          ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+        if (key?.toLowerCase() !== "id") continue;
+
+        const value = property.initializer;
+        if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+          ids.add(value.text);
+          continue;
+        }
+        if (ts.isTemplateExpression(value) && value.head.text.length > 0) {
+          prefixes.push(value.head.text);
+          continue;
+        }
+        unreadable.push({ written: property.getText(), ...positionOf(property) });
+      }
+    }
+  };
+
   const walk = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) readElement(node);
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) readHostProps(node);
     ts.forEachChild(node, walk);
   };
 

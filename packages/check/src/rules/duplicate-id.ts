@@ -76,6 +76,22 @@ export const duplicateId = {
     for (const node of elements) {
       // A spread may carry an `id`, and nothing static can say what it is.
       if (node.spreads || !node.alwaysPresent) continue;
+
+      /**
+       * HOST elements only. A COMPONENT's `id` is a prop, and a prop called `id` is as often a
+       * datum as a DOM id — `<ProfileCard id={user.id} />` hands it to `getProfile()` and it never
+       * touches the document.
+       *
+       * `idTable` decided the same fact the other way round for the other two rules, and the
+       * asymmetry is the reason: adding a component's literal id to the set of KNOWN ids can only
+       * make a rule quieter, and counting it as a CLAIM on one can only make this rule louder. The
+       * safe direction differs because the reading does.
+       *
+       * Nothing is lost. A component's id reaches the document only by being written onto a host
+       * element, and that host element is in the source too — where this rule sees it.
+       */
+      if (node.tag === undefined) continue;
+
       const id = node.attr("id");
       if (id === undefined) continue;
 
@@ -85,7 +101,7 @@ export const duplicateId = {
         claimed.set(id, where.line);
         continue;
       }
-      found.push({ id, tag: node.tag ?? "element", firstAtLine: first, ...where });
+      found.push({ id, tag: node.tag, firstAtLine: first, ...where });
     }
 
     return found;

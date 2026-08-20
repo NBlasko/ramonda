@@ -27,6 +27,16 @@ describe("a fragment link pointing at nothing", () => {
    * `` id={`row-${row.id}`} `` could have made. That is a proof rather than a guess, and it is what
    * keeps a list's generated ids from silencing the whole table.
    */
+  /**
+   * An id written in `@Host` props is on the page and is in no JSX element, so the table used to
+   * miss it and the link to it was reported as going nowhere. Found by planting, and the shape got
+   * likelier the day `@Host`'s props became typed as the element's attributes.
+   */
+  test("an id written in @Host props is an id the project carries", () => {
+    const found = run("id-table").findings["fragment-link-to-nowhere"];
+    expect(found.map((issue) => issue.target)).not.toContain("host-anchor");
+  });
+
   test("an id a template could have produced is not called missing", () => {
     const found = run("id-table").findings["fragment-link-to-nowhere"];
     expect(found.some((issue) => issue.target === "row-3")).toBe(false);
