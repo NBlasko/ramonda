@@ -116,6 +116,54 @@ Writing state here schedules another render, and that is the point for the
 measure-store-render pattern. Guard it, or it loops (reported as `RMD009` in
 development).
 
+### An exit animation, and why this is the signal
+
+A CSS transition needs the element to exist while it plays. Removing a row asks the diff to take the node
+out, and a node that is gone cannot animate — so the exit never runs, however good the stylesheet is.
+`document.startViewTransition` answers that by snapshotting the old frame first: what animates is the
+snapshot, so nothing has to survive.
+
+The browser waits for your callback's promise and then compares frames, so the promise has to resolve
+once the DOM matches the new state. That is `@updated`, exactly — and it is why the pattern needs nothing
+from the framework beyond what is already here:
+
+```tsx
+class Board extends Component {
+  @state rows: Row[] = [];
+  private settle?: () => void;
+
+  @updated
+  committed() {
+    const settle = this.settle;
+    this.settle = undefined;
+    settle?.();
+  }
+
+  remove(id: string) {
+    document.startViewTransition(
+      () =>
+        new Promise<void>((resolve) => {
+          this.settle = resolve;
+          this.rows = this.rows.filter((row) => row.id !== id);
+        }),
+    );
+  }
+}
+```
+
+**Do not count microtask turns instead.** Updates are batched on a microtask, so awaiting a few turns
+inside the callback happens to be enough — and "happens to be" is the whole problem with it. `@updated`
+runs after the DOM has been written for that pass, which is the thing the browser is waiting for.
+
+**Two edges worth knowing.** If the change schedules no render at all, `@updated` never fires and the
+callback never settles, so give it a deadline as a net. And in a cascade — an `@updated` whose body writes
+state — the first one resolves before the last pass; for removing a row it is one pass.
+
+The playground has this as a hook, in `apps/playground-core/src/demos/ViewTransition.tsx`, with the
+deadline and the fallback for a browser that has no `startViewTransition`. It is app code on purpose: the
+framework already has the signal, and the half that needs thought is `view-transition-name` in your
+stylesheet, which no decorator can help with.
+
 ## `@destroyed` — being removed
 
 Runs when the component is removed. Your state and computed values are still readable,

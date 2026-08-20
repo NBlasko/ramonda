@@ -1,5 +1,6 @@
-import { Component, list, memoizedHandler, mounted, state, updated } from "@ramonda/core";
+import { Component, list, memoizedHandler, mounted, state } from "@ramonda/core";
 import { type Card, ExitCard } from "../demos/ExitCard";
+import { ViewTransition } from "../demos/ViewTransition";
 
 let next = 1;
 const make = (): Card => ({ id: next, label: `card ${next++}` });
@@ -81,44 +82,22 @@ export class ExitPage extends Component {
   }
 
   /**
-   * 4. The same, with `@updated` as the signal instead of a guess.
+   * 4. The same, through the hook — which is where this belongs.
    *
-   * The drain is `drainBuilds()` then `flushPostCommit()` then `flushUpdated()`, in a loop until nothing
-   * is left — so `@updated` runs AFTER the DOM has been written for that pass. It is already the
-   * "the document now matches the state I wrote" signal, which is exactly what the browser is waiting
-   * for. Awaiting a fixed number of microtasks, as button 3 does, only happens to be enough.
-   *
-   * Six lines, no new framework surface, and the resolve point is visible rather than hidden in a wrapper.
+   * `ViewTransition` owns the whole dance: it starts the transition, applies the change inside it, and
+   * settles on its own `@updated` rather than on a guessed number of microtask turns. Nothing about it
+   * needs to be in the framework, and a utility library would ship exactly this.
    */
-  private settle?: () => void;
-
-  @updated committed() {
-    const settle = this.settle;
-    this.settle = undefined;
-    settle?.();
-  }
+  transition = this.use(ViewTransition);
 
   removeWithUpdated(id: number) {
-    const start = (document as Document & { startViewTransition?: unknown }).startViewTransition;
-    if (typeof start !== "function") {
-      this.readout = "this browser has no `document.startViewTransition`";
-      return;
-    }
-
-    const transition = (start as (cb: () => Promise<void> | void) => { updateCallbackDone: Promise<void> }).call(
-      document,
-      () =>
-        new Promise<void>((resolve) => {
-          this.settle = resolve;
-          this.drop(id);
-        }),
-    );
-
-    void transition.updateCallbackDone.then(() => {
-      this.readout = this.cards.every((card) => card.id !== id)
-        ? "`@updated` resolved the callback — the commit was inside the transition, and nothing was guessed"
-        : "`@updated` never fired for this write — the signal is not the one to use";
-    });
+    void this.transition
+      .run(() => this.drop(id))
+      .then(() => {
+        this.readout = this.cards.every((card) => card.id !== id)
+          ? "the hook settled on `@updated` — the commit was inside the transition, and nothing was guessed"
+          : "the hook's deadline fired instead, so this change scheduled no render";
+      });
   }
 
   /** 3. The browser snapshots the frame; the removal happens inside. */
