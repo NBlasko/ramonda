@@ -847,7 +847,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
-    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings);
+    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolve);
 
     applyModule(
       moduleRules,

@@ -8,6 +8,10 @@ const EMPTY = "";
 const KEYS: string[] = [];
 const GOOD_ROLE = "button";
 
+/** Reassigned after it is declared, so the initializer is not what the attribute says. */
+let settled = "buton";
+settled = "button";
+
 declare const unknownFlag: boolean;
 
 function roleOf(): string {
@@ -45,6 +49,10 @@ class Probe extends Component {
         <button tabIndex={PRIORITY}>c</button>
         <a href={EMPTY}>d</a>
 
+        {/* Silent on purpose: a `let` can be written again, so its initializer is not what the
+            attribute says. Reported as `role="buton"` until it was planted — on an element that
+            says `"button"`, which is a false report on correct markup. */}
+        <span role={settled} />
         {/* Silent on purpose: a BRANCH has no single answer, and taking the first arm would
             report an element that is right half the time. */}
         <span role={unknownFlag ? "buton" : GOOD_ROLE} />

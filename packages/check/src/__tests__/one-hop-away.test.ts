@@ -57,6 +57,19 @@ describe("a value written one hop from where the rule looks", () => {
   });
 
   /**
+   * A `let` is not an answer either, and this one was a FALSE REPORT before it was planted.
+   *
+   * `let role = "buton"; role = "button";` was read off the initializer and reported as
+   * `role="buton"` — on an element that says `"button"`. A rule reporting correct markup is the one
+   * thing this package may never do, so an attribute reader follows only a binding that cannot be
+   * written again. The walks that look for a FAULT still follow a `let`: an object in one is a
+   * fresh object however it was declared.
+   */
+  test("a reassignable binding is not followed to an attribute's value", () => {
+    expect(run().findings["unknown-role"]).toHaveLength(2);
+  });
+
+  /**
    * `arrow-fields` is the one that stays, and it is not a gap — reading the rule's own claim says
    * so. It reports a function LITERAL in a field, and it leaves a field initialised from a call
    * alone on purpose: `debounce(this.save, 200)` is legitimate, has nowhere else to live, and a

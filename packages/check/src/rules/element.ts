@@ -30,10 +30,7 @@ export function tagOf(element: JsxElementLike): string | undefined {
 }
 
 /** Builds the context an element rule reads. */
-export function contextFor(
-  element: JsxElementLike,
-  resolve: ElementContext["resolve"] = () => undefined,
-): ElementContext {
+export function contextFor(element: JsxElementLike, resolve: ElementContext["resolve"]): ElementContext {
   const attributes = openingOf(element).attributes.properties;
 
   let spreads = false;
@@ -170,10 +167,18 @@ export function trueAttr(element: JsxElementLike, name: string): boolean | undef
  * `undefined` for anything that is not a literal, which is the silence contract: `tabIndex={index}`
  * inside a list is a number this cannot know.
  */
+/**
+ * `resolve` is REQUIRED rather than defaulted, and that is the point of it.
+ *
+ * It was defaulted to a no-op for one commit, and in that commit `tree.ts` built its contexts
+ * without one — so every tree rule silently read the old, literal-only answer while its own code
+ * said it followed a name. A default here is a guard a caller can forget, and forgetting it looks
+ * exactly like a clean codebase.
+ */
 export function numberAttr(
   element: JsxElementLike,
   name: string,
-  resolve: ElementContext["resolve"] = () => undefined,
+  resolve: ElementContext["resolve"],
 ): number | undefined {
   for (const attribute of openingOf(element).attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
@@ -224,6 +229,7 @@ const TEXT: Looking<string> = {
   throughModuleScope: true,
   throughBranches: false,
   throughCalls: false,
+  throughMutableBindings: false,
 };
 
 /** The same, for the attributes that hold a number — `tabIndex`, `aria-level`. */
@@ -243,6 +249,7 @@ const NUMBER: Looking<number> = {
   throughModuleScope: true,
   throughBranches: false,
   throughCalls: false,
+  throughMutableBindings: false,
 };
 
 function textBehind(expression: ts.Expression, resolve: ElementContext["resolve"]): string | undefined {

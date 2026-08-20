@@ -504,8 +504,13 @@ export function applyModule(
  * because it walks the whole tree and decides for every element whether it is really on the page.
  * A rule doing that itself would be doing it again for every other rule in the family.
  */
-export function applyTree(active: readonly (typeof TREE_RULES)[number][], root: ts.Node, findings: Findings): void {
+export function applyTree(
+  active: readonly (typeof TREE_RULES)[number][],
+  root: ts.Node,
+  findings: Findings,
+  resolve: ElementContext["resolve"],
+): void {
   if (active.length === 0) return;
-  const tree = treeFor(root);
+  const tree = treeFor(root, resolve);
   for (const rule of active) collect(findings, rule, rule.read(tree));
 }

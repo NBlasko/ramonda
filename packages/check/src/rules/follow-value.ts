@@ -110,6 +110,16 @@ export interface Looking<T> {
   throughBranches: boolean;
   /** Whether a CALL may be followed into the function it names and through its returns. */
   throughCalls: boolean;
+  /**
+   * Whether a `let` counts, or only a binding that cannot be written again.
+   *
+   * True for a question about a fault: `let conf = { dense: true }` is a fresh object however the
+   * binding was declared, and reassigning it makes that MORE true rather than less. FALSE for a
+   * question about what a value SAYS — planted and measured, `let role = "buton"; role = "button"`
+   * was reported as `role="buton"` on an element that says `"button"`, which is a false report on
+   * correct markup and the one thing this package may never produce.
+   */
+  throughMutableBindings: boolean;
 }
 
 /** Looking for a value REBUILT during the render: only a literal, and only inside a function. */
@@ -119,6 +129,7 @@ const REBUILT: Looking<"object" | "array"> = {
   throughModuleScope: false,
   throughBranches: true,
   throughCalls: true,
+  throughMutableBindings: true,
 };
 
 /** What the walk found, and the name of the local or function it was found in. */
@@ -176,6 +187,7 @@ export function follow<T>(
   if (ts.isIdentifier(written)) {
     const declaration = resolve(written)?.declarations?.[0];
     if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+    if (!how.throughMutableBindings && !isConst(declaration)) return undefined;
     // Module scope means built ONCE. For "is this rebuilt" that is the fix rather than the fault
     // and the walk stops; for "what is this" it changes nothing and the walk goes on.
     if (!how.throughModuleScope && !insideAFunction(declaration)) return undefined;
@@ -326,4 +338,10 @@ function insideAFunction(node: ts.Node): boolean {
     if (ts.isSourceFile(at)) return false;
   }
   return false;
+}
+
+/** Whether a declaration is one nothing can write to again. */
+function isConst(declaration: ts.VariableDeclaration): boolean {
+  const list = declaration.parent;
+  return ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
 }

@@ -181,6 +181,8 @@ export class SecondRender extends Component {
   }
 }
 
+const DEEP = 6;
+
 export /**
  * A heading is what the accessibility tree calls one, which is not always what the tag says.
  *
@@ -196,6 +198,11 @@ class HeadingsByRole extends Component {
         {/* REPORTED — a heading at 3 after a heading at 1, written as a role. */}
         <div role="heading" aria-level={3}>
           A subsection of nothing
+        </div>
+        {/* REPORTED — the same level, declared elsewhere. Planted because the tree family built
+            its contexts with no `resolve` at all, so it read the literal and nothing else. */}
+        <div role="heading" aria-level={DEEP}>
+          And another
         </div>
       </section>
     );

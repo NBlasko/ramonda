@@ -90,6 +90,7 @@ const UNKEYABLE: Looking<string> = {
    */
   throughBranches: true,
   throughCalls: true,
+  throughMutableBindings: true,
 };
 
 /**
