@@ -45,7 +45,7 @@ export const positiveTabIndex = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
+  read(element, { tag, resolve }) {
     if (tag === undefined) return [];
 
     /**
@@ -56,7 +56,7 @@ export const positiveTabIndex = {
      * shared with `aria-hidden-on-focusable` so the two rules cannot disagree about what a
      * `tabIndex` says on the same line.
      */
-    const value = numberAttr(element, "tabIndex");
+    const value = numberAttr(element, "tabIndex", resolve);
     if (value === undefined || value <= 0) return [];
 
     return [{ tag, value, ...positionOf(openingOf(element)) }];

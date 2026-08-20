@@ -84,6 +84,12 @@ const UNKEYABLE: Looking<string> = {
    * object, still not something a cache key can hold, and the runtime still throws for it.
    */
   throughModuleScope: true,
+  /**
+   * One arm is enough, and so is one `return`. An object passed on the path taken is an object the
+   * cache is handed, and the runtime throws for it on that path.
+   */
+  throughBranches: true,
+  throughCalls: true,
 };
 
 /**

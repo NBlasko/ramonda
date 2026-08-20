@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { follow, type Looking } from "./follow-value";
+import type { ElementContext } from "./rule";
 
 /**
  * What JSON does to a value, read off the source.
@@ -62,9 +64,24 @@ function constructedName(expression: ts.Expression): string | undefined {
  * anybody writes into a hydration blob, and an unbounded walk over a self-referential type is a
  * hang rather than a report.
  */
-export function lossyIn(written: ts.Expression, depth = 0): { holds: string; becomes: string } | undefined {
+export function lossyIn(written: ts.Expression, resolve: ElementContext["resolve"], depth = 0): Lossy | undefined {
   if (depth > 4) return undefined;
 
+  const here = lossyShape(written, resolve, depth);
+  if (here !== undefined) return here;
+
+  /**
+   * The value written somewhere else — `@persist cache = makeCache()`.
+   *
+   * A `Map` reached through a helper is the same `Map` in the blob, and it was silent: this rule
+   * recursed INTO a literal and never followed a name out of one. A branch and a call are both
+   * followed, because either path that puts a `Map` in the blob loses that data on that path.
+   */
+  return follow(written, resolve, lossyLeaf(resolve, depth))?.value;
+}
+
+/** What this expression IS, without following a name out of it. */
+function lossyShape(written: ts.Expression, resolve: ElementContext["resolve"], depth: number): Lossy | undefined {
   if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) {
     return { holds: "a function", becomes: "nothing at all — JSON drops a function without a word" };
   }
@@ -72,7 +89,7 @@ export function lossyIn(written: ts.Expression, depth = 0): { holds: string; bec
   if (ts.isObjectLiteralExpression(written)) {
     for (const property of written.properties) {
       if (!ts.isPropertyAssignment(property)) continue;
-      const found = lossyIn(property.initializer, depth + 1);
+      const found = lossyIn(property.initializer, resolve, depth + 1);
       if (found !== undefined) return found;
     }
     return undefined;
@@ -80,7 +97,7 @@ export function lossyIn(written: ts.Expression, depth = 0): { holds: string; bec
 
   if (ts.isArrayLiteralExpression(written)) {
     for (const element of written.elements) {
-      const found = lossyIn(element, depth + 1);
+      const found = lossyIn(element, resolve, depth + 1);
       if (found !== undefined) return found;
     }
     return undefined;
@@ -96,7 +113,27 @@ export function lossyIn(written: ts.Expression, depth = 0): { holds: string; bec
     return { holds: name, becomes: BECOMES.get(name) ?? A_PLAIN_BAG };
   }
 
-  // Anything else written out — a literal, a call, a name — is either fine or unreadable, and both
-  // mean silence.
+  // Anything else written out here is either fine or is a name, and a name is the caller's job.
   return undefined;
+}
+
+/** What a lossy value is and what JSON leaves of it — the pair both rules report. */
+export interface Lossy {
+  holds: string;
+  becomes: string;
+}
+
+/**
+ * The walk's leaf: the structural half, so following a name lands back in the same table.
+ *
+ * Built per call because it closes over the depth already spent — a `Map` four levels into a
+ * literal that a helper returns is as far as this goes either way.
+ */
+function lossyLeaf(resolve: ElementContext["resolve"], depth: number): Looking<Lossy> {
+  return {
+    leaf: (expression) => lossyShape(expression, resolve, depth),
+    throughModuleScope: true,
+    throughBranches: true,
+    throughCalls: true,
+  };
 }

@@ -63,7 +63,7 @@ function levelOf(node: TreeNode): number | "not a heading" | "unknown" {
   if (written !== undefined && written !== "heading") return "not a heading";
   if (written === undefined && !fromTag) return "not a heading";
 
-  const stated = numberAttr(node.element, "aria-level");
+  const stated = numberAttr(node.element, "aria-level", node.resolve);
   if (stated !== undefined) return stated >= 1 ? stated : "unknown";
   return fromTag ? Number(fromTag[1]) : "unknown";
 }

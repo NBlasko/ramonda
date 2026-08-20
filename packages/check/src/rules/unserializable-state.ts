@@ -77,7 +77,7 @@ export const unserializableState = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     const found: UnserializableStateIssue[] = [];
 
     for (const member of cls.members) {
@@ -94,7 +94,7 @@ export const unserializableState = {
       if (hasDecorator(member, "persist")) continue;
 
       if (member.initializer === undefined) continue;
-      const lossy = lossyIn(member.initializer);
+      const lossy = lossyIn(member.initializer, resolve);
       if (lossy === undefined) continue;
 
       found.push({ component: self.name, field: member.name.text, ...lossy, ...positionOf(member) });

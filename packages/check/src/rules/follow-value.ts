@@ -98,6 +98,17 @@ export interface Looking<T> {
   leaf(expression: ts.Expression): T | undefined;
   /** Whether a value declared at module scope counts, or the walk stops at the module boundary. */
   throughModuleScope: boolean;
+  /**
+   * Whether ONE side of a branch is enough.
+   *
+   * True for a question about a fault — `flag ? {…} : STABLE` builds on the path it takes, and that
+   * path is the whole fault. FALSE for a question about what a value SAYS: `alt={ok ? "" : "a cat"}`
+   * has no single answer, and taking the first arm would report an element that is right half the
+   * time. The same goes for a function with more than one `return`, which is why this governs both.
+   */
+  throughBranches: boolean;
+  /** Whether a CALL may be followed into the function it names and through its returns. */
+  throughCalls: boolean;
 }
 
 /** Looking for a value REBUILT during the render: only a literal, and only inside a function. */
@@ -105,6 +116,8 @@ const REBUILT: Looking<"object" | "array"> = {
   leaf: (expression) =>
     ts.isObjectLiteralExpression(expression) ? "object" : ts.isArrayLiteralExpression(expression) ? "array" : undefined,
   throughModuleScope: false,
+  throughBranches: true,
+  throughCalls: true,
 };
 
 /** What the walk found, and the name of the local or function it was found in. */
@@ -170,6 +183,10 @@ export function follow<T>(
     return inner === undefined ? undefined : { value: inner.value, foundIn: inner.foundIn ?? `\`${written.text}\`` };
   }
 
+  if (!how.throughBranches && (ts.isConditionalExpression(written) || ts.isBinaryExpression(written))) {
+    return undefined;
+  }
+
   if (ts.isConditionalExpression(written)) {
     return (
       follow(written.whenTrue, resolve, how, depth + 1, seen) ??
@@ -182,6 +199,7 @@ export function follow<T>(
   }
 
   if (ts.isCallExpression(written)) {
+    if (!how.throughCalls) return undefined;
     const callee = unwrap(written.expression);
     const named = ts.isIdentifier(callee) ? callee : ts.isPropertyAccessExpression(callee) ? callee.name : undefined;
     if (named === undefined) return undefined;

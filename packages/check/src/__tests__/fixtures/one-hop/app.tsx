@@ -6,6 +6,13 @@ const ROLE = "buton";
 const PRIORITY = 5;
 const EMPTY = "";
 const KEYS: string[] = [];
+const GOOD_ROLE = "button";
+
+declare const unknownFlag: boolean;
+
+function roleOf(): string {
+  return "buton";
+}
 
 @Host("div")
 class Probe extends Component {
@@ -13,6 +20,9 @@ class Probe extends Component {
   @state directCache = new Map<string, number>();
   @persist directPersist = new Map<string, number>();
   directArrow = () => {};
+
+  // Not reported: a module const holding a plain value is not lossy at all.
+  @persist fine = { n: 1 };
 
   // The same value ONE HOP away.
   @state hopCache = makeCache();
@@ -34,6 +44,13 @@ class Probe extends Component {
         <span role={ROLE} />
         <button tabIndex={PRIORITY}>c</button>
         <a href={EMPTY}>d</a>
+
+        {/* Silent on purpose: a BRANCH has no single answer, and taking the first arm would
+            report an element that is right half the time. */}
+        <span role={unknownFlag ? "buton" : GOOD_ROLE} />
+        {/* Silent on purpose: a CALL is the same problem behind a function — more than one
+            `return` and there is no one answer to read. */}
+        <span role={roleOf()} />
       </div>
     );
   }
