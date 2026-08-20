@@ -31,6 +31,7 @@ import {
   assertMethod,
   assertField,
   assertMethodOrGetter,
+  assertNoParameters,
   assertConnect,
   assertDisconnect,
   assertDelay,
@@ -1871,6 +1872,9 @@ export function compute<T, R>(
     // and cached it. It works by accident until the field's initializer reads
     // anything at all.
     assertMethodOrGetter(context.kind, "compute", context.name);
+    // A parameter is the writer expecting to CALL it, and a `@compute` method is not callable — measured,
+    // it left the property holding `NaN` with nothing reported. See `assertNoParameters`.
+    assertNoParameters(target, "compute", context.name);
   }
 
   const originalMethod = target;

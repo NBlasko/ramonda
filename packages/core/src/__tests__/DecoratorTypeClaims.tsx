@@ -101,6 +101,37 @@ class SubscriptionClaims extends Component {
   }
 }
 
+/**
+ * A `@compute` takes NO arguments, and the type is what says so first.
+ *
+ * `compute`'s target is `(this: T) => R`, so a method declaring a parameter is `TS1241` — the same
+ * contravariance that decides the bounds above. That matters because it is the line between the two
+ * caching decorators: `@compute` is keyed by nothing, `@memoized` is keyed by its arguments. Bypass the
+ * type and the runtime refuses it too (`assertNoParameters`), which was silent until 2026-08-20: it left
+ * the property holding `NaN`.
+ */
+class ComputeClaims extends Component {
+  @state factor = 2;
+
+  @compute get doubled(): number {
+    return this.factor * 2;
+  }
+
+  /** A method with none is fine — it becomes a property holding the value. */
+  @compute tripled(): number {
+    return this.factor * 3;
+  }
+
+  // @ts-expect-error — a parameter cannot be passed to something read as a value.
+  @compute times(n: number) {
+    return n * this.factor;
+  }
+
+  render() {
+    return <div />;
+  }
+}
+
 /** `@Host` takes a COMPONENT class, and the constraint is the same bottom-typed constructor. */
 @Host("section")
 class Hosted extends Component<{ id: string }> {
@@ -115,6 +146,7 @@ class NotAComponent {}
 @Host("section")
 class Rejected extends NotAComponent {}
 
+void ComputeClaims;
 void ParameterClaims;
 void SubscriptionClaims;
 void Hosted;

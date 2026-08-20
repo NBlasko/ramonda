@@ -305,3 +305,51 @@ describe("decorator target validation", () => {
     }).not.toThrow();
   });
 });
+
+/**
+ * A `@compute` method that declares a parameter — the SECOND net, not the first.
+ *
+ * A typed build already refuses it: `compute`'s target is `(this: T) => R`, so a method with a parameter
+ * fails as `TS1241`, the same contravariance that decides every bound in `DecoratorTypeClaims.tsx` — which
+ * is where that half is pinned, because a class body written here would EXECUTE and trip the guard below
+ * instead of the compiler.
+ *
+ * The runtime guard is for the build that has no types, or a cast, and it was silent there: measured in
+ * vitest — which transpiles rather than checks — `@compute times(n: number)` left `this.times` holding
+ * `NaN`, with the body run once for `n === undefined`. That is the same reason `attribute-that-does-nothing`
+ * exists beside the JSX types.
+ *
+ * Found by asking whether `@memoized` and `@compute` collide as names. They do not, and the parameter list
+ * is exactly where they are told apart.
+ */
+describe("@compute with a parameter", () => {
+  test("and the runtime refuses it too, for the build that has no types", () => {
+    const bare = compute as unknown as (fn: unknown, context: unknown) => unknown;
+    expect(() =>
+      bare(
+        function times(n: number) {
+          return n;
+        },
+        { kind: "method", name: "times", addInitializer() {} },
+      ),
+    ).toThrow(/parameter/);
+  });
+
+  test("a getter is untouched, and so is a method with none", () => {
+    expect(() => {
+      class Panel extends Component {
+        @state n = 1;
+        @compute get doubled() {
+          return this.n * 2;
+        }
+        @compute tripled() {
+          return this.n * 3;
+        }
+        render() {
+          return <div />;
+        }
+      }
+      void Panel;
+    }).not.toThrow();
+  });
+});

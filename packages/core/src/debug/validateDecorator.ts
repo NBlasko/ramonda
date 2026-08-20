@@ -61,6 +61,30 @@ export function assertMethod(kind: string, decorator: string, name: string | sym
   }
 }
 
+/**
+ * A `@compute` method takes no arguments, and one silently produced a wrong value.
+ *
+ * **A typed build already refuses it** — `compute`'s target is `(this: T) => R`, so a parameter is `TS1241`.
+ * This is the second net, for a build with no types or a cast, and it was silent there: measured under
+ * vitest, which transpiles rather than checks, `@compute times(n: number)` left `this.times` holding
+ * **`NaN`**, with the body run once for `n` undefined. Same role `attribute-that-does-nothing` plays beside
+ * the JSX types.
+ *
+ * `@memoized` is the decorator keyed BY arguments; `@compute` is the one keyed by nothing, and the
+ * parameter list is where the two are told apart.
+ *
+ * `fn.length` counts declared parameters up to the first default or rest, so `times(n = 1)` slips through.
+ * That case still has a usable value in the body, which is the less wrong of the two.
+ */
+export function assertNoParameters(fn: unknown, decorator: string, name: string | symbol): void {
+  if (typeof fn !== "function" || fn.length === 0) return;
+  fail(
+    decorator,
+    `\`${String(name)}\` declares ${fn.length} parameter(s), and a ${decorator} is read as a value rather than called — ` +
+      "so nothing would ever pass one. Use `@memoized` for a value keyed by its arguments.",
+  );
+}
+
 /** The decorator only makes sense on a field. */
 export function assertField(kind: string, decorator: string, name: string | symbol): void {
   assertNotRender(decorator, name);
