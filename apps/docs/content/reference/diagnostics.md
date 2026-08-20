@@ -252,10 +252,10 @@ it gets there. See [lists](/lists).
 neither was given. The bag is gone: the second argument is the component or the
 function, so neither mistake can be written.
 
-## RMD015 — Hook options assigned by the hook that received them
+## RMD015 — A hook's props assigned by the hook that received them
 
-Options belong to whoever called `this.use(...)`. The assignment **throws**, exactly like a write
-to props (RMD004) — one rule for read-only inputs, not two.
+A hook's props belong to whoever called `this.use(...)`. The assignment **throws**, exactly like a
+write to a component's props (RMD004) — one rule for read-only inputs, not two.
 
 See [writing a hook](/hooks/writing).
 
@@ -435,6 +435,16 @@ differently in each, so the message differs with it:
 
 Read it once in `@created` and keep it in `@state` (or `@persist`, so it survives
 hydration), take it as a prop, or read it in the event handler that needs it.
+
+**The clock is deliberately not watched here.** The platform reads it behind your back —
+an `Event` constructor stamps `timeStamp` — so a guard on it would report calls your app
+never made, attributed to whichever component happened to be rendering. `new Date()` is
+caught by [RMD020](#rmd020-render-produced-a-different-value-the-second-time) as a fresh
+identity, and `Date.now()` only when a hydration disagrees
+([RMD007](#rmd007-server-and-client-rendered-different-output)). In a client-only app
+nothing catches it at runtime, which is why
+[`ramonda-check`](/reference/check) reads it out of the source instead, as
+`clock-read-while-rendering`.
 
 ## RMD022 — a hook's props callback built a new value for the same contents
 
@@ -823,9 +833,12 @@ describing it.
 @state formatter = new Intl.NumberFormat("sr-RS");   // reported
 ```
 
-Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a `Map`
-or a `Date` is lost on the way — the client starts with whatever the field initialises to, and the two
-sides disagree from the first render.
+Only JSON-serializable state travels in the hydration blob, and it fails in three different ways. A
+**function** is dropped, so the client starts with whatever the field initialises to. A value
+`JSON.stringify` throws on — a `bigint`, a circular object — **never reaches the blob at all**, and the
+whole component starts from its initialisers. And a `Date`, a `Map`, a `Set` or a class instance
+**survives**: it arrives as a string or as a plain object, so the field is not missing, it is the wrong
+type, and the first method call on it throws. Either way the two sides disagree from the first render.
 
 Keep the value out of state and derive it on the client: in [`@created`](/concepts/lifecycle), which is
 skipped during hydration, or in a [`@compute`](/concepts/compute). Where the server's own answer is
@@ -886,14 +899,31 @@ path. A record carries its message as text instead — see [what a record may ho
 
 ## RMD039 — `class` where `className` was meant
 
-Ramonda reads `className`, so `class` is passed through as an unknown attribute and the styling it
-names never applies.
+Ramonda reads `className`, and a `class` written on an element is **renamed to it** before the vnode
+is built. So the element is styled and the page is not broken — this says the source does not match
+what the element gets, and names the two cases where the rename cannot save it.
+
+**`className` on the same element wins**, and the `class` beside it is dropped without a word:
+
+```tsx expect-error
+<span class="muted" className="loud" />   // renders class="loud"; "muted" goes nowhere
+```
+
+**A component is renamed too.** `<Panel class="muted" />` reaches `Panel` as `className`, so a `class`
+prop that component declared reads `undefined` on every render:
+
+```tsx expect-error
+class Panel extends Component<{ class?: string }> {
+  render() { return <span>{this.props.class}</span>; }   // always undefined
+}
+```
 
 This is the one place the JSX deliberately differs from HTML, and the reason is the language: `class`
 is a reserved word in the object a JSX factory receives.
 
 Reported once per component and tag, so converting a codebase gets one report per place rather than one
-for the first `class` and silence for the rest.
+for the first `class` and silence for the rest. `ramonda-check` reports the same attribute before it
+renders, as `class-instead-of-classname`.
 
 ## RMD040 — More than one `@ShouldUpdateOnPropsChange` on one class
 
@@ -1555,7 +1585,7 @@ bags and catch a value that is not a function of state, and once per render of t
 stale. The hook is handed the first bag in every build.
 
 **It throws in every build**, like a write to props ([RMD004](#rmd004-props-mutated-by-the-receiving-component),
-[RMD015](#rmd015-hook-options-assigned-by-the-hook-that-received-them)): the alternative is a shipped bundle serving one
+[RMD015](#rmd015-a-hooks-props-assigned-by-the-hook-that-received-them)): the alternative is a shipped bundle serving one
 stale value for the life of the page, silently. The report beside the throw is development-only, and it
 names the owner, the hook, and the keys the object carried.
 

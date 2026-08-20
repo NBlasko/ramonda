@@ -38,7 +38,11 @@ export function renderingOwner(): string {
   return renderPhase.component?.constructor.name ?? "outside a render";
 }
 
-/** Reports a write to a component's own props, which is always a no-op. */
+/**
+ * Reports a write to a component's own props. The write itself is stopped by the proxy, which
+ * throws in every build; this only supplies the explanation and the devtools entry — the same
+ * arrangement as a hook's props above.
+ */
 export function reportPropWrite(component: BaseComponent, property: string): void {
   const name = component.constructor.name;
   diagnose("RMD004", `${name}:${property}`, `<${name} /> assigned to \`props.${property}\`.`);

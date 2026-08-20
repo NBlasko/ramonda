@@ -121,12 +121,12 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // that otherwise ships — the page renders, the default fills in, and nothing looks wrong.
     severity: "error",
     title: "Context consumed without a provider above it",
-    fix: "The consumer is falling back to the context's default value. Mount the matching Provider hook on an ancestor component — a context is only visible to the providing component and its descendants.",
+    fix: "The consumer is falling back to the context's default value. Mount the matching Provider hook on an ancestor component — a context is only visible to the providing component and its descendants. If the default IS the answer here rather than a stand-in, say so where the context is created — `createContext(value, { optional: true })` — and this goes quiet for every consumer of it at once. The router's `params` is the example: a nav bar beside the outlet has no matched route above it, and `{}` is correct there.",
   },
   RMD004: {
     severity: "error",
     title: "Props mutated by the receiving component",
-    fix: "Props are owned by the parent, so the write has nothing to write to — it throws rather than being dropped, because a write that silently does nothing leaves the component running on a value nobody set. Copy the value into @state if this component owns it from here on, or call a callback prop to ask the parent to change it. Hook options behave identically (RMD015).",
+    fix: "Props are owned by the parent, so the write has nothing to write to — it throws rather than being dropped, because a write that silently does nothing leaves the component running on a value nobody set. Copy the value into @state if this component owns it from here on, or call a callback prop to ask the parent to change it. A hook's props behave identically (RMD015).",
   },
   RMD005: {
     severity: "error",
@@ -157,7 +157,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     // error, not warning: the parent rearranges or deletes the markup, so the page is not what was written.
     severity: "error",
     title: "The default host is not allowed in this parent",
-    fix: "Give the component an explicit host tag that the parent accepts — the `suggestion` below is the one that fits. A component is always exactly one element; the default <ramonda-host> is only styled to be layout-neutral, and a handful of parents (the table family, <select>, list elements, SVG) accept only specific children. This is why the check can be exact rather than a guess: it reads the actual parent node at mount.",
+    fix: "Give the component an explicit host tag that the parent accepts — the `suggestion` below is the one that fits. A component is always exactly one element; the default <ramonda-host> is only styled to be layout-neutral, and a handful of parents destroy what they do not accept: the table family fosters it out, <select> and <optgroup> delete it outright, and SVG renders no HTML. A <ul>, <ol>, <dl> or <p> is NOT one of them and is never reported — measured, the parser leaves an unknown element inside those alone, so being invalid per the spec is yours to decide and being silently destroyed is ours. This is why the check can be exact rather than a guess: it reads the actual parent node at mount.",
   },
   RMD011: {
     severity: "error",
@@ -166,8 +166,8 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   },
   RMD015: {
     severity: "error",
-    title: "Hook options assigned by the hook that received them",
-    fix: "Options belong to whoever called `this.use(...)`, and the hook re-reads them from the owner on every render — so an assignment here has nothing to write to, and it throws rather than being dropped. Copy the value into @state if the hook owns it from here on, or take a callback option and ask the owner to change it. This is the same rule as a component's props (RMD004).",
+    title: "A hook's props assigned by the hook that received them",
+    fix: "A hook's props belong to whoever called `this.use(...)`, and the hook re-reads them from the owner on every render — so an assignment here has nothing to write to, and it throws rather than being dropped. Copy the value into @state if the hook owns it from here on, or take a callback prop and ask the owner to change it. This is the same rule as a component's props (RMD004).",
   },
   RMD016: {
     // error, not warning: cleanup never runs and every render goes into nodes nobody can see.
@@ -199,8 +199,8 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD021: {
     // error, not warning: in a @compute the value freezes, so the reader is shown a number that stopped moving.
     severity: "error",
-    title: "A clock or a random number was read during render() or a @compute",
-    fix: "Both have to be a function of their inputs. In render() a value read from outside makes the output depend on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute it is quieter and worse: the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. Read it once in @created and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it.",
+    title: "A random number was read while a value was being derived",
+    fix: "A derived value has to be a function of its inputs, and `Math.random()`, `crypto.randomUUID()` and `crypto.getRandomValues()` are not one. Four places derive, and the same call is kept for a different length of time in each. In render() the output depends on WHEN it ran, so a server render and its hydration disagree and the markup is thrown away (RMD007). In a @compute the answer is cached, so the value is frozen at the moment it was first asked for and only a dependency the compute actually READ can refresh it. In a @memoizedHandler builder it is frozen into the cache entry, which outlives the render that asked for it. In a hook's props callback it is frozen into the bag until something unrelated invalidates the callback, and then it jumps. Read it once in @created and keep it in @state (or @persist, so it survives hydration), take it as a prop, or read it in the event handler that needs it. The CLOCK is deliberately not watched here: the platform reads it behind your back — an Event constructor stamps `timeStamp` — so a guard on it would report calls the app never made. `new Date()` in a render is caught by RMD020 as a fresh identity, `Date.now()` by RMD007 when a hydration disagrees, and `ramonda-check` catches both before they ship, as `clock-read-while-rendering`.",
   },
   RMD022: {
     severity: "warning",
@@ -276,7 +276,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD033: {
     severity: "warning",
     title: "State that cannot cross to the client",
-    fix: "Only JSON-serializable state travels in the hydration blob, so a function, a class instance, a Map or a Date is lost on the way and the client starts with whatever the field initialises to. Keep the value out of state and derive it on the client — in `@created`, which does not run during hydration, or in a `@compute` — or store a serializable form of it (an id, an ISO string) and rebuild the object where it is used.",
+    fix: "Only JSON-serializable state travels in the hydration blob, and it fails in three different ways. A FUNCTION is dropped, so the client starts with whatever the field initialises to. A value `JSON.stringify` throws on — a bigint, a circular object — never reaches the blob at all, and the whole component starts from its initialisers. A Date, a Map, a Set or a class instance SURVIVES: it arrives as a string or as a plain object, so the field is not missing, it is the wrong type, and the first method call on it throws. Keep the value out of state and derive it on the client — in `@created`, which does not run during hydration, or in a `@compute` — or store a serializable form of it (an id, an ISO string) and rebuild the object where it is used.",
   },
   RMD034: {
     severity: "warning",
@@ -306,7 +306,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD039: {
     severity: "warning",
     title: "`class` where `className` was meant",
-    fix: "Ramonda reads `className`, so `class` is passed through to the element as an unknown attribute and the styling it names never applies. Rename it. This is the one place the JSX deliberately differs from HTML, because `class` is a reserved word in the object literal a JSX factory receives.",
+    fix: "Ramonda reads `className`, and a `class` written on an element is renamed to it before the vnode is built — so the element IS styled and the page is not broken. What the rename cannot save is the two cases beside it. If the element carries `className` as well, that one wins and this `class` is dropped without a word. And a COMPONENT is renamed just the same, so `<Panel class=…>` arrives as `className`: a `class` prop that component declared reads `undefined` on every render, for ever. Write `className` and both go away, and the source says what the element gets. This is the one place the JSX deliberately differs from HTML, because `class` is a reserved word in the object literal a JSX factory receives.",
   },
   RMD040: {
     severity: "error",

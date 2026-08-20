@@ -165,7 +165,7 @@ rules**, so a rule cannot be added without appearing here.
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
-| `class-instead-of-classname` | an element carries `class` where `className` was meant, so it styles nothing — also [`RMD039`](/reference/diagnostics) |
+| `class-instead-of-classname` | an element carries `class` where Ramonda reads `className` — also [`RMD039`](/reference/diagnostics) |
 | `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select |
 | `interactive-inside-interactive` | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |
 | `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |

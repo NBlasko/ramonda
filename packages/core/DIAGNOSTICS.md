@@ -49,7 +49,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD010` | error | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
 | `RMD013` | error | A list item produced nothing |
-| `RMD015` | error | A hook wrote to its own options |
+| `RMD015` | error | A hook wrote to its own props |
 | `RMD016` | error | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
 | `RMD018` | error | State written during a `@compute` |
@@ -344,7 +344,7 @@ It throws explicitly rather than returning `false`, because a `false` return
 throws only in strict mode — so "always" would not have been true for a caller
 outside a module.
 
-Hook options are the same mistake and now behave identically; see RMD015.
+A hook's props are the same mistake and now behave identically; see RMD015.
 
 ### RMD005 — Array in state mutated in place
 
@@ -704,11 +704,11 @@ that reads as missing DATA rather than as a bug in the row.
 
 It used to report a colliding `key` callback as well. That option is gone: a key is written
 on the vnode now, and two rows carrying the same one is `RMD002`.
-### RMD015 — Hook options assigned by the hook that received them
+### RMD015 — A hook's props assigned by the hook that received them
 
-Options belong to whoever called `this.use(...)`. The options proxy serves each
-key from the owner's signal on every read, so an assignment inside the hook has
-nothing to write to.
+A hook's props belong to whoever called `this.use(...)`. The props proxy serves
+each key from the owner's signal on every read, so an assignment inside the hook
+has nothing to write to.
 
 Before this code existed the write landed on the proxy's empty target and was
 **never seen again** — no error, and because the get trap kept serving the
