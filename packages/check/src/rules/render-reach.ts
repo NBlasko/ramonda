@@ -430,19 +430,37 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
    * as a PARAMETER rather than through `this`, so nothing about `this` is knowable inside it and
    * only what depends on nothing — a clock, a random number — is worth finding.
    */
-  const props = hostPropsCallback(cls, reach.resolve);
-  if (props !== undefined) walk(props, ["@Host props"], false, 0);
+  for (const { body, named } of hostCallbacks(cls, reach.resolve)) walk(body, [named], false, 0);
 }
 
-/** The second argument to `@Host`, when it is a function this can walk. */
-function hostPropsCallback(cls: ts.ClassDeclaration, resolve: Resolver): ts.Node | undefined {
+/**
+ * Both callbacks `@Host` takes, because both run on every render.
+ *
+ * The PROPS callback is the second argument and the obvious one. The TAG is the first, and it can
+ * be a callback too — `@Host((p) => p.as ?? "div")` is a documented form that core supports and
+ * whose result it re-checks on every call. Reading only the second argument missed a clock read in
+ * the first, measured with a plant, on a decorator that has no second argument at all.
+ *
+ * `insideTheClass` is FALSE for both, exactly as it is for a static: each is handed the component as
+ * a PARAMETER rather than through `this`, so nothing about `this` is knowable inside them and only
+ * what depends on nothing — a clock, a random number — is worth finding.
+ */
+function hostCallbacks(cls: ts.ClassDeclaration, resolve: Resolver): { body: ts.Node; named: string }[] {
+  const found: { body: ts.Node; named: string }[] = [];
+
   for (const decorator of ts.getDecorators(cls) ?? []) {
     const call = decorator.expression;
     if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
 
-    const written = call.arguments[1];
-    if (written === undefined) continue;
-    if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written.body;
+    for (const [index, named] of [
+      [0, "@Host tag"],
+      [1, "@Host props"],
+    ] as const) {
+      const written = call.arguments[index];
+      if (written === undefined) continue;
+      if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) found.push({ body: written.body, named });
+    }
   }
-  return undefined;
+
+  return found;
 }

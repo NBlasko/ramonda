@@ -89,7 +89,16 @@ class HostProps extends Component {
   }
 }
 
+/** The TAG callback runs on every render too — and `@Host` here has no second argument at all. */
+@Host((self: TagFromProps) => `x-${Date.now()}`)
+class TagFromProps extends Component {
+  render() {
+    return <div>tag</div>;
+  }
+}
+
 bootstrap(<Direct />, null);
+bootstrap(<TagFromProps />, null);
 bootstrap(<Deferred />, null);
 bootstrap(<Immediate />, null);
 bootstrap(<ArrowRender />, null);

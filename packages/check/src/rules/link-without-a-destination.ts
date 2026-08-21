@@ -31,6 +31,17 @@ import type { ElementRule } from "./rule";
  * **An `<a>` with an `id` or a `name` and no `href`**, which is the legacy anchor TARGET: an element
  * written to be jumped to rather than to jump. Rare now, still valid, and reporting it would report
  * markup that is doing the opposite of this fault.
+ *
+ * **An anchor a component makes through `@Host`, and a `<Link>` at the call site.** Measured against
+ * the router's own, which is the shape an application actually writes: `@Host("a", (self) => ({ href:
+ * self.currentHref }))`, where `currentHref` is a getter reading the props AND the router's state.
+ * There is no `<a>` in any JSX to read, and the prop at the call site is not the anchor's `href` —
+ * it is one input to a computation. Judging either would be guessing, so `packages/router` is
+ * silent here and correctly so.
+ *
+ * This is the family's own stance rather than a gap: what `<Panel href="#" />` does with the prop is
+ * decided inside `Panel`. It is written down because the anchor being a HOST element makes the
+ * silence look like an oversight — there is no element on the page that any rule ever sees.
  */
 export interface LinkWithoutADestinationIssue {
   /** Which of the four shapes it is, because what each one costs differs. */

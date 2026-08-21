@@ -71,6 +71,19 @@ describe("what a render really reaches", () => {
     expect(found.find((issue) => issue.component === "HostProps")?.through).toEqual(["@Host props"]);
   });
 
+  /**
+   * And so is the TAG callback, which is the FIRST argument.
+   *
+   * `@Host((p) => p.as ?? "div")` is a documented form core supports and re-checks on every call, so
+   * it runs exactly as often as the props callback does. Reading only the second argument missed it
+   * — measured with a plant on a decorator that has no second argument at all.
+   */
+  test("and so is the `@Host` tag callback, which is the first argument", () => {
+    const found = run().findings["clock-read-while-rendering"];
+
+    expect(found.find((issue) => issue.component === "TagFromProps")?.through).toEqual(["@Host tag"]);
+  });
+
   /** What already held: the render's own body, and a `@compute` written as a method. */
   test("a clock is found in the render and in a `@compute` method", () => {
     const found = run().findings["clock-read-while-rendering"];
