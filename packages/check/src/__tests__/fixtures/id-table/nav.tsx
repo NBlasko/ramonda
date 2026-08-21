@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "../framework";
+import { Component, Host, bootstrap } from "@ramonda/core";
 
 /**
  * The links, in one file — and the ids they point at in ANOTHER, which is the whole reason this

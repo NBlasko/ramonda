@@ -101,7 +101,7 @@ export const persistOfALossyValue = {
 
     for (const member of cls.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
-      if (!hasDecorator(member, "persist")) continue;
+      if (!hasDecorator(member, "persist", resolve)) continue;
       if (!ts.isIdentifier(member.name)) continue;
 
       const lossy = lossyValueOf(member, resolve);

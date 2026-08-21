@@ -3,7 +3,7 @@ import { positionOf } from "../syntax";
 import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
 import { enclosingElement } from "./html";
-import type { FormControl, IdReference, ProjectContext, UnreadableId } from "./rule";
+import type { FormControl, IdReference, ProjectContext, Resolver, UnreadableId } from "./rule";
 
 /**
  * The project's ids, and every place one is named — the fifth subject, built in one pass.
@@ -91,10 +91,7 @@ function insideALabel(element: ts.JsxElement | ts.JsxSelfClosingElement): boolea
  * unreadable, and a mistyped `aria-labelledby` and a fragment link to nowhere in the same file were
  * both reported by nothing.
  */
-function literalOf(
-  value: ts.JsxAttributeValue | undefined,
-  resolve: (id: ts.Node) => ts.Symbol | undefined,
-): string | undefined {
+function literalOf(value: ts.JsxAttributeValue | undefined, resolve: Resolver): string | undefined {
   if (value === undefined) return undefined;
   if (ts.isStringLiteral(value)) return value.text;
   if (ts.isJsxExpression(value) && value.expression !== undefined) {
@@ -134,10 +131,7 @@ function prefixOf(value: ts.JsxAttributeValue | undefined): string | undefined {
 }
 
 /** Builds the table. One walk of every file, whatever rules end up asking about it. */
-export function idTableFor(
-  sources: readonly ts.SourceFile[],
-  resolve: (id: ts.Node) => ts.Symbol | undefined,
-): ProjectContext {
+export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver): ProjectContext {
   const ids = new Set<string>();
   const prefixes: string[] = [];
   const unreadable: UnreadableId[] = [];

@@ -1,4 +1,4 @@
-import { Component, bootstrap, watchProp } from "../framework";
+import { Component, bootstrap, watchProp } from "@ramonda/core";
 
 /** A key built in a helper — the same fault behind a function call. */
 function keyOf(q: string): { q: string } {

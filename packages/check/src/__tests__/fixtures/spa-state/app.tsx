@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, persist, state } from "../framework";
+import { Component, Host, bootstrap, persist, state } from "@ramonda/core";
 
 declare class Maps<K, V> {
   get(key: K): V;

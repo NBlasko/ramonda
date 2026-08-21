@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, destroyed, state, watchProp } from "../framework";
+import { Component, Host, bootstrap, destroyed, state, watchProp } from "@ramonda/core";
 
 import { makeBag, makeRows, stamp } from "./make";
 

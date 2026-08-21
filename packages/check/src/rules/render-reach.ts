@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { memberName } from "../syntax";
+import type { Resolver } from "./rule";
 
 /**
  * Everything a render can reach — not everything a render is written to contain.
@@ -70,7 +71,7 @@ export interface ReachedSite {
 export interface RenderReach {
   /** Called for every node inside anything the render reaches. */
   visit(node: ts.Node, through: readonly string[], insideTheClass: boolean): void;
-  resolve(id: ts.Node): ts.Symbol | undefined;
+  resolve: Resolver;
 }
 
 /**
@@ -93,7 +94,7 @@ export interface RenderReach {
  * wherever the member is written down. See `one-provider-per-component`,
  * `context-consumed-above-its-provider` and `interval-with-no-cleanup`.
  */
-export function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve"]): ts.ClassLikeDeclaration[] {
+export function heritage(cls: ts.ClassDeclaration, resolve: Resolver): ts.ClassLikeDeclaration[] {
   const chain: ts.ClassLikeDeclaration[] = [];
   let at: ts.ClassLikeDeclaration | undefined = cls;
 
@@ -119,13 +120,25 @@ export function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve
   return chain;
 }
 
-/** Whether a member carries a given decorator, by name. */
-export function hasDecorator(member: ts.ClassElement, name: string): boolean {
+/**
+ * Whether a member carries CORE's `@name` — by the name core exports it under, not the local one.
+ *
+ * This matched a bare name for a long time, and it failed in both directions at once. Measured with
+ * two identical components, one written `import { state as reactive }`: the plain one produced two
+ * reports and the aliased one produced NOTHING, from any rule. The other direction is the shape
+ * `own-list.ts`, `own-head.tsx` and `own-helper.tsx` exist to keep out of three other rules — an
+ * app's own decorator called `state` was judged as core's.
+ *
+ * `resolve` is required rather than defaulted, which is the standing lesson here: a defaulted one
+ * on `numberAttr` silenced every tree rule for a commit, and a guard a caller can forget looks
+ * exactly like a clean codebase.
+ */
+export function hasDecorator(member: ts.ClassElement, name: string, resolve: Resolver): boolean {
   for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
     const expression = ts.isCallExpression(decorator.expression)
       ? decorator.expression.expression
       : decorator.expression;
-    if (ts.isIdentifier(expression) && expression.text === name) return true;
+    if (resolve.coreName(expression) === name) return true;
   }
   return false;
 }
@@ -141,14 +154,13 @@ export function hasDecorator(member: ts.ClassElement, name: string): boolean {
  * `resolve` is optional so a caller with no checker still gets the class's own fields, which is the
  * behaviour this had before.
  */
-export function stateFieldsOf(cls: ts.ClassDeclaration, resolve?: RenderReach["resolve"]): ReadonlySet<string> {
+export function stateFieldsOf(cls: ts.ClassDeclaration, resolve: Resolver): ReadonlySet<string> {
   const found = new Set<string>();
 
-  const declared = resolve === undefined ? [cls] : [cls, ...heritage(cls, resolve)];
-  for (const declaring of declared) {
+  for (const declaring of [cls, ...heritage(cls, resolve)]) {
     for (const member of declaring.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
-      if (!hasDecorator(member, "state") && !hasDecorator(member, "persist")) continue;
+      if (!hasDecorator(member, "state", resolve) && !hasDecorator(member, "persist", resolve)) continue;
       const name = memberName(member);
       if (name !== undefined) found.add(name);
     }
@@ -158,12 +170,12 @@ export function stateFieldsOf(cls: ts.ClassDeclaration, resolve?: RenderReach["r
 }
 
 /** Where a render begins: `render()` itself, and every `@compute`. */
-export function entryPoints(cls: ts.ClassDeclaration): { member: ts.ClassElement; name: string }[] {
+export function entryPoints(cls: ts.ClassDeclaration, resolve: Resolver): { member: ts.ClassElement; name: string }[] {
   const found: { member: ts.ClassElement; name: string }[] = [];
   for (const member of cls.members) {
     const name = memberName(member);
     if (name === undefined) continue;
-    if (name === "render" || hasDecorator(member, "compute")) found.push({ member, name });
+    if (name === "render" || hasDecorator(member, "compute", resolve)) found.push({ member, name });
   }
   return found;
 }
@@ -393,7 +405,7 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
     step(node);
   };
 
-  for (const { member, name } of entryPoints(cls)) {
+  for (const { member, name } of entryPoints(cls, reach.resolve)) {
     const body = ts.isMethodDeclaration(member) || ts.isGetAccessorDeclaration(member) ? member.body : undefined;
     if (body) walk(body, [name], true, 0);
   }

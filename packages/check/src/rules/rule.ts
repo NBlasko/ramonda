@@ -400,6 +400,26 @@ export interface ProjectContext {
   controls: readonly FormControl[];
 }
 
+/**
+ * Where a name was declared — and, on the same object, what `@ramonda/core` exports it as.
+ *
+ * A CALLABLE with one property, rather than two parameters, and the reason is the churn: `resolve`
+ * is already threaded through two dozen helper signatures, and a second function beside it would
+ * have to be added to every one of them. A parameter a caller can forget is the shape this package
+ * has already been bitten by — a defaulted `resolve` on `numberAttr` silenced every tree rule for a
+ * commit — so the ability travels WITH the thing that already gets everywhere.
+ *
+ * `coreName` is what tells a decorator core wrote from one the reader wrote. `hasDecorator` matched
+ * a bare name for a long time, which failed in both directions at once: `import { state as
+ * reactive }` made every class rule go quiet, and an app's own decorator called `state` would have
+ * been judged as core's.
+ */
+export interface Resolver {
+  (id: ts.Node): ts.Symbol | undefined;
+  /** The name `@ramonda/core` exports this identifier under; `undefined` when it is not core's. */
+  coreName(id: ts.Node): string | undefined;
+}
+
 export interface ElementContext {
   /**
    * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.
@@ -431,7 +451,7 @@ export interface ElementContext {
    * It costs nothing to carry: the analyzer holds one `resolve` and hands the same function to
    * every context it builds.
    */
-  resolve(id: ts.Node): ts.Symbol | undefined;
+  resolve: Resolver;
 
   /**
    * Whether the element spreads props — `<img {...rest} />`.
@@ -491,7 +511,7 @@ export interface ModuleContext {
    * silent about a row callback inherited from one until this existed. The alternative was for one
    * rule to reach for the checker on its own, which is the shape this package does not have.
    */
-  resolve(id: ts.Node): ts.Symbol | undefined;
+  resolve: Resolver;
 
   /**
    * The symbol as WRITTEN, alias unfollowed — what `importedFromCore` reads.
@@ -521,7 +541,7 @@ export interface RuleContext {
    * than types. `undefined` is the useful answer as often as a symbol is: with no lib loaded, a
    * name the browser owns resolves to nothing, while `const location = …` in the source resolves.
    */
-  resolve(id: ts.Node): ts.Symbol | undefined;
+  resolve: Resolver;
 
   /**
    * The symbol as WRITTEN, with an import alias left unfollowed.

@@ -87,7 +87,7 @@ export const unserializableState = {
     for (const member of cls.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
       if (!ts.isIdentifier(member.name)) continue;
-      if (!hasDecorator(member, "state")) continue;
+      if (!hasDecorator(member, "state", resolve)) continue;
       /**
        * A field that is BOTH is `persist-of-a-lossy-value`'s, which asks without a gate.
        *
@@ -95,7 +95,7 @@ export const unserializableState = {
        * the better answer here: `@persist` says the field is meant to travel, whatever the project
        * does about servers.
        */
-      if (hasDecorator(member, "persist")) continue;
+      if (hasDecorator(member, "persist", resolve)) continue;
 
       if (member.initializer === undefined) continue;
       const lossy = lossyIn(member.initializer, resolve);

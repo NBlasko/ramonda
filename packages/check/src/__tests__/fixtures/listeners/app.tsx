@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, created, destroyed, state } from "../framework";
+import { Component, Host, bootstrap, created, destroyed, state } from "@ramonda/core";
 
 const RESIZE = "resize";
 

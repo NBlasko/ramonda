@@ -1,4 +1,4 @@
-import { Component, Hook, StableProps, bootstrap, compute, createContext, state } from "../framework";
+import { Component, Hook, StableProps, bootstrap, compute, createContext, state } from "@ramonda/core";
 
 import { InstalledHook } from "./installed";
 

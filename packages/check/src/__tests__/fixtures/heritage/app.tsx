@@ -1,4 +1,4 @@
-import { Component, createContext, bootstrap } from "../framework";
+import { Component, createContext, bootstrap } from "@ramonda/core";
 
 const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 

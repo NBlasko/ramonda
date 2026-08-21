@@ -1,4 +1,4 @@
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 
 /**
  * The app's OWN function, carrying the framework's exact name — which is the only way to test that

@@ -1,4 +1,4 @@
-import { Component, bootstrap, state } from "../framework";
+import { Component, bootstrap, state } from "@ramonda/core";
 import { requestContext, requestKey } from "@ramonda/core";
 import { OwnHelper } from "./own-helper";
 import { requestContext as reExported } from "./re-export";

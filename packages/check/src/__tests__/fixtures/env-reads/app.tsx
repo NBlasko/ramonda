@@ -1,4 +1,4 @@
-import { bootstrap, Component, state } from "../framework";
+import { bootstrap, Component, state } from "@ramonda/core";
 import { created } from "@ramonda/core";
 import { created as onCreate } from "@ramonda/core";
 import { ConfigBase } from "./shared-base";

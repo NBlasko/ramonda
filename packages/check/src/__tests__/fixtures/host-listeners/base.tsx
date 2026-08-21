@@ -1,4 +1,4 @@
-import { Component, Host } from "../framework";
+import { Component, Host } from "@ramonda/core";
 
 /** A `@Host` on a BASE, which a subclass inherits — the tag is read from the constructor. */
 @Host("section")

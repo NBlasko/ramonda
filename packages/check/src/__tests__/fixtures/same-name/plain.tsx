@@ -1,4 +1,4 @@
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 import { Reader } from "./reader";
 
 /** The other `Page`, with no provider — the same name and a different component. */

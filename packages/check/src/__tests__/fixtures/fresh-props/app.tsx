@@ -1,4 +1,4 @@
-import { StableProps, Component, Host, bootstrap, compute, list, state } from "../framework";
+import { StableProps, Component, Host, bootstrap, compute, list, state } from "@ramonda/core";
 
 import { arrowConf, chainConf, chainShared, deepConf, loopConf, maybeConf, makeConf, sharedConf } from "./make";
 

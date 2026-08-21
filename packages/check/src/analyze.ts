@@ -4,6 +4,8 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
+import { coreExportName } from "./rules/core-import";
+import type { Resolver } from "./rules/rule";
 import {
   activate,
   applyClass,
@@ -814,7 +816,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const elementRules = activate(ELEMENT_RULES, imported, rendersOnServer);
 
   const readElements = (node: ts.Node): void => {
-    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings, resolve);
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings, resolver);
     ts.forEachChild(node, readElements);
   };
 
@@ -842,18 +844,29 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * Built only when a rule would read it — the walk is one pass over every file, and a project
    * whose rules are all gated off should not pay for it.
    */
+  /**
+   * `resolve`, with `coreName` hung on it — see the `Resolver` note in `rules/rule.ts`.
+   *
+   * Attached here rather than threaded as a second parameter because `resolve` already reaches
+   * every helper that needs it, and a parameter a caller can forget is the shape that silenced
+   * every tree rule for a commit.
+   */
+  const resolver: Resolver = Object.assign(resolve, {
+    coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep),
+  });
+
   const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
-  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolve), findings);
+  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolver), findings);
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
-    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolve);
+    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolver);
 
     applyModule(
       moduleRules,
       file,
       (ruleId) => ({
-        resolve,
+        resolve: resolver,
         resolveLocal,
         resolveStep,
         unlessAnnotated: (site, make) => {
@@ -905,7 +918,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          applyClass(rules, node, { self, resolve, resolveLocal, resolveStep }, findings);
+          applyClass(rules, node, { self, resolve: resolver, resolveLocal, resolveStep }, findings);
         }
       }
       collectRoot(node);

@@ -1,4 +1,4 @@
-import { Component, Hook, Host, bootstrap, compute, created, destroyed, mounted, state } from "../framework";
+import { Component, Hook, Host, bootstrap, compute, created, destroyed, mounted, state } from "@ramonda/core";
 
 declare function expensive(): number;
 declare function makeProps(): { rate: number };

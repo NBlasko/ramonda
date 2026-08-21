@@ -7,41 +7,41 @@ const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "aliased-decorators", "tsconfig.json"));
 
 /**
- * A core decorator imported under another name, and what it costs today.
+ * A core decorator imported under another name.
  *
- * `hasDecorator` matches the name written on the member and asks nothing about where it came from —
- * unlike every other identity question in this package, which resolves. Fourteen call sites across
- * nine rules read through it, for `@state`, `@compute`, `@persist`, `@created`, `@destroyed` and
- * `@memoized`.
+ * `hasDecorator` matched the name written on the member and asked nothing about where it came from
+ * — the one identity question in this package that did not resolve. Fourteen call sites across nine
+ * rules read through it, for `@state`, `@compute`, `@persist`, `@created`, `@destroyed` and
+ * `@memoized`, so it failed in both directions at once:
  *
- * So the two components in the fixture are the same component written twice, and only one of them
- * is judged. It fails in both directions:
+ * - `import { state as reactive }` made every class rule go quiet. Measured with the two components
+ *   in the fixture, which are the same component written twice: the plain one produced two reports
+ *   and the aliased one produced NOTHING, from any rule.
+ * - an app's OWN decorator called `state` was judged as core's, which is the shape `own-list.ts`,
+ *   `own-head.tsx` and `own-helper.tsx` exist to keep out of three other rules.
  *
- * - `import { state as reactive }` makes every class rule go quiet — measured below, two reports
- *   become none.
- * - an app's OWN decorator called `state` would be judged as core's, which is the shape
- *   `own-list.ts`, `own-head.tsx` and `own-helper.tsx` exist to keep out of three other rules.
- *
- * `lifecycle-env.ts` had the same fault and it is fixed there, because that one is a LOOKUP rather
- * than a comparison and a wrong key made a false report at error severity — see
- * `env-reads.test.ts`. Fixing it here means threading resolution through those fourteen call sites
- * and the helpers under them, which is a decision rather than a repair.
- *
- * Kept as a test rather than a note, because a limit with no test is a limit somebody discovers.
- * When it is closed, this fails and the expectations move.
+ * It resolves now, through `Resolver.coreName` — which is hung on `resolve` itself rather than
+ * threaded as a second parameter, because `resolve` already reaches all two dozen helpers that
+ * needed it and a parameter a caller can forget is the shape that silenced every tree rule for a
+ * commit.
  */
 describe("a core decorator imported under another name", () => {
-  test("is judged when written plainly", () => {
+  test("is judged exactly as the plainly written one is", () => {
     const findings = run().findings;
 
-    expect(findings["state-mutated-in-place"].map((issue) => issue.component)).toEqual(["Plain"]);
-    expect(findings["state-written-while-rendering"].map((issue) => issue.component)).toEqual(["Plain"]);
+    expect(findings["state-mutated-in-place"].map((issue) => issue.component)).toEqual(["Plain", "Aliased"]);
+    expect(findings["state-written-while-rendering"].map((issue) => issue.component)).toEqual(["Plain", "Aliased"]);
   });
 
-  /** The same class, one import spelled differently, and nothing is said about it. */
-  test("is judged by nothing when it is aliased — the known limit", () => {
-    const everything = Object.values(run().findings).flat() as { component?: string }[];
+  /** The two are the same component written twice, so they earn the same findings. */
+  test("the aliased component is judged on every rule the plain one is", () => {
+    const everything = Object.entries(run().findings).flatMap(([id, issues]) =>
+      (issues as { component?: string }[]).map((issue) => `${id}:${issue.component}`),
+    );
 
-    expect(everything.filter((issue) => issue.component === "Aliased")).toEqual([]);
+    for (const found of everything.filter((one) => one.endsWith(":Plain"))) {
+      expect(everything).toContain(found.replace(":Plain", ":Aliased"));
+    }
+    expect(everything.filter((one) => one.endsWith(":Aliased"))).toHaveLength(2);
   });
 });

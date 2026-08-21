@@ -1,4 +1,4 @@
-import { Component, bootstrap, state } from "../framework";
+import { Component, bootstrap, state } from "@ramonda/core";
 import {
   created,
   deferHydration,

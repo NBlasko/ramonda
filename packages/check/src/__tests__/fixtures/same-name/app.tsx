@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { Page as Themed } from "./themed";
 import { Page as Plain } from "./plain";
 

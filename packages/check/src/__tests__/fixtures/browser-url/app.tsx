@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { currentPath } from "./where";
 // The import is what says this project HAS a router; without one, `location` is the only place the
 // answer lives and none of this would be reported.

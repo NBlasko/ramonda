@@ -88,7 +88,7 @@ function reactiveReadIn(body: ts.Node, cls: ts.ClassDeclaration, resolve: RuleCo
       if (member.name === undefined || !ts.isIdentifier(member.name)) continue;
 
       // A `@compute` is written as a GETTER, which is not a property declaration.
-      if (hasDecorator(member, "state") || hasDecorator(member, "compute")) {
+      if (hasDecorator(member, "state", resolve) || hasDecorator(member, "compute", resolve)) {
         reactive.add(member.name.text);
         continue;
       }

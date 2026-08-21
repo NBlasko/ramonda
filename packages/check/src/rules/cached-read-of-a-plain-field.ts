@@ -180,7 +180,7 @@ export const cachedReadOfAPlainField = {
     };
 
     for (const member of cls.members) {
-      if (hasDecorator(member, "compute")) {
+      if (hasDecorator(member, "compute", resolve)) {
         const named = memberName(member);
         if (named !== undefined) report(member, "a `@compute`", named);
         continue;

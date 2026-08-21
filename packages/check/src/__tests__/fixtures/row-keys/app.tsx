@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, list } from "../framework";
+import { Component, Host, bootstrap, list } from "@ramonda/core";
 
 declare const rows: { id: string; label: string }[];
 declare const wide: boolean;

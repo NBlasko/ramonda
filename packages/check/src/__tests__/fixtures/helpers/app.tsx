@@ -1,4 +1,4 @@
-import { Component, bootstrap, createRoutes } from "../framework";
+import { Component, bootstrap, createRoutes } from "@ramonda/core";
 import { row, ThemeProvider } from "./rows";
 
 /** The same thing again, as a const holding an arrow. */

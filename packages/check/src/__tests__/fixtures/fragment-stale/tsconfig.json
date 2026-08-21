@@ -9,6 +9,9 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
+      "@ramonda/core": ["../framework.ts"]
+    },
+    "paths": {
       "@acme/stale": ["../vendor-stale/published/index.d.ts"]
     }
   },

@@ -1,5 +1,5 @@
 import { renderToString } from "@ramonda/core";
-import { Component, Hook, Host, bootstrap, compute, persist, state } from "../framework";
+import { Component, Hook, Host, bootstrap, compute, persist, state } from "@ramonda/core";
 
 import { Dates, Maps } from "./kinds";
 import { heldCache, level1, makeCache } from "./make";

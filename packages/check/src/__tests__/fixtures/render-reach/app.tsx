@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, compute, state } from "../framework";
+import { Component, Host, bootstrap, compute, state } from "@ramonda/core";
 
 declare const rows: string[];
 

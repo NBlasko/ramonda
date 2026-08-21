@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, fetch } from "../framework";
+import { Component, Host, bootstrap, fetch } from "@ramonda/core";
 
 /**
  * `async render()`, in both spellings, beside the shapes that are correct.

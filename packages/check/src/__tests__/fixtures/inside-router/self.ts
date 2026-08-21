@@ -1,4 +1,4 @@
-import { Hook } from "../framework";
+import { Hook } from "@ramonda/core";
 
 /**
  * The router, imported by its own package name.

@@ -9,6 +9,9 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
+      "@ramonda/core": ["../framework.ts"]
+    },
+    "paths": {
       "@ramonda/router": ["./router-stub.ts"]
     }
   },
