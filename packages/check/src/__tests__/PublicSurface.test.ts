@@ -44,6 +44,7 @@ const EXPECTED_TYPES = [
   "ComputeTakesNoArgumentsIssue",
   "ContextIssue",
   "DecoratorThatAddsNothingIssue",
+  "DevGuardAsAnExpressionIssue",
   "DomWriteIssue",
   "DuplicateDecoratorIssue",
   "DuplicateIdIssue",

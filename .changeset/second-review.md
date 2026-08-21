@@ -19,9 +19,8 @@ noise, because it is reached only where the specifier chain has already failed. 
 with a staleness hazard and no measured benefit is worth less than nothing.
 
 **A `__DEV__` guard written as an expression was read as no guard at all.** `__DEV__ &&
-window.addEventListener(…)` and `__DEV__ ? … : …` are the same claim as `if (__DEV__)`, and
-`packages/core` writes the `&&` form thirteen times. So `listener-added-by-hand` reported dev-only
-code for being spelled the other way — this repository's standing lesson, that a fix for one
+window.addEventListener(…)` and `__DEV__ ? … : …` are the same claim as `if (__DEV__)`. So
+`listener-added-by-hand` reported dev-only code for being spelled the other way — this repository's standing lesson, that a fix for one
 spelling is not a fix for the other, arriving on schedule.
 
 **`declaredInsideCore` took `declarations[0]`.** A name with an overload set or a merged namespace

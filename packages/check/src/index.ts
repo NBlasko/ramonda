@@ -24,6 +24,7 @@ export type {
   ComputeTakesNoArgumentsIssue,
   ContextIssue,
   DecoratorThatAddsNothingIssue,
+  DevGuardAsAnExpressionIssue,
   DomWriteIssue,
   DuplicateDecoratorIssue,
   DuplicateIdIssue,

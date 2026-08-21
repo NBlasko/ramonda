@@ -21,8 +21,11 @@ import ts from "typescript";
  *
  * `if (__DEV__)` and `if (__DEV__ && env === "client")` — a conjunction, either way round, because
  * every branch of an `&&` has to be true for the body to run. The bare expression forms count too:
- * `__DEV__ && doSomething()` and `__DEV__ ? here : there`, which the framework's own source writes
- * thirteen times in `packages/core` alone.
+ * `__DEV__ && doSomething()` and `__DEV__ ? here : there`. Neither is how this repository writes
+ * one — measured, zero of them in statement position against 149 written `if (__DEV__ && …)`, which
+ * is a conjunction inside an `if` and the shape `dev-guard-as-an-expression` asks for. They are
+ * accepted here anyway: whether code is DEV-ONLY and whether it is written well are two questions,
+ * and answering the first with a silence would double-report the second.
  *
  * A `||` does not count: `__DEV__ || x` runs in production whenever `x` does. Neither does
  * `!__DEV__`, nor the `else` of a dev guard, nor the false arm of a ternary — those are the
@@ -36,8 +39,7 @@ export function insideADevGuard(node: ts.Node): boolean {
     if (ts.isIfStatement(at) && at.thenStatement === child && guardsDev(at.expression)) return true;
 
     /**
-     * `__DEV__ && doSomething()` — the same claim written as an expression, and the framework's own
-     * source writes it that way thirteen times in `packages/core` alone.
+     * `__DEV__ && doSomething()` — the same claim written as an expression.
      *
      * Reading only the `if` reported the identical code written the other way, which is this
      * repository's standing lesson: a fix for one spelling is not a fix for the other. The RIGHT
