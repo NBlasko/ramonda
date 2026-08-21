@@ -61,7 +61,7 @@ export const tagNeedsItsParent = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
+  read(element, { tag, resolve }) {
     if (tag === undefined) return [];
 
     const wants = NEEDS_PARENT[tag];
@@ -75,11 +75,15 @@ export const tagNeedsItsParent = {
     if (enclosingElement(element) === undefined) return [];
 
     /**
-     * A COMPONENT in between makes the real parent unknowable: what `<Layout>` renders is decided
-     * inside `Layout`, and it may well be the `<table>` this row needs. Going quiet here is the
-     * same silence contract every other rule keeps.
+     * A COMPONENT in between usually makes the real parent unknowable: what `<Layout>` renders is
+     * decided inside `Layout`, and it may well be the `<table>` this row needs.
+     *
+     * Usually, and not always — see {@link enclosingTag}. A wrapper whose `render()` hands
+     * `this.props.children` straight back puts them inside its own HOST element, and that is a fact
+     * in front of the walk. `<Box><tr /></Box>` with `@Host("div")` is a misplaced row and was
+     * reported by nothing.
      */
-    const found = enclosingTag(element);
+    const found = enclosingTag(element, resolve);
     if (found === undefined) return [];
 
     if (wants.includes(found)) return [];

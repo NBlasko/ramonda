@@ -1,6 +1,9 @@
 import ts from "typescript";
-import type { JsxElementLike } from "./rule";
-import { tagOf } from "./element";
+import { memberName } from "../syntax";
+import { coreDecoratorName } from "./core-import";
+import { openingOf, tagOf } from "./element";
+import { follow, type Looking } from "./follow-value";
+import type { JsxElementLike, Resolver } from "./rule";
 
 /**
  * What the HTML content model says about which tag goes inside which.
@@ -96,7 +99,78 @@ export function enclosingElement(element: JsxElementLike): JsxElementLike | unde
 }
 
 /** The nearest enclosing HOST tag, `undefined` when there is none or a component is in the way. */
-export function enclosingTag(element: JsxElementLike): string | undefined {
+export function enclosingTag(element: JsxElementLike, resolve: Resolver): string | undefined {
   const enclosing = enclosingElement(element);
-  return enclosing === undefined ? undefined : tagOf(enclosing);
+  if (enclosing === undefined) return undefined;
+
+  const written = tagOf(enclosing);
+  return written ?? hostTagOfComponent(enclosing, resolve);
+}
+
+/**
+ * The element a COMPONENT puts around its children, when that is knowable.
+ *
+ * `<Layout><tr /></Layout>` used to end the walk: what `Layout` renders is decided inside it, and it
+ * may well be the `<table>` the row needs. That silence is right for a component whose render puts
+ * the children somewhere of its own — and wrong for the commonest shape of all, a wrapper whose
+ * render hands `this.props.children` straight back so the HOST element is their parent. Measured:
+ * `<Box><tr /></Box>` with `@Host("div")` is a misplaced row and was reported by nothing.
+ *
+ * Three things all have to hold, and each is a fact in front of the walk rather than a guess:
+ *
+ * - the tag resolves to a class this program declares
+ * - that class's `render()` hands back `this.props.children` and nothing else, so nothing of its own
+ *   is between the host and them
+ * - its `@Host` names a tag — a literal, or a name holding one. A tag CALLBACK is computed from
+ *   props and there is no single answer, so the walk stops exactly as it used to
+ */
+function hostTagOfComponent(element: JsxElementLike, resolve: Resolver): string | undefined {
+  const declared = resolve(openingOf(element).tagName)?.declarations?.[0];
+  if (declared === undefined || !ts.isClassDeclaration(declared)) return undefined;
+  if (!handsChildrenToTheHost(declared)) return undefined;
+  return hostTagOf(declared, resolve);
+}
+
+/** Whether `render()` hands back `this.props.children` and nothing else. */
+function handsChildrenToTheHost(cls: ts.ClassDeclaration): boolean {
+  for (const member of cls.members) {
+    if (!ts.isMethodDeclaration(member) || memberName(member) !== "render") continue;
+
+    const body = member.body;
+    if (body === undefined || body.statements.length !== 1) return false;
+
+    const only = body.statements[0];
+    if (only === undefined || !ts.isReturnStatement(only) || only.expression === undefined) return false;
+
+    const returned = only.expression;
+    return (
+      ts.isPropertyAccessExpression(returned) &&
+      returned.name.text === "children" &&
+      ts.isPropertyAccessExpression(returned.expression) &&
+      returned.expression.name.text === "props" &&
+      returned.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+    );
+  }
+  return false;
+}
+
+/** The tag `@Host` names — written, or one name away. A callback has no single answer. */
+const HOST_TAG: Looking<string> = {
+  leaf: (expression) => (ts.isStringLiteralLike(expression) ? expression.text : undefined),
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
+export function hostTagOf(cls: ts.ClassDeclaration, resolve: Resolver): string | undefined {
+  for (const decorator of ts.getDecorators(cls) ?? []) {
+    const call = decorator.expression;
+    if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
+
+    const written = call.arguments[0];
+    if (written === undefined) continue;
+    return follow(written, resolve, HOST_TAG)?.value?.toLowerCase();
+  }
+  return undefined;
 }
