@@ -1,4 +1,4 @@
-import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
+import { ownerRuntime } from "../core/renderEnv";
 import { delayFault } from "../debug/validateDecorator";
 import { destroyed } from "./decorators";
 import { Hook } from "./Hook";
@@ -64,10 +64,8 @@ import { Hook } from "./Hook";
  * would force every call site to branch on which side it is, which is the one thing the hydration
  * rules tell an author not to do.
  *
- * The side is read off the OWNER's runtime, not off a module flag and not off `typeof window`. The
- * flag is restored before the server render's first `await`, so a render drained later would answer
- * "client" whichever side it is really on — the same reason `Portal` reads it there. And `typeof
- * document` says nothing: an SSR process can have a jsdom one.
+ * The side comes from `ownerRenderEnv`, which holds the reason a hook reads it off its OWNER rather
+ * than off the module flag — `Portal` asks the same question through the same function.
  */
 export class Timer extends Hook {
   /**
@@ -77,21 +75,26 @@ export class Timer extends Hook {
    */
   private disarm: (() => void) | undefined;
 
-  /** True while the owner is being turned into a string. See the note above. */
-  private get onServer(): boolean {
-    return this[GLOBAL_RUNTIME].owner?.[COMPONENT_RUNTIME]?.env === "server";
-  }
-
   /**
-   * True once the owner is gone.
+   * Whether arming can be made safe right now — one question, because all three answers to it mean
+   * the same thing: do not start a timer nothing will clear.
    *
-   * Checked before arming, and this is the leak it closes: `@destroyed` has already run by then, so
-   * nothing would ever clear a timer armed after it. A late `await` landing in a handler is exactly
-   * how that happens — `RMD008` reports the write it would have made, but the timer itself would
-   * still be holding the component alive until it fired.
+   * - **A server render.** It could not fire before the response is sent, and the request would be
+   *   held open by a handle nobody can reach.
+   * - **The owner is gone.** `@destroyed` has already run, so nothing would ever clear it. A late
+   *   `await` landing in a handler is how that happens — `RMD008` reports the write it would have
+   *   made, and the timer itself would hold the component alive until it fired.
+   * - **There is no owner at all.** Unreachable through `this.use()` — `ownerRuntime` says why — and
+   *   read as a REFUSAL rather than as "client, alive". The two mistakes are not equal: a timer that
+   *   did not start is a missing behaviour somebody can see, and a timer nothing can clear is a leak
+   *   nobody can. So the unknown case takes the visible failure.
+   *
+   * `ownerRuntime` holds the reason the side is read off the OWNER rather than off a module flag.
    */
-  private get gone(): boolean {
-    return this[GLOBAL_RUNTIME].owner?.[COMPONENT_RUNTIME]?.isDestroyed === true;
+  private get armable(): boolean {
+    const owner = ownerRuntime(this);
+    if (owner === undefined) return false;
+    return owner.env !== "server" && !owner.isDestroyed;
   }
 
   /**
@@ -128,7 +131,7 @@ export class Timer extends Hook {
   after(ms: number, run: () => void): boolean {
     this.checkDelay("after", ms);
     this.stop();
-    if (this.onServer || this.gone) return false;
+    if (!this.armable) return false;
 
     const id = setTimeout(() => {
       // Cleared BEFORE the body, so a `stop()` from inside `run` is not undone by this line, and so
@@ -149,7 +152,7 @@ export class Timer extends Hook {
   repeat(ms: number, run: () => void): boolean {
     this.checkDelay("repeat", ms);
     this.stop();
-    if (this.onServer || this.gone) return false;
+    if (!this.armable) return false;
 
     const id = setInterval(run, ms);
     this.disarm = () => clearInterval(id);

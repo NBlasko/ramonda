@@ -1,9 +1,9 @@
 import { Hook } from "./Hook";
+import { ownerRuntime } from "../core/renderEnv";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { created, destroyed, watchProp } from "./decorators";
 import { ChildrenRegion, isOpenAnchor } from "../core/childrenRegion";
 import { isPortalTarget, resolvePortalTarget, type PortalTarget } from "./portalTarget";
-import { COMPONENT_RUNTIME } from "../core/runtime";
 import type { RamondaNode } from "../types/vdom";
 
 export interface PortalProps {
@@ -124,11 +124,10 @@ export class Portal extends Hook<PortalProps> {
 
     if (this.resolvedFrom === target && this.resolvedTo !== undefined) return this.resolvedTo;
 
-    // The side this render is for, read off the OWNER rather than a module flag,
-    // for the reason `executeChangesOnStringNode` reads it there: the flag is
-    // restored before the first await, so a render drained later would answer
-    // "client" whichever side it is really on.
-    const onServer = this[GLOBAL_RUNTIME].owner?.[COMPONENT_RUNTIME]?.env === "server";
+    // The side this render is for. `ownerRuntime` holds the reason it is read off the OWNER rather
+    // than off the module flag. No owner reads as the CLIENT here: a build with nothing above it is
+    // one being made for the browser, and a portal with no server to render into has nothing to emit.
+    const onServer = ownerRuntime(this)?.env === "server";
     this.resolvedFrom = target;
     this.resolvedTo = resolvePortalTarget(target, onServer);
     return this.resolvedTo;

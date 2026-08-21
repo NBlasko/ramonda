@@ -1,3 +1,5 @@
+import { COMPONENT_RUNTIME, type ComponentRuntime, GLOBAL_RUNTIME, type Runtime } from "./runtime";
+
 export type RenderEnv = "client" | "server";
 
 /**
@@ -36,4 +38,31 @@ export function getRenderEnv(): RenderEnv {
 
 export function setRenderEnv(env: RenderEnv): void {
   current = env;
+}
+
+/**
+ * The runtime of the COMPONENT a hook belongs to — the only honest place for a hook to ask about the
+ * render it is part of.
+ *
+ * This is the companion to the contract above, and it sits beside it so the trap and the answer are
+ * one file. A hook has no `env` of its own; it shares its owner's runtime. And it must not read the
+ * flag above: that is restored before a server render's first `await`, so any pass drained later
+ * would answer "client" whichever side it is really on. `typeof document` is no better — an SSR
+ * process can have a jsdom one.
+ *
+ * INTERNAL. An app is told its side where the framework already hands it over: the `env` argument
+ * every lifecycle method receives.
+ *
+ * **It returns the runtime rather than one field, because the callers do not want the same field and
+ * do not agree about `undefined`.** `Portal` asks for the side and reads a missing owner as the
+ * client, which is what a detached build is for; `Timer` asks for the side AND whether the owner is
+ * gone, and reads a missing owner as "do not arm", because nothing would then clear the timer. Each
+ * says so where it decides.
+ *
+ * `undefined` is unreachable through `this.use()` today, measured: `createRuntime` is called only
+ * from `Component`'s constructor and always sets `owner`. The type says optional, so the question has
+ * to be answered anyway — and answered where the consequences differ.
+ */
+export function ownerRuntime(hook: { [GLOBAL_RUNTIME]: Runtime }): ComponentRuntime | undefined {
+  return hook[GLOBAL_RUNTIME].owner?.[COMPONENT_RUNTIME];
 }
