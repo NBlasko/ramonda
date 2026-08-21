@@ -94,25 +94,27 @@ function declaredInsideCore(symbol: ts.Symbol | undefined): string | undefined {
   return named !== undefined && ts.isIdentifier(named) ? named.text : undefined;
 }
 
-/** Whether a file belongs to the package called `@ramonda/core`. Cached per directory. */
-const PACKAGE_OF = new Map<string, boolean>();
-
+/**
+ * Whether a file belongs to the package called `@ramonda/core`.
+ *
+ * NOT cached, and that is a measurement rather than an oversight. A cache keyed on the directory
+ * path never invalidates — unlike `row-callback.ts`'s `WeakMap`, which hangs on a `SourceFile` and
+ * dies with the program — so it would carry one run's answer into the next for as long as the
+ * process lives. Weighed against that: with the cache `apps/docs` runs in 1.26 s and
+ * `packages/core` in 0.68 s; without it, 1.28 s and 0.71 s. Inside the noise, because this is
+ * reached only where the specifier chain has already failed, which is core's own source and a star
+ * re-export and nothing else.
+ */
 function packageIsCore(fileName: string): boolean {
   const root = packageRootOf(fileName);
   if (root === undefined) return false;
 
-  const known = PACKAGE_OF.get(root);
-  if (known !== undefined) return known;
-
-  let isCore = false;
   try {
     const raw = ts.sys.readFile(`${root}/package.json`);
-    isCore = raw !== undefined && (JSON.parse(raw) as { name?: string }).name === "@ramonda/core";
+    return raw !== undefined && (JSON.parse(raw) as { name?: string }).name === "@ramonda/core";
   } catch {
-    isCore = false;
+    return false;
   }
-  PACKAGE_OF.set(root, isCore);
-  return isCore;
 }
 
 /** Walks the same chain `reaches` does and hands back the name at the end of it. */
