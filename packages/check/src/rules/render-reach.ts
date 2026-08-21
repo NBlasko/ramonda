@@ -187,63 +187,37 @@ export function entryPoints(cls: ts.ClassDeclaration): { member: ts.ClassElement
  * idiom of the framework is the fastest way to have a checker switched off.
  *
  * So the question is not "is this a handler" — a handler can be reached in more ways than one can
- * enumerate — but "is this INVOKED here". Two shapes answer yes: an argument to a call that runs
- * what it is handed, which is `list(each, …)`, `.map(…)`, `.filter(…)` and their family; and a
- * function invoked on the spot. Everything else — returned, assigned, stored, handed to an
- * attribute, or handed to something that will call it LATER — runs at some other time, and this
- * says nothing about it.
+ * enumerate — but "is this INVOKED here". Two shapes answer yes: an argument to a call, which is
+ * `list(each, …)`, `.map(…)`, `.filter(…)` and their family; and a function invoked on the spot.
+ * Everything else — returned, assigned, stored, handed to an attribute — runs at some other time,
+ * and this says nothing about it.
  *
- * ## The list is an allowlist, and it was a FALSE REPORT before it was one
+ * ## An argument to ANY call, including one that will run it later — and that is deliberate
  *
- * The paragraph above is what this was always documented to do; the code accepted an argument to
- * ANY call. So `setTimeout(() => { this.n = 1 }, 0)` in a render was reported as a write during the
- * render — and so were a `.then`, a `queueMicrotask` and an `addEventListener`, which are the
- * ordinary way to write each of those. Four spellings, all of them correct code, all reported.
+ * This was narrowed to an allowlist of the calls that run what they are handed, on the argument
+ * that `setTimeout(() => { this.n = 1 }, 0)` in a render does not write state DURING the render.
+ * The argument is true about the moment and false about the fault, and the difference was settled
+ * by measuring rather than by reading either line:
  *
- * An allowlist rather than a list of the deferring ones, because the deferring ones cannot be
- * enumerated: a function handed to a name this cannot recognise runs at a time this cannot know,
- * and the silence contract answers that with nothing.
+ * - `setTimeout(() => this.n += 1, 0)` armed from a render, guarded to stop at 50: **51 renders**.
+ *   Unguarded it does not stop. That is `state-written-while-rendering`'s own sentence — "a render
+ *   that schedules a render" — reached exactly, and narrowing this made it silent.
+ * - `window.addEventListener("resize", …)` in a render: **6 listeners over 6 renders**, none
+ *   removed. A render that registers something is a leak per pass.
+ *
+ * A `.then`, a `queueMicrotask` and a `setTimeout` written in a render are not the ordinary way to
+ * defer work — they are a side effect armed by an answer to a question, once per time the question
+ * is asked. The handler case this exists to protect is a function RETURNED or handed to an
+ * attribute, and neither of those is a call argument, so nothing about it needs this narrowing.
  */
-
-/**
- * The calls that run the function they are handed, before they return.
- *
- * The iteration family, plus `list`, which the framework's own analyzer already treats as rendering
- * where the list sits. A name, not a resolved symbol: `rows.map` is a method on an array and there
- * is no declaration of it to resolve with `noLib`.
- */
-const RUNS_WHAT_IT_IS_HANDED: ReadonlySet<string> = new Set([
-  "map",
-  "flatMap",
-  "filter",
-  "forEach",
-  "reduce",
-  "reduceRight",
-  "some",
-  "every",
-  "find",
-  "findLast",
-  "findIndex",
-  "findLastIndex",
-  "sort",
-  "flat",
-  "list",
-]);
-
 function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   const parent = fn.parent;
   if (parent === undefined) return false;
 
-  // `rows.map((row) => …)` — an argument to a call that runs it before it returns.
-  if (ts.isCallExpression(parent) && parent.arguments.includes(fn)) {
-    const callee = parent.expression;
-    const named = ts.isPropertyAccessExpression(callee)
-      ? callee.name.text
-      : ts.isIdentifier(callee)
-        ? callee.text
-        : undefined;
-    return named !== undefined && RUNS_WHAT_IT_IS_HANDED.has(named);
-  }
+  // `rows.map((row) => …)` — an argument, so whoever was called decides, and all of the ones that
+  // matter here call it immediately. One that calls it LATER is a render arming an effect, which is
+  // the fault rather than an exception to it; the measurements above are why.
+  if (ts.isCallExpression(parent) && parent.arguments.includes(fn)) return true;
 
   // `(() => …)()` — invoked on the spot, with or without the parentheses TypeScript keeps.
   if (ts.isCallExpression(parent) && parent.expression === fn) return true;

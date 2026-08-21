@@ -15,24 +15,45 @@ const run = () => analyzeProject(join(here, "fixtures", "render-reach", "tsconfi
  */
 describe("what a render really reaches", () => {
   /**
-   * A FALSE REPORT, four times over, and on the ordinary way to write each of them.
+   * A render that ARMS a write is the fault, not an exception to it — measured, twice.
    *
-   * None of these callbacks runs during the render: `setTimeout` fires after it, a `then` runs on a
-   * microtask after it, and a listener runs when somebody clicks. Writing state in any of them is
-   * correct, and it was reported as a write during the render.
+   * This was narrowed to an allowlist of calls that run what they are handed, on the argument that
+   * `setTimeout(() => { this.n = 1 }, 0)` does not write state DURING the render. True about the
+   * moment, false about the fault:
+   *
+   * - the write armed from a render, guarded to stop at 50, renders **51 times**; unguarded it does
+   *   not stop. That is this rule's own sentence — "a render that schedules a render" — reached
+   *   exactly, and the narrowing made it silent.
+   * - `window.addEventListener("resize", …)` in a render registers **6 listeners over 6 renders**,
+   *   none removed.
+   *
+   * Both measured against the real runtime in `@ramonda/core` before this was put back.
    */
-  test("a callback handed to something that defers is not part of the render", () => {
+  test("a render that arms a deferred write is reported", () => {
     const found = run().findings["state-written-while-rendering"];
 
-    expect(found.map((issue) => issue.component)).toEqual(["Direct", "Immediate"]);
-    for (const line of [29, 32, 35, 38]) expect(found.map((issue) => issue.line)).not.toContain(line);
+    expect(found.map((issue) => issue.component)).toEqual([
+      "Direct",
+      "Deferred",
+      "Deferred",
+      "Deferred",
+      "Deferred",
+      "Immediate",
+    ]);
+    for (const line of [33, 36, 39, 42]) expect(found.map((issue) => issue.line)).toContain(line);
   });
 
-  /** And the one that really does run now still is: a row builder runs where the list sits. */
-  test("a callback something invokes immediately is still part of the render", () => {
+  /**
+   * The shape the walk really does have to leave alone, and it is not a call argument at all.
+   *
+   * A function RETURNED — `@memoized finish(id) { return () => { this.todo = … } }` — or written
+   * as a JSX attribute is a handler, and writing state in one is the whole point of it. Neither is
+   * an argument to a call, so nothing about the handler case needs a narrowing here.
+   */
+  test("a row builder, which really does run now, is reported too", () => {
     const found = run().findings["state-written-while-rendering"];
 
-    expect(found.map((issue) => issue.line)).toContain(50);
+    expect(found.map((issue) => issue.line)).toContain(54);
   });
 
   /**

@@ -14,11 +14,15 @@ class Direct extends Component {
 }
 
 /**
- * A callback handed to a call that runs it LATER.
+ * A render that ARMS a deferred write, four ways — every one of them reported.
  *
- * None of these runs during the render: `setTimeout` fires after it, a `then` runs on a
- * microtask after it, and a listener runs when somebody clicks. Writing state in any of them is
- * the ordinary way to do it.
+ * The write does not happen during the render, which is the argument for leaving these alone, and
+ * it is the wrong argument. Measured against the real runtime: `setTimeout(() => this.n += 1, 0)`
+ * armed from a render and guarded to stop at 50 renders **51 times**, and unguarded it does not
+ * stop; `addEventListener` in a render registered **6 listeners over 6 renders**, none removed.
+ *
+ * A render is an answer to a question. Arming an effect from it happens once per time the question
+ * is asked, and the framework asks whenever it likes.
  */
 @Host("div")
 class Deferred extends Component {
