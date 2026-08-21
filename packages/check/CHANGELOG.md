@@ -1,5 +1,575 @@
 # @ramonda/check
 
+## 0.12.0
+
+### Minor Changes
+
+- 0c59cf7: `head-tags-collide` and the context pair read a value one name away.
+
+  **`head-tags-collide` could not read options kept in a module** — `this.use(Head, PAGE_HEAD)`
+  reached no object literal at all, so a description written both ways inside it was invisible. Page
+  metadata living in a module of its own is the ordinary arrangement, and the whole argument for this
+  rule is that nothing else can see the collision: the type permits it, `tsc` says nothing, and by the
+  time the runtime has built its map the losing tag has left no trace.
+
+  A `{ name: ROBOTS }` identity is now read the same way. `this.which` still is not, and that is a
+  different case rather than the same one — a field can be written again, so the identity really is
+  not knowable.
+
+  **A Provider under a local name is the same Provider.** `resolve` already followed an IMPORT alias,
+  so `ThemeProvider as Publishes` was never a question; a second `const` in the file was, because the
+  declaration behind it is a `VariableDeclaration` rather than the `BindingElement` the pair was
+  destructured from. `one-provider-per-component` and `context-consumed-above-its-provider` both read
+  through this, and both were silent on it.
+
+  No change to what is reported on any project in this repository.
+
+- d60daaf: A core decorator is identified by resolution, not by the name written on the member.
+
+  `hasDecorator` compared a bare name and asked nothing about where the decorator came from — the one
+  identity question in this package that did not resolve. Fourteen call sites across nine rules read
+  `@state`, `@compute`, `@persist`, `@created`, `@destroyed` and `@memoized` through it, so it failed
+  in both directions at once:
+
+  - **`import { state as reactive }` made every class rule go quiet.** Measured with two components
+    that are the same component written twice: the plain one produced two reports and the aliased one
+    produced nothing, from any rule.
+  - **An app's own decorator called `state` was judged as core's**, which is the shape `own-list.ts`,
+    `own-head.tsx` and `own-helper.tsx` exist to keep out of three other rules.
+
+  `resolve` now carries `coreName` on itself — a callable with one property — rather than a second
+  function threaded beside it. `resolve` already reaches all two dozen helpers that needed this, and a
+  parameter a caller can forget is the shape that silenced every tree rule for a commit. Two
+  long-standing optional resolvers became required in the same pass: `staleFieldsOf` and
+  `stateFieldsOf` no longer answer a narrower question when nobody hands them one.
+
+  **It costs nothing, measured rather than assumed.** A file with 400 components: 0.58 s before,
+  0.58 s after. `apps/docs`, 151 components: 1.25 s before, 1.25 s after. The checker memoises symbol
+  lookups, and decorators are few beside everything else a run already resolves.
+
+  No change to what is reported on any project in this repository.
+
+- 39e567b: A lifecycle decorator imported under another name is read as the lifecycle it is.
+
+  `lifecycle-env.ts` looks a decorator's name UP in a table of what each one does — so the local name
+  was not merely a weaker key than the exported one, it was the wrong key. `import { created as
+onCreate }` read as `onCreate` found nothing in that table, so `@onCreate({ env: "server" })`
+  excused nothing, and `server-env-in-shared-code` reported the `process.env` read inside it as
+  browser code. **A false report at error severity, on correct code**, and class rules carry no
+  `ramonda-check-ignore` — so the only way out was restructuring code that was already right.
+  Measured both ways: reported without the fix, silent with it.
+
+  `coreExportName` answers the lookup half of the question `importedFromCore` answers the comparison
+  half of, and both follow a re-export.
+
+  **A known limit, now pinned by a test rather than left to be discovered.** `hasDecorator` — which
+  fourteen call sites across nine rules read `@state`, `@compute`, `@persist`, `@created`,
+  `@destroyed` and `@memoized` through — still matches the name written on the member and asks nothing
+  about where it came from. So an aliased `@state` makes every class rule go quiet, and an app's own
+  decorator called `state` would be judged as core's. `aliased-decorators.test.ts` measures both
+  components and records it; closing it means threading resolution through those call sites and the
+  helpers under them, which is a decision rather than a repair.
+
+- 12972a2: Five rules identified a framework export by the name the FILE gave it, not the name the module
+  exports.
+
+  `import { requestContext as rc }` renames the binding, and so does an app's own module doing
+  `export { Head } from "@ramonda/core"`. Every one of these rules tested the local name FIRST and
+  only then asked which module it came from, so both spellings went quiet:
+
+  - **`late-request-read`** and **`client-only-request-read`** on `requestContext` and `requestKey`
+  - **`head-tags-collide`** on `Head`
+  - **`context-pair`**, which both context rules read through, on `createContext`
+
+  `importedFromCore` takes the exported name now and checks it where the chain reaches core — so an
+  alias and a re-export both resolve, while an app's OWN function of the same name still has its own
+  declaration, no chain to core, and is still left alone. That last part is the whole reason these
+  rules resolve rather than match a name, and it is unchanged.
+
+  **`late-request-read` also reads the held context two more ways.** `const { headers } = context` and
+  `context["cookies"]` below an `await` reach the same getters on the same object as `context.headers`
+  does, and both were silent. The destructure report quotes the line — `{ headers } = context` — rather
+  than a dotted form that is nowhere on it.
+
+  No change to what is reported on any project in this repository.
+
+- 7da9d2d: Four more element readers follow a name to its declaration, which closes two false reports and two
+  project-wide silences.
+
+  `attr` and `numberAttr` already did this — `role={ROLE}` where `const ROLE = "button"` is the same
+  fact as `role="button"`. Every reader beside them was still literal-only, and none of it is visible
+  from a rule's own source: each of these rules calls a helper whose name says it reads the attribute.
+  Measured by planting the same shape into all of them.
+
+  **Two rules were reporting correct markup.**
+
+  - `heading-skips-a-level` read a `role` literally, so `<h3 role={PRESENTATION}>` — which is not in
+    the outline at runtime — was reported as skipping a level. The same blindness missed
+    `<div role={HEADING} aria-level={6}>`, which is a real skip. `stringAttr` now follows a name, and
+    takes a `resolve` rather than defaulting one.
+  - `control-with-no-label` reported `<input type={IMAGE_TYPE} />` as an unlabelled control. An image
+    input is named by its `alt` and is `unnamed-image`'s subject, where it was already reported.
+
+  **Two silences that scaled with the project.** The id table read only literals, so a project that
+  keeps its ids in one module — the ordinary way to make two references agree — marked every one of
+  them unreadable, and one unreadable id anywhere silences
+  `reference-to-an-id-that-is-not-there` for the whole project. Measured: a mistyped `aria-labelledby`
+  and a fragment link to nowhere, both reported by nothing. The same fault in two more spellings:
+  `@Host("section", () => ({ id: OVERVIEW_ID }))`, and `({ id })`, which was read by nothing at all.
+
+  Also: `trueAttr` follows a name, so `aria-hidden={HIDDEN}` is the fourth spelling of a fact whose
+  other three were already read — `aria-hidden-on-focusable` and `empty-heading-or-link` both went
+  quiet one hop away. `aria-level="6"` is read as a number where it is written, and now through a name
+  holding `"6"` as well.
+
+  No change to what is reported on any project in this repository — `apps/docs`, the three
+  playgrounds, `router`, `query` and `form` produce byte-identical output before and after.
+
+- 7dddee5: `unsplittable-import` no longer reports a template the bundler can read, and `unexposed-env-read`
+  reads both spellings of an env variable.
+
+  **A FALSE REPORT on a documented feature.** `` import(`./pages/${name}.js`) `` is not a path a
+  bundler cannot read — Vite turns it into a chunk per matching file. Measured with Vite 7 rather than
+  reasoned about, and the boundary measured with it:
+
+  | written                              | modules transformed | chunks emitted                   |
+  | ------------------------------------ | ------------------- | -------------------------------- |
+  | `` `./pages/${w}.js` ``              | 4                   | `a-*.mjs`, `b-*.mjs` — **split** |
+  | `` `./pages/${w}` `` — no suffix     | 1                   | none                             |
+  | `` `pages/${w}.js` `` — not relative | 1                   | none                             |
+  | `import(specifier)`                  | 1                   | none                             |
+
+  So a template splits only with a RELATIVE head and a non-empty tail after the last substitution, and
+  that is exactly what is left alone now. The last three rows are the rule's own claim confirmed:
+  nothing is emitted, and at run time there is nothing to fetch.
+
+  **`import.meta.env["VITE_API_URL"]` is the same read as `import.meta.env.VITE_API_URL`**, and the
+  rule saw only the dot. A key held in a `const` — what a project with more than two of them does — is
+  the same read one hop further, and is read now too. A key nothing settles is still not judged, and
+  neither is the public prefix or a name the bundler provides itself.
+
+  No change to what is reported on any project in this repository.
+
+- b592062: The three key rules read a list whose row callback was lifted out of the JSX.
+
+  `rows.map(renderRow)` is the same list `rows.map((row) => …)` is, and the row inside `renderRow` is
+  the same row — but all three rules read only the inline form. So a list stopped being checked at
+  exactly the moment it grew big enough for somebody to extract the row, which is the list most likely
+  to have a real key fault in it. Measured: four unkeyed rows and one index key, all silent.
+
+  - **`row-without-a-key`** and **`index-as-key`** now share one walk, `rules/row-callback.ts`, rather
+    than a copy each — two spellings of one question are two answers waiting to disagree about the
+    same list. The report lands where the ROW is written, so an extracted callback handed to three
+    lists is one report at the element that needs the key.
+  - **`index-as-key`** also reads a key through a local one line up: `` const rowKey = `row-${i}` ``
+    followed by `key={rowKey}` is the same position, moved for readability. A `const` inside a
+    function only — a module-level one cannot mention the index at all.
+  - **`duplicate-key-among-siblings`** compares a key held in a `const`: two siblings written
+    `key={FIRST}` claim the same key exactly as two written `key="first"` do.
+
+  The reverse lookup is memoised per file on a `WeakMap`. Asked per row it is one walk of the whole
+  file each time — measured on a file with 400 extracted callbacks, 0.55 s becomes 0.95 s and the
+  shape is quadratic in the file. Memoised, the same file runs in 0.55 s, which is what it cost before
+  any of this, while reporting 400 faults that were invisible.
+
+  No change to what is reported on any project in this repository.
+
+- 93b8ea9: `unserializable-state` and `persist-of-a-lossy-value` say WHERE the value is built.
+
+  `@state rows = level1()` reported that the field holds a `Map` and gave the reader nowhere to go.
+  Both rules now name the place, and the INNERMOST one: `level1` is already on the line being read, so
+  the report says `level3`. `built in \`makeCache\``, `built in \`SHARED\``, and nothing at all when
+  the value is written on the line itself.
+
+  `unserializable-state` was then walked through the whole checklist, which is what turned this up.
+  Everything else about it holds: the value a cast, a module `const`, a helper, a chain of three, a
+  helper handing back one it HOLDS, a ternary or a `??` away is reported; a field a base declares is
+  reported once, at the base; a hook's state crosses the same blob; and a plain field, a `@compute`
+  and a JSON-safe value are all silent. The browser-only half of the gate covers the followed values
+  too — the gate is about the project, not about how the value was spelled.
+
+- d2ac4a1: New rule: `dev-guard-as-an-expression` — a `__DEV__` guard written as `&&` or `?:` where an `if`
+  would do the same thing.
+
+  **Not a dead-code rule, and the measurement is the reason it says so out loud.** With esbuild and
+  `__DEV__: false`, the `&&` form is DROPPED where an unminified `if (false) { … }` keeps its whole
+  block and its string literals; with `minify: true` — which every package here uses — both vanish
+  identically. Whoever reaches for the operator to help the bundler is not helping it.
+
+  The `if` is asked for because a flag with two spellings has to be read twice by everything that
+  reads it, and this repository has already paid for that: `dev-guard.ts` was written against the `if`
+  alone, so `listener-added-by-hand` reported dev-only code for being written the other way.
+
+  **Only where an `if` is a REPLACEMENT.** A statement, and nothing else — `const name = __DEV__ ?
+displayName(x) : ""` uses the value and an `if` produces none, so it is left alone. Five of those
+  are written here, in `core` and `lens`. And `if (__DEV__ && ready)` is a conjunction inside the
+  `if`, which is the shape being asked for rather than an instance of the fault; 149 of those are
+  written here.
+
+  A warning today and an error in a later version. Zero findings across every project in this
+  repository — measured, and in this case that is the whole population: the statement form is written
+  nowhere.
+
+- 7abb708: New rule: `listener-added-by-hand` — a component reaching for `window.addEventListener` itself.
+
+  `@onWindow` and `@onDocument` attach on mount and detach on unmount, and there is nothing to
+  remember. A hand-rolled listener has to be removed by hand, and one that is not outlives the
+  component that added it: the handler keeps running, reading state nobody is showing and holding the
+  component and everything it closed over alive. Open and close the same view ten times and there are
+  ten of them.
+
+  Nothing reported this before — measured, a component calling `window.addEventListener` in `@created`
+  AND in `render()` produced no findings at all, and no rule in the package mentioned
+  `addEventListener`. The harm was measured against the real runtime rather than argued: a listener
+  registered in a `render()` is **6 listeners over 6 renders**, none removed. The report says which
+  member it is in for that reason.
+
+  Removing the listener by hand is not an answer to this and neither is `{ once: true }`: the
+  decorator takes the same options and does both halves. That is where this differs from
+  `interval-with-no-cleanup`, which still accepts a raw timer paired with a `clearInterval`.
+
+  **One thing the decorator cannot do, and the advice says so rather than papering over it.** A
+  listener the app ARMS — on a click, after a fetch — cannot be written with `@onWindow`, which
+  attaches for the owner's whole life. There is no hook for it yet, so the rule reports the raw call
+  and the advice names what the reader is left with. `Interval` and `Timeout` are the same problem
+  already solved for timers: hooks the app starts and stops, which the framework still clears when the
+  owner goes.
+
+  **The one place a decorator genuinely cannot be used is `if (__DEV__)`, and that is the escape.** A
+  decorator is code on the CLASS, so no guard can remove it: a dev-only listener written with
+  `@onWindow` would attach in production too, on every mount, for an event nothing dispatches.
+  Verified in `packages/query/dist/index.prod.js`, where the methods that add and remove one compile
+  to `publishToDevtools(){}` and the listener does not exist — while `@onWindow("online")` on the
+  `Query` hook is plainly there in the same file. `@ramonda/query` and `@ramonda/form` both need this,
+  and both already say so in their own source.
+
+  So inside a `__DEV__` guard the hand-rolled call is right, and the only question left is the
+  ordinary one: does anything remove it. A `||` is not a guard, and the `else` of one is the
+  production half; neither counts.
+
+  **The escape is a fact rather than a promise**, which is deliberate and matters beyond this rule: a
+  `ramonda-check-ignore` is the author's claim about a line and can be written anywhere, while a
+  `__DEV__` block can only be got by making the code really vanish from the build. `rules/dev-guard.ts`
+  carries that reasoning and is available to any rule that needs it.
+
+  Also silent: a listener on anything that is not `window` or `document` — an `AbortSignal` dies with
+  its request and an element with the element, and no decorator covers either — and module scope,
+  which lives as long as the module.
+
+  A warning today and an error in a later version. Nothing in this repository trips it, with the
+  silence on `@ramonda/form` proved to be earned rather than accidental by taking its `__DEV__` guard
+  away and watching the rule report it.
+
+- ceb0feb: `browser-url` finds the same read spelled three other ways.
+
+  - **`self.location.pathname`.** `self` is the third name for the global object and the package's
+    other rules about one already list it; this had `window`, `globalThis` and `document` only.
+  - **`const { pathname } = window.location`.** A read of exactly that member, with the member's own
+    name on the left of it. The report quotes the line rather than rewriting it into
+    `window.location.pathname`, which is text the reader would go looking for and not find.
+  - **`window.location["hash"]`.** The dotted read with brackets round it.
+
+  All three are reads the router already answers, in a project that has one, and all three were
+  silent. A write and a method call are still not reads, and a local called `location` is still not
+  the global.
+
+  No change to what is reported on any project in this repository.
+
+- 8515f48: The class family follows a value one name away — three rules, one of them a false report.
+
+  - **`state-mutated-in-place` reads what a `@state` field holds through a name.** The rule mirrors
+    the runtime mutation guard on purpose, and the guard wraps a plain array or object whatever
+    produced it — so `@state rows = makeRows()` is the same array `@state rows = []` is, and
+    `this.rows.push(row)` is the same silence. Reading only the initializer meant four spellings of
+    one fault with only the first reported: a helper, a module `const`, a branch, and an object built
+    anywhere but on the line.
+  - **`interval-with-no-cleanup` follows the id out of the local it passes through.** A FALSE REPORT:
+    `const id = setInterval(…); this.tick = id`, on a component whose `@destroyed` clears `this.tick`,
+    was reported as an interval nothing could ever reach. The id escapes the local the moment it is
+    assigned to a property, and where it lands decides whether anything clears it.
+  - **`watch-of-a-prop-that-is-not-there` reads a selector kept in a `const`.** `@watchProp(BY_USER)`
+    is handed the same function `@watchProp((p) => p.userId)` is. A `const` only, and only through to
+    a function literal — a `let` can be written again and a call has no single answer, and this rule's
+    cost of being wrong is telling somebody a prop they can see does not exist.
+
+  `clock-read-while-rendering`, `stale-field` and `unwatched-fields` were walked through the same list
+  and hold: a clock read is found in the render and behind a helper in another file, `new Date(iso)`
+  parses and stays silent, and both of the others already ask the base classes.
+
+  No change to what is reported on any project in this repository.
+
+- 3022508: `server-env-in-shared-code` finds `globalThis.process.env`, and quotes a bracketed key.
+
+  `globalThis.process.env.API_KEY` is the same `ReferenceError` on the page as `process.env.API_KEY`,
+  and it was silent — the check required `process` to be a bare identifier. There is deliberately no
+  "resolves to nothing" test on `globalThis`, unlike everywhere else in this package: the checker knows
+  that name whatever the lib settings are, so the test would silence every one of these. It is a
+  reserved binding rather than a global anyone can shadow, which is what makes leaving it off safe.
+  Node's `global` still takes the test.
+
+  A destructure and a bracketed key were already found, because the match is at `process.env` rather
+  than at the member — but `process.env["REGION"]` was quoted as `process.env`, which is less than the
+  reader wrote. It carries the key now. A destructure still quotes `process.env`, which is exactly
+  what is on the right-hand side of one.
+
+  No change to what is reported on any project in this repository.
+
+- 3427a68: The `@Host` props callback is part of the render.
+
+  `@Host("nav", (self) => ({ className: … }))` runs every time the component renders and is in no
+  member body, so `entryPoints` did not reach it and a clock or a random read there was found by
+  nothing. Walked with `insideTheClass` false, exactly as a static is: the callback is handed the
+  component as a parameter rather than through `this`, so only the reads that depend on nothing are
+  worth finding.
+
+  Every rule that reads a render goes through this walk — `clock-read-while-rendering`, `dom-writes`,
+  `late-request-read` and the rest — so it is one change for all of them.
+
+  No change to what is reported on any project in this repository.
+
+- 4c38be4: `row-reads-a-plain-field` finds core's `list` under an alias and through a re-export.
+
+  It used to scan a file's imports for a binding called `list` and take the FIRST one, which is wrong
+  in two ways. A file importing it twice — `import { list, list as rows }` — got whichever name came
+  first, so calls through the other were invisible. And a re-export was invisible entirely:
+  `export { list } from "@ramonda/core"` in an app's own `ui` module hands on the framework's own
+  binding, and the rows it builds are cached exactly the same way.
+
+  Resolved through the alias chain now, which takes nothing away: an app's own function called `list`
+  has its own declaration and no chain leading to core, so it still resolves to itself and is still
+  left alone.
+
+  `importedFromCore` does the walking, so `Head`, `requestContext` and the context pair all follow a
+  re-export now too. It needed one more question of the checker — `resolveStep`, a single hop along an
+  alias chain — because neither existing resolver can answer this: `resolve` jumps to the end, where
+  the path differs per project, and `resolveLocal` does not move at all, where the specifier says
+  `./ui`. Stepping is the only way to read the chain the reader actually wrote.
+
+  No change to what is reported on any project in this repository.
+
+### Patch Changes
+
+- faf19f8: A node from an installed package appears once in the graph, in a place that does not move with the
+  process.
+
+  Two faults, one line. A kit destructured out of a factory — `const { Router, Link } = createRouter(routes)`
+  — binds each member to a local symbol, which is how the walk resolves `<Link />`, so the node a
+  package's fragment brought in was in `components` as well as in the spliced list. `buildGraph` emitted
+  both: **the same id twice, with two different places.** Measured on this repository's own fixtures —
+  three duplicated ids in `kit`, two in `kit-ambiguous`.
+
+  And the second place was wrong in a way that MOVED. A fragment's `at` is already relative to its own
+  package, so running it through `pathOf` sent it climbing for a `package.json` — and `ts.sys.fileExists`
+  resolves a relative path against the process's working directory. So `@acme/kit/src/index.tsx` was
+  attributed to `@ramonda/check` when the CLI ran from that package, and to `ramonda-monorepo` when it
+  ran from the repository root. `ramonda-check apps/docs/tsconfig.json` from a repository root is exactly
+  that shape.
+
+  The graph HASH never moved with it — that is taken over source text and absolute file names — so no
+  published graph's identity changes. What changes is what a reader is shown, which is the whole point of
+  `at`.
+
+  Pinned two ways, and planted: no id is emitted twice across the four vendor fixtures, and the two kinds
+  of place are asserted apart — a node from this program is placed against the project
+  (`@ramonda/check/src/…/app.tsx`), a node from an installed package keeps the path that package gave
+  (`src/index.tsx`), because its id already says whose it is.
+
+- d4ff96a: A namespace import of `@ramonda/core` is recognised as core.
+
+  `import * as core from "@ramonda/core"` followed by `core.requestContext()` was identified as
+  nobody's — so `late-request-read` and `client-only-request-read` both went quiet on it, although
+  `core-import.ts` has always said in as many words that a namespace import "arrives here". Each import
+  shape sits a different distance from its statement, and this one was walked as if it were a named
+  import: one parent too far, landing on the source file rather than the declaration.
+
+  Wrong since the helper was written. Found by planting the shape while reviewing the branch, which is
+  the only way a silence gets found.
+
+- 9e3503c: The seventy-three fixture tsconfigs share one base instead of repeating it, and a test now proves the
+  inheritance arrives.
+
+  Nothing a consumer installs changes: this is all under `src/__tests__/fixtures`. What changes is the
+  cost of touching the config. Measured before the edit: 73 files, **0** using `extends`, 52 of them
+  byte-identical to each other, and the same eight options — `target`, `module`, `moduleResolution`,
+  `jsx`, `jsxImportSource`, `strict`, `skipLibCheck`, `noEmit` — written out in every one. So raising
+  `target` was a seventy-three-file edit, and a fixture left behind would not have said so.
+
+  Two things stay in each fixture, and neither is a style choice. A relative path resolves against the
+  config that **declares** it, so `include: ["."]` in the base would mean all of `fixtures/` and every
+  fixture would pull in every other one; and TypeScript records a `pathsBasePath` per config file, so a
+  `paths` mapping moved up would resolve one directory too high. `jsxImportSource` is safe to share
+  because it is a module specifier resolved from each source FILE, not from the config.
+
+  **Why it needed a test rather than a run of the suite.** The package's own tsconfig excludes the
+  fixture directory, so nothing type-checks a fixture — and the analyzer reports what it can see from
+  whatever options it is handed. Drop `jsx` and every `.tsx` fixture stops parsing as JSX, the rule
+  under test finds nothing, and the failure reads as a rule that stopped working. So
+  `fixture-configs.test.ts` asserts the RESOLVED options, through TypeScript's own `extends`, exactly
+  as `analyze.ts` reads them — and it was planted four ways: a broken `extends`, an option repeated in
+  a child, `paths` hoisted into the base, and `include` hoisted into the base. Each one fails, naming
+  the fixture and the option.
+
+  The change itself is a no-op, measured rather than assumed: all 73 fixtures were analyzed before and
+  after and the two dumps — findings, graph, notes, everything `analyzeProject` returns — are identical
+  byte for byte.
+
+- 114f853: The analyzer's advice about a doubled decorator is checked against core's runtime instead of trusted.
+
+  `@ramonda/check` tells a developer what writing `@StableProps` twice does — "they MERGE, both take
+  effect, nothing is lost" — and that sentence lived in the analyzer while the behaviour lives in core.
+  **The analyzer does not import core**, deliberately: it reads source with TypeScript and never loads the
+  framework. So the two could disagree and nothing would notice. Change core so a second `@StableProps`
+  throws and the analyzer would keep advising that it merges.
+
+  The quiet direction is the worse one. A new single-use decorator in core that the rule never learns
+  about is not a wrong report, it is SILENCE — and silence is what an analyzer is trusted for.
+
+  Three links, none of them a shared dependency and none of them new published surface:
+
+  1. Core's diagnostic carries the fact as data: `duplicate: { decorators, effect }` on the five codes
+     about a doubled decorator (`RMD045`, `RMD032`, `RMD040`, `RMD046`, `RMD050`).
+  2. `scripts/check-decorator-duplication.mjs` reads both tables from source with the TypeScript AST —
+     the same reason `check-api-coverage.mjs` reads `SPECS` from source — and fails the build if they
+     differ either way, or if a duplication code exists that no rule claims. Planted four ways: core
+     changing an effect, core gaining a decorator, the rule claiming one core does not describe, and an
+     unclaimed code.
+  3. `DuplicateDecoratorSpecs.test.ts` in core closes the hole the script cannot see: a MISSPELLED name.
+     `["catchErrors"]` in both places agrees perfectly, passes the script — measured, it prints "agree on
+     all 8" — and describes a decorator that does not exist, so the rule reports nothing. The test reads
+     the real export list rather than a second list of names.
+
+  The rule's four `Set`s became one `EFFECT` map on the way, which says the same thing once and is what
+  made the comparison trivial. Its 125 tests are unchanged.
+
+- 395ba20: `scripts/findings-across-fixtures.mjs` — every finding across every fixture, recorded or compared.
+
+  Reviewing a branch of rule changes has one question a diff cannot answer and a test suite answers
+  only where somebody thought to assert it: **what stopped being reported?** A new finding is visible;
+  a lost one is invisible by definition, because a rule that reports nothing looks exactly like a
+  clean codebase.
+
+  `pnpm --filter @ramonda/check findings --write baseline.txt` on `main`, `--against baseline.txt` on
+  the branch. It exits non-zero on a loss and names each one. No network, no model, no judgement — it
+  runs the analyzer over all ~80 fixtures and prints the set difference.
+
+  Proved to catch what it is for by sabotaging `access-key` into silence: four claims vanished across
+  two fixtures and all four were named. It found two real things on the branch that added it — a
+  fixture carrying a context-order fault it was not about, and a namespace import of core that had
+  never been recognised.
+
+- 72049a8: Seven defects found by reviewing this branch, five of them in code it added.
+
+  - **`self.location.pathname` was reported on a component reading its own field.** `browser-url`
+    accepted `window`, `document`, `self` and `globalThis` by NAME, and `self` is the one of the four
+    that is routinely a local — `const self = this` is an ordinary line, and `(self) => …` is this
+    framework's own convention for a `@Host` props callback. Three rules asked "is this the global"
+    three different ways and two were wrong in opposite directions; `rules/globals.ts` answers it once.
+  - **A `@StableProps` core declares on its own hook was invisible**, so `fresh-object-in-hook-props`
+    reported a `meta` array that `Head` has DECLARED stable — reporting the fix, on the framework's own
+    hook, in `apps/playground-ssr`. Core imports its decorators relatively, so nothing in `Head.ts`
+    names `@ramonda/core` at all. A declaration is core's when it lives in the package called
+    `@ramonda/core`, read from `package.json` rather than from a path.
+  - **`export * from "@ramonda/core"` silenced every class rule.** A star export resolves straight to
+    core's own declaration, which names no module, so the specifier chain had nothing to walk — and
+    `hasDecorator` is the chokepoint they all read through. The package test answers this one too.
+  - **A listener added on `window` and removed on `globalThis` was reported as uncleaned.** They are
+    one object; the removal set was keyed on the spelling. That is the `@ramonda/query` and
+    `@ramonda/form` devtools shape with one word changed. A removal whose event name cannot be read
+    now also silences the add, which is the care the add side already took.
+  - **`foundIn` printed the outermost name**, which is the opposite of what the field documents.
+    `@persist blob = wrap()` where `wrap()` returns `{ cache: makeCache() }` named `wrap` — already on
+    the line being read — instead of `makeCache`, where the reader has to go.
+  - Eight fixture configs carried two `"paths"` keys after the merge, so the second silently won and
+    the `@ramonda/core` mapping was discarded. Four vendor fixtures never needed one.
+  - The note added to `render-reach` overstated its case: a handler CAN be a call argument —
+    `onclick={debounce(() => { this.n += 1 }, 100)}` is reported — and the docstring now says so
+    rather than generalising from the returned-handler shape.
+
+- ad49633: Five defects a targeted review found in the two newest files.
+
+  - **`dev-guard-as-an-expression` missed the chained and parenthesised `&&`.** `__DEV__ && ready &&
+publish()` parses as `(__DEV__ && ready) && publish()`, so asking whether the immediate left was
+    the flag missed every one — while `dev-guard.ts` recognised both. Two answers about one flag, in
+    code written hours apart. `guardsDev` is exported now and both read it.
+  - **A ternary with a real other arm was reported with advice that deletes it.** `__DEV__ ?
+publish("dev") : publish("prod")` came out quoting only the true half, so an author following
+    "write it as `if (__DEV__)`" would drop the production one. Only a ternary whose other arm is
+    `undefined`, `null` or `void 0` is reported now — the rest is an `if`/`else`, which is not what
+    this advice says. The report also rendered a ternary with no `:` arm at all.
+  - **`window` and `document` accepted by name reported a real binding of that name.** A parameter
+    called `window` was read as the browser's. The justification — that requiring them to resolve ties
+    the rule to `noLib` — does not hold: `analyze.ts` forces `noLib: true, types: []` whatever the
+    project says, so a lib-declared global can never resolve and the only thing that can is a
+    declaration in the source.
+  - **Its mirror: an ambient `declare const self` silenced three rules.** An ordinary line in a worker
+    or an SSR entry, and it made `self` resolve, which the old test read as "not the global".
+
+  Both directions are one test now: the NAME, unless something in the source declares it for real.
+  `declare const document` is the author writing down what the platform provides and is still the
+  platform's; `const self = this` is a name of their own. That is what `dom-writes` was reaching for
+  when it argued a prefix is not a form a local plausibly shadows — its own fixture declares
+  `document` ambiently, which is why the by-name rule looked right there.
+
+  - **A test asserted nothing.** Three "must stay silent" line numbers pointed at a brace, a blank
+    line and a `return (` after the fixture moved under them; only a `toHaveLength` beside them held
+    the claim.
+
+- 4c2d4fc: Four more from a second review, all in the code the first review's fixes added.
+
+  **`globals.ts` had one answer where the right one is asymmetric**, and `dom-writes` — a fifth rule
+  asking the same question — had already argued the other half. A prefix is not a form a local
+  plausibly shadows: nobody writes `const document = …` and then reaches for `.body.classList`, and
+  requiring `window` and `document` to resolve to nothing makes a rule depend on the run having no
+  lib, which is a silent trap for a project that declares the global itself. So `globalThis`, `window`
+  and `document` count by name; `self` and `global` have to prove themselves, because `self` really is
+  routinely a local. All five rules read one answer now, `dom-writes` included.
+
+  **`packageIsCore` cached on a directory path, which never invalidates** — unlike `row-callback.ts`'s
+  `WeakMap`, which hangs on a `SourceFile` and dies with the program. Measured before removing it:
+  `apps/docs` 1.26 s with the cache and 1.28 s without, `packages/core` 0.68 s and 0.71 s. Inside the
+  noise, because it is reached only where the specifier chain has already failed. Global mutable state
+  with a staleness hazard and no measured benefit is worth less than nothing.
+
+  **A `__DEV__` guard written as an expression was read as no guard at all.** `__DEV__ &&
+window.addEventListener(…)` and `__DEV__ ? … : …` are the same claim as `if (__DEV__)`. So
+  `listener-added-by-hand` reported dev-only code for being spelled the other way — this repository's standing lesson, that a fix for one
+  spelling is not a fix for the other, arriving on schedule.
+
+  **`declaredInsideCore` took `declarations[0]`.** A name with an overload set or a merged namespace
+  has more than one, and which comes first is not something to build an identity on. Every declaration
+  is asked now.
+
+- 6244c55: `interval-with-no-cleanup`'s advice names the `Interval` hook for an interval the app starts.
+
+  The rule reports a `setInterval` nothing can clear, and its advice offered two answers: `@interval`,
+  which starts at mount, or a raw timer whose id lives on a class property. The first does not fit an
+  interval that starts on a click, so every such case landed on the second — and the second is the
+  shape the rule exists to catch when it is done half way.
+
+  `Interval` is the answer for that case now, so the advice offers it first and keeps the property
+  fallback for a timer the app really does want to own.
+
+- 5632f32: The documentation is at **ramonda.dev**, and everything that names it says so.
+
+  The site was reachable only at its Cloudflare Pages subdomain, `ramonda.pages.dev`, and that address was
+  written into 63 places. The custom domain is attached now, so all of them name it: `homepage` in every
+  published `package.json`, every README, the URL a diagnostic tells you to open, the scaffolder's closing
+  line, both `create-ramonda` templates, and `BASE` in `apps/docs/src/entry-server.tsx`.
+
+  **`BASE` is the one that mattered beyond tidiness.** Every `canonical`, `og:url`, `og:image` and the
+  whole of `sitemap.xml` and `robots.txt` are built from it — its own docblock warned that a move would
+  take the canonical tags and leave the sitemap behind. Left alone, every page on the new domain would
+  have told a search engine that the real page is on `pages.dev`. Verified on a real build rather than
+  assumed: `Sitemap: https://ramonda.dev/sitemap.xml`, `<loc>https://ramonda.dev/…`, and the canonical
+  and `og:image` tags on the built pages.
+
+  **Two places deliberately keep the old host.** The CHANGELOGs: those are published release notes, the
+  links were correct when they were written, `pages.dev` still resolves, and rewriting them would be
+  rewriting history. And `.github/workflows/README.md`, where `ramonda.pages.dev` is a FACT about
+  Cloudflare — the project's name is its subdomain — so the sentence stays and gains the one that was
+  missing: the site is served at the custom domain, and leaving anything on `pages.dev` is how a search
+  engine is told the real page is elsewhere.
+
 ## 0.11.0
 
 ### Minor Changes

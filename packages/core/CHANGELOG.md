@@ -1,5 +1,123 @@
 # @ramonda/core
 
+## 0.22.0
+
+### Minor Changes
+
+- 6244c55: `Timeout` and `Interval` — a scheduled call the app starts, and the framework still owns.
+
+  `@interval` and `@timeout` answer one question: run this on a clock for as long as I am on the page.
+  They answer it in one line and they are unchanged. These answer a different one — **start now, and stop
+  when I say** — which no decorator can express, because a decorator fires relative to MOUNT.
+
+  ```tsx
+  private removal = this.use(Timeout, () => ({ run: this.dropRow }));
+
+  leave() {
+    this.leaving = true;
+    this.removal.start(3000);
+  }
+
+  stay() {
+    this.removal.stop();
+  }
+  ```
+
+  **`run` belongs to the hook, `ms` to the start**, split by how long each one lives. An API that takes
+  the body per call reads as "order as many as you like" while behaving as "only the last survives" — and
+  it invites a fresh function at every call site, where nothing then says whether that function captured
+  a local or reads `this.props`. Measured, because the difference is invisible: `() => this.props.id`
+  reads the id when it FIRES, so after a reorder it is a different row's, while a captured argument is
+  frozen at start. Declared once, there is nothing to capture.
+
+  `run` is read **when the call fires**, so a `run` chosen by a signal takes effect on a call already
+  waiting, without restarting the countdown — and it cancels nothing. Cancelling is `stop()`, always
+  explicit: the props callback re-runs whenever any signal it read changes, including one read for
+  something else, so a timer that cancelled itself on that would be one an unrelated re-render could
+  kill. `ms` is read at `start`, because a delay is a property of that start — a retry's backoff differs
+  every time — and that keeps a signal out of it entirely.
+
+  **One instance is one timer.** Starting a running one restarts it, so `stop()` never asks which and no
+  handle travels back to the caller. Two timers means two hooks. The verb is in the NAME rather than at
+  the call site, which is why this is two hooks and not one: with only `start()`, the name is the only
+  place left to say whether it repeats.
+
+  **Why hooks rather than making the decorators call-armed.** A decorator cannot add a member TypeScript
+  can see. Measured: a decorator that replaces the method with a function carrying `stop` gives
+  `TS2339: Property 'stop' does not exist on type '() => void'` — a decorator may change what runs, never
+  the declared type.
+
+  **Nothing starts during a server render**, and `start` returns `false` rather than throwing. Quietly,
+  because that is what makes it safe to call from shared code: the same `@created` runs on both sides, so
+  a throw would force every call site to branch on which side it is — the one thing the hydration rules
+  tell an author not to do. It returns `false` once the owner is gone too, which is a second leak and not
+  the same one: `@destroyed` has already run, so nothing would ever clear that timer. A caller that has
+  promised somebody an answer must check it — measured on the first caller, where a silent refusal left a
+  view transition holding a snapshot over the page for ever.
+
+  **A delay is refused in every build**, not only in development, because it arrives at runtime:
+  `start(this.props.backoffMs)` may be handed `undefined` by an API, and guarded, development would throw
+  while production called `setTimeout(fn, NaN)` and coerced it to `0` — a retry storm in the only build
+  where it matters. That is the shape `useCommon`'s `RMD055` throw and `@compute`'s `assertNoParameters`
+  are both unguarded for. The ceiling is `2147483647` ms, about 24.8 days, because `setTimeout` truncates
+  anything larger and fires it at once.
+
+  Twenty-six tests plus three in a production run, and the planted ones earned their place. Clearing the
+  handle after the body instead of before wipes the one a re-starting body just installed, and every other
+  test passed under both orderings; putting the delay check back under `__DEV__` fails all three
+  production tests while all twenty-six development ones pass.
+
+  `RMD006` and `RMD008` name these in their fix text now, beside the decorators.
+
+### Patch Changes
+
+- 0e1fca0: Every package and app extends one `tsconfig.base.json`, and three type checks that thirteen of them
+  were missing are now on for all of them.
+
+  Nothing published changes — these are the configs the build reads, not anything shipped. What changes
+  is that a config edit is one file instead of seventeen, and that the floor is the same everywhere.
+
+  **The duplication was the smaller half.** Measured across the seventeen: only FOUR options were
+  identical (`module`, `moduleResolution`, `skipLibCheck`, `strict`). The rest had drifted, and the drift
+  was not a set of decisions — **thirteen projects got none of `noUnusedParameters`,
+  `noImplicitOverride` or `noFallthroughCasesInSwitch`**, while `core`, `dom-facts` and `theme` got all
+  three and `devtools` got two. The blocks were copied at different times, so the strictness a package
+  happened to be checked at was an accident of when it was created.
+
+  Turning those three on for everyone cost **two errors across fourteen projects, and both were real**:
+  an unused parameter in `duplicate-key-among-siblings`, and — in `InheritanceDemo`, the demo that
+  TEACHES inheritance — a method overriding its base without `override` (`TS4114`). The demo says why
+  the keyword matters now, which it could not before.
+
+  `noUnusedLocals` is deliberately NOT in the base: measured at **103 errors**, and they are not dead
+  code. Nearly all are `const provider = …` in tests, built for a side effect and never read on purpose.
+  The three packages that want it keep it themselves.
+
+  `scripts/check-tsconfigs.mjs` joins the gate and is planted three ways: a config that stops extending
+  the base, one that re-declares what the base already sets, and a typo in the `extends` path — which is
+  the quiet one, because a bad path is not an error, it is a config that silently sets nothing.
+
+- 5632f32: The documentation is at **ramonda.dev**, and everything that names it says so.
+
+  The site was reachable only at its Cloudflare Pages subdomain, `ramonda.pages.dev`, and that address was
+  written into 63 places. The custom domain is attached now, so all of them name it: `homepage` in every
+  published `package.json`, every README, the URL a diagnostic tells you to open, the scaffolder's closing
+  line, both `create-ramonda` templates, and `BASE` in `apps/docs/src/entry-server.tsx`.
+
+  **`BASE` is the one that mattered beyond tidiness.** Every `canonical`, `og:url`, `og:image` and the
+  whole of `sitemap.xml` and `robots.txt` are built from it — its own docblock warned that a move would
+  take the canonical tags and leave the sitemap behind. Left alone, every page on the new domain would
+  have told a search engine that the real page is on `pages.dev`. Verified on a real build rather than
+  assumed: `Sitemap: https://ramonda.dev/sitemap.xml`, `<loc>https://ramonda.dev/…`, and the canonical
+  and `og:image` tags on the built pages.
+
+  **Two places deliberately keep the old host.** The CHANGELOGs: those are published release notes, the
+  links were correct when they were written, `pages.dev` still resolves, and rewriting them would be
+  rewriting history. And `.github/workflows/README.md`, where `ramonda.pages.dev` is a FACT about
+  Cloudflare — the project's name is its subdomain — so the sentence stays and gains the one that was
+  missing: the site is served at the custom domain, and leaving anything on `pages.dev` is how a search
+  engine is told the real page is elsewhere.
+
 ## 0.21.0
 
 ### Minor Changes
