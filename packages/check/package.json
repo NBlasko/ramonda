@@ -4,7 +4,7 @@
   "description": "Static checks for a Ramonda app — proves a context consumer has a provider above it, finds class fields holding a function literal, and parses what your build emitted, before the page is ever opened.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.pages.dev",
+  "homepage": "https://ramonda.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

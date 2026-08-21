@@ -5,7 +5,7 @@
   "description": "The one place Ramonda's colours are named. Build-time and development-only.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.pages.dev",
+  "homepage": "https://ramonda.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

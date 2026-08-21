@@ -1,6 +1,6 @@
 # Ramonda app (SSR)
 
-A [Ramonda](https://ramonda.pages.dev) routed app that renders on the server and
+A [Ramonda](https://ramonda.dev) routed app that renders on the server and
 hydrates in the browser. Dev is a Vite server with hot reload; production is an
 esbuild bundle served by a small Node server that renders **each route by its own
 mode** — static, ISR, or per request.
@@ -57,4 +57,4 @@ static routes.
 
 ## Learn Ramonda
 
-Docs: **https://ramonda.pages.dev**
+Docs: **https://ramonda.dev**

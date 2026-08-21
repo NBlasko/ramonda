@@ -249,7 +249,7 @@ place), `RMD007` (server/client divergence), and so on. Every one is wrapped in
 
 ## Documentation
 
-- [ramonda.pages.dev](https://ramonda.pages.dev) — the documentation site: getting started, every
+- [ramonda.dev](https://ramonda.dev) — the documentation site: getting started, every
   feature with running examples, the API and diagnostics references
 - [`DIAGNOSTICS.md`](./DIAGNOSTICS.md) — every `RMD` code, what raises it and what to do about it
 
@@ -262,5 +262,5 @@ pnpm build
 
 
 The full documentation site — get started, every feature explained with running examples, the API
-and diagnostics references — lives at [ramonda.pages.dev](https://ramonda.pages.dev). This README
+and diagnostics references — lives at [ramonda.dev](https://ramonda.dev). This README
 stays the package-level entry point; it is not a substitute for that.

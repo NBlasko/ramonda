@@ -1,6 +1,6 @@
 # apps/docs
 
-The Ramonda documentation site — [ramonda.pages.dev](https://ramonda.pages.dev). It is itself a Ramonda
+The Ramonda documentation site — [ramonda.dev](https://ramonda.dev). It is itself a Ramonda
 app: written with the framework, prerendered to static HTML by `renderPage`/`renderDocument` from
 `@ramonda/core` and `routePaths` from `@ramonda/router`, then hydrated. Which makes it the framework's
 largest test that server rendering works.

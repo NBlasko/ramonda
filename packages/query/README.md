@@ -1,6 +1,6 @@
 # @ramonda/query 🌸
 
-Async state for [Ramonda](https://ramonda.pages.dev): cached, deduplicated,
+Async state for [Ramonda](https://ramonda.dev): cached, deduplicated,
 race-free queries and mutations that survive a server render.
 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fquery)](https://www.npmjs.com/package/@ramonda/query)

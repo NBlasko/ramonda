@@ -1,6 +1,6 @@
 # @ramonda/form 🌸
 
-Forms for [Ramonda](https://ramonda.pages.dev): typed field paths, Standard Schema validation,
+Forms for [Ramonda](https://ramonda.dev): typed field paths, Standard Schema validation,
 and rows that keep their identity.
 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fform)](https://www.npmjs.com/package/@ramonda/form)
@@ -14,7 +14,7 @@ and rows that keep their identity.
 npm install @ramonda/form
 ```
 
-Documentation: **[ramonda.pages.dev/forms](https://ramonda.pages.dev/forms)**
+Documentation: **[ramonda.dev/forms](https://ramonda.dev/forms)**
 
 ## What it looks like
 

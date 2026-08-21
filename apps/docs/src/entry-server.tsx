@@ -11,7 +11,7 @@ import { brand } from "@ramonda/theme";
  * script would be a fact written twice: a move would take the canonical tags with it and leave the
  * sitemap pointing at the old host, which is the one file nobody opens to check.
  */
-export const BASE = "https://ramonda.pages.dev";
+export const BASE = "https://ramonda.dev";
 
 const DESCRIPTION = "Ramonda — a UI framework. Explicit. Predictable. Readable.";
 

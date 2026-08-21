@@ -237,7 +237,7 @@ async function main(): Promise<void> {
     "Next steps",
   );
 
-  p.outro(`${pc.magenta("Ramonda")} is ready. Docs: ${pc.underline("https://ramonda.pages.dev")}`);
+  p.outro(`${pc.magenta("Ramonda")} is ready. Docs: ${pc.underline("https://ramonda.dev")}`);
 }
 
 export interface ScaffoldOptions {

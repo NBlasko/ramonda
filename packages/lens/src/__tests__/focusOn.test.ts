@@ -797,7 +797,7 @@ describe("missing paths", () => {
  * docs' `check-api-coverage.mjs`, which fails the build when a code has no section
  * in the reference.
  *
- * See https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ * See https://ramonda.dev/reference/diagnostics#capturing-them.
  */
 describe("the diagnostic record", () => {
   const SEVERITIES = ["debug", "info", "warn", "error"];

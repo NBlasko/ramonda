@@ -14,7 +14,7 @@ import type { FieldNode } from "../types";
  * form has let go of the failure, and the console line is the only trace. That asymmetry is the
  * thing most likely to be "tidied" by someone who has not read why, so it is asserted.
  *
- * See https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ * See https://ramonda.dev/reference/diagnostics#capturing-them.
  */
 
 /** The least a `FieldTree` needs, which is all these two codes touch. */

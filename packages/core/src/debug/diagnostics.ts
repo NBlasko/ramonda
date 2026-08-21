@@ -2,7 +2,7 @@ import { ramondaLog } from "./logger";
 
 /**
  * One diagnostic as a collector receives it — the record every reporting package shares,
- * documented at https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ * documented at https://ramonda.dev/reference/diagnostics#capturing-them.
  *
  * Declared here rather than imported, and that is the whole design: a package that reports
  * something must be free to have no dependencies, so what is shared is the SHAPE and the name

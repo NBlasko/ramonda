@@ -11,7 +11,7 @@ import { diagnose, resetDiagnostics } from "../debug/diagnostics";
  * third consumer, the one a devtools panel, a test or a log shipper can subscribe to without
  * parsing prose. The shape is asserted over records core really produced, because a written
  * contract is the one thing in this repository with nothing behind it —
- * https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ * https://ramonda.dev/reference/diagnostics#capturing-them.
  */
 
 let records: RamondaDiagnostic[] = [];

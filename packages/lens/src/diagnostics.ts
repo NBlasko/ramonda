@@ -5,7 +5,7 @@
  * filter it by severity, group it by cause, or count it, without parsing prose.
  * So every report here produces a `RamondaDiagnostic` — code, severity, message,
  * fix, structured data — printed to the console AND handed to whatever sink is
- * installed. See `env.d.ts` for the shape and https://ramonda.pages.dev/reference/diagnostics.
+ * installed. See `env.d.ts` for the shape and https://ramonda.dev/reference/diagnostics.
  *
  * ## Nothing is deduplicated, deliberately
  *
@@ -47,7 +47,7 @@
  *
  * The field names line up with OpenTelemetry's log data model, so bridging to a
  * collector is a rename rather than a redesign.
- * https://ramonda.pages.dev/reference/diagnostics#capturing-them
+ * https://ramonda.dev/reference/diagnostics#capturing-them
  */
 declare global {
   interface RamondaDiagnostic {
