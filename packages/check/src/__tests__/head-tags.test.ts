@@ -20,7 +20,9 @@ const found = () => run().findings["head-tags-collide"];
 describe("two head tags that are one tag", () => {
   test("every collision is reported, with the identity that collided", () => {
     expect(found().map((issue) => `${issue.component}: ${issue.identity}`)).toEqual([
-      // Source order, and the two that read through a name are written at the top of the fixture.
+      // Source order, and the three that read through a name are written at the top of the fixture.
+      // `ThroughAnAlias` uses `Head as PageHead`: identity is the name the MODULE exports.
+      'ThroughAnAlias: name="description"',
       'OptionsAName: name="description"',
       'IdentityAName: name="robots"',
       'TwoOfTheSameName: name="robots"',

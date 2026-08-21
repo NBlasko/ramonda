@@ -74,8 +74,8 @@ describe("one Provider of a context per component", () => {
   test("it points at the second and names the first's line", () => {
     const issue = found().find((each) => each.component === "ProvidesTwice");
     expect(issue?.file).toBe(join(here, "fixtures", "context-order", "app.tsx"));
-    expect(issue?.line).toBe(114);
-    expect(issue?.firstAtLine).toBe(113);
+    expect(issue?.line).toBe(126);
+    expect(issue?.firstAtLine).toBe(125);
     expect(issue?.provider).toBe("ThemeProvider");
   });
 
@@ -86,7 +86,7 @@ describe("one Provider of a context per component", () => {
   test("an alias is followed, so two names for one context are one context", () => {
     const issue = found().find((each) => each.component === "ProvidesTwiceRenamed");
     expect(issue?.provider).toBe("ThemeProvider");
-    expect(issue?.firstAtLine).toBe(123);
+    expect(issue?.firstAtLine).toBe(135);
   });
 
   test("the correct arrangements stay silent", () => {

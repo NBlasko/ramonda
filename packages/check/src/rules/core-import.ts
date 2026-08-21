@@ -35,22 +35,34 @@ export function importedFromCore(
   id: ts.Node,
   resolveLocal: (node: ts.Node) => ts.Symbol | undefined,
   resolveStep?: (node: ts.Node) => ts.Symbol | undefined,
+  exportedAs?: string,
 ): boolean {
   if (!ts.isIdentifier(id)) return false;
-  return reaches(resolveLocal(id), resolveStep, 0);
+  return reaches(resolveLocal(id), resolveStep, exportedAs, 0);
 }
 
-/** Whether this symbol's chain names `@ramonda/core` — directly, or a re-export or two along. */
+/**
+ * Whether this symbol's chain names `@ramonda/core` — directly, or a re-export or two along.
+ *
+ * `exportedAs` asks the second half of the question, and it is the half a caller used to answer for
+ * itself by comparing the LOCAL name. `import { requestContext as rc }` and
+ * `export { Head } from "@ramonda/core"` both give the binding another name, and a rule checking
+ * `id.text === "requestContext"` before asking this went quiet on both. The name that decides is
+ * the one the MODULE exports, which is `propertyName ?? name` on the specifier that reaches core.
+ */
 function reaches(
   symbol: ts.Symbol | undefined,
   resolveStep: ((node: ts.Node) => ts.Symbol | undefined) | undefined,
+  exportedAs: string | undefined,
   hop: number,
 ): boolean {
   if (symbol === undefined || hop > 4) return false;
 
   return (symbol.declarations ?? []).some((declaration) => {
     const from = specifierOf(declaration);
-    if (from === "@ramonda/core" || from?.startsWith("@ramonda/core/") === true) return true;
+    if (from === "@ramonda/core" || from?.startsWith("@ramonda/core/") === true) {
+      return exportedAs === undefined || exportedName(declaration) === exportedAs;
+    }
     if (resolveStep === undefined) return false;
 
     /**
@@ -58,8 +70,15 @@ function reaches(
      * `ExportSpecifier` in that module, and the hop after it on core's own import.
      */
     const named = ts.isImportSpecifier(declaration) || ts.isExportSpecifier(declaration) ? declaration.name : undefined;
-    return named === undefined ? false : reaches(resolveStep(named), resolveStep, hop + 1);
+    return named === undefined ? false : reaches(resolveStep(named), resolveStep, exportedAs, hop + 1);
   });
+}
+
+/** The name the MODULE exports this binding under, whatever the importer called it. */
+function exportedName(declaration: ts.Declaration): string | undefined {
+  if (!ts.isImportSpecifier(declaration) && !ts.isExportSpecifier(declaration)) return undefined;
+  const written = declaration.propertyName ?? declaration.name;
+  return ts.isIdentifier(written) ? written.text : undefined;
 }
 
 /** The module an import or export declaration names, when it names one. */

@@ -110,7 +110,7 @@ export const lateRequestRead = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self, resolveLocal }) {
+  read(cls, { self, resolveLocal, resolveStep }) {
     const found: LateRequestReadIssue[] = [];
 
     /** `requestContext()` — the export `@ramonda/core` declares, not any function with that name. */
@@ -118,8 +118,19 @@ export const lateRequestRead = {
       if (!ts.isCallExpression(node)) return false;
       const callee = node.expression;
       const id = ts.isIdentifier(callee) ? callee : ts.isPropertyAccessExpression(callee) ? callee.name : undefined;
-      if (!id || id.text !== "requestContext") return false;
-      return importedFromCore(ts.isPropertyAccessExpression(callee) ? callee.expression : id, resolveLocal);
+      if (!id) return false;
+      /**
+       * The name the MODULE exports it under, not the one this file gave it.
+       *
+       * `import { requestContext as rc }` and an app's own `ui` module re-exporting it both rename
+       * the binding, and testing the LOCAL name before asking about the module went quiet on both.
+       * A namespace call — `core.requestContext()` — keeps its own name on the property, which is
+       * what the second branch reads.
+       */
+      if (ts.isPropertyAccessExpression(callee)) {
+        return id.text === "requestContext" && importedFromCore(callee.expression, resolveLocal, resolveStep);
+      }
+      return importedFromCore(id, resolveLocal, resolveStep, "requestContext");
     };
 
     /**
@@ -182,10 +193,40 @@ export const lateRequestRead = {
             report(node, "call");
             return;
           }
-          if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+          /**
+           * The held door, opened any of the three ways it is written.
+           *
+           * `context.headers` was the only one read. A destructure and a bracket reach the same
+           * getters on the same object — `const { headers } = context` runs `context.headers`
+           * exactly as the dotted form does — and both were silent.
+           */
+          if (
+            (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+            ts.isIdentifier(node.expression)
+          ) {
             const symbol = resolveLocal(node.expression);
             if (symbol && held.has(symbol)) {
               report(node, "local");
+              return;
+            }
+          }
+
+          if (ts.isVariableDeclaration(node) && node.initializer !== undefined && ts.isIdentifier(node.initializer)) {
+            const symbol = resolveLocal(node.initializer);
+            if (symbol && held.has(symbol) && ts.isObjectBindingPattern(node.name)) {
+              for (const element of node.name.elements) {
+                const named = element.propertyName ?? element.name;
+                if (!ts.isIdentifier(named)) continue;
+                // Quoted as the reader sees it: `{ headers } = context`, not a dotted form that is
+                // nowhere on the line.
+                found.push({
+                  component: self.name,
+                  member,
+                  read: `{ ${named.text} } = ${node.initializer.getText()}`,
+                  via: "local",
+                  ...positionOf(element),
+                });
+              }
               return;
             }
           }

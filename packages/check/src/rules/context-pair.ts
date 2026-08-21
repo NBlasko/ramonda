@@ -88,9 +88,11 @@ export function contextHalfOf(name: ts.Expression, context: RuleContext): Contex
 
   // `createContext` by the module it came from, not by its name — an app is entitled to a function
   // of its own called that, and reporting it would be reporting the reader's own code.
+  // By the name the MODULE exports, so an alias and a re-export both reach — while an app's own
+  // function called `createContext` still resolves to itself and is still left alone.
   const callee = initializer.expression;
-  if (!importedFromCore(callee, context.resolveLocal)) return undefined;
-  if (!ts.isIdentifier(callee) || callee.text !== "createContext") return undefined;
+  if (!ts.isIdentifier(callee)) return undefined;
+  if (!importedFromCore(callee, context.resolveLocal, context.resolveStep, "createContext")) return undefined;
 
   const index = pattern.elements.indexOf(declaration);
   if (index !== 0 && index !== 1) return undefined;

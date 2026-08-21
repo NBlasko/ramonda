@@ -1,4 +1,4 @@
-import { bootstrap, Component, createContext } from "@ramonda/core";
+import { bootstrap, Component, createContext, createContext as makeContext } from "@ramonda/core";
 import {
   SizeConsumer,
   SizeProvider,
@@ -16,6 +16,18 @@ import {
  * the pair was destructured from.
  */
 const Local = ThemeProvider;
+
+/** A pair built through an ALIASED `createContext` is still a pair. */
+const [AliasProvider, AliasConsumer] = makeContext({ n: 0 }, { label: "Aliased" });
+
+/** ✗ The consumer resolves before this component's own provider exists. */
+export class AliasedPair extends Component {
+  reads = this.use(AliasConsumer);
+  writes = this.use(AliasProvider, () => ({ n: 1 }));
+  render() {
+    return <p>aliased pair</p>;
+  }
+}
 
 /** ✗ Two Providers of one context, the second reached through that local name. */
 export class ProvidesTwiceThroughALocal extends Component {

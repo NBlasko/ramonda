@@ -17,6 +17,11 @@ const run = () => analyzeProject(join(here, "fixtures", "late-request", "tsconfi
  * the server's work drain, so the page is served complete and quietly missing the value.
  */
 describe("requestContext() read below an await", () => {
+  /**
+   * Three spellings that were silent until they were planted: the framework's function reached
+   * through an app's own re-export, and a held context opened by a destructure or a bracket rather
+   * than by a dot. All three read the same cleared scope.
+   */
   test("every late shape is reported, with the whole read named", () => {
     expect(
       run().findings["late-request-read"].map((read) => `${read.component}.${read.member}: ${read.read} (${read.via})`),
@@ -25,6 +30,12 @@ describe("requestContext() read below an await", () => {
       'LateThroughLocal.load: context.headers.get("accept-language") (local)',
       "LateAfterForAwait.load: requestContext().url.pathname (call)",
       'LateInField.load: requestContext().cookies.get("session") (call)',
+      // The framework's own function, handed on by an app's `ui` module. Same function, same scope,
+      // cleared at the same moment.
+      'LateThroughAReExport.load: reExported().headers.get("accept-language") (call)',
+      // The held door opened by a destructure and by a bracket rather than by a dot.
+      "LateOtherSpellings.load: { headers } = context (local)",
+      'LateOtherSpellings.load: context["cookies"] (local)',
       "BothBelowReportsOnce.load: requestContext() (call)",
     ]);
   });

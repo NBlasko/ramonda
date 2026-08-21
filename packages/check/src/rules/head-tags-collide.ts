@@ -248,7 +248,7 @@ export const headTagsCollide = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self, resolve, resolveLocal }) {
+  read(cls, { self, resolve, resolveLocal, resolveStep }) {
     const found: HeadTagsCollideIssue[] = [];
 
     /**
@@ -304,8 +304,10 @@ export const headTagsCollide = {
     ts.forEachChild(cls, function look(node) {
       if (ts.isCallExpression(node) && isThisUse(node)) {
         const hook = node.arguments[0];
+        // By the name the MODULE exports, so `import { Head as PageHead }` and an app's own module
+        // re-exporting it both reach — while an app's OWN hook called `Head` still does not.
         const isHead =
-          hook !== undefined && ts.isIdentifier(hook) && hook.text === "Head" && importedFromCore(hook, resolveLocal);
+          hook !== undefined && ts.isIdentifier(hook) && importedFromCore(hook, resolveLocal, resolveStep, "Head");
         if (isHead) {
           const options = optionsOf(node.arguments[1], resolve);
           if (options !== undefined) judge(options);

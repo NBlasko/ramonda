@@ -1,6 +1,17 @@
-import { bootstrap, Component, Head } from "@ramonda/core";
+import { bootstrap, Component, Head, Head as PageHead } from "@ramonda/core";
 import { OwnHead } from "./own-head";
 import { PAGE_HEAD, ROBOTS } from "./meta";
+
+/** ✗ The framework's `Head` under a local alias is the framework's `Head`. */
+export class ThroughAnAlias extends Component {
+  head = this.use(PageHead, () => ({
+    description: "the shorthand",
+    meta: [{ name: "description", content: "the list" }],
+  }));
+  render() {
+    return <p>aliased</p>;
+  }
+}
 
 /** ✗ The options kept in another module, which is where page metadata ends up. */
 export class OptionsAName extends Component {
