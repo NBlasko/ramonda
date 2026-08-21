@@ -92,7 +92,7 @@ export const duplicateKeyAmongSiblings = {
    * siblings" exact rather than approximate — a key repeated under a different parent never comes
    * into it.
    */
-  read(element, { children }) {
+  read(_element, { children }) {
     const seen = new Map<string, true>();
     const found: DuplicateKeyAmongSiblingsIssue[] = [];
 

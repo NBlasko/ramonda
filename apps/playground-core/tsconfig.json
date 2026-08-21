@@ -1,12 +1,9 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "jsxImportSource": "@ramonda/core",
-    "strict": true,
-    "skipLibCheck": true,
     "paths": {
       "@ramonda/core/jsx-runtime": ["../../packages/core/src/jsx-runtime.ts"],
       "@ramonda/core/jsx-dev-runtime": ["../../packages/core/src/jsx-dev-runtime.ts"],

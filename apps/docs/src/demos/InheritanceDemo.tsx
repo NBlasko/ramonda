@@ -28,8 +28,12 @@ class Badge extends Component<{ label: string }> {
 
 // Overrides ONE method. No constructor, no super() call to remember, and the
 // inherited @state keeps working.
+//
+// `override` is not decoration: with `noImplicitOverride` on, TypeScript refuses a member that
+// shadows a base's without it — so renaming `decorate` on Badge turns this into an error instead
+// of a method nobody calls any more.
 class LoudBadge extends Badge {
-  protected decorate(text: string) {
+  protected override decorate(text: string) {
     return <strong>{super.decorate(text)}!</strong>;
   }
 }
