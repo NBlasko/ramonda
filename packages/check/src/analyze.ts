@@ -5,6 +5,9 @@ import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName } from "./rules/core-import";
+import { stringAttr } from "./rules/element";
+import { hostFactOf } from "./rules/html";
+import type { HostFact } from "./graph";
 import type { Resolver, Silencer } from "./rules/rule";
 import {
   activate,
@@ -407,6 +410,13 @@ interface ComponentNode {
   /** Prop paths this component's own type declares as taking a component. */
   slots: string[];
   /**
+   * The element this component IS, when `@Host` settles it or names the prop that does.
+   *
+   * Read at collection time from the declaration, exactly as `slots` is — a fact about the class,
+   * available before any site that mounts it is walked.
+   */
+  host?: HostFact;
+  /**
    * Whether the class carries an `export` modifier — what a library's surface is.
    *
    * The modifier and not the package's entry point: a class re-exported by a barrel with
@@ -630,6 +640,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     via: GraphEdge["via"],
     site: ts.Node,
     binds?: Map<string, ComponentNode[]>,
+    hostTag?: string,
   ): void => {
     const flat =
       binds && binds.size > 0
@@ -643,10 +654,38 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       at: whereOf(site),
       ...(flat ? { binds: flat } : {}),
       ...(alwaysRuns(site) ? { always: true } : {}),
+      ...(hostTag === undefined ? {} : { hostTag }),
     });
   };
 
   /** Records a mount both ways: as an edge for the format, and as a SITE for the walk. */
+
+  /**
+   * The host element THIS site mounts, when the class left the tag to a prop.
+   *
+   * `<Card as="section" />` against `@Host((self) => self.props.as ?? "div")` is a `<section>`, and
+   * the next `<Card />` is a `<div>`. The class cannot say which — only which PROP decides — so the
+   * answer belongs to the call, exactly as `binds` does.
+   *
+   * `undefined` for a class that settles its own tag: the node says it once and the edge repeating
+   * it would be two places to keep in step. `undefined` too when the site names no such attribute
+   * and the callback offered no fallback, which is the honest answer rather than a guess at what the
+   * prop's default might be.
+   */
+  function hostTagAt(target: ComponentNode, site: ts.Node): string | undefined {
+    const host = target.host;
+    if (host === undefined || !("fromProp" in host)) return undefined;
+    /**
+     * A tag mount hands over the OPENING element, whose parent is the whole one. `stringAttr` reads
+     * an element and unwraps the opening itself, so the step up is what makes the two agree —
+     * without it every site answered with the fallback, measured.
+     */
+    const element = ts.isJsxOpeningElement(site) ? site.parent : site;
+    if (!ts.isJsxElement(element) && !ts.isJsxSelfClosingElement(element)) return host.fallback;
+
+    return stringAttr(element, host.fromProp, resolver) ?? host.fallback;
+  }
+
   const mount = (
     owner: ComponentNode,
     target: ComponentNode,
@@ -656,7 +695,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     kind: GraphEdge["kind"] = "renders",
   ): void => {
     owner.mounts.push({ target, binds, always: alwaysRuns(site) });
-    edge(owner.id, target.id, kind, via, site, binds);
+    edge(owner.id, target.id, kind, via, site, binds, hostTagAt(target, site));
   };
   /**
    * A directive written on a site that needs none is unnecessary — and reading it is not.
@@ -1265,6 +1304,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     const symbol = checker.getSymbolAtLocation(node.name);
     if (!symbol || components.has(symbol)) return;
     const pos = positionOf(node);
+    const host = hostFactOf(node, resolver);
     components.set(symbol, {
       id: idFor(pos.file, node.name.text),
       kind,
@@ -1277,6 +1317,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       mounts: [],
       slotHoles: [],
       slots: slotsOf(node),
+      ...(host === undefined ? {} : { host }),
       exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0,
       uses: new Set(),
       opaque: false,
@@ -2919,6 +2960,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         ...(node.exported ? { exported: true } : {}),
         ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+        ...(node.host === undefined ? {} : { host: node.host }),
       });
     }
     for (const fact of contexts.values()) {
@@ -2951,6 +2993,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         at: `${node.file}:${node.line}:${node.column}`,
         ...(node.exported ? { exported: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+        ...(node.host === undefined ? {} : { host: node.host }),
       });
     }
     nodes.push(...rootNodes);

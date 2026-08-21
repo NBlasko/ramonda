@@ -148,6 +148,10 @@ class CallsWithAProp extends Component {
         <FromProps as="table">
           <tr />
         </FromProps>
+        {/* Nobody names the prop, so the element is what the callback falls back to. */}
+        <FromProps>
+          <span>y</span>
+        </FromProps>
       </div>
     );
   }

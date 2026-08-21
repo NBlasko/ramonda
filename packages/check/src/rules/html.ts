@@ -3,6 +3,7 @@ import { memberName } from "../syntax";
 import { coreDecoratorName } from "./core-import";
 import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
+import type { HostFact } from "../graph";
 import type { JsxElementLike, Resolver } from "./rule";
 
 /**
@@ -164,6 +165,71 @@ const HOST_TAG: Looking<string> = {
   throughCalls: false,
   throughMutableBindings: false,
 };
+
+/**
+ * What `@Host` says this component's element is — a settled tag, or the prop that decides it.
+ *
+ * The callback form is the half a name cannot answer: `@Host((self) => self.props.as ?? "div")` is a
+ * different element at every call site, so the class says WHICH prop and what it falls back to, and
+ * the site says the rest. Only that one shape is read — a single prop, optionally with a `??` or
+ * `||` default. A callback reading two props, computing a value, or reaching through a member is not
+ * approximated: `undefined` is "not knowable here", and every reader is built to take it that way.
+ */
+export function hostFactOf(cls: ts.ClassDeclaration, resolve: Resolver): HostFact | undefined {
+  const settled = hostTagOf(cls, resolve);
+  if (settled !== undefined) return { tag: settled };
+
+  const written = hostArgumentOf(cls, resolve);
+  if (written === undefined) return undefined;
+  if (!ts.isArrowFunction(written) && !ts.isFunctionExpression(written)) return undefined;
+
+  const parameter = written.parameters[0];
+  if (parameter === undefined || !ts.isIdentifier(parameter.name)) return undefined;
+  const self = parameter.name.text;
+
+  // A concise body IS the returned expression; a block has to say `return` and nothing else.
+  const body = ts.isBlock(written.body)
+    ? written.body.statements.length === 1 && ts.isReturnStatement(written.body.statements[0])
+      ? written.body.statements[0].expression
+      : undefined
+    : written.body;
+  if (body === undefined) return undefined;
+
+  // `self.props.as ?? "div"` — the fallback is what the element is when nobody names the prop.
+  if (
+    ts.isBinaryExpression(body) &&
+    (body.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+      body.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+  ) {
+    const prop = propReadIn(body.left, self);
+    const fallback = follow(body.right, resolve, HOST_TAG)?.value;
+    return prop === undefined ? undefined : fallback === undefined ? { fromProp: prop } : { fromProp: prop, fallback };
+  }
+
+  const prop = propReadIn(body, self);
+  return prop === undefined ? undefined : { fromProp: prop };
+}
+
+/** `self.props.as` — the ONE prop a tag callback reads, when that is all it does. */
+function propReadIn(expression: ts.Expression, self: string): string | undefined {
+  if (!ts.isPropertyAccessExpression(expression) || !ts.isIdentifier(expression.name)) return undefined;
+
+  const owner = expression.expression;
+  if (!ts.isPropertyAccessExpression(owner) || owner.name.text !== "props") return undefined;
+  if (!ts.isIdentifier(owner.expression) || owner.expression.text !== self) return undefined;
+
+  return expression.name.text;
+}
+
+/** The first argument to `@Host`, whatever shape it is in. */
+function hostArgumentOf(cls: ts.ClassDeclaration, resolve: Resolver): ts.Expression | undefined {
+  for (const decorator of ts.getDecorators(cls) ?? []) {
+    const call = decorator.expression;
+    if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
+    return call.arguments[0];
+  }
+  return undefined;
+}
 
 export function hostTagOf(cls: ts.ClassDeclaration, resolve: Resolver): string | undefined {
   for (const decorator of ts.getDecorators(cls) ?? []) {
