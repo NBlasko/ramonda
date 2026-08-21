@@ -574,3 +574,122 @@ describe("what the cap counts", () => {
     expect(entries.has("/products/2")).toBe(true);
   });
 });
+
+/**
+ * The two windows around the delete's own `await`, which three orderings of the same two lines each
+ * left open in a different place. Both are here because a review measured them, both times against the
+ * fix that had just shipped.
+ */
+describe("what happens while a delete is in flight", () => {
+  const products = { isr: [{ path: "/products/:id", revalidate: 60 }] };
+
+  /**
+   * A key that cannot be deleted must not stall the eviction.
+   *
+   * It used to: the failed key stayed the oldest, so every later trim picked it, failed on it, and
+   * evicted nothing. Measured — a store grew to thirty entries under a cap of two.
+   */
+  test("one un-deletable page does not stop the cap from bounding the rest", async () => {
+    const entries = new Map<string, { html: string; at: number }>();
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        if (key === "/products/1") throw new Error("this one is stuck");
+        entries.delete(key);
+      },
+    };
+    const isr = createIsrCache({
+      plan: products,
+      store,
+      maxPages: 2,
+      render: async (path) => path,
+      onError: () => {},
+      now: () => 1_000_000,
+    });
+
+    for (let id = 1; id <= 30; id++) await isr.serve(`/products/${id}`);
+
+    // The stuck page is still there — nothing can remove it — and it costs exactly one slot.
+    expect(entries.has("/products/1")).toBe(true);
+    expect(entries.size).toBeLessThanOrEqual(3);
+  });
+});
+
+/**
+ * A WRITE while the delete is in flight must keep the key; a READ must not.
+ *
+ * The delete removes the entry before its reply lands, so a request arriving in that window misses and
+ * `bake` stores a NEW one under the same path. Forgetting the key then leaves that entry with nothing
+ * in the count pointing at it, and no later trim can reach it — measured before the generation
+ * existed: two pages in a cache allowed one, and still two four requests later.
+ *
+ * Observed from OUTSIDE, because the count is bookkeeping rather than API: an orphan is a store that
+ * never comes back under its cap, however many requests follow.
+ */
+describe("a page rebuilt while its own eviction is in flight", () => {
+  test("is still counted, so the cache comes back under its cap", async () => {
+    const entries = new Map<string, { html: string; at: number }>();
+    let parked: (() => void) | undefined;
+    let reached: (() => void) | undefined;
+    const inside = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let deletes = 0;
+
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        entries.delete(key);
+        // Only the FIRST one parks: the round trip a real store pays, with the entry already gone.
+        if (++deletes > 1) return;
+        reached?.();
+        await new Promise<void>((resolve) => {
+          parked = resolve;
+        });
+      },
+    };
+
+    const isr = createIsrCache({
+      plan: { isr: [{ path: "/products/:id", revalidate: 60 }] },
+      store,
+      maxPages: 1,
+      render: async (path) => path,
+      now: () => 1_000_000,
+    });
+
+    await isr.serve("/products/1");
+    // Over the cap, so this one's trim parks inside `store.delete("/products/1")`.
+    const second = isr.serve("/products/2");
+    await inside;
+
+    /**
+     * In the window, and it has to COMPLETE before the parked delete is released.
+     *
+     * The first version released first and the two plants aimed at the generation did not fail: the
+     * parked trim resumed before the rebuild's write, so it forgot a key that had not been rewritten
+     * yet and the rebuild then recorded it again. Nothing was orphaned, and nothing was proved. The
+     * window is between the WRITE and the delete's reply, so the write has to be inside it.
+     *
+     * It can finish on its own: its own trim evicts `/products/2`, and only the first delete parks.
+     */
+    await isr.serve("/products/1");
+    parked?.();
+    await second;
+
+    // Four more pages, each of which trims. An orphan would sit through all of them.
+    for (const id of [3, 4, 5, 6]) await isr.serve(`/products/${id}`);
+
+    expect(entries.size).toBe(1);
+    expect([...entries.keys()]).toEqual(["/products/6"]);
+  });
+});

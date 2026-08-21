@@ -62,6 +62,15 @@ dropped first now. And the stale path trims before starting a rebake while `bake
 nothing, so an entry evicted mid-rebake was written back into a store the count no longer knew about;
 recency is recorded beside the write, so a landing rebake re-registers itself.
 
+**A third review said the ordering was not the mechanism, and it was right.** Three orderings of the same
+two lines shipped and each had a different window, because `trim` has to `await` a delete and could not
+tell what happened while it waited: a READ touching the key and a WRITE replacing the entry under it
+looked identical. So `held` carries a write GENERATION now — read before the await, compared after.
+Unchanged means only a read happened and the key is forgotten; changed means `bake` stored a new entry
+under it, so the key stays. And a delete that fails moves its key to the BACK and stops the pass, because
+leaving it oldest meant every later trim picked the same one and evicted nothing — measured, a store grew
+to thirty entries under a cap of two.
+
 `onError` receives eviction failures as well as rebakes now, so its contract says so, its default line
 says "background work" rather than "rebake", and an eviction is reported against the page it could not
 drop with the operation named and the reason in the `cause`. `IsrStore`'s own docstring, `fileStore`'s,

@@ -219,11 +219,30 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
    * `keys().next()` on an eviction gives the one nobody has asked for longest. The value is unused;
    * only the order is.
    */
-  const held = new Map<string, true>();
+  const held = new Map<string, number>();
 
+  /**
+   * How many pages this cache has written, ever. The number a key carries is the one this stood at
+   * when that key's entry was stored, so "is this the same entry I picked" is one comparison.
+   *
+   * It exists because `trim` has to `await` a delete, and while it waits the key can be touched by a
+   * READ or replaced by a WRITE — and those need opposite answers. Without telling them apart, every
+   * ordering of the two lines around that await has a window; three of them were shipped and each had
+   * a different one.
+   */
+  let writes = 0;
+
+  /** A read: recency only. The generation is carried over, because nothing new was stored. */
   const touch = (path: string): void => {
+    const generation = held.get(path) ?? 0;
     held.delete(path);
-    held.set(path, true);
+    held.set(path, generation);
+  };
+
+  /** A write: recency AND a new generation, because the entry under this key is a different one now. */
+  const recordWrite = (path: string): void => {
+    held.delete(path);
+    held.set(path, ++writes);
   };
 
   /**
@@ -263,20 +282,40 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     while (held.size > maxPages) {
       const oldest = held.keys().next();
       if (oldest.done) return;
-      // The STORE first, and only then forget it. The other order loses the entry for good: a `delete`
-      // that rejects left the page in the store with nothing in `held` pointing at it, so no later
-      // trim could ever reach it and the cache stayed permanently over the cap — measured, and it made
-      // the sentence below ("the next request tries again") false. `guarded` stops the throw here, so
-      // the key stays and the next request retries this same one.
+      const key = oldest.value;
+      // Read BEFORE the await, and compared after: that is the whole of it.
+      const picked = held.get(key);
+
       // A store may have lost it already; `delete` is documented not to mind.
       try {
-        await store.delete(oldest.value);
+        await store.delete(key);
       } catch (error) {
         // Reported against the page that could not be dropped, which is the one to go and look at.
-        onError(oldest.value, evicting(oldest.value, error));
+        onError(key, evicting(key, error));
+        /**
+         * Moved to the BACK and kept, then this pass stops.
+         *
+         * Kept because the store still has it, and dropping the key here would orphan that entry for
+         * good. Moved because the same key would otherwise stay the oldest, so every later trim would
+         * pick it, fail on it and evict nothing — measured, a single un-deletable key let a store grow
+         * to thirty entries under a cap of two. Now the next request's trim picks a different one.
+         *
+         * And this pass STOPS rather than continuing to the next key: if every delete fails, a loop
+         * that carried on would move keys to the back for ever without the size ever dropping.
+         */
+        touch(key);
         return;
       }
-      held.delete(oldest.value);
+
+      /**
+       * Forgotten only if nothing was WRITTEN under this key while the delete was in flight.
+       *
+       * A read in that window is a read: the generation is unchanged, the store entry is gone, and
+       * forgetting the key is right. A WRITE in that window means `bake` stored a new entry — the miss
+       * it answered was caused by this very delete — and forgetting the key would leave that entry with
+       * nothing pointing at it, which no later trim could reach.
+       */
+      if (held.get(key) === picked) held.delete(key);
     }
   };
 
@@ -310,7 +349,7 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
          *
          * A write is what puts a page in the store, so a write is what the count has to follow.
          */
-        touch(path);
+        recordWrite(path);
         await guarded(path, trim);
         return html;
       })
