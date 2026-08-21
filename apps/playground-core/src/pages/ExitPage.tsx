@@ -62,6 +62,11 @@ export class ExitPage extends Component {
   }
 
   private drop(id: number) {
+    // Clearing the mark here rather than in each caller: every route out of the list goes through this
+    // one, and a card that has left cannot still be the one fading. Found by review — with the mark
+    // left behind, removing a fading card with another button made the readout claim it "was still
+    // fading, so it went at once" about a card that had already gone.
+    if (this.leaving === id) this.leaving = null;
     this.cards = this.cards.filter((card) => card.id !== id);
   }
 

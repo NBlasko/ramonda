@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../base/Component";
-import { destroyed, state } from "../base/decorators";
+import { destroyed, mounted, state } from "../base/decorators";
 import { Hook } from "../base/Hook";
 import { Interval, Timeout } from "../base/Timers";
 import { renderToString } from "../hydration/ssr";
@@ -492,6 +492,56 @@ describe("the windows where the owner's flags lie", () => {
 
     await renderToString(<Early />);
 
+    expect(started).toEqual([false]);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(1000);
+    expect(log).toEqual([]);
+  });
+
+  /**
+   * The window the flag-and-field pair still had: a component built during `drainServerWork`, where the
+   * module flag has been restored to `"client"` in `renderToString`'s `finally` AND the field is still
+   * its `"client"` default. Measured before the fix: the timer armed in the SSR process and fired
+   * there. The guard asks `isInitialized` now, so the answer does not depend on the side being known.
+   */
+  test("a start from a field initializer during the async server drain is refused", async () => {
+    const started: boolean[] = [];
+
+    class Late extends Component {
+      t = this.use(Timeout, () => ({ run: this.never }));
+      armed = this.record(this.t.start(100));
+
+      private record(ok: boolean): boolean {
+        started.push(ok);
+        return ok;
+      }
+
+      private never() {
+        log.push("drained");
+      }
+
+      render(): RamondaNode {
+        return <b />;
+      }
+    }
+
+    class Slow extends Component {
+      @state ready = false;
+
+      @mounted
+      async load() {
+        await Promise.resolve();
+        this.ready = true;
+      }
+
+      render(): RamondaNode {
+        return <div>{this.ready ? <Late /> : null}</div>;
+      }
+    }
+
+    const html = await renderToString(<Slow />);
+
+    expect(html).toContain("<b");
     expect(started).toEqual([false]);
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(1000);

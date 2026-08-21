@@ -60,9 +60,9 @@ where it matters. That is the shape `useCommon`'s `RMD055` throw and `@compute`'
 are both unguarded for. The ceiling is `2147483647` ms, about 24.8 days, because `setTimeout` truncates
 anything larger and fires it at once.
 
-Twenty-two tests plus three in a production run, and the planted ones earned their place. Clearing the
+Twenty-six tests plus three in a production run, and the planted ones earned their place. Clearing the
 handle after the body instead of before wipes the one a re-starting body just installed, and every other
 test passed under both orderings; putting the delay check back under `__DEV__` fails all three
-production tests while all twenty-two development ones pass.
+production tests while all twenty-six development ones pass.
 
 `RMD006` and `RMD008` name these in their fix text now, beside the decorators.

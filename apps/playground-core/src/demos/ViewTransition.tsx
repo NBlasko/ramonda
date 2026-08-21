@@ -1,4 +1,4 @@
-import { Hook, Timeout, updated } from "@ramonda/core";
+import { destroyed, Hook, Timeout, updated } from "@ramonda/core";
 
 /**
  * Runs a state change inside a browser view transition, so an exit animates.
@@ -55,6 +55,19 @@ export class ViewTransition extends Hook {
 
   /** Fires after the DOM has been written for this pass — see the note above. */
   @updated committed() {
+    this.resolve();
+  }
+
+  /**
+   * Teardown settles it too, and without this the page could be left unusable.
+   *
+   * `Timeout` clears its own handle when the hook goes away, so unmounting between `run()` and the
+   * deadline meant `@updated` never fired and the net never fired either — and `settled` is the promise
+   * handed to `startViewTransition`, so the browser would hold the snapshot over a page nobody can
+   * click. Found by review: the refusal path was handled, the ARMED path was not. Navigating away from
+   * the page mid-transition is exactly that.
+   */
+  @destroyed gone() {
     this.resolve();
   }
 

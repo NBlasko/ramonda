@@ -1,4 +1,4 @@
-import { getRenderEnv, ownerRuntime } from "../core/renderEnv";
+import { ownerRuntime } from "../core/renderEnv";
 import { delayFault } from "../debug/validateDecorator";
 import { destroyed } from "./decorators";
 import { Hook } from "./Hook";
@@ -86,11 +86,15 @@ export interface ScheduledProps {
  * every time — so it is an argument, and no signal has to be watched for it to change. What to run is a
  * property of the timer, so it sits with the declaration.
  *
- * ## Nothing is started during a server render
+ * ## Nothing is started during a server render, or before the component is built
  *
  * A timer has no meaning while a page is being turned into a string: it could not fire before the
  * response is sent, and the request would be held open by a handle nobody can reach. So `start` does
- * nothing on the server, and **returns `false`** rather than throwing.
+ * nothing there, and **returns `false`** rather than throwing.
+ *
+ * It returns `false` from a field initializer too, on either side — see `armable`. A component that is
+ * not built yet has no teardown to clear anything, so a timer started there is one nothing owns. Start
+ * from `@created` or later.
  *
  * Quietly, because that is what makes it safe to call from shared code. The same method runs on both
  * sides — a `@created` is `shared` by default — so a throw would force every call site to branch on
@@ -121,24 +125,27 @@ abstract class Scheduled extends Hook<ScheduledProps> {
   private torn = false;
 
   /**
-   * Whether starting can be made safe right now — one question, because both answers to it mean the
-   * same thing: do not start something nothing will clear.
+   * Whether starting can be made safe right now — one question, because all three answers to it mean
+   * the same thing: do not start something nothing will clear.
    *
-   * - **A server render.** See the note above. Asked of BOTH the owner's `env` and the module flag,
-   *   because neither is right on its own: `ComponentRuntime.env` is `"client"` until
-   *   `DiffAndMerge` assigns it, which happens AFTER the component and its hooks are constructed — so a
-   *   `start` from a field initializer read "client" during a server render, armed, and fired. Measured.
-   *   The flag is correct in exactly that window, because a root mount is synchronous; and it is the
-   *   field that is correct afterwards, once the flag has been restored. Each covers the other's blind
-   *   spot, and the flag cannot say "server" while the client is running, so the pair cannot false-positive.
+   * - **The owner is not built yet.** `isInitialized` is the framework's own "not ready" flag —
+   *   `Task.ts` gates updates on it for the same reason — and it is what makes this correct rather than
+   *   nearly correct. `ComponentRuntime.env` is `"client"` until `DiffAndMerge` assigns it, which
+   *   happens AFTER the constructor returns, so a `start` from a field initializer would read the wrong
+   *   side. **Two attempts at this asked the side instead and both had a window:** the module flag is
+   *   restored before `renderToString`'s first `await`, so a component built during `drainServerWork`
+   *   answered "client" from the flag AND from the field. Measured, twice: a timer armed in the SSR
+   *   process and fired there. Refusing until the component is BUILT closes every one of those windows
+   *   at once, because `isInitialized` is set one line before `env` and no user code runs between them.
+   * - **A server render**, once it is built. See the note above.
    * - **Teardown has reached this hook.** See `torn`.
    *
-   * There is no third case: a hook always has an owner, because `Runtime.owner` is required.
-   * `ownerRuntime` holds the reason the side is read there rather than off the flag ALONE.
+   * There is no fourth case: a hook always has an owner, because `Runtime.owner` is required.
    */
   private get armable(): boolean {
     if (this.torn) return false;
-    return getRenderEnv() !== "server" && ownerRuntime(this).env !== "server";
+    const owner = ownerRuntime(this);
+    return owner.isInitialized === true && owner.env !== "server";
   }
 
   /**
@@ -216,16 +223,32 @@ abstract class Scheduled extends Hook<ScheduledProps> {
    */
   private checkDelay(ms: number): void {
     const fault = delayFault(ms);
-    if (fault !== undefined) throw new RangeError(`[${this.constructor.name}.start] ${fault}`);
+    if (fault !== undefined) throw new RangeError(`[${this.label}.start] ${fault}`);
   }
+
+  /**
+   * The name this hook goes by in the message above, as a LITERAL rather than `this.constructor.name`.
+   *
+   * The production bundle is minified without `keepNames`, so the classes emit as anonymous class
+   * expressions and `constructor.name` came out as `it` — in the one message deliberately kept in
+   * production, which is the whole argument for the check being unguarded. `TimerDelay.prod.test.tsx`
+   * cannot catch that: vitest compiles from source, where the names survive.
+   */
+  protected abstract readonly label: string;
 }
 
 /** Runs `run` once, `ms` after `start`. See `Scheduled`. */
 export class Timeout extends Scheduled {
+  protected readonly label = "Timeout";
+
   protected schedule(ms: number): () => void {
     const id = setTimeout(() => {
       this.spent();
-      this.props.run();
+      // Read, then call. `this.props.run()` would invoke it as a METHOD of the props proxy, so any
+      // function that is not auto-bound gets the read-only bag as `this` and throws RMD015 from inside
+      // a timer callback, naming nothing the author wrote.
+      const run = this.props.run;
+      run();
     }, ms);
     return () => clearTimeout(id);
   }
@@ -233,8 +256,14 @@ export class Timeout extends Scheduled {
 
 /** Runs `run` every `ms` from `start` until `stop`, or until the owner is gone. See `Scheduled`. */
 export class Interval extends Scheduled {
+  protected readonly label = "Interval";
+
   protected schedule(ms: number): () => void {
-    const id = setInterval(() => this.props.run(), ms);
+    const id = setInterval(() => {
+      // Read, then call — see `Timeout.schedule`.
+      const run = this.props.run;
+      run();
+    }, ms);
     return () => clearInterval(id);
   }
 }
