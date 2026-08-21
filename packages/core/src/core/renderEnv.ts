@@ -53,16 +53,13 @@ export function setRenderEnv(env: RenderEnv): void {
  * INTERNAL. An app is told its side where the framework already hands it over: the `env` argument
  * every lifecycle method receives.
  *
- * **It returns the runtime rather than one field, because the callers do not want the same field and
- * do not agree about `undefined`.** `Portal` asks for the side and reads a missing owner as the
- * client, which is what a detached build is for; `Timer` asks for the side AND whether the owner is
- * gone, and reads a missing owner as "do not arm", because nothing would then clear the timer. Each
- * says so where it decides.
+ * It returns the runtime rather than one field, because the two callers want different fields:
+ * `Portal` asks which side, `Timer` asks which side AND whether the owner is gone.
  *
- * `undefined` is unreachable through `this.use()` today, measured: `createRuntime` is called only
- * from `Component`'s constructor and always sets `owner`. The type says optional, so the question has
- * to be answered anyway — and answered where the consequences differ.
+ * **There is nothing optional in it, and that took a type change to say.** `owner` was declared
+ * optional and never was one, so every use carried two `?.` and an argument about what a missing
+ * owner ought to mean — an argument about a value that cannot exist. See `Runtime.owner`.
  */
-export function ownerRuntime(hook: { [GLOBAL_RUNTIME]: Runtime }): ComponentRuntime | undefined {
-  return hook[GLOBAL_RUNTIME].owner?.[COMPONENT_RUNTIME];
+export function ownerRuntime(hook: { [GLOBAL_RUNTIME]: Runtime }): ComponentRuntime {
+  return hook[GLOBAL_RUNTIME].owner[COMPONENT_RUNTIME];
 }

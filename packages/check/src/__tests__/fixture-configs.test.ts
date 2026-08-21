@@ -24,6 +24,25 @@ import { describe, expect, test } from "vitest";
  * So this asserts the RESOLVED options rather than the text of the files — `extends` handled by
  * TypeScript, exactly as `createProgram` in `analyze.ts` has it, because that is the only thing that
  * proves the inheritance arrives.
+ *
+ * ## What the base holds, and what it must not
+ *
+ * The base carries the eight options every fixture shares. Two things stay in each CHILD, and neither
+ * is a style choice — both are pinned below:
+ *
+ * - **`include`**, because a relative path resolves against the config that DECLARES it. `"."` in the
+ *   base would mean all of `fixtures/`, so every fixture would pull in every other one.
+ * - **`paths`**, for the same reason: TypeScript records a `pathsBasePath` per config file, so a
+ *   mapping written in the base would resolve against `fixtures/` instead of against the fixture that
+ *   needs it — and a mapping that resolves to nothing is not an error, it is an import the analyzer
+ *   cannot follow.
+ *
+ * `jsxImportSource` is safe to share because it is a module specifier resolved from each SOURCE FILE
+ * rather than from the config: `..` is `fixtures/jsx-runtime.ts` from any fixture, at any depth of one.
+ *
+ * That prose lived as comments inside `tsconfig.base.json` until 2026-08-21. A tsconfig is JSONC, so
+ * TypeScript read it — but a `.json` extension is a promise to every other tool, and `JSON.parse`
+ * refuses the first comment. It belongs in a file where a comment is not a question.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));

@@ -125,9 +125,8 @@ export class Portal extends Hook<PortalProps> {
     if (this.resolvedFrom === target && this.resolvedTo !== undefined) return this.resolvedTo;
 
     // The side this render is for. `ownerRuntime` holds the reason it is read off the OWNER rather
-    // than off the module flag. No owner reads as the CLIENT here: a build with nothing above it is
-    // one being made for the browser, and a portal with no server to render into has nothing to emit.
-    const onServer = ownerRuntime(this)?.env === "server";
+    // than off a module flag, and there is no missing-owner case to decide: the field is required.
+    const onServer = ownerRuntime(this).env === "server";
     this.resolvedFrom = target;
     this.resolvedTo = resolvePortalTarget(target, onServer);
     return this.resolvedTo;

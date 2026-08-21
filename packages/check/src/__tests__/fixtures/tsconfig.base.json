@@ -1,15 +1,3 @@
-// What every fixture's tsconfig had written out in full, seventy-three times.
-//
-// A fixture is a tiny app the analyzer is pointed at, so its config is the same config every time —
-// only what it POINTS AT differs. Two things stay in the child, and neither is a style choice:
-//
-// - `include`, because a relative path in it resolves against the config that DECLARES it. `"."` here
-//   would mean all of `fixtures/`, so every fixture would pull in every other one.
-// - `paths`, for the same reason: TypeScript records a `pathsBasePath` per config file, so a mapping
-//   written here would resolve against `fixtures/` rather than against the fixture that needs it.
-//
-// `jsxImportSource` is safe to share because it is a module specifier resolved from each SOURCE FILE,
-// not from the config — `..` is `fixtures/jsx-runtime.ts` from any fixture, at any depth of one.
 {
   "compilerOptions": {
     "target": "ESNext",

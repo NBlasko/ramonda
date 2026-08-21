@@ -410,40 +410,6 @@ describe("what arming REPORTS", () => {
   });
 });
 
-describe("an owner that is not there", () => {
-  /**
-   * The one case both guards used to read as "client, alive", and it is now a REFUSAL.
-   *
-   * Unreachable through `this.use()` — `createRuntime` is called only from `Component`'s constructor
-   * and always sets `owner`, measured — but the type says optional, so the question gets answered
-   * either way. It is answered as "do not arm" because the two mistakes are not equal: a timer that
-   * did not start is a missing behaviour somebody can see, and a timer nothing can clear is a leak
-   * nobody can. This builds the unreachable state on purpose rather than leaving the choice in a
-   * comment.
-   */
-  test("refuses to arm rather than starting a timer nothing would clear", () => {
-    const runtime = {
-      id: "probe",
-      creates: [],
-      destroys: [],
-      watchProps: [],
-      deferHydrations: [],
-      effects: [],
-      updates: [],
-      // owner: deliberately absent — the whole point of this test.
-    } as unknown as ConstructorParameters<typeof Timer>[0];
-
-    const orphan = new Timer(runtime, undefined);
-
-    expect(orphan.after(100, () => log.push("orphan"))).toBe(false);
-    expect(orphan.repeat(100, () => log.push("orphan"))).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-
-    vi.advanceTimersByTime(1000);
-    expect(log).toEqual([]);
-  });
-});
-
 describe("a delay that is not one", () => {
   /**
    * DEV-only, and the judgement is `delayFault`'s — the same one `@interval("1s")` fails on, so the

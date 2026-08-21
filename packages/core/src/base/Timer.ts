@@ -84,16 +84,14 @@ export class Timer extends Hook {
    * - **The owner is gone.** `@destroyed` has already run, so nothing would ever clear it. A late
    *   `await` landing in a handler is how that happens — `RMD008` reports the write it would have
    *   made, and the timer itself would hold the component alive until it fired.
-   * - **There is no owner at all.** Unreachable through `this.use()` — `ownerRuntime` says why — and
-   *   read as a REFUSAL rather than as "client, alive". The two mistakes are not equal: a timer that
-   *   did not start is a missing behaviour somebody can see, and a timer nothing can clear is a leak
-   *   nobody can. So the unknown case takes the visible failure.
+   * There is no third case. A hook always has an owner — `Runtime.owner` is required, and the note
+   * there says what it cost to find that out — so "we do not know which side we are on" is not a state
+   * this can be in.
    *
    * `ownerRuntime` holds the reason the side is read off the OWNER rather than off a module flag.
    */
   private get armable(): boolean {
     const owner = ownerRuntime(this);
-    if (owner === undefined) return false;
     return owner.env !== "server" && !owner.isDestroyed;
   }
 
