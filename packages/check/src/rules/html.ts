@@ -104,7 +104,9 @@ export function enclosingTag(element: JsxElementLike, resolve: Resolver): string
   if (enclosing === undefined) return undefined;
 
   const written = tagOf(enclosing);
-  return written ?? hostTagOfComponent(enclosing, resolve);
+  // Lowercased to match `tagOf`, which the whole content-model table is keyed by. `hostTagOf` hands
+  // the tag back AS WRITTEN, because SVG names are case-sensitive and one caller needs that.
+  return written ?? hostTagOfComponent(enclosing, resolve)?.toLowerCase();
 }
 
 /**
@@ -170,7 +172,7 @@ export function hostTagOf(cls: ts.ClassDeclaration, resolve: Resolver): string |
 
     const written = call.arguments[0];
     if (written === undefined) continue;
-    return follow(written, resolve, HOST_TAG)?.value?.toLowerCase();
+    return follow(written, resolve, HOST_TAG)?.value;
   }
   return undefined;
 }

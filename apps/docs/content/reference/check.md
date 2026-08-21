@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 53 of them.
+**Warnings.** These print and the run still passes. 54 of them.
 
 | rule | reported when |
 |---|---|
@@ -160,6 +160,7 @@ rules**, so a rule cannot be added without appearing here.
 | `listener-added-by-hand` | a component adds a `window` or `document` listener by hand, where `@onWindow` or `@onDocument` would do it — or, inside `if (__DEV__)` where a decorator cannot be used, adds one that nothing ever removes |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
+| `host-tag-is-not-an-element` | a `@Host` tag names neither an HTML nor an SVG element, and has no dash to make it a custom one — also [`RMD044`](/reference/diagnostics) |
 | `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |
 | `context-consumed-above-its-provider` | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics) |
 | `client-only-request-read` | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics) |

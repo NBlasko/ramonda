@@ -66,6 +66,7 @@ import { listenerOnTheDefaultHost } from "./listener-on-the-default-host";
 import { listenerAddedByHand } from "./listener-added-by-hand";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
+import { hostTagIsNotAnElement } from "./host-tag-is-not-an-element";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
 import { duplicateId } from "./duplicate-id";
 import { headingSkipsALevel } from "./heading-skips-a-level";
@@ -168,6 +169,7 @@ export { listenerOnTheDefaultHost, type ListenerOnTheDefaultHostIssue } from "./
 export { listenerAddedByHand, type ListenerAddedByHandIssue } from "./listener-added-by-hand";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
+export { hostTagIsNotAnElement, type HostTagIsNotAnElementIssue } from "./host-tag-is-not-an-element";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
 export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
@@ -215,6 +217,7 @@ export const CLASS_RULES = [
   listenerAddedByHand,
   lateRequestRead,
   headTagsCollide,
+  hostTagIsNotAnElement,
   unguardedAsyncLifecycle,
   contextConsumedAboveItsProvider,
   clientOnlyRequestRead,

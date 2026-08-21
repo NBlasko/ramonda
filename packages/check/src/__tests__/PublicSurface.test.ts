@@ -59,6 +59,7 @@ const EXPECTED_TYPES = [
   "FreshValueFromAWatchSelectorIssue",
   "FreshObjectInPropsIssue",
   "HeadTagsCollideIssue",
+  "HostTagIsNotAnElementIssue",
   "HeadingSkipsALevelIssue",
   "IndexAsKeyIssue",
   "IntervalWithNoCleanupIssue",

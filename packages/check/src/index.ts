@@ -37,6 +37,7 @@ export type {
   FreshValueFromAWatchSelectorIssue,
   FreshObjectInPropsIssue,
   HeadTagsCollideIssue,
+  HostTagIsNotAnElementIssue,
   IntervalWithNoCleanupIssue,
   InteractiveInsideInteractiveIssue,
   LateRequestReadIssue,

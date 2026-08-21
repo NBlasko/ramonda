@@ -101,3 +101,150 @@ export const svgElements: ReadonlySet<string> = new Set([
   "feTile",
   "feTurbulence",
 ]);
+
+/**
+ * Every tag `@ramonda/core` types as an HTML element — the other half of {@link svgElements}.
+ *
+ * ## Why it is shared even though only the checker reads it today
+ *
+ * The rule above is "a fact BOTH packages need", and core does not need this one yet: it decides a
+ * namespace with `svgElements` and treats every other name as HTML, so it never asks whether a name
+ * is an element at all. It is here anyway, and deliberately — because the moment core wants to ask,
+ * a DEV diagnostic about a host that names nothing, the alternative is a second copy of these 116
+ * names. That is the failure this package exists to prevent, and the SVG note above is the record of
+ * it happening: a first-guess copy that was twenty-one tags short and wrongly claimed `title`.
+ *
+ * A fact one package reads and the other is plainly about to is not the thing the rule guards
+ * against. What it guards against is a helper with no home.
+ *
+ * ## Where the names come from
+ *
+ * Generated from core's `JSX.IntrinsicElements` rather than from a specification, and that is the
+ * point: what makes a name an element HERE is what the framework accepts, not what the HTML standard
+ * happens to list this year. `HtmlElementNames.test.ts` in core reads that source and pins the two
+ * in both directions, exactly as `SvgNamespace.test.tsx` pins the SVG list. A name typed and missing
+ * from this Set would have a checker calling something no element while the framework accepts it; a
+ * name here and no longer typed is a typo it waves through.
+ *
+ * `@ramonda/check` reads it to answer one question: whether a `@Host` tag names an element at all.
+ * A name with a DASH is not judged against it, because a dash is what the HTML standard reserves for
+ * a custom element and inventing one is legitimate.
+ */
+export const htmlElements: ReadonlySet<string> = new Set([
+  "a",
+  "abbr",
+  "address",
+  "area",
+  "article",
+  "aside",
+  "audio",
+  "b",
+  "base",
+  "bdi",
+  "bdo",
+  "big",
+  "blockquote",
+  "body",
+  "br",
+  "button",
+  "canvas",
+  "caption",
+  "cite",
+  "code",
+  "col",
+  "colgroup",
+  "data",
+  "datalist",
+  "dd",
+  "del",
+  "details",
+  "dfn",
+  "dialog",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "embed",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "head",
+  "header",
+  "hgroup",
+  "hr",
+  "html",
+  "i",
+  "iframe",
+  "img",
+  "input",
+  "ins",
+  "kbd",
+  "keygen",
+  "label",
+  "legend",
+  "li",
+  "link",
+  "main",
+  "map",
+  "mark",
+  "menu",
+  "menuitem",
+  "meta",
+  "meter",
+  "nav",
+  "noindex",
+  "noscript",
+  "object",
+  "ol",
+  "optgroup",
+  "option",
+  "output",
+  "p",
+  "param",
+  "picture",
+  "pre",
+  "progress",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "slot",
+  "script",
+  "section",
+  "select",
+  "small",
+  "source",
+  "span",
+  "strong",
+  "style",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "template",
+  "tbody",
+  "td",
+  "textarea",
+  "tfoot",
+  "th",
+  "thead",
+  "time",
+  "title",
+  "tr",
+  "track",
+  "u",
+  "ul",
+  "var",
+  "video",
+  "wbr",
+]);
