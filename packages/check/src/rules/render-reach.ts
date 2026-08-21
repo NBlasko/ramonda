@@ -187,18 +187,63 @@ export function entryPoints(cls: ts.ClassDeclaration): { member: ts.ClassElement
  * idiom of the framework is the fastest way to have a checker switched off.
  *
  * So the question is not "is this a handler" — a handler can be reached in more ways than one can
- * enumerate — but "is this INVOKED here". Two shapes answer yes: an argument to a call, which is
- * `list(each, …)`, `.map(…)`, `.filter(…)` and their family; and a function invoked on the spot.
- * Everything else — returned, assigned, stored, handed to an attribute — runs at some other time,
- * and this says nothing about it.
+ * enumerate — but "is this INVOKED here". Two shapes answer yes: an argument to a call that runs
+ * what it is handed, which is `list(each, …)`, `.map(…)`, `.filter(…)` and their family; and a
+ * function invoked on the spot. Everything else — returned, assigned, stored, handed to an
+ * attribute, or handed to something that will call it LATER — runs at some other time, and this
+ * says nothing about it.
+ *
+ * ## The list is an allowlist, and it was a FALSE REPORT before it was one
+ *
+ * The paragraph above is what this was always documented to do; the code accepted an argument to
+ * ANY call. So `setTimeout(() => { this.n = 1 }, 0)` in a render was reported as a write during the
+ * render — and so were a `.then`, a `queueMicrotask` and an `addEventListener`, which are the
+ * ordinary way to write each of those. Four spellings, all of them correct code, all reported.
+ *
+ * An allowlist rather than a list of the deferring ones, because the deferring ones cannot be
+ * enumerated: a function handed to a name this cannot recognise runs at a time this cannot know,
+ * and the silence contract answers that with nothing.
  */
+
+/**
+ * The calls that run the function they are handed, before they return.
+ *
+ * The iteration family, plus `list`, which the framework's own analyzer already treats as rendering
+ * where the list sits. A name, not a resolved symbol: `rows.map` is a method on an array and there
+ * is no declaration of it to resolve with `noLib`.
+ */
+const RUNS_WHAT_IT_IS_HANDED: ReadonlySet<string> = new Set([
+  "map",
+  "flatMap",
+  "filter",
+  "forEach",
+  "reduce",
+  "reduceRight",
+  "some",
+  "every",
+  "find",
+  "findLast",
+  "findIndex",
+  "findLastIndex",
+  "sort",
+  "flat",
+  "list",
+]);
+
 function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   const parent = fn.parent;
   if (parent === undefined) return false;
 
-  // `rows.map((row) => …)` — an argument, so whoever was called decides, and all of the ones that
-  // matter here call it immediately.
-  if (ts.isCallExpression(parent) && parent.arguments.includes(fn)) return true;
+  // `rows.map((row) => …)` — an argument to a call that runs it before it returns.
+  if (ts.isCallExpression(parent) && parent.arguments.includes(fn)) {
+    const callee = parent.expression;
+    const named = ts.isPropertyAccessExpression(callee)
+      ? callee.name.text
+      : ts.isIdentifier(callee)
+        ? callee.text
+        : undefined;
+    return named !== undefined && RUNS_WHAT_IT_IS_HANDED.has(named);
+  }
 
   // `(() => …)()` — invoked on the spot, with or without the parentheses TypeScript keeps.
   if (ts.isCallExpression(parent) && parent.expression === fn) return true;
@@ -378,4 +423,31 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
     const body = ts.isMethodDeclaration(member) || ts.isGetAccessorDeclaration(member) ? member.body : undefined;
     if (body) walk(body, [name], true, 0);
   }
+
+  /**
+   * `@Host("nav", (self) => ({ className: … }))` — a render that is in no member body.
+   *
+   * It runs every time the component renders, and `entryPoints` looks only at members, so a clock
+   * read there was reached by nothing. The id table had the same gap for the same callback, in a
+   * different reader — a fix for one reader is not a fix for the other.
+   *
+   * `insideTheClass` is FALSE, exactly as it is for a static. The callback is handed the component
+   * as a PARAMETER rather than through `this`, so nothing about `this` is knowable inside it and
+   * only what depends on nothing — a clock, a random number — is worth finding.
+   */
+  const props = hostPropsCallback(cls);
+  if (props !== undefined) walk(props, ["@Host props"], false, 0);
+}
+
+/** The second argument to `@Host`, when it is a function this can walk. */
+function hostPropsCallback(cls: ts.ClassDeclaration): ts.Node | undefined {
+  for (const decorator of ts.getDecorators(cls) ?? []) {
+    const call = decorator.expression;
+    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || call.expression.text !== "Host") continue;
+
+    const written = call.arguments[1];
+    if (written === undefined) continue;
+    if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written.body;
+  }
+  return undefined;
 }
