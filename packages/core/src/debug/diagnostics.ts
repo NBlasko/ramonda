@@ -136,7 +136,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD006: {
     severity: "error",
     title: "Timer still running after unmount",
-    fix: "Use @interval / @timeout, which start on mount and clear themselves on unmount. If you need a raw timer, keep its id in a class property and clear it from @destroyed — a returned closure cannot do this, which is exactly why cleanup lives on a property.",
+    fix: "Use @interval / @timeout for a clock that starts at mount, or the Timeout / Interval hooks for one you start yourself: `private t = this.use(Timeout, () => ({ run: this.done }))`, then `this.t.start(ms)`, and `this.t.stop()` to end it early. Both clear themselves on teardown, so there is no id to keep. If you do write a raw timer, its id has to live on a class property so @destroyed can reach it — a returned closure cannot, which is why the fallback is a property.",
   },
   RMD007: {
     severity: "error",
@@ -146,7 +146,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD008: {
     severity: "warning",
     title: "State changed after the component was unmounted",
-    fix: "The component is gone, so the update is dropped and the render it asked for never happens. Something outlived it: almost always an await that resolves late (a fetch, a timer, a subscription callback) and writes state on the way back. Cancel it from @destroyed — keep an AbortController or the subscription handle in a class property and tear it down there. @interval / @timeout and a subscription decorator's cleanup already do this for you.",
+    fix: "The component is gone, so the update is dropped and the render it asked for never happens. Something outlived it: almost always an await that resolves late (a fetch, a timer, a subscription callback) and writes state on the way back. Cancel it from @destroyed — keep an AbortController or the subscription handle in a class property and tear it down there. @interval / @timeout, the Timeout / Interval hooks and a subscription decorator's cleanup already do this for you.",
   },
   RMD009: {
     severity: "error",

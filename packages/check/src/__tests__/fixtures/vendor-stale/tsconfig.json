@@ -1,13 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "jsxImportSource": "..",
-    "strict": false,
-    "skipLibCheck": true,
-    "noEmit": true
-  },
+  "extends": "../tsconfig.base.json",
   "include": ["src", "../framework.ts", "../jsx-runtime.ts"]
 }

@@ -36,6 +36,9 @@ const EXPECTED = [
   "createRef",
   "Ref",
   "Head",
+  // The scheduled calls an app STARTS, where `@interval`/`@timeout` are the ones a mount starts.
+  "Timeout",
+  "Interval",
   "Portal",
   // A portal target outside the app's root: the token, and the attribute a
   // hand-rolled shell needs in order to emit the container itself.

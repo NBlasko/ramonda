@@ -22,6 +22,7 @@ import { RouteInfo } from "./RouteInfo";
 import { StoreSubscription } from "./StoreSubscription";
 import { ThemeContextDemo } from "./ThemeContextDemo";
 import { TimeoutReveal } from "./TimeoutReveal";
+import { TimerOnClick } from "./TimerOnClick";
 import { WatchPropDemo } from "./WatchPropDemo";
 import { WindowSize } from "./WindowSize";
 
@@ -45,6 +46,7 @@ export const demos: Record<string, ComponentClassKind> = {
   WindowSize,
   KeyboardShortcut,
   TimeoutReveal,
+  TimerOnClick,
   IntervalClock,
   EffectCleanup,
   WatchPropDemo,
@@ -74,6 +76,7 @@ export const demoTitles: Record<string, string> = {
   WindowSize: "@onWindow — a global listener",
   KeyboardShortcut: "@onDocument — a keyboard shortcut",
   TimeoutReveal: "@timeout — cancelled on unmount",
+  TimerOnClick: "Timeout — started by a click, cleared by teardown",
   IntervalClock: "@interval — and the two-pass pattern",
   EffectCleanup: "Cleanup — what a subscription returns",
   WatchPropDemo: "@watchProp — reacting to a prop",
