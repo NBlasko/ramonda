@@ -8,6 +8,24 @@ import {
   ThemeProvider as Publishes,
 } from "./theme";
 
+/**
+ * The same Provider under a local name — `const Publishes = ThemeProvider`.
+ *
+ * Not the import alias above, which `resolve` follows on its own: this is a second `const` in this
+ * file, so the declaration behind it is a `VariableDeclaration` rather than the `BindingElement`
+ * the pair was destructured from.
+ */
+const Local = ThemeProvider;
+
+/** ✗ Two Providers of one context, the second reached through that local name. */
+export class ProvidesTwiceThroughALocal extends Component {
+  one = this.use(ThemeProvider, () => ({ color: "slate" }));
+  two = this.use(Local, () => ({ color: "amber" }));
+  render() {
+    return <p>local name</p>;
+  }
+}
+
 /** The fault: the consumer resolves before this component's own provider exists. */
 export class ConsumerFirst extends Component {
   outer = this.use(ThemeConsumer);
@@ -183,6 +201,7 @@ export class App extends Component {
   render() {
     return (
       <main>
+        <ProvidesTwiceThroughALocal />
         <ConsumerFirst />
         <WithAFieldBetween />
         <RenamedBindings />

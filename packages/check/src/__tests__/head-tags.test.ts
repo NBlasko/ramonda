@@ -20,6 +20,9 @@ const found = () => run().findings["head-tags-collide"];
 describe("two head tags that are one tag", () => {
   test("every collision is reported, with the identity that collided", () => {
     expect(found().map((issue) => `${issue.component}: ${issue.identity}`)).toEqual([
+      // Source order, and the two that read through a name are written at the top of the fixture.
+      'OptionsAName: name="description"',
+      'IdentityAName: name="robots"',
       'TwoOfTheSameName: name="robots"',
       'ShorthandAndMeta: name="description"',
       'TwoOfTheSameProperty: property="og:title"',
@@ -27,6 +30,25 @@ describe("two head tags that are one tag", () => {
       'TwoOfTheSameLink: rel="icon" href="/icon.png"',
       'ThroughAFactory: name="robots"',
     ]);
+  });
+
+  /**
+   * The options, and the identity, one name away.
+   *
+   * Page metadata ends up in a module of its own, which is the ordinary arrangement and the one
+   * this rule could not read at all: `this.use(Head, PAGE_HEAD)` reached no object literal, so a
+   * description written both ways inside it was invisible. A `{ name: ROBOTS }` is the same fact
+   * one hop further in.
+   *
+   * `this.which` stays unreadable, and that is a different case: a field can be written again, so
+   * the identity really is not knowable — see `ComputedName`.
+   */
+  test("options and identities kept in a `const` are read", () => {
+    const named = found().filter((issue) => issue.component === "OptionsAName");
+
+    expect(named).toHaveLength(1);
+    expect(named[0]?.lost).toBe("the `description` shorthand");
+    expect(found().some((issue) => issue.component === "ComputedName")).toBe(false);
   });
 
   /**

@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { isThisUse, positionOf } from "../syntax";
 import { importedFromCore } from "./core-import";
-import type { Rule } from "./rule";
+import { follow, type Looking } from "./follow-value";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * Two entries in one `Head` that are the same tag, so only the second is written.
@@ -79,11 +80,29 @@ const META_IDENTITY: readonly (readonly [string, string])[] = [
   ["httpEquiv", "http-equiv"],
 ];
 
-/** A property's value when it is a plain string literal, and `undefined` when it is anything else. */
-function literal(property: ts.ObjectLiteralElementLike): string | undefined {
+/**
+ * A property's value when the source settles on one string, and `undefined` when it does not.
+ *
+ * Through a NAME as well: `{ name: ROBOTS }` is the same identity `{ name: "robots" }` is, and the
+ * module holding the constants is the ordinary place for it.
+ *
+ * A branch and a call are not followed, and `this.which` is not a name this walk touches at all —
+ * a field can be written again, so a tag identified by one really is not knowable. That is
+ * `ComputedName` in the fixture, and it stays silent.
+ */
+const SETTLED: Looking<string> = {
+  leaf: (expression) => (ts.isStringLiteralLike(expression) ? expression.text : undefined),
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
+function literal(property: ts.ObjectLiteralElementLike, resolve: RuleContext["resolve"]): string | undefined {
   if (!ts.isPropertyAssignment(property)) return undefined;
   const value = property.initializer;
-  return ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value) ? value.text : undefined;
+  if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) return value.text;
+  return follow(value, resolve, SETTLED)?.value;
 }
 
 function nameOf(property: ts.ObjectLiteralElementLike): string | undefined {
@@ -101,7 +120,7 @@ function nameOf(property: ts.ObjectLiteralElementLike): string | undefined {
  * the identity, and nothing static can say whether it does. Same for a computed key — an entry
  * this cannot read whole is an entry it says nothing about.
  */
-function readTag(node: ts.Expression, kind: "meta" | "link"): ReadTag | undefined {
+function readTag(node: ts.Expression, kind: "meta" | "link", resolve: RuleContext["resolve"]): ReadTag | undefined {
   if (!ts.isObjectLiteralExpression(node)) return undefined;
   if (node.properties.some((property) => ts.isSpreadAssignment(property))) {
     return { written: `a \`${kind}\` entry`, at: node };
@@ -111,7 +130,7 @@ function readTag(node: ts.Expression, kind: "meta" | "link"): ReadTag | undefine
   for (const property of node.properties) {
     const key = nameOf(property);
     if (key === undefined) return { written: `a \`${kind}\` entry`, at: node };
-    values.set(key, literal(property));
+    values.set(key, literal(property, resolve));
   }
 
   const readable = [...values.values()].every((value) => value !== undefined);
@@ -161,17 +180,35 @@ function listOf(options: ts.ObjectLiteralExpression, key: string): readonly ts.E
  * object written on the spot is still read: it does not compile and it throws (RMD055), but this rule
  * looks at source, and source under migration is exactly where a report is worth having.
  */
-function optionsOf(argument: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
+/** The object literal behind a name — `this.use(Head, PAGE_HEAD)`, options kept in a module. */
+const OPTIONS: Looking<ts.ObjectLiteralExpression> = {
+  leaf: (expression) => (ts.isObjectLiteralExpression(expression) ? expression : undefined),
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
+function optionsOf(
+  argument: ts.Expression | undefined,
+  resolve: RuleContext["resolve"],
+): ts.ObjectLiteralExpression | undefined {
   if (argument === undefined) return undefined;
   if (ts.isObjectLiteralExpression(argument)) return argument;
-  if (ts.isParenthesizedExpression(argument)) return optionsOf(argument.expression);
+  if (ts.isParenthesizedExpression(argument)) return optionsOf(argument.expression, resolve);
   if (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) {
     const body = argument.body;
-    if (!ts.isBlock(body)) return optionsOf(body);
+    if (!ts.isBlock(body)) return optionsOf(body, resolve);
     const returned = body.statements.find(ts.isReturnStatement);
-    return returned?.expression ? optionsOf(returned.expression) : undefined;
+    return returned?.expression ? optionsOf(returned.expression, resolve) : undefined;
   }
-  return undefined;
+  /**
+   * A NAME holding the options, which is where page metadata ends up on a real site.
+   *
+   * `this.use(Head, PAGE_HEAD)` reached no object literal at all, so a description written both
+   * ways inside it was invisible — and the whole point of this rule is that nothing else can see it.
+   */
+  return follow(argument, resolve, OPTIONS)?.value;
 }
 
 /**
@@ -211,7 +248,7 @@ export const headTagsCollide = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self, resolveLocal }) {
+  read(cls, { self, resolve, resolveLocal }) {
     const found: HeadTagsCollideIssue[] = [];
 
     /**
@@ -227,7 +264,7 @@ export const headTagsCollide = {
         (property) => ts.isPropertyAssignment(property) && nameOf(property) === "description",
       );
       if (description !== undefined) {
-        const value = literal(description);
+        const value = literal(description, resolve);
         tags.push({
           identity: 'name="description"',
           written: "the `description` shorthand",
@@ -237,11 +274,11 @@ export const headTagsCollide = {
       }
 
       for (const element of listOf(options, "meta") ?? []) {
-        const tag = readTag(element, "meta");
+        const tag = readTag(element, "meta", resolve);
         if (tag) tags.push(tag);
       }
       for (const element of listOf(options, "link") ?? []) {
-        const tag = readTag(element, "link");
+        const tag = readTag(element, "link", resolve);
         if (tag) tags.push(tag);
       }
 
@@ -270,7 +307,7 @@ export const headTagsCollide = {
         const isHead =
           hook !== undefined && ts.isIdentifier(hook) && hook.text === "Head" && importedFromCore(hook, resolveLocal);
         if (isHead) {
-          const options = optionsOf(node.arguments[1]);
+          const options = optionsOf(node.arguments[1], resolve);
           if (options !== undefined) judge(options);
         }
       }

@@ -55,7 +55,27 @@ function labelOf(call: ts.CallExpression): string | undefined {
  */
 export function contextHalfOf(name: ts.Expression, context: RuleContext): ContextHalf | undefined {
   if (!ts.isIdentifier(name)) return undefined;
-  const declaration = context.resolve(name)?.declarations?.[0];
+
+  /**
+   * `const Publishes = ThemeProvider` — the same half under a second name in this file.
+   *
+   * An IMPORT alias was never a question: `resolve` follows one on its own, so
+   * `ThemeProvider as Publishes` lands on the binding element directly. A local `const` does not —
+   * its declaration is a `VariableDeclaration` — and the walk stopped there without a word.
+   *
+   * A `const` holding a plain identifier, and nothing else. Anything the source does not settle on
+   * one answer for is not a half of anything this can name, which is the contract.
+   */
+  let at: ts.Node | undefined = context.resolve(name)?.declarations?.[0];
+  for (let hop = 0; hop < 4 && at !== undefined && ts.isVariableDeclaration(at); hop++) {
+    const list = at.parent;
+    const held = at.initializer;
+    if (!ts.isVariableDeclarationList(list) || (list.flags & ts.NodeFlags.Const) === 0) return undefined;
+    if (held === undefined || !ts.isIdentifier(held)) return undefined;
+    at = context.resolve(held)?.declarations?.[0];
+  }
+
+  const declaration = at;
   if (declaration === undefined || !ts.isBindingElement(declaration)) return undefined;
 
   const pattern = declaration.parent;

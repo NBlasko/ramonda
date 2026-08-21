@@ -71,8 +71,8 @@ describe("a context consumed above its provider", () => {
     const issue = found().find((each) => each.component === "ConsumerFirst");
     const source = join(here, "fixtures", "context-order", "app.tsx");
     expect(issue?.file).toBe(source);
-    expect(issue?.line).toBe(13);
-    expect(issue?.providerAtLine).toBe(14);
+    expect(issue?.line).toBe(31);
+    expect(issue?.providerAtLine).toBe(32);
     expect(issue?.consumer).toBe("ThemeConsumer");
     expect(issue?.provider).toBe("ThemeProvider");
   });
