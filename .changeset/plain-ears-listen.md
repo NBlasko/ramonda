@@ -18,8 +18,14 @@ member it is in for that reason.
 
 Removing the listener by hand is not an answer to this and neither is `{ once: true }`: the
 decorator takes the same options and does both halves. That is where this differs from
-`interval-with-no-cleanup`, which accepts a raw timer paired with a `clearInterval` — a timer has
-shapes `@interval` does not cover, and a listener does not.
+`interval-with-no-cleanup`, which still accepts a raw timer paired with a `clearInterval`.
+
+**One thing the decorator cannot do, and the advice says so rather than papering over it.** A
+listener the app ARMS — on a click, after a fetch — cannot be written with `@onWindow`, which
+attaches for the owner's whole life. There is no hook for it yet, so the rule reports the raw call
+and the advice names what the reader is left with. `Interval` and `Timeout` are the same problem
+already solved for timers: hooks the app starts and stops, which the framework still clears when the
+owner goes.
 
 **The one place a decorator genuinely cannot be used is `if (__DEV__)`, and that is the escape.** A
 decorator is code on the CLASS, so no guard can remove it: a dev-only listener written with
