@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf, tagOf } from "./element";
+import { follow, type Looking } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { FormControl, IdReference, ProjectContext, UnreadableId } from "./rule";
 
@@ -80,16 +81,44 @@ function insideALabel(element: ts.JsxElement | ts.JsxSelfClosingElement): boolea
   return false;
 }
 
-/** What a JSX attribute's value says, when it says anything this can read in full. */
-function literalOf(value: ts.JsxAttributeValue | undefined): string | undefined {
+/**
+ * What a JSX attribute's value says, when it says anything this can read in full.
+ *
+ * A NAME is followed to its declaration, exactly as `attr` follows one, and for a reason this table
+ * feels harder than the per-element family does: keeping ids in one module is the ordinary way to
+ * make two references agree, and reading only the literal turned that into a project-wide silence.
+ * Measured with `fixtures/id-table-hop` — one `<h2 id={SUMMARY_ID}>` marked the project's ids
+ * unreadable, and a mistyped `aria-labelledby` and a fragment link to nowhere in the same file were
+ * both reported by nothing.
+ */
+function literalOf(
+  value: ts.JsxAttributeValue | undefined,
+  resolve: (id: ts.Node) => ts.Symbol | undefined,
+): string | undefined {
   if (value === undefined) return undefined;
   if (ts.isStringLiteral(value)) return value.text;
-  if (ts.isJsxExpression(value) && value.expression !== undefined && ts.isStringLiteralLike(value.expression)) {
-    // A template with no substitutions is a literal that happens to be written in backticks.
-    return value.expression.text;
+  if (ts.isJsxExpression(value) && value.expression !== undefined) {
+    // A template with no substitutions is a literal that happens to be written in backticks, and
+    // `literal` covers it; anything else has to settle on ONE answer or it is not read at all.
+    return follow(value.expression, resolve, LITERAL)?.value;
   }
   return undefined;
 }
+
+/**
+ * The same boundaries the element family's reader takes, and they matter more here.
+ *
+ * A branch or a call has no single answer, and this table's answer is used to say an id EXISTS —
+ * so a guess would silence a real report rather than cause a false one, which is the quieter and
+ * worse direction. A module `const` is one answer written once and counts.
+ */
+const LITERAL: Looking<string> = {
+  leaf: (expression) => (ts.isStringLiteralLike(expression) ? expression.text : undefined),
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
 
 /**
  * The literal head of a template — `row-` from `` `row-${i}` ``.
@@ -105,7 +134,10 @@ function prefixOf(value: ts.JsxAttributeValue | undefined): string | undefined {
 }
 
 /** Builds the table. One walk of every file, whatever rules end up asking about it. */
-export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
+export function idTableFor(
+  sources: readonly ts.SourceFile[],
+  resolve: (id: ts.Node) => ts.Symbol | undefined,
+): ProjectContext {
   const ids = new Set<string>();
   const prefixes: string[] = [];
   const unreadable: UnreadableId[] = [];
@@ -136,7 +168,7 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
       const name = attribute.name.getText();
 
       if (name.toLowerCase() === "id") {
-        const written = literalOf(attribute.initializer);
+        const written = literalOf(attribute.initializer, resolve);
         if (written !== undefined) {
           ids.add(written);
           continue;
@@ -171,7 +203,7 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
       }
 
       if (NAMES_AN_ID.has(name) || NAMES_AN_ID.has(name.toLowerCase())) {
-        const written = literalOf(attribute.initializer);
+        const written = literalOf(attribute.initializer, resolve);
         if (written === undefined) continue;
         // `aria-labelledby` takes a LIST of ids, space-separated, and every one of them is a
         // reference. Reading it as a single id would report a working pair as missing.
@@ -183,7 +215,7 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
 
       // A fragment link — `href="#pricing"`. `#` alone is `link-without-a-destination`'s business.
       if (name.toLowerCase() === "href" && tag === "a") {
-        const written = literalOf(attribute.initializer);
+        const written = literalOf(attribute.initializer, resolve);
         if (written === undefined || !written.startsWith("#") || written.length === 1) continue;
         references.push({ attribute: name, target: written.slice(1), tag, ...positionOf(attribute) });
       }
@@ -204,9 +236,9 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
       if (!ts.isJsxAttribute(attribute)) continue;
       const name = attribute.name.getText().toLowerCase();
 
-      if (name === "type") type = literalOf(attribute.initializer)?.toLowerCase();
+      if (name === "type") type = literalOf(attribute.initializer, resolve)?.toLowerCase();
       else if (name === "id") {
-        const written = literalOf(attribute.initializer);
+        const written = literalOf(attribute.initializer, resolve);
         if (written === undefined) opaqueId = true;
         else id = written;
       } else if (name === "placeholder") placeholder = true;
@@ -267,18 +299,33 @@ export function idTableFor(sources: readonly ts.SourceFile[]): ProjectContext {
       if (object === undefined || !ts.isObjectLiteralExpression(object)) continue;
 
       for (const property of object.properties) {
-        if (!ts.isPropertyAssignment(property)) continue;
+        /**
+         * `({ id: OVERVIEW_ID })` and `({ id })`, which are the same claim.
+         *
+         * The shorthand was read by nothing — not even as an unreadable id — so an id the page
+         * really carries was missing from the table, and a reference to it would have been
+         * reported as naming nothing. Planted after the long form was fixed, on the standing
+         * lesson that a fix for one spelling is not a fix for the other.
+         */
+        const shorthand = ts.isShorthandPropertyAssignment(property);
+        if (!ts.isPropertyAssignment(property) && !shorthand) continue;
         const key =
           ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
         if (key?.toLowerCase() !== "id") continue;
 
-        const value = property.initializer;
+        const value = shorthand ? property.name : property.initializer;
         if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
           ids.add(value.text);
           continue;
         }
         if (ts.isTemplateExpression(value) && value.head.text.length > 0) {
           prefixes.push(value.head.text);
+          continue;
+        }
+        // A name holding the id — the same hop the JSX reader above takes.
+        const behind = follow(value, resolve, LITERAL)?.value;
+        if (behind !== undefined) {
+          ids.add(behind);
           continue;
         }
         unreadable.push({ written: property.getText(), ...positionOf(property) });

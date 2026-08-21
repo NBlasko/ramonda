@@ -843,7 +843,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * whose rules are all gated off should not pay for it.
    */
   const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
-  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources), findings);
+  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolve), findings);
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
@@ -2395,6 +2395,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   // ── small helpers ───────────────────────────────────────────────────────────────────────────
 
   function resolve(id: ts.Node): ts.Symbol | undefined {
+    /**
+     * `({ id })` — the identifier is the property's name AND a reference to a value, and
+     * `getSymbolAtLocation` answers with the property. What every caller here is asking is what the
+     * VALUE is, so the shorthand is asked its own question.
+     *
+     * Found by planting `@Host("aside", () => ({ id }))` after the long form was fixed: the id
+     * table could not read it, which marked the project's ids unreadable and switched the whole id
+     * family off.
+     */
+    if (ts.isShorthandPropertyAssignment(id.parent) && id.parent.name === id) {
+      const value = checker.getShorthandAssignmentValueSymbol(id.parent);
+      if (value !== undefined) return value.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(value) : value;
+    }
     let symbol = checker.getSymbolAtLocation(id);
     if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     return symbol;
