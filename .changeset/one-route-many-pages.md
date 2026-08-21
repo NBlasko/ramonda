@@ -64,6 +64,12 @@ meant to. And a write REMOVES its key from it, which is how the reply can tell w
 travelled: a key still in the set saw only reads, so the entry is gone and the key goes with it; a key
 already out of it was rebuilt, and keeping it is what stops that new entry being orphaned.
 
+One thing a store of three unconditional methods cannot promise: a `delete` already travelling cannot
+be called off, so a rebake that lands inside its own eviction is removed by it. It needs a page to go
+stale in the same moment it is being evicted, and it costs that page plus one later render — never a
+wrong page, and the key that is left pointing at nothing is dropped by the next trim. Pinned by a test,
+because the regression to fear is a phantom that does NOT heal.
+
 Planted nine ways, and eight of the plants fail a test. The ninth — evicting a key another pass is
 already deleting — costs a duplicate `delete` and a moment over the cap, and changes which pages
 survive not at all; it says so where it is written.

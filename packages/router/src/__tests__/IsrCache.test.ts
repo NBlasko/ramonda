@@ -761,3 +761,79 @@ describe("a page read while its own eviction is in flight", () => {
     expect([...entries.keys()]).toEqual(["/products/2"]);
   });
 });
+
+/**
+ * What a store without compare-and-set cannot promise, pinned so it cannot get worse quietly.
+ *
+ * `IsrStore` is three methods over anything an app already runs, and none of them is conditional. So a
+ * `delete` this cache issued cannot be called off once a rebake decides the page should live: the
+ * removal happens whenever that store commits it, which may be after the write.
+ *
+ * The window is narrow and specific — a page has to go stale in the same moment its eviction is
+ * travelling — and the cost is one page and one render, never a wrong page. What matters is that it
+ * HEALS: the key left pointing at nothing is picked by a later trim, deleted (a no-op), and forgotten.
+ * A permanent phantom would be a slot the cache can never use again, and that is the regression here.
+ */
+describe("a rebake that lands inside its own eviction", () => {
+  test("loses that page, and the cache comes back to full use", async () => {
+    const entries = new Map<string, { html: string; at: number }>();
+    let release: (() => void) | undefined;
+    let issued: (() => void) | undefined;
+    const travelling = new Promise<void>((resolve) => {
+      issued = resolve;
+    });
+    let deletes = 0;
+    let baked = 0;
+    let t = 1_000_000;
+
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        // The round trip first, the removal when the reply is already on its way back.
+        if (++deletes === 1) {
+          issued?.();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        entries.delete(key);
+      },
+    };
+
+    const isr = createIsrCache({
+      plan: { isr: [{ path: "/products/:id", revalidate: 60 }] },
+      store,
+      maxPages: 1,
+      now: () => t,
+      render: async (path) => {
+        baked++;
+        return path;
+      },
+    });
+
+    await isr.serve("/products/1");
+    t += 61_000;
+    // Over the cap, so this trims `/products/1` — whose removal has not happened yet.
+    const second = isr.serve("/products/2");
+    await travelling;
+
+    // Stale, so the visitor gets the old copy and a rebake starts behind it.
+    expect(await isr.serve("/products/1")).toEqual({ html: "/products/1", mode: "isr-stale" });
+    await vi.waitFor(() => expect(baked).toBe(3));
+    expect(entries.has("/products/1")).toBe(true);
+
+    // The eviction lands and takes the page the rebake just wrote.
+    release?.();
+    await second;
+    expect(entries.has("/products/1")).toBe(false);
+
+    // Four more pages, each of which trims. A phantom would hold a slot through all of them.
+    for (const id of [3, 4, 5, 6]) await isr.serve(`/products/${id}`);
+    expect([...entries.keys()]).toEqual(["/products/6"]);
+  });
+});

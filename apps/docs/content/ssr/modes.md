@@ -243,6 +243,10 @@ error: a missing entry is a cold render, which is always correct and only slower
   still bake the same page at the same moment — wasted work, never a wrong answer.
 - **A failed background rebake keeps serving the stale page.** An old page is a smaller problem
   than no page. A failed *cold* render throws, because there is nothing else to send.
+- **An eviction cannot be called off.** A store is three unconditional methods, so a `delete` already
+  travelling still removes whatever is under that key when it arrives — including a page a rebake
+  wrote in the meantime. It takes a page going stale in the same moment it is being evicted, and it
+  costs that page and one later render; the cache notices the key points at nothing and drops it.
 - **A deploy must clear the cache.** Pages in it were rendered by the bundle you just replaced,
   so serving one afterwards hands the browser old markup for a new client bundle. The scaffolded
   app clears `dist/isr` in its prerender step, which runs on every build.
