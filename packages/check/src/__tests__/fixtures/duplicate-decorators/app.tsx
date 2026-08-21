@@ -6,6 +6,7 @@ import {
   createContext,
   Host,
   ShouldUpdateOnPropsChange,
+  StableProps,
   state,
 } from "@ramonda/core";
 

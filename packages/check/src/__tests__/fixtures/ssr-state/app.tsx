@@ -3,6 +3,7 @@ import { Component, Hook, Host, bootstrap, compute, persist, state } from "@ramo
 
 import { Dates, Maps } from "./kinds";
 import { heldCache, level1, makeCache } from "./make";
+import { wrap } from "./wrap";
 
 /** Module scope changes nothing about what JSON does to a value. */
 const SHARED = new Maps<string, number>();
@@ -42,6 +43,8 @@ class Cart extends Storefront {
   @state held = heldCache();
   @state branched = flag ? new Maps<string, number>() : null;
   @state fallback = null ?? new Dates();
+  /** Two names deep: the report has to name the inner one, not the one already on this line. */
+  @state wrapped = wrap();
 
   /* Not reported: `@persist` beside it means `persist-of-a-lossy-value` answers, without a gate. */
   @state @persist both = new Dates();

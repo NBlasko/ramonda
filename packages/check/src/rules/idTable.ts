@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
 import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
@@ -270,7 +271,7 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
   const readHostProps = (cls: ts.ClassLikeDeclaration): void => {
     for (const decorator of ts.getDecorators(cls) ?? []) {
       const call = decorator.expression;
-      if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || call.expression.text !== "Host") continue;
+      if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
 
       const written = call.arguments[1];
       if (written === undefined) continue;

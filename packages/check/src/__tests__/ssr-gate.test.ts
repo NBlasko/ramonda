@@ -31,6 +31,7 @@ describe("a state value the hydration blob cannot carry", () => {
       "held:Maps",
       "branched:Maps",
       "fallback:Dates",
+      "wrapped:Maps",
       "started:Dates",
     ]);
   });
@@ -65,6 +66,12 @@ describe("a state value the hydration blob cannot carry", () => {
     expect(where.get("deep")).toBe("`level3`");
     expect(where.get("fromHelper")).toBe("`makeCache`");
     expect(where.get("shared")).toBe("`SHARED`");
+    /**
+     * Two names deep, and the INNER one wins. `wrap()` hands back `{ cache: makeCache() }`, so
+     * `wrap` is already on the line being read and `makeCache` is where the `Map` is. The walk's own
+     * name was taken unconditionally and printed the first of the two.
+     */
+    expect(where.get("wrapped")).toBe("`makeCache`");
     // Written on the line itself, so there is nowhere else to send anybody.
     expect(where.get("byId")).toBeUndefined();
   });

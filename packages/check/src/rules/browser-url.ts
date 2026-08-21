@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { isTheGlobal } from "./globals";
 import type { Rule } from "./rule";
 
 /**
@@ -95,19 +96,13 @@ export const browserUrl = {
      * `window.location`, `globalThis.location`, `document.location`, `self.location` and a bare
      * `location`.
      *
-     * A bare name counts only when it resolves to NOTHING. The program is built with `noLib` and no
-     * `@types`, so the browser's own `location` has no declaration to find — while
-     * `const location = …` written in the source does. That is what tells the global from a local
-     * of the same name, and it costs no type.
-     *
-     * `self` was missing and is the third name for the same object; the package's other rules about
-     * a global already list it. Found by planting `self.location.pathname`, which was silent.
+     * A name the source can shadow counts only when it resolves to NOTHING — see `globals.ts`,
+     * which carries that reasoning and the two measurements behind it. `self` was missing here and
+     * was then accepted by NAME, which reported `const self = this; self.location.pathname` on a
+     * component reading its own field.
      */
     const isTheUrl = (node: ts.Expression): boolean =>
-      (ts.isPropertyAccessExpression(node) &&
-        node.name.text === "location" &&
-        ts.isIdentifier(node.expression) &&
-        ["window", "globalThis", "document", "self"].includes(node.expression.text)) ||
+      (ts.isPropertyAccessExpression(node) && node.name.text === "location" && isTheGlobal(node.expression, resolve)) ||
       (ts.isIdentifier(node) && node.text === "location" && resolve(node) === undefined);
 
     const report = (member: string, read: string, at: ts.Node): void => {

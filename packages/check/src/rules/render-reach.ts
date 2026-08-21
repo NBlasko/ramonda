@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { memberName } from "../syntax";
 import type { Resolver } from "./rule";
 
@@ -219,8 +220,16 @@ export function entryPoints(cls: ts.ClassDeclaration, resolve: Resolver): { memb
  *
  * A `.then`, a `queueMicrotask` and a `setTimeout` written in a render are not the ordinary way to
  * defer work — they are a side effect armed by an answer to a question, once per time the question
- * is asked. The handler case this exists to protect is a function RETURNED or handed to an
- * attribute, and neither of those is a call argument, so nothing about it needs this narrowing.
+ * is asked.
+ *
+ * **What this DOES cost, said rather than argued away.** A handler can be a call argument too:
+ * `onclick={debounce(() => { this.n += 1 }, 100)}` writes state on a click and is reported here,
+ * because the arrow is an argument to `debounce`. The shape `@memoized finish(id) { return () => …
+ * }` — a handler RETURNED — is the one the narrowing was written for and is still safe, since a
+ * returned function is not an argument. The wrapped-handler case is a real false report and the
+ * price of reporting the loop above, which is measured at 51 renders; it is not a case anyone has
+ * shown a way to tell apart from `rows.map(…)` without asking what the callee does with what it is
+ * handed.
  */
 function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   const parent = fn.parent;
@@ -421,15 +430,15 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
    * as a PARAMETER rather than through `this`, so nothing about `this` is knowable inside it and
    * only what depends on nothing — a clock, a random number — is worth finding.
    */
-  const props = hostPropsCallback(cls);
+  const props = hostPropsCallback(cls, reach.resolve);
   if (props !== undefined) walk(props, ["@Host props"], false, 0);
 }
 
 /** The second argument to `@Host`, when it is a function this can walk. */
-function hostPropsCallback(cls: ts.ClassDeclaration): ts.Node | undefined {
+function hostPropsCallback(cls: ts.ClassDeclaration, resolve: Resolver): ts.Node | undefined {
   for (const decorator of ts.getDecorators(cls) ?? []) {
     const call = decorator.expression;
-    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || call.expression.text !== "Host") continue;
+    if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
 
     const written = call.arguments[1];
     if (written === undefined) continue;

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { memberName, positionOf } from "../syntax";
 import type { Rule, RuleContext } from "./rule";
 
@@ -247,7 +248,7 @@ export const watchOfAPropThatIsNotThere = {
       for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
         const call = decorator.expression;
         if (!ts.isCallExpression(call)) continue;
-        if (!ts.isIdentifier(call.expression) || call.expression.text !== "watchProp") continue;
+        if (coreDecoratorName(decorator, resolve) !== "watchProp") continue;
 
         for (const selector of call.arguments) {
           const prop = propReadBy(selector, resolve);

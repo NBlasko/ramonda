@@ -61,16 +61,31 @@ describe("a component reading the browser's URL", () => {
    * `const { pathname } = window.location` is a read of exactly that member with the member's name
    * on the left; and `location["hash"]` is the dotted read with brackets round it.
    */
+  /**
+   * `self` is the one of the four that is routinely a LOCAL — `const self = this` is an ordinary
+   * line, and `(self) => …` is this framework's own convention for a `@Host` props callback. Added
+   * by NAME it reported both; it has to be proved not to be shadowed, like `window` and `document`.
+   */
   test("`self`, a destructure and a bracketed key are the same read", () => {
     const found = run("browser-url").findings["browser-url"].filter((i) => i.component === "OtherSpellings");
 
     expect(found.map((i) => `${i.line}:${i.read}`)).toEqual([
-      "41:self.location.pathname",
+      "33:self.location.pathname",
       // Quoted as the reader sees it, not rewritten into a dotted form that is not on the line.
-      "42:{ pathname } = window.location",
-      '43:window.location["hash"]',
+      "34:{ pathname } = window.location",
+      '35:window.location["hash"]',
     ]);
     expect(found.map((i) => i.instead)).toEqual(["pathname", "pathname", "hashTags"]);
+  });
+
+  /**
+   * A FALSE REPORT until `self` was made to prove itself: `const self = this` reads a component's
+   * own field, and `(self) => …` is the framework's own convention for a `@Host` props callback.
+   */
+  test("a local called `self` is not the global", () => {
+    const found = run("browser-url").findings["browser-url"];
+
+    expect(found.map((issue) => issue.component)).not.toContain("SelfIsALocal");
   });
 
   test("a local called `location` is left alone", () => {

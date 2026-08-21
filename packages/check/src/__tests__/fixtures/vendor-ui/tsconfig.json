@@ -2,9 +2,6 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@ramonda/core": ["../framework.ts"]
-    },
-    "paths": {
       "@acme/shared": ["../vendor-shared/src/index.tsx"]
     }
   },

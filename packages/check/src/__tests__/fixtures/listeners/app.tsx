@@ -195,6 +195,35 @@ class DevOnlyAndPaired extends Component {
   }
 }
 
+/**
+ * ✓ Added on `window` and removed on `globalThis` — the same object under two names.
+ *
+ * This is the `@ramonda/query` / `@ramonda/form` devtools shape with one word changed, and it was
+ * reported: the removal set was keyed on the spelling rather than on what the spelling names.
+ */
+@Host("div")
+class DevOnlyAcrossTwoNames extends Component {
+  @created
+  start() {
+    if (__DEV__) {
+      window.addEventListener("ramonda:panel-two", this.republish);
+    }
+  }
+
+  republish() {}
+
+  @destroyed
+  stop() {
+    if (__DEV__) {
+      globalThis.removeEventListener("ramonda:panel-two", this.republish);
+    }
+  }
+
+  render() {
+    return <div>two names</div>;
+  }
+}
+
 /** ✗ The same, with the hatch left open — a leak, in development. */
 @Host("div")
 class DevOnlyAndLeaking extends Component {
@@ -244,5 +273,6 @@ bootstrap(<UnreadableEvent />, null);
 bootstrap(<RemovesInTheSubclass />, null);
 bootstrap(<Concrete />, null);
 bootstrap(<DevOnlyAndPaired />, null);
+bootstrap(<DevOnlyAcrossTwoNames />, null);
 bootstrap(<DevOnlyAndLeaking />, null);
 bootstrap(<NotReallyGuarded />, null);

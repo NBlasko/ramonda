@@ -62,6 +62,11 @@ describe("a listener a component adds by hand", () => {
   test("inside `if (__DEV__)` the hand-rolled call is right, and only the open hatch is reported", () => {
     expect(by("nothing removes it")).toEqual(["DevOnlyAndLeaking"]);
     expect(found().map((issue) => issue.component)).not.toContain("DevOnlyAndPaired");
+    /**
+     * Added on `window`, removed on `globalThis` — one object under two names, and the devtools
+     * shape with one word changed. The removal set was keyed on the SPELLING, so this was reported.
+     */
+    expect(found().map((issue) => issue.component)).not.toContain("DevOnlyAcrossTwoNames");
   });
 
   /**

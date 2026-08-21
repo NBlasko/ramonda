@@ -514,7 +514,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * which is an ordering nobody can see from the call site.
    */
   const resolver: Resolver = Object.assign(resolve, {
-    coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep),
+    coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
@@ -859,13 +859,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    *
    * Built only when a rule would read it — the walk is one pass over every file, and a project
    * whose rules are all gated off should not pay for it.
-   */
-  /**
-   * `resolve`, with `coreName` hung on it — see the `Resolver` note in `rules/rule.ts`.
-   *
-   * Attached here rather than threaded as a second parameter because `resolve` already reaches
-   * every helper that needs it, and a parameter a caller can forget is the shape that silenced
-   * every tree rule for a commit.
    */
   const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
   if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolver), findings);

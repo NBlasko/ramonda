@@ -2,6 +2,7 @@ import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
 import { follow, type Looking } from "./follow-value";
 import { insideADevGuard } from "./dev-guard";
+import { isTheGlobal } from "./globals";
 import { heritage } from "./render-reach";
 import type { Rule, RuleContext } from "./rule";
 
@@ -97,9 +98,6 @@ export interface ListenerAddedByHandIssue {
   column: number;
 }
 
-/** The two globals that outlive every component. Anything else dies with something. */
-const OUTLIVES_THE_COMPONENT: ReadonlySet<string> = new Set(["window", "document", "globalThis", "self"]);
-
 /** The event name, through a `const` — `addEventListener(RESIZE, …)` is the same event. */
 const EVENT: Looking<string> = {
   leaf: (expression) => (ts.isStringLiteralLike(expression) ? expression.text : undefined),
@@ -109,11 +107,25 @@ const EVENT: Looking<string> = {
   throughMutableBindings: false,
 };
 
-/** `window` and `document` are the platform's: with no lib, a name the browser owns resolves to nothing. */
+/**
+ * The global object, when that is what this names — `globals.ts` decides, so all three rules that
+ * ask agree. Requiring `globalThis` to resolve to nothing silenced every listener written on it.
+ */
 function globalNamed(node: ts.Expression, resolve: RuleContext["resolve"]): string | undefined {
-  if (!ts.isIdentifier(node)) return undefined;
-  if (!OUTLIVES_THE_COMPONENT.has(node.text)) return undefined;
-  return resolve(node) === undefined ? node.text : undefined;
+  return isTheGlobal(node, resolve) && ts.isIdentifier(node) ? node.text : undefined;
+}
+
+/**
+ * WHICH object a name names, rather than how it was spelled.
+ *
+ * `window`, `globalThis` and `self` are one object; `document` is another. Matching an add against
+ * a removal by the SPELLING made a listener added on `window` and removed on `globalThis` look
+ * uncleaned — which is the `@ramonda/query` and `@ramonda/form` devtools shape with one word
+ * changed, and it was reported. The written name is still what the report prints, because that is
+ * what the reader has on the line.
+ */
+function objectNamed(written: string): "document" | "the global" {
+  return written === "document" ? "document" : "the global";
 }
 
 /** An `addEventListener` or `removeEventListener` on one of those globals, and what it listens for. */
@@ -216,13 +228,26 @@ export const listenerAddedByHand = {
     // its subclass added, on the same instance — the same argument `interval-with-no-cleanup` makes.
     const declared = [cls, ...heritage(cls, resolve)];
 
-    /** Every event some `removeEventListener` in the chain names. */
+    /** Every event some `removeEventListener` in the chain names, by the OBJECT rather than the name. */
     const removed = new Set<string>();
+    /**
+     * Objects something removes a listener from under a name this cannot read.
+     *
+     * `window.removeEventListener(this.kind, h)` is a removal, and which event it takes away is not
+     * knowable — so the add beside it cannot be called uncleaned. The add side already goes quiet on
+     * an unreadable name; the remove side has to be at least as careful, or the caution on one is
+     * undone by the carelessness of the other.
+     */
+    const removesSomethingUnreadable = new Set<string>();
+
     for (const declaring of declared) {
       for (const member of declaring.members) {
         ts.forEachChild(member, function look(node) {
           const call = listenerCall(node, "removeEventListener", resolve);
-          if (call?.event !== undefined) removed.add(`${call.on}:${call.event}`);
+          if (call !== undefined) {
+            if (call.event === undefined) removesSomethingUnreadable.add(objectNamed(call.on));
+            else removed.add(`${objectNamed(call.on)}:${call.event}`);
+          }
           ts.forEachChild(node, look);
         });
       }
@@ -258,7 +283,8 @@ export const listenerAddedByHand = {
             !abstract &&
             !cleansUpItself(added.call) &&
             added.event !== undefined &&
-            !removed.has(`${added.on}:${added.event}`)
+            !removed.has(`${objectNamed(added.on)}:${added.event}`) &&
+            !removesSomethingUnreadable.has(objectNamed(added.on))
           ) {
             // Inside a dev guard the hand-rolled call is right, and the only question left is
             // whether the hatch is closed.

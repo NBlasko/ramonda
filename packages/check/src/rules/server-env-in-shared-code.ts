@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
+import { isTheGlobal } from "./globals";
 import { isServerOnly } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
 
@@ -60,15 +61,15 @@ function processEnvRead(node: ts.Node, context: RuleContext): ts.Node | undefine
    * `globalThis.process.env.X` — the same object under the name every environment agrees on, and it
    * was silent because this required `process` to be a bare identifier.
    *
-   * No "resolves to nothing" test on `globalThis`, unlike everywhere else in this package: the
-   * checker knows that name whatever the lib settings are, so it always resolves and the test would
-   * silence every one of these. It is a reserved binding rather than a global anyone can shadow,
-   * which is what makes leaving the test off safe here. Node's `global` still takes it.
+   * `globals.ts` decides what names the global object, so the three rules that ask agree: a name
+   * the source can shadow has to be proved not to be, and `globalThis` cannot be shadowed.
    */
-  if (ts.isPropertyAccessExpression(target) && target.name.text === "process" && ts.isIdentifier(target.expression)) {
-    const owner = target.expression;
-    if (owner.text === "globalThis") return node;
-    if (owner.text === "global" && context.resolve(owner) === undefined) return node;
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    target.name.text === "process" &&
+    isTheGlobal(target.expression, context.resolve)
+  ) {
+    return node;
   }
 
   if (!ts.isIdentifier(target) || target.text !== "process") return undefined;

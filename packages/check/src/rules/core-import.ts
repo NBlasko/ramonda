@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { packageRootOf } from "../fragment";
+import type { Resolver } from "./rule";
 
 /**
  * Whether an identifier was imported from `@ramonda/core`.
@@ -52,9 +54,65 @@ export function coreExportName(
   id: ts.Node,
   resolveLocal: (node: ts.Node) => ts.Symbol | undefined,
   resolveStep?: (node: ts.Node) => ts.Symbol | undefined,
+  resolveFully?: (node: ts.Node) => ts.Symbol | undefined,
 ): string | undefined {
   if (!ts.isIdentifier(id)) return undefined;
-  return nameAtCore(resolveLocal(id), resolveStep, 0);
+  const byChain = nameAtCore(resolveLocal(id), resolveStep, 0);
+  if (byChain !== undefined) return byChain;
+  return resolveFully === undefined ? undefined : declaredInsideCore(resolveFully(id));
+}
+
+/**
+ * The name a declaration carries when it lives INSIDE `@ramonda/core` itself.
+ *
+ * The specifier chain cannot answer for core's own source, and that is not an edge case: core
+ * imports its own decorators relatively — `import { StableProps } from "./decorators"` in
+ * `base/Head.ts` — so nothing in that file names `@ramonda/core` at all. Every project in this
+ * repository maps the package to core's SOURCE, so `Head`'s `@StableProps("meta", "link")` was read
+ * as somebody else's the moment decorators started resolving, and `fresh-object-in-hook-props`
+ * reported a `meta` array that the hook has DECLARED stable — reporting the fix, on the framework's
+ * own hook. Measured in `apps/playground-ssr`.
+ *
+ * It answers the star re-export too, and nothing else can: `export * from "@ramonda/core"` in an
+ * app's own `ui` module resolves straight to core's own declaration, which names no module at all,
+ * so the specifier chain has nothing left to walk. Measured — a barrel switched off every class
+ * rule at once, because `hasDecorator` is the one chokepoint they all read through.
+ *
+ * By the PACKAGE NAME rather than a path, which is what keeps it honest: an app's own decorator of
+ * the same name lives in the app's package and is still nobody's business but the app's. The
+ * package root is read from disk once per directory.
+ */
+function declaredInsideCore(symbol: ts.Symbol | undefined): string | undefined {
+  const declaration = symbol?.declarations?.[0];
+  if (declaration === undefined) return undefined;
+
+  // A `.d.ts` inside core's package IS core — this is a question about identity, not about a body
+  // to walk, and a published package is exactly where a star re-export lands.
+  if (!packageIsCore(declaration.getSourceFile().fileName)) return undefined;
+
+  const named = (declaration as { name?: ts.Node }).name;
+  return named !== undefined && ts.isIdentifier(named) ? named.text : undefined;
+}
+
+/** Whether a file belongs to the package called `@ramonda/core`. Cached per directory. */
+const PACKAGE_OF = new Map<string, boolean>();
+
+function packageIsCore(fileName: string): boolean {
+  const root = packageRootOf(fileName);
+  if (root === undefined) return false;
+
+  const known = PACKAGE_OF.get(root);
+  if (known !== undefined) return known;
+
+  let isCore = false;
+  try {
+    const raw = ts.sys.readFile(`${root}/package.json`);
+    isCore = raw !== undefined && (JSON.parse(raw) as { name?: string }).name === "@ramonda/core";
+  } catch {
+    isCore = false;
+  }
+  PACKAGE_OF.set(root, isCore);
+  return isCore;
 }
 
 /** Walks the same chain `reaches` does and hands back the name at the end of it. */
@@ -148,4 +206,17 @@ function specifierOf(declaration: ts.Declaration): string | undefined {
 
   const named = statement.moduleSpecifier;
   return named !== undefined && ts.isStringLiteral(named) ? named.text : undefined;
+}
+
+/**
+ * The name `@ramonda/core` exports a DECORATOR under, or `undefined` when it is not core's.
+ *
+ * Every rule that reads a decorator asked for the name written on the class, which fails the two
+ * ways a bare name always does. Measured with `fixtures/aliased-more`: `@StableProps` under an alias
+ * made `fresh-object-in-props` report a prop the child had DECLARED — reporting the fix — while an
+ * aliased `@watchProp` and `@onElement` went quiet.
+ */
+export function coreDecoratorName(decorator: ts.Decorator, resolve: Resolver): string | undefined {
+  const written = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;
+  return resolve.coreName(written);
 }

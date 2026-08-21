@@ -78,7 +78,17 @@ export function lossyIn(written: ts.Expression, resolve: ElementContext["resolve
    * followed, because either path that puts a `Map` in the blob loses that data on that path.
    */
   const elsewhere = follow(written, resolve, lossyLeaf(resolve, depth));
-  return elsewhere === undefined ? undefined : { ...elsewhere.value, foundIn: elsewhere.foundIn };
+  if (elsewhere === undefined) return undefined;
+
+  /**
+   * The INNERMOST name wins, which is what `Lossy.foundIn` promises and what the reader needs.
+   *
+   * `@persist blob = wrap()` where `wrap()` hands back `{ cache: makeCache() }` has two answers:
+   * `wrap`, which is already on the line being read, and `makeCache`, which is where the `Map` is.
+   * Taking the walk's own name unconditionally printed the first — sending the reader to the line
+   * they were already looking at, which is the fault `Found.foundIn` exists to avoid.
+   */
+  return { ...elsewhere.value, foundIn: elsewhere.value.foundIn ?? elsewhere.foundIn };
 }
 
 /** What this expression IS, without following a name out of it. */

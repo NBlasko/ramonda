@@ -29,8 +29,31 @@ describe("a core decorator imported under another name", () => {
   test("is judged exactly as the plainly written one is", () => {
     const findings = run().findings;
 
-    expect(findings["state-mutated-in-place"].map((issue) => issue.component)).toEqual(["Plain", "Aliased"]);
-    expect(findings["state-written-while-rendering"].map((issue) => issue.component)).toEqual(["Plain", "Aliased"]);
+    expect(findings["state-mutated-in-place"].map((issue) => issue.component)).toEqual([
+      "Plain",
+      "Aliased",
+      "ThroughABarrel",
+    ]);
+    expect(findings["state-written-while-rendering"].map((issue) => issue.component)).toEqual([
+      "Plain",
+      "Aliased",
+      "ThroughABarrel",
+    ]);
+  });
+
+  /**
+   * `export * from "@ramonda/core"` in an app's own `ui` module — and the one shape the specifier
+   * chain cannot walk, because a star export resolves straight to core's own declaration, which
+   * names no module at all. Measured: a barrel switched off every class rule at once, since
+   * `hasDecorator` is the chokepoint they all read through.
+   *
+   * Answered by the PACKAGE the declaration lives in, which is why this fixture points at
+   * `core-pkg` — a stub with a `package.json` that really says `@ramonda/core`.
+   */
+  test("a star re-export is core's too", () => {
+    const found = run().findings["state-mutated-in-place"].map((issue) => issue.component);
+
+    expect(found).toContain("ThroughABarrel");
   });
 
   /** The two are the same component written twice, so they earn the same findings. */
@@ -43,5 +66,6 @@ describe("a core decorator imported under another name", () => {
       expect(everything).toContain(found.replace(":Plain", ":Aliased"));
     }
     expect(everything.filter((one) => one.endsWith(":Aliased"))).toHaveLength(2);
+    expect(everything.filter((one) => one.endsWith(":ThroughABarrel"))).toHaveLength(2);
   });
 });
