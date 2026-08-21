@@ -62,10 +62,11 @@ declare global {
   const extra: any;
   const needsData: any;
 
-  /** The ISR cache in the modes page — any store with these two methods will do. */
+  /** The ISR cache in the modes page — the client the example's store is written over. */
   const redis: {
     get(key: string): Promise<string | null>;
     set(key: string, value: string): Promise<void>;
+    del(key: string): Promise<void>;
   };
   const bakePath: (path: string) => Promise<string>;
 }

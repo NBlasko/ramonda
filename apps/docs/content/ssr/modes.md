@@ -212,7 +212,7 @@ it), or `isr-cold` (nothing cached, so this request waited for the render).
 | `fileStore({ dir })` | in a directory | a restart must not empty the cache, or instances share a volume |
 | your own | wherever you like | instances share nothing but a Redis or a database |
 
-A store is two methods, which is the whole point:
+A store is three small methods, which is the whole point:
 
 ```ts
 const redisStore = {
@@ -223,8 +223,15 @@ const redisStore = {
   async set(key, entry) {
     await redis.set(`isr:${key}`, JSON.stringify(entry));
   },
+  async delete(key) {
+    await redis.del(`isr:${key}`);
+  },
 };
 ```
+
+**`delete` is not optional.** A route with a `:param` fills the cache as pages are asked for, so
+`maxPages` has to be able to drop one — a store without it fails at the first eviction, and that
+failure is reported rather than raised, so the cache would grow instead of stopping.
 
 A store may lose an entry at any time — eviction, expiry, a cleared directory. That is not an
 error: a missing entry is a cold render, which is always correct and only slower.

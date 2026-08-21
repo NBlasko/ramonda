@@ -54,3 +54,17 @@ own — all three were that map saying something the store does not.
 Planted seven ways, and two of the plants found missing COVERAGE rather than a fault: the trim on the
 stale path and the guard on the hit path were untested, because the first tests reached only the other
 two branches. Both are covered now.
+
+**A second review of that fix found two more of the same class, and both are in the ordering.** The trim
+forgot a key BEFORE awaiting `store.delete`, so a rejected delete left the page in the store with nothing
+pointing at it — permanently, which made the sentence "the next request tries again" false; the store is
+dropped first now. And the stale path trims before starting a rebake while `bake`'s write recorded
+nothing, so an entry evicted mid-rebake was written back into a store the count no longer knew about;
+recency is recorded beside the write, so a landing rebake re-registers itself.
+
+`onError` receives eviction failures as well as rebakes now, so its contract says so, its default line
+says "background work" rather than "rebake", and an eviction is reported against the page it could not
+drop with the operation named and the reason in the `cause`. `IsrStore`'s own docstring, `fileStore`'s,
+the `redisStore` example on the modes page and the preamble it type-checks against all said two methods;
+the example would have thrown `store.delete is not a function` at the first eviction, and `guarded`
+would have swallowed it.

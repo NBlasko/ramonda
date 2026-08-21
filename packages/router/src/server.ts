@@ -145,6 +145,9 @@ export interface RoutePlan {
  * any other path that bakes nothing — warming an ISR page is `isr.serve(path)` at boot, not a build
  * step. It is still named in `needsData` so a caller doing that knows which routes have pages to warm.
  *
+ * A warm-up cannot exceed that cache's `maxPages`: the trim runs after every answer, so a loop over
+ * more paths than the cap evicts the pages it has just baked, in the order it baked them.
+ *
  * (Two earlier versions of this comment were wrong in two different directions, which is worth leaving
  * a note about: the first claimed such a route "is served and refreshed per request" and that a build
  * could "warm those pages"; the second described the gap that the same branch then closed. A comment

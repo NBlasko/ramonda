@@ -44,8 +44,9 @@ export interface IsrEntry {
 }
 
 /**
- * Where baked pages live. Two methods, both async so a network store fits without pretending
- * to be synchronous.
+ * Where baked pages live. Three methods, all async so a network store fits without pretending to be
+ * synchronous — `delete` joined them when a `:param` route became cacheable, because one route is then
+ * as many pages as there are items and the cache has to be able to give one back.
  *
  * A store may lose an entry at any time — expiry, eviction, a cleared directory. That is not an
  * error: a missing entry is a cold render, which is always correct, only slower.
@@ -83,8 +84,14 @@ export interface IsrCacheOptions {
    */
   render(path: string): Promise<string>;
   /**
-   * Called when a BACKGROUND rebake fails. The visitor already has the stale page by then, so
-   * the failure has no other way to be seen. Default: log to stderr.
+   * Called when BACKGROUND WORK for a page fails — a rebake, or an eviction. Neither has another way
+   * to be seen: the visitor already has an answer by then, and neither failure is theirs to receive.
+   *
+   * It said "a background rebake" and only a rebake reached it, until eviction did. The `path` is the
+   * page the work was ABOUT, not the one being served — an eviction of `/products/1` while serving
+   * `/products/2` reports `/products/1`, because that is the page an operator has to go and look at.
+   *
+   * Default: log to stderr.
    */
   onError?(path: string, error: unknown): void;
   /**
@@ -152,7 +159,9 @@ function defaultOnError(path: string, error: unknown): void {
    * A route key comes from the app's own table, so nothing hostile reaches here. It costs nothing
    * to be right anyway, and the placeholder form is what Node's own logging expects.
    */
-  console.error("[ramonda:isr] background rebake of %s failed:", path, error);
+  // "background work", not "rebake": an eviction reaches this too, and naming the wrong operation sends
+  // an operator to look at the wrong thing. The error itself says which.
+  console.error("[ramonda:isr] background work for %s failed:", path, error);
 }
 
 export function createIsrCache(options: IsrCacheOptions): IsrCache {
@@ -235,6 +244,10 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     }
   };
 
+  /** Names the operation, since `onError` receives failures from two of them now. */
+  const evicting = (key: string, error: unknown): Error =>
+    new Error(`evicting the least recently asked-for page, \`${key}\``, { cause: error });
+
   /**
    * Brings the cache back under the cap, and it runs after EVERY answer rather than only after a bake.
    *
@@ -250,9 +263,20 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     while (held.size > maxPages) {
       const oldest = held.keys().next();
       if (oldest.done) return;
-      held.delete(oldest.value);
+      // The STORE first, and only then forget it. The other order loses the entry for good: a `delete`
+      // that rejects left the page in the store with nothing in `held` pointing at it, so no later
+      // trim could ever reach it and the cache stayed permanently over the cap — measured, and it made
+      // the sentence below ("the next request tries again") false. `guarded` stops the throw here, so
+      // the key stays and the next request retries this same one.
       // A store may have lost it already; `delete` is documented not to mind.
-      await store.delete(oldest.value);
+      try {
+        await store.delete(oldest.value);
+      } catch (error) {
+        // Reported against the page that could not be dropped, which is the one to go and look at.
+        onError(oldest.value, evicting(oldest.value, error));
+        return;
+      }
+      held.delete(oldest.value);
     }
   };
 
@@ -275,6 +299,19 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     const work = render(path)
       .then(async (html) => {
         await store.set(path, { html, at: now() });
+        /**
+         * Recorded HERE, beside the write, and that is the fix for an orphan.
+         *
+         * The stale path trims before starting the rebake, so an entry could be evicted — gone from
+         * `held` and from the store — while its rebake was in flight, and the landing rebake then
+         * wrote it back into a store `held` no longer knew about. Measured with `maxPages: 1`: two
+         * entries in a store allowed one, and still two after five more requests, because no trim
+         * could see the one nobody had recorded.
+         *
+         * A write is what puts a page in the store, so a write is what the count has to follow.
+         */
+        touch(path);
+        await guarded(path, trim);
         return html;
       })
       .finally(() => {
@@ -317,11 +354,9 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
       }
 
       // Cold: there is no previous copy, so this one request pays for the render. It throws on
-      // failure, and should — there is nothing to send instead. Nothing is remembered until it has.
-      const html = await bake(path);
-      touch(path);
-      await guarded(path, trim);
-      return { html, mode: "isr-cold" };
+      // failure, and should — there is nothing to send instead. Nothing is recorded until the write
+      // inside `bake` has happened, which is also where the trim is, so there is one place for both.
+      return { html: await bake(path), mode: "isr-cold" };
     },
   };
 }
@@ -363,7 +398,7 @@ export interface FileStoreOptions {
  * Survives a restart, and is shared by every instance that mounts the same directory — a
  * shared volume, or simply several processes on one machine. For instances that share nothing,
  * write an `IsrStore` over whatever they DO share (Redis, Memcached, a database table); the
- * interface is two methods on purpose.
+ * interface is three small methods on purpose.
  *
  * Writes are atomic: the page goes to a temporary file and is renamed into place, so a reader
  * never sees half of one. A read that fails for any reason — missing, truncated, not JSON —

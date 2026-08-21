@@ -480,11 +480,6 @@ describe("what the cap counts", () => {
   });
 
   /**
-   * `fileStore.delete` swallows everything, but `IsrStore` is an interface an app implements and its
-   * contract only promises that a missing key is not an error. A store that is down must not turn a
-   * page that rendered into a 500.
-   */
-  /**
    * The STALE branch trims too, and it is here because planting found it uncovered: the first three
    * tests reach only the hit and cold paths, so removing the trim from this one changed nothing they
    * could see.
@@ -526,7 +521,7 @@ describe("what the cap counts", () => {
   test("an eviction that throws on a HIT does not fail the hit", async () => {
     const entries = new Map<string, { html: string; at: number }>();
     for (const path of ["/products/1", "/products/2"]) entries.set(path, { html: path, at: 1_000_000 });
-    const errors: string[] = [];
+    const reported: Array<{ path: string; error: unknown }> = [];
     const store: IsrStore = {
       async get(key) {
         return entries.get(key);
@@ -543,7 +538,7 @@ describe("what the cap counts", () => {
       store,
       maxPages: 1,
       render: async (path) => path,
-      onError: (_path, error) => errors.push(String(error)),
+      onError: (path, error) => reported.push({ path, error }),
       now: () => 1_000_000,
     });
 
@@ -551,7 +546,16 @@ describe("what the cap counts", () => {
     const second = await isr.serve("/products/2");
 
     expect(second).toEqual({ html: "/products/2", mode: "isr-hit" });
-    expect(errors.join()).toContain("the store is down");
+    expect(reported).toHaveLength(1);
+    const [first] = reported;
+    if (first === undefined) throw new Error("nothing was reported");
+
+    // The page it was ABOUT, not the one being served — that is the one to go and look at.
+    expect(first.path).toBe("/products/1");
+    // The wrapper names the operation and the cause carries the reason; both, because the operation
+    // alone does not say why and the reason alone does not say what was being done.
+    expect((first.error as Error).message).toContain("evicting");
+    expect(String((first.error as Error).cause)).toContain("the store is down");
   });
 
   test("an eviction that cannot happen is reported, not raised", async () => {
@@ -563,7 +567,8 @@ describe("what the cap counts", () => {
 
     expect(second?.mode).toBe("isr-cold");
     expect(second?.html).toBe("/products/2");
-    expect(errors.join()).toContain("the store is down");
+    expect(errors.join()).toContain("evicting");
+    expect(errors.join()).toContain("/products/1");
     // The page that could not be dropped is still there, which is a cache one entry too large —
     // tried again on the next request, and not a page the visitor failed to get.
     expect(entries.has("/products/2")).toBe(true);

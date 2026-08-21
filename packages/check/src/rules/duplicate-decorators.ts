@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { coreDecoratorName } from "./core-import";
-import { decoratorName, positionOf } from "../syntax";
+import { positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
 /**
