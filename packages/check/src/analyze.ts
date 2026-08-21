@@ -663,14 +663,31 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   /**
    * The host element THIS site mounts, when the class left the tag to a prop.
    *
-   * `<Card as="section" />` against `@Host((self) => self.props.as ?? "div")` is a `<section>`, and
-   * the next `<Card />` is a `<div>`. The class cannot say which — only which PROP decides — so the
-   * answer belongs to the call, exactly as `binds` does.
+   * `<Card as="section" />` against `@Host((p) => p.as ?? "div")` is a `<section>`, and the next
+   * `<Card />` is a `<div>`. The class cannot say which — only which PROP decides — so the answer
+   * belongs to the call, exactly as `binds` does.
    *
    * `undefined` for a class that settles its own tag: the node says it once and the edge repeating
    * it would be two places to keep in step. `undefined` too when the site names no such attribute
    * and the callback offered no fallback, which is the honest answer rather than a guess at what the
    * prop's default might be.
+   *
+   * ## The parent side is unfinished, and deliberately left so
+   *
+   * Only a LITERAL at the site is read. `<Card as={this.props.kind} />` and `<Card as={TAG} />` both
+   * come back `undefined` — and a polymorphic component is passed through more often than it is
+   * written out, because that is what makes it worth having: `<Box as={this.props.as}>` inside
+   * another `<Box>`.
+   *
+   * Some of that is reachable. A module-scope constant is what `follow` already does, and a prop
+   * threaded from a parent that mounts a literal is the same walk one edge further out. Some of it
+   * is not reachable at all: a tag chosen by state, by a map, or by a value from a fetch has no
+   * static answer, and a checker that guesses at those is worse than one that stays quiet.
+   *
+   * Nothing here approximates the difference. Every reader takes `undefined` as "not knowable at
+   * this site", so widening what IS knowable can only add facts, never change one that is already
+   * recorded. Worth spending real time on when there is real time: the question is how far the walk
+   * pays for itself before it starts inventing.
    */
   function hostTagAt(target: ComponentNode, site: ts.Node): string | undefined {
     const host = target.host;

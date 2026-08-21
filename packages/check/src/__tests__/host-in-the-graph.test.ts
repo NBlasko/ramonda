@@ -34,6 +34,16 @@ describe("the host element in the graph", () => {
   });
 
   /**
+   * The callback's parameter is the props BAG — the runtime calls it as `tagFromProps(props)`, and
+   * the diff has to, because it runs before the component exists. So `p.props.as` names a prop
+   * called `props`, and nothing here may report that as the `as` prop. It did, for as long as the
+   * fixture wrote a calling convention the framework does not have.
+   */
+  test("a read one level too deep names no prop", () => {
+    expect(nodeNamed("ReadsTooDeep")?.host).toBeUndefined();
+  });
+
+  /**
    * And the call site says the rest. On the EDGE and not the node, for the reason `binds` is there:
    * a value handed over belongs to a call, and a node carrying one of two answers would be wrong
    * about the other half the time.

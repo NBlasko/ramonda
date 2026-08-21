@@ -81,7 +81,7 @@ describe("a `@Host` tag that names no element", () => {
   /**
    * The prop at the CALL SITE is not followed into the callback, and that is the honest limit.
    *
-   * `<FromProps as="dvi">` names no element, and `@Host((self) => self.props.as ?? "div")` is what
+   * `<FromProps as="dvi">` names no element, and `@Host((p) => p.as ?? "div")` is what
    * turns that prop into the tag. Reading it would mean following one value into one callback and
    * back out — and the answer would differ per call site, while this rule reports once per CLASS.
    * So the tag stays unknown and both rules stay quiet, which is the contract rather than an
@@ -97,7 +97,7 @@ describe("a `@Host` tag that names no element", () => {
 
     expect(named).not.toContain("CustomElement");
     expect(named).not.toContain("Clip");
-    // `@Host((self) => self.props.dense ? "table" : "div")` has no single answer, and core says the
+    // `@Host((p) => p.dense ? "table" : "div")` has no single answer, and core says the
     // same of it — it re-checks what the callback returns on every call instead.
     expect(named).not.toContain("Computed");
   });

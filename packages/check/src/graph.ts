@@ -18,7 +18,7 @@ export type Where = string;
  * What a component's HOST element is — the element it IS, as far as the source settles it.
  *
  * Two shapes, because `@Host` has two. A tag written down (or held in a name) settles it for every
- * mount of the class. A tag computed from ONE prop does not: `@Host((self) => self.props.as ?? "div")`
+ * mount of the class. A tag computed from ONE prop does not: `@Host((p) => p.as ?? "div")`
  * is a `<section>` at one call site and a `<div>` at the next, so the class can only say which prop
  * decides and what it falls back to. The call site says the rest — see `GraphEdge.hostTag`.
  *
@@ -156,7 +156,7 @@ export interface GraphEdge {
   slot?: string;
   /**
    * The host element THIS site mounts, when the class left the tag to a prop and this site supplies
-   * it — `<Card as="section" />` against `@Host((self) => self.props.as ?? "div")`.
+   * it — `<Card as="section" />` against `@Host((p) => p.as ?? "div")`.
    *
    * On the edge and not on the node, for the reason `binds` is: a value handed over belongs to a
    * call. `<Card as="section" />` in one place and `<Card as="dvi" />` in another are two elements,

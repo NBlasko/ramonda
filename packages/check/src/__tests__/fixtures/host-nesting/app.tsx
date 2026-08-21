@@ -36,7 +36,7 @@ class WrapsInATable extends Component {
 }
 
 /** The tag is computed, so nothing can say what the parent is. */
-@Host((self: Computed) => (self.props.dense ? "table" : "div"))
+@Host((p: { dense?: boolean }) => (p.dense ? "table" : "div"))
 class Computed extends Component<{ dense?: boolean }> {
   render() {
     return this.props.children;
@@ -128,8 +128,19 @@ class Clipped extends Component {
 }
 
 /** The tag comes from a PROP at the call site — can the walk follow it into the callback? */
-@Host((self: FromProps) => self.props.as ?? "div")
+@Host((p: { as?: string }) => p.as ?? "div")
 class FromProps extends Component<{ as?: string }> {
+  render() {
+    return this.props.children;
+  }
+}
+
+/**
+ * A level too deep. The parameter is the props bag, so this reads a prop NAMED `props` and takes
+ * `.as` off it — not the `as` prop, and not anything the runtime would hand over.
+ */
+@Host((p: { props?: { as?: string } }) => p.props?.as ?? "div")
+class ReadsTooDeep extends Component<{ as?: string }> {
   render() {
     return this.props.children;
   }

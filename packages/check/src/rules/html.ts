@@ -169,7 +169,7 @@ const HOST_TAG: Looking<string> = {
 /**
  * What `@Host` says this component's element is — a settled tag, or the prop that decides it.
  *
- * The callback form is the half a name cannot answer: `@Host((self) => self.props.as ?? "div")` is a
+ * The callback form is the half a name cannot answer: `@Host((p) => p.as ?? "div")` is a
  * different element at every call site, so the class says WHICH prop and what it falls back to, and
  * the site says the rest. Only that one shape is read — a single prop, optionally with a `??` or
  * `||` default. A callback reading two props, computing a value, or reaching through a member is not
@@ -185,7 +185,7 @@ export function hostFactOf(cls: ts.ClassDeclaration, resolve: Resolver): HostFac
 
   const parameter = written.parameters[0];
   if (parameter === undefined || !ts.isIdentifier(parameter.name)) return undefined;
-  const self = parameter.name.text;
+  const bag = parameter.name.text;
 
   // A concise body IS the returned expression; a block has to say `return` and nothing else.
   const body = ts.isBlock(written.body)
@@ -195,28 +195,37 @@ export function hostFactOf(cls: ts.ClassDeclaration, resolve: Resolver): HostFac
     : written.body;
   if (body === undefined) return undefined;
 
-  // `self.props.as ?? "div"` — the fallback is what the element is when nobody names the prop.
+  // `p.as ?? "div"` — the fallback is what the element is when nobody names the prop.
   if (
     ts.isBinaryExpression(body) &&
     (body.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
       body.operatorToken.kind === ts.SyntaxKind.BarBarToken)
   ) {
-    const prop = propReadIn(body.left, self);
+    const prop = propReadIn(body.left, bag);
     const fallback = follow(body.right, resolve, HOST_TAG)?.value;
     return prop === undefined ? undefined : fallback === undefined ? { fromProp: prop } : { fromProp: prop, fallback };
   }
 
-  const prop = propReadIn(body, self);
+  const prop = propReadIn(body, bag);
   return prop === undefined ? undefined : { fromProp: prop };
 }
 
-/** `self.props.as` — the ONE prop a tag callback reads, when that is all it does. */
-function propReadIn(expression: ts.Expression, self: string): string | undefined {
+/**
+ * `p.as` — the ONE prop a tag callback reads, when that is all it does.
+ *
+ * **The parameter IS the props bag, not the component.** `@Host`'s tag callback is typed
+ * `(props: PropsOf<C>) => string` and the runtime calls it as `meta.tagFromProps(props ?? {})`.
+ * That is not a choice in the signature, it is forced: the diff calls it from `hostTagMatches`
+ * BEFORE the component is constructed, so there is no instance to hand it.
+ *
+ * This read `self.props.as` until a fixture was rewritten to the shape the runtime produces — a
+ * shape it then returned nothing for, while happily reporting `as` for a callback that, run, reads
+ * a prop named `props` and takes `.as` off whatever that is. Both graph tests failed the moment the
+ * fixture stopped inventing its own calling convention.
+ */
+function propReadIn(expression: ts.Expression, bag: string): string | undefined {
   if (!ts.isPropertyAccessExpression(expression) || !ts.isIdentifier(expression.name)) return undefined;
-
-  const owner = expression.expression;
-  if (!ts.isPropertyAccessExpression(owner) || owner.name.text !== "props") return undefined;
-  if (!ts.isIdentifier(owner.expression) || owner.expression.text !== self) return undefined;
+  if (!ts.isIdentifier(expression.expression) || expression.expression.text !== bag) return undefined;
 
   return expression.name.text;
 }
