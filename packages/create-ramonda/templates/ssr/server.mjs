@@ -54,7 +54,7 @@ if (isProd) {
     // Where baked ISR pages live. A directory, so the cache survives a restart and is shared by
     // every instance that mounts it — a plain Map would give each process its own copy and let a
     // visitor bounce between a fresh and a stale one. Instances that share no disk want a store
-    // over something they DO share: an `IsrStore` is two methods, `get` and `set`.
+    // over something they DO share: an `IsrStore` is three methods, `get` and `set`.
     // `npm run build` clears this directory, because pages in it were baked by the old bundle.
     store: fileStore({ dir: resolve(here, "dist/isr") }),
     render: bakeShared,

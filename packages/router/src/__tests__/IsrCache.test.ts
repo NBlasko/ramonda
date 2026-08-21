@@ -233,8 +233,9 @@ describe("the store is what makes a second instance agree with the first", () =>
     expect((await readdir(dir)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
-  test("any two-method object is a store — that is the whole contract", async () => {
+  test("any three-method object is a store — that is the whole contract", async () => {
     const written: Array<[string, string]> = [];
+    const dropped: string[] = [];
     const remote: IsrStore = {
       async get() {
         return undefined;
@@ -242,11 +243,159 @@ describe("the store is what makes a second instance agree with the first", () =>
       async set(key, entry) {
         written.push([key, entry.html]);
       },
+      // Third since a `:param` route became cacheable: one route, as many pages as there are items,
+      // so the cache has to be able to give one back.
+      async delete(key) {
+        dropped.push(key);
+      },
     };
 
     const isr = createIsrCache({ plan, store: remote, render: async () => "<p>from redis, say</p>" });
     await isr.serve("/about");
 
     expect(written).toEqual([["/about", "<p>from redis, say</p>"]]);
+  });
+});
+
+/**
+ * A route with a `:param` — one route, as many pages as there are items.
+ *
+ * It was accepted and did nothing: `plan.isr` carried the PATTERN and the window map was keyed by that
+ * string, so `serve("/products/7")` looked up `/products/7`, found no window, and returned `undefined`.
+ * The caller then fell through to its dynamic branch and rendered per request with the real request
+ * context — the opposite of what `revalidate` asks for, and silent.
+ */
+describe("an ISR route that takes a param", () => {
+  const products = { isr: [{ path: "/products/:id", revalidate: 60 }] };
+
+  test("a request for one of its pages is this cache's business", async () => {
+    const time = clock();
+    const baked: string[] = [];
+    const isr = createIsrCache({
+      plan: products,
+      store: memoryStore(),
+      maxPages: 10,
+      render: async (path) => {
+        baked.push(path);
+        return `<p>${path}</p>`;
+      },
+      now: time.now,
+    });
+
+    const cold = await isr.serve("/products/7");
+    expect(cold).toEqual({ html: "<p>/products/7</p>", mode: "isr-cold" });
+
+    // Cached under the PATH, not the pattern, so a second product is its own page.
+    expect((await isr.serve("/products/7"))?.mode).toBe("isr-hit");
+    expect((await isr.serve("/products/9"))?.mode).toBe("isr-cold");
+    expect(baked).toEqual(["/products/7", "/products/9"]);
+
+    // And the window is the route's: past it, the next request serves stale and rebakes.
+    time.advance(61_000);
+    expect((await isr.serve("/products/7"))?.mode).toBe("isr-stale");
+  });
+
+  test("a literal route wins over a pattern that would also match", async () => {
+    const time = clock();
+    const isr = createIsrCache({
+      // `/products/new` first, the way a table declares the specific one before the general.
+      plan: {
+        isr: [
+          { path: "/products/new", revalidate: 5 },
+          { path: "/products/:id", revalidate: 600 },
+        ],
+      },
+      store: memoryStore(),
+      maxPages: 10,
+      render: async (path) => path,
+      now: time.now,
+    });
+
+    await isr.serve("/products/new");
+    // The literal route's window is 5s. If the pattern had answered, this would still be fresh at 10s.
+    time.advance(10_000);
+    expect((await isr.serve("/products/new"))?.mode).toBe("isr-stale");
+  });
+
+  /**
+   * The cap is required for these routes and refused for the others, because a number that bounds
+   * nothing is a number somebody will trust.
+   */
+  test("`maxPages` is required, and refused when there is nothing to bound", async () => {
+    expect(() => createIsrCache({ plan: products, store: memoryStore(), render: async () => "x" })).toThrow(
+      /`\/products\/:id` is an ISR route that takes a `:param`.*pass `maxPages`/s,
+    );
+    expect(() =>
+      createIsrCache({ plan: products, store: memoryStore(), maxPages: 0, render: async () => "x" }),
+    ).toThrow(/pass `maxPages`/);
+    expect(() => createIsrCache({ plan, store: memoryStore(), maxPages: 10, render: async () => "x" })).toThrow(
+      /no ISR route takes a `:param`.*Remove it/s,
+    );
+  });
+});
+
+/**
+ * The bound, and it is least RECENTLY used rather than least often — see `maxPages` for why counting
+ * hits does the opposite of what it looks like.
+ */
+describe("the page cap", () => {
+  const products = { isr: [{ path: "/products/:id", revalidate: 60 }] };
+
+  const bounded = (maxPages: number, dropped: string[]) => {
+    const entries = new Map<string, { html: string; at: number }>();
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        dropped.push(key);
+        entries.delete(key);
+      },
+    };
+    return {
+      entries,
+      isr: createIsrCache({ plan: products, store, maxPages, render: async (path) => path }),
+    };
+  };
+
+  test("a third page past a cap of two drops the one nobody asked for longest", async () => {
+    const dropped: string[] = [];
+    const { entries, isr } = bounded(2, dropped);
+
+    await isr.serve("/products/1");
+    await isr.serve("/products/2");
+    expect(dropped).toEqual([]);
+
+    await isr.serve("/products/3");
+    expect(dropped).toEqual(["/products/1"]);
+    expect([...entries.keys()]).toEqual(["/products/2", "/products/3"]);
+  });
+
+  /**
+   * The half that makes it RECENCY: asking for a page again saves it, which is what counting hits
+   * cannot do for a page that is new.
+   */
+  test("asking for a page again moves it out of the way of the eviction", async () => {
+    const dropped: string[] = [];
+    const { isr } = bounded(2, dropped);
+
+    await isr.serve("/products/1");
+    await isr.serve("/products/2");
+    // 1 is wanted again, so 2 becomes the one nobody has asked for longest.
+    expect((await isr.serve("/products/1"))?.mode).toBe("isr-hit");
+
+    await isr.serve("/products/3");
+    expect(dropped).toEqual(["/products/2"]);
+  });
+
+  test("a cache that never exceeds the cap drops nothing", async () => {
+    const dropped: string[] = [];
+    const { isr } = bounded(3, dropped);
+
+    for (const id of [1, 2, 3, 1, 2, 3]) await isr.serve(`/products/${id}`);
+    expect(dropped).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { matchParams } from "./match";
 import type { RoutePlan } from "./server";
 
 /**
@@ -52,6 +53,15 @@ export interface IsrEntry {
 export interface IsrStore {
   get(key: string): Promise<IsrEntry | undefined>;
   set(key: string, entry: IsrEntry): Promise<void>;
+  /**
+   * Drops one entry. Required, and it exists because a `:param` route has no fixed number of pages:
+   * `/products/:id` is one route and as many pages as there are products, so the cache has to be able
+   * to give one back.
+   *
+   * Deleting a key that is not there is not an error — a store may have lost it already, and a missing
+   * entry is a cold render, which is always correct and only slower.
+   */
+  delete(key: string): Promise<void>;
 }
 
 /** Which of the three answers a request got. Sent as `X-Ramonda-Mode`, and useful in a log. */
@@ -77,6 +87,39 @@ export interface IsrCacheOptions {
    * the failure has no other way to be seen. Default: log to stderr.
    */
   onError?(path: string, error: unknown): void;
+  /**
+   * How many pages this cache may hold before it starts giving one back. **Required when any ISR
+   * route takes a `:param`**, and refused otherwise as a number with nothing to bound.
+   *
+   * A route without params has one page, so the old cache could not grow: the count was the number of
+   * routes. `/products/:id` is one route and as many pages as there are products, and a crawler
+   * walking `/products/1`…`/products/100000` would otherwise fill a disk with pages nobody asked for.
+   *
+   * ## Least RECENTLY used, not least often
+   *
+   * Evicting the fewest hits is the intuitive rule and it does the opposite of what it looks like.
+   * Counts accumulate, so a product that was popular last week keeps its ten thousand and a page that
+   * went viral an hour ago has three — and a brand new entry always has the fewest, so it is always
+   * the first one thrown out. Fixing that needs the counters to decay, which needs a clock, which
+   * needs a test that depends on one.
+   *
+   * Recency needs none of it and adapts by itself: whatever is being asked for keeps moving to the
+   * back of the queue. A JavaScript `Map` iterates in insertion order, so the whole policy is a
+   * delete-and-set on a hit and one `keys().next()` on an eviction.
+   *
+   * And the TTL is why the policy matters less than the CAP: every entry dies after `revalidate`
+   * seconds anyway, so this is never choosing between a fresh page and an ancient one — it is choosing
+   * among pages that are all at most one window old. The bound is protection from BREADTH in a single
+   * window, and against breadth any eviction works.
+   *
+   * ## What it does not promise
+   *
+   * The count is per PROCESS. Two instances over one `fileStore` directory each bound their own view,
+   * so what is on disk can be up to twice this. That is honest rather than fixed: making it exact means
+   * the store owning the bound and enumerating itself, which is a different design and not one this
+   * needed yet.
+   */
+  maxPages?: number;
   /** Test seam. */
   now?(): number;
 }
@@ -113,9 +156,78 @@ function defaultOnError(path: string, error: unknown): void {
 }
 
 export function createIsrCache(options: IsrCacheOptions): IsrCache {
-  const { plan, store, render, onError = defaultOnError, now = Date.now } = options;
+  const { plan, store, render, onError = defaultOnError, maxPages, now = Date.now } = options;
 
-  const windowMs = new Map(plan.isr.map((route) => [route.path, route.revalidate * 1000]));
+  /**
+   * A route with no params is one page, so its window is found by its own name.
+   *
+   * Asked FIRST, and not only for speed: a literal route and a pattern can both match one path —
+   * `/products/new` and `/products/:id` — and the literal one is the page somebody wrote.
+   */
+  const exact = new Map(
+    plan.isr.filter((route) => !route.path.includes(":")).map((route) => [route.path, route.revalidate * 1000]),
+  );
+
+  /**
+   * A route WITH params, in table order, because that is the order the router itself matches in.
+   *
+   * This is the half that was missing: `plan.isr` carried `/products/:id` and the window map was keyed
+   * by that string, so a request for `/products/7` looked up `/products/7`, found nothing, and the
+   * caller fell through to its dynamic branch — rendering per request with the real request context,
+   * which is the opposite of what `revalidate` asks for. Measured, and silent.
+   */
+  const patterned = plan.isr
+    .filter((route) => route.path.includes(":"))
+    .map((route) => ({ pattern: route.path, ttl: route.revalidate * 1000 }));
+
+  if (patterned.length > 0 && (maxPages === undefined || maxPages < 1)) {
+    throw new Error(
+      `[Ramonda] ${patterned.map((route) => `\`${route.pattern}\``).join(", ")} ${
+        patterned.length === 1 ? "is an ISR route that takes" : "are ISR routes that take"
+      } a \`:param\`, so the number of pages is the number of items — pass \`maxPages\` to ` +
+        `createIsrCache to say how many may be held at once. Without it one crawler walking the ids ` +
+        `fills the store with pages nobody asked for.`,
+    );
+  }
+  if (patterned.length === 0 && maxPages !== undefined) {
+    throw new Error(
+      "[Ramonda] `maxPages` was given but no ISR route takes a `:param`, so the number of pages is " +
+        "already the number of routes and there is nothing to bound. Remove it.",
+    );
+  }
+
+  const ttlFor = (path: string): number | undefined => {
+    const literal = exact.get(path);
+    if (literal !== undefined) return literal;
+    for (const route of patterned) if (matchParams(path, route.pattern) !== null) return route.ttl;
+    return undefined;
+  };
+
+  /**
+   * What this process has written, in the order it was last WANTED — the whole of the LRU.
+   *
+   * A `Map` iterates in insertion order, so `delete` then `set` on a hit moves a key to the back and
+   * `keys().next()` on an eviction gives the one nobody has asked for longest. The value is unused;
+   * only the order is.
+   */
+  const held = new Map<string, true>();
+
+  const touch = (path: string): void => {
+    held.delete(path);
+    held.set(path, true);
+  };
+
+  /** Called after a write, so the cap counts what is actually stored. */
+  const evictDownTo = async (): Promise<void> => {
+    if (maxPages === undefined) return;
+    while (held.size > maxPages) {
+      const oldest = held.keys().next();
+      if (oldest.done) return;
+      held.delete(oldest.value);
+      // A store may have lost it already; `delete` is documented not to mind.
+      await store.delete(oldest.value);
+    }
+  };
 
   /**
    * Rebakes in progress, so a stale page under load starts ONE render rather than one per
@@ -148,8 +260,12 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
 
   return {
     async serve(path: string): Promise<IsrPage | undefined> {
-      const ttl = windowMs.get(path);
+      const ttl = ttlFor(path);
       if (ttl === undefined) return undefined;
+
+      // Before the read, and for every answer below: asking for a page is what makes it recent,
+      // whether it turns out to be fresh, stale or cold.
+      touch(path);
 
       const cached = await store.get(path);
 
@@ -160,13 +276,17 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
       if (cached !== undefined) {
         // Stale-while-revalidate: the visitor waits for nothing. `catch` rather than `await`
         // — a failed rebake must not turn a servable stale page into a 500.
-        void bake(path).catch((error: unknown) => onError(path, error));
+        void bake(path)
+          .then(evictDownTo)
+          .catch((error: unknown) => onError(path, error));
         return { html: cached.html, mode: "isr-stale" };
       }
 
       // Cold: there is no previous copy, so this one request pays for the render. It throws on
       // failure, and should — there is nothing to send instead.
-      return { html: await bake(path), mode: "isr-cold" };
+      const html = await bake(path);
+      await evictDownTo();
+      return { html, mode: "isr-cold" };
     },
   };
 }
@@ -176,7 +296,11 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
  *
  * Right for a single instance, and for development. Not right for more than one: two processes
  * hold two independent caches, so which copy a visitor gets depends on which one answered, and
- * a restart starts over. Bounded by the number of ISR routes, so it cannot grow on its own.
+ * a restart starts over.
+ *
+ * It used to say it "cannot grow on its own", because it was bounded by the number of ISR routes. That
+ * stopped being true when a `:param` route became cacheable — one route, as many pages as there are
+ * items — so the bound moved to `maxPages` on the cache, which is required for exactly those routes.
  */
 export function memoryStore(): IsrStore {
   const entries = new Map<string, IsrEntry>();
@@ -186,6 +310,9 @@ export function memoryStore(): IsrStore {
     },
     async set(key, entry) {
       entries.set(key, entry);
+    },
+    async delete(key) {
+      entries.delete(key);
     },
   };
 }
@@ -246,6 +373,13 @@ export function fileStore(options: FileStoreOptions): IsrStore {
         await unlink(temp).catch(() => {});
         throw error;
       }
+    },
+
+    async delete(key) {
+      // A missing file is the state this asks for, so `ENOENT` is success. Anything else — a
+      // permission, a read-only mount — is swallowed too, deliberately: an eviction that cannot happen
+      // must not turn a served page into a 500, and the entry it failed to drop expires on its own.
+      await unlink(fileFor(key)).catch(() => {});
     },
   };
 }
