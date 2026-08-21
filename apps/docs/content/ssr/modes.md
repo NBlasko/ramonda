@@ -138,9 +138,10 @@ It stops rather than skipping the route, for the same reason a per-request read 
 that says `prerender` and a build that quietly does not is how a site ships missing half its pages
 while every page it did emit looks perfectly correct.
 
-ISR is not held to it. A `revalidate` route with a `:param` is served and refreshed per request, so
-its pattern is a rule rather than a page and there is nothing to bake — it is still named in
-`needsData`, for a build that wants to warm those pages.
+**Do not put `revalidate` on a route with a `:param` yet.** It is accepted and it does not work: the
+cache is keyed by the pattern, so a request for `/u/7` finds nothing under `/u/:id` and the page
+renders per request with the real request data — no shared cache at all. Mark such a route dynamic
+(the default) until this is fixed.
 
 ## The build and the server
 

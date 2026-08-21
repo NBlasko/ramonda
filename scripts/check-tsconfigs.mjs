@@ -36,7 +36,7 @@ import ts from "typescript";
  * against the config that declares it.
  */
 
-const root = join(dirname(new URL(import.meta.url).pathname), "..");
+const root = join(import.meta.dirname, "..");
 const BASE = "tsconfig.base.json";
 
 /** What the base sets, read from the base rather than repeated here — one list, not two. */

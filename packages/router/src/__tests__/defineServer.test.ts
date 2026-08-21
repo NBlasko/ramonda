@@ -107,6 +107,42 @@ describe("routePlan partitions by declared mode", () => {
   });
 
   /**
+   * A path that matches NOTHING is refused, and this is the half the first version left open.
+   *
+   * `filled` only refused a route that matched nothing at all, so one good path was enough to silence
+   * it and any others were dropped without a word — measured: `["/guide/ok", "/guide/v1.2"]` came back
+   * as `["/guide/ok"]`. That is the very failure the throw exists to prevent.
+   */
+  test("a path that matches no prerendered route is refused, even when another one matches", () => {
+    const guides = createRoutes({ "/": stub, "/guide/:slug": stub, "*": stub });
+    const server = defineServer(guides, { "/": {}, "/guide/:slug": { prerender: true } });
+
+    // A dot, and a trailing slash: a `:param` matches one segment of `[\w-]+`, so both fall outside it.
+    expect(() => routePlan(server, ["/guide/ok", "/guide/v1.2"])).toThrow(
+      /match no prerendered route.*\/guide\/v1\.2/s,
+    );
+    expect(() => routePlan(server, ["/guide/ok", "/guide/state/"])).toThrow(/match no prerendered route/);
+    // And a path for a route nobody marked `prerender` is the same fault, not a different one.
+    expect(() => routePlan(server, ["/guide/ok", "/"])).toThrow(/match no prerendered route/);
+
+    expect(routePlan(server, ["/guide/ok"]).static).toEqual(["/guide/ok"]);
+  });
+
+  /**
+   * The two faults have two messages, because one sentence for both sent a reader to add an argument
+   * that was already there.
+   */
+  test("the message says whether the paths are missing or the wrong shape", () => {
+    const guides = createRoutes({ "/": stub, "/guide/:slug": stub, "*": stub });
+    const server = defineServer(guides, { "/": {}, "/guide/:slug": { prerender: true } });
+
+    expect(() => routePlan(server)).toThrow(/a build cannot know which pages exist\. Pass them/);
+    expect(() => routePlan(server, ["/guide/v1.2"])).toThrow(
+      /none of the 1 path\(s\) given match it — check their shape/,
+    );
+  });
+
+  /**
    * One path can satisfy two patterns — the file it bakes is the same file either way — so the list
    * is deduped rather than the match narrowed.
    *
