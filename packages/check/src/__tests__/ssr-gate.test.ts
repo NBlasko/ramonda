@@ -20,10 +20,76 @@ const run = (name: string) => analyzeProject(join(here, "fixtures", name, "tscon
 describe("a state value the hydration blob cannot carry", () => {
   test("is reported where something renders on a server", () => {
     const found = run("ssr-state").findings["unserializable-state"];
-    expect(found.map((issue) => `${issue.field}:${issue.holds}`)).toEqual(["byId:Maps", "meta:Dates"]);
+    expect(found.map((issue) => `${issue.field}:${issue.holds}`)).toEqual([
+      "inherited:Maps",
+      "byId:Maps",
+      "meta:Dates",
+      "cast:Maps",
+      "shared:Maps",
+      "fromHelper:Maps",
+      "deep:Maps",
+      "held:Maps",
+      "branched:Maps",
+      "fallback:Dates",
+      "started:Dates",
+    ]);
   });
 
-  /** The same components, one import fewer, and nothing to say about any of them. */
+  /**
+   * The same value one hop from the field, which is where a refactor leaves it.
+   *
+   * `lossyIn` follows a name, so this rule inherited the whole walk from the round that fixed
+   * `persist-of-a-lossy-value` — a cast, a module `const`, a helper, a chain of three, a helper
+   * handing back one it HOLDS, a ternary and a `??`. Planted rather than assumed: a rule that
+   * reports nothing looks exactly like a clean codebase.
+   */
+  test("the value a name away is the same value in the blob", () => {
+    const fields = run("ssr-state").findings["unserializable-state"].map((issue) => issue.field);
+
+    for (const field of ["cast", "shared", "fromHelper", "deep", "held", "branched", "fallback"]) {
+      expect(fields).toContain(field);
+    }
+  });
+
+  /**
+   * Where the value is built, when it is not on the line being reported — and the INNERMOST place.
+   *
+   * `@state deep = level1()` said it holds a `Maps` and gave the reader nowhere to go; `level1` is
+   * already on the line they are looking at, so what they need is `level3`.
+   */
+  test("and the report says where it is built", () => {
+    const where = new Map(
+      run("ssr-state").findings["unserializable-state"].map((issue) => [issue.field, issue.foundIn]),
+    );
+
+    expect(where.get("deep")).toBe("`level3`");
+    expect(where.get("fromHelper")).toBe("`makeCache`");
+    expect(where.get("shared")).toBe("`SHARED`");
+    // Written on the line itself, so there is nowhere else to send anybody.
+    expect(where.get("byId")).toBeUndefined();
+  });
+
+  /** A base declares it, a subclass inherits it, and one report names the base. */
+  test("a field a base declares is reported once, at the base", () => {
+    const found = run("ssr-state").findings["unserializable-state"].filter((issue) => issue.field === "inherited");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].component).toBe("Storefront");
+  });
+
+  /** A field with no `@state`, and a `@compute`, are in no blob and are not asked about. */
+  test("what is not state is not reported", () => {
+    const fields = run("ssr-state").findings["unserializable-state"].map((issue) => issue.field);
+
+    expect(fields).not.toContain("notState");
+    expect(fields).not.toContain("derived");
+    expect(fields).not.toContain("total");
+  });
+
+  /**
+   * The same state, one import fewer, and nothing to say about any of it — including the values a
+   * name away, because the gate is about the PROJECT and not about how the value was spelled.
+   */
   test("is not asked at all in a browser-only project", () => {
     expect(run("spa-state").findings["unserializable-state"]).toEqual([]);
   });

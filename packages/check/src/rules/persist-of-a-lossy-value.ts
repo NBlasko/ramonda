@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
-import { BECOMES, lossyIn } from "./lossyValue";
+import { BECOMES, lossyIn, type Lossy } from "./lossyValue";
 import type { Rule, RuleContext } from "./rule";
 
 /**
@@ -38,6 +38,8 @@ export interface PersistOfALossyValueIssue {
   field: string;
   /** What it holds — `Map`, `Date`, `a function`, `Intl.NumberFormat`. */
   holds: string;
+  /** Where it is built, when that is not this line — a local, or the function that hands it back. */
+  foundIn: string | undefined;
   /** What JSON does with it, which is the sentence the report needs. */
   becomes: string;
   file: string;
@@ -49,7 +51,7 @@ export interface PersistOfALossyValueIssue {
 function lossyValueOf(
   member: ts.PropertyDeclaration,
   resolve: RuleContext["resolve"],
-): { holds: string; becomes: string } | undefined {
+): Lossy | undefined {
   if (member.initializer !== undefined) return lossyIn(member.initializer, resolve);
 
   /**
@@ -80,7 +82,9 @@ export const persistOfALossyValue = {
     heading: (found) => `${found.length} \`@persist\` field(s) the hydration blob cannot carry:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}> persists \`${issue.field}\`, which holds ${issue.holds} — it arrives as ${issue.becomes}.`,
+      `    <${issue.component}> persists \`${issue.field}\`, which holds ${issue.holds}${
+        issue.foundIn === undefined ? "" : `, built in ${issue.foundIn}`
+      } — it arrives as ${issue.becomes}.`,
     ],
     advice:
       "`@persist` does one thing: it puts a field into the hydration blob, which is JSON. It creates\n" +
@@ -106,7 +110,13 @@ export const persistOfALossyValue = {
       const lossy = lossyValueOf(member, resolve);
       if (lossy === undefined) continue;
 
-      found.push({ component: self.name, field: member.name.text, ...lossy, ...positionOf(member) });
+      found.push({
+        component: self.name,
+        field: member.name.text,
+        foundIn: undefined,
+        ...lossy,
+        ...positionOf(member),
+      });
     }
 
     return found;

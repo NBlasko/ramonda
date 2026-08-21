@@ -43,6 +43,8 @@ export interface UnserializableStateIssue {
   field: string;
   /** What it holds — `Map`, `Date`, `a function`. */
   holds: string;
+  /** Where it is built, when that is not this line — a local, or the function that hands it back. */
+  foundIn: string | undefined;
   /** What JSON does with it, which is the sentence the report needs. */
   becomes: string;
   file: string;
@@ -62,7 +64,9 @@ export const unserializableState = {
     heading: (found) => `${found.length} \`@state\` field(s) the hydration blob cannot carry:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}> holds ${issue.holds} in \`${issue.field}\` — it arrives as ${issue.becomes}.`,
+      `    <${issue.component}> holds ${issue.holds} in \`${issue.field}\`${
+        issue.foundIn === undefined ? "" : `, built in ${issue.foundIn}`
+      } — it arrives as ${issue.becomes}.`,
     ],
     advice:
       "The server's state travels to the client as JSON, and none of these survives the trip. It\n" +
@@ -97,7 +101,13 @@ export const unserializableState = {
       const lossy = lossyIn(member.initializer, resolve);
       if (lossy === undefined) continue;
 
-      found.push({ component: self.name, field: member.name.text, ...lossy, ...positionOf(member) });
+      found.push({
+        component: self.name,
+        field: member.name.text,
+        foundIn: undefined,
+        ...lossy,
+        ...positionOf(member),
+      });
     }
 
     return found;
