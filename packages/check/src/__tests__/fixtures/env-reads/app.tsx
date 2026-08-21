@@ -1,5 +1,6 @@
 import { bootstrap, Component, state } from "../framework";
 import { created } from "@ramonda/core";
+import { created as onCreate } from "@ramonda/core";
 import { ConfigBase } from "./shared-base";
 
 /** ✗ Vite's prefix, which Ramonda's build no longer exposes — the migration hazard. */
@@ -34,6 +35,26 @@ export class OtherSpellings extends Component {
 }
 
 // ── everything below is CORRECT and must stay silent ─────────────────────────────────────────
+
+/**
+ * ✓ Server-only, said through an ALIASED `@created`.
+ *
+ * The table of what each lifecycle does is a LOOKUP, so the local name is not merely a weaker key
+ * here — it is the wrong one. Read as `onCreate` it found nothing in the table, the member was not
+ * excused, and this correct code was reported at error severity.
+ */
+export class AliasedServerOnly extends Component {
+  @state url = "";
+
+  @onCreate({ env: "server" })
+  read() {
+    this.url = process.env.DATABASE_URL ?? "";
+  }
+
+  render() {
+    return <p>{this.url}</p>;
+  }
+}
 
 /** The exposed prefix. */
 export class Exposed extends Component {

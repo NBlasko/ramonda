@@ -42,6 +42,43 @@ export function importedFromCore(
 }
 
 /**
+ * The name `@ramonda/core` exports this binding under, or `undefined` when it is not core's.
+ *
+ * The other half of the same question, for a caller that has to LOOK the name UP rather than
+ * compare it: `lifecycle-env` reads a decorator's name to find it in a table of what each one does,
+ * and reading the LOCAL name meant `import { created as onCreate }` found nothing in that table.
+ */
+export function coreExportName(
+  id: ts.Node,
+  resolveLocal: (node: ts.Node) => ts.Symbol | undefined,
+  resolveStep?: (node: ts.Node) => ts.Symbol | undefined,
+): string | undefined {
+  if (!ts.isIdentifier(id)) return undefined;
+  return nameAtCore(resolveLocal(id), resolveStep, 0);
+}
+
+/** Walks the same chain `reaches` does and hands back the name at the end of it. */
+function nameAtCore(
+  symbol: ts.Symbol | undefined,
+  resolveStep: ((node: ts.Node) => ts.Symbol | undefined) | undefined,
+  hop: number,
+): string | undefined {
+  if (symbol === undefined || hop > 4) return undefined;
+
+  for (const declaration of symbol.declarations ?? []) {
+    const from = specifierOf(declaration);
+    if (from === "@ramonda/core" || from?.startsWith("@ramonda/core/") === true) {
+      return exportedName(declaration);
+    }
+    if (resolveStep === undefined) continue;
+    const named = ts.isImportSpecifier(declaration) || ts.isExportSpecifier(declaration) ? declaration.name : undefined;
+    const deeper = named === undefined ? undefined : nameAtCore(resolveStep(named), resolveStep, hop + 1);
+    if (deeper !== undefined) return deeper;
+  }
+  return undefined;
+}
+
+/**
  * Whether this symbol's chain names `@ramonda/core` — directly, or a re-export or two along.
  *
  * `exportedAs` asks the second half of the question, and it is the half a caller used to answer for

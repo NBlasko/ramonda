@@ -44,7 +44,7 @@ describe("an environment variable read but never exposed", () => {
   test("it points at the name, on the line the name is written", () => {
     const issue = found().find((each) => each.name === "VITE_API_URL");
     expect(issue?.file).toBe(join(here, "fixtures", "env-reads", "app.tsx"));
-    expect(issue?.line).toBe(8);
+    expect(issue?.line).toBe(9);
   });
 
   test("what stays silent, and why each one is silent", () => {
@@ -101,6 +101,18 @@ describe("process.env in code the browser runs", () => {
    * class rules get no `ramonda-check-ignore`, so there would have been no way out but restructuring
    * correct code.
    */
+  /**
+   * A FALSE REPORT at error severity, on correct code, until it was planted.
+   *
+   * The table of what each lifecycle does is a LOOKUP, so the LOCAL name is not merely a weaker key
+   * than the exported one — it is the wrong key. `import { created as onCreate }` read as
+   * `onCreate` found nothing in the table, so `@onCreate({ env: "server" })` excused nothing and the
+   * read was reported as browser code. Measured both ways: reported without the fix, silent with it.
+   */
+  test("a server-only lifecycle said through an aliased decorator excuses the read", () => {
+    expect(serverEnv().map((issue) => issue.component)).not.toContain("AliasedServerOnly");
+  });
+
   test("a helper only a server-only member calls is excused, however many hops away", () => {
     const names = serverEnv().map((issue) => issue.component);
     expect(names).not.toContain("DelegatesToAHelper");
