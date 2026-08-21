@@ -20,9 +20,13 @@ import ts from "typescript";
  * ## What counts, and what deliberately does not
  *
  * `if (__DEV__)` and `if (__DEV__ && env === "client")` — a conjunction, either way round, because
- * every branch of an `&&` has to be true for the body to run. A `||` does not count: `__DEV__ || x`
- * runs in production whenever `x` does. Neither does `!__DEV__`, nor the `else` of a dev guard,
- * which is the production half.
+ * every branch of an `&&` has to be true for the body to run. The bare expression forms count too:
+ * `__DEV__ && doSomething()` and `__DEV__ ? here : there`, which the framework's own source writes
+ * thirteen times in `packages/core` alone.
+ *
+ * A `||` does not count: `__DEV__ || x` runs in production whenever `x` does. Neither does
+ * `!__DEV__`, nor the `else` of a dev guard, nor the false arm of a ternary — those are the
+ * production half.
  */
 export function insideADevGuard(node: ts.Node): boolean {
   let child: ts.Node = node;
@@ -30,6 +34,21 @@ export function insideADevGuard(node: ts.Node): boolean {
   for (let at = node.parent; at !== undefined; child = at, at = at.parent) {
     // The THEN branch only: arriving through the `else` of a dev guard is arriving from production.
     if (ts.isIfStatement(at) && at.thenStatement === child && guardsDev(at.expression)) return true;
+
+    /**
+     * `__DEV__ && doSomething()` — the same claim written as an expression, and the framework's own
+     * source writes it that way thirteen times in `packages/core` alone.
+     *
+     * Reading only the `if` reported the identical code written the other way, which is this
+     * repository's standing lesson: a fix for one spelling is not a fix for the other. The RIGHT
+     * operand only — the left is the guard itself.
+     */
+    if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      if (at.right === child && guardsDev(at.left)) return true;
+    }
+
+    // `__DEV__ ? here : there` — the same claim again, and only the arm the guard chooses.
+    if (ts.isConditionalExpression(at) && at.whenTrue === child && guardsDev(at.condition)) return true;
   }
   return false;
 }

@@ -241,6 +241,50 @@ class DevOnlyAndLeaking extends Component {
   }
 }
 
+/**
+ * ✓ The `&&` spelling of a dev guard, which the framework's own source writes thirteen times in
+ * `packages/core` alone — and which was read as no guard at all, so the same code written the other
+ * way was reported.
+ */
+@Host("div")
+class DevOnlyWithAnAnd extends Component {
+  @created
+  start() {
+    __DEV__ && window.addEventListener("ramonda:panel-and", this.republish);
+  }
+
+  republish() {}
+
+  @destroyed
+  stop() {
+    __DEV__ && window.removeEventListener("ramonda:panel-and", this.republish);
+  }
+
+  render() {
+    return <div>and</div>;
+  }
+}
+
+/** ✓ And the ternary, which is the same claim once more. */
+@Host("div")
+class DevOnlyWithATernary extends Component {
+  @created
+  start() {
+    __DEV__ ? window.addEventListener("ramonda:panel-tern", this.republish) : undefined;
+  }
+
+  republish() {}
+
+  @destroyed
+  stop() {
+    __DEV__ ? window.removeEventListener("ramonda:panel-tern", this.republish) : undefined;
+  }
+
+  render() {
+    return <div>ternary</div>;
+  }
+}
+
 /** A guard is not a guard when it is an `||`, or when the code is in the `else`. */
 @Host("div")
 class NotReallyGuarded extends Component {
@@ -275,4 +319,6 @@ bootstrap(<Concrete />, null);
 bootstrap(<DevOnlyAndPaired />, null);
 bootstrap(<DevOnlyAcrossTwoNames />, null);
 bootstrap(<DevOnlyAndLeaking />, null);
+bootstrap(<DevOnlyWithAnAnd />, null);
+bootstrap(<DevOnlyWithATernary />, null);
 bootstrap(<NotReallyGuarded />, null);

@@ -83,15 +83,17 @@ export function coreExportName(
  * package root is read from disk once per directory.
  */
 function declaredInsideCore(symbol: ts.Symbol | undefined): string | undefined {
-  const declaration = symbol?.declarations?.[0];
-  if (declaration === undefined) return undefined;
+  // EVERY declaration, not the first: a name with an overload set or a merged namespace has more
+  // than one, and which of them comes first is not something to build an identity on.
+  for (const declaration of symbol?.declarations ?? []) {
+    // A `.d.ts` inside core's package IS core — this is a question about identity, not about a body
+    // to walk, and a published package is exactly where a star re-export lands.
+    if (!packageIsCore(declaration.getSourceFile().fileName)) continue;
 
-  // A `.d.ts` inside core's package IS core — this is a question about identity, not about a body
-  // to walk, and a published package is exactly where a star re-export lands.
-  if (!packageIsCore(declaration.getSourceFile().fileName)) return undefined;
-
-  const named = (declaration as { name?: ts.Node }).name;
-  return named !== undefined && ts.isIdentifier(named) ? named.text : undefined;
+    const named = (declaration as { name?: ts.Node }).name;
+    if (named !== undefined && ts.isIdentifier(named)) return named.text;
+  }
+  return undefined;
 }
 
 /**

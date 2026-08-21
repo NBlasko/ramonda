@@ -67,6 +67,13 @@ describe("a listener a component adds by hand", () => {
      * shape with one word changed. The removal set was keyed on the SPELLING, so this was reported.
      */
     expect(found().map((issue) => issue.component)).not.toContain("DevOnlyAcrossTwoNames");
+    /**
+     * The `&&` and the ternary spellings of the same guard. `packages/core` writes `__DEV__ &&`
+     * thirteen times, and reading only the `if` reported the identical code written either of the
+     * other two ways.
+     */
+    expect(found().map((issue) => issue.component)).not.toContain("DevOnlyWithAnAnd");
+    expect(found().map((issue) => issue.component)).not.toContain("DevOnlyWithATernary");
   });
 
   /**
