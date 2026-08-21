@@ -73,8 +73,8 @@ describe("an environment variable read but never exposed", () => {
  * member.
  */
 describe("process.env in code the browser runs", () => {
-  const serverEnv = () =>
-    analyzeProject(join(here, "fixtures", "env-reads", "tsconfig.json")).findings["server-env-in-shared-code"];
+  const run = () => analyzeProject(join(here, "fixtures", "env-reads", "tsconfig.json"));
+  const serverEnv = () => run().findings["server-env-in-shared-code"];
 
   /**
    * `globalThis.process.env` is the same read and was silent — the check required `process` to be a
@@ -88,6 +88,8 @@ describe("process.env in code the browser runs", () => {
       "OtherSpellings.render: process.env",
       'OtherSpellings.render: process.env["REGION"]',
       "OtherSpellings.render: globalThis.process.env.API_KEY",
+      // An EMPTY directive buys nothing: reported, and the directive itself reported too.
+      "ReadsWithNoReason.read: process.env.DATABASE_URL",
       "ReadsProcessInRender.render: process.env.DATABASE_URL",
       "ReadsProcessInAField.url: process.env.DATABASE_URL",
       "ReadsProcessInSharedCreate.read: process.env.REGION",
@@ -111,6 +113,38 @@ describe("process.env in code the browser runs", () => {
    */
   test("a server-only lifecycle said through an aliased decorator excuses the read", () => {
     expect(serverEnv().map((issue) => issue.component)).not.toContain("AliasedServerOnly");
+  });
+
+  /**
+   * A CLASS rule could not be answered at all until the annotation reached every family.
+   *
+   * `server-env-in-shared-code` is an ERROR, and `ModuleContext.unlessAnnotated` was the only
+   * escape there was — a mechanism three module rules called and thirty class rules could not. When
+   * this rule was wrong, measured, the reader's only way out was restructuring code that was
+   * already right.
+   *
+   * The reason is RECORDED, under the rule's own name, so it is printed on every run and cannot
+   * quietly stop being true.
+   */
+  test("a class rule can be answered with a written reason", () => {
+    const { findings, annotated } = run();
+
+    expect(findings["server-env-in-shared-code"].map((issue) => issue.component)).not.toContain("ReadsWithAReason");
+    expect(annotated.map((one) => `${one.what}: ${one.reason}`)).toContain(
+      "server-env-in-shared-code: this bundle is built for the server only, and the plugin defines process",
+    );
+  });
+
+  /**
+   * An EMPTY directive buys nothing, which is a change and a deliberate one: it used to silence the
+   * site and leave a note, and that made the note the price of switching a rule off. The package's
+   * own sentence is that a silence is not a record.
+   */
+  test("an empty directive does not silence a class rule either", () => {
+    const { findings, unresolved } = run();
+
+    expect(findings["server-env-in-shared-code"].map((issue) => issue.component)).toContain("ReadsWithNoReason");
+    expect(unresolved.filter((one) => one.what === "server-env-in-shared-code")).toHaveLength(1);
   });
 
   test("a helper only a server-only member calls is excused, however many hops away", () => {

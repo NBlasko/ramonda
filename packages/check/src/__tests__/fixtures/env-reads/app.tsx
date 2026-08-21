@@ -34,6 +34,38 @@ export class OtherSpellings extends Component {
   }
 }
 
+/**
+ * ✓ Annotated. A CLASS rule could not be answered at all until the annotation reached every family:
+ * `server-env-in-shared-code` is an ERROR, and when it was wrong the only way out was restructuring
+ * code that was already right.
+ */
+export class ReadsWithAReason extends Component {
+  @state url = "";
+
+  read() {
+    // ramonda-check-ignore this bundle is built for the server only, and the plugin defines process
+    this.url = process.env.DATABASE_URL ?? "";
+  }
+
+  render() {
+    return <p>{this.url}</p>;
+  }
+}
+
+/** ✗ An EMPTY directive buys nothing — reported, and the empty directive is reported too. */
+export class ReadsWithNoReason extends Component {
+  @state url = "";
+
+  read() {
+    // ramonda-check-ignore
+    this.url = process.env.DATABASE_URL ?? "";
+  }
+
+  render() {
+    return <p>{this.url}</p>;
+  }
+}
+
 // ── everything below is CORRECT and must stay silent ─────────────────────────────────────────
 
 /**

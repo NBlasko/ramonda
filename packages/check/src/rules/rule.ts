@@ -420,6 +420,31 @@ export interface Resolver {
   coreName(id: ts.Node): string | undefined;
 }
 
+/**
+ * Whether a finding carries a written reason, and the recording of it.
+ *
+ * One mechanism for all five rule families, applied by the analyzer where every finding already
+ * passes through — not by each rule remembering to ask. `ModuleContext` used to carry an
+ * `unlessAnnotated` a rule called for itself, and its own note said why that is the wrong shape:
+ * "a guard every rule needs is a guard a rule can forget". Three rules called it and thirty did
+ * not, so a class rule that was wrong left the reader nothing but restructuring correct code —
+ * measured, on `server-env-in-shared-code`, which is an ERROR.
+ *
+ * It records rather than merely silences, which is the whole point: the reason travels into
+ * `annotated` and is printed on every run, so it cannot quietly stop being true.
+ *
+ * **An EMPTY directive buys nothing.** It is reported, as it always was, and the finding stands —
+ * which is a change, and a deliberate one. `ramonda-check-ignore` with nothing after it used to
+ * silence the site and leave a note; that made the note the price of switching a rule off, and the
+ * price was too low. The package's own sentence is that a silence is not a record, and a directive
+ * that records nothing has bought a silence with nothing. It matters more now that this reaches
+ * every family: a mechanism for thirty rules is worth abusing in a way one for three was not.
+ */
+export interface Silencer {
+  /** `true` when the site says why, in which case the reason has been recorded. */
+  (ruleId: string, at: { file: string; line: number; column: number }): boolean;
+}
+
 export interface ElementContext {
   /**
    * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.
@@ -488,21 +513,6 @@ export interface ElementContext {
 }
 
 export interface ModuleContext {
-  /**
-   * Builds an issue, unless the author has already written down why this site is the way it is.
-   *
-   * Supplied by the analyzer rather than written per rule, for the same reason `needs` and `exempt`
-   * are declared rather than coded: a guard every rule needs is a guard a rule can forget. Calling
-   * it is also the shorter way to write the rule, which is what keeps it from being skipped.
-   *
-   * Two annotations count, and they are not the same claim. `ramonda-check-ignore <reason>` is this
-   * package's own, and the reason it carries stays visible in every run — an empty one is itself
-   * reported, because a silence is not a record. `/* @vite-ignore *\/` is the BUNDLER's marker on
-   * the very same construct: a rule whose premise is "nothing tells you when you defeat splitting"
-   * has no premise left at a site where the bundler told the author and the author answered.
-   */
-  unlessAnnotated<Issue>(site: ts.Node, make: () => Issue): Issue | undefined;
-
   /**
    * Where a name was declared, the same question a class rule asks.
    *

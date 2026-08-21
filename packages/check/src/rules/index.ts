@@ -10,6 +10,7 @@ import type {
   RuleContext,
   TreeRule,
   ElementContext,
+  Silencer,
 } from "./rule";
 import { contextFor } from "./element";
 import { treeFor } from "./tree";
@@ -425,8 +426,18 @@ export function activate<R extends { id: string }>(
  * `rule` is a union of every rule — so nothing can be pushed into it without saying, once, that the
  * pair came from the same rule. It did: both sides are read from the same object.
  */
-function collect(findings: Findings, rule: AnyRule, issues: readonly unknown[]): void {
-  (findings[rule.id] as unknown[]).push(...issues);
+/**
+ * Where every finding from every family lands — and so the one place the annotation is applied.
+ *
+ * `silenced` is required rather than defaulted: a guard a caller can forget looks exactly like a
+ * clean codebase, and this one decides whether a reader has any way out of a wrong report at all.
+ */
+function collect(findings: Findings, rule: AnyRule, issues: readonly unknown[], silenced: Silencer): void {
+  for (const issue of issues) {
+    const at = issue as { file: string; line: number; column: number };
+    if (silenced(rule.id, at)) continue;
+    (findings[rule.id] as unknown[]).push(issue);
+  }
 }
 
 /**
@@ -441,21 +452,23 @@ export function applyClass(
   cls: ts.ClassDeclaration,
   context: RuleContext,
   findings: Findings,
+  silenced: Silencer,
 ): void {
   for (const rule of active) {
     // Same narrowing as `activate` uses for `needs`, and for the same reason.
     const exempt = "exempt" in rule ? (rule.exempt as string) : undefined;
     if (exempt !== undefined && context.self.id.startsWith(exempt)) continue;
-    collect(findings, rule, rule.read(cls, context));
+    collect(findings, rule, rule.read(cls, context), silenced);
   }
 }
 
 /**
  * Every active per-file rule over one source file.
  *
- * The context is built PER RULE rather than handed in ready-made, because the annotation the rule
- * may find has to be recorded against something, and the only honest name for it is the rule that
- * would otherwise have reported the site.
+ * The context used to be built PER RULE, because each of them carried an `unlessAnnotated` and the
+ * reason it found had to be recorded against a rule name. Nothing varies per rule any more: the
+ * annotation is read from the FINDING, in `collect`, which is where every family's findings already
+ * meet — so a class rule cannot be the one that forgot to ask.
  */
 /**
  * Every active element rule over one JSX element.
@@ -478,10 +491,11 @@ export function applyElement(
   element: JsxElementLike,
   findings: Findings,
   resolve: ElementContext["resolve"],
+  silenced: Silencer,
 ): void {
   const context = contextFor(element, resolve);
   const asked = context.spreads ? active.filter((rule) => "evenWhenSpreading" in rule) : active;
-  for (const rule of asked) collect(findings, rule, rule.read(element, context));
+  for (const rule of asked) collect(findings, rule, rule.read(element, context), silenced);
 }
 
 /**
@@ -494,17 +508,19 @@ export function applyProject(
   active: readonly (typeof PROJECT_RULES)[number][],
   project: ProjectContext,
   findings: Findings,
+  silenced: Silencer,
 ): void {
-  for (const rule of active) collect(findings, rule, rule.read(project));
+  for (const rule of active) collect(findings, rule, rule.read(project), silenced);
 }
 
 export function applyModule(
   active: readonly (typeof MODULE_RULES)[number][],
   file: ts.SourceFile,
-  contextFor: (ruleId: string) => ModuleContext,
+  context: ModuleContext,
   findings: Findings,
+  silenced: Silencer,
 ): void {
-  for (const rule of active) collect(findings, rule, rule.read(file, contextFor(rule.id)));
+  for (const rule of active) collect(findings, rule, rule.read(file, context), silenced);
 }
 
 /**
@@ -519,8 +535,9 @@ export function applyTree(
   root: ts.Node,
   findings: Findings,
   resolve: ElementContext["resolve"],
+  silenced: Silencer,
 ): void {
   if (active.length === 0) return;
   const tree = treeFor(root, resolve);
-  for (const rule of active) collect(findings, rule, rule.read(tree));
+  for (const rule of active) collect(findings, rule, rule.read(tree), silenced);
 }

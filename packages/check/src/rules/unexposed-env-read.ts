@@ -138,7 +138,7 @@ export const unexposedEnvRead = {
     const visit = (node: ts.Node): void => {
       const read = envReadName(node, context.resolve);
       if (read !== undefined && !BUILT_IN.has(read.name) && !read.name.startsWith(PUBLIC_PREFIX)) {
-        const issue = context.unlessAnnotated(read.at, () => ({
+        found.push({
           name: read.name,
           // `VITE_API_URL` → `RAMONDA_PUBLIC_API_URL`, and `RAMONDA_API_BASE` →
           // `RAMONDA_PUBLIC_API_BASE`. Both old prefixes come off, because keeping one inside the new
@@ -147,8 +147,7 @@ export const unexposedEnvRead = {
           // already work, so it is the one where the suggestion has to be right.
           suggestion: `${PUBLIC_PREFIX}${read.name.replace(/^(VITE|RAMONDA)_/, "")}`,
           ...positionOf(read.at),
-        }));
-        if (issue !== undefined) found.push(issue);
+        });
       }
       ts.forEachChild(node, visit);
     };

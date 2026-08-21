@@ -267,15 +267,14 @@ export const rowReadsAPlainField = {
             if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
               const handedOut = (node.arguments ?? []).some((a) => a.kind === ts.SyntaxKind.ThisKeyword);
               if (handedOut && leaves(node)) {
-                const issue = context.unlessAnnotated(node, () => ({
+                found.push({
                   kind: "opaque-call" as const,
                   component,
                   callback,
                   through: name,
                   name: node.expression.getText(),
                   ...positionOf(node),
-                }));
-                if (issue !== undefined) found.push(issue);
+                });
               }
             }
 
@@ -286,15 +285,14 @@ export const rowReadsAPlainField = {
               if (ts.isCallExpression(node.parent) && node.parent.expression === read.at) {
                 if (members.has(target) && leaves(node.parent)) walkMember(target);
               } else if (stale.has(target) && leaves(node)) {
-                const issue = context.unlessAnnotated(read.at, () => ({
+                found.push({
                   kind: "plain-field" as const,
                   component,
                   callback,
                   through: name,
                   name: target,
                   ...positionOf(read.at),
-                }));
-                if (issue !== undefined) found.push(issue);
+                });
               }
             }
 

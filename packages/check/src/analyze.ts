@@ -5,7 +5,7 @@ import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName } from "./rules/core-import";
-import type { Resolver } from "./rules/rule";
+import type { Resolver, Silencer } from "./rules/rule";
 import {
   activate,
   applyClass,
@@ -725,9 +725,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function directiveAt(site: ts.Node): string | undefined {
     const file = site.getSourceFile();
-    const lines = fileLines.get(file.fileName) ?? file.text.split("\n");
-    fileLines.set(file.fileName, lines);
     const { line } = file.getLineAndCharacterOfPosition(site.getStart());
+    return directiveOnLine(file.fileName, file.text, line);
+  }
+
+  /**
+   * The same question asked from a POSITION rather than from a node.
+   *
+   * A finding carries a file and a line, not the node it came from — and the annotation has to be
+   * readable from a finding, because that is what makes it one mechanism for all five rule families
+   * rather than something each rule remembers to call.
+   */
+  function directiveOnLine(fileName: string, text: string, line: number): string | undefined {
+    const lines = fileLines.get(fileName) ?? text.split("\n");
+    fileLines.set(fileName, lines);
     for (const candidate of [lines[line], lines[line - 1]]) {
       const found = candidate === undefined ? null : /ramonda-check-ignore\b:?(.*)$/.exec(candidate);
       if (!found) continue;
@@ -832,7 +843,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const elementRules = activate(ELEMENT_RULES, imported, rendersOnServer);
 
   const readElements = (node: ts.Node): void => {
-    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings, resolver);
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node))
+      applyElement(elementRules, node, findings, resolver, silenced);
     ts.forEachChild(node, readElements);
   };
 
@@ -860,32 +872,52 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * Built only when a rule would read it — the walk is one pass over every file, and a project
    * whose rules are all gated off should not pay for it.
    */
+  /**
+   * Whether a finding says WHY it is being ignored — one mechanism for all five rule families.
+   *
+   * Applied where every finding already passes through rather than by each rule asking for itself,
+   * which is what `ModuleContext.unlessAnnotated` claimed to be and was not: three rules called it
+   * and thirty did not, so a wrong report from a class rule left the reader nothing but
+   * restructuring correct code. `server-env-in-shared-code` is an ERROR and had exactly that
+   * problem, measured, when an aliased `@created({ env: "server" })` stopped excusing a read.
+   *
+   * It RECORDS rather than silences: the reason goes into `annotated` and is printed on every run,
+   * so a reason that stops being true cannot sit there unread. An empty one is refused, here as
+   * everywhere else — a silence is not a record.
+   */
+  const silenced: Silencer = (ruleId, at) => {
+    const source = program.getSourceFile(at.file);
+    if (source === undefined) return false;
+
+    // `positionOf` counts from one and the line index counts from zero.
+    const written = directiveOnLine(at.file, source.text, at.line - 1);
+    if (written === undefined) return false;
+
+    if (written === "") {
+      unresolved.push({
+        what: ruleId,
+        why: "a `ramonda-check-ignore` with no reason after it is a silence, not a record",
+        fix: "// ramonda-check-ignore why this rule is wrong here",
+        ...at,
+      });
+      // Refused: an empty directive silences nothing, or it would be the quietest way to switch a
+      // rule off.
+      return false;
+    }
+
+    annotated.push({ what: ruleId, reason: written, ...at });
+    return true;
+  };
+
   const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
-  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolver), findings);
+  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolver), findings, silenced);
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
-    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolver);
+    if (treeRules.length > 0)
+      for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolver, silenced);
 
-    applyModule(
-      moduleRules,
-      file,
-      (ruleId) => ({
-        resolve: resolver,
-        resolveLocal,
-        resolveStep,
-        unlessAnnotated: (site, make) => {
-          const written = directiveAt(site);
-          if (written === undefined) return make();
-          // Recorded rather than dropped: a site that stops being reported must not take its
-          // written reason down with it, and an EMPTY directive is refused here exactly as it is
-          // everywhere else in this package.
-          readDirective(site, ruleId);
-          return undefined;
-        },
-      }),
-      findings,
-    );
+    applyModule(moduleRules, file, { resolve: resolver, resolveLocal, resolveStep }, findings, silenced);
   }
 
   // ── Pass 1: the context pairs, the route tables, and every component class by symbol ────────
@@ -923,7 +955,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          applyClass(rules, node, { self, resolve: resolver, resolveLocal, resolveStep }, findings);
+          applyClass(rules, node, { self, resolve: resolver, resolveLocal, resolveStep }, findings, silenced);
         }
       }
       collectRoot(node);

@@ -21,7 +21,10 @@ const run = (name: string) => analyzeProject(join(here, "fixtures", name, "tscon
 describe("a dynamic import whose path is not a literal", () => {
   test("is reported, and a literal path is not", () => {
     const found = run("dynamic-import").findings["unsplittable-import"];
-    expect(found.map((s) => s.path)).toEqual(["name", "`./pages/${name}`", "`pages/${name}.js`"]);
+    // FOUR sites write `import(name)`: one plain, one `@vite-ignore`, one annotated with a reason,
+    // one with an EMPTY directive. The last is reported — an empty directive buys nothing, which is
+    // what keeps the note from being the price of switching a rule off.
+    expect(found.map((s) => s.path)).toEqual(["name", "`./pages/${name}`", "`pages/${name}.js`", "name"]);
   });
 
   /**
@@ -47,10 +50,10 @@ describe("a dynamic import whose path is not a literal", () => {
    */
   test("the bundler's own marker silences it", () => {
     const found = run("dynamic-import").findings["unsplittable-import"];
-    // FOUR sites in the fixture write `import(name)` — one plain, one marked `@vite-ignore`, one
-    // annotated, one with an empty directive. Exactly the plain one is reported, and counting is
-    // what says so: a line number would pass while the wrong three were silenced.
-    expect(found.filter((s) => s.path === "name")).toHaveLength(1);
+    // The `@vite-ignore` one and the one with a written reason are silenced; the plain one and the
+    // one whose directive says nothing are not. Counting is what says so — a line number would pass
+    // while the wrong two were silenced.
+    expect(found.filter((s) => s.path === "name")).toHaveLength(2);
   });
 
   /**
