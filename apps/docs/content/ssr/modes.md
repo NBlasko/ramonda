@@ -108,10 +108,44 @@ and what it read:
 So a page that reads the request simply can't be marked `prerender` — the guard enforces it.
 Mark it dynamic (the default) and it renders per request instead.
 
+## A route with a `:param` — the build has to be told which pages exist
+
+A route table is a set of PATTERNS, and only some of them are pages. `/guide/state` is one page;
+`/guide/:slug` is one route and however many guides there are. So a parameterised route marked
+`prerender` needs its paths, and they come from your data:
+
+```ts
+import { routePlan } from "@ramonda/router/server";
+
+const GUIDES = ["state", "effects"];
+
+const staticPaths = (): string[] => routePlan(server, GUIDES.map((slug) => `/guide/${slug}`)).static;
+// → ["/", "/guide/state", "/guide/effects", "/signup"]
+```
+
+`plan.static` holds **paths**, never patterns. `plan.needsData` names the parameterised routes the
+paths were for, so a build can report what it was asked to bake.
+
+**Marked `prerender` with nothing supplied, the build stops:**
+
+```
+[Ramonda] `/guide/:slug` is marked for prerender and takes :slug, so a build cannot know which
+pages exist. Pass them: routePlan(server, items.map((item) => `/guide/${item.slug}`)).
+Or drop `prerender` and let it render per request.
+```
+
+It stops rather than skipping the route, for the same reason a per-request read stops it: a config
+that says `prerender` and a build that quietly does not is how a site ships missing half its pages
+while every page it did emit looks perfectly correct.
+
+ISR is not held to it. A `revalidate` route with a `:param` is served and refreshed per request, so
+its pattern is a rule rather than a page and there is nothing to bake — it is still named in
+`needsData`, for a build that wants to warm those pages.
+
 ## The build and the server
 
-- **Build** (`routePlan(server)` gives the split): each static/ISR route is rendered with the
-  request poisoned and written to a file. A route that reads the request fails the build.
+- **Build** (`routePlan(server, paths)` gives the split): each static/ISR route is rendered with
+  the request poisoned and written to a file. A route that reads the request fails the build.
 - **Server**, per request: a static route serves its baked file; an ISR route serves the cache
   and refreshes it in the background when it is older than `revalidate`; a dynamic route renders
   fresh with the real request.

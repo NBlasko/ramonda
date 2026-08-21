@@ -1,4 +1,4 @@
-import type { PathOf, RouteConfig } from "./match";
+import { matchParams, type PathOf, type RouteConfig } from "./match";
 
 /**
  * The ISR cache lives next door and is re-exported here, so a server file has ONE import:
@@ -115,9 +115,39 @@ export interface RoutePlan {
  * request at build is discovered later, when the build renders it under a poisoned request
  * context and the guard throws (that refines `static` → `server`). So this is the plan; the
  * build is the authority.
+ *
+ * ## `static` holds PATHS, never patterns — and it used to hold both
+ *
+ * `/players/:id` is one route and however many players there are. It went into `static` as itself,
+ * and a build loop that bakes what it is given wrote **`dist/static/players/:id/index.html`** — a
+ * directory literally named `:id`, a page nobody can reach, and nothing said a word. The sibling in
+ * `match.ts` had this right from the start: `routePaths` puts a parameterised route in `needsData`
+ * and keeps it out of `paths`.
+ *
+ * So pass the concrete paths, and this fills them in:
+ *
+ * ```ts
+ * const plan = routePlan(server, players.map((p) => `/players/${p.id}`));
+ * // plan.static → ["/", "/signup", "/players/7", "/players/9"]
+ * ```
+ *
+ * **With none supplied it THROWS**, rather than skipping the route or falling it back to the server.
+ * A config that says `prerender` and a build that quietly does not is the shape where the site ships
+ * missing half its pages and every page it did emit looks perfectly correct — the same argument
+ * `renderStatic`'s `blockedBy` already settles by stopping the build.
+ *
+ * ISR is not held to it. A `revalidate` route with params is served and refreshed per request, so its
+ * pattern is a RULE rather than a page, and there is nothing for a build to bake. It is still named in
+ * `needsData`, because a build that wants to warm those pages has to be told which ones exist.
+ *
+ * @param paths concrete paths for the parameterised routes marked for prerender
  */
-export function routePlan<C extends RouteConfig>(server: ServerRoutes<C>): RoutePlan {
+export function routePlan<C extends RouteConfig>(server: ServerRoutes<C>, paths: readonly string[] = []): RoutePlan {
   const plan: RoutePlan = { static: [], isr: [], server: [], needsData: [] };
+  // A supplied path can satisfy two patterns — `/users/7` fills `/users/:id` and `/:page` alike — and
+  // the file it bakes is the same file either way, so the list is deduped rather than the match
+  // narrowed. Ordered, because a build's log reads better in the order the table declares.
+  const baked = new Set<string>();
 
   for (const route of server.routes.compiled) {
     const entry = server.config[route.key] ?? {};
@@ -130,13 +160,30 @@ export function routePlan<C extends RouteConfig>(server: ServerRoutes<C>): Route
     }
 
     const prerender = entry.prerender ?? server.defaultMode === "static";
-    if (prerender) {
-      plan.static.push(route.key);
-      if (hasParams) plan.needsData.push(route.key);
-    } else {
+    if (!prerender) {
       plan.server.push(route.key);
+      continue;
     }
+
+    if (!hasParams) {
+      baked.add(route.key);
+      continue;
+    }
+
+    plan.needsData.push(route.key);
+    const filled = paths.filter((path) => matchParams(path, route.key) !== null);
+    if (filled.length === 0) {
+      throw new Error(
+        `[Ramonda] \`${route.key}\` is marked for prerender and takes ${route.paramNames
+          .map((name) => `:${name}`)
+          .join(", ")}, so a build cannot know which pages exist. Pass them: ` +
+          `routePlan(server, items.map((item) => \`${route.key.replace(/:(\w+)/g, "${item.$1}")}\`)). ` +
+          `Or drop \`prerender\` and let it render per request.`,
+      );
+    }
+    for (const path of filled) baked.add(path);
   }
 
+  plan.static = [...baked];
   return plan;
 }
