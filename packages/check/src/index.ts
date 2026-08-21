@@ -42,6 +42,7 @@ export type {
   IndexAsKeyIssue,
   LinkWithoutADestinationIssue,
   ListenerOnTheDefaultHostIssue,
+  ListenerAddedByHandIssue,
   MediaWithNoCaptionsIssue,
   NamedOnlyByAPlaceholderIssue,
   OneProviderPerComponentIssue,
