@@ -100,11 +100,39 @@ interface DiagnosticSpec {
    *   render, a refetch, a listener re-attached, a cache missed.
    */
   severity: "warning" | "error";
+  /**
+   * For a code about a decorator written TWICE: which decorators, and what the second one does.
+   *
+   * Here because it is a fact about this framework's runtime, and it is needed OUTSIDE it.
+   * `@ramonda/check` reports the same faults before anything runs, and its advice has to say the same
+   * thing — "they merge, nothing is lost" for `@StableProps`, "one of them never runs" for
+   * `@catchError`. That sentence used to live only in `check`, which does not import core, so the two
+   * could disagree and nothing would notice: change core so a second `@StableProps` throws and the
+   * analyzer keeps telling people it merges.
+   *
+   * `scripts/check-decorator-duplication.mjs` compares this against `check`'s table and fails the
+   * build if they differ — including the quiet direction, a decorator added here and never learned
+   * there, where the rule simply says nothing.
+   *
+   * The words are the ADVICE each one needs, which is why there are four rather than a boolean:
+   * `refuses` throws so there is no live line to hunt for, `displaces` leaves dead code and the reader
+   * needs to know which is live, `merges` loses nothing, `redundant` changes nothing at all.
+   */
+  duplicate?: {
+    decorators: readonly string[];
+    effect: "refuses" | "displaces" | "merges" | "redundant";
+  };
   title: string;
   /** What to do instead. Always concrete — never "check your code". */
   fix: string;
 }
-const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
+/**
+ * Exported from this MODULE only — `index.ts` does not re-export it, so it is not published surface.
+ * `__tests__/DuplicateDecoratorSpecs.test.ts` reads the `duplicate` fields to check they name real
+ * decorators, which is the one way a typo could make both this table and the analyzer's agree while
+ * both describe something that does not exist.
+ */
+export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD001: {
     severity: "error",
     title: "State written during render()",
@@ -259,6 +287,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD032: {
     // error, not warning: one declaration wins, so errors go to a handler the author did not pick,
     // and the one they were reading goes silent.
+    duplicate: { decorators: ["catchError"], effect: "displaces" },
     severity: "error",
     title: "More than one @catchError on a component",
     fix: 'A component has one answer to "who handles an error from below?", so one @catchError gets it and the others never run, silently. **The LOWEST of them is the one that runs**: the last declaration applied is the one that stands, and members initialise top to bottom, so the one written last is applied last — the opposite of RMD040, where a class decorator applies bottom-up. Keep one and let it decide: it receives the error, and returning `false` declines it so the next boundary above takes over. A SUBCLASS declaring its own is not this: that is an override, and it is fine. This is two on the same class.',
@@ -309,6 +338,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "Ramonda reads `className`, and a `class` written on an element is renamed to it before the vnode is built — so the element IS styled and the page is not broken. What the rename cannot save is the two cases beside it. If the element carries `className` as well, that one wins and this `class` is dropped without a word. And a COMPONENT is renamed just the same, so `<Panel class=…>` arrives as `className`: a `class` prop that component declared reads `undefined` on every render, for ever. Write `className` and both go away, and the source says what the element gets. This is the one place the JSX deliberately differs from HTML, because `class` is a reserved word in the object literal a JSX factory receives.",
   },
   RMD040: {
+    duplicate: { decorators: ["ShouldUpdateOnPropsChange"], effect: "displaces" },
     severity: "error",
     title: "More than one `@ShouldUpdateOnPropsChange` on one class",
     fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. **The HIGHEST of them is the one that decides**: the last declaration applied is the one that stands, and class decorators apply bottom-up, so the one written furthest from the class is applied last — the opposite of RMD032, where a member decorator initialises top to bottom. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
@@ -336,6 +366,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD045: {
     // error, and it also THROWS: a component is exactly one element, so two answers cannot both be
     // honoured and there is no correct program to keep running.
+    duplicate: { decorators: ["Host"], effect: "refuses" },
     severity: "error",
     title: "More than one @Host on a component",
     fix: "A component is exactly one element, so there is one answer to which — keep the `@Host` you meant and delete the rest. A SUBCLASS declaring its own is not this: that overrides the base's, which is how a specialised component changes its element, and it is silent. This is two on the same class. It throws as well as reporting, in every build, because unlike RMD032 and RMD040 there is no way to pick a winner and carry on.",
@@ -343,6 +374,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD046: {
     // warning, not error: the union is what the author asked for, so the result is right and only the
     // spelling is redundant. RMD045 is the error, because two host tags have no union.
+    duplicate: { decorators: ["StableProps"], effect: "merges" },
     severity: "warning",
     title: "More than one @StableProps on one class",
     fix: '`@StableProps` names a set and already merges along the class chain, so two on one class is read as the union — the result is what you asked for, written twice. Combine them into one: `@StableProps("a", "b")`. A SUBCLASS declaring its own is not this; that ADDS to the base\'s list, which is the intended way to extend it.',
@@ -377,6 +409,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD050: {
     // warning: the member ends up right either way, so nothing downstream is wrong. What is wrong is the
     // belief that the second decorator was doing something.
+    duplicate: { decorators: ["state", "compute", "persist", "memoized"], effect: "redundant" },
     severity: "warning",
     title: "A decorator whose effect this member already has",
     fix: "Either the same decorator is on this member twice, or two decorators give it the same thing — `@state` already puts a field in the hydration blob, so `@persist` beside it adds nothing. Delete the one that adds nothing. This is not about two decorators that do different work on one member: `@created` with `@mounted`, `@onWindow` with `@onDocument`, `@watchProp` with `@updated` all run twice on purpose and are silent.",
