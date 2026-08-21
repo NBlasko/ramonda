@@ -48,10 +48,7 @@ export interface PersistOfALossyValueIssue {
 }
 
 /** What a field holds, when that can be read off the source; `undefined` when it cannot. */
-function lossyValueOf(
-  member: ts.PropertyDeclaration,
-  resolve: RuleContext["resolve"],
-): Lossy | undefined {
+function lossyValueOf(member: ts.PropertyDeclaration, resolve: RuleContext["resolve"]): Lossy | undefined {
   if (member.initializer !== undefined) return lossyIn(member.initializer, resolve);
 
   /**

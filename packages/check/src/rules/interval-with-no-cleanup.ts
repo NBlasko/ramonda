@@ -122,6 +122,40 @@ function clearedNames(classes: readonly ts.ClassLikeDeclaration[]): {
   return { properties, locals };
 }
 
+/**
+ * The property a local is handed on to, when the same body does that — `this.tick = id`.
+ *
+ * A FALSE REPORT before it was planted. `const id = setInterval(…); this.tick = id` was read as an
+ * id kept in a local that dies with the call, on a component whose `@destroyed` clears `this.tick`,
+ * and the report said nothing could ever reach it. The id escapes the local the moment it is
+ * assigned to a property, and where it lands is what decides whether anything clears it.
+ *
+ * Only within the member that made the local: the local's own scope is the furthest it can be read
+ * from, and this rule is about a value that has to be reachable LATER.
+ */
+function handedToAProperty(local: string, within: ts.Node): string | undefined {
+  let named: string | undefined;
+
+  (function look(node: ts.Node): void {
+    if (named !== undefined) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.right) &&
+      node.right.text === local &&
+      ts.isPropertyAccessExpression(node.left) &&
+      node.left.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      ts.isIdentifier(node.left.name)
+    ) {
+      named = node.left.name.text;
+      return;
+    }
+    ts.forEachChild(node, look);
+  })(within);
+
+  return named;
+}
+
 /** Where the id of this call goes, read from what encloses it. */
 function keptIn(call: ts.CallExpression): { kept: IntervalWithNoCleanupIssue["kept"]; named: string | undefined } {
   const parent = call.parent;
@@ -199,7 +233,16 @@ export const intervalWithNoCleanup = {
 
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node) && isSetInterval(node, resolve)) {
-          const { kept, named } = keptIn(node);
+          let { kept, named } = keptIn(node);
+          // The id may pass THROUGH a local on its way to a property, and where it lands is what
+          // decides whether anything can clear it.
+          if (kept === "a local" && named !== undefined) {
+            const onwards = handedToAProperty(named, member);
+            if (onwards !== undefined) {
+              kept = "a property";
+              named = onwards;
+            }
+          }
           // A name something clears is the shape the advice asks for, wherever it is cleared from —
           // and a property is only answered by a property, a local only by a local.
           const isCleared =
