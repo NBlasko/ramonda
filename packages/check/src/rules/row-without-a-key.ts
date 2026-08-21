@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { ElementRule, JsxElementLike } from "./rule";
+import { rowCallbackFor } from "./row-callback";
+import type { ElementRule } from "./rule";
 
 /**
  * A row built from data, with no `key` on it.
@@ -33,48 +34,6 @@ export interface RowWithoutAKeyIssue {
   file: string;
   line: number;
   column: number;
-}
-
-/** The calls that turn data into rows. `list` is matched by name, as the form rules match `Field`. */
-const BUILDS_ROWS = new Set(["map", "list", "flatMap"]);
-
-/**
- * Whether this element IS a row — the value a row-building callback returns.
- *
- * The DIRECT return, and that is the whole precision of this rule: in
- * `rows.map((row) => <tr><td /></tr>)` the `<tr>` is the row and the `<td>` is not, so only the
- * `<tr>` is asked for a key. Walking up through a parenthesis, a conditional and a `&&` keeps that
- * true for the shapes people actually write — `(row) => cond ? <tr /> : <tr className="empty" />`
- * is two rows, not none.
- */
-function rowBuiltBy(element: JsxElementLike): "map" | "list" | undefined {
-  let at: ts.Node | undefined = element.parent;
-
-  while (at !== undefined) {
-    if (ts.isParenthesizedExpression(at) || ts.isConditionalExpression(at) || ts.isBinaryExpression(at)) {
-      at = at.parent;
-      continue;
-    }
-    // A `return` inside a block body reaches the same place a concise body does.
-    if (ts.isReturnStatement(at) || ts.isBlock(at)) {
-      at = at.parent;
-      continue;
-    }
-    if (!ts.isArrowFunction(at) && !ts.isFunctionExpression(at)) return undefined;
-
-    const call = at.parent;
-    if (!ts.isCallExpression(call)) return undefined;
-
-    const callee = ts.isPropertyAccessExpression(call.expression)
-      ? call.expression.name.text
-      : ts.isIdentifier(call.expression)
-        ? call.expression.text
-        : undefined;
-
-    if (callee === undefined || !BUILDS_ROWS.has(callee)) return undefined;
-    return callee === "list" ? "list" : "map";
-  }
-  return undefined;
 }
 
 export const rowWithoutAKey = {
@@ -119,11 +78,13 @@ export const rowWithoutAKey = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { has }) {
+  read(element, { has, resolve }) {
     if (has("key")) return [];
 
-    const via = rowBuiltBy(element);
-    if (via === undefined) return [];
+    // `row-callback.ts` carries the walk and the note on what it can and cannot reach. A callback
+    // lifted into a `const` is the same callback, and this rule was silent on every one of them.
+    const built = rowCallbackFor(element, resolve);
+    if (built === undefined) return [];
 
     /**
      * The tag as WRITTEN, host or component alike — unlike every other rule in this family, which
@@ -132,6 +93,6 @@ export const rowWithoutAKey = {
      * and the component is what holds the state that goes to the wrong row without it.
      */
     const tag = openingOf(element).tagName.getText();
-    return [{ tag, via, ...positionOf(openingOf(element)) }];
+    return [{ tag, via: built.via, ...positionOf(openingOf(element)) }];
   },
 } as const satisfies ElementRule<RowWithoutAKeyIssue>;

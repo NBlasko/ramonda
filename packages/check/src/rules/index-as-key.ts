@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { ElementRule, JsxElementLike } from "./rule";
+import { rowCallbackFor } from "./row-callback";
+import type { ElementContext, ElementRule, JsxElementLike } from "./rule";
 
 /**
  * `key={i}` — the position, written out as if it were an identity.
@@ -49,34 +50,6 @@ export interface IndexAsKeyIssue {
   column: number;
 }
 
-/** The calls that hand their callback an index. `list()` deliberately does not, so it is absent. */
-const HANDS_AN_INDEX: ReadonlySet<string> = new Set(["map", "flatMap"]);
-
-/**
- * The name of the index parameter of the nearest enclosing row-building callback.
- *
- * `undefined` when there is no such callback, when it takes no second parameter, or when that
- * parameter is destructured — a shape nobody writes for an index, and one this cannot name.
- */
-function indexParameterFor(element: JsxElementLike): string | undefined {
-  let at: ts.Node | undefined = element.parent;
-
-  while (at !== undefined) {
-    if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) {
-      const call = at.parent;
-      if (!ts.isCallExpression(call)) return undefined;
-      if (!ts.isPropertyAccessExpression(call.expression)) return undefined;
-      if (!HANDS_AN_INDEX.has(call.expression.name.getText())) return undefined;
-
-      const index = at.parameters[1];
-      if (index === undefined || !ts.isIdentifier(index.name)) return undefined;
-      return index.name.text;
-    }
-    at = at.parent;
-  }
-  return undefined;
-}
-
 /**
  * Every name an expression is built from, ignoring the right-hand side of a property access.
  *
@@ -85,7 +58,7 @@ function indexParameterFor(element: JsxElementLike): string | undefined {
  * look like it mentions three names and pass, or `key={i}` would look like it mentions one and the
  * two would be told apart by luck.
  */
-function namesIn(node: ts.Node): string[] {
+function namesIn(node: ts.Node, resolve: ElementContext["resolve"], depth = 0): string[] {
   const found: string[] = [];
 
   const walk = (at: ts.Node): void => {
@@ -105,6 +78,19 @@ function namesIn(node: ts.Node): string[] {
       return;
     }
     if (ts.isIdentifier(at)) {
+      /**
+       * A local the callback built one line up — `const rowKey = \`row-${i}\`; key={rowKey}`.
+       *
+       * The same key, moved for readability, and it was silent. Only a `const` INSIDE a function:
+       * a module-level one cannot mention the index at all, and a `let` can be written again.
+       * What comes back is the names the local is built from, so the answer stays a question about
+       * the index rather than a guess about a value.
+       */
+      const declaration = depth < 4 ? localConstBehind(at, resolve) : undefined;
+      if (declaration?.initializer !== undefined) {
+        found.push(...namesIn(declaration.initializer, resolve, depth + 1));
+        return;
+      }
       found.push(at.text);
       return;
     }
@@ -113,6 +99,22 @@ function namesIn(node: ts.Node): string[] {
 
   walk(node);
   return found;
+}
+
+/** The `const` a name holds, when it is declared inside a function and cannot be written again. */
+function localConstBehind(name: ts.Identifier, resolve: ElementContext["resolve"]): ts.VariableDeclaration | undefined {
+  const declaration = resolve(name)?.declarations?.[0];
+  if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+
+  const list = declaration.parent;
+  if (!ts.isVariableDeclarationList(list) || (list.flags & ts.NodeFlags.Const) === 0) return undefined;
+
+  // Inside a function, because that is the only place the index parameter exists.
+  for (let at: ts.Node | undefined = declaration.parent; at !== undefined; at = at.parent) {
+    if (ts.isArrowFunction(at) || ts.isFunctionExpression(at) || ts.isFunctionDeclaration(at)) return declaration;
+    if (ts.isSourceFile(at)) return undefined;
+  }
+  return undefined;
 }
 
 export const indexAsKey = {
@@ -142,7 +144,7 @@ export const indexAsKey = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
+  read(element, { tag, resolve }) {
     /**
      * A COMPONENT row is asked too, and it used to be skipped.
      *
@@ -153,7 +155,9 @@ export const indexAsKey = {
      */
     const named = tag ?? openingOf(element as JsxElementLike).tagName.getText();
 
-    const index = indexParameterFor(element as JsxElementLike);
+    // `row-callback.ts` carries the walk, shared with `row-without-a-key`, and reaches a callback
+    // lifted into a `const` — which is where a list long enough to have this fault ends up.
+    const index = rowCallbackFor(element as JsxElementLike, resolve)?.index;
     if (index === undefined) return [];
 
     const written = keyExpressionOf(element as JsxElementLike);
@@ -161,7 +165,7 @@ export const indexAsKey = {
 
     // The index and NOTHING else. One name is required, so `key={"row"}` is not a report, and every
     // name has to be the index, so `` key={`${row.id}-${i}`} `` is not one either.
-    const names = namesIn(written);
+    const names = namesIn(written, resolve);
     if (names.length === 0 || names.some((name) => name !== index)) return [];
 
     return [{ tag: named, index, written: written.getText(), ...positionOf(openingOf(element as JsxElementLike)) }];
