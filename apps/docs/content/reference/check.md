@@ -164,7 +164,7 @@ rules**, so a rule cannot be added without appearing here.
 | `context-consumed-above-its-provider` | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics) |
 | `client-only-request-read` | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics) |
 | `fresh-object-in-hook-props` | a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change |
-| `unsplittable-import` | a dynamic import's path is not a literal, so no bundler can emit a chunk for it |
+| `unsplittable-import` | a dynamic import's path is neither a literal nor a template a bundler can read, so no chunk is emitted for it |
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
 | `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
