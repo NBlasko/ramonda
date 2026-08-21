@@ -36,6 +36,8 @@ const EXPECTED = [
   "createRef",
   "Ref",
   "Head",
+  // The timer an app ARMS, where `@interval`/`@timeout` are the ones a mount arms.
+  "Timer",
   "Portal",
   // A portal target outside the app's root: the token, and the attribute a
   // hand-rolled shell needs in order to emit the container itself.

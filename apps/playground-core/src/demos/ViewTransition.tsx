@@ -1,4 +1,4 @@
-import { destroyed, Hook, updated } from "@ramonda/core";
+import { Hook, Timer, updated } from "@ramonda/core";
 
 /**
  * Runs a state change inside a browser view transition, so an exit animates.
@@ -45,24 +45,13 @@ import { destroyed, Hook, updated } from "@ramonda/core";
 export class ViewTransition extends Hook {
   private settle?: () => void;
   /**
-   * The deadline's id, on a property so `@destroyed` can reach it.
+   * The deadline itself, and there is no id to keep.
    *
-   * `@timeout` cannot express this — it fires relative to MOUNT, and this starts when `run` is called. A
-   * raw timer is allowed on the framework's condition, which is exactly this: teardown has to be able to
-   * clear it, or it outlives the component and settles a promise nobody is waiting for.
+   * `@timeout` cannot express this one — it fires relative to MOUNT, and this starts when `run` is
+   * called. A `Timer` is armed by the call, restarts if `run` is called again, and is cleared by
+   * teardown, so a hook that goes away cannot settle a promise nobody is waiting for.
    */
-  private deadlineId?: number;
-
-  @destroyed stopDeadline() {
-    this.clearDeadline();
-  }
-
-  private clearDeadline() {
-    if (this.deadlineId !== undefined) {
-      window.clearTimeout(this.deadlineId);
-      this.deadlineId = undefined;
-    }
-  }
+  private net = this.use(Timer);
 
   /** Fires after the DOM has been written for this pass — see the note above. */
   @updated committed() {
@@ -72,7 +61,7 @@ export class ViewTransition extends Hook {
   private resolve() {
     const settle = this.settle;
     this.settle = undefined;
-    this.clearDeadline();
+    this.net.stop();
     settle?.();
   }
 
@@ -101,16 +90,16 @@ export class ViewTransition extends Hook {
         this.settle = resolve;
       });
       change();
-      return Promise.race([
-        settled,
-        new Promise<void>((resolve) => {
-          this.deadlineId = window.setTimeout(() => {
-            this.deadlineId = undefined;
-            this.settle = undefined;
-            resolve();
-          }, deadline);
-        }),
-      ]);
+      // The net settles the SAME promise rather than racing a second one: `resolve` is the one path out,
+      // so there is no second resolver to keep in step with it. That is what the `Promise.race` here was
+      // for, and it went with the raw timer.
+      //
+      // The return value is not optional here. `after` refuses to arm once the owner is gone, and this
+      // promise is the one handed to `startViewTransition` — so a refusal with nothing else to settle it
+      // leaves the browser holding a snapshot over a page nobody can click. Found by review, not by
+      // running it: `run()` reached after teardown is an await landing late, which is rare and silent.
+      if (!this.net.after(deadline, () => this.resolve())) this.resolve();
+      return settled;
     });
 
     return transition.updateCallbackDone;

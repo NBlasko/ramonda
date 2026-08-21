@@ -1,4 +1,4 @@
-import { Component, destroyed, list, memoized, mounted, state } from "@ramonda/core";
+import { Component, list, memoized, mounted, state, Timer } from "@ramonda/core";
 import { type Card, ExitCard } from "../demos/ExitCard";
 import { ViewTransition } from "../demos/ViewTransition";
 
@@ -73,29 +73,40 @@ export class ExitPage extends Component {
 
   /** 2. The workaround: mark it, wait for the stylesheet's duration, then remove. */
   /**
-   * The id lives on a property so `@destroyed` can reach it.
+   * The timer this workaround needs, and there is nothing to remember about it.
    *
-   * `@timeout` cannot express this — it fires relative to MOUNT, and this starts on a click. A raw timer
-   * is allowed for exactly that reason, and the framework's condition is this one: keep the id where
-   * teardown can clear it, or the timer outlives the component and writes into something that is gone
-   * (`RMD008` drops the write, so the symptom is a handler that quietly does nothing).
+   * `@timeout` cannot express this one — it fires relative to MOUNT, and this starts on a click. So it
+   * is a `Timer`: teardown clears it, so leaving the page mid-fade simply does not remove the card,
+   * where a raw `setTimeout` would have written into a component that is gone (`RMD008` drops the
+   * write, so the symptom is a handler that quietly does nothing).
    *
-   * That this demo needs a timer at all is the cost it exists to show.
+   * **One hook instance is one timer, and that is a decision here rather than a detail.** This page has
+   * ONE `leaving` id, so only one card can be fading at a time; a second click while the first is still
+   * fading restarts the timer, and the first card would be left behind with its class already cleared.
+   * So the second click finishes the first one first — see `removeAfterClass`. A page that wanted two
+   * cards fading at once would put the timer on the CARD, where one instance is one card.
+   *
+   * That this demo needs a timer at all is still the cost it exists to show. What it no longer shows is
+   * an app keeping an id in step with its own teardown.
    */
-  private pending?: number;
-
-  @destroyed stopPending() {
-    if (this.pending !== undefined) window.clearTimeout(this.pending);
-  }
+  private removal = this.use(Timer);
 
   removeAfterClass(id: number) {
+    // The first one is finished rather than dropped: restarting the timer would otherwise strand it,
+    // still in the list and no longer marked. Found by review — the raw timer this replaced armed one
+    // per click, so both cards went.
+    const pending = this.leaving;
+    if (pending !== null && pending !== id) this.drop(pending);
+
     this.leaving = id;
-    this.readout = "marked `.leaving`, removing in 3s — a timer the app has to keep in step with the CSS";
-    this.pending = window.setTimeout(() => {
-      this.pending = undefined;
+    this.readout =
+      pending !== null && pending !== id
+        ? `card ${pending} was still fading, so it went at once — one timer, one card at a time`
+        : "marked `.leaving`, removing in 3s — a timer the app has to keep in step with the CSS";
+    this.removal.after(3000, () => {
       this.leaving = null;
       this.drop(id);
-    }, 3000);
+    });
   }
 
   /**

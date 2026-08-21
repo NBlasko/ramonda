@@ -123,14 +123,42 @@ export function assertNoParameters(fn: unknown, decorator: string, name: string 
   );
 }
 
+/**
+ * What `setTimeout` and `setInterval` can actually hold: a 32-bit signed millisecond count.
+ *
+ * Above it the value is TRUNCATED, so the timer fires on the next tick instead of in a month —
+ * late becomes immediate, which is the opposite of what the caller asked for. It cost nothing to
+ * ignore while only decorator literals reached the check; `Timer.after(target - now, run)` is a
+ * computed delay, and a target further out than this is an ordinary thing to compute.
+ */
+const MAX_DELAY = 2_147_483_647;
+
+/**
+ * The one judgement about a delay, kept in one place because TWO things ask it.
+ *
+ * `@interval(ms)` / `@timeout(ms)` ask at class-definition time, where the number is written at the
+ * source and a wrong one can only be a mistake. `Timer.after` / `Timer.every` ask at runtime, where
+ * it may have come from props. Same fault, two messages — the decorator names itself, the hook names
+ * its method — so this returns the sentence rather than throwing it.
+ */
+export function delayFault(ms: unknown): string | undefined {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) {
+    return `The delay must be a number of milliseconds, got ${show(ms)}.`;
+  }
+  if (ms < 0) return `The delay must not be negative, got ${ms}.`;
+  if (ms > MAX_DELAY) {
+    return (
+      `The delay must be at most ${MAX_DELAY} ms (about 24.8 days), got ${ms}. ` +
+      `setTimeout truncates it to a 32-bit signed value, so a larger one fires IMMEDIATELY rather than late.`
+    );
+  }
+  return undefined;
+}
+
 /** @interval(ms) / @timeout(ms) */
 export function assertDelay(ms: unknown, decorator: string): void {
-  if (typeof ms !== "number" || !Number.isFinite(ms)) {
-    fail(decorator, `The delay must be a number of milliseconds, got ${show(ms)}.`);
-  }
-  if (ms < 0) {
-    fail(decorator, `The delay must not be negative, got ${ms}.`);
-  }
+  const fault = delayFault(ms);
+  if (fault !== undefined) fail(decorator, fault);
 }
 
 /** @onWindow("click") / @onDocument(...) / @onElement(...) */
