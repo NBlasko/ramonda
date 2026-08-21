@@ -154,6 +154,31 @@ class UserPage extends Component {
   }
 }
 
+/**
+ * A parameterised route that IS bakeable, which is the case the build had no example of.
+ *
+ * `/users/:id` next to it is the mirror: same shape, per-request mode, and the smoke test asserts it
+ * is served dynamically. This one reads nothing but the URL, so every one of its pages is known at
+ * build time — and `entry-server.tsx` is where they are named, because the data belongs to the app.
+ */
+@Host("div")
+class GuidePage extends Component {
+  route = this.use(Navigator);
+  head = this.use(Head, () => ({
+    title: `${this.route.params("/guide/:slug").slug} — Ramonda SSR`,
+    description: `The ${this.route.params("/guide/:slug").slug} guide, baked at build time.`,
+  }));
+  render() {
+    const slug = this.route.params("/guide/:slug").slug;
+    return (
+      <div className="page">
+        <h2>Guide: {slug}</h2>
+        <p>This page was prerendered — the slug came from the build, not from a request.</p>
+      </div>
+    );
+  }
+}
+
 @Host("div")
 class NotFoundPage extends Component {
   route = this.use(Navigator);
@@ -176,6 +201,7 @@ export const routes = createRoutes({
   "/": <HomePage />,
   "/about": <AboutPage />,
   "/users/:id": <UserPage />,
+  "/guide/:slug": <GuidePage />,
   "/products": <ProductsPage />,
   "/signup": <SignupPage />,
   "*": <NotFoundPage />,

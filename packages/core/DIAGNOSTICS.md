@@ -195,7 +195,7 @@ fields was six lines and is now one per field. And the severities are the ones t
 carried: the port gave them identity, it did not re-judge them.
 
 What each one means and what to do about it is on the public reference rather than here, because that
-is the page a reader lands on from a message: [ramonda.pages.dev/reference/diagnostics](https://ramonda.pages.dev/reference/diagnostics).
+is the page a reader lands on from a message: [ramonda.dev/reference/diagnostics](https://ramonda.dev/reference/diagnostics).
 
 **Four messages in this package deliberately have no code**, and each says so where it is:
 `bootstrap`'s "App crashed" (`index.ts`), a lazily loaded component that failed to arrive

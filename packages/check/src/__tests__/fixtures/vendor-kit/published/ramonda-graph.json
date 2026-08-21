@@ -36,7 +36,8 @@
       "id": "@acme/kit/src/Sidebar.tsx#Sidebar",
       "kind": "component",
       "name": "Sidebar",
-      "at": "src/Sidebar.tsx:3:1"
+      "at": "src/Sidebar.tsx:3:1",
+      "opaque": true
     },
     {
       "id": "@acme/kit/src/panels/left.tsx#Panel",

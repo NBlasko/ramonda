@@ -1,6 +1,6 @@
 # @ramonda/router
 
-Client-side routing for [Ramonda](https://ramonda.pages.dev): state-first, race-free navigation
+Client-side routing for [Ramonda](https://ramonda.dev): state-first, race-free navigation
 with nested route outlets.
 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Frouter)](https://www.npmjs.com/package/@ramonda/router)
@@ -58,7 +58,7 @@ export class App extends Component {
 the whole site. On the server the router reads the request URL; on the client it reads
 `window.location` — the same code, so hydration adopts the server's markup.
 
-See the [routing guide](https://ramonda.pages.dev/routing) for params, nested outlets, and the
+See the [routing guide](https://ramonda.dev/routing) for params, nested outlets, and the
 server story in full.
 
 ## License

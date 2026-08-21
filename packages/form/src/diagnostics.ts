@@ -7,7 +7,7 @@
  * follows from that — see `refuse`.
  *
  * The record is the protocol every reporting package shares, documented at
- * https://ramonda.pages.dev/reference/diagnostics#capturing-them. It is declared here rather
+ * https://ramonda.dev/reference/diagnostics#capturing-them. It is declared here rather
  * than imported, and that is the whole design: a package that reports something must be free
  * to have no dependencies, so what is shared is the SHAPE and the name of the sink, never a
  * module. `@ramonda/devtools` compares these declarations across packages, which is what keeps

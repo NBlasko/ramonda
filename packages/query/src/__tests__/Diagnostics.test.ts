@@ -9,7 +9,7 @@ import { hashKey, resetKeyDiagnostics } from "../hashKey";
  * not over the table they were read from. `@ramonda/devtools` compares the declaration itself
  * across packages; this is the other half.
  *
- * See https://ramonda.pages.dev/reference/diagnostics#capturing-them.
+ * See https://ramonda.dev/reference/diagnostics#capturing-them.
  */
 
 let records: RamondaDiagnostic[] = [];

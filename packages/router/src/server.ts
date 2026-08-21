@@ -1,4 +1,4 @@
-import type { PathOf, RouteConfig } from "./match";
+import { matchParams, type PathOf, type RouteConfig } from "./match";
 
 /**
  * The ISR cache lives next door and is re-exported here, so a server file has ONE import:
@@ -115,9 +115,52 @@ export interface RoutePlan {
  * request at build is discovered later, when the build renders it under a poisoned request
  * context and the guard throws (that refines `static` → `server`). So this is the plan; the
  * build is the authority.
+ *
+ * ## `static` holds PATHS, never patterns — and it used to hold both
+ *
+ * `/players/:id` is one route and however many players there are. It went into `static` as itself,
+ * and a build loop that bakes what it is given wrote **`dist/static/players/:id/index.html`** — a
+ * directory literally named `:id`, a page nobody can reach, and nothing said a word. The sibling in
+ * `match.ts` had this right from the start: `routePaths` puts a parameterised route in `needsData`
+ * and keeps it out of `paths`.
+ *
+ * So pass the concrete paths, and this fills them in:
+ *
+ * ```ts
+ * const plan = routePlan(server, players.map((p) => `/players/${p.id}`));
+ * // plan.static → ["/", "/signup", "/players/7", "/players/9"]
+ * ```
+ *
+ * **With none supplied it THROWS**, rather than skipping the route or falling it back to the server.
+ * A config that says `prerender` and a build that quietly does not is the shape where the site ships
+ * missing half its pages and every page it did emit looks perfectly correct — the same argument
+ * `renderStatic`'s `blockedBy` already settles by stopping the build.
+ *
+ * **ISR is not held to it, and for a reason rather than as an omission.** A `revalidate` route with a
+ * `:param` bakes nothing at build: `createIsrCache` matches the pattern and fills as pages are asked
+ * for, each under its own path, bounded by its `maxPages`. So there is no list for a build to be given,
+ * and the pattern stays in `plan.isr` as the rule it is.
+ *
+ * `paths` are for PRERENDERING, so a path belonging to an ISR route is refused by the check below like
+ * any other path that bakes nothing — warming an ISR page is `isr.serve(path)` at boot, not a build
+ * step. It is still named in `needsData` so a caller doing that knows which routes have pages to warm.
+ *
+ * A warm-up cannot exceed that cache's `maxPages`: the trim runs after every answer, so a loop over
+ * more paths than the cap evicts the pages it has just baked, in the order it baked them.
+ *
+ * (Two earlier versions of this comment were wrong in two different directions, which is worth leaving
+ * a note about: the first claimed such a route "is served and refreshed per request" and that a build
+ * could "warm those pages"; the second described the gap that the same branch then closed. A comment
+ * about another module ages the moment that module changes.)
+ *
+ * @param paths concrete paths for the parameterised routes marked for prerender
  */
-export function routePlan<C extends RouteConfig>(server: ServerRoutes<C>): RoutePlan {
+export function routePlan<C extends RouteConfig>(server: ServerRoutes<C>, paths: readonly string[] = []): RoutePlan {
   const plan: RoutePlan = { static: [], isr: [], server: [], needsData: [] };
+  // A supplied path can satisfy two patterns — `/users/7` fills `/users/:id` and `/:page` alike — and
+  // the file it bakes is the same file either way, so the list is deduped rather than the match
+  // narrowed. Ordered, because a build's log reads better in the order the table declares.
+  const baked = new Set<string>();
 
   for (const route of server.routes.compiled) {
     const entry = server.config[route.key] ?? {};
@@ -130,13 +173,58 @@ export function routePlan<C extends RouteConfig>(server: ServerRoutes<C>): Route
     }
 
     const prerender = entry.prerender ?? server.defaultMode === "static";
-    if (prerender) {
-      plan.static.push(route.key);
-      if (hasParams) plan.needsData.push(route.key);
-    } else {
+    if (!prerender) {
       plan.server.push(route.key);
+      continue;
     }
+
+    if (!hasParams) {
+      baked.add(route.key);
+      continue;
+    }
+
+    plan.needsData.push(route.key);
+    const filled = paths.filter((path) => matchParams(path, route.key) !== null);
+    if (filled.length === 0) {
+      const takes = route.paramNames.map((name) => `:${name}`).join(", ");
+      const example = `routePlan(server, items.map((item) => \`${route.key.replace(/:(\w+)/g, "${item.$1}")}\`))`;
+      // Two different faults, and the same sentence for both sent a reader to add an argument that was
+      // already there. Found by review.
+      throw new Error(
+        paths.length === 0
+          ? `[Ramonda] \`${route.key}\` is marked for prerender and takes ${takes}, so a build cannot ` +
+              `know which pages exist. Pass them: ${example}. Or drop \`prerender\` and let it render per request.`
+          : `[Ramonda] \`${route.key}\` is marked for prerender and takes ${takes}, and none of the ` +
+              `${paths.length} path(s) given match it — check their shape rather than adding more. A param ` +
+              `matches one segment of word characters and dashes, so a trailing slash, a dot or an ` +
+              `encoded character falls outside it. Given: ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ", …" : ""}`,
+      );
+    }
+    for (const path of filled) baked.add(path);
   }
 
+  /**
+   * Every path GIVEN has to be baked, and this is the half the first version left open.
+   *
+   * `filled` only refused a route that matched NOTHING. Hand it `["/guide/ok", "/guide/v1.2"]` and the
+   * first matches, so the throw above stays quiet and the second is dropped without a word — measured,
+   * and it is the very failure the throw exists to prevent: a site missing pages while every page it
+   * did emit looks perfectly correct. A param matches `[\w-]+`, one segment, so a trailing slash, a
+   * dot, a percent-encoded character or a typo'd prefix all fall out that way.
+   *
+   * Checked against what was actually baked rather than per route, because a path may legitimately be
+   * claimed by any of several patterns.
+   */
+  const unused = paths.filter((path) => !baked.has(path));
+  if (unused.length > 0) {
+    throw new Error(
+      `[Ramonda] ${unused.length} path(s) given to routePlan match no prerendered route, so they would ` +
+        `never be baked: ${unused.join(", ")}. A \`:param\` matches one segment of word characters and ` +
+        `dashes — a trailing slash, a dot or an encoded character is outside it — and a path for a route ` +
+        `that is not marked \`prerender\` has nothing to bake either.`,
+    );
+  }
+
+  plan.static = [...baked];
   return plan;
 }

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { coreDecoratorName } from "./core-import";
-import { decoratorName, positionOf } from "../syntax";
+import { positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
 /**
@@ -67,46 +67,42 @@ export interface DuplicateDecoratorIssue {
 }
 
 /**
- * A second declaration REFUSES the program: it throws, so nothing runs at all.
+ * What a SECOND application of each single-use decorator does, which is what decides the advice.
  *
- * `@Host` only. Two element names have no union and no winner worth picking, so core raises `RMD045` and
- * throws in every build. Reporting it as "one of them wins" would be worse than saying nothing — the
- * reader would go looking for which line is live when the answer is that the class never loads.
+ * **One table, and it is checked against core rather than trusted.** These are facts about the
+ * framework's runtime, written here because this package never imports it — so the two could disagree
+ * and nothing would notice: change core so a second `@StableProps` throws and this would keep telling
+ * people it merges. `scripts/check-decorator-duplication.mjs` compares this against the `duplicate`
+ * field on core's diagnostics and fails the build if they differ, in either direction — including a
+ * decorator core learns about and this table does not, where the rule simply says nothing.
+ *
+ * It was four `Set`s until then, one per effect, and the effect was recovered by asking each in turn.
+ * A single map says the same thing once and is directly comparable to core's.
+ *
+ * The four words are the four pieces of advice, and telling them apart is the point:
+ * - `refuses` — it THROWS (`@Host`, RMD045). Two element names have no union, so the class never
+ *   loads and there is no live line to hunt for.
+ * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
+ *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
+ * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). It names a set
+ *   and already merges along the class chain, so nothing is lost; the spelling is redundant.
+ * - `redundant` — the second changes nothing at all (`@state`, `@compute`, `@persist`, `@memoized`,
+ *   RMD050). Measured in core rather than assumed: `@state @state n = 1` still renders the right
+ *   value, `@compute @compute` runs its body once for two reads.
+ *
+ * `@watchProp` is deliberately absent: several on one method is the supported way for one handler to
+ * follow several props, and each application does real work. See core's `DecoratorReach.test.tsx`.
  */
-const REFUSING = new Set(["Host"]);
-
-/**
- * A second declaration DISPLACES the first: one wins, the rest never run, and the program carries on
- * wrongly. That is what a runtime code without a throw is for — `RMD032` and `RMD040`.
- *
- * Counted per CLASS BODY, so a subclass declaring its own — an override — is not a duplicate.
- */
-const DISPLACING = new Set(["catchError", "ShouldUpdateOnPropsChange"]);
-
-/**
- * A second declaration MERGES with the first, so both take effect and the result is the union.
- *
- * `@StableProps` only, and it follows from what the decorator IS: it names a set, and it already merges
- * along the class chain. Nothing is displaced and nothing is wasted — the author asked for the union and
- * got it, spelled twice. Core reports `RMD046`, a warning.
- */
-const MERGING = new Set(["StableProps"]);
-
-/**
- * The decorators where a second application changes NOTHING — a different fault, and worth its own
- * sentence, because telling somebody "one of them never runs" here would send them looking for a
- * behaviour difference that does not exist.
- *
- * Measured in core rather than assumed: `@state @state n = 1` renders once per write with the right
- * value, `@compute @compute` runs its body once for two reads, and `@persist` and `@memoized`
- * behave identically doubled. So it is redundancy, which is why it reads as a warning rather than a
- * broken program — the author believed something that is not so, and nothing downstream is wrong.
- *
- * `@watchProp` is deliberately NOT here: several on one method is the supported way for one handler to
- * follow several props, and each application does real work. See `DecoratorReach.test.tsx`, which pins
- * that it runs once per changed prop.
- */
-const REDUNDANT_TWICE = new Set(["state", "compute", "persist", "memoized"]);
+const EFFECT: Record<string, DuplicateDecoratorIssue["effect"]> = {
+  Host: "refuses",
+  catchError: "displaces",
+  ShouldUpdateOnPropsChange: "displaces",
+  StableProps: "merges",
+  state: "redundant",
+  compute: "redundant",
+  persist: "redundant",
+  memoized: "redundant",
+};
 
 /**
  * Which declaration is in effect, said per decorator KIND, because the two are opposite.
@@ -207,14 +203,32 @@ export const duplicateDecorators = {
         const name = coreDecoratorName(decorator, resolve);
         if (name === undefined) continue;
 
-        if (REFUSING.has(name) || DISPLACING.has(name) || MERGING.has(name)) {
+        /**
+         * `Object.hasOwn` before the read, because this is an object literal and the four `Set`s it
+         * replaced could not be answered by `Object.prototype`.
+         *
+         * **Not reachable today, and measured rather than assumed both ways.** `coreName` returns only
+         * a name `@ramonda/core` exports, and none of its 101 exports shares a name with an
+         * `Object.prototype` member — so `EFFECT["toString"]` cannot be asked. It WAS reachable in the
+         * commit that introduced this table, before the merge brought `coreDecoratorName`: the old
+         * `decoratorName` handed over the text somebody wrote, so `@toString @toString` returned a
+         * FUNCTION, passed an `undefined` check, and landed in a report's `effect` field.
+         *
+         * Kept because what feeds this is a name from somebody else's source, and the guard costs one
+         * comparison to make that safe whatever resolves it next.
+         */
+        if (!Object.hasOwn(EFFECT, name)) continue;
+        const effect = EFFECT[name];
+        if (effect === undefined) continue;
+
+        if (effect !== "redundant") {
           const previous = perClass.get(name);
           if (previous) previous.count += 1;
           else perClass.set(name, { count: 1, at: decorator, kind });
           continue;
         }
 
-        if (REDUNDANT_TWICE.has(name) && member !== undefined) {
+        if (member !== undefined) {
           const key = `${member} ${name}`;
           const previous = perMember.get(key);
           if (previous) previous.count += 1;
@@ -228,7 +242,8 @@ export const duplicateDecorators = {
 
     for (const [decorator, { count: times, at, kind }] of perClass) {
       if (times < 2) continue;
-      const effect = REFUSING.has(decorator) ? "refuses" : MERGING.has(decorator) ? "merges" : "displaces";
+      // Non-null: `perClass` is only written for a name the table has, three lines above.
+      const effect = EFFECT[decorator] as DuplicateDecoratorIssue["effect"];
       found.push({
         component: self.name,
         decorator,

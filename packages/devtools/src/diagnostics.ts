@@ -2,7 +2,7 @@
  * The collector side of the diagnostics protocol: one sink on `globalThis`, which
  * every reporting package finds without depending on anything.
  *
- * See https://ramonda.pages.dev/reference/diagnostics#capturing-them for the
+ * See https://ramonda.dev/reference/diagnostics#capturing-them for the
  * record and the rules. This file is the other half — what receives them.
  */
 

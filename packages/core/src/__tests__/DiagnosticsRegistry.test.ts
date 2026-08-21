@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import ts from "typescript";
 
 /**
  * The diagnostic registry and the table that documents it, pinned to each other.
@@ -32,16 +33,44 @@ function unionCodes(): string[] {
 }
 
 /**
- * Each `RMDxxx: { … severity: … }` entry in the registry.
+ * Each `RMDxxx: { … severity: … }` entry in the registry, read with TypeScript's own parser.
  *
- * `[^}]*?` rather than `\s*` between the two, because several entries carry a
- * comment explaining why they are an error rather than a warning — which is
- * exactly the kind of thing this test must not be fooled by.
+ * It was a regex, `(RMD\d{3}):\s*\{[^}]*?severity:\s*"…"`, and `[^}]*?` cannot cross a `}`. That
+ * held only while every field before `severity` was a scalar — the first NESTED one silently took
+ * five specs out of the map, and the failure read as "48 codes, expected 53" with nothing pointing at
+ * the brace. The regex before that could not survive a comment, which is why it grew `[^}]*?` in the
+ * first place; a parser ends the sequence rather than continuing it.
+ *
+ * Field order is not load-bearing now, which is the property worth having: a spec is an object, and
+ * where `severity` sits inside it is nobody's business.
  */
 function specSeverities(): Map<string, string> {
-  const specs = source.slice(source.indexOf("const SPECS"));
-  const entries = specs.matchAll(/(RMD\d{3}):\s*\{[^}]*?severity:\s*"(warning|error)"/g);
-  return new Map([...entries].map((match) => [match[1], match[2]]));
+  const parsed = ts.createSourceFile(
+    "diagnostics.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    ts.ScriptKind.TS,
+  );
+  const found = new Map<string, string>();
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      /^RMD\d{3}$/.test(node.name.getText(parsed)) &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      const severity = node.initializer.properties.find(
+        (property) => ts.isPropertyAssignment(property) && property.name.getText(parsed) === "severity",
+      );
+      if (severity && ts.isPropertyAssignment(severity) && ts.isStringLiteralLike(severity.initializer)) {
+        found.set(node.name.getText(parsed), severity.initializer.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return found;
 }
 
 /** The `| \`RMDxxx\` | severity | … |` rows of the Codes table. */
