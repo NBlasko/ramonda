@@ -81,10 +81,10 @@ export class ExitPage extends Component {
    * write, so the symptom is a handler that quietly does nothing).
    *
    * **One hook instance is one timer, and that is a decision here rather than a detail.** This page has
-   * ONE `leaving` id, so only one card can be fading at a time; a second click while the first is still
-   * fading restarts the timer, and the first card would be left behind with its class already cleared.
-   * So the second click finishes the first one first — see `removeAfterClass`. A page that wanted two
-   * cards fading at once would put the timer on the CARD, where one instance is one card.
+   * ONE `leaving` id, so only one card can be fading at a time. A click on a DIFFERENT card finishes the
+   * fading one first, and a click on the SAME one does nothing — both in `removeAfterClass`, and both
+   * because restarting a single timer would otherwise strand a card. A page that wanted two cards fading
+   * at once would put the timer on the CARD, where one instance is one card.
    *
    * That this demo needs a timer at all is still the cost it exists to show. What it no longer shows is
    * an app keeping an id in step with its own teardown.
@@ -107,15 +107,24 @@ export class ExitPage extends Component {
   }
 
   removeAfterClass(id: number) {
-    // The first one is finished rather than dropped: restarting the timer would otherwise strand it,
-    // still in the list and no longer marked. Found by review — the raw timer this replaced armed one
-    // per click, so both cards went.
     const pending = this.leaving;
-    if (pending !== null && pending !== id) this.drop(pending);
+
+    // Clicking the SAME fading card again does nothing. Restarting its own timer would leave it fully
+    // faded and still clickable for up to six seconds — found by review, which is also where the first
+    // version of this comment was found claiming otherwise.
+    if (pending === id) {
+      this.readout = `card ${id} is already fading — the click changes nothing`;
+      return;
+    }
+
+    // A DIFFERENT card, while one is still fading: finish the first rather than strand it. One hook
+    // instance is one timer, so restarting it would leave that card in the list and no longer marked.
+    // The raw timer this replaced armed one per click, so both went.
+    if (pending !== null) this.drop(pending);
 
     this.leaving = id;
     this.readout =
-      pending !== null && pending !== id
+      pending !== null
         ? `card ${pending} was still fading, so it went at once — one timer, one card at a time`
         : "marked `.leaving`, removing in 3s — a timer the app has to keep in step with the CSS";
     this.removal.start(3000);

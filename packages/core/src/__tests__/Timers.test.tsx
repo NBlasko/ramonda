@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../base/Component";
-import { state } from "../base/decorators";
+import { destroyed, state } from "../base/decorators";
 import { Hook } from "../base/Hook";
 import { Interval, Timeout } from "../base/Timers";
 import { renderToString } from "../hydration/ssr";
@@ -454,6 +454,110 @@ describe("what `start` reports", () => {
     await renderToString(<OnBoth />);
 
     expect(started).toEqual([false]);
+    expect(log).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+/**
+ * The two windows a review found, where the guard read a field that was not yet — or no longer — true.
+ * Both were reachable, both fired, and both are the leak this hook exists to make impossible.
+ */
+describe("the windows where the owner's flags lie", () => {
+  /**
+   * `ComponentRuntime.env` is `"client"` until `DiffAndMerge` assigns it, which happens AFTER the
+   * component and its hooks are constructed. So a `start` from a field initializer read "client"
+   * during a server render: measured before the fix, it armed a timer in the SSR process and fired it.
+   */
+  test("a start from a field initializer during a server render is refused", async () => {
+    const started: boolean[] = [];
+
+    class Early extends Component {
+      t = this.use(Timeout, () => ({ run: this.never }));
+      armed = this.record(this.t.start(100));
+
+      private record(ok: boolean): boolean {
+        started.push(ok);
+        return ok;
+      }
+
+      private never() {
+        log.push("server");
+      }
+
+      render(): RamondaNode {
+        return <i />;
+      }
+    }
+
+    await renderToString(<Early />);
+
+    expect(started).toEqual([false]);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(1000);
+    expect(log).toEqual([]);
+  });
+
+  /**
+   * `isDestroyed` is set AFTER the whole teardown pass, so during `@destroyed` it still reads `false`.
+   * Measured before the fix: `start(50)` returned `true`, left a live timer and fired it after unmount,
+   * with nothing left to clear it — and `RMD006` cannot see it either, because the timer has no
+   * lifecycle owner to be attributed to by then.
+   */
+  test("a start from `@destroyed` is refused", async () => {
+    const started: boolean[] = [];
+
+    class Late extends Component {
+      t = this.use(Timeout, () => ({ run: this.never }));
+
+      @destroyed
+      bye() {
+        started.push(this.t.start(50));
+      }
+
+      private never() {
+        log.push("after-unmount");
+      }
+
+      render(): RamondaNode {
+        return <i />;
+      }
+    }
+
+    const app = await getDOM<Late>(<Late />);
+    app.unmount();
+
+    expect(started).toEqual([false]);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(1000);
+    expect(log).toEqual([]);
+  });
+
+  /** And a running timer is still cleared by that same teardown, which is the half that must not break. */
+  test("and one already running is still cleared", async () => {
+    class Both extends Component {
+      t = this.use(Timeout, () => ({ run: this.never }));
+
+      @destroyed
+      bye() {
+        this.t.start(50);
+      }
+
+      private never() {
+        log.push("fired");
+      }
+
+      render(): RamondaNode {
+        return <i />;
+      }
+    }
+
+    const app = await getDOM<Both>(<Both />);
+    app.instance.t.start(1000);
+    expect(vi.getTimerCount()).toBe(1);
+
+    app.unmount();
+    vi.advanceTimersByTime(5000);
     expect(log).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
   });

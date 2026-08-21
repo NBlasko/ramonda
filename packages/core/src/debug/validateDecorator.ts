@@ -6,7 +6,12 @@
  * surfaces the moment the class is defined, which is the cheapest possible time
  * to find it. A warning here would just scroll past.
  *
- * Every call site sits in `if (__DEV__)`, so none of this reaches production.
+ * Every DECORATOR call site sits in `if (__DEV__)`, so none of that reaches production.
+ *
+ * `delayFault` is the exception, and it is deliberate: `Timeout`/`Interval` call it UNGUARDED, because
+ * their delay arrives at runtime rather than as a literal. Re-guarding it there brings back a
+ * production `setTimeout(fn, NaN)` — coerced to `0` — which is what `__tests__/prod/TimerDelay.prod.test.tsx`
+ * exists to stop.
  */
 
 function fail(decorator: string, message: string): never {
@@ -140,6 +145,12 @@ const MAX_DELAY = 2_147_483_647;
  * source and a wrong one can only be a mistake. `Timeout.start` / `Interval.start` ask at runtime, where
  * it may have come from props. Same fault, two messages — the decorator names itself, the hook names
  * itself and its method — so this returns the sentence rather than throwing it.
+ *
+ * **The two ask in different builds, and that follows from the same difference.** The decorator's check
+ * is DEV-only, so `@timeout(3_000_000_000)` throws on the author's machine and is still truncated in
+ * production. That is a literal: it is met the first time the class is defined in development, and no
+ * production input can change it. The hook's is unguarded, because a delay computed from data is only
+ * ever wrong in the build that has the data.
  */
 export function delayFault(ms: unknown): string | undefined {
   if (typeof ms !== "number" || !Number.isFinite(ms)) {

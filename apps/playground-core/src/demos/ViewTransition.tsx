@@ -94,7 +94,7 @@ export class ViewTransition extends Hook {
       // so there is no second resolver to keep in step with it. That is what the `Promise.race` here was
       // for, and it went with the raw timer.
       //
-      // The return value is not optional here. `after` refuses to arm once the owner is gone, and this
+      // The return value is not optional here. `start` refuses once the owner is gone, and this
       // promise is the one handed to `startViewTransition` — so a refusal with nothing else to settle it
       // leaves the browser holding a snapshot over a page nobody can click. Found by review, not by
       // running it: `run()` reached after teardown is an await landing late, which is rare and silent.
