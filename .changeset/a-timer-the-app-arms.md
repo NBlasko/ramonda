@@ -22,7 +22,7 @@ stay() {
 ```
 
 **One hook instance is one timer.** So `stop()` never asks which, and no handle travels back to the
-caller. Arming an armed timer restarts it — for `every` that is the only correct answer, since two
+caller. Arming an armed timer restarts it — for `repeat` that is the only correct answer, since two
 intervals on one name would both keep firing and nothing could name either, and `after` follows the
 same rule rather than having a second one.
 
@@ -46,7 +46,7 @@ on the next tick and storms in the only build where it matters. That is the shap
 once — late becoming immediate, which no caller asks for.
 
 **Nothing is armed during a server render.** A timer could not fire before the response is sent, and
-the request would be held open by a handle nobody can reach. `after` and `every` return quietly there
+the request would be held open by a handle nobody can reach. `after` and `repeat` return quietly there
 rather than throwing, and that is what makes them safe to call from shared code: the same `@created`
 runs on both sides, so a throw would force every call site to branch on which side it is — the one
 thing the hydration rules tell an author not to do. The side is read off the owner's runtime, not off

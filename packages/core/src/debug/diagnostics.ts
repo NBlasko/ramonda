@@ -136,7 +136,7 @@ const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD006: {
     severity: "error",
     title: "Timer still running after unmount",
-    fix: "Use @interval / @timeout for a clock that starts at mount, or the Timer hook for one you arm yourself: `private t = this.use(Timer)`, then `this.t.after(ms, run)` or `this.t.every(ms, run)`, and `this.t.stop()` to end it early. Both clear themselves on teardown, so there is no id to keep. If you do write a raw timer, its id has to live on a class property so @destroyed can reach it — a returned closure cannot, which is why the fallback is a property.",
+    fix: "Use @interval / @timeout for a clock that starts at mount, or the Timer hook for one you arm yourself: `private t = this.use(Timer)`, then `this.t.after(ms, run)` or `this.t.repeat(ms, run)`, and `this.t.stop()` to end it early. Both clear themselves on teardown, so there is no id to keep. If you do write a raw timer, its id has to live on a class property so @destroyed can reach it — a returned closure cannot, which is why the fallback is a property.",
   },
   RMD007: {
     severity: "error",

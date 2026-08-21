@@ -208,12 +208,12 @@ describe("after", () => {
   });
 });
 
-describe("every", () => {
+describe("repeat", () => {
   class Clock extends Component {
     ticker = this.use(Timer);
 
     start(ms = 1000) {
-      this.ticker.every(ms, () => log.push("tick"));
+      this.ticker.repeat(ms, () => log.push("tick"));
     }
 
     halt() {
@@ -353,7 +353,7 @@ describe("a server render", () => {
         // Armed during the render pass rather than from `@created`, which is the earliest a server
         // render reaches — and the point is that it is silent, not that it is refused.
         this.t.after(1000, () => log.push("server"));
-        this.t.every(1000, () => log.push("server-every"));
+        this.t.repeat(1000, () => log.push("server-repeat"));
         return <i />;
       }
     }
@@ -379,13 +379,13 @@ describe("what arming REPORTS", () => {
     const app = await getDOM<Card>(<Card />);
 
     expect(app.instance.removal.after(100, () => log.push("armed"))).toBe(true);
-    expect(app.instance.removal.every(100, () => log.push("armed"))).toBe(true);
+    expect(app.instance.removal.repeat(100, () => log.push("armed"))).toBe(true);
 
     app.instance.removal.stop();
     app.unmount();
 
     expect(app.instance.removal.after(100, () => log.push("late"))).toBe(false);
-    expect(app.instance.removal.every(100, () => log.push("late"))).toBe(false);
+    expect(app.instance.removal.repeat(100, () => log.push("late"))).toBe(false);
 
     vi.advanceTimersByTime(1000);
     expect(log).toEqual([]);
@@ -427,7 +427,7 @@ describe("a delay that is not one", () => {
     const app = await getDOM<Bad>(<Bad />);
 
     expect(() => app.instance.t.after(Number.NaN, () => {})).toThrow(/\[Timer\.after\].*number of milliseconds/s);
-    expect(() => app.instance.t.every(-1, () => {})).toThrow(/\[Timer\.every\].*not be negative/s);
+    expect(() => app.instance.t.repeat(-1, () => {})).toThrow(/\[Timer\.repeat\].*not be negative/s);
     // And nothing was armed by the attempt.
     expect(vi.getTimerCount()).toBe(0);
     app.unmount();

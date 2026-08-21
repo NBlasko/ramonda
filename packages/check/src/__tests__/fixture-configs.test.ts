@@ -1,6 +1,6 @@
 // @vitest-environment node
 // Reads config files off disk and builds no program, so it needs `node:fs` and nothing else.
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -35,12 +35,25 @@ const directories = readdirSync(fixtures, { withFileTypes: true })
   .map((entry) => entry.name)
   .sort();
 
-/** `analyze.ts`'s own two calls, so what is asserted is what the analyzer gets. */
-function resolved(name: string): ts.ParsedCommandLine {
+/**
+ * What the config SAYS, read the way TypeScript reads it rather than with `JSON.parse`.
+ *
+ * A tsconfig is JSONC: TypeScript allows comments in it, and five of this repository's own configs
+ * use them, including the base these extend. `JSON.parse` refuses the first one with `Unexpected
+ * token '/'` — a failure about a comma that is really a failure about a comment, in a test whose
+ * subject is the config file. So both halves of this file go through `readConfigFile`.
+ */
+function declared(name: string): Record<string, unknown> {
   const path = join(fixtures, name, "tsconfig.json");
   const file = ts.readConfigFile(path, ts.sys.readFile);
   expect(file.error, `${name}: unreadable config`).toBeUndefined();
-  return ts.parseJsonConfigFileContent(file.config, ts.sys, dirname(path), undefined, path);
+  return file.config as Record<string, unknown>;
+}
+
+/** `analyze.ts`'s own two calls, so what is asserted is what the analyzer gets. */
+function resolved(name: string): ts.ParsedCommandLine {
+  const path = join(fixtures, name, "tsconfig.json");
+  return ts.parseJsonConfigFileContent(declared(name), ts.sys, dirname(path), undefined, path);
 }
 
 /** What the base says, and what a fixture therefore does not repeat. */
@@ -81,7 +94,7 @@ describe("the fixture configs", () => {
 
   test("and says nothing the base already says", () => {
     for (const name of directories) {
-      const own = JSON.parse(readFileSync(join(fixtures, name, "tsconfig.json"), "utf8"));
+      const own = declared(name);
       expect(own.extends, `${name} does not extend the base`).toBe("../tsconfig.base.json");
       // `paths` is the only compiler option a fixture declares. Anything else here is either a
       // duplicate of the base or a disagreement with it, and both are what the base exists to end.
@@ -119,8 +132,7 @@ describe("the fixture configs", () => {
    */
   test("`include` stays in the fixture, so a fixture is only itself", () => {
     for (const name of directories) {
-      const declared = JSON.parse(readFileSync(join(fixtures, name, "tsconfig.json"), "utf8"));
-      expect(declared.include, `${name} declares no include`).toBeDefined();
+      expect(declared(name).include, `${name} declares no include`).toBeDefined();
       for (const file of resolved(name).fileNames) {
         const own = `${join(fixtures, name)}${sep}`;
         // The loose stubs beside the fixtures are the other legal answer: every `include` names

@@ -137,7 +137,7 @@ const MAX_DELAY = 2_147_483_647;
  * The one judgement about a delay, kept in one place because TWO things ask it.
  *
  * `@interval(ms)` / `@timeout(ms)` ask at class-definition time, where the number is written at the
- * source and a wrong one can only be a mistake. `Timer.after` / `Timer.every` ask at runtime, where
+ * source and a wrong one can only be a mistake. `Timer.after` / `Timer.repeat` ask at runtime, where
  * it may have come from props. Same fault, two messages — the decorator names itself, the hook names
  * its method — so this returns the sentence rather than throwing it.
  */

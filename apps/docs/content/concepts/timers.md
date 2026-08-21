@@ -54,7 +54,11 @@ export class Row extends Component<{ id: number; onRemove: (id: number) => void 
 
   leave() {
     this.leaving = true;
-    this.removal.after(3000, () => this.props.onRemove(this.props.id));
+    this.removal.after(3000, this.remove);
+  }
+
+  private remove() {
+    this.props.onRemove(this.props.id);
   }
 
   stay() {
@@ -71,7 +75,7 @@ export class Row extends Component<{ id: number; onRemove: (id: number) => void 
 ```demo:TimerOnClick
 ```
 
-`after(ms, run)` runs `run` once. `every(ms, run)` repeats it. `stop()` clears whichever is
+`after(ms, run)` runs `run` once. `repeat(ms, run)` runs it on a loop. `stop()` clears whichever is
 armed, and **teardown clears it too** — which is the whole reason to reach for this
 rather than a raw timer.
 
@@ -83,6 +87,49 @@ callback will never run:
 if (!this.deadline.after(1000, () => this.settle())) this.settle();
 ```
 
+## What the callback sees, three seconds later
+
+The body runs long after the click, so which values it reads is a decision — and the two
+answers are both right, for different jobs. Say which one you mean:
+
+```tsx
+// The value AS IT IS WHEN IT FIRES. What a debounce wants: send whatever is in the box
+// when the typing stops, not what was there when the last key landed.
+private search = this.use(Timer);
+
+typed() {
+  this.search.after(300, this.send);
+}
+
+private send() {
+  void fetch(`/search?q=${this.query}`);   // this.query, read now
+}
+```
+
+```tsx
+// The value AS IT WAS WHEN YOU ARMED IT. What a per-item action wants: remove the row that
+// was clicked, whatever the list has done since. Keep it in state, where it is visible.
+@state leavingId: number | null = null;
+private removal = this.use(Timer);
+
+remove(id: number) {
+  this.leavingId = id;
+  this.removal.after(3000, this.dropLeaving);
+}
+
+private dropLeaving() {
+  const id = this.leavingId;
+  if (id === null) return;
+  this.leavingId = null;
+  this.drop(id);
+}
+```
+
+**Reach for a method rather than an inline function**, as both of these do. An arrow written
+at the call site can capture a local *or* read `this.props` — measured, those give different
+answers three seconds later — and nothing at the call site says which one you wrote. A named
+method puts the reads where they can be read.
+
 **One hook instance is one timer.** So `stop()` never has to ask which, and no handle
 travels back to the caller. Arming an armed timer restarts it: `after` called twice runs
 the body once, at the second delay. Two timers means two hooks:
@@ -93,7 +140,7 @@ private deadline = this.use(Timer);
 ```
 
 Nothing is armed during a server render — a timer could not fire before the response is
-sent. `after` and `every` return `false` there rather than throwing, so the same method is
+sent. `after` and `repeat` return `false` there rather than throwing, so the same method is
 safe to call from code that runs on both sides. They return `false` once the component is
 gone too, for the same reason: nothing would ever clear a timer armed after teardown.
 

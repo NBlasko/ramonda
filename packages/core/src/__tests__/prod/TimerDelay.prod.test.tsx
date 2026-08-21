@@ -35,7 +35,7 @@ describe("a delay that is not one, in production", () => {
     const app = await getDOM<Retry>(<Retry />);
 
     expect(() => app.instance.timer.after(Number.NaN, () => {})).toThrow(/\[Timer\.after\]/);
-    expect(() => app.instance.timer.every(Number.NaN, () => {})).toThrow(/\[Timer\.every\]/);
+    expect(() => app.instance.timer.repeat(Number.NaN, () => {})).toThrow(/\[Timer\.repeat\]/);
     app.unmount();
   });
 

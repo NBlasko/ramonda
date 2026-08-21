@@ -178,7 +178,7 @@ export const intervalWithNoCleanup = {
       "is for. For an interval the APP starts — on a click, after a fetch — the `Timer` hook does the\n" +
       "same for one it does not own the start of:\n\n" +
       "  private ticker = this.use(Timer);\n" +
-      "  start() { this.ticker.every(1000, () => this.refresh()); }\n" +
+      "  start() { this.ticker.repeat(1000, () => this.refresh()); }\n" +
       "  halt() { this.ticker.stop(); }\n\n" +
       "A raw timer is still allowed, and then the id has to live on a class property so\n" +
       "`@destroyed` can reach it:\n\n" +

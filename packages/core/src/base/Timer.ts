@@ -49,7 +49,7 @@ import { Hook } from "./Hook";
  * private deadline = this.use(Timer);
  * ```
  *
- * Arming an armed timer clears the first one. For `every` that is the only correct answer — two
+ * Arming an armed timer clears the first one. For `repeat` that is the only correct answer — two
  * intervals on one name would both keep firing, and nothing could name either — and `after` follows
  * it rather than having a second rule of its own.
  *
@@ -57,7 +57,7 @@ import { Hook } from "./Hook";
  *
  * A timer has no meaning while a page is being turned into a string: it could not fire before the
  * response is sent, and the request would be held open by a handle nobody can reach. So `after` and
- * `every` DO NOTHING on the server.
+ * `repeat` DO NOTHING on the server.
  *
  * They return quietly rather than throwing, and that is the whole reason it is safe to call them from
  * shared code. The same method runs on both sides — a `@created` is `shared` by default — so a throw
@@ -72,7 +72,7 @@ import { Hook } from "./Hook";
 export class Timer extends Hook {
   /**
    * How to clear whatever is currently armed — a closure rather than the id, because `after` and
-   * `every` need `clearTimeout` and `clearInterval` respectively, and one field that already knows
+   * `repeat` need `clearTimeout` and `clearInterval` respectively, and one field that already knows
    * which cannot be asked the wrong question.
    */
   private disarm: (() => void) | undefined;
@@ -146,8 +146,8 @@ export class Timer extends Hook {
    *
    * Returns whether it armed, for the reason `after` gives.
    */
-  every(ms: number, run: () => void): boolean {
-    this.checkDelay("every", ms);
+  repeat(ms: number, run: () => void): boolean {
+    this.checkDelay("repeat", ms);
     this.stop();
     if (this.onServer || this.gone) return false;
 
