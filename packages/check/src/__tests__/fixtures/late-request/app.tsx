@@ -2,6 +2,7 @@ import { Component, bootstrap, state } from "@ramonda/core";
 import { requestContext, requestKey } from "@ramonda/core";
 import { OwnHelper } from "./own-helper";
 import { requestContext as reExported } from "./re-export";
+import * as core from "@ramonda/core";
 
 const currentUser = requestKey<string>("currentUser");
 
@@ -76,6 +77,17 @@ class LateOtherSpellings extends Component {
   }
   render() {
     return <p>spellings</p>;
+  }
+}
+
+/** ✗ Reached through a NAMESPACE import, which the helper's own docstring says arrives here. */
+class LateThroughANamespace extends Component {
+  async load() {
+    await fetchPosts();
+    console.log(core.requestContext().headers.get("accept-language"));
+  }
+  render() {
+    return <p>namespace</p>;
   }
 }
 

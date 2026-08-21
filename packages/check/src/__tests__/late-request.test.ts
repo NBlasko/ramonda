@@ -18,9 +18,9 @@ const run = () => analyzeProject(join(here, "fixtures", "late-request", "tsconfi
  */
 describe("requestContext() read below an await", () => {
   /**
-   * Three spellings that were silent until they were planted: the framework's function reached
-   * through an app's own re-export, and a held context opened by a destructure or a bracket rather
-   * than by a dot. All three read the same cleared scope.
+   * Four spellings that were silent until they were planted: the framework's function reached
+   * through an app's own re-export or through a namespace import, and a held context opened by a
+   * destructure or a bracket rather than by a dot. All four read the same cleared scope.
    */
   test("every late shape is reported, with the whole read named", () => {
     expect(
@@ -36,6 +36,9 @@ describe("requestContext() read below an await", () => {
       // The held door opened by a destructure and by a bracket rather than by a dot.
       "LateOtherSpellings.load: { headers } = context (local)",
       'LateOtherSpellings.load: context["cookies"] (local)',
+      // A NAMESPACE import, which `core-import.ts` has always said arrives — and did not. It walked
+      // one parent too far for a `NamespaceImport` and landed on the source file.
+      'LateThroughANamespace.load: core.requestContext().headers.get("accept-language") (call)',
       "BothBelowReportsOnce.load: requestContext() (call)",
     ]);
   });

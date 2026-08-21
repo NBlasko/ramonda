@@ -118,11 +118,25 @@ function exportedName(declaration: ts.Declaration): string | undefined {
   return ts.isIdentifier(written) ? written.text : undefined;
 }
 
-/** The module an import or export declaration names, when it names one. */
+/**
+ * The module an import or export declaration names, when it names one.
+ *
+ * Each shape sits a different distance from its statement, and a NAMESPACE import used to be walked
+ * as if it were a named one — one parent too far, landing on the source file. So
+ * `import * as core from "@ramonda/core"` followed by `core.requestContext()` was identified as
+ * nobody's, although this helper's own docstring said it arrived here. Found by planting it while
+ * reviewing, and it had been wrong from the start:
+ *
+ * - `ImportSpecifier` → `NamedImports` → `ImportClause` → `ImportDeclaration`
+ * - `NamespaceImport` → `ImportClause` → `ImportDeclaration`
+ * - `ImportClause` → `ImportDeclaration`
+ * - `ExportSpecifier` → `NamedExports` → `ExportDeclaration`
+ */
 function specifierOf(declaration: ts.Declaration): string | undefined {
-  const statement =
-    ts.isImportSpecifier(declaration) || ts.isNamespaceImport(declaration)
-      ? declaration.parent.parent.parent
+  const statement = ts.isImportSpecifier(declaration)
+    ? declaration.parent.parent.parent
+    : ts.isNamespaceImport(declaration)
+      ? declaration.parent.parent
       : ts.isImportClause(declaration)
         ? declaration.parent
         : ts.isExportSpecifier(declaration)
