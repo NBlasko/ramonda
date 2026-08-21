@@ -91,48 +91,83 @@ export const browserUrl = {
   read(cls, { self, resolve }) {
     const found: BrowserUrlIssue[] = [];
 
+    /**
+     * `window.location`, `globalThis.location`, `document.location`, `self.location` and a bare
+     * `location`.
+     *
+     * A bare name counts only when it resolves to NOTHING. The program is built with `noLib` and no
+     * `@types`, so the browser's own `location` has no declaration to find — while
+     * `const location = …` written in the source does. That is what tells the global from a local
+     * of the same name, and it costs no type.
+     *
+     * `self` was missing and is the third name for the same object; the package's other rules about
+     * a global already list it. Found by planting `self.location.pathname`, which was silent.
+     */
+    const isTheUrl = (node: ts.Expression): boolean =>
+      (ts.isPropertyAccessExpression(node) &&
+        node.name.text === "location" &&
+        ts.isIdentifier(node.expression) &&
+        ["window", "globalThis", "document", "self"].includes(node.expression.text)) ||
+      (ts.isIdentifier(node) && node.text === "location" && resolve(node) === undefined);
+
+    const report = (member: string, read: string, at: ts.Node): void => {
+      found.push({
+        component: self.name,
+        read,
+        ...(ROUTER_ANSWER[member] ? { instead: ROUTER_ANSWER[member] } : {}),
+        ...positionOf(at),
+      });
+    };
+
     ts.forEachChild(cls, function look(node) {
-      if (ts.isPropertyAccessExpression(node)) {
-        const member = node.name.text;
-        const base = node.expression;
-        /**
-         * `window.location.x`, `globalThis.location.x`, `document.location.x` and a bare
-         * `location.x`.
-         *
-         * A bare name counts only when it resolves to NOTHING. The program is built with
-         * `noLib` and no `@types`, so the browser's own `location` has no declaration to find —
-         * while `const location = …` written in the source does. That is what tells the global
-         * from a local of the same name, and it costs no type.
-         */
-        const onLocation =
-          (ts.isPropertyAccessExpression(base) &&
-            base.name.text === "location" &&
-            ts.isIdentifier(base.expression) &&
-            ["window", "globalThis", "document"].includes(base.expression.text)) ||
-          (ts.isIdentifier(base) && base.text === "location" && resolve(base) === undefined);
+      /**
+       * A READ, and only a read. Reported without this guard: `window.location.href = "…"`,
+       * `location.assign("/x")` and `location.reload()` — measured, all three came out as "reads",
+       * and a reload is the one thing the router cannot replace. A write is a different fault with
+       * a different answer, and this rule is about asking the wrong source a question the router
+       * already answers.
+       */
+      const written =
+        ts.isBinaryExpression(node.parent) &&
+        node.parent.left === node &&
+        node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+      const called = ts.isCallExpression(node.parent) && node.parent.expression === node;
 
-        /**
-         * A READ, and only a read. Reported without this guard: `window.location.href = "…"`,
-         * `location.assign("/x")` and `location.reload()` — measured, all three came out as
-         * "reads", and a reload is the one thing the router cannot replace. A write is a different
-         * fault with a different answer, and this rule is about asking the wrong source a question
-         * the router already answers.
-         */
-        const written =
-          ts.isBinaryExpression(node.parent) &&
-          node.parent.left === node &&
-          node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
-        const called = ts.isCallExpression(node.parent) && node.parent.expression === node;
+      if (ts.isPropertyAccessExpression(node) && isTheUrl(node.expression) && !written && !called) {
+        report(node.name.text, node.getText(), node);
+      }
 
-        if (onLocation && !written && !called) {
-          found.push({
-            component: self.name,
-            read: node.getText(),
-            ...(ROUTER_ANSWER[member] ? { instead: ROUTER_ANSWER[member] } : {}),
-            ...positionOf(node),
-          });
+      // `location["hash"]` — the dotted read with brackets round it, and the same fact.
+      if (
+        ts.isElementAccessExpression(node) &&
+        isTheUrl(node.expression) &&
+        ts.isStringLiteralLike(node.argumentExpression) &&
+        !written &&
+        !called
+      ) {
+        report(node.argumentExpression.text, node.getText(), node);
+      }
+
+      /**
+       * `const { pathname } = window.location` — a read of that member with the member's own name
+       * on the left of it, and it was silent.
+       *
+       * The report quotes the line rather than rewriting it into `window.location.pathname`, which
+       * is text the reader would go looking for and not find.
+       */
+      if (
+        ts.isVariableDeclaration(node) &&
+        node.initializer !== undefined &&
+        isTheUrl(node.initializer) &&
+        ts.isObjectBindingPattern(node.name)
+      ) {
+        for (const element of node.name.elements) {
+          const named = element.propertyName ?? element.name;
+          if (!ts.isIdentifier(named)) continue;
+          report(named.text, `{ ${named.text} } = ${node.initializer.getText()}`, element);
         }
       }
+
       ts.forEachChild(node, look);
     });
 

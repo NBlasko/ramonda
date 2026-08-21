@@ -4,6 +4,10 @@ import { currentPath } from "./where";
 // answer lives and none of this would be reported.
 import { Router } from "@ramonda/router";
 
+declare const self: {
+  location: { pathname: string };
+};
+
 declare const window: {
   location: {
     pathname: string;
@@ -27,6 +31,17 @@ class Astray extends Component {
     // inventing one.
     const origin = window.location.origin;
     return <span>{`${where}${anchor}${query}${origin}`}</span>;
+  }
+}
+
+/** The three spellings beside `window.` — `self`, a destructure, and a bracket. */
+class OtherSpellings extends Component {
+  route = this.use(Router);
+  render() {
+    const onSelf = self.location.pathname;
+    const { pathname } = window.location;
+    const bracketed = window.location["hash"];
+    return <span>{`${onSelf}${pathname}${bracketed}`}</span>;
   }
 }
 

@@ -23,10 +23,16 @@ describe("a component reading the browser's URL", () => {
       "window.location.search -> searchParams",
       // Nothing on the router answers `origin`, and none is invented for it.
       "window.location.origin -> —",
+      // The three spellings beside `window.` — see the test below for what each is.
+      "self.location.pathname -> pathname",
+      "{ pathname } = window.location -> pathname",
+      'window.location["hash"] -> hashTags',
       // One `this.method()` away, which is where a read like this actually lives.
       "location.pathname -> pathname",
     ]);
-    expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(new Set(["Astray", "ViaAHelper"]));
+    expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(
+      new Set(["Astray", "OtherSpellings", "ViaAHelper"]),
+    );
   });
 
   /**
@@ -48,6 +54,25 @@ describe("a component reading the browser's URL", () => {
    * built with `noLib` and no `@types`, so the browser's own `location` resolves to nothing while
    * one written in the source resolves where it is written.
    */
+  /**
+   * The same read, spelled three other ways — all silent until they were planted.
+   *
+   * `self` is the third name for the global and the package's other rules already list it;
+   * `const { pathname } = window.location` is a read of exactly that member with the member's name
+   * on the left; and `location["hash"]` is the dotted read with brackets round it.
+   */
+  test("`self`, a destructure and a bracketed key are the same read", () => {
+    const found = run("browser-url").findings["browser-url"].filter((i) => i.component === "OtherSpellings");
+
+    expect(found.map((i) => `${i.line}:${i.read}`)).toEqual([
+      "41:self.location.pathname",
+      // Quoted as the reader sees it, not rewritten into a dotted form that is not on the line.
+      "42:{ pathname } = window.location",
+      '43:window.location["hash"]',
+    ]);
+    expect(found.map((i) => i.instead)).toEqual(["pathname", "pathname", "hashTags"]);
+  });
+
   test("a local called `location` is left alone", () => {
     const browserUrlReads = run("browser-url").findings["browser-url"];
     expect(browserUrlReads.some((r) => r.component === "Careful")).toBe(false);
