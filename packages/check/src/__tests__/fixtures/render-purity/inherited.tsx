@@ -1,4 +1,4 @@
-import { Component, state } from "../framework";
+import { Component, state } from "@ramonda/core";
 
 /**
  * A shared base class, which is where the reach used to stop without a word.

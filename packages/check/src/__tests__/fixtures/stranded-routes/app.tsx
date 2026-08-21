@@ -1,4 +1,4 @@
-import { Component, bootstrap, createRoutes } from "../framework";
+import { Component, bootstrap, createRoutes } from "@ramonda/core";
 
 declare class RouteOutlet extends Component {
   props: { routes: unknown };

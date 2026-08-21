@@ -1,10 +1,17 @@
-import { Component, Host, bootstrap, persist, state } from "../framework";
+import { Component, Host, bootstrap, persist, state } from "@ramonda/core";
 
 declare class Maps<K, V> {
   get(key: K): V;
 }
 declare class Dates {
   getTime(): number;
+}
+
+/** Module scope, and a helper — the shapes `lossyIn` follows, so the gate has to cover them too. */
+const SHARED = new Maps<string, number>();
+
+function makeCache(): Maps<string, number> {
+  return new Maps<string, number>();
 }
 
 /**
@@ -24,6 +31,10 @@ class Cart extends Component {
   @state total = 0;
   @state rows = [];
   @state label = "cart";
+
+  /* Silent for the same reason, one hop away: the gate is about the project, not the spelling. */
+  @state shared = SHARED;
+  @state fromHelper = makeCache();
 
   /* Not reported: `@persist` beside it means `persist-of-a-lossy-value` answers, without a gate. */
   @state @persist both = new Dates();

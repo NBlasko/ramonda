@@ -1,4 +1,4 @@
-import { Component, bootstrap, createContext, type ComponentClassKind, type RamondaNode } from "../framework";
+import { Component, bootstrap, createContext, type ComponentClassKind, type RamondaNode } from "@ramonda/core";
 
 const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 

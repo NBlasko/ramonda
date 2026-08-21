@@ -17,6 +17,12 @@ const run = () => analyzeProject(join(here, "fixtures", "one-hop", "tsconfig.jso
  * Four are now closed. `element.ts`'s `attr` and `numberAttr` follow a name to its declaration, and
  * that was one change for the whole accessibility family rather than three rules; `lossyIn` follows
  * one too. The fifth is not a gap at all — see below.
+ *
+ * **Closing `attr` did not close the question**, which is the part worth carrying. Four more rules
+ * read an element through a DIFFERENT helper — `stringAttr`, `trueAttr`, the id table's own reader
+ * — and every one of those was still literal-only afterwards. None of it is visible from a rule's
+ * own source: each calls something whose name says it reads the attribute. `element-family` and
+ * `id-table-hop` are that measurement, and two of the four were reporting correct markup.
  */
 describe("a value written one hop from where the rule looks", () => {
   test("the direct shape is reported by every one of them", () => {

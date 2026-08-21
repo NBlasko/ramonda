@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, list } from "../framework";
+import { Component, Host, bootstrap, list } from "@ramonda/core";
 
 declare const rows: { id: string; name: string }[];
 declare const profileId: string;

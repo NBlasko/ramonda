@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
 import { freshnessOf, shorten } from "./follow-value";
@@ -170,9 +171,11 @@ export function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve
     seen.add(declaration);
 
     for (const decorator of ts.getDecorators(declaration) ?? []) {
+      // Core's `@StableProps`, by the name core exports — an alias hid the declaration and made
+      // this report the very prop the child had declared stable.
+      if (coreDecoratorName(decorator, resolve) !== "StableProps") continue;
       const call = decorator.expression;
-      if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) continue;
-      if (call.expression.text !== "StableProps") continue;
+      if (!ts.isCallExpression(call)) continue;
       for (const argument of call.arguments) {
         if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) found.add(argument.text);
       }

@@ -77,7 +77,18 @@ export function lossyIn(written: ts.Expression, resolve: ElementContext["resolve
    * recursed INTO a literal and never followed a name out of one. A branch and a call are both
    * followed, because either path that puts a `Map` in the blob loses that data on that path.
    */
-  return follow(written, resolve, lossyLeaf(resolve, depth))?.value;
+  const elsewhere = follow(written, resolve, lossyLeaf(resolve, depth));
+  if (elsewhere === undefined) return undefined;
+
+  /**
+   * The INNERMOST name wins, which is what `Lossy.foundIn` promises and what the reader needs.
+   *
+   * `@persist blob = wrap()` where `wrap()` hands back `{ cache: makeCache() }` has two answers:
+   * `wrap`, which is already on the line being read, and `makeCache`, which is where the `Map` is.
+   * Taking the walk's own name unconditionally printed the first — sending the reader to the line
+   * they were already looking at, which is the fault `Found.foundIn` exists to avoid.
+   */
+  return { ...elsewhere.value, foundIn: elsewhere.value.foundIn ?? elsewhere.foundIn };
 }
 
 /** What this expression IS, without following a name out of it. */
@@ -121,6 +132,14 @@ function lossyShape(written: ts.Expression, resolve: ElementContext["resolve"], 
 export interface Lossy {
   holds: string;
   becomes: string;
+  /**
+   * Where the value is built, when it is not on the line being reported — a local, or the function
+   * that hands it back.
+   *
+   * `@state rows = level1()` told a reader it holds a `Map` and gave them nowhere to go. The
+   * innermost name, not the outermost: `level1` is already on the line they are looking at.
+   */
+  foundIn?: string;
 }
 
 /**

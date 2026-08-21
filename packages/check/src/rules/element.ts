@@ -106,8 +106,18 @@ export function hasContent(children: readonly ts.JsxChild[]): boolean {
  * `contextFor` is documented as computed once per element and shared across the family — so a rule
  * outside that family calling it is a second build of the same thing, per element, for one
  * question. `numberAttr` and `trueAttr` are the same shape for the same reason.
+ *
+ * `resolve` is REQUIRED here for the reason it is required on `numberAttr`, and the same fault had
+ * already happened once: this read only the literal, so `heading-skips-a-level` — its only caller —
+ * was wrong in BOTH directions at once. It missed `<div role={HEADING} aria-level={6}>`, and it
+ * reported `<h3 role={PRESENTATION}>`, which is not in the outline at runtime and is correct
+ * markup. Neither is visible from the rule, whose own line says it reads the role.
  */
-export function stringAttr(element: JsxElementLike, name: string): string | undefined {
+export function stringAttr(
+  element: JsxElementLike,
+  name: string,
+  resolve: ElementContext["resolve"],
+): string | undefined {
   for (const attribute of openingOf(element).attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
     if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
@@ -115,10 +125,8 @@ export function stringAttr(element: JsxElementLike, name: string): string | unde
     const value = attribute.initializer;
     if (value === undefined) return undefined;
     if (ts.isStringLiteral(value)) return value.text;
-    if (ts.isJsxExpression(value) && value.expression !== undefined && ts.isStringLiteralLike(value.expression)) {
-      return value.expression.text;
-    }
-    return undefined;
+    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
+    return textBehind(value.expression, resolve);
   }
   return undefined;
 }
@@ -134,7 +142,11 @@ export function stringAttr(element: JsxElementLike, name: string): string | unde
  * `undefined` for anything that is not one of the three, which is the silence contract:
  * `aria-hidden={busy}` may be either and a rule that guessed would report the correct half of it.
  */
-export function trueAttr(element: JsxElementLike, name: string): boolean | undefined {
+export function trueAttr(
+  element: JsxElementLike,
+  name: string,
+  resolve: ElementContext["resolve"],
+): boolean | undefined {
   for (const attribute of openingOf(element).attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
     if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
@@ -144,13 +156,8 @@ export function trueAttr(element: JsxElementLike, name: string): boolean | undef
     if (value === undefined) return true;
     if (ts.isStringLiteral(value)) return value.text === "true" ? true : value.text === "false" ? false : undefined;
     if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-
-    const written = value.expression;
-    if (written.kind === ts.SyntaxKind.TrueKeyword) return true;
-    if (written.kind === ts.SyntaxKind.FalseKeyword) return false;
-    if (ts.isStringLiteralLike(written))
-      return written.text === "true" ? true : written.text === "false" ? false : undefined;
-    return undefined;
+    // `aria-hidden={HIDDEN}` — the fourth spelling of the same fact, and the one that was missed.
+    return truthBehind(value.expression, resolve);
   }
   return undefined;
 }
@@ -236,6 +243,8 @@ const TEXT: Looking<string> = {
 const NUMBER: Looking<number> = {
   leaf: (expression) => {
     if (ts.isNumericLiteral(expression)) return numberOf(expression.text);
+    // `aria-level="6"` is a number where it is written, so a name holding `"6"` is the same fact.
+    if (ts.isStringLiteralLike(expression)) return numberOf(expression.text);
     if (
       ts.isPrefixUnaryExpression(expression) &&
       expression.operator === ts.SyntaxKind.MinusToken &&
@@ -252,8 +261,27 @@ const NUMBER: Looking<number> = {
   throughMutableBindings: false,
 };
 
+/** The three spellings of a claim, behind a name — `{HIDDEN}` where `const HIDDEN = true`. */
+const TRUTH: Looking<boolean> = {
+  leaf: (expression) => {
+    if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isStringLiteralLike(expression))
+      return expression.text === "true" ? true : expression.text === "false" ? false : undefined;
+    return undefined;
+  },
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
 function textBehind(expression: ts.Expression, resolve: ElementContext["resolve"]): string | undefined {
   return follow(expression, resolve, TEXT)?.value;
+}
+
+function truthBehind(expression: ts.Expression, resolve: ElementContext["resolve"]): boolean | undefined {
+  return follow(expression, resolve, TRUTH)?.value;
 }
 
 function numberBehind(expression: ts.Expression, resolve: ElementContext["resolve"]): number | undefined {

@@ -83,13 +83,13 @@ export const computeTakesNoArguments = {
       "that route, which is why it is reported here as well.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     const found: ComputeTakesNoArgumentsIssue[] = [];
 
     // Written where it is DECLARED, once — see the note on the chain above.
     for (const member of cls.members) {
       if (!ts.isMethodDeclaration(member)) continue;
-      if (!hasDecorator(member, "compute")) continue;
+      if (!hasDecorator(member, "compute", resolve)) continue;
       if (member.parameters.length === 0) continue;
 
       const name = memberName(member);

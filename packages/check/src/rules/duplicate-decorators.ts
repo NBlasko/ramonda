@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { decoratorName, positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
@@ -179,7 +180,7 @@ export const duplicateDecorators = {
       "class body are counted here.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     const found: DuplicateDecoratorIssue[] = [];
 
     /**
@@ -197,7 +198,9 @@ export const duplicateDecorators = {
 
     const count = (node: ts.Node, kind: "class" | "member", member?: string): void => {
       for (const decorator of ts.getDecorators(node as ts.HasDecorators) ?? []) {
-        const name = decoratorName(decorator);
+        // Core's decorators only, by the name core exports: an app's own decorator written twice
+        // is the app's business, and one of core's under an alias is still core's.
+        const name = coreDecoratorName(decorator, resolve);
         if (name === undefined) continue;
 
         const effect = EFFECT[name];

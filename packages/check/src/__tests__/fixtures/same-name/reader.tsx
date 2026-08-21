@@ -1,4 +1,4 @@
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 import { ThemeConsumer } from "./context";
 
 export class Reader extends Component {

@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, watchProp } from "../framework";
+import { Component, Host, bootstrap, watchProp } from "@ramonda/core";
 import type { BadgeProps, MergedProps, OpenProps, ProfileProps } from "./props";
 
 declare const key: string;

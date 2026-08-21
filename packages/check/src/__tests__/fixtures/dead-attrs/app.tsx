@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "../framework";
+import { Component, Host, bootstrap } from "@ramonda/core";
 
 /**
  * Attributes that reach the DOM verbatim and do nothing.

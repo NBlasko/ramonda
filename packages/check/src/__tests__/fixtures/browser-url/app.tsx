@@ -1,20 +1,16 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { currentPath } from "./where";
 // The import is what says this project HAS a router; without one, `location` is the only place the
 // answer lives and none of this would be reported.
 import { Router } from "@ramonda/router";
 
-declare const window: {
-  location: {
-    pathname: string;
-    hash: string;
-    search: string;
-    origin: string;
-    href: string;
-    assign(to: string): void;
-    reload(): void;
-  };
-};
+/**
+ * NOTHING is declared for `window`, `self` or `location`, and that is the fixture's point.
+ *
+ * The analyzer builds its program with `noLib` and no `@types`, so the browser's own names have no
+ * declaration to find — which is exactly how a rule tells one from a local of the same name. A stub
+ * here would give them one, and every read below would read as somebody's own field.
+ */
 
 /** Asks the browser where the router already knows. Every read here is reported. */
 class Astray extends Component {
@@ -27,6 +23,57 @@ class Astray extends Component {
     // inventing one.
     const origin = window.location.origin;
     return <span>{`${where}${anchor}${query}${origin}`}</span>;
+  }
+}
+
+/** The three spellings beside `window.` — `self`, a destructure, and a bracket. */
+class OtherSpellings extends Component {
+  route = this.use(Router);
+  render() {
+    const onSelf = self.location.pathname;
+    const { pathname } = window.location;
+    const bracketed = window.location["hash"];
+    return <span>{`${onSelf}${pathname}${bracketed}`}</span>;
+  }
+}
+
+/**
+ * ✓ A LOCAL called `self`, which is the commonest of the four to be one.
+ *
+ * `const self = this` is an ordinary line, and `(self) => …` is the framework's OWN convention for
+ * a `@Host` props callback. Both read a component's own field and neither is the global.
+ */
+class SelfIsALocal extends Component {
+  route = this.use(Router);
+  location = { pathname: "/mine" };
+  render() {
+    const self = this;
+    return <span>{self.location.pathname}</span>;
+  }
+}
+
+/** ✗ An AMBIENT `declare const self` is the author writing down what the platform provides. */
+declare const self: { location: { pathname: string } };
+
+@Host("div")
+class AmbientSelf extends Component {
+  route = this.use(Router);
+  render() {
+    return <span>{self.location.pathname}</span>;
+  }
+}
+
+/** ✓ A PARAMETER called `window` is a name of their own, however it is spelled. */
+@Host("div")
+class WindowIsAParameter extends Component {
+  route = this.use(Router);
+
+  read(window: { location: { pathname: string } }) {
+    return window.location.pathname;
+  }
+
+  render() {
+    return <span>{this.read({ location: { pathname: "/mine" } })}</span>;
   }
 }
 

@@ -1,4 +1,4 @@
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 import { Header } from "./header";
 
 /** Reached from both chunks and from neither the root nor anything the root reaches. */

@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { DataGrid, QueryProvider } from "@acme/stale";
 
 /** Mounts the package's component with nothing above it. */

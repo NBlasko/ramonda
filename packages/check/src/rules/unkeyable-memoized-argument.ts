@@ -166,7 +166,7 @@ export const unkeyableMemoizedArgument = {
     for (const declaring of [cls, ...heritage(cls, resolve)]) {
       for (const member of declaring.members) {
         if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
-        if (!hasDecorator(member, "memoized")) continue;
+        if (!hasDecorator(member, "memoized", resolve)) continue;
         if (!memoized.has(member.name.text)) memoized.set(member.name.text, member);
         if (declaring === cls) declaredHere.set(member.name.text, member);
       }

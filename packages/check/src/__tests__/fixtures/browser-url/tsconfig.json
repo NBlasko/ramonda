@@ -2,6 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@ramonda/core": ["../framework.ts"],
       "@ramonda/router": ["./router-stub.ts"]
     }
   },

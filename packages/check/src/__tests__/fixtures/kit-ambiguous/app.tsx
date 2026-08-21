@@ -1,4 +1,4 @@
-import { Component, __h, bootstrap } from "../framework";
+import { Component, __h, bootstrap } from "@ramonda/core";
 import { createRouter } from "@acme/kit";
 
 const routes = { "/": "home" };

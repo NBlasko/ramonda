@@ -1,5 +1,6 @@
-import { bootstrap, Component, state } from "../framework";
+import { bootstrap, Component, state } from "@ramonda/core";
 import { created } from "@ramonda/core";
+import { created as onCreate } from "@ramonda/core";
 import { ConfigBase } from "./shared-base";
 
 /** ✗ Vite's prefix, which Ramonda's build no longer exposes — the migration hazard. */
@@ -23,7 +24,37 @@ export class RamondaButNotPublic extends Component {
   }
 }
 
+/** ✗ The same read, spelled three other ways. */
+export class OtherSpellings extends Component {
+  render() {
+    const { DATABASE_URL } = process.env;
+    const bracketed = process.env["REGION"];
+    const viaGlobal = globalThis.process.env.API_KEY;
+    return <p>{`${DATABASE_URL}${bracketed}${viaGlobal}`}</p>;
+  }
+}
+
 // ── everything below is CORRECT and must stay silent ─────────────────────────────────────────
+
+/**
+ * ✓ Server-only, said through an ALIASED `@created`.
+ *
+ * The table of what each lifecycle does is a LOOKUP, so the local name is not merely a weaker key
+ * here — it is the wrong one. Read as `onCreate` it found nothing in the table, the member was not
+ * excused, and this correct code was reported at error severity.
+ */
+export class AliasedServerOnly extends Component {
+  @state url = "";
+
+  @onCreate({ env: "server" })
+  read() {
+    this.url = process.env.DATABASE_URL ?? "";
+  }
+
+  render() {
+    return <p>{this.url}</p>;
+  }
+}
 
 /** The exposed prefix. */
 export class Exposed extends Component {

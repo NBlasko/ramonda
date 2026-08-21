@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { memberName } from "../syntax";
 import { hasDecorator, heritage } from "./render-reach";
-import type { RuleContext } from "./rule";
+import type { Resolver } from "./rule";
 
 /**
  * Which of a class's fields a CACHED reader can go stale on — the judgement two rules ask.
@@ -26,8 +26,8 @@ import type { RuleContext } from "./rule";
  * Everything reactive, plus the two shapes that are read in a compute constantly and are not data:
  * a hook instance, which has its own reactivity, and a function, which is `arrow-fields`' subject.
  */
-export function trackedOrHarmless(member: ts.PropertyDeclaration): boolean {
-  if (hasDecorator(member, "state") || hasDecorator(member, "compute")) return true;
+export function trackedOrHarmless(member: ts.PropertyDeclaration, resolve: Resolver): boolean {
+  if (hasDecorator(member, "state", resolve) || hasDecorator(member, "compute", resolve)) return true;
 
   const written = member.initializer;
   if (written === undefined) return false;
@@ -84,10 +84,10 @@ export function fieldsWrittenIn(node: ts.Node): Set<string> {
  * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
  * after the last render, so nothing is left to be stale.
  */
-export function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
+export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Resolver): boolean {
   if (ts.isConstructorDeclaration(member)) return false;
-  if (hasDecorator(member, "created") || hasDecorator(member, "destroyed")) return false;
-  if (hasDecorator(member, "compute")) return false;
+  if (hasDecorator(member, "created", resolve) || hasDecorator(member, "destroyed", resolve)) return false;
+  if (hasDecorator(member, "compute", resolve)) return false;
   return memberName(member) !== "render";
 }
 
@@ -120,14 +120,14 @@ export function writesAfterTheFirstRender(member: ts.ClassElement): boolean {
  * rather than a class, so its context answers no questions about declarations. It gets the class's
  * own fields, which is what both rules had before, and the base-class case is the class rule's.
  */
-export function staleFieldsOf(cls: ts.ClassDeclaration, resolve?: RuleContext["resolve"]): Map<string, string> {
-  const declared = resolve === undefined ? [cls] : [cls, ...heritage(cls, resolve)];
+export function staleFieldsOf(cls: ts.ClassDeclaration, resolve: Resolver): Map<string, string> {
+  const declared = [cls, ...heritage(cls, resolve)];
 
   const plain = new Set<string>();
   for (const declaring of declared) {
     for (const member of declaring.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
-      if (trackedOrHarmless(member)) continue;
+      if (trackedOrHarmless(member, resolve)) continue;
       const name = memberName(member);
       if (name !== undefined) plain.add(name);
     }
@@ -138,7 +138,7 @@ export function staleFieldsOf(cls: ts.ClassDeclaration, resolve?: RuleContext["r
 
   for (const declaring of declared) {
     for (const member of declaring.members) {
-      if (!writesAfterTheFirstRender(member)) continue;
+      if (!writesAfterTheFirstRender(member, resolve)) continue;
       const where = memberName(member) ?? "a method";
       for (const field of fieldsWrittenIn(member)) {
         if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);

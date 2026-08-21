@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { DataGrid, Frame, QueryConsumer, QueryProvider, SelfServing } from "@acme/ui";
 
 /** Mounts the package's component with nothing above it. */

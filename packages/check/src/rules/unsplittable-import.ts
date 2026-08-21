@@ -15,6 +15,24 @@ import type { ModuleRule } from "./rule";
  * `ramonda-check --split` counts the split points a project HAS; this names a place where one was
  * meant and is not there.
  *
+ * ## A template a bundler CAN read, which this used to report
+ *
+ * `` import(`./pages/${name}.js`) `` is not a path the bundler cannot read: Vite turns it into a
+ * chunk per matching file, and reporting it was reporting a documented feature working exactly as
+ * documented. Both halves are needed, and the boundary was measured with Vite 7 rather than
+ * reasoned about:
+ *
+ * | written | modules transformed | chunks emitted |
+ * |---|---|---|
+ * | `` `./pages/${w}.js` `` | 4 | `a-*.mjs`, `b-*.mjs` — **split** |
+ * | `` `./pages/${w}` `` — no suffix | 1 | none |
+ * | `` `pages/${w}.js` `` — not relative | 1 | none |
+ * | `import(specifier)` | 1 | none |
+ *
+ * So a template splits only with a RELATIVE head and a non-empty tail after the last substitution.
+ * The last three rows are the rule's own claim, confirmed: nothing is emitted, and at run time
+ * there is nothing to fetch.
+ *
  * ## Why the annotation is honoured rather than argued with
  *
  * Measured across this repository before the rule was written: 88 dynamic imports with a literal
@@ -39,6 +57,21 @@ export interface UnsplittableImportIssue {
 const BUNDLER_IGNORE = /@(vite|webpack)-ignore\b/;
 
 /**
+ * Whether a template is one a bundler can turn into chunks — measured, see the note above.
+ *
+ * A RELATIVE head, so the pattern names a place in this project rather than a bare package name,
+ * and a non-empty tail after the last substitution, so the pattern ends in something — an
+ * extension. Either half missing and Vite emits nothing at all.
+ */
+function splittableTemplate(specifier: ts.Expression): boolean {
+  if (!ts.isTemplateExpression(specifier)) return false;
+  if (!/^\.{1,2}\//.test(specifier.head.text)) return false;
+
+  const last = specifier.templateSpans[specifier.templateSpans.length - 1];
+  return last !== undefined && last.literal.text.length > 0;
+}
+
+/**
  * Whether the call carries the bundler's marker in a comment inside its argument list.
  *
  * Read from the call's own text rather than from attached comment nodes: the marker is written
@@ -55,7 +88,8 @@ export const unsplittableImport = {
 
   report: {
     severity: "warn",
-    reportedWhen: "a dynamic import's path is not a literal, so no bundler can emit a chunk for it",
+    reportedWhen:
+      "a dynamic import's path is neither a literal nor a template a bundler can read, so no chunk is emitted for it",
     heading: (found) => `${found.length} dynamic import(s) the bundler cannot split:`,
     lines: (site) => [
       `  ${site.file}:${site.line}:${site.column}`,
@@ -80,7 +114,12 @@ export const unsplittableImport = {
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
         const specifier = node.arguments[0];
         // No argument at all is a different mistake and one the compiler already refuses.
-        if (specifier !== undefined && !ts.isStringLiteralLike(specifier) && !bundlerTold(node)) {
+        if (
+          specifier !== undefined &&
+          !ts.isStringLiteralLike(specifier) &&
+          !splittableTemplate(specifier) &&
+          !bundlerTold(node)
+        ) {
           const issue = unlessAnnotated(node, () => ({
             path: specifier.getText(),
             ...positionOf(node),

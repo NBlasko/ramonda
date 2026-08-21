@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, state } from "../framework";
+import { Component, Host, bootstrap, state } from "@ramonda/core";
 
 /**
  * A project that trips exactly ONE rule and nothing else.

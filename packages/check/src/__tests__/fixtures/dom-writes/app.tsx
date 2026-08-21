@@ -1,4 +1,4 @@
-import { Component, bootstrap, mounted, state } from "../framework";
+import { Component, bootstrap, mounted, state } from "@ramonda/core";
 import { applyTheme } from "./theme";
 
 declare const document: {

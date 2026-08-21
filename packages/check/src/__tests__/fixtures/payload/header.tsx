@@ -1,4 +1,4 @@
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 
 /** Written in the first payload, so a chunk reaching it downloads nothing. */
 export class Header extends Component {

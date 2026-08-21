@@ -1,5 +1,38 @@
-import { bootstrap, Component, Head } from "@ramonda/core";
+import { bootstrap, Component, Head, Head as PageHead } from "@ramonda/core";
 import { OwnHead } from "./own-head";
+import { PAGE_HEAD, ROBOTS } from "./meta";
+
+/** ✗ The framework's `Head` under a local alias is the framework's `Head`. */
+export class ThroughAnAlias extends Component {
+  head = this.use(PageHead, () => ({
+    description: "the shorthand",
+    meta: [{ name: "description", content: "the list" }],
+  }));
+  render() {
+    return <p>aliased</p>;
+  }
+}
+
+/** ✗ The options kept in another module, which is where page metadata ends up. */
+export class OptionsAName extends Component {
+  head = this.use(Head, PAGE_HEAD);
+  render() {
+    return <p>named options</p>;
+  }
+}
+
+/** ✗ One identity written out, and the same identity a name away. */
+export class IdentityAName extends Component {
+  head = this.use(Head, () => ({
+    meta: [
+      { name: "robots", content: "index" },
+      { name: ROBOTS, content: "noindex" },
+    ],
+  }));
+  render() {
+    return <p>named identity</p>;
+  }
+}
 
 /** Two `<meta name="robots">` in one call. The second wins and the first never reaches the page. */
 export class TwoOfTheSameName extends Component {

@@ -25,6 +25,9 @@ const found = () =>
 describe("a context consumed above its provider", () => {
   test("every consumer-first pair is reported, and named by its context", () => {
     expect(found().map((issue) => `${issue.component}: ${issue.context}`)).toEqual([
+      // Built through an ALIASED `createContext`. Identity is the name the MODULE exports, not the
+      // one this file gave it.
+      "AliasedPair: Aliased",
       "ConsumerFirst: Theme",
       "WithAFieldBetween: Size",
       "RenamedBindings: Theme",
@@ -71,8 +74,8 @@ describe("a context consumed above its provider", () => {
     const issue = found().find((each) => each.component === "ConsumerFirst");
     const source = join(here, "fixtures", "context-order", "app.tsx");
     expect(issue?.file).toBe(source);
-    expect(issue?.line).toBe(13);
-    expect(issue?.providerAtLine).toBe(14);
+    expect(issue?.line).toBe(43);
+    expect(issue?.providerAtLine).toBe(44);
     expect(issue?.consumer).toBe("ThemeConsumer");
     expect(issue?.provider).toBe("ThemeProvider");
   });

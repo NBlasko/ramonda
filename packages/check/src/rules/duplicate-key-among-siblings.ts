@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { ElementRule, JsxElementLike } from "./rule";
+import { follow, type Looking } from "./follow-value";
+import type { ElementContext, ElementRule, JsxElementLike } from "./rule";
 
 /**
  * Two children of the same parent written with the same `key`.
@@ -31,10 +32,23 @@ export interface DuplicateKeyAmongSiblingsIssue {
 /**
  * A key written as something this can compare — a string or a number.
  *
- * `key="a"`, `key={"a"}` and `key={1}` are all literals and all comparable. Anything else is an
- * expression whose value is decided at run time.
+ * `key="a"`, `key={"a"}` and `key={1}` are all literals and all comparable, and so is a name
+ * holding one: two siblings both written `key={FIRST}` claim the same key exactly as two written
+ * `key="first"` do. Anything the walk cannot settle on ONE answer for is an expression whose value
+ * is decided at run time, and `RMD002` is what speaks for those.
  */
-function literalKey(element: JsxElementLike): string | undefined {
+const COMPARABLE: Looking<string> = {
+  leaf: (expression) => {
+    if (ts.isStringLiteralLike(expression)) return `"${expression.text}"`;
+    return ts.isNumericLiteral(expression) ? expression.text : undefined;
+  },
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
+function literalKey(element: JsxElementLike, resolve: ElementContext["resolve"]): string | undefined {
   for (const attribute of openingOf(element).attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
     if (attribute.name.getText() !== "key") continue;
@@ -42,11 +56,8 @@ function literalKey(element: JsxElementLike): string | undefined {
     const value = attribute.initializer;
     if (value === undefined) return undefined;
     if (ts.isStringLiteral(value)) return `"${value.text}"`;
-    if (ts.isJsxExpression(value) && value.expression !== undefined) {
-      if (ts.isStringLiteralLike(value.expression)) return `"${value.expression.text}"`;
-      if (ts.isNumericLiteral(value.expression)) return value.expression.text;
-    }
-    return undefined;
+    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
+    return follow(value.expression, resolve, COMPARABLE)?.value;
   }
   return undefined;
 }
@@ -92,14 +103,14 @@ export const duplicateKeyAmongSiblings = {
    * siblings" exact rather than approximate — a key repeated under a different parent never comes
    * into it.
    */
-  read(_element, { children }) {
+  read(_element, { children, resolve }) {
     const seen = new Map<string, true>();
     const found: DuplicateKeyAmongSiblingsIssue[] = [];
 
     for (const child of children) {
       if (!ts.isJsxElement(child) && !ts.isJsxSelfClosingElement(child)) continue;
 
-      const key = literalKey(child);
+      const key = literalKey(child, resolve);
       if (key === undefined) continue;
 
       if (seen.has(key)) {

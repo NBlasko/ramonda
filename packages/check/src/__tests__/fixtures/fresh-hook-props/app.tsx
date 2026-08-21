@@ -1,8 +1,19 @@
-import { Component, Hook, StableProps, bootstrap, compute, createContext, state } from "../framework";
+import { Component, Hook, StableProps, bootstrap, compute, createContext, state } from "@ramonda/core";
 
 import { InstalledHook } from "./installed";
 
 const [BaseProvider, Consumer] = createContext({ conf: { dense: false }, n: 0 });
+
+/**
+ * A SECOND pair, so the consumer this component reads from is not the one it also provides.
+ *
+ * With one pair it consumed at `upstream` and provided at `e`, in that order — which is a real
+ * `context-consumed-above-its-provider` fault, and one this fixture is not about. It was invisible
+ * until every fixture began importing the framework as `@ramonda/core`: `context-pair` identifies a
+ * pair by the module it came from, so a relative import hid the pair and silenced the rule.
+ */
+const [UpstreamProvider, UpstreamConsumer] = createContext({ conf: { dense: false }, n: 0 });
+void UpstreamProvider;
 
 /** A provider with the key DECLARED, which is how a context pair takes the declaration. */
 @StableProps("conf")
@@ -17,7 +28,7 @@ class Settled extends Hook<{ conf: unknown; n: number }> {}
 class Reporting extends Component<{ id: string }> {
   @state tick = 0;
   plain = 1;
-  upstream = this.use(Consumer);
+  upstream = this.use(UpstreamConsumer);
 
   @compute get n() {
     return this.tick + 1;
@@ -56,7 +67,7 @@ class Reporting extends Component<{ id: string }> {
   j = this.use(InstalledHook, () => ({ conf: { dense: true }, n: this.tick }));
 
   // Not reported: a hook with no callback at all.
-  k = this.use(Consumer);
+  k = this.use(UpstreamConsumer);
 
   render() {
     return <li>{this.tick}</li>;

@@ -4,6 +4,8 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
+import { coreExportName } from "./rules/core-import";
+import type { Resolver } from "./rules/rule";
 import {
   activate,
   applyClass,
@@ -499,6 +501,22 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const { program, notes } = createProgram(tsconfigPath);
   const checker = program.getTypeChecker();
 
+  /**
+   * `resolve`, with `coreName` hung on it — see the `Resolver` note in `rules/rule.ts`.
+   *
+   * Attached rather than threaded as a second parameter because `resolve` already reaches every
+   * helper that needs it, and a parameter a caller can forget is the shape that silenced every tree
+   * rule for a commit.
+   *
+   * The SAME object as `resolve`, deliberately: `Object.assign` mutates it, so a caller holding
+   * either one can ask either question. Declared here, at the top, rather than beside its first use
+   * — it is a `const`, and one built halfway down works only while nothing above it runs first,
+   * which is an ordering nobody can see from the call site.
+   */
+  const resolver: Resolver = Object.assign(resolve, {
+    coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
+  });
+
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
   const providerSymbols = new Map<ts.Symbol, ContextFact>();
   const consumerSymbols = new Map<ts.Symbol, ContextFact>();
@@ -814,7 +832,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const elementRules = activate(ELEMENT_RULES, imported, rendersOnServer);
 
   const readElements = (node: ts.Node): void => {
-    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings, resolve);
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) applyElement(elementRules, node, findings, resolver);
     ts.forEachChild(node, readElements);
   };
 
@@ -843,17 +861,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * whose rules are all gated off should not pay for it.
    */
   const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
-  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources), findings);
+  if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolver), findings);
 
   for (const file of sources) {
     if (elementRules.length > 0) readElements(file);
-    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolve);
+    if (treeRules.length > 0) for (const root of rootsIn(file)) applyTree(treeRules, root, findings, resolver);
 
     applyModule(
       moduleRules,
       file,
       (ruleId) => ({
-        resolve,
+        resolve: resolver,
+        resolveLocal,
+        resolveStep,
         unlessAnnotated: (site, make) => {
           const written = directiveAt(site);
           if (written === undefined) return make();
@@ -903,7 +923,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          applyClass(rules, node, { self, resolve, resolveLocal }, findings);
+          applyClass(rules, node, { self, resolve: resolver, resolveLocal, resolveStep }, findings);
         }
       }
       collectRoot(node);
@@ -2395,6 +2415,19 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   // ── small helpers ───────────────────────────────────────────────────────────────────────────
 
   function resolve(id: ts.Node): ts.Symbol | undefined {
+    /**
+     * `({ id })` — the identifier is the property's name AND a reference to a value, and
+     * `getSymbolAtLocation` answers with the property. What every caller here is asking is what the
+     * VALUE is, so the shorthand is asked its own question.
+     *
+     * Found by planting `@Host("aside", () => ({ id }))` after the long form was fixed: the id
+     * table could not read it, which marked the project's ids unreadable and switched the whole id
+     * family off.
+     */
+    if (ts.isShorthandPropertyAssignment(id.parent) && id.parent.name === id) {
+      const value = checker.getShorthandAssignmentValueSymbol(id.parent);
+      if (value !== undefined) return value.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(value) : value;
+    }
     let symbol = checker.getSymbolAtLocation(id);
     if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     return symbol;
@@ -2410,6 +2443,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function resolveLocal(id: ts.Node): ts.Symbol | undefined {
     return checker.getSymbolAtLocation(id);
+  }
+
+  /**
+   * ONE hop along an alias chain, which is what walking a re-export needs.
+   *
+   * `resolve` jumps to the end and `resolveLocal` does not move at all, and neither can answer
+   * "which module did this binding come from" for `export { list } from "@ramonda/core"` in an
+   * app's own `ui` module: the end is core's declaration, whose path differs per project, and the
+   * start is an import naming `./ui`. Stepping is the only way to read the chain the reader wrote.
+   */
+  function resolveStep(id: ts.Node): ts.Symbol | undefined {
+    const symbol = checker.getSymbolAtLocation(id);
+    if (symbol === undefined || (symbol.flags & ts.SymbolFlags.Alias) === 0) return undefined;
+    return checker.getImmediateAliasedSymbol(symbol);
   }
 
   function bindingSymbol(element: ts.ArrayBindingElement | undefined): ts.Symbol | undefined {

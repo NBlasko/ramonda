@@ -1,4 +1,4 @@
-import { Component, bootstrap, list } from "../framework";
+import { Component, bootstrap, list } from "@ramonda/core";
 
 /**
  * A ring nothing on it can skip: `Loop` always renders `Half`, and `Half` always renders `Loop`.

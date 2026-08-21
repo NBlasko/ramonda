@@ -1,4 +1,4 @@
-import { Component, Hook, bootstrap } from "../framework";
+import { Component, Hook, bootstrap } from "@ramonda/core";
 
 declare function debounce<T>(fn: T, ms: number): T;
 declare function memoize<T>(fn: T): T;

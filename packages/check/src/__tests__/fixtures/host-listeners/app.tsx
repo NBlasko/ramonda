@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, onDocument, onElement, onWindow, state } from "../framework";
+import { Component, Host, bootstrap, onDocument, onElement, onWindow, state } from "@ramonda/core";
 import { Panel } from "./base";
 
 /** No `@Host`, so the host is `<ramonda-host>` — `display: contents`, and no box. */

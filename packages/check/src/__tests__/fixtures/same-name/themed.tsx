@@ -1,4 +1,4 @@
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 import { ThemeProvider } from "./context";
 import { Reader } from "./reader";
 
