@@ -1223,6 +1223,48 @@ describe("a component kit destructured out of a factory", () => {
 });
 
 /**
+ * A place in the graph is one place, and it does not move with the process.
+ *
+ * `at` is documented as "a place, relative to the directory holding the tsconfig". For a node an
+ * installed package's fragment brought in, it is relative to THAT package instead — which is the only
+ * honest answer, since the source is not in this program — and either way it is a property of the
+ * files, not of where the CLI was started.
+ *
+ * Both halves were broken for a destructured kit. The node was emitted TWICE under one id, and the
+ * second copy ran a fragment's already-package-relative path through `pathOf`, which climbs looking
+ * for a `package.json` and lets `ts.sys.fileExists` resolve that against the CWD. Measured before the
+ * fix: `@acme/kit`'s file was attributed to `@ramonda/check` from one directory and to
+ * `ramonda-monorepo` from another.
+ */
+describe("a place in the graph", () => {
+  const places = (name: string) => {
+    const nodes = run(name).graph.nodes;
+    const counted = new Map<string, string[]>();
+    for (const node of nodes) counted.set(node.id, [...(counted.get(node.id) ?? []), node.at]);
+    return counted;
+  };
+
+  test("no node is emitted twice, in a fixture where one used to be three times over", () => {
+    for (const name of ["kit", "kit-ambiguous", "fragment", "cross-package"]) {
+      const twice = [...places(name)].filter(([, at]) => at.length > 1);
+      expect(twice, `${name}: ${twice.map(([id]) => id).join(", ")}`).toEqual([]);
+    }
+  });
+
+  test("a node from an installed package keeps the path ITS package gave, with no package prefix", () => {
+    const at = places("kit").get("@acme/kit/src/index.tsx#Link");
+    // `src/index.tsx`, not `@acme/kit/src/index.tsx` and not `@ramonda/check/src/index.tsx`: the id
+    // already says whose it is, and the place says where inside.
+    expect(at).toEqual(["src/index.tsx:16:1"]);
+  });
+
+  test("and a node from THIS program is placed against the project, as the type says", () => {
+    const at = places("kit").get("@ramonda/check/src/__tests__/fixtures/kit/app.tsx#Shell");
+    expect(at).toEqual(["@ramonda/check/src/__tests__/fixtures/kit/app.tsx:25:1"]);
+  });
+});
+
+/**
  * A kit whose members the package does not export — the ordinary case, since the factory is the
  * door — and what happens when one of those names answers to two classes.
  *
