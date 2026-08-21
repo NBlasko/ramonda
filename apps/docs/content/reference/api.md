@@ -30,6 +30,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |
 | `@StableProps(...names)` | Declares which props are values, so a caller writes the plain literal. On a hook and on a component alike. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) · [A prop that is a value](/concepts/props#a-prop-that-is-a-value) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
+| `Timeout` / `Interval` | A scheduled call the app starts and the framework clears: `this.use(Timeout, () => ({ run }))`, then `start(ms)` and `stop()`. One instance is one timer; `start` returns whether it started, and teardown clears it. [Timers](/concepts/timers#a-timer-that-starts-when-you-say) |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
 | `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |

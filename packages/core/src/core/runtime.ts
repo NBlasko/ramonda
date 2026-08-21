@@ -39,8 +39,15 @@ export interface Runtime {
    * A hook needs it to reach its owner as the `placeholderComponent` a reconcile
    * runs under — for the context, render side and depth a portaled subtree
    * inherits. `holder` cannot serve this: it is DEV-only.
+   *
+   * **Required, and it was optional until 2026-08-21 for no reason anybody could name.** Measured:
+   * `createRuntime` is the only producer of a `Runtime`, it is called from one line — `Component`'s
+   * constructor — and it always passes `this`; nothing anywhere clears the field afterwards. The
+   * optionality was a type lie, and it cost two `?.` at every use plus an argument about what a
+   * missing owner should mean. `owner: BaseComponent` type-checks every package in the workspace,
+   * which is the proof the lie was free to remove.
    */
-  owner?: BaseComponent;
+  owner: BaseComponent;
   effects: Effect[];
   /**
    * `@updated` methods, bound. Run after the DOM of an UPDATE is committed —
