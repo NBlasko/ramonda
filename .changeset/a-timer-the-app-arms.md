@@ -2,18 +2,18 @@
 "@ramonda/core": minor
 ---
 
-`Timer` — a timer the app arms, and the framework still owns.
+`Timeout` and `Interval` — a scheduled call the app starts, and the framework still owns.
 
 `@interval` and `@timeout` answer one question: run this on a clock for as long as I am on the page.
-They answer it in one line and they are unchanged. `Timer` answers a different one — **start now, and
-stop when I say** — which no decorator can express, because a decorator fires relative to MOUNT.
+They answer it in one line and they are unchanged. These answer a different one — **start now, and stop
+when I say** — which no decorator can express, because a decorator fires relative to MOUNT.
 
 ```tsx
-private removal = this.use(Timer);
+private removal = this.use(Timeout, () => ({ run: this.dropRow }));
 
 leave() {
   this.leaving = true;
-  this.removal.after(3000, () => this.props.onRemove(this.props.id));
+  this.removal.start(3000);
 }
 
 stay() {
@@ -21,47 +21,48 @@ stay() {
 }
 ```
 
-**One hook instance is one timer.** So `stop()` never asks which, and no handle travels back to the
-caller. Arming an armed timer restarts it — for `repeat` that is the only correct answer, since two
-intervals on one name would both keep firing and nothing could name either, and `after` follows the
-same rule rather than having a second one.
+**`run` belongs to the hook, `ms` to the start**, split by how long each one lives. An API that takes
+the body per call reads as "order as many as you like" while behaving as "only the last survives" — and
+it invites a fresh function at every call site, where nothing then says whether that function captured
+a local or reads `this.props`. Measured, because the difference is invisible: `() => this.props.id`
+reads the id when it FIRES, so after a reorder it is a different row's, while a captured argument is
+frozen at start. Declared once, there is nothing to capture.
 
-**Why a hook rather than making the decorators call-armed.** A decorator cannot add a member
-TypeScript can see. Measured: a decorator that replaces the method with a function carrying `stop`
-gives `TS2339: Property 'stop' does not exist on type '() => void'` — a decorator may change what
-runs, never the declared type. So the stop has to belong to an object, and returning a canceller from
-the arming call would put the bookkeeping back at the call site, which is the boilerplate these
-decorators exist to delete.
+`run` is read **when the call fires**, so a `run` chosen by a signal takes effect on a call already
+waiting, without restarting the countdown — and it cancels nothing. Cancelling is `stop()`, always
+explicit: the props callback re-runs whenever any signal it read changes, including one read for
+something else, so a timer that cancelled itself on that would be one an unrelated re-render could
+kill. `ms` is read at `start`, because a delay is a property of that start — a retry's backoff differs
+every time — and that keeps a signal out of it entirely.
 
-**Arming returns whether it armed**, and a delay is refused in **every build**. Both came out of the
-review rather than the writing, and both are about the same thing — a value that arrives at runtime.
-A refusal is otherwise indistinguishable from a timer that has not fired yet: the first caller hands
-the promise `after` settles straight to `document.startViewTransition`, so a silent refusal left the
-browser holding a snapshot over a page nobody could click. And the delay check is unguarded because
-`after(this.props.backoffMs, run)` may be handed `undefined` by an API — guarded, development would
-throw while production called `setTimeout(fn, NaN)`, which the spec coerces to `0`, so a retry fires
-on the next tick and storms in the only build where it matters. That is the shape `useCommon`'s
-`RMD055` throw and `@compute`'s `assertNoParameters` are both unguarded for. The ceiling is
-`2147483647` ms, about 24.8 days, because `setTimeout` truncates anything larger and fires it at
-once — late becoming immediate, which no caller asks for.
+**One instance is one timer.** Starting a running one restarts it, so `stop()` never asks which and no
+handle travels back to the caller. Two timers means two hooks. The verb is in the NAME rather than at
+the call site, which is why this is two hooks and not one: with only `start()`, the name is the only
+place left to say whether it repeats.
 
-**Nothing is armed during a server render.** A timer could not fire before the response is sent, and
-the request would be held open by a handle nobody can reach. `after` and `repeat` return quietly there
-rather than throwing, and that is what makes them safe to call from shared code: the same `@created`
-runs on both sides, so a throw would force every call site to branch on which side it is — the one
-thing the hydration rules tell an author not to do. The side is read off the owner's runtime, not off
-a module flag and not off `typeof window`, for the reason `Portal` reads it there.
+**Why hooks rather than making the decorators call-armed.** A decorator cannot add a member TypeScript
+can see. Measured: a decorator that replaces the method with a function carrying `stop` gives
+`TS2339: Property 'stop' does not exist on type '() => void'` — a decorator may change what runs, never
+the declared type.
 
-**Arming after teardown does nothing either**, which is a second leak and not the same one:
-`@destroyed` has already run, so nothing would ever clear that timer. A late `await` landing in a
-handler is exactly how it happens.
+**Nothing starts during a server render**, and `start` returns `false` rather than throwing. Quietly,
+because that is what makes it safe to call from shared code: the same `@created` runs on both sides, so
+a throw would force every call site to branch on which side it is — the one thing the hydration rules
+tell an author not to do. It returns `false` once the owner is gone too, which is a second leak and not
+the same one: `@destroyed` has already run, so nothing would ever clear that timer. A caller that has
+promised somebody an answer must check it — measured on the first caller, where a silent refusal left a
+view transition holding a snapshot over the page for ever.
 
-Twenty tests plus three in a production run, and seven of them were planted: teardown, the server,
-arming after teardown, re-arming, the ordering inside `after`, a throwing call leaving an armed timer
-alone, and the delay check surviving a production build. Two earned their place outright. Clearing the
-handle AFTER the body instead of before wipes the one a re-arming body just installed, so the timer
-keeps running and teardown finds nothing to clear — **every other test passed under both orderings.**
-And putting the delay check back under `__DEV__` fails all three production tests while all twenty
-development ones still pass, which is the whole argument for it being unguarded.
+**A delay is refused in every build**, not only in development, because it arrives at runtime:
+`start(this.props.backoffMs)` may be handed `undefined` by an API, and guarded, development would throw
+while production called `setTimeout(fn, NaN)` and coerced it to `0` — a retry storm in the only build
+where it matters. That is the shape `useCommon`'s `RMD055` throw and `@compute`'s `assertNoParameters`
+are both unguarded for. The ceiling is `2147483647` ms, about 24.8 days, because `setTimeout` truncates
+anything larger and fires it at once.
 
-`RMD006` and `RMD008` now name it in their fix text, beside the decorators.
+Twenty-two tests plus three in a production run, and the planted ones earned their place. Clearing the
+handle after the body instead of before wipes the one a re-starting body just installed, and every other
+test passed under both orderings; putting the delay check back under `__DEV__` fails all three
+production tests while all twenty-two development ones pass.
+
+`RMD006` and `RMD008` name these in their fix text now, beside the decorators.

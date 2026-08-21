@@ -1,11 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Timer } from "../../base/Timer";
+import { Interval, Timeout } from "../../base/Timers";
 import { getDOM } from "../../test/setup";
 import type { RamondaNode } from "../../types/vdom";
 
 /**
- * `Timer`'s delay check survives a production build, and this is the only run that can see it.
+ * The delay check on `Timeout` / `Interval` survives a production build, and this is the only run that
+ * can see it.
  *
  * ## Why it is not `__DEV__`-only, unlike every other argument check in the package
  *
@@ -23,7 +24,8 @@ import type { RamondaNode } from "../../types/vdom";
  */
 
 class Retry extends Component {
-  timer = this.use(Timer);
+  timer = this.use(Timeout, () => ({ run: () => {} }));
+  beat = this.use(Interval, () => ({ run: () => {} }));
 
   render(): RamondaNode {
     return <i />;
@@ -34,22 +36,23 @@ describe("a delay that is not one, in production", () => {
   test("NaN throws instead of becoming a zero-delay timer", async () => {
     const app = await getDOM<Retry>(<Retry />);
 
-    expect(() => app.instance.timer.after(Number.NaN, () => {})).toThrow(/\[Timer\.after\]/);
-    expect(() => app.instance.timer.repeat(Number.NaN, () => {})).toThrow(/\[Timer\.repeat\]/);
+    expect(() => app.instance.timer.start(Number.NaN)).toThrow(/\[Timeout\.start\]/);
+    // Both classes, because the check lives on the base they share and the message names the subclass.
+    expect(() => app.instance.beat.start(Number.NaN)).toThrow(/\[Interval\.start\]/);
     app.unmount();
   });
 
   test("a delay past what setTimeout can hold throws instead of firing at once", async () => {
     const app = await getDOM<Retry>(<Retry />);
 
-    expect(() => app.instance.timer.after(2_147_483_648, () => {})).toThrow(/at most 2147483647 ms/);
+    expect(() => app.instance.timer.start(2_147_483_648)).toThrow(/at most 2147483647 ms/);
     app.unmount();
   });
 
   test("and a negative one, which the platform treats as zero", async () => {
     const app = await getDOM<Retry>(<Retry />);
 
-    expect(() => app.instance.timer.after(-1, () => {})).toThrow(/not be negative/);
+    expect(() => app.instance.timer.start(-1)).toThrow(/not be negative/);
     app.unmount();
   });
 });

@@ -128,7 +128,7 @@ export function assertNoParameters(fn: unknown, decorator: string, name: string 
  *
  * Above it the value is TRUNCATED, so the timer fires on the next tick instead of in a month —
  * late becomes immediate, which is the opposite of what the caller asked for. It cost nothing to
- * ignore while only decorator literals reached the check; `Timer.after(target - now, run)` is a
+ * ignore while only decorator literals reached the check; `Timeout.start(target - now)` is a
  * computed delay, and a target further out than this is an ordinary thing to compute.
  */
 const MAX_DELAY = 2_147_483_647;
@@ -137,9 +137,9 @@ const MAX_DELAY = 2_147_483_647;
  * The one judgement about a delay, kept in one place because TWO things ask it.
  *
  * `@interval(ms)` / `@timeout(ms)` ask at class-definition time, where the number is written at the
- * source and a wrong one can only be a mistake. `Timer.after` / `Timer.repeat` ask at runtime, where
+ * source and a wrong one can only be a mistake. `Timeout.start` / `Interval.start` ask at runtime, where
  * it may have come from props. Same fault, two messages — the decorator names itself, the hook names
- * its method — so this returns the sentence rather than throwing it.
+ * itself and its method — so this returns the sentence rather than throwing it.
  */
 export function delayFault(ms: unknown): string | undefined {
   if (typeof ms !== "number" || !Number.isFinite(ms)) {

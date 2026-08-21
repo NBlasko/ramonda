@@ -1,4 +1,4 @@
-import { Component, list, memoized, mounted, state, Timer } from "@ramonda/core";
+import { Component, list, memoized, mounted, state, Timeout } from "@ramonda/core";
 import { type Card, ExitCard } from "../demos/ExitCard";
 import { ViewTransition } from "../demos/ViewTransition";
 
@@ -76,7 +76,7 @@ export class ExitPage extends Component {
    * The timer this workaround needs, and there is nothing to remember about it.
    *
    * `@timeout` cannot express this one — it fires relative to MOUNT, and this starts on a click. So it
-   * is a `Timer`: teardown clears it, so leaving the page mid-fade simply does not remove the card,
+   * is a `Timeout`: teardown clears it, so leaving the page mid-fade simply does not remove the card,
    * where a raw `setTimeout` would have written into a component that is gone (`RMD008` drops the
    * write, so the symptom is a handler that quietly does nothing).
    *
@@ -89,7 +89,22 @@ export class ExitPage extends Component {
    * That this demo needs a timer at all is still the cost it exists to show. What it no longer shows is
    * an app keeping an id in step with its own teardown.
    */
-  private removal = this.use(Timer);
+  private removal = this.use(Timeout, () => ({ run: this.dropLeaving }));
+
+  /**
+   * What the timer runs, declared with it rather than written at the call site.
+   *
+   * It reads `this.leaving` when it FIRES, which is why the id has to be in state — and it is, because
+   * the class on the card is driven by the same field. Nothing is captured, so there is no question of
+   * whether this sees the card that was clicked or the one that is current: it sees the one that is
+   * marked, which is the one fading.
+   */
+  private dropLeaving() {
+    const id = this.leaving;
+    if (id === null) return;
+    this.leaving = null;
+    this.drop(id);
+  }
 
   removeAfterClass(id: number) {
     // The first one is finished rather than dropped: restarting the timer would otherwise strand it,
@@ -103,10 +118,7 @@ export class ExitPage extends Component {
       pending !== null && pending !== id
         ? `card ${pending} was still fading, so it went at once — one timer, one card at a time`
         : "marked `.leaving`, removing in 3s — a timer the app has to keep in step with the CSS";
-    this.removal.after(3000, () => {
-      this.leaving = null;
-      this.drop(id);
-    });
+    this.removal.start(3000);
   }
 
   /**

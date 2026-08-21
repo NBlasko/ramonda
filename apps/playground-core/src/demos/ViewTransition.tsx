@@ -1,4 +1,4 @@
-import { Hook, Timer, updated } from "@ramonda/core";
+import { Hook, Timeout, updated } from "@ramonda/core";
 
 /**
  * Runs a state change inside a browser view transition, so an exit animates.
@@ -48,10 +48,10 @@ export class ViewTransition extends Hook {
    * The deadline itself, and there is no id to keep.
    *
    * `@timeout` cannot express this one — it fires relative to MOUNT, and this starts when `run` is
-   * called. A `Timer` is armed by the call, restarts if `run` is called again, and is cleared by
+   * called. A `Timeout` is started by the call, restarts if `run` is called again, and is cleared by
    * teardown, so a hook that goes away cannot settle a promise nobody is waiting for.
    */
-  private net = this.use(Timer);
+  private net = this.use(Timeout, () => ({ run: this.resolve }));
 
   /** Fires after the DOM has been written for this pass — see the note above. */
   @updated committed() {
@@ -98,7 +98,7 @@ export class ViewTransition extends Hook {
       // promise is the one handed to `startViewTransition` — so a refusal with nothing else to settle it
       // leaves the browser holding a snapshot over a page nobody can click. Found by review, not by
       // running it: `run()` reached after teardown is an await landing late, which is rare and silent.
-      if (!this.net.after(deadline, () => this.resolve())) this.resolve();
+      if (!this.net.start(deadline)) this.resolve();
       return settled;
     });
 

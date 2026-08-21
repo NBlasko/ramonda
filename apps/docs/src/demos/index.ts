@@ -76,7 +76,7 @@ export const demoTitles: Record<string, string> = {
   WindowSize: "@onWindow — a global listener",
   KeyboardShortcut: "@onDocument — a keyboard shortcut",
   TimeoutReveal: "@timeout — cancelled on unmount",
-  TimerOnClick: "Timer — armed by a click, cleared by teardown",
+  TimerOnClick: "Timeout — started by a click, cleared by teardown",
   IntervalClock: "@interval — and the two-pass pattern",
   EffectCleanup: "Cleanup — what a subscription returns",
   WatchPropDemo: "@watchProp — reacting to a prop",

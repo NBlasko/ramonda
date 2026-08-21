@@ -30,7 +30,7 @@ keep state to plain, serialisable values and format for display.)
 
 `@interval` runs the method every `ms` for as long as the component is on the page.
 `@timeout` runs it once, `ms` after the component mounts. For a timer that starts on a
-click instead, see [`Timer`](#a-timer-that-starts-when-you-say) below. **Both stop automatically
+click instead, see [`Timeout` and `Interval`](#a-timer-that-starts-when-you-say) below. **Both stop automatically
 when the component is removed** — there is nothing to clean up.
 
 ```demo:IntervalClock
@@ -43,27 +43,27 @@ when the component is removed** — there is nothing to clean up.
 
 `@interval` and `@timeout` start at mount. When the clock starts on a click instead — a
 delay before a row is removed, a deadline inside a promise, a retry after a failure —
-use the `Timer` hook:
+use the `Timeout` and `Interval` hooks:
 
 ```tsx
-import { Component, Timer, state } from "@ramonda/core";
+import { Component, state, Timeout } from "@ramonda/core";
 
 export class Row extends Component<{ id: number; onRemove: (id: number) => void }> {
   @state leaving = false;
-  private removal = this.use(Timer);
+  private removal = this.use(Timeout, () => ({ run: this.remove }));
 
   leave() {
     this.leaving = true;
-    this.removal.after(3000, this.remove);
-  }
-
-  private remove() {
-    this.props.onRemove(this.props.id);
+    this.removal.start(3000);
   }
 
   stay() {
     this.removal.stop();
     this.leaving = false;
+  }
+
+  private remove() {
+    this.props.onRemove(this.props.id);
   }
 
   render() {
@@ -75,80 +75,58 @@ export class Row extends Component<{ id: number; onRemove: (id: number) => void 
 ```demo:TimerOnClick
 ```
 
-`after(ms, run)` runs `run` once. `repeat(ms, run)` runs it on a loop. `stop()` clears whichever is
-armed, and **teardown clears it too** — which is the whole reason to reach for this
+`start(ms)` runs `run` once, `ms` from now — `Interval` runs it every `ms` instead. `stop()`
+clears it, and **teardown clears it too**, which is the whole reason to reach for these
 rather than a raw timer.
 
-Both arming methods **return whether they armed**. Ignore it for a timer that is only a
-timer; check it when something is waiting on the callback, because `false` means the
-callback will never run:
+`start` **returns whether it started**. Ignore that for a timer that is only a timer; check
+it when something is waiting on the callback, because `false` means the callback will never
+run:
 
 ```tsx
-if (!this.deadline.after(1000, () => this.settle())) this.settle();
+if (!this.deadline.start(1000)) this.settle();
 ```
 
-## What the callback sees, three seconds later
+## What goes where, and when it is read
 
-The body runs long after the click, so which values it reads is a decision — and the two
-answers are both right, for different jobs. Say which one you mean:
+**`run` belongs to the hook** and is read **when the call fires**. So a `run` chosen by a
+signal takes effect on a call that is already waiting, without restarting the countdown:
 
 ```tsx
-// The value AS IT IS WHEN IT FIRES. What a debounce wants: send whatever is in the box
-// when the typing stops, not what was there when the last key landed.
-private search = this.use(Timer);
-
-typed() {
-  this.search.after(300, this.send);
-}
-
-private send() {
-  void fetch(`/search?q=${this.query}`);   // this.query, read now
-}
+private beat = this.use(Interval, () => ({ run: this.paused ? this.hold : this.tick }));
 ```
 
+Swapping it cancels nothing. Cancelling is `stop()`, always explicit — the props callback
+re-runs whenever any signal it read changes, including one read for something else, so a
+timer that cancelled itself on that would be a timer an unrelated re-render could kill.
+
+**`ms` belongs to `start`** and is read there. A delay is a property of *this* start — a
+retry's backoff differs every time — so it is an argument rather than a value to watch:
+
 ```tsx
-// The value AS IT WAS WHEN YOU ARMED IT. What a per-item action wants: remove the row that
-// was clicked, whatever the list has done since. Keep it in state, where it is visible.
-@state leavingId: number | null = null;
-private removal = this.use(Timer);
-
-remove(id: number) {
-  this.leavingId = id;
-  this.removal.after(3000, this.dropLeaving);
-}
-
-private dropLeaving() {
-  const id = this.leavingId;
-  if (id === null) return;
-  this.leavingId = null;
-  this.drop(id);
+retry() {
+  this.attempt.start(this.backoff);
 }
 ```
 
-**Reach for a method rather than an inline function**, as both of these do. An arrow written
-at the call site can capture a local *or* read `this.props` — measured, those give different
-answers three seconds later — and nothing at the call site says which one you wrote. A named
-method puts the reads where they can be read.
-
-**One hook instance is one timer.** So `stop()` never has to ask which, and no handle
-travels back to the caller. Arming an armed timer restarts it: `after` called twice runs
-the body once, at the second delay. Two timers means two hooks:
+**One hook instance is one timer.** Starting a running one restarts it, so `stop()` never
+has to ask which and no handle travels back to the caller. Two timers means two hooks:
 
 ```tsx
-private removal = this.use(Timer);
-private deadline = this.use(Timer);
+private removal = this.use(Timeout, () => ({ run: this.dropRow }));
+private deadline = this.use(Timeout, () => ({ run: this.giveUp }));
 ```
 
-Nothing is armed during a server render — a timer could not fire before the response is
-sent. `after` and `repeat` return `false` there rather than throwing, so the same method is
-safe to call from code that runs on both sides. They return `false` once the component is
-gone too, for the same reason: nothing would ever clear a timer armed after teardown.
+Nothing starts during a server render — a timer could not fire before the response is sent.
+`start` returns `false` there rather than throwing, so the same method is safe to call from
+code that runs on both sides. It returns `false` once the component is gone too, for the
+same reason: nothing would ever clear a timer started after teardown.
 
-A delay that is not a finite, non-negative number of milliseconds throws — **in every
-build, not only in development.** The delay here arrives at runtime, so `undefined` from an
-API would otherwise be a `setTimeout(fn, 0)` in production and a loud error on your machine.
-The ceiling is `2147483647` ms, about 24.8 days, because `setTimeout` truncates anything
-larger and fires it immediately.
+A delay that is not a finite, non-negative number of milliseconds throws — **in every build,
+not only in development.** The delay arrives at runtime, so `undefined` from an API would
+otherwise be a `setTimeout(fn, 0)` in production and a loud error on your machine. The
+ceiling is `2147483647` ms, about 24.8 days, because `setTimeout` truncates anything larger
+and fires it immediately.
 
 ## Why not a plain setTimeout?
 
@@ -166,7 +144,7 @@ start() {
 That timer outlives the component. Three seconds later it tries to change state on
 something that is already gone — Ramonda drops the write (`RMD008`), so the bug isn't
 a crash but a handler that quietly does nothing on a page that has moved on.
-`@timeout` and `Timer` both leave nothing to forget.
+`@timeout` and the `Timeout` hook both leave nothing to forget.
 
 ## Only in the browser
 

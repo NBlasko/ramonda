@@ -54,7 +54,7 @@ export function setRenderEnv(env: RenderEnv): void {
  * every lifecycle method receives.
  *
  * It returns the runtime rather than one field, because the two callers want different fields:
- * `Portal` asks which side, `Timer` asks which side AND whether the owner is gone.
+ * `Portal` asks which side, a scheduled call asks which side AND whether the owner is gone.
  *
  * **There is nothing optional in it, and that took a type change to say.** `owner` was declared
  * optional and never was one, so every use carried two `?.` and an argument about what a missing
