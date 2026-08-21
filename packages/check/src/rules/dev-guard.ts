@@ -55,8 +55,15 @@ export function insideADevGuard(node: ts.Node): boolean {
   return false;
 }
 
-/** Whether this condition being true means the build is a development one. */
-function guardsDev(condition: ts.Expression): boolean {
+/**
+ * Whether this condition being true means the build is a development one.
+ *
+ * Exported because `dev-guard-as-an-expression` asks the same thing about the same flag, and asked
+ * it more narrowly — it required the flag to be the immediate left of the `&&`, so
+ * `__DEV__ && ready && publish()` was a guard here and not a guard there. Two answers about one
+ * flag is the drift this whole helper exists to prevent.
+ */
+export function guardsDev(condition: ts.Expression): boolean {
   if (ts.isParenthesizedExpression(condition)) return guardsDev(condition.expression);
   if (ts.isIdentifier(condition)) return condition.text === "__DEV__";
   // `&&` only. Every branch of one has to hold, so `__DEV__` anywhere in it decides.

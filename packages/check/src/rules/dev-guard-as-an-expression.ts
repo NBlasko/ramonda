@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { guardsDev } from "./dev-guard";
 import type { ModuleRule } from "./rule";
 
 /**
@@ -35,9 +36,38 @@ export interface DevGuardAsAnExpressionIssue {
   column: number;
 }
 
-/** Whether this condition is the `__DEV__` flag, by name — it is a build-time define, not an import. */
-function isDevFlag(expression: ts.Expression): boolean {
-  return ts.isIdentifier(expression) && expression.text === "__DEV__";
+/**
+ * The value an `&&` chain runs when the whole chain holds — the rightmost operand.
+ *
+ * `__DEV__ && ready && publish()` parses as `(__DEV__ && ready) && publish()`, so what is guarded
+ * is the right of the OUTERMOST `&&` and the guard is everything to the left of it. Asking only
+ * whether the immediate left was the flag missed every chained one, and every parenthesised one —
+ * while `dev-guard.ts` recognised both. Two answers about one flag.
+ */
+function guardedByADevChain(written: ts.Expression): ts.Expression | undefined {
+  const bare = ts.isParenthesizedExpression(written) ? bareOf(written) : written;
+  if (!ts.isBinaryExpression(bare) || bare.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken) {
+    return undefined;
+  }
+  return guardsDev(bare.left) ? bare.right : undefined;
+}
+
+/** Parentheses around a statement's expression say nothing about what it does. */
+function bareOf(written: ts.Expression): ts.Expression {
+  return ts.isParenthesizedExpression(written) ? bareOf(written.expression) : written;
+}
+
+/**
+ * Whether a ternary's other arm is nothing, which is what makes `if` a REPLACEMENT for it.
+ *
+ * `__DEV__ ? publish("dev") : publish("prod")` has a production half, and advice reading "write it
+ * as `if (__DEV__)`" would have somebody delete it — a behaviour change in production, from a rule
+ * whose own boundary is that the advice has to fit every site it fires on.
+ */
+function armIsNothing(written: ts.Expression): boolean {
+  if (written.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isIdentifier(written) && written.text === "undefined") return true;
+  return ts.isVoidExpression(written);
 }
 
 /** What a guard runs, shortened, so a report quotes the line without printing a screenful. */
@@ -55,7 +85,8 @@ export const devGuardAsAnExpression = {
     heading: (found) => `${found.length} \`__DEV__\` guard(s) written as an operator:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    \`__DEV__ ${issue.written === "&&" ? "&&" : "?"} ${issue.guarding}\` — write it as \`if (__DEV__)\`.`,
+      `    \`__DEV__ ${issue.written === "&&" ? `&& ${issue.guarding}` : `? ${issue.guarding} : undefined`}\` — ` +
+        "write it as `if (__DEV__)`.",
     ],
     advice:
       "`__DEV__ && publish()` does what `if (__DEV__) publish()` does, and the framework asks for the\n" +
@@ -85,23 +116,22 @@ export const devGuardAsAnExpression = {
       if (ts.isExpressionStatement(node)) {
         const written = node.expression;
 
-        if (
-          ts.isBinaryExpression(written) &&
-          written.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
-          isDevFlag(written.left)
-        ) {
+        const chained = guardedByADevChain(written);
+        if (chained !== undefined) {
           const issue = unlessAnnotated(node, () => ({
             written: "&&" as const,
-            guarding: shorten(written.right),
+            guarding: shorten(chained),
             ...positionOf(node),
           }));
           if (issue !== undefined) found.push(issue);
         }
 
-        if (ts.isConditionalExpression(written) && isDevFlag(written.condition)) {
+        const bare = bareOf(written);
+        // A ternary with a real other arm is an `if`/`else`, and the advice here is not that.
+        if (ts.isConditionalExpression(bare) && guardsDev(bare.condition) && armIsNothing(bare.whenFalse)) {
           const issue = unlessAnnotated(node, () => ({
             written: "?:" as const,
-            guarding: shorten(written.whenTrue),
+            guarding: shorten(bare.whenTrue),
             ...positionOf(node),
           }));
           if (issue !== undefined) found.push(issue);

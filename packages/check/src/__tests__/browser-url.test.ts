@@ -27,11 +27,14 @@ describe("a component reading the browser's URL", () => {
       "self.location.pathname -> pathname",
       "{ pathname } = window.location -> pathname",
       'window.location["hash"] -> hashTags',
+      // An AMBIENT `declare const self` is the author writing down what the platform provides, so
+      // it IS the platform's. A real binding of that name is not — see the two tests below.
+      "self.location.pathname -> pathname",
       // One `this.method()` away, which is where a read like this actually lives.
       "location.pathname -> pathname",
     ]);
     expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(
-      new Set(["Astray", "OtherSpellings", "ViaAHelper"]),
+      new Set(["Astray", "OtherSpellings", "AmbientSelf", "ViaAHelper"]),
     );
   });
 
@@ -83,9 +86,15 @@ describe("a component reading the browser's URL", () => {
    * own field, and `(self) => …` is the framework's own convention for a `@Host` props callback.
    */
   test("a local called `self` is not the global", () => {
-    const found = run("browser-url").findings["browser-url"];
+    const found = run("browser-url").findings["browser-url"].map((issue) => issue.component);
 
-    expect(found.map((issue) => issue.component)).not.toContain("SelfIsALocal");
+    // `const self = this` and a PARAMETER called `window` are names of their own.
+    expect(found).not.toContain("SelfIsALocal");
+    expect(found).not.toContain("WindowIsAParameter");
+    // An AMBIENT `declare const self` is the platform's, and requiring it to resolve to nothing
+    // would have silenced three rules for any project that writes one — an ordinary line in a
+    // worker or an SSR entry.
+    expect(found).toContain("AmbientSelf");
   });
 
   test("a local called `location` is left alone", () => {

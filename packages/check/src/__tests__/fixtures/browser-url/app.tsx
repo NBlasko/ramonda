@@ -52,6 +52,31 @@ class SelfIsALocal extends Component {
   }
 }
 
+/** ✗ An AMBIENT `declare const self` is the author writing down what the platform provides. */
+declare const self: { location: { pathname: string } };
+
+@Host("div")
+class AmbientSelf extends Component {
+  route = this.use(Router);
+  render() {
+    return <span>{self.location.pathname}</span>;
+  }
+}
+
+/** ✓ A PARAMETER called `window` is a name of their own, however it is spelled. */
+@Host("div")
+class WindowIsAParameter extends Component {
+  route = this.use(Router);
+
+  read(window: { location: { pathname: string } }) {
+    return window.location.pathname;
+  }
+
+  render() {
+    return <span>{this.read({ location: { pathname: "/mine" } })}</span>;
+  }
+}
+
 /**
  * A LOCAL called `location` is not the global, and telling them apart costs no type: the program is
  * built with no lib and no `@types`, so the browser's own name resolves to nothing while this one

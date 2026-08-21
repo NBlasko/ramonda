@@ -2,35 +2,53 @@ import ts from "typescript";
 import type { Resolver } from "./rule";
 
 /**
- * Whether an identifier names the global object — `window`, `document`, `self`, `globalThis`.
+ * Whether an identifier names the global object — `globalThis`, `window`, `document`, `self`,
+ * `global`.
  *
  * Written once because five rules ask it and each asked it differently, which is answers waiting to
- * disagree about one line. The answer is ASYMMETRIC, and every part of it is a measurement or a
- * decision already argued somewhere in this package.
+ * disagree about one line. Two spellings of the question were tried before this one and both were
+ * wrong, in opposite directions:
  *
- * **`globalThis` is always the global.** The checker knows that name whatever the lib settings are,
- * so a "resolves to nothing" test rejects every one of them — `listener-added-by-hand` required it
- * and was silent on every listener written that way. It is a reserved binding, not a global anyone
- * can declare over.
+ * - **By NAME alone** reported a real binding. Measured: `const self = this; self.location.pathname`
+ *   came out as a read of the browser's URL on a component reading its own field, and
+ *   `(self) => …` is this framework's own convention for a `@Host` props callback.
+ * - **Requiring it to resolve to NOTHING** silenced whatever a project declares for itself.
+ *   `globalThis` always resolves, so every listener written on it went unreported; and a project
+ *   that writes `declare const self: Window` — an ordinary line in a worker or an SSR entry — would
+ *   have turned off three rules at once.
  *
- * **`window` and `document` count by NAME, as a prefix.** `dom-writes` argued this first and it
- * holds: nobody writes `const document = …` and then reaches for `.body.classList`. Requiring them
- * to resolve to nothing makes a rule depend on the run having no lib — true for this analyzer today,
- * and a silent trap for a project that declares the global itself.
+ * ## What separates them is AMBIENT versus real
  *
- * **`self` and `global` have to prove themselves.** `self` is the one of the four that is routinely
- * a local: `const self = this` is an ordinary line, and `(self) => …` is this framework's own
- * convention for a `@Host` props callback. Accepted by name it reported `self.location.pathname` on
- * a component reading its own field — measured, in `fixtures/browser-url`.
+ * The analyzer forces `noLib: true, types: []` whatever the project's own tsconfig says, so a
+ * global the DOM library declares can never resolve here. The only thing that can is a declaration
+ * in the project's own source — and those come in two kinds. `declare const document: Document` is
+ * the author writing down what the platform already provides, which is still the platform's. `const
+ * self = this`, or a parameter called `window`, is a name of their own that happens to collide.
  *
- * "Proved not to be" costs no type: the program is built with `noLib` and no `@types`, so a name
- * the browser owns has no declaration to find while a `const self = …` in the source has one.
+ * So: the name, unless something in the source declares it FOR REAL. That is one test for all five,
+ * it needs no list of exceptions, and it is what `dom-writes` was reaching for when it argued that
+ * a prefix is not a form a local plausibly shadows — its own fixture declares `document`
+ * ambiently, and that is why the by-name rule looked right there.
  */
-const ALWAYS: ReadonlySet<string> = new Set(["globalThis", "window", "document"]);
-const MUST_PROVE_IT: ReadonlySet<string> = new Set(["self", "global"]);
+const NAMES: ReadonlySet<string> = new Set(["globalThis", "window", "document", "self", "global"]);
 
 export function isTheGlobal(node: ts.Expression, resolve: Resolver): boolean {
-  if (!ts.isIdentifier(node)) return false;
-  if (ALWAYS.has(node.text)) return true;
-  return MUST_PROVE_IT.has(node.text) && resolve(node) === undefined;
+  if (!ts.isIdentifier(node) || !NAMES.has(node.text)) return false;
+  return !declaredForReal(node, resolve);
+}
+
+/**
+ * Whether the source declares this name itself, as a binding rather than as an ambient note.
+ *
+ * A `.d.ts` is ambient by definition, and so is anything under a `declare` — which
+ * `getCombinedModifierFlags` answers for a `VariableDeclaration` by reading the statement it
+ * belongs to. Everything else is somebody's own `const`, `let`, parameter or field, and a name they
+ * chose is not the global however it is spelled.
+ */
+function declaredForReal(node: ts.Identifier, resolve: Resolver): boolean {
+  return (resolve(node)?.declarations ?? []).some(
+    (declaration) =>
+      (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Ambient) === 0 &&
+      !declaration.getSourceFile().isDeclarationFile,
+  );
 }

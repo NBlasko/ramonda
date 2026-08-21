@@ -24,6 +24,11 @@ describe("a `__DEV__` guard written as an operator", () => {
     expect(found().map((issue) => `${issue.line} ${issue.written} ${issue.guarding}`)).toEqual([
       '15 && publish("started")',
       '17 ?: publish("again")',
+      // Chained: `__DEV__ && ready && publish(…)` parses as `(__DEV__ && ready) && publish(…)`, so
+      // asking whether the immediate left was the flag missed every one — while `dev-guard.ts`
+      // recognised it. Both read `guardsDev` now.
+      '24 && publish("chained")',
+      '25 && publish("parens")',
     ]);
   });
 
@@ -45,7 +50,8 @@ describe("a `__DEV__` guard written as an operator", () => {
    * instance of the fault. 149 of them are written in this repository and none is reported.
    */
   test("a conjunction inside the `if` is the shape being asked for", () => {
-    expect(found().map((issue) => issue.line)).not.toContain(24);
+    // Line 36 is `if (__DEV__ && ready) {`, which is the shape, not the fault.
+    expect(found().map((issue) => issue.line)).not.toContain(36);
   });
 
   /**
@@ -56,8 +62,22 @@ describe("a `__DEV__` guard written as an operator", () => {
   test("a value the code goes on to use is left alone", () => {
     const lines = found().map((issue) => issue.line);
 
-    // `const label = __DEV__ ? … : ""`, `const armed = __DEV__ && …`, and a JSX child.
-    for (const line of [32, 33, 38]) expect(lines).not.toContain(line);
-    expect(found()).toHaveLength(2);
+    // `const label = __DEV__ ? … : ""` (44), `const armed = __DEV__ && …` (45), a JSX child (50).
+    // Read off the fixture rather than guessed: the first version of this named three lines that
+    // were a brace, a blank and a `return (`, so it would have passed while the rule reported every
+    // value position. Only the length beside it held the line.
+    for (const line of [44, 45, 50]) expect(lines).not.toContain(line);
+    expect(found()).toHaveLength(4);
+  });
+
+  /**
+   * A ternary with a REAL other arm is an `if`/`else`, and this rule's advice is not that.
+   *
+   * `__DEV__ ? publish("dev") : publish("prod")` was reported quoting only the true half, so an
+   * author following the advice would delete the production one — a behaviour change in production,
+   * from a rule whose own boundary is that the advice fits every site it fires on.
+   */
+  test("a ternary whose other arm does something is not reported", () => {
+    expect(found().map((issue) => issue.line)).not.toContain(29);
   });
 });

@@ -20,6 +20,14 @@ class Guards extends Component {
     // ramonda-check-ignore the panel handshake has to be one expression for the bundler to fold it
     __DEV__ && publish("annotated");
 
+    // ✗ Chained, and parenthesised — the same guard, and both were silent.
+    __DEV__ && ready && publish("chained");
+    __DEV__ && publish("parens");
+
+    // ✓ A ternary with a REAL other arm is an `if`/`else`, and the advice here would have somebody
+    // delete the production half.
+    __DEV__ ? publish("dev") : publish("prod");
+
     // ✓ The shape being asked for.
     if (__DEV__) {
       publish("properly");
