@@ -76,8 +76,18 @@ describe("process.env in code the browser runs", () => {
   const serverEnv = () =>
     analyzeProject(join(here, "fixtures", "env-reads", "tsconfig.json")).findings["server-env-in-shared-code"];
 
+  /**
+   * `globalThis.process.env` is the same read and was silent — the check required `process` to be a
+   * bare identifier. A destructure and a bracketed key were already found, because the match is at
+   * `process.env` rather than at the member; only the quoted text needed the key adding.
+   */
   test("every read the browser can reach is named, with the member holding it", () => {
     expect(serverEnv().map((issue) => `${issue.component}.${issue.member}: ${issue.read}`)).toEqual([
+      // The three spellings beside the dotted one. A destructure names `process.env` on its
+      // right-hand side, which is what the report quotes; the other two carry the key.
+      "OtherSpellings.render: process.env",
+      'OtherSpellings.render: process.env["REGION"]',
+      "OtherSpellings.render: globalThis.process.env.API_KEY",
       "ReadsProcessInRender.render: process.env.DATABASE_URL",
       "ReadsProcessInAField.url: process.env.DATABASE_URL",
       "ReadsProcessInSharedCreate.read: process.env.REGION",

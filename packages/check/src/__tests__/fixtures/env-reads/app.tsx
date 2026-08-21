@@ -23,6 +23,16 @@ export class RamondaButNotPublic extends Component {
   }
 }
 
+/** ✗ The same read, spelled three other ways. */
+export class OtherSpellings extends Component {
+  render() {
+    const { DATABASE_URL } = process.env;
+    const bracketed = process.env["REGION"];
+    const viaGlobal = globalThis.process.env.API_KEY;
+    return <p>{`${DATABASE_URL}${bracketed}${viaGlobal}`}</p>;
+  }
+}
+
 // ── everything below is CORRECT and must stay silent ─────────────────────────────────────────
 
 /** The exposed prefix. */
