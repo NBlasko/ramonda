@@ -203,6 +203,21 @@ export const duplicateDecorators = {
         const name = coreDecoratorName(decorator, resolve);
         if (name === undefined) continue;
 
+        /**
+         * `Object.hasOwn` before the read, because this is an object literal and the four `Set`s it
+         * replaced could not be answered by `Object.prototype`.
+         *
+         * **Not reachable today, and measured rather than assumed both ways.** `coreName` returns only
+         * a name `@ramonda/core` exports, and none of its 101 exports shares a name with an
+         * `Object.prototype` member — so `EFFECT["toString"]` cannot be asked. It WAS reachable in the
+         * commit that introduced this table, before the merge brought `coreDecoratorName`: the old
+         * `decoratorName` handed over the text somebody wrote, so `@toString @toString` returned a
+         * FUNCTION, passed an `undefined` check, and landed in a report's `effect` field.
+         *
+         * Kept because what feeds this is a name from somebody else's source, and the guard costs one
+         * comparison to make that safe whatever resolves it next.
+         */
+        if (!Object.hasOwn(EFFECT, name)) continue;
         const effect = EFFECT[name];
         if (effect === undefined) continue;
 

@@ -37,5 +37,20 @@ eviction that cannot happen must not turn a served page into a 500, and the entr
 Two prose claims that had gone false are corrected with it: `memoryStore` said it "cannot grow on its
 own" (true only while a route meant one page), and two server templates said `IsrStore` is two methods.
 
-Planted three ways: patterns not matched at all, the LRU degraded to insertion order (caught only by the
-test that asks for a page twice), and the literal route losing to the pattern.
+**Three faults in the bookkeeping, all found by review and each measured before the fix.** The cap is
+only as good as the count behind it, and the count is a map this process keeps beside a store it does not
+own — all three were that map saying something the store does not.
+
+- Recency was recorded BEFORE the read, for every request, so a cold render that rejected left a key
+  with nothing behind it and the cap counted the phantom: with `maxPages: 2`, one failed render made the
+  next success drop BOTH live pages. It is recorded only for a page the store holds now.
+- The trim ran only after a bake, so a store this process did not fill — a `fileStore` directory after a
+  restart — was never bounded at all: five seeded entries, `maxPages: 2`, five hits, nothing dropped.
+  It runs after every answer.
+- The eviction was unguarded on the cold path, so a store whose `delete` rejects turned a page that had
+  rendered AND stored into a 500. An eviction that cannot happen is a cache one entry too large, which
+  the next request tries again.
+
+Planted seven ways, and two of the plants found missing COVERAGE rather than a fault: the trim on the
+stale path and the guard on the hit path were untested, because the first tests reached only the other
+two branches. Both are covered now.

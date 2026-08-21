@@ -399,3 +399,173 @@ describe("the page cap", () => {
     expect(dropped).toEqual([]);
   });
 });
+
+/**
+ * Three ways the bookkeeping was wrong, each found by review and each measured before the fix.
+ *
+ * The cap is only as good as the count behind it, and the count is a map this process keeps beside a
+ * store it does not own. All three faults were the same shape: the map saying something the store does
+ * not.
+ */
+describe("what the cap counts", () => {
+  const products = { isr: [{ path: "/products/:id", revalidate: 60 }] };
+
+  const seeded = (maxPages: number, seed: string[] = [], failOn?: string) => {
+    const entries = new Map<string, { html: string; at: number }>();
+    for (const path of seed) entries.set(path, { html: path, at: 1_000_000 });
+    const dropped: string[] = [];
+    const errors: string[] = [];
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        if (key === failOn) throw new Error("the store is down");
+        dropped.push(key);
+        entries.delete(key);
+      },
+    };
+    return {
+      entries,
+      dropped,
+      errors,
+      isr: createIsrCache({
+        plan: products,
+        store,
+        maxPages,
+        render: async (path) => {
+          if (path.endsWith("/boom")) throw new Error("render failed");
+          return path;
+        },
+        onError: (_path, error) => errors.push(String(error)),
+        now: () => 1_000_000,
+      }),
+    };
+  };
+
+  /**
+   * A render that REJECTED used to leave a key behind with nothing under it, and the cap then counted
+   * the phantom: measured, one failure made the next success drop BOTH live pages from a cache of two.
+   */
+  test("a failed render costs no live page", async () => {
+    const { entries, dropped, isr } = seeded(2);
+
+    await isr.serve("/products/1");
+    await isr.serve("/products/2");
+    await expect(isr.serve("/products/boom")).rejects.toThrow("render failed");
+
+    await isr.serve("/products/3");
+    // One eviction, not two, and the two survivors are the two most recently wanted.
+    expect(dropped).toEqual(["/products/1"]);
+    expect([...entries.keys()].sort()).toEqual(["/products/2", "/products/3"]);
+  });
+
+  /**
+   * A store this process did not fill — a `fileStore` directory after a restart — used to be
+   * unbounded, because the trim only ran after a bake and every answer was a hit.
+   */
+  test("a store that was already full is brought under the cap by serving it", async () => {
+    const seed = ["/products/1", "/products/2", "/products/3", "/products/4", "/products/5"];
+    const { entries, isr } = seeded(2, seed);
+    expect(entries.size).toBe(5);
+
+    for (const path of seed) expect((await isr.serve(path))?.mode).toBe("isr-hit");
+
+    expect(entries.size).toBe(2);
+    // The last two asked for, which is what recency means.
+    expect([...entries.keys()].sort()).toEqual(["/products/4", "/products/5"]);
+  });
+
+  /**
+   * `fileStore.delete` swallows everything, but `IsrStore` is an interface an app implements and its
+   * contract only promises that a missing key is not an error. A store that is down must not turn a
+   * page that rendered into a 500.
+   */
+  /**
+   * The STALE branch trims too, and it is here because planting found it uncovered: the first three
+   * tests reach only the hit and cold paths, so removing the trim from this one changed nothing they
+   * could see.
+   */
+  test("a stale answer trims as well, so a rebake cannot be the only thing that bounds it", async () => {
+    const entries = new Map<string, { html: string; at: number }>();
+    for (const path of ["/products/1", "/products/2", "/products/3"]) entries.set(path, { html: path, at: 0 });
+    const dropped: string[] = [];
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        dropped.push(key);
+        entries.delete(key);
+      },
+    };
+    // `at: 0` against a clock at 1_000_000 — every entry is past its window, so every answer is stale.
+    const isr = createIsrCache({
+      plan: products,
+      store,
+      maxPages: 1,
+      render: async (path) => path,
+      now: () => 1_000_000,
+    });
+
+    expect((await isr.serve("/products/1"))?.mode).toBe("isr-stale");
+    expect((await isr.serve("/products/2"))?.mode).toBe("isr-stale");
+
+    // Trimmed down to one on the stale path, without waiting for a bake to finish.
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(entries.has("/products/2")).toBe(true);
+  });
+
+  /** And the guard is on every path, not only the cold one — same reason: planting found it uncovered. */
+  test("an eviction that throws on a HIT does not fail the hit", async () => {
+    const entries = new Map<string, { html: string; at: number }>();
+    for (const path of ["/products/1", "/products/2"]) entries.set(path, { html: path, at: 1_000_000 });
+    const errors: string[] = [];
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete() {
+        throw new Error("the store is down");
+      },
+    };
+    const isr = createIsrCache({
+      plan: products,
+      store,
+      maxPages: 1,
+      render: async (path) => path,
+      onError: (_path, error) => errors.push(String(error)),
+      now: () => 1_000_000,
+    });
+
+    expect((await isr.serve("/products/1"))?.mode).toBe("isr-hit");
+    const second = await isr.serve("/products/2");
+
+    expect(second).toEqual({ html: "/products/2", mode: "isr-hit" });
+    expect(errors.join()).toContain("the store is down");
+  });
+
+  test("an eviction that cannot happen is reported, not raised", async () => {
+    const { entries, errors, isr } = seeded(1, [], "/products/1");
+
+    expect((await isr.serve("/products/1"))?.mode).toBe("isr-cold");
+    // Over the cap now, and the delete of `/products/1` throws.
+    const second = await isr.serve("/products/2");
+
+    expect(second?.mode).toBe("isr-cold");
+    expect(second?.html).toBe("/products/2");
+    expect(errors.join()).toContain("the store is down");
+    // The page that could not be dropped is still there, which is a cache one entry too large —
+    // tried again on the next request, and not a page the visitor failed to get.
+    expect(entries.has("/products/2")).toBe(true);
+  });
+});

@@ -88,9 +88,9 @@ describe("routePlan partitions by declared mode", () => {
   });
 
   /**
-   * ISR is not held to it. A `revalidate` route with params is served and refreshed per request, so
-   * its pattern is a RULE rather than a page and there is nothing for a build to bake — it stays
-   * named in `needsData` so a build that wants to warm those pages can be told which exist.
+   * ISR is not held to it: `createIsrCache` matches the pattern and fills as pages are asked for, each
+   * under its own path, so there is no list for a build to be given. The pattern stays in `plan.isr` as
+   * the rule it is, and in `needsData` so a caller warming pages knows which routes have any.
    */
   test("an ISR route with a :param is named but never demanded", () => {
     const server = defineServer(routes, {

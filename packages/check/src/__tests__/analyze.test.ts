@@ -1251,6 +1251,22 @@ describe("a place in the graph", () => {
     }
   });
 
+  /**
+   * De-duplicating made the spliced loop the SOLE emitter for a node a fragment brought in, and that
+   * loop did not spread `opaque` — the `components` loop it now skips was the only one that did. So an
+   * opaque node was published as transparent, which is the one thing a reader of the graph cannot
+   * recover: `opaque` is where the walk STOPPED, and a missing flag reads as "nothing is there".
+   *
+   * `vendor-kit`'s graph marks `Sidebar` opaque so the flag has something to survive. Found by review.
+   */
+  test("an opaque node from an installed package is still opaque", () => {
+    for (const name of ["kit", "kit-ambiguous"]) {
+      const sidebar = run(name).graph.nodes.filter((node) => node.id.includes("Sidebar"));
+      expect(sidebar.length, `${name}: one Sidebar`).toBe(1);
+      expect(sidebar[0]?.opaque, `${name}: opaque survived the single emitter`).toBe(true);
+    }
+  });
+
   test("a node from an installed package keeps the path ITS package gave, with no package prefix", () => {
     const at = places("kit").get("@acme/kit/src/index.tsx#Link");
     // `src/index.tsx`, not `@acme/kit/src/index.tsx` and not `@ramonda/check/src/index.tsx`: the id

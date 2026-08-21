@@ -136,18 +136,19 @@ export interface RoutePlan {
  * missing half its pages and every page it did emit looks perfectly correct — the same argument
  * `renderStatic`'s `blockedBy` already settles by stopping the build.
  *
- * **ISR is not held to it, and that is a gap rather than a decision.** A `revalidate` route with a
- * `:param` goes into `plan.isr` as its PATTERN, and `createIsrCache` keys `windowMs` by that string and
- * looks it up exactly (`isr.ts`), so `serve("/u/7")` for a route `/u/:id` returns `undefined` — measured.
- * The caller then falls through to its dynamic branch, so the page renders per request with the REAL
- * request context: no shared cache, which is the opposite of what `revalidate` was asked for. Nothing
- * says so, and `paths` given here are ignored for those routes.
+ * **ISR is not held to it, and for a reason rather than as an omission.** A `revalidate` route with a
+ * `:param` bakes nothing at build: `createIsrCache` matches the pattern and fills as pages are asked
+ * for, each under its own path, bounded by its `maxPages`. So there is no list for a build to be given,
+ * and the pattern stays in `plan.isr` as the rule it is.
  *
- * Left as it is for now rather than papered over: making it work means matching a pattern in `serve`,
- * and refusing it means throwing on a config that is currently accepted. Both are decisions about a
- * published API. The one thing not done is claiming it works — an earlier version of this comment said
- * such a route "is served and refreshed per request" and that a build could "warm those pages", and
- * neither is true.
+ * `paths` are for PRERENDERING, so a path belonging to an ISR route is refused by the check below like
+ * any other path that bakes nothing — warming an ISR page is `isr.serve(path)` at boot, not a build
+ * step. It is still named in `needsData` so a caller doing that knows which routes have pages to warm.
+ *
+ * (Two earlier versions of this comment were wrong in two different directions, which is worth leaving
+ * a note about: the first claimed such a route "is served and refreshed per request" and that a build
+ * could "warm those pages"; the second described the gap that the same branch then closed. A comment
+ * about another module ages the moment that module changes.)
  *
  * @param paths concrete paths for the parameterised routes marked for prerender
  */

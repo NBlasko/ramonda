@@ -2936,6 +2936,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         name: node.name,
         at: `${node.file}:${node.line}:${node.column}`,
         ...(node.exported ? { exported: true } : {}),
+        // `opaque` was spread by the `components` loop only, and de-duplicating made THIS the sole
+        // emitter for a spliced node — so an opaque one was published as transparent. It can become
+        // opaque here too, through the propagation whose `carriers` list includes `splicedNodes`.
+        ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
       });
     }

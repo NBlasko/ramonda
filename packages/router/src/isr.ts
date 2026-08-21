@@ -217,8 +217,35 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     held.set(path, true);
   };
 
-  /** Called after a write, so the cap counts what is actually stored. */
-  const evictDownTo = async (): Promise<void> => {
+  /**
+   * Runs the eviction without letting it fail the answer.
+   *
+   * `fileStore.delete` swallows everything for this reason, but `IsrStore` is an interface an app
+   * implements and its contract only promises that a MISSING key is not an error. A store over Redis
+   * that is down would otherwise turn a page that rendered and stored fine into a rejected `serve` —
+   * measured: `delete` throwing made `serve("/products/2")` reject while `/products/2` sat in the
+   * store. An eviction that cannot happen is a cache one entry too large, which the next request
+   * tries again; a 500 is a page the visitor does not get.
+   */
+  const guarded = async (path: string, work: () => Promise<void>): Promise<void> => {
+    try {
+      await work();
+    } catch (error) {
+      onError(path, error);
+    }
+  };
+
+  /**
+   * Brings the cache back under the cap, and it runs after EVERY answer rather than only after a bake.
+   *
+   * Only-after-a-bake was wrong in a way that showed up one restart later: a `fileStore` directory
+   * holds pages this process never wrote, so `held` starts empty, nothing is ever over the cap from
+   * this process's point of view, and the store is never trimmed. Measured before the fix — a store
+   * seeded with five entries and `maxPages: 2` served five hits and dropped nothing. `held` grew one
+   * key per distinct path with no bound at all, which is the exact crawler shape the cap exists to
+   * stop.
+   */
+  const trim = async (): Promise<void> => {
     if (maxPages === undefined) return;
     while (held.size > maxPages) {
       const oldest = held.keys().next();
@@ -263,29 +290,37 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
       const ttl = ttlFor(path);
       if (ttl === undefined) return undefined;
 
-      // Before the read, and for every answer below: asking for a page is what makes it recent,
-      // whether it turns out to be fresh, stale or cold.
-      touch(path);
-
       const cached = await store.get(path);
 
+      /**
+       * Recency is recorded only for a page the store actually HOLDS, and that is the fix for a
+       * phantom.
+       *
+       * It used to be recorded before the read, for every request. A cold render that REJECTED then
+       * left a key in `held` with nothing behind it, and the cap counted it — measured with
+       * `maxPages: 2`, one failed render made the next successful one drop BOTH live pages, leaving
+       * one page in a cache allowed two. Every failure cost a live slot.
+       */
       if (cached !== undefined && now() - cached.at < ttl) {
+        touch(path);
+        await guarded(path, trim);
         return { html: cached.html, mode: "isr-hit" };
       }
 
       if (cached !== undefined) {
+        touch(path);
+        await guarded(path, trim);
         // Stale-while-revalidate: the visitor waits for nothing. `catch` rather than `await`
         // — a failed rebake must not turn a servable stale page into a 500.
-        void bake(path)
-          .then(evictDownTo)
-          .catch((error: unknown) => onError(path, error));
+        void bake(path).catch((error: unknown) => onError(path, error));
         return { html: cached.html, mode: "isr-stale" };
       }
 
       // Cold: there is no previous copy, so this one request pays for the render. It throws on
-      // failure, and should — there is nothing to send instead.
+      // failure, and should — there is nothing to send instead. Nothing is remembered until it has.
       const html = await bake(path);
-      await evictDownTo();
+      touch(path);
+      await guarded(path, trim);
       return { html, mode: "isr-cold" };
     },
   };

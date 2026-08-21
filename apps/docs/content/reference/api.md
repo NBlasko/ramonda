@@ -184,7 +184,7 @@ Server-only — never imported from client code. See [rendering modes](/ssr/mode
 | | |
 |---|---|
 | `defineServer(routes, config, opts?)` | Per-route render modes, keyed exhaustively by path. `config` — `{ prerender?, revalidate? }` per route; `opts.defaultMode`. |
-| `routePlan(server)` | Partitions the routes into `{ static, isr, server, needsData }` for the build. |
+| `routePlan(server, paths?)` | Partitions the routes into `{ static, isr, server, needsData }` for the build. `static` holds paths, never patterns: a route with a `:param` marked `prerender` needs its concrete paths in `paths`, and throws without them. [Rendering modes](/ssr/modes#a-route-with-a-param-the-build-has-to-be-told-which-pages-exist) |
 | `createIsrCache({ plan, store, render, maxPages?, onerror?, now? })` | The ISR cache. `serve(path)` gives `{ html, mode }` — fresh, stale-while-revalidate, or a cold render — and `undefined` for a path that is not an ISR route. A route with a `:param` caches each page separately and needs `maxPages`, which drops the page nobody has asked for longest. [Where ISR pages are kept](/ssr/modes#where-isr-pages-are-kept) |
 | `memoryStore()` | Keeps baked pages in this process. One instance, or development. |
 | `fileStore({ dir })` | Keeps baked pages in a directory: survives a restart, shared by instances that mount it. Writes atomically. |
