@@ -26,6 +26,19 @@ describe("a row reads a plain field", () => {
    * framework's `list`. Resolved through the alias chain now, which also keeps an app's OWN
    * function called `list` out of it — `own-list.ts` in the fixture.
    */
+  /**
+   * A FALSE REPORT while the rule asked only "did this come from core".
+   *
+   * `createContext({ n: 0 }, this.row)` was read as a list of rows, because every core function
+   * looked like `list`. The name core EXPORTS is the half that makes it a question about `list` at
+   * all, and it is checked now. Found by planting the shape while reviewing.
+   */
+  test("another core function is not a row builder", () => {
+    const found = run().findings["row-reads-a-plain-field"];
+
+    expect(found.map((issue) => issue.component)).not.toContain("OtherCoreCall");
+  });
+
   test("the direct read, the local hop and the sibling method are all reported", () => {
     const found = run().findings["row-reads-a-plain-field"];
     const fields = found.filter((i) => i.kind === "plain-field");

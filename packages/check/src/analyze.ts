@@ -501,6 +501,22 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const { program, notes } = createProgram(tsconfigPath);
   const checker = program.getTypeChecker();
 
+  /**
+   * `resolve`, with `coreName` hung on it — see the `Resolver` note in `rules/rule.ts`.
+   *
+   * Attached rather than threaded as a second parameter because `resolve` already reaches every
+   * helper that needs it, and a parameter a caller can forget is the shape that silenced every tree
+   * rule for a commit.
+   *
+   * The SAME object as `resolve`, deliberately: `Object.assign` mutates it, so a caller holding
+   * either one can ask either question. Declared here, at the top, rather than beside its first use
+   * — it is a `const`, and one built halfway down works only while nothing above it runs first,
+   * which is an ordering nobody can see from the call site.
+   */
+  const resolver: Resolver = Object.assign(resolve, {
+    coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep),
+  });
+
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
   const providerSymbols = new Map<ts.Symbol, ContextFact>();
   const consumerSymbols = new Map<ts.Symbol, ContextFact>();
@@ -851,10 +867,6 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * every helper that needs it, and a parameter a caller can forget is the shape that silenced
    * every tree rule for a commit.
    */
-  const resolver: Resolver = Object.assign(resolve, {
-    coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep),
-  });
-
   const projectRules = activate(PROJECT_RULES, imported, rendersOnServer);
   if (projectRules.length > 0) applyProject(projectRules, idTableFor(sources, resolver), findings);
 

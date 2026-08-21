@@ -224,15 +224,23 @@ export const rowReadsAPlainField = {
       const callbacks = new Set<string>();
       (function look(node: ts.Node): void {
         /**
-         * The framework's `list`, RESOLVED rather than matched by name.
+         * The framework's `list`, RESOLVED rather than matched by name — and by the name core
+         * EXPORTS, which is the half that makes it a question about `list` at all.
          *
          * This used to scan the file's imports for a binding called `list` and take the first one,
          * so a file that also imported it under an alias got the wrong name, and a re-export
          * — `export { list } from "@ramonda/core"` in an app's own `ui` module — was invisible.
          * `importedFromCore` follows the chain, and still leaves an app's own function called
          * `list` alone, which is what `own-list.ts` in the fixture is for.
+         *
+         * Asking only "did this come from core" made EVERY core function a row builder:
+         * `createContext({ n: 0 }, this.row)` was read as a list of rows. Found by planting it —
+         * see `OtherCoreCall` in the fixture.
          */
-        if (ts.isCallExpression(node) && importedFromCore(node.expression, context.resolveLocal, context.resolveStep)) {
+        if (
+          ts.isCallExpression(node) &&
+          importedFromCore(node.expression, context.resolveLocal, context.resolveStep, "list")
+        ) {
           const builder = node.arguments[1];
           const read = builder === undefined ? undefined : thisRead(builder);
           // Only a stable reference. An inline arrow or function makes the engine rebuild every row,

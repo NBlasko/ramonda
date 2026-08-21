@@ -1,10 +1,44 @@
-import { Component, list, list as aliased, state, compute, persist, created, destroyed } from "@ramonda/core";
+import {
+  Component,
+  compute,
+  createContext,
+  created,
+  destroyed,
+  list,
+  list as aliased,
+  persist,
+  state,
+} from "@ramonda/core";
 import { list as ownList } from "./own-list";
 import { list as reExported } from "./re-export";
 
 interface Task {
   id: string;
   title: string;
+}
+
+/**
+ * NOT reported: `createContext` is not `list`, whatever its second argument looks like.
+ *
+ * The rule identifies the call by the name core EXPORTS. Asking only "did this come from core" made
+ * every core function a row builder — planted while reviewing, and it read `this.row` here as a row
+ * callback.
+ */
+export class OtherCoreCall extends Component {
+  label = "old";
+  pair = createContext({ n: 0 }, this.row);
+
+  bump() {
+    this.label = "new";
+  }
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>rows</ul>;
+  }
 }
 
 /** Reported: the framework's `list` under a local alias is the framework's `list`. */
