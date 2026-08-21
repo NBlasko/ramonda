@@ -492,6 +492,24 @@ export interface ModuleContext {
    * rule to reach for the checker on its own, which is the shape this package does not have.
    */
   resolve(id: ts.Node): ts.Symbol | undefined;
+
+  /**
+   * The symbol as WRITTEN, alias unfollowed — what `importedFromCore` reads.
+   *
+   * A module rule needs it for the same reason a class rule does: identity is the module the reader
+   * typed. `row-reads-a-plain-field` used to scan the file's imports for a binding called `list`
+   * and take the first, which got the wrong name when the file also imported it under an alias and
+   * saw nothing at all through a re-export.
+   */
+  resolveLocal(id: ts.Node): ts.Symbol | undefined;
+
+  /**
+   * ONE hop along an alias chain — what `importedFromCore` walks a re-export with.
+   *
+   * `resolve` jumps to the end and `resolveLocal` does not move; neither can say which module a
+   * binding came from when an app hands core's own export on through a `ui` module of its own.
+   */
+  resolveStep(id: ts.Node): ts.Symbol | undefined;
 }
 
 export interface RuleContext {
@@ -523,4 +541,12 @@ export interface RuleContext {
    * apart is what stops a rule from silently answering the wrong one.
    */
   resolveLocal(id: ts.Node): ts.Symbol | undefined;
+
+  /**
+   * ONE hop along an alias chain — what `importedFromCore` walks a re-export with.
+   *
+   * `resolve` jumps to the end and `resolveLocal` does not move; neither can say which module a
+   * binding came from when an app hands core's own export on through a `ui` module of its own.
+   */
+  resolveStep(id: ts.Node): ts.Symbol | undefined;
 }

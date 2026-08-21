@@ -854,6 +854,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       file,
       (ruleId) => ({
         resolve,
+        resolveLocal,
+        resolveStep,
         unlessAnnotated: (site, make) => {
           const written = directiveAt(site);
           if (written === undefined) return make();
@@ -903,7 +905,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         const self = symbol && components.get(symbol);
         if (self) {
           readClassBody(node, self);
-          applyClass(rules, node, { self, resolve, resolveLocal }, findings);
+          applyClass(rules, node, { self, resolve, resolveLocal, resolveStep }, findings);
         }
       }
       collectRoot(node);
@@ -2423,6 +2425,20 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function resolveLocal(id: ts.Node): ts.Symbol | undefined {
     return checker.getSymbolAtLocation(id);
+  }
+
+  /**
+   * ONE hop along an alias chain, which is what walking a re-export needs.
+   *
+   * `resolve` jumps to the end and `resolveLocal` does not move at all, and neither can answer
+   * "which module did this binding come from" for `export { list } from "@ramonda/core"` in an
+   * app's own `ui` module: the end is core's declaration, whose path differs per project, and the
+   * start is an import naming `./ui`. Stepping is the only way to read the chain the reader wrote.
+   */
+  function resolveStep(id: ts.Node): ts.Symbol | undefined {
+    const symbol = checker.getSymbolAtLocation(id);
+    if (symbol === undefined || (symbol.flags & ts.SymbolFlags.Alias) === 0) return undefined;
+    return checker.getImmediateAliasedSymbol(symbol);
   }
 
   function bindingSymbol(element: ts.ArrayBindingElement | undefined): ts.Symbol | undefined {

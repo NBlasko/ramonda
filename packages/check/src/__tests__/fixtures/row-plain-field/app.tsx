@@ -1,9 +1,46 @@
-import { Component, list, state, compute, persist, created, destroyed } from "@ramonda/core";
+import { Component, list, list as aliased, state, compute, persist, created, destroyed } from "@ramonda/core";
 import { list as ownList } from "./own-list";
+import { list as reExported } from "./re-export";
 
 interface Task {
   id: string;
   title: string;
+}
+
+/** Reported: the framework's `list` under a local alias is the framework's `list`. */
+export class ThroughAnAlias extends Component {
+  label = "old";
+  tasks: Task[] = [];
+
+  bump() {
+    this.label = "new";
+  }
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>{aliased(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Reported: and so is the same `list` reached through an app's own `ui` module. */
+export class ThroughAReExport extends Component {
+  label = "old";
+  tasks: Task[] = [];
+
+  bump() {
+    this.label = "new";
+  }
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>{reExported(this.tasks, this.row)}</ul>;
+  }
 }
 
 /** Reported: a stable callback shows a written plain field. */

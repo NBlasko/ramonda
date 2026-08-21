@@ -17,10 +17,23 @@ const run = () => analyzeProject(join(here, "fixtures", "row-plain-field", "tsco
  * the only home for a `WebSocket` or a `Map`, because `@state` must be JSON.
  */
 describe("a row reads a plain field", () => {
+  /**
+   * How `list` is recognised, which had three answers in three rules.
+   *
+   * This one scanned the file's imports for a binding called `list` and took the FIRST — so a file
+   * importing it under an alias as well got the wrong name, and a re-export was invisible. An app
+   * wrapping its imports in a `ui` module is ordinary, and the framework's `list` is still the
+   * framework's `list`. Resolved through the alias chain now, which also keeps an app's OWN
+   * function called `list` out of it — `own-list.ts` in the fixture.
+   */
   test("the direct read, the local hop and the sibling method are all reported", () => {
     const found = run().findings["row-reads-a-plain-field"];
     const fields = found.filter((i) => i.kind === "plain-field");
     expect(fields.map((i) => `${i.component}.${i.through}:${i.name}`)).toEqual([
+      // The framework's `list` under a local alias, and reached through an app's own `ui` module.
+      // Both are the framework's `list`, and the rows it builds are cached the same way.
+      "ThroughAnAlias.row:label",
+      "ThroughAReExport.row:label",
       "Reported.row:label",
       "ThroughALocal.row:label",
       "ThroughAMethod.cell:label",
