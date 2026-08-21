@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/build",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "The bundler settings a Ramonda app needs, as a Vite plugin and an esbuild plugin — so the app names none of them.",
   "license": "MIT",
   "author": "Nikola Blagojević",
