@@ -1,5 +1,7 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { memberName } from "../syntax";
+import type { Resolver } from "./rule";
 
 /**
  * Everything a render can reach — not everything a render is written to contain.
@@ -70,7 +72,7 @@ export interface ReachedSite {
 export interface RenderReach {
   /** Called for every node inside anything the render reaches. */
   visit(node: ts.Node, through: readonly string[], insideTheClass: boolean): void;
-  resolve(id: ts.Node): ts.Symbol | undefined;
+  resolve: Resolver;
 }
 
 /**
@@ -93,7 +95,7 @@ export interface RenderReach {
  * wherever the member is written down. See `one-provider-per-component`,
  * `context-consumed-above-its-provider` and `interval-with-no-cleanup`.
  */
-export function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve"]): ts.ClassLikeDeclaration[] {
+export function heritage(cls: ts.ClassDeclaration, resolve: Resolver): ts.ClassLikeDeclaration[] {
   const chain: ts.ClassLikeDeclaration[] = [];
   let at: ts.ClassLikeDeclaration | undefined = cls;
 
@@ -119,13 +121,25 @@ export function heritage(cls: ts.ClassDeclaration, resolve: RenderReach["resolve
   return chain;
 }
 
-/** Whether a member carries a given decorator, by name. */
-export function hasDecorator(member: ts.ClassElement, name: string): boolean {
+/**
+ * Whether a member carries CORE's `@name` — by the name core exports it under, not the local one.
+ *
+ * This matched a bare name for a long time, and it failed in both directions at once. Measured with
+ * two identical components, one written `import { state as reactive }`: the plain one produced two
+ * reports and the aliased one produced NOTHING, from any rule. The other direction is the shape
+ * `own-list.ts`, `own-head.tsx` and `own-helper.tsx` exist to keep out of three other rules — an
+ * app's own decorator called `state` was judged as core's.
+ *
+ * `resolve` is required rather than defaulted, which is the standing lesson here: a defaulted one
+ * on `numberAttr` silenced every tree rule for a commit, and a guard a caller can forget looks
+ * exactly like a clean codebase.
+ */
+export function hasDecorator(member: ts.ClassElement, name: string, resolve: Resolver): boolean {
   for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
     const expression = ts.isCallExpression(decorator.expression)
       ? decorator.expression.expression
       : decorator.expression;
-    if (ts.isIdentifier(expression) && expression.text === name) return true;
+    if (resolve.coreName(expression) === name) return true;
   }
   return false;
 }
@@ -141,14 +155,13 @@ export function hasDecorator(member: ts.ClassElement, name: string): boolean {
  * `resolve` is optional so a caller with no checker still gets the class's own fields, which is the
  * behaviour this had before.
  */
-export function stateFieldsOf(cls: ts.ClassDeclaration, resolve?: RenderReach["resolve"]): ReadonlySet<string> {
+export function stateFieldsOf(cls: ts.ClassDeclaration, resolve: Resolver): ReadonlySet<string> {
   const found = new Set<string>();
 
-  const declared = resolve === undefined ? [cls] : [cls, ...heritage(cls, resolve)];
-  for (const declaring of declared) {
+  for (const declaring of [cls, ...heritage(cls, resolve)]) {
     for (const member of declaring.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
-      if (!hasDecorator(member, "state") && !hasDecorator(member, "persist")) continue;
+      if (!hasDecorator(member, "state", resolve) && !hasDecorator(member, "persist", resolve)) continue;
       const name = memberName(member);
       if (name !== undefined) found.add(name);
     }
@@ -158,12 +171,12 @@ export function stateFieldsOf(cls: ts.ClassDeclaration, resolve?: RenderReach["r
 }
 
 /** Where a render begins: `render()` itself, and every `@compute`. */
-export function entryPoints(cls: ts.ClassDeclaration): { member: ts.ClassElement; name: string }[] {
+export function entryPoints(cls: ts.ClassDeclaration, resolve: Resolver): { member: ts.ClassElement; name: string }[] {
   const found: { member: ts.ClassElement; name: string }[] = [];
   for (const member of cls.members) {
     const name = memberName(member);
     if (name === undefined) continue;
-    if (name === "render" || hasDecorator(member, "compute")) found.push({ member, name });
+    if (name === "render" || hasDecorator(member, "compute", resolve)) found.push({ member, name });
   }
   return found;
 }
@@ -191,13 +204,40 @@ export function entryPoints(cls: ts.ClassDeclaration): { member: ts.ClassElement
  * `list(each, …)`, `.map(…)`, `.filter(…)` and their family; and a function invoked on the spot.
  * Everything else — returned, assigned, stored, handed to an attribute — runs at some other time,
  * and this says nothing about it.
+ *
+ * ## An argument to ANY call, including one that will run it later — and that is deliberate
+ *
+ * This was narrowed to an allowlist of the calls that run what they are handed, on the argument
+ * that `setTimeout(() => { this.n = 1 }, 0)` in a render does not write state DURING the render.
+ * The argument is true about the moment and false about the fault, and the difference was settled
+ * by measuring rather than by reading either line:
+ *
+ * - `setTimeout(() => this.n += 1, 0)` armed from a render, guarded to stop at 50: **51 renders**.
+ *   Unguarded it does not stop. That is `state-written-while-rendering`'s own sentence — "a render
+ *   that schedules a render" — reached exactly, and narrowing this made it silent.
+ * - `window.addEventListener("resize", …)` in a render: **6 listeners over 6 renders**, none
+ *   removed. A render that registers something is a leak per pass.
+ *
+ * A `.then`, a `queueMicrotask` and a `setTimeout` written in a render are not the ordinary way to
+ * defer work — they are a side effect armed by an answer to a question, once per time the question
+ * is asked.
+ *
+ * **What this DOES cost, said rather than argued away.** A handler can be a call argument too:
+ * `onclick={debounce(() => { this.n += 1 }, 100)}` writes state on a click and is reported here,
+ * because the arrow is an argument to `debounce`. The shape `@memoized finish(id) { return () => …
+ * }` — a handler RETURNED — is the one the narrowing was written for and is still safe, since a
+ * returned function is not an argument. The wrapped-handler case is a real false report and the
+ * price of reporting the loop above, which is measured at 51 renders; it is not a case anyone has
+ * shown a way to tell apart from `rows.map(…)` without asking what the callee does with what it is
+ * handed.
  */
 function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   const parent = fn.parent;
   if (parent === undefined) return false;
 
   // `rows.map((row) => …)` — an argument, so whoever was called decides, and all of the ones that
-  // matter here call it immediately.
+  // matter here call it immediately. One that calls it LATER is a render arming an effect, which is
+  // the fault rather than an exception to it; the measurements above are why.
   if (ts.isCallExpression(parent) && parent.arguments.includes(fn)) return true;
 
   // `(() => …)()` — invoked on the spot, with or without the parentheses TypeScript keeps.
@@ -374,8 +414,35 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
     step(node);
   };
 
-  for (const { member, name } of entryPoints(cls)) {
+  for (const { member, name } of entryPoints(cls, reach.resolve)) {
     const body = ts.isMethodDeclaration(member) || ts.isGetAccessorDeclaration(member) ? member.body : undefined;
     if (body) walk(body, [name], true, 0);
   }
+
+  /**
+   * `@Host("nav", (self) => ({ className: … }))` — a render that is in no member body.
+   *
+   * It runs every time the component renders, and `entryPoints` looks only at members, so a clock
+   * read there was reached by nothing. The id table had the same gap for the same callback, in a
+   * different reader — a fix for one reader is not a fix for the other.
+   *
+   * `insideTheClass` is FALSE, exactly as it is for a static. The callback is handed the component
+   * as a PARAMETER rather than through `this`, so nothing about `this` is knowable inside it and
+   * only what depends on nothing — a clock, a random number — is worth finding.
+   */
+  const props = hostPropsCallback(cls, reach.resolve);
+  if (props !== undefined) walk(props, ["@Host props"], false, 0);
+}
+
+/** The second argument to `@Host`, when it is a function this can walk. */
+function hostPropsCallback(cls: ts.ClassDeclaration, resolve: Resolver): ts.Node | undefined {
+  for (const decorator of ts.getDecorators(cls) ?? []) {
+    const call = decorator.expression;
+    if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
+
+    const written = call.arguments[1];
+    if (written === undefined) continue;
+    if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written.body;
+  }
+  return undefined;
 }

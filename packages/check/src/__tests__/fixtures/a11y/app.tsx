@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "../framework";
+import { Component, Host, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 declare const title: string;

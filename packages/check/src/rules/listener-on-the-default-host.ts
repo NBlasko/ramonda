@@ -1,6 +1,7 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
-import type { Rule } from "./rule";
+import type { Resolver, Rule } from "./rule";
 
 /**
  * `@onElement` on a component that has no `@Host`, so the listener sits on a box that is not there.
@@ -73,14 +74,12 @@ const DOES_NOT_BUBBLE: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether this class, or anything it extends, declares a `@Host` with a tag this can read. */
-function hasAHost(cls: ts.ClassDeclaration, resolve: (id: ts.Node) => ts.Symbol | undefined): boolean {
+function hasAHost(cls: ts.ClassDeclaration, resolve: Resolver): boolean {
   let at: ts.ClassLikeDeclaration | undefined = cls;
 
   for (let hop = 0; hop < 4 && at !== undefined; hop++) {
     for (const decorator of ts.getDecorators(at as ts.HasDecorators) ?? []) {
-      const call = decorator.expression;
-      if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) continue;
-      if (call.expression.text === "Host") return true;
+      if (coreDecoratorName(decorator, resolve) === "Host") return true;
     }
 
     const base: ts.Expression | undefined = at.heritageClauses?.find(
@@ -154,9 +153,9 @@ export const listenerOnTheDefaultHost = {
       if (member.name === undefined || !ts.isIdentifier(member.name)) continue;
 
       for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
+        if (coreDecoratorName(decorator, resolve) !== "onElement") continue;
         const call = decorator.expression;
-        if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) continue;
-        if (call.expression.text !== "onElement") continue;
+        if (!ts.isCallExpression(call)) continue;
 
         // The event as written. An expression this cannot read says nothing about whether it
         // bubbles, and that is the whole question.

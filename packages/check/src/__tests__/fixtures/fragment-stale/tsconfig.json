@@ -2,7 +2,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@acme/stale": ["../vendor-stale/published/index.d.ts"]
+      "@acme/stale": ["../vendor-stale/published/index.d.ts"],
+      "@ramonda/core": ["../framework.ts"]
     }
   },
   "include": [".", "../framework.ts", "../jsx-runtime.ts"]

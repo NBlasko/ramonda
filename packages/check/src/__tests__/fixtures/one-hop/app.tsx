@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, persist, state } from "../framework";
+import { Component, Host, bootstrap, persist, state } from "@ramonda/core";
 
 import { makeCache, makeHandler } from "./make";
 

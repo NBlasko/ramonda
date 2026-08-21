@@ -1,6 +1,7 @@
 import ts from "typescript";
+import { isTheGlobal } from "./globals";
 import { positionOf } from "../syntax";
-import type { Rule } from "./rule";
+import type { Resolver, Rule } from "./rule";
 
 /**
  * A component writing to the DOM what its own `render()` could say.
@@ -62,27 +63,22 @@ const STYLE_METHODS = new Set(["setProperty", "removeProperty"]);
  * which this resolver refuses by decision — and an element the component CREATED is a local, so
  * building one and filling it in is left alone, which is right.
  */
-function notOursToWrite(node: ts.Node): boolean {
+function notOursToWrite(node: ts.Node, resolve: Resolver): boolean {
   let at: ts.Node = node;
   // `document.body.style.overflow` → walk down to `document.body`. Element access is walked too,
   // because `style["overflow"]` and `style.overflow` are one write through two spellings.
   while (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
     const owner = at.expression;
     /**
-     * The NAME `document`, without asking whether it resolves.
-     *
-     * The sibling rule treats `window.location` the same way and reserves the resolve check for a
-     * BARE `location`, which is the form a local can plausibly shadow. A prefix cannot: nobody
-     * writes `const document = …` and then reaches for `.body.classList`. Requiring it to be
-     * unresolvable also made the rule depend on the run having no lib — true here, and a silent
-     * trap for anyone who declares the global themselves, which is exactly what this fixture does.
+     * The NAME `document`, without asking whether it resolves — `globals.ts` decides, and this rule
+     * is where that argument was made first: a prefix is not a form a local plausibly shadows,
+     * nobody writes `const document = …` and then reaches for `.body.classList`, and requiring it to
+     * be unresolvable makes the rule depend on the run having no lib. `self` is the exception and
+     * has to prove itself, which is measured over there.
      */
     const isDocument = ts.isIdentifier(owner) && owner.text === "document";
     const viaWindow =
-      ts.isPropertyAccessExpression(owner) &&
-      owner.name.text === "document" &&
-      ts.isIdentifier(owner.expression) &&
-      ["window", "globalThis"].includes(owner.expression.text);
+      ts.isPropertyAccessExpression(owner) && owner.name.text === "document" && isTheGlobal(owner.expression, resolve);
     if (isDocument || viaWindow) return true;
     at = owner;
   }
@@ -90,10 +86,10 @@ function notOursToWrite(node: ts.Node): boolean {
   if (ts.isCallExpression(at) && ts.isPropertyAccessExpression(at.expression)) {
     const called = at.expression.name.text;
     if (["getElementById", "querySelector", "querySelectorAll"].includes(called)) {
-      return notOursToWrite(at.expression);
+      return notOursToWrite(at.expression, resolve);
     }
   }
-  if (ts.isNonNullExpression(at) || ts.isParenthesizedExpression(at)) return notOursToWrite(at.expression);
+  if (ts.isNonNullExpression(at) || ts.isParenthesizedExpression(at)) return notOursToWrite(at.expression, resolve);
   return false;
 }
 
@@ -137,7 +133,7 @@ export const domWrites = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     const found: DomWriteIssue[] = [];
     const report = (target: ts.Node, wrote: string): void => {
       found.push({ component: self.name, wrote, ...positionOf(target) });
@@ -165,7 +161,7 @@ export const domWrites = {
           const owner = left.expression;
           const styled = ts.isPropertyAccessExpression(owner) && owner.name.text === "style";
           const named = ts.isPropertyAccessExpression(left) ? left.name.text : "";
-          if ((styled || RENDERED_BY_ASSIGNMENT.has(named)) && notOursToWrite(left)) {
+          if ((styled || RENDERED_BY_ASSIGNMENT.has(named)) && notOursToWrite(left, resolve)) {
             report(left, left.getText());
           }
         }
@@ -182,7 +178,7 @@ export const domWrites = {
           CLASS_LIST_METHODS.has(called.name.text);
         const onStyle =
           ts.isPropertyAccessExpression(owner) && owner.name.text === "style" && STYLE_METHODS.has(called.name.text);
-        if ((onClassList || onStyle || RENDERING_METHODS.has(called.name.text)) && notOursToWrite(called)) {
+        if ((onClassList || onStyle || RENDERING_METHODS.has(called.name.text)) && notOursToWrite(called, resolve)) {
           report(called, called.getText());
         }
       }

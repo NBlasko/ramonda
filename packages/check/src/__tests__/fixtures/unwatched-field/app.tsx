@@ -1,4 +1,4 @@
-import { bootstrap, Component, Field, Form } from "../framework";
+import { bootstrap, Component, Field, Form } from "@ramonda/core";
 
 declare const schema: unknown;
 declare const defaultValues: unknown;

@@ -1,6 +1,5 @@
 import ts from "typescript";
-import { decoratorName } from "../syntax";
-import { importedFromCore } from "./core-import";
+import { coreExportName } from "./core-import";
 import type { RuleContext } from "./rule";
 
 /**
@@ -61,25 +60,33 @@ function envOf(decorator: ts.Decorator): string | undefined {
  * `ts.getDecorators` wants a node the compiler already knows can carry them, and `ClassElement` is the
  * union including the ones that cannot — so the two that can are asked and the rest read as bare.
  */
-function coreDecorators(member: ts.ClassElement, context: RuleContext): ts.Decorator[] {
+function coreDecorators(member: ts.ClassElement, context: RuleContext): { decorator: ts.Decorator; name: string }[] {
   const decorated = ts.isMethodDeclaration(member) || ts.isPropertyDeclaration(member) ? member : undefined;
   const all = (decorated === undefined ? undefined : ts.getDecorators(decorated)) ?? [];
-  return all.filter((decorator) => {
+
+  const found: { decorator: ts.Decorator; name: string }[] = [];
+  for (const decorator of all) {
     const expression = ts.isCallExpression(decorator.expression)
       ? decorator.expression.expression
       : decorator.expression;
-    return importedFromCore(expression, context.resolveLocal);
-  });
+    /**
+     * The name CORE exports it under, not the one this file gave it.
+     *
+     * The table below is a lookup, so the local name is not merely a weaker test here — it is the
+     * wrong key. `import { created as onCreate }` found nothing in it and every rule reading this
+     * went quiet about the member.
+     */
+    const name = coreExportName(expression, context.resolveLocal, context.resolveStep);
+    if (name !== undefined) found.push({ decorator, name });
+  }
+  return found;
 }
 
 /**
  * Why this member cannot run on the server, or `undefined` when it can — which includes not knowing.
  */
 export function clientOnlyBecause(member: ts.ClassElement, context: RuleContext): string | undefined {
-  for (const decorator of coreDecorators(member, context)) {
-    const name = decoratorName(decorator);
-    if (name === undefined) continue;
-
+  for (const { decorator, name } of coreDecorators(member, context)) {
     const known = CLIENT_ONLY_DECORATORS.get(name);
     if (known !== undefined) return known;
 
@@ -99,9 +106,8 @@ export function clientOnlyBecause(member: ts.ClassElement, context: RuleContext)
  * to say `{ env: "server" }` to be excused.
  */
 export function isServerOnly(member: ts.ClassElement, context: RuleContext): boolean {
-  for (const decorator of coreDecorators(member, context)) {
-    const name = decoratorName(decorator);
-    if (name !== undefined && LIFECYCLE_DECORATORS.has(name) && envOf(decorator) === "server") return true;
+  for (const { decorator, name } of coreDecorators(member, context)) {
+    if (LIFECYCLE_DECORATORS.has(name) && envOf(decorator) === "server") return true;
   }
   return false;
 }

@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, destroyed, interval, mounted, state } from "../framework";
+import { Component, Host, bootstrap, destroyed, interval, mounted, state } from "@ramonda/core";
 
 /**
  * A raw interval a component never clears.

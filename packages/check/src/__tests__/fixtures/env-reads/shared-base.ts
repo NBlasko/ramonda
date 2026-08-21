@@ -1,5 +1,5 @@
 /** A base whose helper is called ONLY from a server-only lifecycle in the subclass. */
-import { Component } from "../framework";
+import { Component } from "@ramonda/core";
 
 export class ConfigBase extends Component {
   protected fromDb(): string {

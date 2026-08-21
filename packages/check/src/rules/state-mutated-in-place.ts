@@ -1,7 +1,8 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
+import { follow, type Looking } from "./follow-value";
 import { heritage, stateFieldsOf } from "./render-reach";
-import type { Rule } from "./rule";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * A `@state` array or object changed IN PLACE, so nothing re-renders.
@@ -65,14 +66,40 @@ const MUTATORS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether a field is one the runtime guard would wrap: a plain object or array, as written.
+ * A plain array or object, wherever the source says so — the shape the runtime guard wraps.
  *
- * Read from the initializer, or from an annotation naming an array. Anything else — a call, a name,
- * a `new`, no initializer at all — is a value this cannot see the shape of, and the guard may or
- * may not wrap it. Silence is the only honest answer there, and it is also what keeps a `Date` or a
- * `Map` out of this rule, exactly as the guard keeps them out of its own.
+ * Through a name, because the guard wraps the VALUE and does not care how it was written:
+ * `@state rows = makeRows()` is the same array `@state rows = []` is, and the same
+ * `this.rows.push(row)` is the same silence. Reading only the initializer meant four spellings of
+ * one fault, and only the first of them reported — measured with `fixtures/class-family`.
+ *
+ * A module `const` counts, since the guard wraps it just the same. A branch counts because a plain
+ * array on EITHER side is a plain array. A call is followed for the same reason it is followed when
+ * the question is a fault: what comes back from any path is what the guard is handed.
  */
-function guardedFields(classes: readonly ts.ClassLikeDeclaration[], state: ReadonlySet<string>): ReadonlySet<string> {
+const PLAIN: Looking<true> = {
+  leaf: (expression) =>
+    ts.isArrayLiteralExpression(expression) || ts.isObjectLiteralExpression(expression) ? true : undefined,
+  throughModuleScope: true,
+  throughBranches: true,
+  throughCalls: true,
+  throughMutableBindings: true,
+};
+
+/**
+ * Whether a field is one the runtime guard would wrap: a plain object or array, as written or a
+ * name away.
+ *
+ * Read from the initializer, or from an annotation naming an array. Anything else — a `new`, no
+ * initializer at all, a name the walk cannot settle — is a value this cannot see the shape of, and
+ * the guard may or may not wrap it. Silence is the only honest answer there, and it is also what
+ * keeps a `Date` or a `Map` out of this rule, exactly as the guard keeps them out of its own.
+ */
+function guardedFields(
+  classes: readonly ts.ClassLikeDeclaration[],
+  state: ReadonlySet<string>,
+  resolve: RuleContext["resolve"],
+): ReadonlySet<string> {
   const found = new Set<string>();
 
   for (const declaring of classes)
@@ -82,9 +109,7 @@ function guardedFields(classes: readonly ts.ClassLikeDeclaration[], state: Reado
 
       const written = member.initializer;
       if (written !== undefined) {
-        if (ts.isArrayLiteralExpression(written) || ts.isObjectLiteralExpression(written)) {
-          found.add(member.name.text);
-        }
+        if (follow(written, resolve, PLAIN) !== undefined) found.add(member.name.text);
         continue;
       }
       // `@state rows: Row[] = …` with no initializer still says it is an array.
@@ -140,7 +165,7 @@ export const stateMutatedInPlace = {
     // class body alone, so a `@state rows: Row[]` on a base guarded nothing and `this.rows.push(x)`
     // in the subclass went unreported. Measured, with the plant in the fixture.
     const declared = [cls, ...heritage(cls, resolve)];
-    const guarded = guardedFields(declared, stateFieldsOf(cls, resolve));
+    const guarded = guardedFields(declared, stateFieldsOf(cls, resolve), resolve);
     if (guarded.size === 0) return [];
 
     const found: StateMutatedInPlaceIssue[] = [];

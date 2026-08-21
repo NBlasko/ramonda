@@ -1,4 +1,4 @@
-import { Component, bootstrap, createContext } from "../framework";
+import { Component, bootstrap, createContext } from "@ramonda/core";
 
 /** Two of these conflict, so the author says so once, here. */
 const [RouteProvider, RouteConsumer] = createContext({ path: "/" }, { label: "Route", single: true });

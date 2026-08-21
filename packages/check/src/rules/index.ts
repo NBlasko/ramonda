@@ -47,6 +47,7 @@ import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
 import { stateMutatedInPlace } from "./state-mutated-in-place";
 import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
+import { devGuardAsAnExpression } from "./dev-guard-as-an-expression";
 import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
 import { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
@@ -61,6 +62,7 @@ import { persistOfALossyValue } from "./persist-of-a-lossy-value";
 import { unserializableState } from "./unserializable-state";
 import { intervalWithNoCleanup } from "./interval-with-no-cleanup";
 import { listenerOnTheDefaultHost } from "./listener-on-the-default-host";
+import { listenerAddedByHand } from "./listener-added-by-hand";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
@@ -151,6 +153,7 @@ export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./cl
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { stateMutatedInPlace, type StateMutatedInPlaceIssue } from "./state-mutated-in-place";
 export { decoratorThatAddsNothing, type DecoratorThatAddsNothingIssue } from "./decorator-that-adds-nothing";
+export { devGuardAsAnExpression, type DevGuardAsAnExpressionIssue } from "./dev-guard-as-an-expression";
 export { unkeyableMemoizedArgument, type UnkeyableMemoizedArgumentIssue } from "./unkeyable-memoized-argument";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
@@ -161,6 +164,7 @@ export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-
 export { unserializableState, type UnserializableStateIssue } from "./unserializable-state";
 export { intervalWithNoCleanup, type IntervalWithNoCleanupIssue } from "./interval-with-no-cleanup";
 export { listenerOnTheDefaultHost, type ListenerOnTheDefaultHostIssue } from "./listener-on-the-default-host";
+export { listenerAddedByHand, type ListenerAddedByHandIssue } from "./listener-added-by-hand";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
@@ -207,6 +211,7 @@ export const CLASS_RULES = [
   unserializableState,
   intervalWithNoCleanup,
   listenerOnTheDefaultHost,
+  listenerAddedByHand,
   lateRequestRead,
   headTagsCollide,
   unguardedAsyncLifecycle,
@@ -219,7 +224,12 @@ export const CLASS_RULES = [
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */
-export const MODULE_RULES = [unsplittableImport, unexposedEnvRead, rowReadsAPlainField] as const;
+export const MODULE_RULES = [
+  unsplittableImport,
+  unexposedEnvRead,
+  rowReadsAPlainField,
+  devGuardAsAnExpression,
+] as const;
 
 /**
  * Every rule that reads one JSX ELEMENT — where accessibility lives.

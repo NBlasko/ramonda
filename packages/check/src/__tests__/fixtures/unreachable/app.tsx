@@ -1,4 +1,4 @@
-import { Component, Hook, bootstrap } from "../framework";
+import { Component, Hook, bootstrap } from "@ramonda/core";
 
 class Mounted extends Component {
   render() {

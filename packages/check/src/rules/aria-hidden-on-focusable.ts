@@ -81,7 +81,7 @@ export const ariaHiddenOnFocusable = {
     // Only a literal TRUE is a claim, in any of the three spellings that mean it — `aria-hidden`,
     // `{true}` and `"true"` all reach the element the same way. `aria-hidden={busy}` may be either,
     // and a rule that guessed would report the correct half of it.
-    if (trueAttr(element, "aria-hidden") !== true) return [];
+    if (trueAttr(element, "aria-hidden", context.resolve) !== true) return [];
 
     // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
     // `tabIndex={-1}` takes a `<button>` back out of it. A rule that asked the tag first would

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { memberName, positionOf } from "../syntax";
 import type { Rule, RuleContext } from "./rule";
 
@@ -123,7 +124,25 @@ function membersOf(members: ts.NodeArray<ts.TypeElement>): ReadonlySet<string> |
  * `({ userId }) => userId`. Only the FIRST level matters — `(p) => p.user.id` is about the prop
  * `user`, and what is inside it is not this rule's business.
  */
-function propReadBy(selector: ts.Expression): string | undefined {
+function propReadBy(selector: ts.Expression, resolve: RuleContext["resolve"], depth = 0): string | undefined {
+  /**
+   * `@watchProp(BY_USER)` — the selector kept in a `const`, which is how anybody with more than
+   * three of them writes them. The decorator is handed the same function either way, so it reads
+   * the same prop; reading only the literal switched the rule off for that whole style.
+   *
+   * A `const` only, and only through to a function LITERAL. A `let` can be written again and a call
+   * has no single answer, and this rule's cost of being wrong is telling somebody a prop they can
+   * see in front of them does not exist.
+   */
+  if (ts.isIdentifier(selector)) {
+    if (depth > 4) return undefined;
+    const declaration = resolve(selector)?.declarations?.[0];
+    if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+    const list = declaration.parent;
+    if (!ts.isVariableDeclarationList(list) || (list.flags & ts.NodeFlags.Const) === 0) return undefined;
+    return declaration.initializer === undefined ? undefined : propReadBy(declaration.initializer, resolve, depth + 1);
+  }
+
   if (!ts.isArrowFunction(selector) && !ts.isFunctionExpression(selector)) return undefined;
 
   const parameter = selector.parameters[0];
@@ -229,10 +248,10 @@ export const watchOfAPropThatIsNotThere = {
       for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
         const call = decorator.expression;
         if (!ts.isCallExpression(call)) continue;
-        if (!ts.isIdentifier(call.expression) || call.expression.text !== "watchProp") continue;
+        if (coreDecoratorName(decorator, resolve) !== "watchProp") continue;
 
         for (const selector of call.arguments) {
-          const prop = propReadBy(selector);
+          const prop = propReadBy(selector, resolve);
           if (prop === undefined) continue;
           if (declared.has(prop) || ALWAYS_THERE.has(prop)) continue;
 

@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
+import { isTheGlobal } from "./globals";
 import { isServerOnly } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
 
@@ -53,7 +54,24 @@ export interface ServerEnvInSharedCodeIssue {
 function processEnvRead(node: ts.Node, context: RuleContext): ts.Node | undefined {
   if (!ts.isPropertyAccessExpression(node)) return undefined;
   if (node.name.text !== "env") return undefined;
+
   const target = node.expression;
+
+  /**
+   * `globalThis.process.env.X` — the same object under the name every environment agrees on, and it
+   * was silent because this required `process` to be a bare identifier.
+   *
+   * `globals.ts` decides what names the global object, so the three rules that ask agree: a name
+   * the source can shadow has to be proved not to be, and `globalThis` cannot be shadowed.
+   */
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    target.name.text === "process" &&
+    isTheGlobal(target.expression, context.resolve)
+  ) {
+    return node;
+  }
+
   if (!ts.isIdentifier(target) || target.text !== "process") return undefined;
   return context.resolve(target) === undefined ? node : undefined;
 }
@@ -194,9 +212,18 @@ export const serverEnvInSharedCode = {
       const visit = (node: ts.Node): void => {
         const read = processEnvRead(node, context);
         if (read !== undefined) {
-          // The whole read, not just `process.env`: `process.env.DATABASE_URL` is what the reader
-          // wrote and what they will search for.
-          const outermost = ts.isPropertyAccessExpression(read.parent) ? read.parent : read;
+          /**
+           * The whole read, not just `process.env`: `process.env.DATABASE_URL` is what the reader
+           * wrote and what they will search for — and `process.env["REGION"]` is too.
+           *
+           * A destructure keeps `process.env`, which is exactly what is on the right-hand side of
+           * it; rewriting that into a dotted form would print text the line does not have.
+           */
+          const outermost =
+            ts.isPropertyAccessExpression(read.parent) ||
+            (ts.isElementAccessExpression(read.parent) && ts.isStringLiteralLike(read.parent.argumentExpression))
+              ? read.parent
+              : read;
           found.push({
             component: context.self.name,
             member: name ?? "(anonymous)",

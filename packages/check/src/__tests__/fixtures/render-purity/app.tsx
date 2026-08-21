@@ -1,5 +1,5 @@
 import { Panel } from "./inherited";
-import { Component, Host, bootstrap, compute, list, memoized, mounted, state } from "../framework";
+import { Component, Host, bootstrap, compute, list, memoized, mounted, state } from "@ramonda/core";
 import { plainLabel, stampedLabel } from "./format";
 
 declare const items: { id: string; label: string }[];

@@ -1,7 +1,7 @@
 import { positionOf } from "../syntax";
 import ts from "typescript";
 import { hasContent, openingOf, tagOf, trueAttr } from "./element";
-import type { ElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * A heading or a link with nothing inside it.
@@ -47,7 +47,7 @@ const NAMES_IT = ["aria-label", "aria-labelledby", "title"];
  * A COMPONENT child answers no as well, and that is deliberate rather than incidental: what
  * `<Icon />` renders is not in this file, so whether it announces anything is not knowable here.
  */
-function everyChildIsHidden(children: readonly ts.JsxChild[]): boolean {
+function everyChildIsHidden(children: readonly ts.JsxChild[], resolve: ElementContext["resolve"]): boolean {
   let hidden = 0;
 
   for (const child of children) {
@@ -66,7 +66,7 @@ function everyChildIsHidden(children: readonly ts.JsxChild[]): boolean {
     if (!ts.isJsxElement(child) && !ts.isJsxSelfClosingElement(child)) return false;
     // A component's markup is somewhere else, so nothing here can say what it announces.
     if (tagOf(child) === undefined) return false;
-    if (trueAttr(child, "aria-hidden") !== true) return false;
+    if (trueAttr(child, "aria-hidden", resolve) !== true) return false;
     hidden++;
   }
 
@@ -104,14 +104,14 @@ export const emptyHeadingOrLink = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, has, children }) {
+  read(element, { tag, has, children, resolve }) {
     if (tag === undefined) return [];
 
     const kind = HEADINGS.has(tag) ? "heading" : tag === "a" ? "link" : undefined;
     if (kind === undefined) return [];
 
     if (NAMES_IT.some((name) => has(name))) return [];
-    if (hasContent(children) && !everyChildIsHidden(children)) return [];
+    if (hasContent(children) && !everyChildIsHidden(children, resolve)) return [];
 
     return [{ tag, kind, ...positionOf(openingOf(element)) }];
   },

@@ -1,0 +1,5 @@
+{
+  "name": "@ramonda/core",
+  "private": true,
+  "types": "./index.ts"
+}

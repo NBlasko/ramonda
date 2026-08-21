@@ -2,7 +2,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@acme/ui": ["../vendor-ui/published/index.d.ts"]
+      "@acme/ui": ["../vendor-ui/published/index.d.ts"],
+      "@ramonda/core": ["../framework.ts"]
     }
   },
   "include": [".", "../framework.ts", "../jsx-runtime.ts"]

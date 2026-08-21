@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
 import { freshnessOf, returnedBy, shorten } from "./follow-value";
 import type { Rule } from "./rule";
@@ -100,7 +101,7 @@ export const freshValueFromAWatchSelector = {
       for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
         const call = decorator.expression;
         if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) continue;
-        if (call.expression.text !== "watchProp") continue;
+        if (coreDecoratorName(decorator, resolve) !== "watchProp") continue;
 
         for (const [index, argument] of call.arguments.entries()) {
           if (!ts.isArrowFunction(argument) && !ts.isFunctionExpression(argument)) continue;

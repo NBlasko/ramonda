@@ -23,10 +23,19 @@ describe("a component reading the browser's URL", () => {
       "window.location.search -> searchParams",
       // Nothing on the router answers `origin`, and none is invented for it.
       "window.location.origin -> —",
+      // The three spellings beside `window.` — see the test below for what each is.
+      "self.location.pathname -> pathname",
+      "{ pathname } = window.location -> pathname",
+      'window.location["hash"] -> hashTags',
+      // An AMBIENT `declare const self` is the author writing down what the platform provides, so
+      // it IS the platform's. A real binding of that name is not — see the two tests below.
+      "self.location.pathname -> pathname",
       // One `this.method()` away, which is where a read like this actually lives.
       "location.pathname -> pathname",
     ]);
-    expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(new Set(["Astray", "ViaAHelper"]));
+    expect(new Set(browserUrlReads.map((r) => r.component))).toEqual(
+      new Set(["Astray", "OtherSpellings", "AmbientSelf", "ViaAHelper"]),
+    );
   });
 
   /**
@@ -48,6 +57,46 @@ describe("a component reading the browser's URL", () => {
    * built with `noLib` and no `@types`, so the browser's own `location` resolves to nothing while
    * one written in the source resolves where it is written.
    */
+  /**
+   * The same read, spelled three other ways — all silent until they were planted.
+   *
+   * `self` is the third name for the global and the package's other rules already list it;
+   * `const { pathname } = window.location` is a read of exactly that member with the member's name
+   * on the left; and `location["hash"]` is the dotted read with brackets round it.
+   */
+  /**
+   * `self` is the one of the four that is routinely a LOCAL — `const self = this` is an ordinary
+   * line, and `(self) => …` is this framework's own convention for a `@Host` props callback. Added
+   * by NAME it reported both; it has to be proved not to be shadowed, like `window` and `document`.
+   */
+  test("`self`, a destructure and a bracketed key are the same read", () => {
+    const found = run("browser-url").findings["browser-url"].filter((i) => i.component === "OtherSpellings");
+
+    expect(found.map((i) => `${i.line}:${i.read}`)).toEqual([
+      "33:self.location.pathname",
+      // Quoted as the reader sees it, not rewritten into a dotted form that is not on the line.
+      "34:{ pathname } = window.location",
+      '35:window.location["hash"]',
+    ]);
+    expect(found.map((i) => i.instead)).toEqual(["pathname", "pathname", "hashTags"]);
+  });
+
+  /**
+   * A FALSE REPORT until `self` was made to prove itself: `const self = this` reads a component's
+   * own field, and `(self) => …` is the framework's own convention for a `@Host` props callback.
+   */
+  test("a local called `self` is not the global", () => {
+    const found = run("browser-url").findings["browser-url"].map((issue) => issue.component);
+
+    // `const self = this` and a PARAMETER called `window` are names of their own.
+    expect(found).not.toContain("SelfIsALocal");
+    expect(found).not.toContain("WindowIsAParameter");
+    // An AMBIENT `declare const self` is the platform's, and requiring it to resolve to nothing
+    // would have silenced three rules for any project that writes one — an ordinary line in a
+    // worker or an SSR entry.
+    expect(found).toContain("AmbientSelf");
+  });
+
   test("a local called `location` is left alone", () => {
     const browserUrlReads = run("browser-url").findings["browser-url"];
     expect(browserUrlReads.some((r) => r.component === "Careful")).toBe(false);

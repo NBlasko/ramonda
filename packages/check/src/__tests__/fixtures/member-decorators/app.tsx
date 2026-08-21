@@ -9,7 +9,7 @@ import {
   state,
   updated,
   watchProp,
-} from "../framework";
+} from "@ramonda/core";
 
 declare const rows: { id: string; label: string }[];
 

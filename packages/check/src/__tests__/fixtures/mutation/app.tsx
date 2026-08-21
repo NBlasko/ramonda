@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, mounted, state } from "../framework";
+import { Component, Host, bootstrap, mounted, state } from "@ramonda/core";
 
 declare class Dates {
   setHours(n: number): void;

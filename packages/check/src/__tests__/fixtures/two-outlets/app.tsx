@@ -1,4 +1,4 @@
-import { Component, bootstrap, createContext, createRoutes } from "../framework";
+import { Component, bootstrap, createContext, createRoutes } from "@ramonda/core";
 
 /**
  * The outlet, declared here rather than in the shared framework: it is a CLASS, and one more class

@@ -21,11 +21,23 @@ const found = () =>
 describe("one Provider of a context per component", () => {
   test("every second Provider is reported, named by its context", () => {
     expect(found().map((issue) => `${issue.component}: ${issue.context}`)).toEqual([
+      "ProvidesTwiceThroughALocal: Theme",
       "ProvidesTwice: Theme",
       "ProvidesTwiceRenamed: Theme",
       "ProvidesAgain: Theme",
       "BothOnTheBase: Theme",
     ]);
+  });
+
+  /**
+   * A Provider under a local name is the same Provider.
+   *
+   * `resolve` already follows an IMPORT alias, so `ThemeProvider as Publishes` was never a
+   * question. A second `const` in the file is: the declaration behind it is a `VariableDeclaration`
+   * rather than the `BindingElement` the pair was destructured from, and the walk stopped there.
+   */
+  test("a Provider reached through a local name is the same Provider", () => {
+    expect(found().filter((each) => each.component === "ProvidesTwiceThroughALocal")).toHaveLength(1);
   });
 
   /**
@@ -62,8 +74,8 @@ describe("one Provider of a context per component", () => {
   test("it points at the second and names the first's line", () => {
     const issue = found().find((each) => each.component === "ProvidesTwice");
     expect(issue?.file).toBe(join(here, "fixtures", "context-order", "app.tsx"));
-    expect(issue?.line).toBe(96);
-    expect(issue?.firstAtLine).toBe(95);
+    expect(issue?.line).toBe(126);
+    expect(issue?.firstAtLine).toBe(125);
     expect(issue?.provider).toBe("ThemeProvider");
   });
 
@@ -74,7 +86,7 @@ describe("one Provider of a context per component", () => {
   test("an alias is followed, so two names for one context are one context", () => {
     const issue = found().find((each) => each.component === "ProvidesTwiceRenamed");
     expect(issue?.provider).toBe("ThemeProvider");
-    expect(issue?.firstAtLine).toBe(105);
+    expect(issue?.firstAtLine).toBe(135);
   });
 
   test("the correct arrangements stay silent", () => {

@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { pages } from "./loaders";
 
 declare class AsyncLoad extends Component {}

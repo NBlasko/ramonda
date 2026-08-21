@@ -57,7 +57,7 @@ export interface HeadingSkipsALevelIssue {
  * aria-level={4}>` is at 4.
  */
 function levelOf(node: TreeNode): number | "not a heading" | "unknown" {
-  const written = stringAttr(node.element, "role");
+  const written = stringAttr(node.element, "role", node.resolve);
   const fromTag = node.tag === undefined ? undefined : /^h([1-6])$/.exec(node.tag);
 
   if (written !== undefined && written !== "heading") return "not a heading";

@@ -6,6 +6,7 @@ import type { ModuleRule } from "./rule";
 // the same exemptions. It is imported rather than repeated because the repeat drifted: this rule
 // once exempted only `@created`, so it reported the constructor, the memo pattern and
 // `@destroyed`, and it treated `@persist` as reactive when nothing tracks it.
+import { importedFromCore } from "./core-import";
 import { heritage } from "./render-reach";
 import { staleFieldsOf } from "./stale-field";
 
@@ -88,35 +89,6 @@ function thisRead(node: ts.Node): { name: string; at: ts.PropertyAccessExpressio
   if (node.expression.kind !== ts.SyntaxKind.ThisKeyword) return undefined;
   if (!ts.isIdentifier(node.name)) return undefined;
   return { name: node.name.text, at: node };
-}
-
-/**
- * The local name this file gave core's `list`, or `undefined` when it did not import one.
- *
- * By the module SPECIFIER the reader typed rather than by the name — the same reasoning as
- * `core-import.ts`, which cannot be reused here: it needs `resolveLocal`, and a `ModuleRule`'s
- * context carries only `unlessAnnotated`. An app is entitled to its own function called `list`, and
- * an earlier version of this accepted any relative import so a fixture could say `../framework`,
- * which would have reported `import { list } from "../utils"` as if it were the framework's. The
- * fixture maps the specifier in its `tsconfig.json` instead, which is what every other fixture does.
- *
- * A namespace import — `import * as core from "@ramonda/core"`, then `core.list(…)` — is not found,
- * and goes quiet rather than guessing.
- */
-function listLocalName(file: ts.SourceFile): string | undefined {
-  for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    const from = statement.moduleSpecifier;
-    if (!ts.isStringLiteral(from)) continue;
-    if (from.text !== "@ramonda/core" && !from.text.startsWith("@ramonda/core/")) continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
-    for (const element of bindings.elements) {
-      const imported = element.propertyName?.text ?? element.name.text;
-      if (imported === "list") return element.name.text;
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -224,8 +196,6 @@ export const rowReadsAPlainField = {
 
   read(file, context) {
     const found: RowReadsAPlainFieldIssue[] = [];
-    const listName = listLocalName(file);
-    if (listName === undefined) return found;
 
     const visitClass = (cls: ts.ClassDeclaration): void => {
       /**
@@ -253,7 +223,24 @@ export const rowReadsAPlainField = {
       /** The stable callbacks handed to `list()` in this class. */
       const callbacks = new Set<string>();
       (function look(node: ts.Node): void {
-        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === listName) {
+        /**
+         * The framework's `list`, RESOLVED rather than matched by name — and by the name core
+         * EXPORTS, which is the half that makes it a question about `list` at all.
+         *
+         * This used to scan the file's imports for a binding called `list` and take the first one,
+         * so a file that also imported it under an alias got the wrong name, and a re-export
+         * — `export { list } from "@ramonda/core"` in an app's own `ui` module — was invisible.
+         * `importedFromCore` follows the chain, and still leaves an app's own function called
+         * `list` alone, which is what `own-list.ts` in the fixture is for.
+         *
+         * Asking only "did this come from core" made EVERY core function a row builder:
+         * `createContext({ n: 0 }, this.row)` was read as a list of rows. Found by planting it —
+         * see `OtherCoreCall` in the fixture.
+         */
+        if (
+          ts.isCallExpression(node) &&
+          importedFromCore(node.expression, context.resolveLocal, context.resolveStep, "list")
+        ) {
           const builder = node.arguments[1];
           const read = builder === undefined ? undefined : thisRead(builder);
           // Only a stable reference. An inline arrow or function makes the engine rebuild every row,

@@ -272,8 +272,9 @@ function keyIsExposed(argument: ts.Expression, context: RuleContext): boolean | 
   if (initializer === undefined || !ts.isCallExpression(initializer)) return undefined;
 
   const callee = initializer.expression;
-  if (!ts.isIdentifier(callee) || callee.text !== "requestKey") return undefined;
-  if (!importedFromCore(callee, context.resolveLocal)) return undefined;
+  // By the name the MODULE exports, so `import { requestKey as key }` and a re-export both reach.
+  if (!ts.isIdentifier(callee)) return undefined;
+  if (!importedFromCore(callee, context.resolveLocal, context.resolveStep, "requestKey")) return undefined;
 
   const options = initializer.arguments[1];
   // No options at all is a decided answer, not an unknown one: the default is not exposed.
@@ -346,8 +347,14 @@ export const clientOnlyRequestRead = {
       if (!ts.isCallExpression(node)) return false;
       const callee = node.expression;
       const id = ts.isIdentifier(callee) ? callee : ts.isPropertyAccessExpression(callee) ? callee.name : undefined;
-      if (!id || id.text !== "requestContext") return false;
-      return importedFromCore(ts.isPropertyAccessExpression(callee) ? callee.expression : id, context.resolveLocal);
+      if (!id) return false;
+      // The name the MODULE exports it under, not the one this file gave it — see `core-import.ts`.
+      if (ts.isPropertyAccessExpression(callee)) {
+        return (
+          id.text === "requestContext" && importedFromCore(callee.expression, context.resolveLocal, context.resolveStep)
+        );
+      }
+      return importedFromCore(id, context.resolveLocal, context.resolveStep, "requestContext");
     };
 
     /**

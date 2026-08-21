@@ -1,6 +1,8 @@
-import { Component, bootstrap, state } from "../framework";
+import { Component, bootstrap, state } from "@ramonda/core";
 import { requestContext, requestKey } from "@ramonda/core";
 import { OwnHelper } from "./own-helper";
+import { requestContext as reExported } from "./re-export";
+import * as core from "@ramonda/core";
 
 const currentUser = requestKey<string>("currentUser");
 
@@ -50,6 +52,42 @@ class LateInField extends Component {
   };
   render() {
     return <p>field</p>;
+  }
+}
+
+/** ✗ The same function reached through an app's own module. */
+class LateThroughAReExport extends Component {
+  async load() {
+    await fetchPosts();
+    console.log(reExported().headers.get("accept-language"));
+  }
+  render() {
+    return <p>re-export</p>;
+  }
+}
+
+/** ✗ The held door, opened by destructuring and by a bracket rather than by a dot. */
+class LateOtherSpellings extends Component {
+  async load() {
+    const context = requestContext();
+    await fetchPosts();
+    const { headers } = context;
+    const cookies = context["cookies"];
+    console.log(headers, cookies);
+  }
+  render() {
+    return <p>spellings</p>;
+  }
+}
+
+/** ✗ Reached through a NAMESPACE import, which the helper's own docstring says arrives here. */
+class LateThroughANamespace extends Component {
+  async load() {
+    await fetchPosts();
+    console.log(core.requestContext().headers.get("accept-language"));
+  }
+  render() {
+    return <p>namespace</p>;
   }
 }
 

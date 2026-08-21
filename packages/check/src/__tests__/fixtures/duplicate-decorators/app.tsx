@@ -6,8 +6,9 @@ import {
   createContext,
   Host,
   ShouldUpdateOnPropsChange,
+  StableProps,
   state,
-} from "../framework";
+} from "@ramonda/core";
 
 /**
  * Written the way an app is written: real JSX, and the AUTOMATIC runtime a real `tsconfig.json`

@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const window: { location: { pathname: string } };
 

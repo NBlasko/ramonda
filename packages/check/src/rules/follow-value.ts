@@ -219,7 +219,7 @@ export function follow<T>(
 
     const called = functionOf(resolve(named)?.declarations?.[0]);
     if (called === undefined) return undefined;
-    if (ts.isMethodDeclaration(called) && hasDecorator(called, "compute")) return undefined;
+    if (ts.isMethodDeclaration(called) && hasDecorator(called, "compute", resolve)) return undefined;
 
     const file = called.getSourceFile();
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;

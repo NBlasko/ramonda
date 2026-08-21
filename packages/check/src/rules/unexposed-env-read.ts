@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import type { ModuleRule } from "./rule";
+import { follow, type Looking } from "./follow-value";
+import type { ModuleContext, ModuleRule } from "./rule";
 
 /**
  * An `import.meta.env` name that nothing will ever expose.
@@ -25,8 +26,13 @@ import type { ModuleRule } from "./rule";
  * an environment, a `.env` file, or who is running the build. Nothing here can go quiet for a path it
  * could not resolve, because there is nothing to resolve.
  *
- * The one shape it cannot read is a computed key — `import.meta.env[name]` — which is not judged,
- * for the usual reason.
+ * The one shape it cannot read is a key nothing settles — `import.meta.env[whatever]` — which is not
+ * judged, for the usual reason.
+ *
+ * **Both spellings of the read, and a name holding the key.** `import.meta.env["VITE_API_URL"]` is
+ * the same read as `import.meta.env.VITE_API_URL` and was silent, and so was a key kept in a
+ * `const` — which is what a project with more than two of them does. A branch and a call are not
+ * followed: there is no single name to judge behind either.
  */
 export interface UnexposedEnvReadIssue {
   /** The name as written — `VITE_API_URL`, `API_BASE`. */
@@ -49,13 +55,38 @@ const PUBLIC_PREFIX = "RAMONDA_PUBLIC_";
  */
 const BUILT_IN = new Set(["BASE_URL", "DEV", "MODE", "PROD", "SSR", "LEGACY"]);
 
-/** `import.meta.env.NAME` — the whole shape, and only when the name is written out. */
-function envReadName(node: ts.Node): { name: string; at: ts.Node } | undefined {
-  if (!ts.isPropertyAccessExpression(node)) return undefined;
-  const inner = node.expression;
-  if (!ts.isPropertyAccessExpression(inner) || inner.name.text !== "env") return undefined;
-  if (inner.expression.kind !== ts.SyntaxKind.MetaProperty) return undefined;
-  return { name: node.name.text, at: node.name };
+/** The key behind a name — `import.meta.env[KEY]` is the same read, one hop further. */
+const KEY_NAME: Looking<string> = {
+  leaf: (expression) => (ts.isStringLiteralLike(expression) ? expression.text : undefined),
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
+/** Whether this is the `import.meta.env` object itself. */
+function isEnvObject(node: ts.Expression): boolean {
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.name.text === "env" &&
+    node.expression.kind === ts.SyntaxKind.MetaProperty
+  );
+}
+
+/**
+ * `import.meta.env.NAME` and `import.meta.env["NAME"]` — one read written two ways.
+ *
+ * The bracket form was missed entirely, and so was a key held in a `const`. Both reach the same
+ * variable in the same build; only the spelling differs.
+ */
+function envReadName(node: ts.Node, resolve: ModuleContext["resolve"]): { name: string; at: ts.Node } | undefined {
+  if (ts.isPropertyAccessExpression(node)) {
+    return isEnvObject(node.expression) ? { name: node.name.text, at: node.name } : undefined;
+  }
+  if (!ts.isElementAccessExpression(node) || !isEnvObject(node.expression)) return undefined;
+
+  const key = follow(node.argumentExpression, resolve, KEY_NAME)?.value;
+  return key === undefined ? undefined : { name: key, at: node.argumentExpression };
 }
 
 export const unexposedEnvRead = {
@@ -105,7 +136,7 @@ export const unexposedEnvRead = {
     const found: UnexposedEnvReadIssue[] = [];
 
     const visit = (node: ts.Node): void => {
-      const read = envReadName(node);
+      const read = envReadName(node, context.resolve);
       if (read !== undefined && !BUILT_IN.has(read.name) && !read.name.startsWith(PUBLIC_PREFIX)) {
         const issue = context.unlessAnnotated(read.at, () => ({
           name: read.name,

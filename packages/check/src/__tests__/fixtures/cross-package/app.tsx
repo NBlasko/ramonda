@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "../framework";
+import { Component, bootstrap } from "@ramonda/core";
 import { Themed } from "@acme/ui";
 import { ThemeProvider } from "@acme/shared";
 

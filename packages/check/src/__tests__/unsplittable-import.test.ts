@@ -21,7 +21,23 @@ const run = (name: string) => analyzeProject(join(here, "fixtures", name, "tscon
 describe("a dynamic import whose path is not a literal", () => {
   test("is reported, and a literal path is not", () => {
     const found = run("dynamic-import").findings["unsplittable-import"];
-    expect(found.map((s) => s.path)).toEqual(["name", "`./pages/${name}.js`"]);
+    expect(found.map((s) => s.path)).toEqual(["name", "`./pages/${name}`", "`pages/${name}.js`"]);
+  });
+
+  /**
+   * A template the bundler CAN read, which this used to report.
+   *
+   * Measured with Vite 7 rather than reasoned about: `` import(`./pages/${w}.js`) `` transformed 4
+   * modules and emitted `a-*.mjs` and `b-*.mjs`. Take the suffix off, or the leading `./`, and it is
+   * 1 module and no chunk — so both halves are required, and the two spellings without them are the
+   * rows above.
+   *
+   * Reporting the splittable one was reporting a documented feature working exactly as documented,
+   * which is this package's own definition of a rule earning its way out of a project.
+   */
+  test("a template with a relative head and a suffix splits, and is not reported", () => {
+    const found = run("dynamic-import").findings["unsplittable-import"];
+    expect(found.map((s) => s.path)).not.toContain("`./pages/${name}.js`");
   });
 
   /**
