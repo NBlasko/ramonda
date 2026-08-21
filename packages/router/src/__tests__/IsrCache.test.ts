@@ -625,8 +625,8 @@ describe("what happens while a delete is in flight", () => {
  *
  * The delete removes the entry before its reply lands, so a request arriving in that window misses and
  * `bake` stores a NEW one under the same path. Forgetting the key then leaves that entry with nothing
- * in the count pointing at it, and no later trim can reach it — measured before the generation
- * existed: two pages in a cache allowed one, and still two four requests later.
+ * in the count pointing at it, and no later trim can reach it — measured: two pages in a cache allowed
+ * one, and still two four requests later.
  *
  * Observed from OUTSIDE, because the count is bookkeeping rather than API: an orphan is a store that
  * never comes back under its cap, however many requests follow.
@@ -675,10 +675,10 @@ describe("a page rebuilt while its own eviction is in flight", () => {
     /**
      * In the window, and it has to COMPLETE before the parked delete is released.
      *
-     * The first version released first and the two plants aimed at the generation did not fail: the
-     * parked trim resumed before the rebuild's write, so it forgot a key that had not been rewritten
-     * yet and the rebuild then recorded it again. Nothing was orphaned, and nothing was proved. The
-     * window is between the WRITE and the delete's reply, so the write has to be inside it.
+     * Released first, and the plants aimed at this do not fail: the parked trim resumes before the
+     * rebuild's write, so it forgets a key that has not been rewritten yet and the rebuild records it
+     * again. Nothing is orphaned, and nothing is proved. The window is between the WRITE and the
+     * delete's reply, so the write has to be inside it.
      *
      * It can finish on its own: its own trim evicts `/products/2`, and only the first delete parks.
      */
@@ -691,5 +691,73 @@ describe("a page rebuilt while its own eviction is in flight", () => {
 
     expect(entries.size).toBe(1);
     expect([...entries.keys()]).toEqual(["/products/6"]);
+  });
+});
+
+/**
+ * A READ while the delete is in flight must NOT keep the key, and a second pass must not count it.
+ *
+ * This is the other half of the invariant above, and it needs a store whose `delete` pays its round
+ * trip BEFORE the entry goes — which is what a store over a network is. A request arriving then HITS
+ * a page that is about to disappear, so `touch` moves a key whose entry is already condemned.
+ *
+ * Two faults live in that window, and one test sees both from outside:
+ *
+ * - the key must be forgotten when the delete lands, or it is a phantom holding a slot no page is in
+ * - it must not be COUNTED by the pass the hit itself triggers, or that pass evicts a live page to
+ *   make room for one already leaving — measured under `maxPages: 1`, and what it evicted was the
+ *   page baked one request earlier, leaving the cache empty
+ */
+describe("a page read while its own eviction is in flight", () => {
+  test("does not cost the cache a live page", async () => {
+    const entries = new Map<string, { html: string; at: number }>();
+    let release: (() => void) | undefined;
+    let issued: (() => void) | undefined;
+    const inFlight = new Promise<void>((resolve) => {
+      issued = resolve;
+    });
+    let deletes = 0;
+
+    const store: IsrStore = {
+      async get(key) {
+        return entries.get(key);
+      },
+      async set(key, entry) {
+        entries.set(key, entry);
+      },
+      async delete(key) {
+        // The round trip comes FIRST: until the reply lands the entry is still readable, which is
+        // the whole difference from the test above.
+        if (++deletes === 1) {
+          issued?.();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        entries.delete(key);
+      },
+    };
+
+    const isr = createIsrCache({
+      plan: { isr: [{ path: "/products/:id", revalidate: 60 }] },
+      store,
+      maxPages: 1,
+      render: async (path) => path,
+      now: () => 1_000_000,
+    });
+
+    await isr.serve("/products/1");
+    // Over the cap, so this one's trim issues the delete for `/products/1` and waits on it.
+    const second = isr.serve("/products/2");
+    await inFlight;
+
+    // A hit, because the entry is still there. Its own trim must see one page held, not two.
+    expect(await isr.serve("/products/1")).toEqual({ html: "/products/1", mode: "isr-hit" });
+
+    release?.();
+    await second;
+
+    // One page, and it is the one that was never condemned.
+    expect([...entries.keys()]).toEqual(["/products/2"]);
   });
 });

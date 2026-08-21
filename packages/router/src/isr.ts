@@ -213,36 +213,49 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
   };
 
   /**
-   * What this process has written, in the order it was last WANTED — the whole of the LRU.
+   * What this process holds, in the order it was last WANTED — the whole of the LRU.
    *
-   * A `Map` iterates in insertion order, so `delete` then `set` on a hit moves a key to the back and
-   * `keys().next()` on an eviction gives the one nobody has asked for longest. The value is unused;
-   * only the order is.
+   * A `Set` iterates in insertion order, so `delete` then `add` on a hit moves a key to the back and
+   * the first key not in `leaving` is the one nobody has asked for longest.
    */
-  const held = new Map<string, number>();
+  const held = new Set<string>();
 
   /**
-   * How many pages this cache has written, ever. The number a key carries is the one this stood at
-   * when that key's entry was stored, so "is this the same entry I picked" is one comparison.
+   * Keys whose `store.delete` has been issued and whose reply has not landed.
    *
-   * It exists because `trim` has to `await` a delete, and while it waits the key can be touched by a
-   * READ or replaced by a WRITE — and those need opposite answers. Without telling them apart, every
-   * ordering of the two lines around that await has a window; three of them were shipped and each had
-   * a different one.
+   * The key stays in `held` — a write in that window has to be able to find it — and this set is what
+   * every question about that window is answered from. Three of them, and one membership test each:
+   *
+   * - **Not counted.** A page whose deletion is already committed is not a page the cache holds, so
+   *   counting it makes a CONCURRENT pass evict one live page too many. Measured with `maxPages: 1`
+   *   over a store whose `delete` pays a round trip: a hit arriving in the window trimmed again,
+   *   picked the page baked one request earlier, and the cache allowed one page held **zero**.
+   * - **Not picked.** So a pass evicts the page it meant to rather than one already condemned. This
+   *   one is a cost, not a fault: removing the test costs a second `store.delete` for a key the first
+   *   pass is already deleting, and a moment over the cap. Measured — the pages that survive are the
+   *   same either way, and no test in this file fails without it.
+   * - **Was anything WRITTEN here?** `recordWrite` removes the key, so a key still in this set when
+   *   the reply lands had only READS in the window and is forgotten; a key already gone from it was
+   *   rebuilt, and forgetting it would orphan the entry `bake` just stored. No ordering of the two
+   *   lines around the `await` can answer that on its own — a read and a write leave the same trace in
+   *   a map that records only recency — which is why the answer is a second set rather than a place to
+   *   put an existing line.
    */
-  let writes = 0;
+  const leaving = new Set<string>();
 
-  /** A read: recency only. The generation is carried over, because nothing new was stored. */
+  /** A read: recency only. Nothing was stored, so a condemned key stays condemned. */
   const touch = (path: string): void => {
-    const generation = held.get(path) ?? 0;
     held.delete(path);
-    held.set(path, generation);
+    held.add(path);
   };
 
-  /** A write: recency AND a new generation, because the entry under this key is a different one now. */
+  /**
+   * A write: recency, AND the key is no longer condemned — `bake` has just stored a new entry under
+   * it, so the delete that may still be in flight is about a page that no longer exists.
+   */
   const recordWrite = (path: string): void => {
-    held.delete(path);
-    held.set(path, ++writes);
+    touch(path);
+    leaving.delete(path);
   };
 
   /**
@@ -268,6 +281,17 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     new Error(`evicting the least recently asked-for page, \`${key}\``, { cause: error });
 
   /**
+   * The least recently asked-for key that is not already on its way out.
+   *
+   * A scan rather than `keys().next()`, and it is bounded by `leaving.size` — the number of deletes
+   * this process has in flight, which is its request concurrency, not the size of the cache.
+   */
+  const oldestNotLeaving = (): string | undefined => {
+    for (const key of held.keys()) if (!leaving.has(key)) return key;
+    return undefined;
+  };
+
+  /**
    * Brings the cache back under the cap, and it runs after EVERY answer rather than only after a bake.
    *
    * Only-after-a-bake was wrong in a way that showed up one restart later: a `fileStore` directory
@@ -279,17 +303,24 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
    */
   const trim = async (): Promise<void> => {
     if (maxPages === undefined) return;
-    while (held.size > maxPages) {
-      const oldest = held.keys().next();
-      if (oldest.done) return;
-      const key = oldest.value;
-      // Read BEFORE the await, and compared after: that is the whole of it.
-      const picked = held.get(key);
+    // `leaving` is discounted: those pages are on their way out, so another pass must not evict for them.
+    while (held.size - leaving.size > maxPages) {
+      const key = oldestNotLeaving();
+      /**
+       * Cannot happen, and is here rather than as an assertion because the reason is two lines apart.
+       *
+       * `leaving` only ever holds keys taken from `held`, and the condition above says
+       * `held.size - leaving.size > maxPages >= 0` — so the difference is non-empty and there is
+       * always a key to pick.
+       */
+      if (key === undefined) return;
+      leaving.add(key);
 
       // A store may have lost it already; `delete` is documented not to mind.
       try {
         await store.delete(key);
       } catch (error) {
+        leaving.delete(key);
         // Reported against the page that could not be dropped, which is the one to go and look at.
         onError(key, evicting(key, error));
         /**
@@ -310,12 +341,12 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
       /**
        * Forgotten only if nothing was WRITTEN under this key while the delete was in flight.
        *
-       * A read in that window is a read: the generation is unchanged, the store entry is gone, and
-       * forgetting the key is right. A WRITE in that window means `bake` stored a new entry — the miss
-       * it answered was caused by this very delete — and forgetting the key would leave that entry with
-       * nothing pointing at it, which no later trim could reach.
+       * Still condemned means every request in that window was a READ: the store entry is gone, so the
+       * key goes with it. Already uncondemned means `recordWrite` ran — the miss it answered was caused
+       * by this very delete — and forgetting the key would leave that entry with nothing in the count
+       * pointing at it, which no later trim could reach.
        */
-      if (held.get(key) === picked) held.delete(key);
+      if (leaving.delete(key)) held.delete(key);
     }
   };
 
