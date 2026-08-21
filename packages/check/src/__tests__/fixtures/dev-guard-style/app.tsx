@@ -16,6 +16,10 @@ class Guards extends Component {
     // ✗ The ternary spelling of one.
     __DEV__ ? publish("again") : undefined;
 
+    // ✓ Annotated: the reason travels into `annotated` and is printed on every run.
+    // ramonda-check-ignore the panel handshake has to be one expression for the bundler to fold it
+    __DEV__ && publish("annotated");
+
     // ✓ The shape being asked for.
     if (__DEV__) {
       publish("properly");

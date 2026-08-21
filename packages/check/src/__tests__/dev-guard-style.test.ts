@@ -28,6 +28,19 @@ describe("a `__DEV__` guard written as an operator", () => {
   });
 
   /**
+   * The package's own annotation, which does more than silence: the reason travels into `annotated`
+   * and is printed on every run, so it cannot quietly stop being true.
+   */
+  test("`ramonda-check-ignore` silences it and keeps the reason", () => {
+    const { annotated } = run();
+
+    expect(annotated.map((one) => one.what)).toContain("dev-guard-as-an-expression");
+    expect(annotated.map((one) => one.reason)).toContain(
+      "the panel handshake has to be one expression for the bundler to fold it",
+    );
+  });
+
+  /**
    * `if (__DEV__ && ready)` is a conjunction INSIDE the `if` — the shape being asked for, not an
    * instance of the fault. 149 of them are written in this repository and none is reported.
    */
