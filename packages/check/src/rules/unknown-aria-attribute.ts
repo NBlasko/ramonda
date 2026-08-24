@@ -1,4 +1,3 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
 import { ARIA_ATTRIBUTES } from "./aria";
 import type { HostElementRule } from "./rule";

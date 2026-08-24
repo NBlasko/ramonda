@@ -1,5 +1,4 @@
 import { positionOf } from "../syntax";
-import { numberAttr, openingOf, trueAttr } from "./element";
 import type { ElementContext, HostElementRule } from "./rule";
 
 /**
@@ -43,7 +42,15 @@ export interface AriaHiddenOnFocusableIssue {
 const FOCUSABLE_TAGS: ReadonlySet<string> = new Set(["button", "input", "select", "textarea", "summary", "iframe"]);
 
 /** Whether the tag alone puts this element in the tab order, given what is written on it. */
-function focusableByTag(tag: string, { attr, has }: ElementContext): boolean {
+/**
+ * Exported because `presentation-role-on-focusable` asks the same question about the same element.
+ *
+ * The two rules are siblings — one is about an element hidden from the accessibility tree while
+ * still in the tab order, the other about an element declared presentational while still in it —
+ * and they have to agree about what "focusable" means, or the same `<summary>` is focusable to one
+ * of them and not to the other.
+ */
+export function focusableByTag(tag: string, { attr, has }: ElementContext): boolean {
   if (tag === "a") return has("href");
   if (tag === "input") return attr("type") !== "hidden";
   return FOCUSABLE_TAGS.has(tag);

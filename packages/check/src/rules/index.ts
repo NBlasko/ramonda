@@ -43,6 +43,7 @@ import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-
 import { controlWithNoLabel } from "./control-with-no-label";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
+import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -146,6 +147,10 @@ export { controlWithNoLabel, type ControlWithNoLabelIssue } from "./control-with
 export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
+export {
+  presentationRoleOnFocusable,
+  type PresentationRoleOnFocusableIssue,
+} from "./presentation-role-on-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -259,6 +264,7 @@ export const ELEMENT_RULES = [
   unnamedFrame,
   positiveTabIndex,
   ariaHiddenOnFocusable,
+  presentationRoleOnFocusable,
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,

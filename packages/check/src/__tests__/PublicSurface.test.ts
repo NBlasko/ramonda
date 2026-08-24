@@ -27,6 +27,7 @@ const EXPECTED_TYPES = [
   "AccessKeyIssue",
   "AnalyzeResult",
   "AriaHiddenOnFocusableIssue",
+  "PresentationRoleOnFocusableIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

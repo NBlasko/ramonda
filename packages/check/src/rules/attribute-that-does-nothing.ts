@@ -1,6 +1,4 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
 import type { HostElementRule } from "./rule";
 
 /**

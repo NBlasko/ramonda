@@ -2,7 +2,7 @@ import ts from "typescript";
 import { positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
 import { lossyFieldValue } from "./lossyValue";
-import type { Rule, RuleContext } from "./rule";
+import type { Rule } from "./rule";
 
 /**
  * `@persist` on a field holding something JSON cannot carry.

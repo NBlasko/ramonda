@@ -52,6 +52,7 @@ export type {
   PositiveTabIndexIssue,
   AccessKeyIssue,
   AriaHiddenOnFocusableIssue,
+  PresentationRoleOnFocusableIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
