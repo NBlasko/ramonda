@@ -146,16 +146,31 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
     const tag = hostTag ?? opening.tagName.getText();
 
     /**
-     * A spreading element is not asked about its own references, and does not silence the table.
+     * A spreading element is not asked about its own REFERENCES, and does not silence the table.
      *
      * The first half is the stance the per-element family already takes: a spread may carry the
      * very attribute a rule is about. The second half is the line this family draws and the note on
      * `ProjectContext.unreadable` defends — measured, counting a spread as an unreadable id would
      * have silenced every rule here in every project in this repository.
+     *
+     * ## What it may NOT do is throw away an id that is written out
+     *
+     * This used to `return` here, so an element that spread anything at all contributed nothing —
+     * including an `id` spelled out on the very same tag. Every rule in this family reports an
+     * ABSENCE, so an id dropped from the table is a report against correct markup. Measured on a
+     * plant: `<h2 {...rest} id="pricing">` with `<a href="#pricing">` beside it, and the link was
+     * reported as going nowhere. So was a `<label htmlFor="email">` whose `<input {...rest}
+     * id="email">` was one line below it.
+     *
+     * Both orders are recorded, and that is not the same asymmetry the element rules take. There,
+     * widening what is reported can only add false reports, so a spread that could reach over the
+     * attribute has to silence it. Here it is the reverse: widening the set of known ids can only
+     * PREVENT a report and never cause one, which is the same sentence the literal `id` on a
+     * component tag is already kept for.
      */
-    if (opening.attributes.properties.some(ts.isJsxSpreadAttribute)) return;
+    const spreads = opening.attributes.properties.some(ts.isJsxSpreadAttribute);
 
-    if (hostTag !== undefined && CONTROLS.has(hostTag)) readControl(element, hostTag);
+    if (!spreads && hostTag !== undefined && CONTROLS.has(hostTag)) readControl(element, hostTag);
 
     for (const attribute of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attribute)) continue;
@@ -191,11 +206,16 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
          * A LITERAL `id` on a component goes into the table above regardless, because widening the
          * set of known ids can only prevent a false report and never cause one.
          */
-        if (hostTag !== undefined) {
+        // Not on a spreading element: `unreadable` silences every rule in the family, and that was
+        // measured to be the wrong price for a spread — see `ProjectContext.unreadable`.
+        if (hostTag !== undefined && !spreads) {
           unreadable.push({ written: attribute.getText(), ...positionOf(attribute) });
         }
         continue;
       }
+
+      // Everything below is a REFERENCE, and a spreading element is not asked about its own.
+      if (spreads) continue;
 
       if (NAMES_AN_ID.has(name) || NAMES_AN_ID.has(name.toLowerCase())) {
         const written = literalOf(attribute.initializer, resolve);
