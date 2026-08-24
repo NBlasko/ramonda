@@ -541,6 +541,15 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const routeTables = new Map<ts.Symbol, ts.Node[]>();
   /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
   const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
+  /**
+   * Whether some outlet in this run spreads props this cannot read.
+   *
+   * `<RouteOutlet {...props} />` may be handing over any table in the program, so once one of those
+   * is here, “nothing hands this table to an outlet” is a claim nobody can make — the same sentence
+   * `deadOnes` and the declaration rules already live by: a checker that cannot tell a missing
+   * thing from an invisible one may not report either.
+   */
+  let anOutletSpreadsUnread = false;
 
   /** Every component and hook class, by the symbol of its declaration — see `ComponentNode.id`. */
   const components = new Map<ts.Symbol, ComponentNode>();
@@ -1242,7 +1251,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    * component hands this table to a `<RouteOutlet>`. */
   function collectRouteTable(node: ts.Node): void {
     if (!ts.isVariableDeclaration(node) || !node.initializer) return;
-    if (!ts.isCallExpression(node.initializer) || calleeName(node.initializer) !== "createRoutes") return;
+    if (!ts.isCallExpression(node.initializer) || !callsRouteFactory(node.initializer)) return;
     const symbol = node.name && ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
     if (!symbol) return;
     routeTables.set(symbol, viewsOf(node.initializer));
@@ -1653,7 +1662,7 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     if (!ts.isCallExpression(node)) return false;
     const callee = calleeName(node);
     if (callee !== undefined && CORE_ROOTS.has(callee)) return true;
-    if (callee !== "createRoutes") return false;
+    if (!callsRouteFactory(node)) return false;
     const bound = node.parent;
     if (!bound || !ts.isVariableDeclaration(bound) || !ts.isIdentifier(bound.name)) return false;
     const symbol = checker.getSymbolAtLocation(bound.name);
@@ -2343,6 +2352,13 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   function strandedRoutes(reached: Set<ComponentNode>): UnreachableRouteIssue[] {
     // No root, no verdict — the same reason a library is not judged for dead declarations.
     if (roots.size === 0) return [];
+    /**
+     * An outlet spreading props this cannot read could be handing over ANY of these tables, and
+     * both verdicts here are about a table nothing named. Neither survives that, so neither is
+     * given — the whole check goes quiet rather than half of it, because "an outlet does name it,
+     * and no root reaches that outlet" needs the same list of outlets the other verdict needs.
+     */
+    if (anOutletSpreadsUnread) return [];
     const found: UnreachableRouteIssue[] = [];
     for (const [symbol, views] of routeTables) {
       if (views.length === 0) continue;
@@ -2941,21 +2957,153 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
     return 'the loader has no `import("…")` with a literal specifier, so nothing can name what it loads';
   }
 
+  /**
+   * Every name a binding is known by, from the one written HERE back to the one its source gave it.
+   *
+   * The router's members are matched by name — deliberately, and it is the only thing that can be
+   * matched: a kit is a SHAPE, not a package. `kit-source` builds its own `createRouter` returning
+   * `{ RouteOutlet: Outlet }`, `vendor-kit` publishes one, and `@acme/kit` in the fixtures is
+   * nobody's `@ramonda/router`. A module test would refuse all three, which is why
+   * `importedFromCore` is not the helper for this question.
+   *
+   * But a NAME as written is not a name: `const { RouteOutlet: Outlet } = createRouter(routes)` and
+   * `import { RouteOutlet as Outlet } from "@ramonda/router"` are both ordinary, and both used to
+   * make the tag invisible — measured, the table then looked handed to nothing and its whole
+   * section of pages was reported unreachable. The role name lives at the SOURCE, in the import
+   * specifier's `propertyName` or the binding element's, so that is what is read.
+   *
+   * Bounded, and the bound is past anything written on purpose: a chain that renames in a ring
+   * would otherwise not end.
+   *
+   * Asked of every TAG, and that is the whole cost of this: `apps/docs`, 155 components, 1.29 s
+   * before and 1.36 s after. Skipping the lowercase host tags — most of the tags on that site —
+   * was tried and measured at 1.36 s, unchanged, so it is not here: the symbol lookups the checker
+   * memoises are not what the seventy milliseconds are.
+   */
+  function knownAs(id: ts.Node, hops = 0): Set<string> {
+    const names = new Set<string>();
+    if (!ts.isIdentifier(id) || hops > 20) return names;
+    names.add(id.text);
+
+    for (const declaration of resolveLocal(id)?.declarations ?? []) {
+      // `import { RouteOutlet as Outlet }` and `const { RouteOutlet: Outlet } = kit` — the same
+      // fact, written two ways, and in both the source's name is the one before the rename.
+      if (ts.isImportSpecifier(declaration) && declaration.propertyName) names.add(declaration.propertyName.text);
+      if (ts.isBindingElement(declaration) && declaration.propertyName && ts.isIdentifier(declaration.propertyName))
+        names.add(declaration.propertyName.text);
+      // `const Outlet = RouteOutlet` — a plain rebinding, and the only one that needs a second hop.
+      if (ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isIdentifier(declaration.initializer))
+        for (const name of knownAs(declaration.initializer, hops + 1)) names.add(name);
+    }
+
+    // The end of the alias chain, which is where a re-export lands: `export { RouteOutlet } from …`
+    // in an app's own `ui` module hands on the router's own binding under whatever name it likes.
+    for (const declaration of resolve(id)?.declarations ?? []) {
+      const named = (declaration as { name?: ts.Node }).name;
+      if (named !== undefined && ts.isIdentifier(named)) names.add(named.text);
+    }
+    return names;
+  }
+
+  /** `createRoutes(...)`, whatever the file called it. */
+  function callsRouteFactory(call: ts.CallExpression): boolean {
+    const callee = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+    return knownAs(callee).has("createRoutes");
+  }
+
+  /**
+   * The route table an expression hands over, however many names it passes through.
+   *
+   * `routes={routes}` was the only shape read, and it is not the only shape written: a table held
+   * on a field (`<RouteOutlet routes={this.table} />`), one taken through a local a line up, and
+   * one reached off a config object all resolved to a binding that is not itself a
+   * `createRoutes(…)`, so the outlet named nothing. The table was then reported handed to no
+   * outlet at all and every page in it reported dead — a checker reporting correct code, on the
+   * arrangement a routed app is most likely to have.
+   *
+   * A declaration is followed to its INITIALISER, which is one walk that answers all of them: a
+   * `const`, a class field, and a property of an object literal are the same hop three times. What
+   * it does not do is guess — a value with no initialiser here, or one built by a call, comes back
+   * `undefined`, and `undefined` means "not knowable", never "no table".
+   */
+  function routeTableAt(expression: ts.Expression, seen = new Set<ts.Node>()): ts.Symbol | undefined {
+    if (seen.has(expression) || seen.size > 20) return undefined;
+    seen.add(expression);
+
+    if (ts.isParenthesizedExpression(expression)) return routeTableAt(expression.expression, seen);
+    // A cast says nothing about which table this is. `routes={table as RouteConfig}` is the shape a
+    // kit's own typing produces, and stopping at it lost the table.
+    if (ts.isAsExpression(expression) || ts.isNonNullExpression(expression))
+      return routeTableAt(expression.expression, seen);
+
+    if (!ts.isIdentifier(expression) && !ts.isPropertyAccessExpression(expression)) return undefined;
+    const symbol = resolve(expression);
+    if (symbol === undefined) return undefined;
+    if (routeTables.has(symbol)) return symbol;
+
+    for (const declaration of symbol.declarations ?? []) {
+      const initializer = (declaration as { initializer?: ts.Expression }).initializer;
+      if (initializer === undefined) continue;
+      const found = routeTableAt(initializer, seen);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  /** `routes` as written on the tag, or as an object spread onto it hands it over. */
+  function routesGivenTo(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): ts.Symbol | undefined {
+    for (const attr of opening.attributes.properties) {
+      if (ts.isJsxAttribute(attr) && attr.name.getText() === "routes") {
+        const value = attr.initializer;
+        if (!value || !ts.isJsxExpression(value) || !value.expression) continue;
+        const found = routeTableAt(value.expression);
+        if (found !== undefined) return found;
+        continue;
+      }
+      if (!ts.isJsxSpreadAttribute(attr)) continue;
+      const spread = objectSpreadOnto(attr.expression);
+      if (spread === undefined) {
+        // Unreadable, and that is recorded rather than ignored: this tag may be handing over the
+        // very table something else is about to be reported for.
+        anOutletSpreadsUnread = true;
+        continue;
+      }
+      for (const property of spread.properties) {
+        if (property.name?.getText() !== "routes") continue;
+        // `{ routes }` and `{ routes: table }` are the same fact. The shorthand is the one an
+        // author actually writes, and reading only the long form left it unread.
+        const held = ts.isPropertyAssignment(property)
+          ? property.initializer
+          : ts.isShorthandPropertyAssignment(property)
+            ? property.name
+            : undefined;
+        const found = held === undefined ? undefined : routeTableAt(held);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  }
+
+  /** The object literal a spread carries, when it is written down somewhere this can reach. */
+  function objectSpreadOnto(expression: ts.Expression): ts.ObjectLiteralExpression | undefined {
+    if (ts.isObjectLiteralExpression(expression)) return expression;
+    if (!ts.isIdentifier(expression) && !ts.isPropertyAccessExpression(expression)) return undefined;
+    for (const declaration of resolve(expression)?.declarations ?? []) {
+      const initializer = (declaration as { initializer?: ts.Expression }).initializer;
+      if (initializer !== undefined && ts.isObjectLiteralExpression(initializer)) return initializer;
+    }
+    return undefined;
+  }
+
   function routeViewsOf(opening: ts.JsxSelfClosingElement | ts.JsxOpeningElement): {
     table?: ts.Symbol;
     views: Reference[];
   } {
-    if (opening.tagName.getText() !== "RouteOutlet") return { views: [] };
-    for (const attr of opening.attributes.properties) {
-      if (!ts.isJsxAttribute(attr) || attr.name.getText() !== "routes") continue;
-      const value = attr.initializer;
-      if (!value || !ts.isJsxExpression(value) || !value.expression) continue;
-      if (!ts.isIdentifier(value.expression)) continue;
-      const symbol = resolve(value.expression);
-      const views = symbol ? routeTables.get(symbol) : undefined;
-      if (views && symbol) return { table: symbol, views: views.map((site) => ({ target: componentAt(site), site })) };
-    }
-    return { views: [] };
+    if (!knownAs(opening.tagName).has("RouteOutlet")) return { views: [] };
+    const symbol = routesGivenTo(opening);
+    const views = symbol ? routeTables.get(symbol) : undefined;
+    if (!views || !symbol) return { views: [] };
+    return { table: symbol, views: views.map((site) => ({ target: componentAt(site), site })) };
   }
 
   // ── the graph ───────────────────────────────────────────────────────────────────────────────
