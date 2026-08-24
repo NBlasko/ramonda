@@ -1,4 +1,4 @@
-import { Component, Host, compute, __h, list } from "@ramonda/core";
+import { Component, compute, __h, list } from "@ramonda/core";
 import type { ComponentChild, RamondaNode, VNode } from "@ramonda/core";
 
 /** One cell. An array because a markdown cell is often several nodes — `a **b** c` is three. */
@@ -38,7 +38,6 @@ const spread = (cell: Cell): ComponentChild[] => (Array.isArray(cell) ? [...cell
  *
  * A wide screen gets an ordinary `<table>` with none of that showing.
  */
-@Host("div", () => ({ className: "table-wrap" }))
 export class DataTable extends Component<DataTableProps> {
   /**
    * The rows, each carrying the headings it needs.
@@ -55,16 +54,18 @@ export class DataTable extends Component<DataTableProps> {
 
   render(): RamondaNode {
     return (
-      <table>
-        <thead>
-          <tr>{list(this.props.columns, headerCell)}</tr>
-        </thead>
-        <tbody>
-          {list(this.items, (item) => (
-            <DataTableRow item={item} />
-          ))}
-        </tbody>
-      </table>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>{list(this.props.columns, headerCell)}</tr>
+          </thead>
+          <tbody>
+            {list(this.items, (item) => (
+              <DataTableRow item={item} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   }
 }
@@ -76,7 +77,6 @@ interface LabelledCell {
 }
 
 /** One `<tr>`: the first cell names the row, the rest carry their column's heading. */
-@Host("tr")
 class DataTableRow extends Component<{ item: Row }> {
   /**
    * The position is resolved HERE, where the data is, rather than in the row
@@ -91,7 +91,7 @@ class DataTableRow extends Component<{ item: Row }> {
   }
 
   render(): RamondaNode {
-    return list(this.cells, this.cell);
+    return <tr>{list(this.cells, this.cell)}</tr>;
   }
 
   private cell(at: LabelledCell): VNode {

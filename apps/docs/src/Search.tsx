@@ -1,4 +1,4 @@
-import { Component, Host, state, createRef, onDocument, list } from "@ramonda/core";
+import { Component, state, createRef, onDocument, list } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { Link } from "./routes";
 
@@ -50,7 +50,6 @@ interface PagefindData {
  * `import("/pagefind/…")` would be a build error for a file that does not exist
  * yet.
  */
-@Host("div")
 export class Search extends Component {
   @state open = false;
   @state query = "";
@@ -152,60 +151,63 @@ export class Search extends Component {
     }
 
     return (
-      <div className="search">
-        <div className="search-backdrop" onclick={this.close} />
-        <div className="search-panel">
-          {/*
-            Backdrop and Escape close the panel, but a fullscreen mobile panel
-            has neither a tappable backdrop nor an Escape key — so this is the
-            only exit there. Hidden on desktop, where the other two suffice.
-          */}
-          <button type="button" className="search-close" onclick={this.close} aria-label="Close search">
-            ✕
-          </button>
-          <input
-            ref={this.input}
-            type="search"
-            className="search-input"
-            aria-label="Search the documentation"
-            placeholder="Search the documentation…"
-            value={this.query}
-            oninput={this.onInput}
-          />
-          {this.unavailable ? (
-            <p className="search-note">
-              The search index is not available. Run <code>npm run build</code> — it is generated from the built pages.
-            </p>
-          ) : this.query.trim().length < 2 ? (
-            <p className="search-note">Type at least two characters.</p>
-          ) : this.results.length === 0 ? (
-            <p className="search-note">{this.loading ? "Searching…" : "Nothing found."}</p>
-          ) : (
-            /*
-              The handler is on the <ul>, not on each row. `Link` takes no
-              onClick — a reasonable line to draw, since its click handling
-              decides whether to intercept and whether to preventDefault, so a
-              user handler there would need answers for ordering and for
-              cancellation. A click bubbles, so one handler on the list does it,
-              and the row component needs no callback prop at all.
-            */
-            <ul className="search-results" onclick={this.close}>
-              {/*
-                `list()`, not `results.map(...)`. This is the shape the function
-                exists for: the list is CONDITIONAL — it only exists when the
-                panel is open and a query matched — so there is nothing to
-                declare on a render that shows the empty state instead.
+      <div>
+        <div className="search">
+          <div className="search-backdrop" onclick={this.close} />
+          <div className="search-panel">
+            {/*
+              Backdrop and Escape close the panel, but a fullscreen mobile panel
+              has neither a tappable backdrop nor an Escape key — so this is the
+              only exit there. Hidden on desktop, where the other two suffice.
+            */}
+            <button type="button" className="search-close" onclick={this.close} aria-label="Close search">
+              ✕
+            </button>
+            <input
+              ref={this.input}
+              type="search"
+              className="search-input"
+              aria-label="Search the documentation"
+              placeholder="Search the documentation…"
+              value={this.query}
+              oninput={this.onInput}
+            />
+            {this.unavailable ? (
+              <p className="search-note">
+                The search index is not available. Run <code>npm run build</code> — it is generated from the built
+                pages.
+              </p>
+            ) : this.query.trim().length < 2 ? (
+              <p className="search-note">Type at least two characters.</p>
+            ) : this.results.length === 0 ? (
+              <p className="search-note">{this.loading ? "Searching…" : "Nothing found."}</p>
+            ) : (
+              /*
+                The handler is on the <ul>, not on each row. `Link` takes no
+                onClick — a reasonable line to draw, since its click handling
+                decides whether to intercept and whether to preventDefault, so a
+                user handler there would need answers for ordering and for
+                cancellation. A click bubbles, so one handler on the list does it,
+                and the row component needs no callback prop at all.
+              */
+              <ul className="search-results" onclick={this.close}>
+                {/*
+                  `list()`, not `results.map(...)`. This is the shape the function
+                  exists for: the list is CONDITIONAL — it only exists when the
+                  panel is open and a query matched — so there is nothing to
+                  declare on a render that shows the empty state instead.
 
-                `key` earns its place here, and this is the case the option
-                exists for: results are fresh objects on every keystroke, but a
-                page that matched "hydr" usually still matches "hydra". Keying by
-                URL keeps those rows instead of rebuilding on every character.
-              */}
-              {list(this.results, (item) => (
-                <SearchResult item={item} />
-              ))}
-            </ul>
-          )}
+                  `key` earns its place here, and this is the case the option
+                  exists for: results are fresh objects on every keystroke, but a
+                  page that matched "hydr" usually still matches "hydra". Keying by
+                  URL keeps those rows instead of rebuilding on every character.
+                */}
+                {list(this.results, (item) => (
+                  <SearchResult item={item} />
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -213,15 +215,16 @@ export class Search extends Component {
 }
 
 /** One result. The `as` shorthand hands it the item; it needs nothing else. */
-@Host("li")
 class SearchResult extends Component<{ item: Result }> {
   render(): RamondaNode {
     const result = this.props.item;
     return (
-      <Link href={result.url} className="search-result">
-        <strong>{result.title}</strong>
-        <SearchExcerpt html={result.excerpt} />
-      </Link>
+      <li>
+        <Link href={result.url} className="search-result">
+          <strong>{result.title}</strong>
+          <SearchExcerpt html={result.excerpt} />
+        </Link>
+      </li>
     );
   }
 }
@@ -252,7 +255,6 @@ function toRoutePath(url: string): string {
  * search excerpt is derived from page content and that is content this site
  * happens to be full of code samples in.
  */
-@Host("span")
 class SearchExcerpt extends Component<{ html: string }> {
   render(): RamondaNode {
     const parsed = new DOMParser().parseFromString(`<body>${this.props.html}</body>`, "text/html");
@@ -264,6 +266,10 @@ class SearchExcerpt extends Component<{ html: string }> {
       parts.push(node.nodeType === 1 && (node as Element).tagName === "MARK" ? <mark>{text}</mark> : text);
     }
 
-    return <span className="search-excerpt">{parts}</span>;
+    return (
+      <span>
+        <span className="search-excerpt">{parts}</span>
+      </span>
+    );
   }
 }

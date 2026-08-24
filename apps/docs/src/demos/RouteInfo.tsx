@@ -1,4 +1,4 @@
-import { Component, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 import { Navigator, Link } from "../routes";
 
 // A live one: this page is served by a Ramonda router, so the hook below is
@@ -7,7 +7,6 @@ import { Navigator, Link } from "../routes";
 //
 // `Navigator` is a hook, not a component, so it adds no element — it just gives
 // the component the current route.
-@Host("div")
 export class RouteInfo extends Component {
   route = this.use(Navigator);
 
@@ -16,31 +15,35 @@ export class RouteInfo extends Component {
 
     return (
       <div>
-        <p className="demo-row">
-          <code>pathname</code>
-          <strong>{this.route.pathname}</strong>
-        </p>
-        <p className="demo-row">
-          <code>searchParams</code>
-          <span className="demo-note">{query.length ? query.map(([k, v]) => `${k}=${v}`).join(" · ") : "(none)"}</span>
-        </p>
-        <p className="demo-row">
-          <Link href="/concepts/state" className="link">
-            → State
-          </Link>
-          <Link href="/lists" className="link">
-            → Lists
-          </Link>
-          <Link href="/routing?from=demo" className="link">
-            → back here, with a query
-          </Link>
-          <button type="button" onclick={this.route.back}>
-            ← back
-          </button>
-        </p>
-        <p className="demo-note">
-          Reads are per key: a component reading only <code>pathname</code> is not re-rendered when the query changes.
-        </p>
+        <div>
+          <p className="demo-row">
+            <code>pathname</code>
+            <strong>{this.route.pathname}</strong>
+          </p>
+          <p className="demo-row">
+            <code>searchParams</code>
+            <span className="demo-note">
+              {query.length ? query.map(([k, v]) => `${k}=${v}`).join(" · ") : "(none)"}
+            </span>
+          </p>
+          <p className="demo-row">
+            <Link href="/concepts/state" className="link">
+              → State
+            </Link>
+            <Link href="/lists" className="link">
+              → Lists
+            </Link>
+            <Link href="/routing?from=demo" className="link">
+              → back here, with a query
+            </Link>
+            <button type="button" onclick={this.route.back}>
+              ← back
+            </button>
+          </p>
+          <p className="demo-note">
+            Reads are per key: a component reading only <code>pathname</code> is not re-rendered when the query changes.
+          </p>
+        </div>
       </div>
     );
   }

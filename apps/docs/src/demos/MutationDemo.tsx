@@ -1,4 +1,4 @@
-import { Component, Host, list, onElement, state } from "@ramonda/core";
+import { Component, list, state } from "@ramonda/core";
 import { Mutation, Query, QueryClient, QueryClientProvider } from "@ramonda/query";
 
 // The "server": a list, and a rule that rejects anything already there. The
@@ -37,11 +37,8 @@ function optimisticAdd(title: string, { client }: { client: QueryClient }): () =
   return () => client.setData<string[]>(["todos"], previous ?? []);
 }
 
-// The host IS the form, and that is not decoration: `@onElement` listens on the
-// component's HOST element, so a `submit` handler needs the host to be the thing
-// that emits `submit`. With the default host it would only work by bubbling — and
-// only if a <form> happened to be inside.
-@Host("form")
+// The `<form>` is written in the render, and the `submit` handler is written on it. A listener
+// belongs on the element that emits the event, which is the element right there in the markup.
 export class MutationDemo extends Component {
   private query = this.use(QueryClientProvider);
 
@@ -63,8 +60,6 @@ export class MutationDemo extends Component {
     // whatever the server actually has.
     invalidates: [["todos"]],
   }));
-
-  @onElement("submit")
   submit(event: Event) {
     event.preventDefault();
     const title = this.draft.trim();
@@ -86,14 +81,14 @@ export class MutationDemo extends Component {
 
   render() {
     return (
-      <div>
+      <form onsubmit={this.submit}>
         {/*
-          `list()`, not `.map()`. A map builds every vnode on every render and gives the
-          diff nothing to match rows by; a list is lazy — the descriptor is built in
-          render, the items by the diff, and an unchanged row's scope is reused. `each`
-          takes the query's data straight, undefined and all, so there is no `?? []` to
-          rebuild every render.
-        */}
+            `list()`, not `.map()`. A map builds every vnode on every render and gives the
+            diff nothing to match rows by; a list is lazy — the descriptor is built in
+            render, the items by the diff, and an unchanged row's scope is reused. `each`
+            takes the query's data straight, undefined and all, so there is no `?? []` to
+            rebuild every render.
+          */}
         <ul>{list(this.list.data, this.renderTodo)}</ul>
 
         <p className="demo-row">
@@ -110,7 +105,7 @@ export class MutationDemo extends Component {
         ) : (
           <p className="demo-note">try adding "write the docs" twice to see the rollback</p>
         )}
-      </div>
+      </form>
     );
   }
 }

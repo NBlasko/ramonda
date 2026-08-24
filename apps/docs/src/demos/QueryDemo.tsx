@@ -1,4 +1,4 @@
-import { Component, Host, list, memoized, state } from "@ramonda/core";
+import { Component, list, memoized, state } from "@ramonda/core";
 import { Query, QueryClientProvider, type FetchContext } from "@ramonda/query";
 
 interface Profile {
@@ -38,7 +38,6 @@ interface CardProps {
 
 // One observer. `staleTime` is what makes going back to a person instant: within
 // 10 seconds the cache answers and no request is made.
-@Host("div")
 class ProfileCard extends Component<CardProps> {
   /**
    * A bound method rather than a closure: an inline `fetch` would be a fresh function every
@@ -65,16 +64,17 @@ class ProfileCard extends Component<CardProps> {
       return <p className="demo-note">loading {this.props.id}…</p>;
     }
     return (
-      <p className="demo-row">
-        <strong>{this.profile.data?.name}</strong>
-        <span className="demo-note">{this.profile.data?.followers} followers</span>
-        {this.profile.isFetching ? <span className="demo-note">refreshing…</span> : null}
-      </p>
+      <div>
+        <p className="demo-row">
+          <strong>{this.profile.data?.name}</strong>
+          <span className="demo-note">{this.profile.data?.followers} followers</span>
+          {this.profile.isFetching ? <span className="demo-note">refreshing…</span> : null}
+        </p>
+      </div>
     );
   }
 }
 
-@Host("div")
 export class QueryDemo extends Component {
   // The cache belongs to this tree. There is no global client to import — query
   // data is per-request state, and a module is shared by every request a server
@@ -120,22 +120,24 @@ export class QueryDemo extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          {list(USERS, this.renderChoice)}
-          <button type="button" onclick={this.toggleSecond}>
-            {this.twice ? "one card" : "two cards"}
-          </button>
-        </p>
+        <div>
+          <p className="demo-row">
+            {list(USERS, this.renderChoice)}
+            <button type="button" onclick={this.toggleSecond}>
+              {this.twice ? "one card" : "two cards"}
+            </button>
+          </p>
 
-        <ProfileCard id={this.id} onRequest={this.countRequest} />
-        {/* Two observers of the SAME key share one request — the counter below
-            does not move when this appears. */}
-        {this.twice ? <ProfileCard id={this.id} onRequest={this.countRequest} /> : null}
+          <ProfileCard id={this.id} onRequest={this.countRequest} />
+          {/* Two observers of the SAME key share one request — the counter below
+              does not move when this appears. */}
+          {this.twice ? <ProfileCard id={this.id} onRequest={this.countRequest} /> : null}
 
-        <p className="demo-note">
-          requests made: <strong>{String(this.requests)}</strong> — switch back to someone you already viewed and it
-          stays put
-        </p>
+          <p className="demo-note">
+            requests made: <strong>{String(this.requests)}</strong> — switch back to someone you already viewed and it
+            stays put
+          </p>
+        </div>
       </div>
     );
   }

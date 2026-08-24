@@ -1,4 +1,4 @@
-import { Component, Head, Host, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
+import { Component, Head, createRef, createSubscriptionDecorator, list, state } from "@ramonda/core";
 import { InfiniteQuery, Query, QueryClientAccess, type FetchContext, type PageContext } from "@ramonda/query";
 
 /**
@@ -95,7 +95,6 @@ const onVisible = createSubscriptionDecorator("onVisible", (owner: Component, ha
   return () => observer.disconnect();
 });
 
-@Host("li")
 class ProductRow extends Component<{
   item: Product;
   onPick: (id: number) => void;
@@ -107,24 +106,25 @@ class ProductRow extends Component<{
   render() {
     const p = this.props.item;
     return (
-      <button type="button" className="row" onclick={this.pick}>
-        <strong>{p.title}</strong>
-        <span className="meta">
-          {p.brand ?? p.category} · ${String(p.price)} · ★{String(p.rating)}
-        </span>
-      </button>
+      <li>
+        <button type="button" className="row" onclick={this.pick}>
+          <strong>{p.title}</strong>
+          <span className="meta">
+            {p.brand ?? p.category} · ${String(p.price)} · ★{String(p.rating)}
+          </span>
+        </button>
+      </li>
     );
   }
 }
 
 /** One page of the feed. `as` cannot take a second prop, so the row comes from `render`. */
-@Host("ul")
 class ProductPageRows extends Component<{
   item: ProductPage;
   onPick: (id: number) => void;
 }> {
   render() {
-    return list(this.props.item.products, this.renderRow);
+    return <ul>{list(this.props.item.products, this.renderRow)}</ul>;
   }
 
   /** A bound method, so the list's `render` is the same function on every pass (RMD020). */
@@ -142,7 +142,6 @@ class ProductPageRows extends Component<{
  * cached. `placeholderData` is what stands in on the very first selection, so the panel does
  * not flash a spinner.
  */
-@Host("aside")
 class ProductDetail extends Component<{ id: number }> {
   /**
    * A Head BELOW the page's own — the nested case. Selecting a product should take
@@ -209,22 +208,23 @@ class ProductDetail extends Component<{ id: number }> {
     }
 
     return (
-      <div className={p.isPlaceholder ? "panel dim" : "panel"}>
-        <h3>{p.data?.title}</h3>
-        <p>{p.data?.description}</p>
-        <p className="meta">
-          ${String(p.data?.price ?? 0)} · ★{String(p.data?.rating ?? 0)}
-          {p.isFetching ? " · refreshing…" : ""}
-        </p>
-        <button type="button" id="refresh-product" onclick={this.refresh} disabled={p.isPlaceholder}>
-          invalidate this product
-        </button>
-      </div>
+      <aside>
+        <div className={p.isPlaceholder ? "panel dim" : "panel"}>
+          <h3>{p.data?.title}</h3>
+          <p>{p.data?.description}</p>
+          <p className="meta">
+            ${String(p.data?.price ?? 0)} · ★{String(p.data?.rating ?? 0)}
+            {p.isFetching ? " · refreshing…" : ""}
+          </p>
+          <button type="button" id="refresh-product" onclick={this.refresh} disabled={p.isPlaceholder}>
+            invalidate this product
+          </button>
+        </div>
+      </aside>
     );
   }
 }
 
-@Host("div")
 export class ProductsPage extends Component {
   head = this.use(Head, () => ({
     title: "Products — Ramonda SSR",
@@ -272,50 +272,52 @@ export class ProductsPage extends Component {
     const feed = this.feed;
 
     return (
-      <div className="page products">
-        <h2>Products</h2>
-        <p className="meta">
-          Server-rendered first page, then infinite scroll. {String(feed.pages.length)} page(s) ·{" "}
-          {String(feed.pages.reduce((n, page) => n + page.products.length, 0))} of {String(feed.pages[0]?.total ?? 0)}
-        </p>
+      <div>
+        <div className="page products">
+          <h2>Products</h2>
+          <p className="meta">
+            Server-rendered first page, then infinite scroll. {String(feed.pages.length)} page(s) ·{" "}
+            {String(feed.pages.reduce((n, page) => n + page.products.length, 0))} of {String(feed.pages[0]?.total ?? 0)}
+          </p>
 
-        {feed.isError ? (
-          <div className="panel error">
-            <h3>Could not load the feed</h3>
-            <p>{(feed.error as Error).message}</p>
-            <p className="meta">
-              With no network this is what the server renders — a failed query is a state, not an exception that aborts
-              the page.
-            </p>
-          </div>
-        ) : null}
+          {feed.isError ? (
+            <div className="panel error">
+              <h3>Could not load the feed</h3>
+              <p>{(feed.error as Error).message}</p>
+              <p className="meta">
+                With no network this is what the server renders — a failed query is a state, not an exception that
+                aborts the page.
+              </p>
+            </div>
+          ) : null}
 
-        <div className="split">
-          <div className="feed">
-            {list(feed.pages, this.renderPage)}
+          <div className="split">
+            <div className="feed">
+              {list(feed.pages, this.renderPage)}
 
-            {/* The sentinel: scrolling it into view asks for the next page. */}
-            <div id="sentinel" ref={this.sentinel} className="sentinel">
-              {feed.isFetchingNextPage ? "loading more…" : feed.hasNextPage ? "scroll for more" : "that is all"}
+              {/* The sentinel: scrolling it into view asks for the next page. */}
+              <div id="sentinel" ref={this.sentinel} className="sentinel">
+                {feed.isFetchingNextPage ? "loading more…" : feed.hasNextPage ? "scroll for more" : "that is all"}
+              </div>
+
+              <button
+                type="button"
+                id="load-more"
+                onclick={this.loadMore}
+                disabled={!feed.hasNextPage || feed.isFetchingNextPage}
+              >
+                {feed.isFetchingNextPage ? "loading…" : "load more"}
+              </button>
             </div>
 
-            <button
-              type="button"
-              id="load-more"
-              onclick={this.loadMore}
-              disabled={!feed.hasNextPage || feed.isFetchingNextPage}
-            >
-              {feed.isFetchingNextPage ? "loading…" : "load more"}
-            </button>
+            {this.selected === undefined ? (
+              <aside className="panel dim">
+                <p>Pick a product.</p>
+              </aside>
+            ) : (
+              <ProductDetail id={this.selected} />
+            )}
           </div>
-
-          {this.selected === undefined ? (
-            <aside className="panel dim">
-              <p>Pick a product.</p>
-            </aside>
-          ) : (
-            <ProductDetail id={this.selected} />
-          )}
         </div>
       </div>
     );

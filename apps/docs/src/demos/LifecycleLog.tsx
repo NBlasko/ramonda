@@ -1,4 +1,4 @@
-import { Component, Host, list, state, created, mounted, destroyed } from "@ramonda/core";
+import { Component, list, state, created, mounted, destroyed } from "@ramonda/core";
 
 // The order, shown rather than described. Mount the child and watch:
 //
@@ -9,7 +9,6 @@ import { Component, Host, list, state, created, mounted, destroyed } from "@ramo
 // commit built is in the document — that is where DOM work belongs.
 //
 // Unmount it and @destroyed runs, while reactive values are still readable.
-@Host("div")
 class Tracked extends Component<{ log: (line: string) => void }> {
   @created born() {
     this.props.log(`@created — element in document? ${document.getElementById("tracked") !== null}`);
@@ -25,11 +24,14 @@ class Tracked extends Component<{ log: (line: string) => void }> {
 
   render() {
     this.props.log("render");
-    return <span id="tracked">I am the tracked component.</span>;
+    return (
+      <div>
+        <span id="tracked">I am the tracked component.</span>
+      </div>
+    );
   }
 }
 
-@Host("div")
 export class LifecycleLog extends Component {
   @state shown = false;
   @state lines: string[] = [];
@@ -55,16 +57,18 @@ export class LifecycleLog extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          <button type="button" onclick={this.toggle}>
-            {this.shown ? "unmount it" : "mount it"}
-          </button>
-          <button type="button" onclick={this.clear}>
-            clear log
-          </button>
-        </p>
-        {this.shown ? <Tracked log={this.log} /> : null}
-        <ul className="demo-log">{list(this.lines, this.renderLine)}</ul>
+        <div>
+          <p className="demo-row">
+            <button type="button" onclick={this.toggle}>
+              {this.shown ? "unmount it" : "mount it"}
+            </button>
+            <button type="button" onclick={this.clear}>
+              clear log
+            </button>
+          </p>
+          {this.shown ? <Tracked log={this.log} /> : null}
+          <ul className="demo-log">{list(this.lines, this.renderLine)}</ul>
+        </div>
       </div>
     );
   }

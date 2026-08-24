@@ -1,4 +1,4 @@
-import { Component, Head, Host, Portal, created, list, portalTarget, state } from "@ramonda/core";
+import { Component, Head, Portal, created, list, portalTarget, state } from "@ramonda/core";
 import { Router, RouteOutlet, createRouter, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ProductsPage } from "./ProductsPage";
@@ -10,7 +10,6 @@ import { SignupPage } from "./SignupPage";
  * adopt that markup instead of rebuilding it.
  */
 
-@Host("div")
 class Counter extends Component {
   @state clicks = 0;
   bump() {
@@ -18,12 +17,14 @@ class Counter extends Component {
   }
   render() {
     return (
-      <p>
-        {/* Rendered on the server as 0, then interactive after hydration. */}
-        <button id="bump" onclick={this.bump}>
-          clicked {this.clicks} times
-        </button>
-      </p>
+      <div>
+        <p>
+          {/* Rendered on the server as 0, then interactive after hydration. */}
+          <button id="bump" onclick={this.bump}>
+            clicked {this.clicks} times
+          </button>
+        </p>
+      </div>
     );
   }
 }
@@ -38,10 +39,13 @@ class Counter extends Component {
  */
 const noticesTarget = portalTarget("notices");
 
-@Host("li")
 class Notice extends Component<{ text: string }> {
   render() {
-    return <span className="notice">{this.props.text}</span>;
+    return (
+      <li>
+        <span className="notice">{this.props.text}</span>
+      </li>
+    );
   }
 }
 
@@ -60,7 +64,6 @@ class Notice extends Component<{ text: string }> {
  * - **`list()` in a hook's children.** The rows come from a real region reconcile, not a positional
  *   fallback: a reorder MOVES them, which is what the adoption count below proves.
  */
-@Host("div")
 class NoticeStack extends Component {
   /** What a REBUILD would leave behind. The server overwrites it; nothing on the client does. */
   @state origin = "client";
@@ -88,22 +91,23 @@ class NoticeStack extends Component {
 
   render() {
     return (
-      <ul id="notices">
-        <li id="notice-origin">{this.origin}</li>
-        <li>
-          <button id="reverse-notices" onclick={this.reverse}>
-            reverse
-          </button>
-        </li>
-        {list(this.items, (item) => (
-          <Notice text={item.text} />
-        ))}
-      </ul>
+      <div>
+        <ul id="notices">
+          <li id="notice-origin">{this.origin}</li>
+          <li>
+            <button id="reverse-notices" onclick={this.reverse}>
+              reverse
+            </button>
+          </li>
+          {list(this.items, (item) => (
+            <Notice text={item.text} />
+          ))}
+        </ul>
+      </div>
     );
   }
 }
 
-@Host("div")
 class HomePage extends Component {
   head = this.use(Head, () => ({
     title: "Home — Ramonda SSR",
@@ -111,30 +115,32 @@ class HomePage extends Component {
   }));
   render() {
     return (
-      <div className="page">
-        <h2>Home</h2>
-        <p>Rendered on the server, then hydrated.</p>
-        <Counter />
+      <div>
+        <div className="page">
+          <h2>Home</h2>
+          <p>Rendered on the server, then hydrated.</p>
+          <Counter />
+        </div>
       </div>
     );
   }
 }
 
-@Host("div")
 class AboutPage extends Component {
   // Title only. The layout's description and og:site_name must still be there.
   head = this.use(Head, () => ({ title: "About — Ramonda SSR" }));
   render() {
     return (
-      <div className="page">
-        <h2>About</h2>
-        <p>A second route, so the server has to choose.</p>
+      <div>
+        <div className="page">
+          <h2>About</h2>
+          <p>A second route, so the server has to choose.</p>
+        </div>
       </div>
     );
   }
 }
 
-@Host("div")
 class UserPage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
@@ -146,9 +152,11 @@ class UserPage extends Component {
   render() {
     const id = this.route.params("/users/:id").id;
     return (
-      <div className="page">
-        <h2>User {id}</h2>
-        <p>The id came out of the URL — on the server.</p>
+      <div>
+        <div className="page">
+          <h2>User {id}</h2>
+          <p>The id came out of the URL — on the server.</p>
+        </div>
       </div>
     );
   }
@@ -161,7 +169,6 @@ class UserPage extends Component {
  * is served dynamically. This one reads nothing but the URL, so every one of its pages is known at
  * build time — and `entry-server.tsx` is where they are named, because the data belongs to the app.
  */
-@Host("div")
 class GuidePage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
@@ -171,15 +178,16 @@ class GuidePage extends Component {
   render() {
     const slug = this.route.params("/guide/:slug").slug;
     return (
-      <div className="page">
-        <h2>Guide: {slug}</h2>
-        <p>This page was prerendered — the slug came from the build, not from a request.</p>
+      <div>
+        <div className="page">
+          <h2>Guide: {slug}</h2>
+          <p>This page was prerendered — the slug came from the build, not from a request.</p>
+        </div>
       </div>
     );
   }
 }
 
-@Host("div")
 class NotFoundPage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
@@ -189,9 +197,11 @@ class NotFoundPage extends Component {
   }));
   render() {
     return (
-      <div className="page">
-        <h2>404</h2>
-        <p>No route for {this.route.pathname}.</p>
+      <div>
+        <div className="page">
+          <h2>404</h2>
+          <p>No route for {this.route.pathname}.</p>
+        </div>
       </div>
     );
   }
@@ -216,7 +226,6 @@ export const routes = createRoutes({
  */
 export const { Link, Navigator, route } = createRouter(routes);
 
-@Host("div")
 export class App extends Component {
   router = this.use(Router);
   /**
@@ -247,23 +256,25 @@ export class App extends Component {
   }));
   render() {
     return (
-      <div className="app">
-        <nav>
-          <Link href="/">Home</Link>
-          <Link href="/about">About</Link>
-          <Link href="/users/42">User 42</Link>
-          <Link href="/products">Products</Link>
-          <Link href="/signup">Sign up</Link>
-          {/*
-            Deliberately NOT in the table — this demo exists to show the catch-all handling a URL
-            the app does not know. So it is a plain anchor: `Link` accepts the paths the table
-            names, and a link the table cannot name is not one of them. The full load is the
-            honest behaviour for a URL this app never claimed.
-          */}
-          <a href="/nope">Missing</a>
-        </nav>
-        <code id="path">{this.route.pathname}</code>
-        <RouteOutlet routes={routes} />
+      <div>
+        <div className="app">
+          <nav>
+            <Link href="/">Home</Link>
+            <Link href="/about">About</Link>
+            <Link href="/users/42">User 42</Link>
+            <Link href="/products">Products</Link>
+            <Link href="/signup">Sign up</Link>
+            {/*
+              Deliberately NOT in the table — this demo exists to show the catch-all handling a URL
+              the app does not know. So it is a plain anchor: `Link` accepts the paths the table
+              names, and a link the table cannot name is not one of them. The full load is the
+              honest behaviour for a URL this app never claimed.
+            */}
+            <a href="/nope">Missing</a>
+          </nav>
+          <code id="path">{this.route.pathname}</code>
+          <RouteOutlet routes={routes} />
+        </div>
       </div>
     );
   }
