@@ -101,12 +101,19 @@ export const mediaWithNoCaptions = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, has, children }) {
+  read(element, { tag, has, truth, children }) {
     if (tag !== "video" && tag !== "audio") return [];
 
-    // No sound, nothing to caption. The decorative background loop, which would otherwise be the
-    // commonest false report this rule could make.
-    if (tag === "video" && has("muted")) return [];
+    /**
+     * No sound, nothing to caption. The decorative background loop, which would otherwise be the
+     * commonest false report this rule could make.
+     *
+     * `muted={false}` is the one spelling that has to come back through: it is the attribute
+     * WRITTEN and the claim being the opposite one, so silencing on its presence alone silenced a
+     * `<video>` whose source says out loud that it has sound. Anything unreadable —
+     * `muted={quiet}` — still counts, which is the direction that cannot report working markup.
+     */
+    if (tag === "video" && has("muted") && truth("muted") !== false) return [];
 
     if (hasATrackOrCannotTell(children)) return [];
 

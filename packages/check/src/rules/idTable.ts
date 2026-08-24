@@ -256,8 +256,19 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
         const written = literalOf(attribute.initializer, resolve);
         if (written === undefined) opaqueId = true;
         else id = written;
-      } else if (name === "placeholder") placeholder = true;
-      else if (NAMES_IT_DIRECTLY.has(name)) {
+      } else if (name === "placeholder") {
+        /**
+         * `placeholder=""` is not a name, and reading its PRESENCE as one put a report on the wrong
+         * rule: `named-only-by-a-placeholder` told the author their placeholder is the only name
+         * this control has, on a control that has no name at all, while `control-with-no-label` —
+         * whose sentence that is — stayed quiet because a placeholder was written.
+         *
+         * A placeholder this cannot READ still counts. `placeholder={t("email")}` is somebody
+         * putting words there, and only an empty literal is the source saying otherwise.
+         */
+        const written = literalOf(attribute.initializer, resolve);
+        placeholder = written === undefined || written.trim().length > 0;
+      } else if (NAMES_IT_DIRECTLY.has(name)) {
         // Written at all, in any form. `aria-label={t("email")}` is somebody naming this control,
         // and whether the string is empty is not a question this can answer.
         namingAttribute = true;
