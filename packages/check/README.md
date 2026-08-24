@@ -150,7 +150,7 @@ build that silently emitted nothing is the same shape of bug.
 
 ## Docs
 
-**https://ramonda.pages.dev/reference/check**
+**https://ramonda.dev/reference/check**
 
 ## Function literals in class fields
 

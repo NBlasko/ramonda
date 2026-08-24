@@ -1,10 +1,10 @@
 {
   "name": "@ramonda/testing-library",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Testing utilities for Ramonda components and hooks, built on @testing-library/dom.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.pages.dev",
+  "homepage": "https://ramonda.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

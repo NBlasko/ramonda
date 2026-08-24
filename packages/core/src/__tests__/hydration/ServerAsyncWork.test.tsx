@@ -158,13 +158,28 @@ describe("the server waits for async @mounted", () => {
       }
     }
 
-    const started = Date.now();
-    const html = await renderToString(<Plain />);
+    /**
+     * Asked as "was a timer created", not "was it fast".
+     *
+     * This was `Date.now() - started < 50`, and a full-width `pnpm check` failed it at 97 ms — the same
+     * code passing 15/15 alone, three runs. A wall-clock bound is not a gate for this claim. The claim
+     * is that the drain returns on its FIRST round when nothing registered, because a page that paid a
+     * timeout per render would be a real regression on every static page — and that is a COUNT, which
+     * does not care how busy the machine is.
+     *
+     * A spy rather than fake timers, and the difference is how it fails. Planted both ways: with a
+     * `setTimeout` added to the drain loop, fake timers made the whole file HANG — correct, since
+     * nothing would advance the clock, but a hang carries no message. The spy names the fault.
+     */
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const html = await renderToString(<Plain />);
 
-    expect(html).toContain("plain");
-    // The drain returns on its first round when nothing registered. A page that
-    // paid a timeout per render would be a real regression on every static page.
-    expect(Date.now() - started).toBeLessThan(50);
+      expect(html).toContain("plain");
+      expect(timer, "the drain paid a timeout for a page with no async work").not.toHaveBeenCalled();
+    } finally {
+      timer.mockRestore();
+    }
   });
 
   test("a fetch waterfall fails loudly instead of hanging the request", async () => {

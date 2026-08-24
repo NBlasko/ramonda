@@ -1,6 +1,6 @@
 # Ramonda app
 
-A [Ramonda](https://ramonda.pages.dev) single-page app, built with Vite.
+A [Ramonda](https://ramonda.dev) single-page app, built with Vite.
 
 ## Develop
 
@@ -21,4 +21,4 @@ npm run preview  # preview the production build
 ## Learn Ramonda
 
 The docs — from the first component to how the renderer works — are at
-**https://ramonda.pages.dev**.
+**https://ramonda.dev**.

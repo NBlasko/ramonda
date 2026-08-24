@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { matchParams } from "./match";
 import type { RoutePlan } from "./server";
 
 /**
@@ -43,8 +44,9 @@ export interface IsrEntry {
 }
 
 /**
- * Where baked pages live. Two methods, both async so a network store fits without pretending
- * to be synchronous.
+ * Where baked pages live. Three methods, all async so a network store fits without pretending to be
+ * synchronous — `delete` joined them when a `:param` route became cacheable, because one route is then
+ * as many pages as there are items and the cache has to be able to give one back.
  *
  * A store may lose an entry at any time — expiry, eviction, a cleared directory. That is not an
  * error: a missing entry is a cold render, which is always correct, only slower.
@@ -52,6 +54,15 @@ export interface IsrEntry {
 export interface IsrStore {
   get(key: string): Promise<IsrEntry | undefined>;
   set(key: string, entry: IsrEntry): Promise<void>;
+  /**
+   * Drops one entry. Required, and it exists because a `:param` route has no fixed number of pages:
+   * `/products/:id` is one route and as many pages as there are products, so the cache has to be able
+   * to give one back.
+   *
+   * Deleting a key that is not there is not an error — a store may have lost it already, and a missing
+   * entry is a cold render, which is always correct and only slower.
+   */
+  delete(key: string): Promise<void>;
 }
 
 /** Which of the three answers a request got. Sent as `X-Ramonda-Mode`, and useful in a log. */
@@ -73,10 +84,49 @@ export interface IsrCacheOptions {
    */
   render(path: string): Promise<string>;
   /**
-   * Called when a BACKGROUND rebake fails. The visitor already has the stale page by then, so
-   * the failure has no other way to be seen. Default: log to stderr.
+   * Called when BACKGROUND WORK for a page fails — a rebake, or an eviction. Neither has another way
+   * to be seen: the visitor already has an answer by then, and neither failure is theirs to receive.
+   *
+   * It said "a background rebake" and only a rebake reached it, until eviction did. The `path` is the
+   * page the work was ABOUT, not the one being served — an eviction of `/products/1` while serving
+   * `/products/2` reports `/products/1`, because that is the page an operator has to go and look at.
+   *
+   * Default: log to stderr.
    */
   onError?(path: string, error: unknown): void;
+  /**
+   * How many pages this cache may hold before it starts giving one back. **Required when any ISR
+   * route takes a `:param`**, and refused otherwise as a number with nothing to bound.
+   *
+   * A route without params has one page, so the old cache could not grow: the count was the number of
+   * routes. `/products/:id` is one route and as many pages as there are products, and a crawler
+   * walking `/products/1`…`/products/100000` would otherwise fill a disk with pages nobody asked for.
+   *
+   * ## Least RECENTLY used, not least often
+   *
+   * Evicting the fewest hits is the intuitive rule and it does the opposite of what it looks like.
+   * Counts accumulate, so a product that was popular last week keeps its ten thousand and a page that
+   * went viral an hour ago has three — and a brand new entry always has the fewest, so it is always
+   * the first one thrown out. Fixing that needs the counters to decay, which needs a clock, which
+   * needs a test that depends on one.
+   *
+   * Recency needs none of it and adapts by itself: whatever is being asked for keeps moving to the
+   * back of the queue. A JavaScript `Map` iterates in insertion order, so the whole policy is a
+   * delete-and-set on a hit and one `keys().next()` on an eviction.
+   *
+   * And the TTL is why the policy matters less than the CAP: every entry dies after `revalidate`
+   * seconds anyway, so this is never choosing between a fresh page and an ancient one — it is choosing
+   * among pages that are all at most one window old. The bound is protection from BREADTH in a single
+   * window, and against breadth any eviction works.
+   *
+   * ## What it does not promise
+   *
+   * The count is per PROCESS. Two instances over one `fileStore` directory each bound their own view,
+   * so what is on disk can be up to twice this. That is honest rather than fixed: making it exact means
+   * the store owning the bound and enumerating itself, which is a different design and not one this
+   * needed yet.
+   */
+  maxPages?: number;
   /** Test seam. */
   now?(): number;
 }
@@ -109,13 +159,196 @@ function defaultOnError(path: string, error: unknown): void {
    * A route key comes from the app's own table, so nothing hostile reaches here. It costs nothing
    * to be right anyway, and the placeholder form is what Node's own logging expects.
    */
-  console.error("[ramonda:isr] background rebake of %s failed:", path, error);
+  // "background work", not "rebake": an eviction reaches this too, and naming the wrong operation sends
+  // an operator to look at the wrong thing. The error itself says which.
+  console.error("[ramonda:isr] background work for %s failed:", path, error);
 }
 
 export function createIsrCache(options: IsrCacheOptions): IsrCache {
-  const { plan, store, render, onError = defaultOnError, now = Date.now } = options;
+  const { plan, store, render, onError = defaultOnError, maxPages, now = Date.now } = options;
 
-  const windowMs = new Map(plan.isr.map((route) => [route.path, route.revalidate * 1000]));
+  /**
+   * A route with no params is one page, so its window is found by its own name.
+   *
+   * Asked FIRST, and not only for speed: a literal route and a pattern can both match one path —
+   * `/products/new` and `/products/:id` — and the literal one is the page somebody wrote.
+   */
+  const exact = new Map(
+    plan.isr.filter((route) => !route.path.includes(":")).map((route) => [route.path, route.revalidate * 1000]),
+  );
+
+  /**
+   * A route WITH params, in table order, because that is the order the router itself matches in.
+   *
+   * This is the half that was missing: `plan.isr` carried `/products/:id` and the window map was keyed
+   * by that string, so a request for `/products/7` looked up `/products/7`, found nothing, and the
+   * caller fell through to its dynamic branch — rendering per request with the real request context,
+   * which is the opposite of what `revalidate` asks for. Measured, and silent.
+   */
+  const patterned = plan.isr
+    .filter((route) => route.path.includes(":"))
+    .map((route) => ({ pattern: route.path, ttl: route.revalidate * 1000 }));
+
+  if (patterned.length > 0 && (maxPages === undefined || maxPages < 1)) {
+    throw new Error(
+      `[Ramonda] ${patterned.map((route) => `\`${route.pattern}\``).join(", ")} ${
+        patterned.length === 1 ? "is an ISR route that takes" : "are ISR routes that take"
+      } a \`:param\`, so the number of pages is the number of items — pass \`maxPages\` to ` +
+        `createIsrCache to say how many may be held at once. Without it one crawler walking the ids ` +
+        `fills the store with pages nobody asked for.`,
+    );
+  }
+  if (patterned.length === 0 && maxPages !== undefined) {
+    throw new Error(
+      "[Ramonda] `maxPages` was given but no ISR route takes a `:param`, so the number of pages is " +
+        "already the number of routes and there is nothing to bound. Remove it.",
+    );
+  }
+
+  const ttlFor = (path: string): number | undefined => {
+    const literal = exact.get(path);
+    if (literal !== undefined) return literal;
+    for (const route of patterned) if (matchParams(path, route.pattern) !== null) return route.ttl;
+    return undefined;
+  };
+
+  /**
+   * What this process holds, in the order it was last WANTED — the whole of the LRU.
+   *
+   * A `Set` iterates in insertion order, so `delete` then `add` on a hit moves a key to the back and
+   * the first key not in `leaving` is the one nobody has asked for longest.
+   */
+  const held = new Set<string>();
+
+  /**
+   * Keys whose `store.delete` has been issued and whose reply has not landed.
+   *
+   * The key stays in `held` — a write in that window has to be able to find it — and this set is what
+   * every question about that window is answered from. Three of them, and one membership test each:
+   *
+   * - **Not counted.** A page whose deletion is already committed is not a page the cache holds, so
+   *   counting it makes a CONCURRENT pass evict one live page too many. Measured with `maxPages: 1`
+   *   over a store whose `delete` pays a round trip: a hit arriving in the window trimmed again,
+   *   picked the page baked one request earlier, and the cache allowed one page held **zero**.
+   * - **Not picked.** So a pass evicts the page it meant to rather than one already condemned. This
+   *   one is a cost, not a fault: removing the test costs a second `store.delete` for a key the first
+   *   pass is already deleting, and a moment over the cap. Measured — the pages that survive are the
+   *   same either way, and no test in this file fails without it.
+   * - **Was anything WRITTEN here?** `recordWrite` removes the key, so a key still in this set when
+   *   the reply lands had only READS in the window and is forgotten; a key already gone from it was
+   *   rebuilt, and forgetting it would orphan the entry `bake` just stored. No ordering of the two
+   *   lines around the `await` can answer that on its own — a read and a write leave the same trace in
+   *   a map that records only recency — which is why the answer is a second set rather than a place to
+   *   put an existing line.
+   */
+  const leaving = new Set<string>();
+
+  /** A read: recency only. Nothing was stored, so a condemned key stays condemned. */
+  const touch = (path: string): void => {
+    held.delete(path);
+    held.add(path);
+  };
+
+  /**
+   * A write: recency, AND the key is no longer condemned — `bake` has just stored a new entry under
+   * it, so the delete that may still be in flight is about a page that no longer exists.
+   */
+  const recordWrite = (path: string): void => {
+    touch(path);
+    leaving.delete(path);
+  };
+
+  /**
+   * Runs the eviction without letting it fail the answer.
+   *
+   * `fileStore.delete` swallows everything for this reason, but `IsrStore` is an interface an app
+   * implements and its contract only promises that a MISSING key is not an error. A store over Redis
+   * that is down would otherwise turn a page that rendered and stored fine into a rejected `serve` —
+   * measured: `delete` throwing made `serve("/products/2")` reject while `/products/2` sat in the
+   * store. An eviction that cannot happen is a cache one entry too large, which the next request
+   * tries again; a 500 is a page the visitor does not get.
+   */
+  const guarded = async (path: string, work: () => Promise<void>): Promise<void> => {
+    try {
+      await work();
+    } catch (error) {
+      onError(path, error);
+    }
+  };
+
+  /** Names the operation, since `onError` receives failures from two of them now. */
+  const evicting = (key: string, error: unknown): Error =>
+    new Error(`evicting the least recently asked-for page, \`${key}\``, { cause: error });
+
+  /**
+   * The least recently asked-for key that is not already on its way out.
+   *
+   * A scan rather than `keys().next()`, and it is bounded by `leaving.size` — the number of deletes
+   * this process has in flight, which is its request concurrency, not the size of the cache.
+   */
+  const oldestNotLeaving = (): string | undefined => {
+    for (const key of held.keys()) if (!leaving.has(key)) return key;
+    return undefined;
+  };
+
+  /**
+   * Brings the cache back under the cap, and it runs after EVERY answer rather than only after a bake.
+   *
+   * Only-after-a-bake was wrong in a way that showed up one restart later: a `fileStore` directory
+   * holds pages this process never wrote, so `held` starts empty, nothing is ever over the cap from
+   * this process's point of view, and the store is never trimmed. Measured before the fix — a store
+   * seeded with five entries and `maxPages: 2` served five hits and dropped nothing. `held` grew one
+   * key per distinct path with no bound at all, which is the exact crawler shape the cap exists to
+   * stop.
+   */
+  const trim = async (): Promise<void> => {
+    if (maxPages === undefined) return;
+    // `leaving` is discounted: those pages are on their way out, so another pass must not evict for them.
+    while (held.size - leaving.size > maxPages) {
+      const key = oldestNotLeaving();
+      /**
+       * Cannot happen, and is here rather than as an assertion because the reason is two lines apart.
+       *
+       * `leaving` only ever holds keys taken from `held`, and the condition above says
+       * `held.size - leaving.size > maxPages >= 0` — so the difference is non-empty and there is
+       * always a key to pick.
+       */
+      if (key === undefined) return;
+      leaving.add(key);
+
+      // A store may have lost it already; `delete` is documented not to mind.
+      try {
+        await store.delete(key);
+      } catch (error) {
+        leaving.delete(key);
+        // Reported against the page that could not be dropped, which is the one to go and look at.
+        onError(key, evicting(key, error));
+        /**
+         * Moved to the BACK and kept, then this pass stops.
+         *
+         * Kept because the store still has it, and dropping the key here would orphan that entry for
+         * good. Moved because the same key would otherwise stay the oldest, so every later trim would
+         * pick it, fail on it and evict nothing — measured, a single un-deletable key let a store grow
+         * to thirty entries under a cap of two. Now the next request's trim picks a different one.
+         *
+         * And this pass STOPS rather than continuing to the next key: if every delete fails, a loop
+         * that carried on would move keys to the back for ever without the size ever dropping.
+         */
+        touch(key);
+        return;
+      }
+
+      /**
+       * Forgotten only if nothing was WRITTEN under this key while the delete was in flight.
+       *
+       * Still condemned means every request in that window was a READ: the store entry is gone, so the
+       * key goes with it. Already uncondemned means `recordWrite` ran — the miss it answered was caused
+       * by this very delete — and forgetting the key would leave that entry with nothing in the count
+       * pointing at it, which no later trim could reach.
+       */
+      if (leaving.delete(key)) held.delete(key);
+    }
+  };
 
   /**
    * Rebakes in progress, so a stale page under load starts ONE render rather than one per
@@ -136,6 +369,19 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
     const work = render(path)
       .then(async (html) => {
         await store.set(path, { html, at: now() });
+        /**
+         * Recorded HERE, beside the write, and that is the fix for an orphan.
+         *
+         * The stale path trims before starting the rebake, so an entry could be evicted — gone from
+         * `held` and from the store — while its rebake was in flight, and the landing rebake then
+         * wrote it back into a store `held` no longer knew about. Measured with `maxPages: 1`: two
+         * entries in a store allowed one, and still two after five more requests, because no trim
+         * could see the one nobody had recorded.
+         *
+         * A write is what puts a page in the store, so a write is what the count has to follow.
+         */
+        recordWrite(path);
+        await guarded(path, trim);
         return html;
       })
       .finally(() => {
@@ -148,16 +394,29 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
 
   return {
     async serve(path: string): Promise<IsrPage | undefined> {
-      const ttl = windowMs.get(path);
+      const ttl = ttlFor(path);
       if (ttl === undefined) return undefined;
 
       const cached = await store.get(path);
 
+      /**
+       * Recency is recorded only for a page the store actually HOLDS, and that is the fix for a
+       * phantom.
+       *
+       * It used to be recorded before the read, for every request. A cold render that REJECTED then
+       * left a key in `held` with nothing behind it, and the cap counted it — measured with
+       * `maxPages: 2`, one failed render made the next successful one drop BOTH live pages, leaving
+       * one page in a cache allowed two. Every failure cost a live slot.
+       */
       if (cached !== undefined && now() - cached.at < ttl) {
+        touch(path);
+        await guarded(path, trim);
         return { html: cached.html, mode: "isr-hit" };
       }
 
       if (cached !== undefined) {
+        touch(path);
+        await guarded(path, trim);
         // Stale-while-revalidate: the visitor waits for nothing. `catch` rather than `await`
         // — a failed rebake must not turn a servable stale page into a 500.
         void bake(path).catch((error: unknown) => onError(path, error));
@@ -165,7 +424,8 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
       }
 
       // Cold: there is no previous copy, so this one request pays for the render. It throws on
-      // failure, and should — there is nothing to send instead.
+      // failure, and should — there is nothing to send instead. Nothing is recorded until the write
+      // inside `bake` has happened, which is also where the trim is, so there is one place for both.
       return { html: await bake(path), mode: "isr-cold" };
     },
   };
@@ -176,7 +436,11 @@ export function createIsrCache(options: IsrCacheOptions): IsrCache {
  *
  * Right for a single instance, and for development. Not right for more than one: two processes
  * hold two independent caches, so which copy a visitor gets depends on which one answered, and
- * a restart starts over. Bounded by the number of ISR routes, so it cannot grow on its own.
+ * a restart starts over.
+ *
+ * It used to say it "cannot grow on its own", because it was bounded by the number of ISR routes. That
+ * stopped being true when a `:param` route became cacheable — one route, as many pages as there are
+ * items — so the bound moved to `maxPages` on the cache, which is required for exactly those routes.
  */
 export function memoryStore(): IsrStore {
   const entries = new Map<string, IsrEntry>();
@@ -186,6 +450,9 @@ export function memoryStore(): IsrStore {
     },
     async set(key, entry) {
       entries.set(key, entry);
+    },
+    async delete(key) {
+      entries.delete(key);
     },
   };
 }
@@ -201,7 +468,7 @@ export interface FileStoreOptions {
  * Survives a restart, and is shared by every instance that mounts the same directory — a
  * shared volume, or simply several processes on one machine. For instances that share nothing,
  * write an `IsrStore` over whatever they DO share (Redis, Memcached, a database table); the
- * interface is two methods on purpose.
+ * interface is three small methods on purpose.
  *
  * Writes are atomic: the page goes to a temporary file and is renamed into place, so a reader
  * never sees half of one. A read that fails for any reason — missing, truncated, not JSON —
@@ -246,6 +513,13 @@ export function fileStore(options: FileStoreOptions): IsrStore {
         await unlink(temp).catch(() => {});
         throw error;
       }
+    },
+
+    async delete(key) {
+      // A missing file is the state this asks for, so `ENOENT` is success. Anything else — a
+      // permission, a read-only mount — is swallowed too, deliberately: an eviction that cannot happen
+      // must not turn a served page into a 500, and the entry it failed to drop expires on its own.
+      await unlink(fileFor(key)).catch(() => {});
     },
   };
 }

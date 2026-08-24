@@ -108,10 +108,68 @@ and what it read:
 So a page that reads the request simply can't be marked `prerender` — the guard enforces it.
 Mark it dynamic (the default) and it renders per request instead.
 
+## A route with a `:param` — the build has to be told which pages exist
+
+A route table is a set of PATTERNS, and only some of them are pages. `/guide/state` is one page;
+`/guide/:slug` is one route and however many guides there are. So a parameterised route marked
+`prerender` needs its paths, and they come from your data:
+
+```ts
+import { routePlan } from "@ramonda/router/server";
+
+const GUIDES = ["state", "effects"];
+
+const staticPaths = (): string[] => routePlan(server, GUIDES.map((slug) => `/guide/${slug}`)).static;
+// → ["/", "/guide/state", "/guide/effects", "/signup"]
+```
+
+`plan.static` holds **paths**, never patterns. `plan.needsData` names the parameterised routes the
+paths were for, so a build can report what it was asked to bake.
+
+**Marked `prerender` with nothing supplied, the build stops:**
+
+```
+[Ramonda] `/guide/:slug` is marked for prerender and takes :slug, so a build cannot know which
+pages exist. Pass them: routePlan(server, items.map((item) => `/guide/${item.slug}`)).
+Or drop `prerender` and let it render per request.
+```
+
+It stops rather than skipping the route, for the same reason a per-request read stops it: a config
+that says `prerender` and a build that quietly does not is how a site ships missing half its pages
+while every page it did emit looks perfectly correct.
+
+**A `revalidate` route with a `:param` needs no paths, and that is the difference.** Nothing is baked
+at build; the cache fills as pages are asked for, and each one is a page of its own — `/products/7`
+and `/products/9` are cached separately under the one route. So the build is told nothing, and
+`plan.needsData` names such a route only for a build that wants to warm some of them itself.
+
+What it does need is a **limit**, because one route is now as many pages as there are items:
+
+```ts
+import { createIsrCache, fileStore, routePlan } from "@ramonda/router/server";
+
+const isr = createIsrCache({
+  plan: routePlan(server),
+  store: fileStore({ dir: "dist/isr" }),
+  render: bakePath,
+  maxPages: 500, // required when an ISR route takes a `:param`
+});
+```
+
+`createIsrCache` refuses to start without it for those routes, and refuses it when no route has a
+param — a number that bounds nothing is a number somebody will trust. Past the limit the page nobody
+has asked for longest is dropped.
+
+**Least recently asked for, not fewest hits**, and the intuitive rule is the wrong one here: hit counts
+accumulate, so a product that was popular last week keeps its ten thousand while one that went viral an
+hour ago has three — and a brand new page always has the fewest, so it would always be the first thrown
+out. Recency adapts by itself. The count is per process, so two instances over one directory each bound
+their own view.
+
 ## The build and the server
 
-- **Build** (`routePlan(server)` gives the split): each static/ISR route is rendered with the
-  request poisoned and written to a file. A route that reads the request fails the build.
+- **Build** (`routePlan(server, paths)` gives the split): each static/ISR route is rendered with
+  the request poisoned and written to a file. A route that reads the request fails the build.
 - **Server**, per request: a static route serves its baked file; an ISR route serves the cache
   and refreshes it in the background when it is older than `revalidate`; a dynamic route renders
   fresh with the real request.
@@ -154,7 +212,7 @@ it), or `isr-cold` (nothing cached, so this request waited for the render).
 | `fileStore({ dir })` | in a directory | a restart must not empty the cache, or instances share a volume |
 | your own | wherever you like | instances share nothing but a Redis or a database |
 
-A store is two methods, which is the whole point:
+A store is three small methods, which is the whole point:
 
 ```ts
 const redisStore = {
@@ -165,8 +223,15 @@ const redisStore = {
   async set(key, entry) {
     await redis.set(`isr:${key}`, JSON.stringify(entry));
   },
+  async delete(key) {
+    await redis.del(`isr:${key}`);
+  },
 };
 ```
+
+**`delete` is not optional.** A route with a `:param` fills the cache as pages are asked for, so
+`maxPages` has to be able to drop one — a store without it fails at the first eviction, and that
+failure is reported rather than raised, so the cache would grow instead of stopping.
 
 A store may lose an entry at any time — eviction, expiry, a cleared directory. That is not an
 error: a missing entry is a cold render, which is always correct and only slower.
@@ -178,6 +243,10 @@ error: a missing entry is a cold render, which is always correct and only slower
   still bake the same page at the same moment — wasted work, never a wrong answer.
 - **A failed background rebake keeps serving the stale page.** An old page is a smaller problem
   than no page. A failed *cold* render throws, because there is nothing else to send.
+- **An eviction cannot be called off.** A store is three unconditional methods, so a `delete` already
+  travelling still removes whatever is under that key when it arrives — including a page a rebake
+  wrote in the meantime. It takes a page going stale in the same moment it is being evicted, and it
+  costs that page and one later render; the cache notices the key points at nothing and drops it.
 - **A deploy must clear the cache.** Pages in it were rendered by the bundle you just replaced,
   so serving one afterwards hands the browser old markup for a new client bundle. The scaffolded
   app clears `dist/isr` in its prerender step, which runs on every build.

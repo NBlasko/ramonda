@@ -30,17 +30,29 @@ const server = defineServer(routes, {
   "/products": {}, // dynamic — the feed renders per request
   "/users/:id": {}, // dynamic — per-user page
   "/signup": { prerender: true }, // SSG — a form has nothing per-request in it, so it bakes
+  "/guide/:slug": { prerender: true }, // SSG with a :param — the build has to be told which slugs
 });
+
+/**
+ * The guides that exist, which is the app's data and not the router's.
+ *
+ * This is the whole answer to "how does a build know which pages a `:param` route has": it does not,
+ * and it cannot — a route table is a set of patterns. `routePlan` throws rather than baking
+ * `dist/static/guide/:slug/index.html`, which is what it used to do.
+ */
+const GUIDES = ["state", "effects"];
 
 /** The paths a static build should bake (`routePlan.static`), for the prerender script. */
 export function staticPaths(): string[] {
-  return routePlan(server).static;
+  return routePlan(server, guidePaths()).static;
 }
 
 /** The full plan, if a caller wants the server/isr split too. */
 export function plan() {
-  return routePlan(server);
+  return routePlan(server, guidePaths());
 }
+
+const guidePaths = (): string[] => GUIDES.map((slug) => `/guide/${slug}`);
 
 /**
  * Renders the app for one request URL (dynamic / SSR). The caller installs a DOM shim at the

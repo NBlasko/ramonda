@@ -449,6 +449,18 @@ async function checkModes() {
   if (user.mode !== "dynamic") fail(`/users/42 served as ${user.mode}, expected a per-request render`);
   if (!user.body.includes("<h2>User 42</h2>")) fail("the dynamic route did not render the id from the URL");
 
+  /**
+   * STATIC, from a :param route — the case the build had no example of.
+   *
+   * Same shape as `/users/42` above and the opposite mode, which is the point: whether a
+   * parameterised route is baked or rendered is the app's declaration, not something the pattern
+   * decides. And it proves the file is real: the build used to put this page in a directory named
+   * `:slug`, where no request could ever reach it.
+   */
+  const guide = await modeOf("/guide/state");
+  if (guide.mode !== "static") fail(`/guide/state served as ${guide.mode}, expected a baked file`);
+  if (!guide.body.includes("<h2>Guide: state</h2>")) fail("the baked :param page has no content in it");
+
   // ISR — served from the cache, and rebaked behind the visitor's back.
   const first = await modeOf("/about");
   if (!first.mode?.startsWith("isr")) fail(`/about served as ${first.mode}, expected an ISR mode`);

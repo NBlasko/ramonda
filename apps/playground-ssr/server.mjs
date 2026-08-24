@@ -40,8 +40,8 @@ const staticSet = new Set(routePlan.static);
 /**
  * The ISR cache. A directory rather than a Map, which is the whole point: it survives a restart,
  * and two instances mounting it agree about how old a page is instead of each ageing its own copy.
- * Instances that share no disk plug in a store over something they do share — `IsrStore` is two
- * methods. `npm run build` clears it, because pages in it were baked by the previous bundle.
+ * Instances that share no disk plug in a store over something they do share — `IsrStore` is three
+ * methods (`get`, `set`, `delete`). `npm run build` clears it, because pages in it were baked by the previous bundle.
  */
 const isr = createIsrCache({
   plan: routePlan,

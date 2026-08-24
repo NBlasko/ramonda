@@ -315,6 +315,14 @@ third-party scanner.
      that name *is* the subdomain, `ramonda.pages.dev`. (To use another name, edit
      `--project-name` in `deploy-docs.yml`.) You can create it empty; the first
      workflow run fills it.
+
+     That subdomain stays, and it is not the address anyone is given: the site is
+     served at **`ramonda.dev`**, attached to this project under **Custom domains**.
+     Everything the repository prints — `homepage` in each `package.json`, the READMEs,
+     the URL a diagnostic tells you to read, and `BASE` in `apps/docs/src/entry-server.tsx`,
+     which builds every `canonical`, `og:url` and the whole `sitemap.xml` — names the
+     custom domain. Leaving one of them on `pages.dev` is how a search engine is told
+     that the real page is somewhere else.
   2. **Production branch = `main`** (project → Settings). A deploy on `main` is
      production; any other branch gets its own preview URL.
   3. **API token:** My Profile → API Tokens → Create Token → *Custom token*, with

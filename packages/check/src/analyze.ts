@@ -2968,7 +2968,25 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   function buildGraph(): ComponentGraph {
     const nodes: GraphNode[] = [];
+    /**
+     * The nodes an installed package's fragment brought in, which the loop below must NOT emit.
+     *
+     * They reach `components` legitimately: a kit destructured out of a factory —
+     * `const { Router, Link } = createRouter(routes)` — binds each member to a local symbol, and that
+     * symbol is how the walk resolves `<Link />`. So the same object is in both collections, and it
+     * used to be emitted twice, under one id, with two different places.
+     *
+     * The second place was also WRONG, and wrong in a way that moved: a fragment's `at` is already
+     * relative to ITS package, so `pathOf` climbed from `src/…` looking for a `package.json`,
+     * `ts.sys.fileExists` resolved that against the process's CWD, and the answer became whichever
+     * package the CLI happened to be started in — measured, `@acme/kit`'s file was attributed to
+     * `@ramonda/check` from one directory, to `ramonda-monorepo` from another. Identity by OBJECT
+     * rather than by id: two different nodes may share an id in a graph that reports the collision,
+     * and skipping by id there would drop a node the report is about.
+     */
+    const fromFragment = new Set<ComponentNode>(splicedNodes);
     for (const node of components.values()) {
+      if (fromFragment.has(node)) continue;
       nodes.push({
         id: node.id,
         kind: node.kind,
@@ -3009,6 +3027,10 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
         name: node.name,
         at: `${node.file}:${node.line}:${node.column}`,
         ...(node.exported ? { exported: true } : {}),
+        // `opaque` was spread by the `components` loop only, and de-duplicating made THIS the sole
+        // emitter for a spliced node — so an opaque one was published as transparent. It can become
+        // opaque here too, through the propagation whose `carriers` list includes `splicedNodes`.
+        ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
         ...(node.host === undefined ? {} : { host: node.host }),
       });

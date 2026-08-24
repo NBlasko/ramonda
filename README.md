@@ -17,7 +17,7 @@ A UI framework. **Explicit. Predictable. Readable.**
 > bugs. The point of these `0.x` months is to arrive at an API worth keeping,
 > because the way it works then is the way it goes on working.
 
-📖 **Documentation: [ramonda.pages.dev](https://ramonda.pages.dev)**
+📖 **Documentation: [ramonda.dev](https://ramonda.dev)**
 
 ## What it is
 

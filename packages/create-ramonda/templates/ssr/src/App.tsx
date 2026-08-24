@@ -118,7 +118,7 @@ export class App extends Component {
           <Link href={route("/hello/:name", { name: "world" })}>Greet</Link>
         </nav>
         <RouteOutlet routes={routes} />
-        <a className="docs" href="https://ramonda.pages.dev" target="_blank" rel="noreferrer">
+        <a className="docs" href="https://ramonda.dev" target="_blank" rel="noreferrer">
           Read the docs →
         </a>
       </div>

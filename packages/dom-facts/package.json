@@ -5,7 +5,7 @@
   "description": "Facts about the DOM that the framework and the checker have to agree on. Build-time only — every consumer bundles it.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.pages.dev",
+  "homepage": "https://ramonda.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

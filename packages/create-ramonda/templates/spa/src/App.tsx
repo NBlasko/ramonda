@@ -34,7 +34,7 @@ export class App extends Component {
           Edit <code>src/App.tsx</code> and save — the count survives the reload.
         </p>
 
-        <a className="docs" href="https://ramonda.pages.dev" target="_blank" rel="noreferrer">
+        <a className="docs" href="https://ramonda.dev" target="_blank" rel="noreferrer">
           Read the docs →
         </a>
       </div>

@@ -1,21 +1,15 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@ramonda/core",
     "allowJs": true,
     "paths": {
       "@ramonda/core/jsx-runtime": ["./src/jsx-runtime.ts"],
       "@ramonda/core/jsx-dev-runtime": ["./src/jsx-dev-runtime.ts"]
-    },
-    "skipLibCheck": true
+    }
   },
   "include": ["src"]
 }

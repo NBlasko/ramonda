@@ -1,10 +1,10 @@
 {
   "name": "@ramonda/query",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Async state for Ramonda: cached, deduped, race-free queries and mutations that survive a server render.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.pages.dev",
+  "homepage": "https://ramonda.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

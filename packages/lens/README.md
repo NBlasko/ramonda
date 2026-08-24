@@ -12,7 +12,7 @@ npm install @ramonda/lens
 No dependencies, and nothing in it knows about Ramonda — it is a standalone package for immutable
 updates, usable in any TypeScript or JavaScript project, in the browser or on the server.
 
-Documentation: **[ramonda.pages.dev/lens](https://ramonda.pages.dev/lens)**
+Documentation: **[ramonda.dev/lens](https://ramonda.dev/lens)**
 
 ```ts
 import { focusOn } from "@ramonda/lens";
@@ -274,7 +274,7 @@ globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => {
 
 `globalThis` rather than an event on `window`, so it works in the browser, in Node, in a worker and
 during a server render. The shape and the rules are at
-[ramonda.pages.dev/reference/diagnostics](https://ramonda.pages.dev/reference/diagnostics#capturing-them).
+[ramonda.dev/reference/diagnostics](https://ramonda.dev/reference/diagnostics#capturing-them).
 
 ### Messages you might see
 
@@ -297,7 +297,7 @@ rather than at the whole chain. One code covers a fault *class*, so several mess
 | `RML011` | ``focusOn(root).remove() has nothing to remove from`` | The root has no container above it. Focus the property or element to drop. Throws. |
 
 The full list, with what to do about each, is on
-[Messages you might see](https://ramonda.pages.dev/lens/messages).
+[Messages you might see](https://ramonda.dev/lens/messages).
 
 ## Class instances, and what cannot be traversed
 
