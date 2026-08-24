@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
 import { importedFromCore } from "./core-import";
+import { narrowedTo } from "./side-guard";
 import { clientOnlyBecause } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
 
@@ -402,6 +403,21 @@ export const clientOnlyRequestRead = {
     const collect = (root: ts.Node, member: string, clientOnly: string): void => {
       (function look(node: ts.Node): void {
         if (isRequestContextCall(node)) {
+          /**
+           * Narrowed to the SERVER inside a member only the browser runs, which means it never
+           * runs at all.
+           *
+           * The claim here is that the browser reads a value it does not have. Guarded, it does not
+           * read it, so the claim is untrue and the report goes — the same answer
+           * `server-env-in-shared-code` gives to the same guard, because two rules disagreeing
+           * about one `typeof window` is the drift `side-guard.ts` exists to prevent.
+           *
+           * The argument the other way, written down because it is not silly: a server guard inside
+           * a click handler is DEAD code, so silencing it lets confused code through. That is worth
+           * less than the rule staying honest about what it claims — and a checker that reports a
+           * line which cannot execute is one people stop believing.
+           */
+          if (narrowedTo(node, "server")) return;
           const what = readOf(node);
           if (what !== undefined) {
             found.push({ component: context.self.name, member, ...what, clientOnly, ...positionOf(node) });

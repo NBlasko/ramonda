@@ -214,3 +214,48 @@ describe("process.env in code the browser runs", () => {
     expect(serverEnv().map((issue) => issue.component)).toContain("HelperAlsoCalledInRender");
   });
 });
+
+/**
+ * A one-sided global, ASKED ABOUT before it is touched.
+ *
+ * `process` does not exist in a browser, so isomorphic code checks first — and checking is the
+ * correct way to write it. `server-env-in-shared-code` is an ERROR, and it reported five shapes
+ * that cannot crash, including the two most standard spellings anybody uses. A build failing
+ * against working code is the one thing this package cannot afford, so this is the fixture that
+ * says so.
+ *
+ * The guard lives in `side-guard.ts` rather than in the rule, deliberately: two rules disagreeing
+ * about one `typeof window` is exactly the drift the shared reader exists to prevent — and the
+ * second one, `client-only-request-read`, was found to need the same answer.
+ */
+describe("a read behind a check that it only happens where it works", () => {
+  const guarded = () =>
+    analyzeProject(join(here, "fixtures", "env-guards", "tsconfig.json")).findings["server-env-in-shared-code"];
+
+  test("every spelling of the guard is honoured", () => {
+    /**
+     * What is left is the whole list, which cannot go quiet the way a `not.toContain` can:
+     *
+     * - 38, a click handler, which IS the browser by definition;
+     * - 46, a `@mounted` on a base class, which defaults to `shared`.
+     *
+     * Everything else in that fixture is guarded — a ternary (7), an `&&` (15),
+     * `if (import.meta.env.SSR)` (23), `if (typeof window === "undefined")` (79), and the EARLY
+     * RETURN (88), which is how a `render()` is written far more often than a nested `if`.
+     */
+    expect(
+      guarded()
+        .map((issue) => issue.line)
+        .sort((a, b) => a - b),
+    ).toEqual([38, 46]);
+  });
+
+  test("a subclass inheriting a shared member is not reported a second time", () => {
+    // One fault, at the base that wrote it. `InheritsIt` adds nothing and says nothing.
+    expect(guarded().map((issue) => issue.component)).toEqual(["InAHandler", "SharedBase"]);
+  });
+
+  test("and a subclass inherits the base's server-only marking too", () => {
+    expect(guarded().map((issue) => issue.component)).not.toContain("InheritsTheMarking");
+  });
+});

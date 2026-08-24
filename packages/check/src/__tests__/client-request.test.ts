@@ -82,3 +82,26 @@ describe("a request read that only ever runs in the browser", () => {
     }
   });
 });
+
+/**
+ * A read narrowed to the SERVER, inside a member only the browser runs.
+ *
+ * The claim here is that the browser reads a value it does not have. Behind
+ * `if (typeof window === "undefined")` it does not read it, so the claim is untrue — the same
+ * answer `server-env-in-shared-code` gives to the same guard, through the same `side-guard.ts`,
+ * because two rules disagreeing about one `typeof window` is the drift that reader exists to
+ * prevent.
+ *
+ * The argument the other way is real and was weighed: a server guard inside a click handler is DEAD
+ * code, so silencing it lets confused code through. It is worth less than the rule staying honest
+ * about what it claims, and a checker reporting a line that cannot execute is one people stop
+ * believing.
+ */
+test("a request read narrowed to the server is not reported on a client-only path", () => {
+  const found = analyzeProject(join(here, "fixtures", "client-request", "tsconfig.json")).findings[
+    "client-only-request-read"
+  ];
+  expect(found.map((issue) => issue.component)).not.toContain("GuardedInAListener");
+  // And the unguarded cookie read two classes below is still reported, so the rule is still on.
+  expect(found.map((issue) => issue.component)).toContain("CookieInAnInterval");
+});

@@ -31,6 +31,17 @@ export class ListenerRead extends Component {
   }
 }
 
+/** A read narrowed to the server, inside a member that otherwise only the browser runs. */
+export class GuardedInAListener extends Component {
+  @onElement("click")
+  onClick() {
+    if (typeof window === "undefined") track(requestContext().cookies.get("session"));
+  }
+  render() {
+    return <button type="button">click</button>;
+  }
+}
+
 /** ✗ Cookies, which are never sent to the browser whatever any key says. */
 export class CookieInAnInterval extends Component {
   @interval("5s")
