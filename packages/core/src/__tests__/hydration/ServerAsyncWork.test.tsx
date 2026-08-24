@@ -75,7 +75,8 @@ describe("the server waits for async @mounted", () => {
     // @state is serialized, which is what makes the guard above work on the
     // client: a shared @mounted runs on BOTH sides, and the blob is the memo.
     expect(page.body).toContain("Grace");
-    expect(page.body).toContain("data-ramonda-state");
+    // The blob rides the opening marker rather than an attribute on a host element.
+    expect(page.body).toMatch(/<!--c\d+ \{"state"/);
   });
 
   test("work started by the result of earlier work is awaited too", async () => {
@@ -293,7 +294,14 @@ describe("AsyncLoad on the server", () => {
     // state blob, ready for the client to adopt rather than rebuild.
     expect(page.body).toContain("LOADED: from server");
     expect(page.body).not.toContain("loading…");
-    expect(page.body).toContain('data-ramonda="Loaded"');
+    /**
+     * And it is a MOUNTED component rather than markup that happens to say the right thing: its
+     * marker pair is in the body, which only a component that reached the reconciler has.
+     *
+     * `data-ramonda="Loaded"` used to be the proof. That was a DEV attribute on a host element, and
+     * a component has no element of its own — the marker is what says one is here.
+     */
+    expect(page.body).toMatch(/<!--c\d+/);
   });
 
   test("a failed import renders its fallback rather than losing the page", async () => {

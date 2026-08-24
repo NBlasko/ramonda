@@ -64,8 +64,7 @@ describe("the scheduler survives an uncaught error", () => {
   }
 
   // The component whose markup holds `#id`, asked of the record — a node points at no component.
-  const componentFor = (container: HTMLElement, id: string) =>
-    instanceOf<any>(container.querySelector(`#${id}`));
+  const componentFor = (container: HTMLElement, id: string) => instanceOf<any>(container.querySelector(`#${id}`));
 
   test("a component that went dirty in the SAME drain still renders", async () => {
     const app = await getDOM<App>(<App />);

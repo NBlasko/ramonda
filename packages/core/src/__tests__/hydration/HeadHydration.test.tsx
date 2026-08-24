@@ -1,9 +1,8 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM, instanceOf } from "../../test/setup";
+import { getDOM, instanceOf, servedMarkup } from "../../test/setup";
 import { Component } from "../../base/Component";
 import { state } from "../../base/decorators";
 import { Head, resetHeadRegistry } from "../../base/Head";
-import { markComponents } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { PORTAL_ATTR } from "../../helpers/constants";
 
@@ -56,17 +55,7 @@ describe("hydration: the Head owns what the server wrote", () => {
     document.title = "before";
     const server = await getDOM(<Page />);
     await server.settle();
-    /**
-     * The one step that turns a client render into SERVED markup.
-     *
-     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
-     * known from the record there. `markComponents` is the pass the server runs: the comment pair
-     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
-     * client finds no marker where one belongs, builds the component fresh, and the page ends up
-     * with both copies.
-     */
-    markComponents(server.container);
-    const html = server.container.innerHTML;
+    const html = servedMarkup(server.container, { state: false });
     expect(headTags().length).toBeGreaterThan(0);
     server.unmount();
     resetHeadRegistry(); // the request ends; the browser is a different process
@@ -164,17 +153,7 @@ describe("hydration: the Head owns what the server wrote", () => {
 
     const server = await getDOM(<Page />);
     await server.settle();
-    /**
-     * The one step that turns a client render into SERVED markup.
-     *
-     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
-     * known from the record there. `markComponents` is the pass the server runs: the comment pair
-     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
-     * client finds no marker where one belongs, builds the component fresh, and the page ends up
-     * with both copies.
-     */
-    markComponents(server.container);
-    const html = server.container.innerHTML;
+    const html = servedMarkup(server.container, { state: false });
     server.unmount();
     for (const tag of headTags()) tag.remove();
 

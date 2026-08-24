@@ -65,7 +65,6 @@ describe("the tag name we hand to the DOM", () => {
     expect(createdTags).toContain("input");
   });
 
-
   test("an SVG element keeps the case it was written with", async () => {
     // SVG names are case-SENSITIVE, and `h` never uppercases them for that reason. Lowercasing here
     // would turn `linearGradient` into `lineargradient`, which is a different element and renders

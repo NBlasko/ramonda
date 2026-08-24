@@ -72,7 +72,7 @@ describe("update rules", () => {
       await app.settle();
 
       const child = findOne<Child>(app.container, "Child");
-      const childNode = app.container.querySelector("p")!;
+      const childNode = app.container.querySelector("span")!;
 
       app.instance.show = false;
       await app.settle();

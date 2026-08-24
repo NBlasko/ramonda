@@ -140,4 +140,3 @@ describe("RMD021 — randomness, and no clock", () => {
     unmount();
   });
 });
-

@@ -103,26 +103,21 @@ describe("a list returned straight from render()", () => {
   test("its owner is the component's own id, the same as a wrapped list's", async () => {
     class Straight extends Component {
       render() {
-        return (
-          <ul>
-            {list([1], (n: number) => (
-              <li>{n}</li>
-            ))}
-          </ul>
-        );
+        // The list IS the output: no element of its own, so its nodes are this component's range.
+        return list([1], (n: number) => <li>{n}</li>);
       }
     }
 
     class Wrapped extends Component {
       render() {
         return (
-          <div>
-            <ul>
+          <li>
+            <ul id="wrapped">
               {list([1], (n: number) => (
                 <li>{n}</li>
               ))}
             </ul>
-          </div>
+          </li>
         );
       }
     }
@@ -130,12 +125,10 @@ describe("a list returned straight from render()", () => {
     class App extends Component {
       render() {
         return (
-          <div>
-            <div>
-              <Straight />
-              <Wrapped />
-            </div>
-          </div>
+          <ul>
+            <Straight />
+            <Wrapped />
+          </ul>
         );
       }
     }
@@ -162,7 +155,7 @@ describe("a list returned straight from render()", () => {
     const straightOwner = String(
       ((regionOf(straight)?.entries ?? []) as { owner?: unknown }[]).find((e) => e?.owner !== undefined)?.owner ?? "",
     );
-    const wrappedOwner = ownerOf(app.container.querySelector("ul"));
+    const wrappedOwner = ownerOf(app.container.querySelector("#wrapped"));
 
     // Both are "<the component's id>:g<position>", so the shape is the same and
     // the id is the component's rather than whatever the origin had been reset to.

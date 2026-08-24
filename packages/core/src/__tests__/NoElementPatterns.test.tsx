@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, findOne } from "../test/setup";
 import { Component, Hook, state, created, watchProp } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -79,9 +79,16 @@ describe("state and lifecycle without markup", () => {
     const app = await getDOM<Page>(<Page />);
     await app.settle();
 
-    const host = app.container.querySelector("ramonda-host")!;
-    expect(host.childNodes.length).toBe(0);
-    expect(host.getAttribute("style")).toBe("display: contents;");
+    /**
+     * It contributes NOTHING to the DOM, which is the whole of what "without markup" means now.
+     *
+     * There used to be a `<ramonda-host style="display: contents">` here — an element that took part
+     * in no layout but was still a node in the page. A component owns a range, and a render that
+     * returns nothing owns an empty one, so there is nothing to find and nothing to assert about.
+     * It is a full component all the same, which is what the rest of this test measures.
+     */
+    expect(app.container.querySelector("ramonda-host")).toBeNull();
+    expect(findOne<object>(app.container, "Analytics")).toBeDefined();
     expect(createdCount).toBe(1);
     // `@watchProp` does not fire on mount — `@created` is the initial pass — so nothing
     // has been tracked yet.
@@ -184,6 +191,6 @@ describe("state and lifecycle without markup", () => {
     expect(captured.codes).toEqual(["RMD011"]);
     expect(captured.messages[0]).toContain("Rows was used as a JSX tag");
     expect(captured.messages[0]).toContain("use a Hook");
-    expect(captured.messages[0]).toContain("{rows()}");
+    expect(captured.messages[0]).toContain("{sideBar()}");
   });
 });

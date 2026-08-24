@@ -1,8 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../../test/setup";
+import { getDOM, servedMarkup } from "../../test/setup";
 import { Component } from "../../base/Component";
 import { state, deferHydration, destroyed, interval } from "../../base/decorators";
-import { markComponents } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -22,11 +21,11 @@ import { hydrateRoot } from "../../hydration/hydrate";
  * document. All of it silent, because the page itself looks right — the fresh
  * element is there and the old one is gone.
  */
-describe("a deferred subtree that resumes with a different host tag", () => {
+describe("a deferred subtree that resumes with a different element", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
-  test("tears the adopted component down before replacing its node", async () => {
+  test("replaces the element and keeps the component that was restored", async () => {
     let destroyedCount = 0;
     let ticks = 0;
     let release!: () => void;
@@ -37,7 +36,7 @@ describe("a deferred subtree that resumes with a different host tag", () => {
     class Deferred extends Component<{ as?: string }> {
       @state n = 0;
 
-      // Client-only work the teardown is supposed to stop.
+      // Client-only work, which a live component keeps.
       @interval(5) tick() {
         ticks++;
       }
@@ -58,7 +57,7 @@ describe("a deferred subtree that resumes with a different host tag", () => {
          * sides have to be able to disagree about the tag — which used to be a `@Host` callback and
          * is now an ordinary conditional. Same disagreement, written where the markup is.
          */
-        return this.props.as === "section" ? <section>deferred {this.n}</section> : <div>deferred {this.n}</div>;
+        return this.props.as === "span" ? <span>deferred {this.n}</span> : <div>deferred {this.n}</div>;
       }
     }
 
@@ -78,17 +77,7 @@ describe("a deferred subtree that resumes with a different host tag", () => {
     // "server": the page rendered with a <div> host for the deferred part.
     const server = await getDOM(<Page as="div" />);
     await server.settle();
-    /**
-     * The one step that turns a client render into SERVED markup.
-     *
-     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
-     * known from the record there. `markComponents` is the pass the server runs: the comment pair
-     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
-     * client finds no marker where one belongs, builds the component fresh, and the page ends up
-     * with both copies.
-     */
-    markComponents(server.container);
-    const html = server.container.innerHTML;
+    const html = servedMarkup(server.container, { state: false });
     server.unmount();
     destroyedCount = 0;
     ticks = 0;
@@ -108,20 +97,36 @@ describe("a deferred subtree that resumes with a different host tag", () => {
     release();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    // The fresh element replaced the server's, in place — the sibling after it
-    // is still after it.
+    /**
+     * The `<span>` replaced the server's `<div>`, in place — the sibling after it is still after it.
+     *
+     * And the component was NOT torn down, which is the part that changed with the host. It used to
+     * be adopted ONTO the server's element, so a resume that wanted a different tag had nothing to
+     * adopt: the node was replaced and the instance had to go with it, or it lived on with no DOM.
+     *
+     * A component owns a RANGE now. Its markers say where its block is whatever is inside, so a
+     * resume that renders a different element patches the block — the same thing an ordinary
+     * re-render does — and the instance never stops being the one that was restored. Its state, its
+     * hooks and its timers carry straight through, which is what a resume was always trying to do.
+     */
     const span = container.querySelector("span");
     expect(span).toBeTruthy();
     expect(span!.nextElementSibling?.id).toBe("after");
     expect(container.querySelector("div > div")).toBeNull();
+    expect(destroyedCount).toBe(0);
 
-    // And the component that had been adopted onto the replaced node was torn
-    // down rather than left running.
-    expect(destroyedCount).toBe(1);
-
+    /**
+     * And its `@interval` is still running, which is the other half of the same change.
+     *
+     * The old shape had to stop it: the component was adopted onto the server's element, a resume
+     * that wanted a different tag replaced that element, and an instance with no DOM whose timer
+     * still fires is the leak `RMD006` exists for. Nothing is replaced out from under this component
+     * — it owns a range, and the range is where its new element went — so it is a live component on
+     * a live page and its timer belongs to it.
+     */
     const before = ticks;
     await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(ticks).toBe(before);
+    expect(ticks).toBeGreaterThan(before);
 
     container.remove();
   });

@@ -1,5 +1,5 @@
 import { mountRoot, isRegion, isComponentRegion } from "../core/DiffAndMerge";
-import type { EnhancedChildNode, RecordEntry } from "../types/vdom";
+import type { ComponentRegion, EnhancedChildNode, RecordEntry } from "../types/vdom";
 import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
@@ -7,7 +7,7 @@ import { serializeComponentToBlob } from "./serialize";
 import { PORTAL_ATTR, REQUEST_ATTR, CHILD_RECORD } from "../helpers/constants";
 import { componentOpen, componentClose } from "../core/componentMarker";
 import { createId } from "../helpers/createId";
-import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
+import { anchorId, isCloseAnchor, isOpenAnchor, regionBlocks } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
@@ -99,6 +99,25 @@ async function drainServerWork(work: ServerWork): Promise<void> {
  * there and rendered nothing.
  */
 export function markComponents(node: Node): void {
+  /**
+   * A `ChildrenRegion`'s block, marked before anything else.
+   *
+   * Its record belongs to the region rather than to the element it writes into — a portal shares its
+   * target with the shell and with every other portal — so the walk below cannot reach the components
+   * inside it. Without this a portalled component has no marker, and a hydrating client builds a
+   * second copy of the whole block beside the server's.
+   *
+   * Marked from every call rather than once at the end: `renderToString` marks the body container and
+   * each portal target separately, and a block may sit in any of them. Doing it per block is
+   * idempotent because a marked block's components are still exactly the entries in its record.
+   */
+  for (const block of regionBlocks()) {
+    if (block.before.parentNode !== (block.parent as unknown as ParentNode)) continue;
+    if (block.parent === node || node.contains(block.parent)) {
+      markEntries(block.entries, block.parent, block.before);
+    }
+  }
+
   const record = (node as EnhancedChildNode)[CHILD_RECORD];
   if (record === undefined) {
     for (const child of Array.from(node.childNodes)) markComponents(child);
@@ -106,6 +125,17 @@ export function markComponents(node: Node): void {
   }
   markEntries(record, node, null);
 }
+
+/**
+ * Components already marked in this render, so the pass can be run more than once.
+ *
+ * It has to be: `renderToString` marks the body, `collectHead` marks the head, and a portal's block
+ * may be reached from either — and a second visit would INSERT A SECOND PAIR, which reads to a
+ * hydrating client as a component inside a component. Held per region object rather than per record,
+ * because the record array is replaced on every reconcile while the region is the same thing
+ * throughout.
+ */
+const markedRegions = new WeakSet<ComponentRegion>();
 
 function markEntries(entries: RecordEntry[], parent: Node, before: ChildNode | null): ChildNode | null {
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -124,6 +154,13 @@ function markEntries(entries: RecordEntry[], parent: Node, before: ChildNode | n
       if (first !== null) before = first;
       continue;
     }
+
+    if (markedRegions.has(entry)) {
+      const first = markEntries(entry.entries, parent, before);
+      if (first !== null) before = first;
+      continue;
+    }
+    markedRegions.add(entry);
 
     // Nothing at all when nothing has moved off its initial value: an empty tree of shells is
     // around 90 bytes per component that the client would read and then do nothing with.
@@ -453,15 +490,22 @@ const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
  * them), and outside a block, the elements `Head` marked.
  */
 function collectHead(): { title: string; head: string } {
+  /**
+   * Marked BEFORE anything is read, and before the block is paired.
+   *
+   * A portalled component's marker pair is inserted into the head itself, so marking inside the walk
+   * below did it while `nextSibling` was carrying the walk along — the comments landed behind the
+   * cursor and were never serialized, and a hydrating client found a block with no markers in it and
+   * built a second copy of the whole thing. Pairing the block afterwards is the other half: the new
+   * comments are inside it and have to be collected with everything else.
+   */
+  markComponents(document.head);
+
   const inBlock = blockNodes(document.head);
   let head = "";
 
   for (let node = document.head.firstChild; node !== null; node = node.nextSibling) {
     if (inBlock.has(node)) {
-      // Inside a portal's block, where a component may be sitting on any node —
-      // The marker pass only ever walked the body container, so a portalled
-      // component reached the client with no state to restore.
-      markComponents(node);
       head += serializeNode(node);
     } else if (node.nodeType === 1 && (node as Element).matches(MANAGED_HEAD)) {
       head += (node as Element).outerHTML;

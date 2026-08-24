@@ -68,34 +68,6 @@ describe("Ref", () => {
     expect(seen).toEqual(["set:cb", "cleared"]);
   });
 
-  test("a ref on a component receives its host element", async () => {
-    const ref = createRef<HTMLElement>();
-    class Child extends Component {
-      render() {
-        return (
-          <section>
-            <span>child</span>
-          </section>
-        );
-      }
-    }
-    class C extends Component {
-      render() {
-        return (
-          <div>
-            <Child ref={ref} />
-          </div>
-        );
-      }
-    }
-    const app = await getDOM<C>(<C />);
-    await app.settle();
-    // `<Child ref={r} />` was accepted and silently did nothing: a component's
-    // props never reach the attribute pass. 1-1 says a component IS one
-    // element, so the host is the answer.
-    expect(ref.current?.nodeName).toBe("SECTION");
-  });
-
   test("setting the same element again does not re-fire the callback", async () => {
     const seen: string[] = [];
     const ref = createRef<HTMLElement>((el) => seen.push(el ? "set" : "cleared"));

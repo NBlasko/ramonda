@@ -234,6 +234,17 @@ export function refreshComponentRegion(component: BaseComponent): void {
   const result = reconcileEntries(children, region.entries, undefined, component, parent, unclaimed);
   region.entries = result.entries;
 
+  /**
+   * Read BEFORE anything is unmounted, because the answer is a NEIGHBOUR of the nodes about to go.
+   *
+   * `anchorAfterRegion` takes the node after this block's last one, and the block's last node is
+   * exactly what a render that replaced its markup is about to remove. Asked afterwards it saw a
+   * detached node, whose `nextSibling` is `null` — which reads as "the end of the parent", so the
+   * fresh markup was appended past every later sibling. Measured on two `AsyncLoad`s side by side:
+   * they came back `[two][one]`.
+   */
+  const anchor = anchorAfterRegion(region, parent);
+
   // Before the reorder, for the reason the element path has: stale nodes still in the DOM make
   // correctly-placed ones look misplaced and cause pointless moves.
   unmountChildrenNodes(unclaimed, false);
@@ -242,7 +253,7 @@ export function refreshComponentRegion(component: BaseComponent): void {
   flattenEntries(region.entries, ordered);
 
   if (result.changed || unclaimed.length > 0) {
-    reorderChildren(parent, ordered, anchorAfterRegion(region, parent), region.order);
+    reorderChildren(parent, ordered, anchor, region.order);
   }
   region.order = ordered;
 }
@@ -894,7 +905,7 @@ export function reconcileEntries(
         region = before;
       } else {
         try {
-          region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent);
+          region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
         } catch (e) {
           /**
            * The same door a plain child's build goes through, and it has to be here now.
@@ -1287,6 +1298,7 @@ function reconcileComponentEntry(
   before: ComponentRegion | undefined,
   placeholderComponent: MaybeComponent,
   parent: ChildNode,
+  unclaimed: (EnhancedChildNode | DONE)[],
 ): ComponentRegion {
   if (before !== undefined && before.definition === vnode.name) {
     updateComponentRegion(before, vnode);
@@ -1294,6 +1306,19 @@ function reconcileComponentEntry(
     // being rebuilt beside a stale copy. The reorder does the moving; this only records where.
     before.parent = parent;
     return before;
+  }
+
+  /**
+   * A DIFFERENT class in this slot, so the one that was here has to go — by hand.
+   *
+   * It has already been taken out of `previousRegions`, which is the map the loop's own teardown
+   * pass walks at the end. Leaving it there would mean nothing ever unmounts its nodes or runs its
+   * `@destroyed`: measured as `["alpha", "beta", "tail"]` where the replaced row must leave —
+   * the old markup sitting beside the new, and a live component behind it.
+   */
+  if (before !== undefined) {
+    collectRegionNodes(before, unclaimed);
+    disposeRegions([before]);
   }
 
   return buildComponentRegion(vnode, placeholderComponent, owner, parent);

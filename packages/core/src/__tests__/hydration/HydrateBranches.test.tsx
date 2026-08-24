@@ -326,12 +326,20 @@ describe("deferred hydration that resolves late into a changed page", () => {
     expect(container.textContent).toContain("slow");
   });
 
-  test("a host detached before the deferral resolves is left alone", async () => {
+  test("a block detached before the deferral resolves is left alone", async () => {
     const container = await serverHtmlInto(<Slow />);
     hydrateRoot(<Slow />, container);
 
-    // Pull the host out of the document while the deferral is still pending.
-    container.firstElementChild!.remove();
+    /**
+     * The whole BLOCK goes, markers included, while the deferral is still pending.
+     *
+     * It used to be enough to pull the host element out: a component WAS that element, so losing it
+     * left the resume with nothing to write into and it returned early. A component owns a range
+     * now, and its markers are what say where the range is — remove one element from inside and the
+     * range is still there, so the resume repairs it, which is what a reconciler is for. What must
+     * still be a no-op is a subtree that is genuinely no longer on the page.
+     */
+    container.replaceChildren();
 
     await expect(
       (async () => {

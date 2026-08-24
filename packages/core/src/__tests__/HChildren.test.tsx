@@ -125,11 +125,12 @@ describe("h: children and tags", () => {
     await app.settle();
     // An empty host, not a crash. It must be HOST_TAG and not "template": the
     // name goes into the vnode unchanged and the diff compares it to nodeName,
-    // which is always uppercase.
-    expect(app.container.querySelector("ramonda-host")).not.toBe(null);
+    // which is always uppercase. A `<template>` renders nothing and the parser accepts one
+    // anywhere — it took over from `<ramonda-host>` when the host stopped existing.
+    expect(app.container.querySelector("template")).not.toBe(null);
   });
 
-  test("something that is not a tag at all falls back to an empty host", async () => {
+  test("something that is not a tag at all falls back to an inert element", async () => {
     class C extends Component {
       render() {
         return <div>{__h(42 as never, null) as never}</div>;
@@ -137,6 +138,6 @@ describe("h: children and tags", () => {
     }
     const app = await getDOM<C>(<C />);
     await app.settle();
-    expect(app.container.querySelector("ramonda-host")).not.toBe(null);
+    expect(app.container.querySelector("template")).not.toBe(null);
   });
 });

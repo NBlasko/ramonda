@@ -102,6 +102,27 @@ export function anchorId(node: Node): string | undefined {
  * own `"7:g0"` from its JSX. Every id comes from one process-wide counter, so an
  * id minted here is one no component can also hold.
  */
+/**
+ * Every region currently holding nodes, for the server's marker pass.
+ *
+ * A region's record is its own — that is the whole point of the class — so a walk over the target
+ * element cannot see the components inside it. The server has to mark those too, or a hydrating
+ * client finds no marker in a portal and builds a second copy of everything there. A registry rather
+ * than a back-reference on the anchor: the pass needs the block's CLOSING anchor to know where the
+ * markers go, and only the region knows that.
+ */
+const liveRegions = new Set<ChildrenRegion>();
+
+/** What the server's marker pass needs from each live region: its record, and where its block ends. */
+export function regionBlocks(): { entries: RecordEntry[]; parent: ChildNode; before: ChildNode }[] {
+  const blocks: { entries: RecordEntry[]; parent: ChildNode; before: ChildNode }[] = [];
+  for (const region of liveRegions) {
+    const block = region.block();
+    if (block !== undefined) blocks.push(block);
+  }
+  return blocks;
+}
+
 export class ChildrenRegion {
   private readonly id = createId();
   /** What this block held last pass — the region's own `CHILD_RECORD`. */
@@ -131,6 +152,13 @@ export class ChildrenRegion {
       reBuild: () => this.invalidate(),
       name,
     };
+    liveRegions.add(this);
+  }
+
+  /** This block, for the server's marker pass — see `regionBlocks`. */
+  block(): { entries: RecordEntry[]; parent: ChildNode; before: ChildNode } | undefined {
+    if (this.parent === undefined || this.close === undefined) return undefined;
+    return { entries: this.record, parent: this.parent, before: this.close };
   }
 
   /** Brings the block into line with `children`, inside `parent`. */
@@ -215,6 +243,7 @@ export class ChildrenRegion {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    liveRegions.delete(this);
     if (this.order.length > 0) unmountChildrenNodes(this.order as EnhancedChildNode[], false);
     // The engines are reachable only from the record — the nodes going is not
     // enough, or every item that read an ancestor's signal stays subscribed.

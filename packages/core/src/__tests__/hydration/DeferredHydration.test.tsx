@@ -31,7 +31,7 @@ class Loaded extends Component<{ label?: string }> {
 
   render() {
     return (
-      <div onclick={this.bump}>
+      <div id="loaded" onclick={this.bump}>
         <p>
           LOADED: {this.props.label ?? "-"} ({this.clicks})
         </p>
@@ -89,7 +89,7 @@ function hydrateCold(html: string, key: string) {
   container = document.createElement("div");
   document.body.appendChild(container);
   container.innerHTML = html;
-  const serverNode = container.querySelector('[data-ramonda="Loaded"]');
+  const serverNode = container.querySelector("#loaded");
   hydrateRoot(<Page ck={key} lazy={afterATick} />, container);
   return { serverNode: serverNode as HTMLElement };
 }
@@ -102,7 +102,7 @@ describe("hydration waits instead of destroying", () => {
 
     // The whole point: same node, same text, immediately after hydrateRoot and
     // long before the chunk lands.
-    expect(container!.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container!.querySelector("#loaded")).toBe(serverNode);
     expect(container!.textContent).toContain("LOADED: from server");
     expect(container!.textContent).not.toContain("loading…");
 
@@ -118,7 +118,7 @@ describe("hydration waits instead of destroying", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 40));
 
-    expect(container!.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container!.querySelector("#loaded")).toBe(serverNode);
     expect(container!.textContent).toContain("LOADED: from server");
   });
 
@@ -127,7 +127,7 @@ describe("hydration waits instead of destroying", () => {
     const { serverNode } = hydrateCold(html, "cold-3");
     await new Promise((resolve) => setTimeout(resolve, 40));
 
-    const loaded = container!.querySelector('[data-ramonda="Loaded"]') as HTMLElement;
+    const loaded = container!.querySelector("#loaded") as HTMLElement;
 
     // Both halves, together. Rebuilt content is interactive too, so asserting
     // the click alone would pass without the deferral — it is the click landing
@@ -149,12 +149,12 @@ describe("hydration waits instead of destroying", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     container.innerHTML = html;
-    const serverNode = container.querySelector('[data-ramonda="Loaded"]');
+    const serverNode = container.querySelector("#loaded");
 
     hydrateRoot(<Page ck="warm-1" lazy={immediately} />, container);
     await Promise.resolve();
 
-    expect(container.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container.querySelector("#loaded")).toBe(serverNode);
     expect(container.textContent).toContain("LOADED");
   });
 });
@@ -207,25 +207,25 @@ describe("the whole scenario, end to end", () => {
     const page = await renderPage(<Page ck="e2e-server" lazy={afterATick} />);
     expect(page.body).toContain("LOADED: from server");
     expect(page.body).not.toContain("loading…");
-    expect(page.body).toContain('data-ramonda="Loaded"');
+    expect(page.body).toContain('id="loaded"');
 
     // 2. A cold client — its module cache is empty, exactly like a browser that
     //    has the HTML but has not fetched the chunk.
     container = document.createElement("div");
     document.body.appendChild(container);
     container.innerHTML = page.body;
-    const serverNode = container.querySelector('[data-ramonda="Loaded"]') as HTMLElement;
+    const serverNode = container.querySelector("#loaded") as HTMLElement;
 
     hydrateRoot(<Page ck="e2e-client" lazy={afterATick} />, container);
     await Promise.resolve();
 
     //    Nothing was destroyed: the content is still on screen, mid-hydration.
-    expect(container.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container.querySelector("#loaded")).toBe(serverNode);
     expect(container.textContent).toContain("LOADED: from server");
 
     // 3. The chunk lands and the SAME nodes become interactive.
     await new Promise((resolve) => setTimeout(resolve, 40));
-    const loaded = container.querySelector('[data-ramonda="Loaded"]') as HTMLElement;
+    const loaded = container.querySelector("#loaded") as HTMLElement;
     expect(loaded).toBe(serverNode);
 
     loaded.dispatchEvent(new MouseEvent("click", { bubbles: true }));

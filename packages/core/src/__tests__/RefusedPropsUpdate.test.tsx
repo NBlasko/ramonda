@@ -94,7 +94,6 @@ describe("a props update the rule refuses", () => {
     const app = await getDOM<Board>(<Board />);
     await app.settle();
 
-
     // The parent offers a new label; the rule refuses it.
     app.instance.label = "second";
     await app.settle();

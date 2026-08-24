@@ -139,7 +139,16 @@ describe("the codes that no test reached", () => {
     // the pass that writes markers runs first and the claim is edited into the comment it produced.
     markComponents(server.container);
     const opening = Array.from(server.container.childNodes).find((n) => n.nodeType === 8) as Comment;
-    const blob = JSON.parse(opening.data.slice(opening.data.indexOf(" ") + 1));
+
+    /**
+     * A blob claiming two hooks where the client will build none.
+     *
+     * The opening marker may carry NO blob at all — `serializeComponentToBlob` writes one only when
+     * something moved off its initial value — so this claim is written whether or not there was one
+     * to edit. That is the fault being reached: what the server SAID about its hooks.
+     */
+    const at = opening.data.indexOf(" ");
+    const blob = at === -1 ? { state: {} } : JSON.parse(opening.data.slice(at + 1));
     blob.hooks = [{ state: {} }, { state: {} }];
     opening.data = `${opening.data.split(" ")[0]} ${JSON.stringify(blob)}`;
     const html = server.container.innerHTML;

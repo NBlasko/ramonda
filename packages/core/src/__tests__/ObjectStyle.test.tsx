@@ -30,7 +30,13 @@ class Styled extends Component {
   }
 }
 
-const styled = (c: Element) => c.querySelector("[data-ramonda] > div") as HTMLElement;
+/**
+ * The element the style was written on.
+ *
+ * It used to be a `<div>` under the component's host, found by the host's DEV marker. A component
+ * has no host, so the styled element is simply the one the render returns.
+ */
+const styled = (c: Element) => c.querySelector("[style]") as HTMLElement;
 
 /** Counts writes to style.cssText on one element. */
 function countStyleWrites(el: HTMLElement) {
@@ -84,8 +90,10 @@ describe("object style", () => {
     const app = await getDOM<Styled>(<Styled />);
     await app.settle();
 
-    const host = app.container.querySelector("[data-ramonda]") as HTMLElement;
-    expect(host.hasAttribute("style")).toBe(false);
+    // No style asked for, so no attribute written — on the component's own element, which is the
+    // only element there is.
+    const element = app.container.querySelector("div") as HTMLElement;
+    expect(element.hasAttribute("style")).toBe(false);
   });
 
   test("custom properties keep their name, and empty values are dropped", async () => {

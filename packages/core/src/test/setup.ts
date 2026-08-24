@@ -6,6 +6,7 @@ import { bootstrap } from "../";
 import type { ComponentChild, ComponentRegion } from "../types/vdom";
 import { COMPONENT_RUNTIME } from "../core/runtime";
 import { componentAt, componentsIn, unmountChildrenNodes } from "../core/DiffAndMerge";
+import { markComponents } from "../hydration/ssr";
 import { flushSync } from "../testing";
 import { configureDev } from "../";
 
@@ -94,6 +95,36 @@ export function findOne<T>(root: Node, name: string): T {
   const found = findAll<T>(root, name);
   if (found.length !== 1) throw new Error(`[test] expected one <${name} />, found ${found.length}`);
   return found[0];
+}
+
+/**
+ * What the SERVER would have served for a tree rendered on the client.
+ *
+ * `getDOM` renders on the client, and a client render writes no markers: a component's range is
+ * known from the record there, so there is nothing to say in the markup. `markComponents` is the one
+ * pass that adds what a hydrating client reads — the comment pair around each component's nodes,
+ * with its state blob on the opening one.
+ *
+ * `state: false` writes the pair WITHOUT the blob, and it is not a convenience. A test about node
+ * ADOPTION wants the server's nodes and the client's own initial state: a list's identity is the item
+ * OBJECT, and a blob is a JSON round trip, so restoring it hands the client copies and every row
+ * looks new. Those tests were written before any blob existed and they still ask the same question;
+ * the ones about state transfer say so by leaving this alone.
+ */
+export function servedMarkup(container: HTMLElement, options?: { state?: boolean }): string {
+  markComponents(container);
+  if (options?.state === false) {
+    const walk = (node: Node): void => {
+      if (node.nodeType === 8) {
+        const comment = node as Comment;
+        const at = comment.data.indexOf(" ");
+        if (comment.data.startsWith("c") && at !== -1) comment.data = comment.data.slice(0, at);
+      }
+      node.childNodes.forEach(walk);
+    };
+    walk(container);
+  }
+  return container.innerHTML;
 }
 
 export async function getDOM<T = any>(component: ComponentChild) {
