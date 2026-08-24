@@ -591,3 +591,48 @@ describe("a fault written where a component configures its own element", () => {
     expect(lines("unknown-role")).not.toContain(90);
   });
 });
+
+/**
+ * The BUTTON, which was in the gap between two rules.
+ *
+ * `control-with-no-label` skips `<button>` on purpose and says so: a button is named by what is
+ * inside it, so asking it for a `<label>` would be asking for the wrong thing.
+ * `empty-heading-or-link` covered the two tags that carry text and not the third. Measured on a
+ * plant: `<button onclick={close} />` was reported by nothing, while the `<a href="/x" />` beside it
+ * was reported.
+ *
+ * That is the icon button — the ✕ that closes a dialog, the pencil that edits a row — and it is
+ * written more often than an empty link and an empty heading together. A screen reader announces it
+ * as "button" and nothing else, with no way to find out what it does short of pressing it.
+ */
+describe("a button with nothing to announce", () => {
+  const said = () =>
+    (
+      analyzeProject(join(here, "fixtures", "empty-button", "tsconfig.json")).findings["empty-heading-or-link"] ?? []
+    ).map((issue) => `${issue.line}:${issue.kind}`);
+
+  test("nothing inside, and the icon button whose only child is hidden", () => {
+    // 19 is empty; 22 has content in the DOM and none where it counts, which is how this is
+    // actually written.
+    expect(said()).toEqual(["19:button", "22:button"]);
+  });
+
+  /**
+   * Six silences, and the last is a boundary rather than a limitation.
+   *
+   * 27 and 52 name it outright. 32 has text and 37 has one readable word beside the icon, which is
+   * enough. 42 holds an expression and 47 a COMPONENT, and guessing at either is how a rule reports
+   * a page that is correct.
+   *
+   * 56 and 57 are `<input type="submit">` and `type="button"` — named by their `value` and by a
+   * browser default, so an unlabelled submit reads as "Submit" rather than as nothing. That is
+   * `control-with-no-label`'s territory and its documented boundary, and only the `<button>`
+   * ELEMENT is named by its content.
+   */
+  test("every button that has a name, or might, stays silent", () => {
+    const lines = said().map((entry) => Number(entry.split(":")[0]));
+    for (const quiet of [27, 32, 37, 42, 47, 52, 56, 57]) {
+      expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
+    }
+  });
+});

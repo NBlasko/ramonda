@@ -4,15 +4,26 @@ import { hasContent, openingOf, tagOf, trueAttr } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
- * A heading or a link with nothing inside it.
+ * A heading, a link or a button with nothing inside it.
  *
- * Two tags, one rule, because it is one fault: an element whose entire job is to carry text,
+ * Three tags, one rule, because it is one fault: an element whose entire job is to carry text,
  * carrying none. They are worth separating from every other empty element because assistive
- * technology treats these two specially — a screen reader builds a list of headings to jump
- * between, and a list of links to tab through. An empty one is a row in that list with no label:
- * present, reachable, and unusable.
+ * technology treats all three specially — a screen reader builds a list of headings to jump
+ * between, a list of links to tab through, and announces a button by the text on it. An empty one
+ * is a row in that list with no label: present, reachable, and unusable.
  *
- * An `aria-label` answers for both, because that is what it is for.
+ * An `aria-label` answers for all three, because that is what it is for.
+ *
+ * ## The BUTTON was in the gap between two rules, and it is the commonest of the three
+ *
+ * `control-with-no-label` skips `<button>` on purpose and says so: a button is named by what is
+ * inside it, so asking it for a `<label>` would be asking for the wrong thing. This rule covered
+ * the two tags that carry text and not the third. Measured on a plant: `<button onclick={close} />`
+ * was reported by nothing, while the `<a href="/x" />` beside it was reported here.
+ *
+ * That is the icon button — the ✕ that closes a dialog, the pencil that edits a row — and it is
+ * written more often than an empty link and an empty heading together. A screen reader announces
+ * it as "button", with no way to find out what it does short of pressing it.
  *
  * ## Empty in the ACCESSIBILITY tree, which is the tree this is about
  *
@@ -22,10 +33,10 @@ import type { ElementContext, ElementRule } from "./rule";
  * One readable word beside the icon, or a component child this cannot see into, and it says nothing.
  */
 export interface EmptyHeadingOrLinkIssue {
-  /** `h1`–`h6`, or `a`. */
+  /** `h1`–`h6`, `a`, or `button`. */
   tag: string;
   /** What the tag is FOR, so the report can say what is missing rather than name a rule. */
-  kind: "heading" | "link";
+  kind: "heading" | "link" | "button";
   file: string;
   line: number;
   column: number;
@@ -92,13 +103,24 @@ export const emptyHeadingOrLink = {
       `  ${issue.file}:${issue.line}:${issue.column}`,
       issue.kind === "heading"
         ? `    <${issue.tag}> has no text, so it is a heading with no name.`
-        : `    <a> has no text, so it is a link with no name.`,
+        : issue.kind === "button"
+          ? "    <button> has no text, so a screen reader announces it as `button` and nothing else."
+          : "    <a> has no text, so it is a link with no name.",
     ],
     advice:
       "A screen reader builds a list of headings to jump between and a list of links to tab\n" +
-      "through. An empty one is a row in that list with nothing in it — reachable, and unusable.\n\n" +
-      "Put the text inside the tag. Where the text is genuinely elsewhere — an icon-only link, a\n" +
-      "heading whose words are drawn — `aria-label` says what it is, and is accepted here.\n\n" +
+      "through, and it announces a button by the text on it. An empty one is a row in that list\n" +
+      "with nothing in it — reachable, and unusable.\n\n" +
+      "Put the text inside the tag. Where the text is genuinely elsewhere — an icon button, an\n" +
+      "icon-only link, a heading whose words are drawn — `aria-label` says what it is, and is\n" +
+      "accepted here:\n\n" +
+      "```tsx\n" +
+      '<button type="button" aria-label="Close" onclick={close}>\n' +
+      '  <Icon name="cross" aria-hidden="true" />\n' +
+      "</button>\n" +
+      "```\n\n" +
+      "The icon button is the commonest of the three, and the one where nothing on screen will ever\n" +
+      "remind anybody: it looks finished, and a reader hears only the word `button`.\n\n" +
       "An element whose content this cannot read is left alone: `<h2>{title}</h2>` may well have\n" +
       "text and nothing here can prove it does not.\n\n" +
       "This is a warning today and an error in a later version.",
@@ -107,8 +129,16 @@ export const emptyHeadingOrLink = {
   read(element, { tag, has, children, resolve }) {
     if (tag === undefined) return [];
 
-    const kind = HEADINGS.has(tag) ? "heading" : tag === "a" ? "link" : undefined;
+    const kind = HEADINGS.has(tag) ? "heading" : tag === "a" ? "link" : tag === "button" ? "button" : undefined;
     if (kind === undefined) return [];
+
+    /**
+     * An `<input type="button">` is NOT this, and neither is `type="submit"`.
+     *
+     * Those are named by their `value` and by a browser default — an unlabelled `<input
+     * type="submit">` reads as "Submit" rather than as nothing — which is `control-with-no-label`'s
+     * territory and its documented boundary. Only the `<button>` ELEMENT is named by its content.
+     */
 
     if (NAMES_IT.some((name) => has(name))) return [];
     if (hasContent(children) && !everyChildIsHidden(children, resolve)) return [];
