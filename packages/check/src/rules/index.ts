@@ -49,6 +49,7 @@ import { autocompleteThatFillsNothing } from "./autocomplete-that-fills-nothing"
 import { moreThanOneMain } from "./more-than-one-main";
 import { labelThatNamesNothing } from "./label-that-names-nothing";
 import { ariaStateTheRoleDoesNotHave } from "./aria-state-the-role-does-not-have";
+import { ariaHiddenAroundSomethingFocusable } from "./aria-hidden-around-something-focusable";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -167,6 +168,10 @@ export {
   ariaStateTheRoleDoesNotHave,
   type AriaStateTheRoleDoesNotHaveIssue,
 } from "./aria-state-the-role-does-not-have";
+export {
+  ariaHiddenAroundSomethingFocusable,
+  type AriaHiddenAroundSomethingFocusableIssue,
+} from "./aria-hidden-around-something-focusable";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -280,6 +285,7 @@ export const ELEMENT_RULES = [
   unnamedFrame,
   positiveTabIndex,
   ariaHiddenOnFocusable,
+  ariaHiddenAroundSomethingFocusable,
   presentationRoleOnFocusable,
   ariaStateWithNoRole,
   ariaStateTheRoleDoesNotHave,

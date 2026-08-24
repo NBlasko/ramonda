@@ -33,6 +33,7 @@ const EXPECTED_TYPES = [
   "MoreThanOneMainIssue",
   "LabelThatNamesNothingIssue",
   "AriaStateTheRoleDoesNotHaveIssue",
+  "AriaHiddenAroundSomethingFocusableIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

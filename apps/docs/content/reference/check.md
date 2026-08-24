@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 60 of them.
+**Warnings.** These print and the run still passes. 61 of them.
 
 | rule | reported when |
 |---|---|
@@ -186,6 +186,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unnamed-frame` | an `iframe` has no `title` |
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
+| `aria-hidden-around-something-focusable` | `aria-hidden="true"` wraps something a keyboard can still tab to |
 | `presentation-role-on-focusable` | `role="presentation"` is written on an element a keyboard can still focus, where the role is ignored |
 | `aria-state-with-no-role` | an `aria-*` belonging to a role is written on an element that has no role |
 | `aria-state-the-role-does-not-have` | an `aria-*` sits beside a `role` that does not support it, so nothing exposes it |
