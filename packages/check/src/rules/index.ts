@@ -52,6 +52,7 @@ import { ariaStateTheRoleDoesNotHave } from "./aria-state-the-role-does-not-have
 import { ariaHiddenAroundSomethingFocusable } from "./aria-hidden-around-something-focusable";
 import { tableWithNoHeaders } from "./table-with-no-headers";
 import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-apart";
+import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -179,6 +180,7 @@ export {
   landmarksThatCannotBeToldApart,
   type LandmarksThatCannotBeToldApartIssue,
 } from "./landmarks-that-cannot-be-told-apart";
+export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -280,6 +282,7 @@ export const ELEMENT_RULES = [
   indexAsKey,
   classInsteadOfClassName,
   tagNeedsItsParent,
+  parentWithAForeignChild,
   interactiveInsideInteractive,
   unnamedImage,
   unknownAriaAttribute,

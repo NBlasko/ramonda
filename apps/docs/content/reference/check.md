@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 63 of them.
+**Warnings.** These print and the run still passes. 64 of them.
 
 | rule | reported when |
 |---|---|
@@ -174,6 +174,7 @@ rules**, so a rule cannot be added without appearing here.
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
 | `class-instead-of-classname` | an element carries `class` where Ramonda reads `className` — also [`RMD039`](/reference/diagnostics) |
 | `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select |
+| `parent-with-a-foreign-child` | a container whose children are fixed by the content model holds a tag that is not one of them |
 | `interactive-inside-interactive` | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |
 | `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
 | `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |

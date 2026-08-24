@@ -36,6 +36,7 @@ const EXPECTED_TYPES = [
   "AriaHiddenAroundSomethingFocusableIssue",
   "TableWithNoHeadersIssue",
   "LandmarksThatCannotBeToldApartIssue",
+  "ParentWithAForeignChildIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

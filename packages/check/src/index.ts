@@ -61,6 +61,7 @@ export type {
   AriaHiddenAroundSomethingFocusableIssue,
   TableWithNoHeadersIssue,
   LandmarksThatCannotBeToldApartIssue,
+  ParentWithAForeignChildIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

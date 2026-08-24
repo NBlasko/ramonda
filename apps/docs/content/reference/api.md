@@ -382,14 +382,15 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `LandmarksThatCannotBeToldApartIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
 `ListenerAddedByHandIssue`, `ListenerOnTheDefaultHostIssue`, `MediaWithNoCaptionsIssue`,
 `MoreThanOneMainIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
-`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`,
-`ReferenceToAnIdThatIsNotThereIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
-`RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`,
-`StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`,
-`TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
-`UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`,
-`UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`, `UnsplittableImportIssue`,
-`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`,
+`PresentationRoleOnFocusableIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
+`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowReadsAPlainFieldIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
+`StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`,
+`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
