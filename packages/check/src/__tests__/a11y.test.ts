@@ -636,3 +636,39 @@ describe("a button with nothing to announce", () => {
     }
   });
 });
+
+/**
+ * `role="img"` is an image whatever the tag under it is, and was in a gap.
+ *
+ * An `<svg role="img">` or a `<div role="img">` is announced as an image and has no `alt` to fall
+ * back on — the attribute does not exist on those tags — so `aria-label` is the ONLY way to name
+ * one. Measured on a sweep: both were reported by nothing, while the `<object>` and `<area>` beside
+ * them were reported by this same rule.
+ *
+ * It is how an inline icon is written whenever the icon MEANS something rather than decorating,
+ * which is exactly when it needs a name.
+ */
+describe("an image declared by its role", () => {
+  const said = () =>
+    (analyzeProject(join(here, "fixtures", "declared-image", "tsconfig.json")).findings["unnamed-image"] ?? []).map(
+      (issue) => `${issue.line}:${issue.tag}`,
+    );
+
+  test("a declared image with no name, on any tag", () => {
+    // 32 is the tag-based half, unchanged: `<img>` with no `alt`.
+    expect(said()).toEqual(["11:svg", "14:div", "32:img"]);
+  });
+
+  test("every way of naming one answers, and a decorative icon is not one", () => {
+    /**
+     * 17, 18 and 19 use the three naming attributes. 22 is a name this cannot READ, which is
+     * somebody naming it. 25 says `aria-hidden`, so it is not in the tree at all. 28 is an `<svg>`
+     * with no role, which is not declared to be anything — the rule asks what the source SAYS the
+     * element is, and answers nothing where it says nothing. 31 has an `alt`.
+     */
+    const lines = said().map((entry) => Number(entry.split(":")[0]));
+    for (const quiet of [17, 18, 19, 22, 25, 28, 31]) {
+      expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
+    }
+  });
+});
