@@ -272,52 +272,50 @@ export class ProductsPage extends Component {
     const feed = this.feed;
 
     return (
-      <div>
-        <div className="page products">
-          <h2>Products</h2>
-          <p className="meta">
-            Server-rendered first page, then infinite scroll. {String(feed.pages.length)} page(s) ·{" "}
-            {String(feed.pages.reduce((n, page) => n + page.products.length, 0))} of {String(feed.pages[0]?.total ?? 0)}
-          </p>
+      <div className="page products">
+        <h2>Products</h2>
+        <p className="meta">
+          Server-rendered first page, then infinite scroll. {String(feed.pages.length)} page(s) ·{" "}
+          {String(feed.pages.reduce((n, page) => n + page.products.length, 0))} of {String(feed.pages[0]?.total ?? 0)}
+        </p>
 
-          {feed.isError ? (
-            <div className="panel error">
-              <h3>Could not load the feed</h3>
-              <p>{(feed.error as Error).message}</p>
-              <p className="meta">
-                With no network this is what the server renders — a failed query is a state, not an exception that
-                aborts the page.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="split">
-            <div className="feed">
-              {list(feed.pages, this.renderPage)}
-
-              {/* The sentinel: scrolling it into view asks for the next page. */}
-              <div id="sentinel" ref={this.sentinel} className="sentinel">
-                {feed.isFetchingNextPage ? "loading more…" : feed.hasNextPage ? "scroll for more" : "that is all"}
-              </div>
-
-              <button
-                type="button"
-                id="load-more"
-                onclick={this.loadMore}
-                disabled={!feed.hasNextPage || feed.isFetchingNextPage}
-              >
-                {feed.isFetchingNextPage ? "loading…" : "load more"}
-              </button>
-            </div>
-
-            {this.selected === undefined ? (
-              <aside className="panel dim">
-                <p>Pick a product.</p>
-              </aside>
-            ) : (
-              <ProductDetail id={this.selected} />
-            )}
+        {feed.isError ? (
+          <div className="panel error">
+            <h3>Could not load the feed</h3>
+            <p>{(feed.error as Error).message}</p>
+            <p className="meta">
+              With no network this is what the server renders — a failed query is a state, not an exception that aborts
+              the page.
+            </p>
           </div>
+        ) : null}
+
+        <div className="split">
+          <div className="feed">
+            {list(feed.pages, this.renderPage)}
+
+            {/* The sentinel: scrolling it into view asks for the next page. */}
+            <div id="sentinel" ref={this.sentinel} className="sentinel">
+              {feed.isFetchingNextPage ? "loading more…" : feed.hasNextPage ? "scroll for more" : "that is all"}
+            </div>
+
+            <button
+              type="button"
+              id="load-more"
+              onclick={this.loadMore}
+              disabled={!feed.hasNextPage || feed.isFetchingNextPage}
+            >
+              {feed.isFetchingNextPage ? "loading…" : "load more"}
+            </button>
+          </div>
+
+          {this.selected === undefined ? (
+            <aside className="panel dim">
+              <p>Pick a product.</p>
+            </aside>
+          ) : (
+            <ProductDetail id={this.selected} />
+          )}
         </div>
       </div>
     );

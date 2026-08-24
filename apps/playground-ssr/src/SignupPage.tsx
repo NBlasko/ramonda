@@ -164,134 +164,132 @@ export class SignupPage extends Component {
     const city = f.address.city.$;
 
     return (
-      <div>
-        <div className="page signup">
-          <h2>Sign up</h2>
-          <p>
-            Server-rendered, then hydrated. Every input carries a <code>name</code> — which is what a form that works
-            without JavaScript would post under — and almost none of them carries an <code>id</code>: `bind` supplies
-            the name, and a <code>&lt;label&gt;</code> wrapped around its input needs no id to be associated with it.
-            The few ids below are here for `scripts/smoke.mjs` to aim at, not because a form needs them.
+      <div className="page signup">
+        <h2>Sign up</h2>
+        <p>
+          Server-rendered, then hydrated. Every input carries a <code>name</code> — which is what a form that works
+          without JavaScript would post under — and almost none of them carries an <code>id</code>: `bind` supplies the
+          name, and a <code>&lt;label&gt;</code> wrapped around its input needs no id to be associated with it. The few
+          ids below are here for `scripts/smoke.mjs` to aim at, not because a form needs them.
+        </p>
+
+        <form id="signup" onsubmit={this.form.submit}>
+          <label>
+            Email
+            <input id="email" {...email.bind} />
+            {email.error ? <em className="err">{email.error}</em> : null}
+          </label>
+
+          <label>
+            Password
+            <input type="password" {...password.bind} />
+            {password.error ? <em className="err">{password.error}</em> : null}
+          </label>
+
+          <label>
+            Repeat it
+            <input type="password" {...confirm.bind} />
+            {/* The cross-field rule: editing PASSWORD has to re-answer this one. */}
+            {confirm.error ? <em className="err">{confirm.error}</em> : null}
+          </label>
+
+          <label>
+            Age
+            <input {...age.bind} />
+            {age.error ? <em className="err">{age.error}</em> : null}
+          </label>
+
+          <label>
+            Born
+            <input {...born.bind} />
+          </label>
+
+          <label className="inline">
+            <input {...terms.bind} /> I accept the terms
+          </label>
+          {terms.error ? <em className="err">{terms.error}</em> : null}
+
+          <fieldset>
+            <legend>Address — a nested object</legend>
+            <label>
+              Street
+              <input {...street.bind} />
+            </label>
+            <label>
+              City
+              <input {...city.bind} />
+              {city.error ? <em className="err">{city.error}</em> : null}
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Tags — an array of primitives</legend>
+            {/*
+              Keyed by the row's generated id rather than by its index. Remove the first tag and
+              every index below it shifts; the id does not, so the reconciler keeps each row's
+              element and whatever focus was in it.
+            */}
+            <ul id="tags">
+              {list(f.tags.$.rows, (row) => (
+                <li>
+                  <input className="tag" {...row.field.$.bind} />
+                  <button type="button" className="remove-tag ghost" onclick={this.removeTag(row.id)}>
+                    remove
+                  </button>
+                  {row.field.$.error ? <em className="err">{row.field.$.error}</em> : null}
+                </li>
+              ))}
+            </ul>
+            <button type="button" id="add-tag" className="ghost" onclick={this.addTag}>
+              add a tag
+            </button>
+          </fieldset>
+
+          <fieldset>
+            <legend>Contacts — an array of objects</legend>
+            <ul>
+              {list(f.contacts.$.rows, (row) => (
+                <li className="pair">
+                  <input {...row.field.kind.$.bind} />
+                  <input {...row.field.value.$.bind} />
+                  {row.field.value.$.error ? <em className="err">{row.field.value.$.error}</em> : null}
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="ghost" onclick={this.addContact}>
+              add a contact
+            </button>
+          </fieldset>
+
+          {this.form.formErrors.length > 0 ? (
+            <p className="err form-errors">{this.form.formErrors.join(", ")}</p>
+          ) : null}
+
+          {this.accepted ? <p className="accepted">Registered. The form has been put back to its defaults.</p> : null}
+
+          <p className="actions">
+            <button type="submit" disabled={this.form.isSubmitting}>
+              {this.form.isSubmitting ? "Sending\u2026" : "Sign up"}
+            </button>
+            <button type="button" onclick={this.resetAll}>
+              Reset
+            </button>
           </p>
+        </form>
 
-          <form id="signup" onsubmit={this.form.submit}>
-            <label>
-              Email
-              <input id="email" {...email.bind} />
-              {email.error ? <em className="err">{email.error}</em> : null}
-            </label>
-
-            <label>
-              Password
-              <input type="password" {...password.bind} />
-              {password.error ? <em className="err">{password.error}</em> : null}
-            </label>
-
-            <label>
-              Repeat it
-              <input type="password" {...confirm.bind} />
-              {/* The cross-field rule: editing PASSWORD has to re-answer this one. */}
-              {confirm.error ? <em className="err">{confirm.error}</em> : null}
-            </label>
-
-            <label>
-              Age
-              <input {...age.bind} />
-              {age.error ? <em className="err">{age.error}</em> : null}
-            </label>
-
-            <label>
-              Born
-              <input {...born.bind} />
-            </label>
-
-            <label className="inline">
-              <input {...terms.bind} /> I accept the terms
-            </label>
-            {terms.error ? <em className="err">{terms.error}</em> : null}
-
-            <fieldset>
-              <legend>Address — a nested object</legend>
-              <label>
-                Street
-                <input {...street.bind} />
-              </label>
-              <label>
-                City
-                <input {...city.bind} />
-                {city.error ? <em className="err">{city.error}</em> : null}
-              </label>
-            </fieldset>
-
-            <fieldset>
-              <legend>Tags — an array of primitives</legend>
-              {/*
-                Keyed by the row's generated id rather than by its index. Remove the first tag and
-                every index below it shifts; the id does not, so the reconciler keeps each row's
-                element and whatever focus was in it.
-              */}
-              <ul id="tags">
-                {list(f.tags.$.rows, (row) => (
-                  <li>
-                    <input className="tag" {...row.field.$.bind} />
-                    <button type="button" className="remove-tag ghost" onclick={this.removeTag(row.id)}>
-                      remove
-                    </button>
-                    {row.field.$.error ? <em className="err">{row.field.$.error}</em> : null}
-                  </li>
-                ))}
-              </ul>
-              <button type="button" id="add-tag" className="ghost" onclick={this.addTag}>
-                add a tag
-              </button>
-            </fieldset>
-
-            <fieldset>
-              <legend>Contacts — an array of objects</legend>
-              <ul>
-                {list(f.contacts.$.rows, (row) => (
-                  <li className="pair">
-                    <input {...row.field.kind.$.bind} />
-                    <input {...row.field.value.$.bind} />
-                    {row.field.value.$.error ? <em className="err">{row.field.value.$.error}</em> : null}
-                  </li>
-                ))}
-              </ul>
-              <button type="button" className="ghost" onclick={this.addContact}>
-                add a contact
-              </button>
-            </fieldset>
-
-            {this.form.formErrors.length > 0 ? (
-              <p className="err form-errors">{this.form.formErrors.join(", ")}</p>
-            ) : null}
-
-            {this.accepted ? <p className="accepted">Registered. The form has been put back to its defaults.</p> : null}
-
-            <p className="actions">
-              <button type="submit" disabled={this.form.isSubmitting}>
-                {this.form.isSubmitting ? "Sending\u2026" : "Sign up"}
-              </button>
-              <button type="button" onclick={this.resetAll}>
-                Reset
-              </button>
-            </p>
-          </form>
-
-          {/* A readout, so the smoke test and a reader can both see the state without clicking. */}
-          <dl className="readout">
-            <dt>valid</dt>
-            <dd id="s-valid">{String(this.form.isValid)}</dd>
-            <dt>dirty</dt>
-            <dd id="s-dirty">{String(this.form.isDirty)}</dd>
-            <dt>submits</dt>
-            <dd id="s-submits">{String(this.form.submitCount)}</dd>
-            <dt>tag rows</dt>
-            <dd id="s-rowids">{f.tags.$.rows.map((row) => row.id).join(",")}</dd>
-            <dt>accepted</dt>
-            <dd id="s-accepted">{String(this.accepted)}</dd>
-          </dl>
-        </div>
+        {/* A readout, so the smoke test and a reader can both see the state without clicking. */}
+        <dl className="readout">
+          <dt>valid</dt>
+          <dd id="s-valid">{String(this.form.isValid)}</dd>
+          <dt>dirty</dt>
+          <dd id="s-dirty">{String(this.form.isDirty)}</dd>
+          <dt>submits</dt>
+          <dd id="s-submits">{String(this.form.submitCount)}</dd>
+          <dt>tag rows</dt>
+          <dd id="s-rowids">{f.tags.$.rows.map((row) => row.id).join(",")}</dd>
+          <dt>accepted</dt>
+          <dd id="s-accepted">{String(this.accepted)}</dd>
+        </dl>
       </div>
     );
   }
