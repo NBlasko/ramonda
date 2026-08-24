@@ -87,7 +87,7 @@ function isSsrFlag(condition: ts.Expression): boolean {
  * `&&` counts, either way round, because every branch of one has to hold. `||` does not: it holds
  * whenever EITHER side does, so it proves nothing about which one. `!` inverts.
  */
-export function narrowsTo(condition: ts.Expression, side: Side): boolean {
+function narrowsTo(condition: ts.Expression, side: Side): boolean {
   if (ts.isParenthesizedExpression(condition)) return narrowsTo(condition.expression, side);
 
   if (ts.isPrefixUnaryExpression(condition) && condition.operator === ts.SyntaxKind.ExclamationToken) {

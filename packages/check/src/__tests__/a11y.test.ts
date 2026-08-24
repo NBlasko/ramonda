@@ -561,6 +561,30 @@ describe("a fault written where a component configures its own element", () => {
     expect(said.some((line) => line.includes("the host element"))).toBe(false);
   });
 
+  /**
+   * The tag read through a module CONSTANT, which is the drift the branch's own review found.
+   *
+   * There were two exported `hostTagOf`s — `html.ts`'s, which follows a name to its declaration,
+   * and one added in `element.ts` that accepted a string literal and nothing else. Two files, one
+   * name, two answers, and the newer one was weaker: `@Host(META, …)` resolved over there and not
+   * here, so every rule that turns on the tag went quiet. There is one reader now.
+   */
+  /**
+   * The TENTH rule of the "what the author WROTE" kind, and the one the sweep missed.
+   *
+   * `httpEquiv` reaches the DOM as `httpequiv` whether it is written on a tag or in a props bag,
+   * and nine rules had been given the host while this one kept reading the JSX node. Found in the
+   * branch's own review, by asking which element rules still read that node directly and why —
+   * not by reading the rule, whose own text says nothing about where it is asked.
+   */
+  test("a dead attribute in the props bag is dead too", () => {
+    expect(lines("attribute-that-does-nothing")).toContain(123);
+  });
+
+  test("the tag is read through a module constant, so the tag rules still answer", () => {
+    expect(lines("aria-with-no-subject")).toContain(111);
+  });
+
   test("and a `@Host` with no props bag is read as saying nothing", () => {
     // `@Host("div")` on its own, and on `App`. Neither appears anywhere above.
     expect(lines("unknown-role")).not.toContain(83);

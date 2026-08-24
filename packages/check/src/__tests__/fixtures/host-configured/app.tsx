@@ -101,6 +101,32 @@ class HtmlHost extends Component {
   }
 }
 
+/**
+ * The tag through a module CONSTANT, which `html.ts` resolves and this file's own reader did not.
+ *
+ * `<meta>` has no accessibility node, so the attribute below is a fault only if the tag is known.
+ */
+const META = "meta";
+
+@Host(META, () => ({ "aria-hidden": "true" }))
+class TagFromAConstant extends Component {
+  render() {
+    return <span>const</span>;
+  }
+}
+
+/**
+ * An attribute that reaches the DOM verbatim and that nothing reads, written in the props bag.
+ *
+ * The same shape as `class` beside it — a name the author WROTE — and the tenth rule of that kind.
+ */
+@Host("div", () => ({ httpEquiv: "refresh" }))
+class DeadAttribute extends Component {
+  render() {
+    return <span>dead</span>;
+  }
+}
+
 /** No props bag at all: nothing to read, and nothing said. */
 @Host("div")
 class Bare extends Component {
@@ -123,6 +149,8 @@ class App extends Component {
         <SpreadFirst />
         <SvgHost />
         <HtmlHost />
+        <DeadAttribute />
+        <TagFromAConstant />
         <Bare />
       </div>
     );

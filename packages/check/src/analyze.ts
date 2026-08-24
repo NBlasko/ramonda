@@ -6,7 +6,7 @@ import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreDecoratorName, coreExportName } from "./rules/core-import";
 import { hostContextFor, hostPropsObject, stringAttr } from "./rules/element";
-import { hostFactOf } from "./rules/html";
+import { hostFactOf, hostTagOf } from "./rules/html";
 import type { HostFact } from "./graph";
 import type { Resolver, Silencer } from "./rules/rule";
 import {
@@ -925,7 +925,8 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
       if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolver) !== "Host") continue;
       const object = hostPropsObject(call);
       if (object === undefined) continue;
-      applyHost(elementRules, hostContextFor(call, object, resolver), findings, silenced);
+      const written = ts.isClassDeclaration(cls) ? hostTagOf(cls, resolver) : undefined;
+      applyHost(elementRules, hostContextFor(call, object, written, resolver), findings, silenced);
     }
   };
 

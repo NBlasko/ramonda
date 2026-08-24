@@ -30,7 +30,7 @@ export function tagOf(element: JsxElementLike): string | undefined {
 }
 
 /** The attributes written on a TAG, normalised. */
-export function attributesOf(element: JsxElementLike): WrittenAttribute[] {
+function attributesOf(element: JsxElementLike): WrittenAttribute[] {
   const found: WrittenAttribute[] = [];
   for (const attribute of openingOf(element).attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
@@ -73,7 +73,7 @@ export function hostPropsObject(call: ts.CallExpression): ts.ObjectLiteralExpres
 }
 
 /** The attributes written in a `@Host` props bag, normalised to the same shape as a tag's. */
-export function hostAttributesOf(object: ts.ObjectLiteralExpression): {
+function hostAttributesOf(object: ts.ObjectLiteralExpression): {
   attributes: WrittenAttribute[];
   spreads: boolean;
 } {
@@ -94,29 +94,6 @@ export function hostAttributesOf(object: ts.ObjectLiteralExpression): {
     attributes.push({ name, at: property, value, bare: false });
   }
   return { attributes, spreads };
-}
-
-/**
- * `@Host("aside", …)` — the tag a component IS, when it is written out.
- *
- * `undefined` for the callback form, which is the silence contract: a tag chosen per props has no
- * one answer, and a rule that guessed would report an element half the pages do not have.
- */
-export function hostTagOf(call: ts.CallExpression): { written: string; tag: string } | undefined {
-  const first = call.arguments[0];
-  if (first === undefined || !ts.isStringLiteralLike(first)) return undefined;
-  /**
-   * BOTH spellings, and the difference is not cosmetic.
-   *
-   * A rule about `<img>` should not be defeated by `<IMG>`, so `tag` is lowercased exactly as
-   * `tagOf` lowercases a JSX tag name. But SVG tag names are CASE-SENSITIVE — `<clipPath>` is the
-   * SVG element and `<clippath>` is an unknown HTML one — so the SVG question has to be asked of
-   * the name as written. Lowercasing before that test was written first and caught in review:
-   * `@Host("clipPath", () => ({ "aria-labelledBy": … }))` came back `inSvg: false`, and an
-   * attribute that really is unreadable in SVG was reported by nothing. `contextFor` had the same
-   * distinction written down two lines from where this was copied.
-   */
-  return { written: first.text, tag: first.text.toLowerCase() };
 }
 
 /** Builds the context an element rule reads. */
@@ -172,6 +149,7 @@ export function contextFor(element: JsxElementLike, resolve: ElementContext["res
 export function hostContextFor(
   call: ts.CallExpression,
   object: ts.ObjectLiteralExpression,
+  written: string | undefined,
   resolve: ElementContext["resolve"],
 ): ElementContext {
   const { attributes, spreads } = hostAttributesOf(object);
@@ -188,14 +166,27 @@ export function hostContextFor(
     if (ts.isIdentifier(name) || ts.isStringLiteral(name)) positions.set(name.text.toLowerCase(), index);
   }
 
-  const named = hostTagOf(call);
+  /**
+   * The tag comes in already read, by `html.ts`'s `hostTagOf` — the ONE answer to "what element is
+   * this component".
+   *
+   * This file had its own, taking the `@Host` CALL and accepting only a string literal, which was a
+   * second exported `hostTagOf` with a second answer: `@Host(PANEL_TAG, …)` resolves over there and
+   * did not here. Found in the branch's own review, which is where a name collision between two
+   * files shows up and nowhere else.
+   *
+   * Kept AS WRITTEN, because two questions want different halves of it. A rule about `<img>` should
+   * not be defeated by `<IMG>`, so `tag` is lowercased exactly as `tagOf` lowercases a JSX name —
+   * and SVG tag names are CASE-SENSITIVE, `<clipPath>` being the SVG element while `<clippath>` is
+   * an unknown HTML one, so that question is asked of the name untouched.
+   */
   return build({
     attributes,
     at: call,
     // A capital first letter is a component in JSX and cannot be a host tag; the callback form has
     // no one answer, which is the silence contract. Both come back `undefined`.
-    tag: named === undefined || /^[A-Z]/.test(named.written) ? undefined : named.tag,
-    inSvg: named !== undefined && svgElements.has(named.written),
+    tag: written === undefined || /^[A-Z]/.test(written) ? undefined : written.toLowerCase(),
+    inSvg: written !== undefined && svgElements.has(written),
     spreads,
     overwritable: (name) => {
       const at = positions.get(name.toLowerCase());

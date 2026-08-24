@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * An attribute that reaches the DOM verbatim and that nothing reads.
@@ -29,8 +29,10 @@ import type { ElementRule } from "./rule";
  * nothing is worth naming however somebody got there.
  */
 export interface AttributeThatDoesNothingIssue {
-  /** The tag it was written on. */
-  tag: string;
+  /** The tag it was written on; `undefined` on a `@Host` whose tag is chosen per props. */
+  tag?: string;
+  /** Written in a component's `@Host` props rather than on a tag in a render. */
+  onHost: boolean;
   /** The attribute as written, which is what the reader has to find on the line. */
   attribute: string;
   /** What to write instead, in the words the report prints. */
@@ -68,8 +70,12 @@ export const attributeThatDoesNothing = {
     heading: (found) => `${found.length} attribute(s) that reach the DOM and do nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.tag} ${issue.attribute}={…}> is written as it stands, so the document gets ` +
-        `\`${issue.attribute.toLowerCase()}\` — ${issue.instead}.`,
+      // On a host the reader is looking at a decorator, so the subject is named as one rather than
+      // printed as a tag that is not on that line.
+      (issue.onHost
+        ? `    \`${issue.attribute}\` in ${issue.tag === undefined ? "this component's" : `\`@Host("${issue.tag}")\`'s`} props`
+        : `    <${issue.tag} ${issue.attribute}={…}>`) +
+        ` is written as it stands, so the document gets \`${issue.attribute.toLowerCase()}\` — ${issue.instead}.`,
     ],
     advice:
       "An HTML attribute is written through `setAttribute`, which lowercases the name. Exactly two\n" +
@@ -82,20 +88,41 @@ export const attributeThatDoesNothing = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
-    if (tag === undefined) return [];
+  /**
+   * A dead attribute is dead wherever it is written, including on the element a component IS.
+   *
+   * `@Host("meta", () => ({ httpEquiv: "refresh" }))` reaches the DOM as `httpequiv` exactly as the
+   * tag spelling does. This was the TENTH rule of the "what the author WROTE" kind and the one the
+   * sweep missed — found in the branch's own review, by asking which element rules still read the
+   * JSX node directly and why.
+   *
+   * No order guard, for the same reason `class-instead-of-classname` needs none: the name is in the
+   * source whether or not a later spread takes the attribute off the DOM, and the attribute the
+   * author meant is missing either way.
+   */
+  alsoOnHost: true,
+  evenWhenSpreading: true,
+
+  read(_element, { tag, attributes, onHost }) {
+    // A component tag decides its own props, and a host with an unreadable tag is still an element.
+    if (tag === undefined && !onHost) return [];
 
     const found: AttributeThatDoesNothingIssue[] = [];
 
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!ts.isJsxAttribute(attribute)) continue;
-      const written = attribute.name.getText();
+    for (const attribute of attributes) {
+      const written = attribute.name;
       const instead = DEAD.get(written.toLowerCase());
       if (instead === undefined) continue;
 
-      found.push({ tag, attribute: written, instead, ...positionOf(attribute) });
+      found.push({
+        ...(tag === undefined ? {} : { tag }),
+        onHost,
+        attribute: written,
+        instead,
+        ...positionOf(attribute.at),
+      });
     }
 
     return found;
   },
-} as const satisfies ElementRule<AttributeThatDoesNothingIssue>;
+} as const satisfies HostElementRule<AttributeThatDoesNothingIssue>;
