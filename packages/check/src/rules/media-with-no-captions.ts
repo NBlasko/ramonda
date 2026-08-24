@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { descendantIn } from "./descendants";
 import { openingOf } from "./element";
 import type { ElementRule, JsxElementLike } from "./rule";
 
@@ -37,26 +38,18 @@ const CARRIES_THE_WORDS: ReadonlySet<string> = new Set(["captions", "subtitles",
  * Whether the children hold a usable `<track>`, or something this cannot read.
  *
  * The two are one answer on purpose: both mean "do not report", and telling them apart would only
- * change a comment nobody reads.
+ * change a comment nobody reads. The walk is `descendantIn`, shared with the two other rules that
+ * ask a question of the same shape.
  */
 function hasATrackOrCannotTell(children: readonly ts.JsxChild[]): boolean {
-  for (const child of children) {
-    if (ts.isJsxExpression(child) && child.expression !== undefined) return true;
-    if (ts.isJsxFragment(child) && hasATrackOrCannotTell(child.children)) return true;
-
-    if (!ts.isJsxElement(child) && !ts.isJsxSelfClosingElement(child)) continue;
-    const opening = ts.isJsxElement(child) ? child.openingElement : child;
-    const name = opening.tagName.getText();
-
-    // A component may render the track, and what it renders is decided elsewhere.
-    if (/^[A-Z]/.test(name) || name.includes(".")) return true;
-    if (name.toLowerCase() !== "track") continue;
-
-    // A `<track>` with no readable `kind` is one this cannot judge, so it counts.
-    const kind = kindOf(opening);
-    if (kind === undefined || CARRIES_THE_WORDS.has(kind)) return true;
-  }
-  return false;
+  return (
+    descendantIn(children, (opening, tag) => {
+      if (tag !== "track") return false;
+      // A `<track>` with no readable `kind` is one this cannot judge, so it counts.
+      const kind = kindOf(opening);
+      return kind === undefined || CARRIES_THE_WORDS.has(kind);
+    }) !== "none"
+  );
 }
 
 /** A `<track>`'s `kind`, lowercased, when it is written as a literal. */

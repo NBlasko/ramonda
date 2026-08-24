@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { descendantIn } from "./descendants";
 import { eventTypeOf } from "./events";
 import { hasContent, openingOf } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
@@ -121,24 +122,12 @@ function pointerHandlerOn(opening: ts.JsxOpeningLikeElement): string | undefined
  * because what it renders is decided inside it and cannot be read from here. Both make the rule go
  * quiet, which is the silence contract: the cost of being wrong is telling somebody their working
  * card is broken.
+ *
+ * The walk itself is `descendantIn`, shared with the two other rules that ask a question of the
+ * same shape.
  */
 function hasAnInteractiveDescendant(children: readonly ts.JsxChild[]): boolean {
-  for (const child of children) {
-    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-      const opening = ts.isJsxElement(child) ? child.openingElement : child;
-      const name = opening.tagName.getText();
-
-      // A component, or a dotted name — unreadable from here, so treat it as a path.
-      if (/^[A-Z]/.test(name) || name.includes(".")) return true;
-      if (INTERACTIVE.has(name.toLowerCase())) return true;
-      if (ts.isJsxElement(child) && hasAnInteractiveDescendant(child.children)) return true;
-      continue;
-    }
-    // `{rows.map(…)}` and every other expression: unreadable, so it may hold anything.
-    if (ts.isJsxExpression(child) && child.expression !== undefined) return true;
-    if (ts.isJsxFragment(child) && hasAnInteractiveDescendant(child.children)) return true;
-  }
-  return false;
+  return descendantIn(children, (_opening, tag) => INTERACTIVE.has(tag)) !== "none";
 }
 
 export const clickWithNoKeyboardPath = {

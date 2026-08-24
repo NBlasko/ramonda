@@ -56,6 +56,7 @@ export type {
   AriaStateWithNoRoleIssue,
   AutocompleteThatFillsNothingIssue,
   MoreThanOneMainIssue,
+  LabelThatNamesNothingIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

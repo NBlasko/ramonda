@@ -47,6 +47,7 @@ import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
 import { ariaStateWithNoRole } from "./aria-state-with-no-role";
 import { autocompleteThatFillsNothing } from "./autocomplete-that-fills-nothing";
 import { moreThanOneMain } from "./more-than-one-main";
+import { labelThatNamesNothing } from "./label-that-names-nothing";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -160,6 +161,7 @@ export {
   type AutocompleteThatFillsNothingIssue,
 } from "./autocomplete-that-fills-nothing";
 export { moreThanOneMain, type MoreThanOneMainIssue } from "./more-than-one-main";
+export { labelThatNamesNothing, type LabelThatNamesNothingIssue } from "./label-that-names-nothing";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -276,6 +278,7 @@ export const ELEMENT_RULES = [
   presentationRoleOnFocusable,
   ariaStateWithNoRole,
   autocompleteThatFillsNothing,
+  labelThatNamesNothing,
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,
