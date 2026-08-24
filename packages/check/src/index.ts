@@ -62,6 +62,7 @@ export type {
   TableWithNoHeadersIssue,
   LandmarksThatCannotBeToldApartIssue,
   ParentWithAForeignChildIssue,
+  AriaThatContradictsTheTagIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
