@@ -90,7 +90,56 @@ function notOursToWrite(node: ts.Node, resolve: Resolver): boolean {
     }
   }
   if (ts.isNonNullExpression(at) || ts.isParenthesizedExpression(at)) return notOursToWrite(at.expression, resolve);
+
+  /**
+   * `const { body } = document` — the same node one NAME away.
+   *
+   * A global has more than one name and a read has more than one spelling, and the destructure is
+   * the spelling this rule was silent on: `body.style.overflow = "hidden"` bottoms out at an
+   * identifier, so the walk above found no `document` and said nothing. Measured on a plant, beside
+   * the dotted form on the next class which was reported.
+   *
+   * One hop, to a declaration in this file, and only a `const` — the same bound
+   * `late-request-read` takes a local under, and for the same reason: reading what a `const` holds
+   * is not the dataflow this package refuses, it is the declaration a line away.
+   */
+  /**
+   * `document` itself, bare.
+   *
+   * The walk above only ever met it as the OWNER of a property access, which is every way it is
+   * written at a write site — and not how it is written at a `const { body } = document`, which is
+   * where the walk below arrives.
+   */
+  if (ts.isIdentifier(at) && at.text === "document") return true;
+  if (ts.isIdentifier(at)) return heldFromTheDocument(at, resolve, 0);
   return false;
+}
+
+/** Whether this name was taken from `document`, following a `const` at most a few hops. */
+function heldFromTheDocument(name: ts.Identifier, resolve: Resolver, hops: number): boolean {
+  if (hops > 4) return false;
+  for (const declaration of resolve(name)?.declarations ?? []) {
+    // `const { body } = document` — the binding element's initializer is on the declaration above it.
+    const held = ts.isBindingElement(declaration)
+      ? holderOf(declaration)
+      : ts.isVariableDeclaration(declaration)
+        ? declaration.initializer
+        : undefined;
+    if (held === undefined) continue;
+    if (notOursToWrite(held, resolve)) return true;
+    if (ts.isIdentifier(held) && heldFromTheDocument(held, resolve, hops + 1)) return true;
+  }
+  return false;
+}
+
+/** The initializer a binding element is destructured out of, when it is a `const`. */
+function holderOf(element: ts.BindingElement): ts.Expression | undefined {
+  let at: ts.Node = element.parent;
+  while (ts.isObjectBindingPattern(at) || ts.isArrayBindingPattern(at) || ts.isBindingElement(at)) at = at.parent;
+  if (!ts.isVariableDeclaration(at)) return undefined;
+  const list = at.parent;
+  if (!ts.isVariableDeclarationList(list) || (list.flags & ts.NodeFlags.Const) === 0) return undefined;
+  return at.initializer;
 }
 
 /**
