@@ -30,6 +30,7 @@ const EXPECTED_TYPES = [
   "PresentationRoleOnFocusableIssue",
   "AriaStateWithNoRoleIssue",
   "AutocompleteThatFillsNothingIssue",
+  "MoreThanOneMainIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

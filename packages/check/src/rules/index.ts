@@ -46,6 +46,7 @@ import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
 import { ariaStateWithNoRole } from "./aria-state-with-no-role";
 import { autocompleteThatFillsNothing } from "./autocomplete-that-fills-nothing";
+import { moreThanOneMain } from "./more-than-one-main";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -158,6 +159,7 @@ export {
   autocompleteThatFillsNothing,
   type AutocompleteThatFillsNothingIssue,
 } from "./autocomplete-that-fills-nothing";
+export { moreThanOneMain, type MoreThanOneMainIssue } from "./more-than-one-main";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -290,7 +292,7 @@ export const ELEMENT_RULES = [
  * the size of a render, and the guard they all need — whether an element is really on the page at
  * all — is computed once for them in `tree.ts`.
  */
-export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
+export const TREE_RULES = [duplicateId, headingSkipsALevel, moreThanOneMain] as const;
 
 /** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
 /**

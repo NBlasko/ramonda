@@ -379,15 +379,15 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `HostTagIsNotAnElementIssue`, `IndexAsKeyIssue`,
 `InteractiveInsideInteractiveIssue`, `IntervalWithNoCleanupIssue`, `LateRequestReadIssue`,
 `LinkWithoutADestinationIssue`, `ListenerAddedByHandIssue`, `ListenerOnTheDefaultHostIssue`,
-`MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
-`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`,
-`ReferenceToAnIdThatIsNotThereIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
-`RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`,
-`StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`,
-`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
-`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
-`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
-`WatchOfAPropThatIsNotThereIssue`.
+`MediaWithNoCaptionsIssue`, `MoreThanOneMainIssue`, `NamedOnlyByAPlaceholderIssue`,
+`OneProviderPerComponentIssue`, `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`,
+`PresentationRoleOnFocusableIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
+`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowReadsAPlainFieldIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
+`StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
+`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
+`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
