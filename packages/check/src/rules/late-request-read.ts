@@ -30,8 +30,11 @@ export interface LateRequestReadIssue {
   member: string;
   /** What was written — `requestContext().get(currentUser)`, `context.headers`. */
   read: string;
-  /** How the request was reached: called on the spot, or through a local taken earlier. */
-  via: "call" | "local";
+  /**
+   * How the request was reached: called on the spot, through a local taken earlier in the same
+   * body, or through a FIELD taken at construction.
+   */
+  via: "call" | "local" | "field";
   file: string;
   line: number;
   column: number;
@@ -94,7 +97,12 @@ export const lateRequestRead = {
     lines: (read) => [
       `  ${read.file}:${read.line}:${read.column}`,
       `    <${read.component}>.${read.member} reads \`${read.read}\`` +
-        (read.via === "local" ? " through a context taken before the await." : " below an await."),
+        (read.via === "local"
+          ? " through a context taken before the await."
+          : read.via === "field"
+            ? // Naming the field matters: the take is on a line the reader is not looking at.
+              " through a context this class took onto a field at construction."
+            : " below an await."),
     ],
     advice:
       "The request is live only while the render is running. On the server that is the SYNCHRONOUS\n" +
@@ -140,7 +148,7 @@ export const lateRequestRead = {
      * `forEachChild` sweep: `ts.forEachChild` visits a node's children in order, and the flag only
      * ever moves from false to true within one body.
      */
-    const walk = (body: ts.Node, member: string): void => {
+    const walk = (body: ts.Node, member: string, fieldsHolding: ReadonlySet<string>): void => {
       // The locals this body took from `requestContext()` before yielding — `const ctx =
       // requestContext()` above the await, used below it. One hop and one scope: reading what a
       // local holds is not the general dataflow this analyzer refuses, it is the declaration
@@ -148,7 +156,7 @@ export const lateRequestRead = {
       const held = new Set<ts.Symbol>();
       let yielded = false;
 
-      const report = (node: ts.Node, via: "call" | "local"): void => {
+      const report = (node: ts.Node, via: LateRequestReadIssue["via"]): void => {
         // The whole read, not the bare call: `requestContext().get(currentUser)` is what the reader
         // wrote and what they will search for.
         let outermost: ts.Node = node;
@@ -211,6 +219,17 @@ export const lateRequestRead = {
             }
           }
 
+          // `this.ctx.get(…)` — the same door, opened through a field taken at construction.
+          if (
+            (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+            ts.isPropertyAccessExpression(node.expression) &&
+            node.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+            fieldsHolding.has(node.expression.name.text)
+          ) {
+            report(node, "field");
+            return;
+          }
+
           if (ts.isVariableDeclaration(node) && node.initializer !== undefined && ts.isIdentifier(node.initializer)) {
             const symbol = resolveLocal(node.initializer);
             if (symbol && held.has(symbol) && ts.isObjectBindingPattern(node.name)) {
@@ -236,10 +255,33 @@ export const lateRequestRead = {
       })(body);
     };
 
+    /**
+     * `ctx = requestContext()` written as a FIELD, which is the same take one scope out.
+     *
+     * A field initializer runs at construction — on the server, inside the synchronous section
+     * `renderToString` has not yet cleared — so the take itself is correct. Every read of it below
+     * an `await`, in ANY member, is then late, and until this was planted not one of them was
+     * reported while the identical `const ctx = requestContext()` a line lower was.
+     *
+     * It is the shape somebody writes precisely to stop calling `requestContext()` over and over,
+     * which is what makes the silence expensive: the tidier the code, the less this saw.
+     *
+     * Bounded the same way the local is. Only an initializer that IS the call — nothing followed,
+     * nothing inferred — because a field holding something a helper handed back is the dataflow
+     * this analyzer refuses.
+     */
+    const fieldsHolding = new Set<string>();
+    for (const member of cls.members) {
+      if (!ts.isPropertyDeclaration(member) || !ts.isIdentifier(member.name)) continue;
+      if (member.initializer !== undefined && isRequestContextCall(member.initializer)) {
+        fieldsHolding.add(member.name.text);
+      }
+    }
+
     for (const member of cls.members) {
       const body = bodyOfMember(member);
       if (!body) continue;
-      walk(body, member.name && ts.isIdentifier(member.name) ? member.name.text : "(anonymous)");
+      walk(body, member.name && ts.isIdentifier(member.name) ? member.name.text : "(anonymous)", fieldsHolding);
     }
 
     return found;
