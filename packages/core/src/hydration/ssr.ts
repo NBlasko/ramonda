@@ -1,9 +1,12 @@
-import { mountNode } from "../core/DiffAndMerge";
+import { mountRootComponent, isRegion, isComponentRegion } from "../core/DiffAndMerge";
+import type { EnhancedChildNode, RecordEntry, VNodeComponent } from "../types/vdom";
 import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToBlob } from "./serialize";
-import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR, REQUEST_ATTR, CHILD_RECORD } from "../helpers/constants";
+import { componentOpen, componentClose } from "../core/componentMarker";
+import { createId } from "../helpers/createId";
 import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
@@ -77,16 +80,63 @@ async function drainServerWork(work: ServerWork): Promise<void> {
   );
 }
 
-/** Stamps each carrier element with its component's serialized state blob. */
-function stampBlobs(node: Node): void {
-  const el = node as { _componentInstance?: object } & Element;
-  if (el._componentInstance && typeof el.setAttribute === "function") {
+/**
+ * Wraps every component's nodes in the marker pair a hydrating client reads, blob included.
+ *
+ * Walks the CHILD RECORD, not the DOM, because the record is the only thing that knows a component
+ * is here: it may own two nodes, or none, and neither is visible in the markup. A node with a record
+ * of its own is recursed into, and one without cannot contain a component at all — that is what
+ * `HAS_REGION` guarantees.
+ *
+ * Backwards, carrying the node to insert before. That is the same shape the reorder pass has, and
+ * for the same reason: the position of a block is known from what FOLLOWS it, and an empty
+ * component — no nodes at all — has nothing of its own to be placed relative to. Its two markers
+ * then land adjacent at exactly the right spot, which is what tells the client the component was
+ * there and rendered nothing.
+ */
+function markComponents(node: Node): void {
+  const record = (node as EnhancedChildNode)[CHILD_RECORD];
+  if (record === undefined) {
+    for (const child of Array.from(node.childNodes)) markComponents(child);
+    return;
+  }
+  markEntries(record, node, null);
+}
+
+function markEntries(entries: RecordEntry[], parent: Node, before: ChildNode | null): ChildNode | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+
+    if (!isRegion(entry)) {
+      markComponents(entry);
+      before = entry;
+      continue;
+    }
+
+    if (!isComponentRegion(entry)) {
+      // A list owns no marker of its own: its rows are components or plain nodes, and the client
+      // rebuilds the list's own identity from `list()` rather than from the markup.
+      const first = markEntries(entry.entries, parent, before);
+      if (first !== null) before = first;
+      continue;
+    }
+
     // Nothing at all when nothing has moved off its initial value: an empty tree of shells is
     // around 90 bytes per component that the client would read and then do nothing with.
-    const blob = serializeComponentToBlob(el._componentInstance);
-    if (blob !== undefined) el.setAttribute(STATE_ATTR, blob);
+    const blob = serializeComponentToBlob(entry.instance);
+    const id = createId();
+
+    const close = document.createComment(componentClose(id));
+    parent.insertBefore(close, before);
+
+    const firstInside = markEntries(entry.entries, parent, close);
+
+    const open = document.createComment(componentOpen(id, blob));
+    parent.insertBefore(open, firstInside ?? close);
+    before = open;
   }
-  node.childNodes.forEach(stampBlobs);
+
+  return before;
 }
 
 /**
@@ -179,7 +229,7 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   setRenderEnv("server");
   setServerWorkCollector(work);
   try {
-    mountNode(vnode, undefined, container);
+    mountRootComponent(vnode as VNodeComponent, container);
     // Inside the server env, and before the task drain: a server @mounted may
     // write state, and those updates must be drained before serializing — which
     // is exactly what flushTaskQueue below is for.
@@ -205,7 +255,7 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
     throw new ServerRedirect(work.redirect);
   }
 
-  stampBlobs(container);
+  markComponents(container);
   stampExposedRequest(container, requestScope);
   return container.innerHTML;
 }
@@ -405,9 +455,9 @@ function collectHead(): { title: string; head: string } {
   for (let node = document.head.firstChild; node !== null; node = node.nextSibling) {
     if (inBlock.has(node)) {
       // Inside a portal's block, where a component may be sitting on any node —
-      // `stampBlobs` only ever walked the body container, so a portalled
+      // The marker pass only ever walked the body container, so a portalled
       // component reached the client with no state to restore.
-      stampBlobs(node);
+      markComponents(node);
       head += serializeNode(node);
     } else if (node.nodeType === 1 && (node as Element).matches(MANAGED_HEAD)) {
       head += (node as Element).outerHTML;
@@ -467,12 +517,12 @@ function blockNodes(head: Node): Set<Node> {
 /**
  * The named targets' blocks, with their state blobs written first.
  *
- * `stampBlobs` walked only the body container, so a component a portal placed
+ * The marker pass walked only the body container, so a component a portal placed
  * anywhere else reached the client with no state to restore and was rebuilt from
  * its initial values. Same reason `collectHead` stamps inside a head block.
  */
 function collectPortals(): Record<string, string> {
-  for (const container of portalTargetContainers()) stampBlobs(container);
+  for (const container of portalTargetContainers()) markComponents(container);
   return collectPortalTargets();
 }
 

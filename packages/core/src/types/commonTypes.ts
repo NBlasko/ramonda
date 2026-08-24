@@ -343,22 +343,3 @@ export interface RamondaEvent<T extends EventTarget | null = any> extends Event 
   target: T;
 }
 
-export interface HostMeta {
-  /**
-   * Tag of the component's host (carrier) element, e.g. "DIV". Default:
-   * RAMONDA-HOST. Undefined when the tag comes from props — see `tagFromProps`.
-   * The two are mutually exclusive; `@Host` sets exactly one.
-   */
-  tag?: string;
-  /**
-   * Resolves the host tag from the component's props, for a component whose
-   * caller chooses the element: `@Host((p: CardProps) => p.as ?? "div")`.
-   *
-   * **Must be pure.** It is called while the diff decides whether an existing
-   * DOM node can be reused, as well as when the component is built, so it runs
-   * more than once and must not depend on anything but the props it is given.
-   */
-  tagFromProps?: (props: Record<string, unknown>) => string;
-  /** Reactive attributes applied to the host element; runs on every render. */
-  props?: (self: unknown) => Record<string, unknown>;
-}

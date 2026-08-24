@@ -42,7 +42,6 @@ export type DiagnosticCode =
   | "RMD007"
   | "RMD008"
   | "RMD009"
-  | "RMD010"
   | "RMD011"
   | "RMD013"
   | "RMD015"
@@ -71,10 +70,8 @@ export type DiagnosticCode =
   | "RMD039"
   | "RMD040"
   | "RMD041"
-  | "RMD042"
   | "RMD043"
   | "RMD044"
-  | "RMD045"
   | "RMD046"
   | "RMD047"
   | "RMD048"
@@ -181,16 +178,10 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "Update loop — a component never stopped re-rendering",
     fix: "Rendering wrote state that scheduled another render of the same component, forever; without this guard the tab freezes. The usual causes are two @updated methods writing what the other reads (they re-trigger each other), and a write in render() itself (see RMD001). A post-render write must converge — assigning the same value is not a change, so it schedules nothing. Derive values with @compute instead of syncing them with an effect, and if two pieces of state must agree, make one of them @compute from the other rather than writing both.",
   },
-  RMD010: {
-    // error, not warning: the parent rearranges or deletes the markup, so the page is not what was written.
-    severity: "error",
-    title: "The default host is not allowed in this parent",
-    fix: "Give the component an explicit host tag that the parent accepts — the `suggestion` below is the one that fits. A component is always exactly one element; the default <ramonda-host> is only styled to be layout-neutral, and a handful of parents destroy what they do not accept: the table family fosters it out, <select> and <optgroup> delete it outright, and SVG renders no HTML. A <ul>, <ol>, <dl> or <p> is NOT one of them and is never reported — measured, the parser leaves an unknown element inside those alone, so being invalid per the spec is yours to decide and being silently destroyed is ours. This is why the check can be exact rather than a guess: it reads the actual parent node at mount.",
-  },
   RMD011: {
     severity: "error",
     title: "A function was used as a JSX tag",
-    fix: "In Ramonda every JSX tag is exactly one element — that is what lets you read the DOM structure straight off the JSX. A function has no element, so as a tag it would be a lie. What did you want it for? For state or lifecycle without an element of its own: use a Hook (`this.use(MyHook)`) — hooks have @state, @created/@destroyed, @watchProp and @onWindow, and add no node. For state or lifecycle where an inert element is fine: just make it a component and let it render null — the default <ramonda-host> is display:contents, so it costs no layout. For plain vnodes: call the function as an expression — `{rows()}` — where it reads as the value it is, instead of pretending to be a component.",
+    fix: "A JSX tag is either an element name or a component class, and a plain function is neither: nothing constructs it, it has no state and no lifecycle, and the framework has nowhere to put what it returns. What did you want it for? For markup you reuse, call the function in an expression slot — `{sideBar()}` — where it reads as the value it is. For state, lifecycle or hooks with no markup of its own, use a Hook (`this.use(MyHook)`). For state AND markup, make it a component: a component owns whatever its render returns, including nothing at all, so it needs no element to justify itself.",
   },
   RMD015: {
     severity: "error",
@@ -348,11 +339,6 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "A listener with no target",
     fix: "The handler is never attached, so the event it waits for cannot arrive. `@onWindow` and `@onDocument` resolve to the globals, so this is `@onElement` on a component whose host element was not there when the listener was set up — the effect runs on mount, and a component torn down or replaced in the same tick can reach it with nothing to attach to. It is not something the source can be read for: there is no selector, only the component's own host. If it happens repeatedly, the component is being mounted and unmounted faster than it is being rendered, and that is the thing to look at rather than the listener.",
   },
-  RMD042: {
-    severity: "warning",
-    title: "The default host cannot be the direct target of this event",
-    fix: 'Without `@Host` a component\'s host element is `<ramonda-host style="display: contents">`, and that is the point of it: it takes part in no layout, so the markup inside lands in the parent\'s grid or flex row as if the component were not there. What it has no part in is being a TARGET — `display: contents` generates no box, so nothing can be over it and nothing can enter it. An event that BUBBLES is unaffected: a click on a child reaches this listener perfectly well, because an ancestor is all a bubbling listener needs, and that is why one is not reported. This event does not bubble, so it is dispatched at its target and nowhere else — and it never arrives here at all. Give the component a real element with `@Host("div")`, or move the listener onto the element that should carry it and hand it a handler in the markup. `ramonda-check` reports the same pair before it ships, as `listener-on-the-default-host`.',
-  },
   RMD043: {
     severity: "warning",
     title: "A `<meta>` with nothing to identify it",
@@ -363,17 +349,9 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     title: "An unknown element type in JSX",
     fix: "A tag has to be a string, a component class, or — for the one unsupported case — a function. This was none of them, so an empty host is rendered in its place and whatever it was meant to be is missing. It is usually a value used where a tag belongs: `<{Thing} />` rather than `<Thing />`, an object read off a map with the wrong key, or a component that failed to import and arrived as undefined.",
   },
-  RMD045: {
-    // error, and it also THROWS: a component is exactly one element, so two answers cannot both be
-    // honoured and there is no correct program to keep running.
-    duplicate: { decorators: ["Host"], effect: "refuses" },
-    severity: "error",
-    title: "More than one @Host on a component",
-    fix: "A component is exactly one element, so there is one answer to which — keep the `@Host` you meant and delete the rest. A SUBCLASS declaring its own is not this: that overrides the base's, which is how a specialised component changes its element, and it is silent. This is two on the same class. It throws as well as reporting, in every build, because unlike RMD032 and RMD040 there is no way to pick a winner and carry on.",
-  },
   RMD046: {
-    // warning, not error: the union is what the author asked for, so the result is right and only the
-    // spelling is redundant. RMD045 is the error, because two host tags have no union.
+    // warning, not error: the union is what the author asked for, so the result is right and only
+    // the spelling is redundant.
     duplicate: { decorators: ["StableProps"], effect: "merges" },
     severity: "warning",
     title: "More than one @StableProps on one class",

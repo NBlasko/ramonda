@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import { bootstrap } from "../";
 import type { ComponentChild } from "../types/vdom";
-import { unmountChildrenNodes } from "../core/DiffAndMerge";
+import { componentAt, unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
 import { configureDev } from "../";
 
@@ -61,17 +61,15 @@ export async function getDOM<T = any>(component: ComponentChild) {
   bootstrap(component, div);
   await Promise.resolve();
 
-  const findInstance = (node: Node): unknown => {
-    // The instance is parked on the DOM node by the renderer, so the property is the untyped
-    // part — not the node.
-    const carrier = node as Node & { _componentInstance?: unknown };
-    if (carrier._componentInstance) return carrier._componentInstance;
-    for (const child of Array.from(node.childNodes)) {
-      const found = findInstance(child);
-      if (found) return found;
-    }
-    return null;
-  };
+  /**
+   * The outermost component in this container — the root the test just mounted.
+   *
+   * Asked of the container's own record rather than by walking the DOM for a back-reference: a
+   * component owns a RANGE of nodes and has none of its own to park a pointer on. `componentAt`
+   * answers "which component is this node in", so the container's first node is what to ask about,
+   * and the root is the only component whose range covers it from here.
+   */
+  const findInstance = (node: Node): unknown => componentAt(node) ?? null;
 
   const instance = findInstance(div) as T;
 

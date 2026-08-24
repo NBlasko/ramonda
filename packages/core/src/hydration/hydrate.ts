@@ -1,4 +1,4 @@
-import { COMPONENT_TYPE, STATE_ATTR, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
+import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { installClientRequestScope } from "./requestContext";
 import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
@@ -6,15 +6,16 @@ import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "../core/runtime";
 import {
-  applyRefFromProps,
+  buildComponentRegion,
+  componentRegionOwner,
   diffAndMerge,
   filterVirtualChild,
+  flattenEntries,
   listHostFor,
-  unmountNodeInPlace,
 } from "../core/DiffAndMerge";
-import { isListNode } from "../vdom/guards";
+import { isComponentClose, isComponentOpen, markerBlob } from "../core/componentMarker";
+import { isListNode, isVNode } from "../vdom/guards";
 import { buildLazyList, isLazyList, type ListEngine, type LazyListNode, type ListHost } from "../helpers/listEngine";
-import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
 import { diagnose } from "../debug/diagnostics";
@@ -35,14 +36,14 @@ import type {
   VNodeComponent,
   VNodeString,
   EnhancedChildNode,
-  EnhancedHTMLNode,
+  ComponentRegion,
 } from "../types/vdom";
 import type { Context } from "../types/commonTypes";
 
 /**
  * Hydrates a server-rendered subtree: instead of creating DOM, it ADOPTS the
- * existing server nodes, restores state from each carrier's blob, wires up the
- * client-only bits (event listeners, refs, effects, timers), and runs only the
+ * existing server nodes, restores each component's state from the marker the server wrote in front
+ * of its block, wires up the client-only bits (refs, effects, timers), and runs only the
  * `env: "client"` lifecycle (create/mount are considered already fired on the
  * server; their state is restored).
  *
@@ -64,7 +65,18 @@ export function hydrateRoot(vnode: ComponentChild, container: HTMLElement): void
 
   const vchild = filterVirtualChild(vnode);
   if (vchild === undefined) return;
-  hydrateNode(vchild, undefined, container.firstChild as EnhancedChildNode | null, container);
+
+  /**
+   * The root goes through the ordinary level walk, so the container ends up with a record.
+   *
+   * That record is what a re-render of the root reconciles against — the same thing
+   * `mountRootComponent` leaves behind on the client path. Adopting the root as a bare node was
+   * enough while a component WAS a node; a region has to be recorded somewhere, and the container
+   * is where.
+   */
+  const walk: HydrationWalk = { cursor: container.firstChild as EnhancedChildNode | null, count: 0 };
+  const level = hydrateLevel([vchild], undefined, container, walk);
+  if (level.hasRegion) (container as EnhancedChildNode)[CHILD_RECORD] = level.entries;
   flushPostCommit();
 }
 
@@ -113,10 +125,9 @@ function hydrateNode(
     return hydrateText(vchild, placeholder, cursor, parent);
   }
 
-  if (vchild.type === COMPONENT_TYPE) {
-    return hydrateComponent(vchild, placeholder, cursor, parent);
-  }
-  return hydrateElement(vchild, placeholder, cursor, parent);
+  // A component is a region, and a region is adopted by `hydrateLevel` — it owns a RUN of siblings
+  // rather than the one node this function is shaped around, and it has to produce a record entry.
+  return hydrateElement(vchild as VNodeString, placeholder, cursor, parent);
 }
 
 function nextOf(node: EnhancedChildNode | null): EnhancedChildNode | null {
@@ -198,14 +209,52 @@ function hydrateElement(
   return nextOf(cursor);
 }
 
-function hydrateComponent(
+/**
+ * Where a deferred block's markers are, until it resumes.
+ *
+ * A WeakMap rather than a field on the region: this is a hydration concern with a life measured in
+ * one promise, and the region is a runtime type that every other path reads. Nothing outside this
+ * file has any business knowing a component is waiting on markup.
+ */
+const deferredBlocks = new WeakMap<BaseComponent, { open: Comment; close: Comment | undefined; parent: Node }>();
+
+/**
+ * Adopts one component: the markers the server wrote around its nodes, the state on the opening
+ * one, and then the ordinary walk over the children inside.
+ *
+ * The markers are what a record would have said if markup could carry one. The client re-renders
+ * while it walks, so it already knows the SHAPE of the tree — what it cannot know is where one
+ * component's run of siblings ends and the next begins, and that is the only question these answer.
+ * Both are removed as soon as this component is adopted, so the page ends up holding exactly what a
+ * client-side render would have produced.
+ */
+function hydrateComponentRegion(
   vnode: VNodeComponent,
   placeholder: MaybeComponent,
-  existingHostNode: EnhancedChildNode | null,
   parent: Node,
-): EnhancedChildNode | null {
-  if (!existingHostNode || existingHostNode.nodeType === 3) {
-    return hydrationFallback(vnode, placeholder, existingHostNode, parent);
+  walk: HydrationWalk,
+  owner: unknown,
+): ComponentRegion | undefined {
+  const open = walk.cursor;
+
+  /**
+   * No marker where one belongs, so the server did not write this component.
+   *
+   * Building it is the only honest answer, and it is the same decision the element path makes when
+   * a tag disagrees. Reported, because a client rendering a component the server did not is a real
+   * divergence and the rest of this level is likely to be off by a block.
+   */
+  if (open === null || !isComponentOpen(open)) {
+    if (__DEV__) {
+      reportStructureMismatch(
+        placeholder,
+        `<${vnode.name.name}>`,
+        open ? `<${open.nodeName.toLowerCase()}>` : "nothing",
+      );
+    }
+    const region = buildComponentRegion(vnode, placeholder, owner, parent as ChildNode);
+    for (const node of region.order) parent.insertBefore(node, open);
+    return region;
   }
 
   const parentContext = placeholder?.[GLOBAL_RUNTIME].context;
@@ -223,8 +272,7 @@ function hydrateComponent(
   // Restore server state before any client lifecycle/render sees it. Note:
   // isInitialized is still falsy here, so the @state setters below don't enqueue
   // a spurious re-render — we're adopting, not re-rendering.
-  const host = existingHostNode as EnhancedHTMLNode;
-  const blob = host.getAttribute?.(STATE_ATTR);
+  const blob = markerBlob(open);
   if (blob) {
     try {
       restoreComponentTree(component, JSON.parse(blob));
@@ -260,20 +308,26 @@ function hydrateComponent(
   // the nodes' `f0`, `f1`), every key missed, and the entire list was rebuilt —
   // per-item state lost, @destroyed and @created run again.
   //
-  // `RouterHydration.test.tsx` documented the same root cause from the other
-  // end: RouteProvider's options were captured before the restore, which is why
-  // `Router.init()` has to re-read the URL.
-  //
   // It also fixes the POSITION of this block. Refreshing before @created made
-  // that router test fail: `init()` is an @created that corrects the restored
-  // route back to the client's URL, so hooks refreshed before it would publish
-  // the SERVER's route and hold it until the next render. Hooks have to see the
-  // final state — after the blob, and after any @created that corrects it.
+  // `RouterHydration.test.tsx` fail: `init()` is an @created that corrects the
+  // restored route back to the client's URL, so hooks refreshed before it would
+  // publish the SERVER's route and hold it until the next render. Hooks have to
+  // see the final state — after the blob, and after any @created that corrects it.
   if (component[INTERNAL_HOOKS]) {
     for (const update of component[INTERNAL_HOOKS]) update();
   }
 
   seedWatchProps(component);
+
+  const region: ComponentRegion = {
+    owner,
+    definition: vnode.name,
+    instance: component,
+    entries: [],
+    order: [],
+    parent: parent as ChildNode,
+  };
+  componentRuntime.region = region;
 
   // The component may not be able to hydrate yet — see the `@deferHydration`
   // decorator. Asked AFTER the restore, the client @created and the hook refresh,
@@ -281,8 +335,17 @@ function hydrateComponent(
   // the step that would produce output disagreeing with the server's markup.
   const deferred = collectDeferrals(runtime.deferHydrations);
   if (deferred) {
-    adoptHost(component, existingHostNode, vnode);
-    component[COMPONENT_RUNTIME].hydrationPending = true;
+    /**
+     * The block is left exactly as the server wrote it, markers included.
+     *
+     * They cannot be removed yet: until this subtree resumes, nobody has learnt where its
+     * components are, and the record for it is still empty. `resumeHydration` reads them and takes
+     * them out then. Its nodes are collected into the region's order so the parent's own record
+     * describes what is really on screen in the meantime.
+     */
+    const close = skipToClose(open as unknown as Comment, region.order);
+    deferredBlocks.set(component, { open: open as unknown as Comment, close, parent });
+    componentRuntime.hydrationPending = true;
 
     // Armed in development always, and in production only when the app installed a collector — so
     // an app with no sink pays nothing for this, not even the timer. A subtree that never resumes
@@ -294,78 +357,89 @@ function hydrateComponent(
     // subtree. `AsyncLoad` renders its own error fallback in that case, and a
     // component left frozen because its load failed would be a worse outcome
     // than one that renders the failure.
-    void deferred.finally(() => resumeHydration(component, vnode));
+    void deferred.finally(() => resumeHydration(component));
 
     // The walk continues past this subtree without looking inside it. That is
     // the whole feature: the server's nodes are left exactly as they are.
-    return nextOf(existingHostNode);
+    walk.cursor = nextOf((close ?? open) as unknown as EnhancedChildNode);
+    return region;
   }
 
-  // This is the client render. The server's output for the same component is
-  // sitting in existingHostNode, so hydrating IS the comparison — no second
-  // render is needed to detect divergence, only reporting before we patch.
-  const rendered = generateRenderOutput(component) as VNodeString;
+  // This is the client render. The server's output for the same component is sitting between the
+  // markers, so hydrating IS the comparison — no second render is needed to detect divergence.
+  const children = generateRenderOutput(component);
 
-  if (existingHostNode.nodeName !== rendered.name) {
-    // Same fallback as the deferred path above, and the same obligation. This
-    // component was never adopted onto a node, so there is nothing to unmount —
-    // but its client `@created` has already run, and whatever that started is
-    // only reachable through the teardown.
-    lifecycleCleanupManagement(component);
-    return hydrationFallback(vnode, placeholder, existingHostNode, parent);
-  }
+  walk.cursor = nextOf(open);
+  const inner = hydrateLevel(children, component, parent, walk);
+  region.entries = inner.entries;
+  flattenEntries(region.entries, region.order);
 
-  if (__DEV__) {
-    reportAttributeMismatches(component, existingHostNode as unknown as Element, formatAttributes(rendered.attributes));
-  }
-
-  applyChangesOnAttributes(existingHostNode, rendered.attributes);
-  hydrateChildren(rendered.children, component, existingHostNode);
-
-  adoptHost(component, existingHostNode, vnode);
+  closeBlock(open as unknown as Comment, walk, component);
   componentRuntime.isInitialized = true;
 
   // Deferred like the client build path, so @mounted means one thing everywhere.
-  // The server's DOM is already in the document here, so this is about keeping a
-  // single rule rather than fixing a hydration-specific bug.
-  // `env !== "server"`, matching the build path — NOT `=== "client"`, which is
-  // what this was and which silently dropped every default (`"shared"`) @mounted
-  // on a hydrated page.
-  //
-  // The argument for skipping them was that a shared @mounted already ran during
-  // the server render. But @mounted exists to touch the REAL DOM, and the server's
-  // DOM is thrown away — so skipping it on the client means the work simply
-  // never happens for any prerendered page.
-  //
-  // `AsyncLoad` is the proof. Its `@mounted afterCreate()` is what calls `load()`,
-  // so with this filter a prerendered page never fetched its module: measured
-  // `loading: false`, the load never started, and the page sat on its loading
-  // fallback forever with the server's real content already destroyed beneath it.
-  //
-  // Anything that genuinely must run once, on the server only, says so with
-  // `env: "server"`. That is what the option is for.
+  // `env !== "server"`, matching the build path — NOT `=== "client"`, which
+  // silently dropped every default (`"shared"`) @mounted on a hydrated page.
+  // @mounted exists to touch the REAL DOM and the server's DOM is thrown away,
+  // so skipping it on the client means the work simply never happens for any
+  // prerendered page. `AsyncLoad` is the proof: its `@mounted` is what calls
+  // `load()`, so with that filter a prerendered page never fetched its module.
   for (const mount of runtime.mounts) {
     if (mount.env !== "server") queuePostCommit(component, () => mount.cb(componentRuntime.env));
   }
 
-  // Effects are always client-only: this attaches @onElement/@onWindow/@onDocument
-  // listeners, starts @interval/@timeout, and connects subscriptions against the live DOM.
-  //
-  // Queued, not called inline — for the same reason the mounts above are, and it
-  // was a real bug that only these were left behind. Hydration walks top-down,
-  // so an inline call ran a parent's effects before its children existed, while
-  // the build path defers everything to one flush and therefore runs children
-  // first. Both orders were self-consistent, so a fully-hydrated page and a
-  // fully-built page each looked correct in isolation.
-  //
-  // Pages MIX the two: anything hydration cannot adopt is built instead. Measured
-  // on a hydrated parent whose child was newly built — `["parent", "child"]`,
-  // exactly inverted — which meant a parent effect could not see what a child
-  // effect had done. Found by a docs demo counting a store's subscribers and
-  // reading zero on the live site while every core test said one.
+  // Queued, not called inline — hydration walks top-down, so an inline call ran a parent's effects
+  // before its children existed, while the build path defers everything to one flush and therefore
+  // runs children first. Pages MIX the two: anything hydration cannot adopt is built instead.
+  // Measured on a hydrated parent whose child was newly built — `["parent", "child"]`, exactly
+  // inverted — which meant a parent effect could not see what a child effect had done.
   queuePostCommit(component, () => runComponentEffects(component));
 
-  return nextOf(existingHostNode);
+  return region;
+}
+
+/**
+ * Where a deferred block ends, and the nodes inside it.
+ *
+ * Nesting is why this counts rather than taking the first close it meets: a deferred component's
+ * markup holds its children's markers, and the first `/c…` down there is not this one's.
+ */
+function skipToClose(open: Comment, out: ChildNode[]): Comment | undefined {
+  let depth = 0;
+  for (let node = open.nextSibling; node !== null; node = node.nextSibling) {
+    if (isComponentOpen(node)) depth++;
+    else if (isComponentClose(node)) {
+      if (depth === 0) return node as Comment;
+      depth--;
+    }
+    out.push(node as ChildNode);
+  }
+  return undefined;
+}
+
+/**
+ * Takes the pair out, once the block between them has been adopted.
+ *
+ * Where the walk stopped IS the closing marker, when the server wrote what this render wants. It is
+ * not when the client rendered MORE children than the server did: those were built and inserted
+ * before the marker, and the walk stopped on it all the same. Either way the marker is the node the
+ * walk ran into — so the only case left is a block the server never closed, which is a divergence
+ * worth reporting rather than a shape to repair.
+ */
+function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent): void {
+  const stop = walk.cursor;
+  if (stop !== null && isComponentClose(stop)) {
+    walk.cursor = nextOf(stop);
+    stop.remove();
+  } else if (__DEV__) {
+    const name = component.constructor.name;
+    diagnose(
+      "RMD007",
+      `${name}:unclosed`,
+      `<${name} />'s block in the server markup has no closing marker, so the walk cannot tell where it ends.`,
+    );
+  }
+  open.remove();
 }
 
 function hydrateChildren(
@@ -386,7 +460,7 @@ function hydrateChildren(
 
   // Built from the nodes the server produced, not from the render output —
   // hydration ADOPTS, so the record has to describe what was adopted.
-  if (level.hasList) {
+  if (level.hasRegion) {
     (existingParent as EnhancedChildNode)[CHILD_RECORD] = level.entries;
   }
 
@@ -432,9 +506,9 @@ export function hydrateLevel(
   walk: HydrationWalk,
   /** See `reconcileEntries` — a region's items report to the region, not a render. */
   listHost?: ListHost,
-): { entries: RecordEntry[]; hasList: boolean } {
+): { entries: RecordEntry[]; hasRegion: boolean } {
   const entries: RecordEntry[] = [];
-  let hasList = false;
+  let hasRegion = false;
 
   for (let i = 0; i < children.length; i++) {
     const rawVchild = children[i];
@@ -466,7 +540,22 @@ export function hydrateLevel(
         source: listNode,
         engine,
       });
-      hasList = true;
+      hasRegion = true;
+      continue;
+    }
+
+    /**
+     * A component is adopted as a REGION, exactly as it is reconciled as one — same identity, same
+     * place in the record. Ahead of `filterVirtualChild` for the same reason the diff's branch is:
+     * it owns a run of siblings, not the single node `hydrateNode` is shaped around.
+     */
+    if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
+      const region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
+      if (region !== undefined) {
+        entries.push(region);
+        hasRegion = true;
+        walk.count++;
+      }
       continue;
     }
 
@@ -485,7 +574,7 @@ export function hydrateLevel(
     else if (before) entries.push(before);
   }
 
-  return { entries, hasList };
+  return { entries, hasRegion };
 }
 
 /**
@@ -512,36 +601,14 @@ function collectDeferrals(deferrals: (() => unknown)[]): Promise<unknown> | unde
 }
 
 /**
- * The bookkeeping that makes a server node this component's host: the
- * back-references the diff and the devtools read, and the origin without which
- * the first client update would decide every adopted node was "built by someone
- * else" and rebuild the page it just adopted.
- *
- * Shared by the normal path and the deferred one, which is the point — a
- * deferred component owns its host immediately, and only its CHILDREN wait.
- */
-function adoptHost(component: BaseComponent, host: EnhancedChildNode, vnode: VNodeComponent): void {
-  host._componentInstance = component;
-  host._componentDefinition = vnode.name;
-  host[ORIGIN_SYM] = vnode[ORIGIN_SYM];
-  component[COMPONENT_RUNTIME].enhancedNode = host;
-  // Adopting is the third way a component reaches its host — create, update,
-  // adopt — and the ref has to arrive by all three. It used to arrive by the
-  // first two only, so on a server-rendered page a component's ref stayed empty
-  // until something re-rendered it, which on a static page is never. An
-  // element's ref filled correctly the whole time, because hydration runs an
-  // element's attributes through the ordinary path.
-  applyRefFromProps(host, vnode.attributes?.ref);
-}
-
-/**
  * Hydrates a subtree that was deferred, once its promise settled.
  *
- * This is the ordinary hydration path run late, against children nobody touched
- * in the meantime — which is exactly why the deferral had to skip them rather
- * than render a placeholder over them.
+ * This is the ordinary hydration path run late, against children nobody touched in the meantime —
+ * which is exactly why the deferral had to skip them rather than render a placeholder over them.
+ * The markers are still where the server put them, which is what makes resuming possible at all:
+ * they are the only record of where this component's block starts and ends.
  */
-function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void {
+function resumeHydration(component: BaseComponent): void {
   const componentRuntime = component[COMPONENT_RUNTIME];
 
   // The watch is over the moment the promise settles, whichever way it settled —
@@ -556,9 +623,11 @@ function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void 
   if (componentRuntime.isDestroyed) return;
   if (!componentRuntime.hydrationPending) return;
 
-  const host = componentRuntime.enhancedNode as EnhancedChildNode;
-  const parent = host.parentNode;
-  if (!parent) return;
+  const block = deferredBlocks.get(component);
+  const region = componentRuntime.region;
+  if (block === undefined || region === undefined) return;
+  deferredBlocks.delete(component);
+  if (block.open.parentNode === null) return;
 
   // Cleared BEFORE the render: `generateRenderOutput` may read state whose
   // signals would otherwise refuse to schedule anything, and from here on the
@@ -567,32 +636,22 @@ function resumeHydration(component: BaseComponent, vnode: VNodeComponent): void 
   componentRuntime.isInitialized = true;
 
   const runtime = component[GLOBAL_RUNTIME];
-  const rendered = generateRenderOutput(component) as VNodeString;
+  const children = generateRenderOutput(component);
 
-  if (host.nodeName !== rendered.name) {
-    // The client wants a different element than the server wrote. Nothing can be
-    // adopted, so fall back to building — the same decision the synchronous path
-    // makes, just reached later.
-    //
-    // Torn down FIRST, and in place. By now this component has been adopted onto
-    // the server's node: it is initialized, holds restored state and whatever
-    // its client `@created` started. `replaceChild` takes only the node, so
-    // without this the component went on living with no DOM — `@destroyed` never
-    // ran, effect cleanups never ran, its signals stayed attached, its timers
-    // went on firing, and a later write would render into nodes nobody can see.
-    // In place rather than through `unmountChildrenNodes`, because the node has
-    // to still be a child for `replaceChild` to put the fresh one where it was.
-    unmountNodeInPlace(host);
-    hydrationFallback(vnode, componentRuntime.parent, host, parent);
-    return;
-  }
+  /**
+   * The walk starts on the first node the server wrote inside this block.
+   *
+   * The nodes collected at defer time are NOT reused as a record: they were never diffed, so what
+   * belongs to which child is exactly the question this walk answers. They were kept so the parent
+   * could report the truth about its own children in the meantime.
+   */
+  const walk: HydrationWalk = { cursor: block.open.nextSibling as EnhancedChildNode | null, count: 0 };
+  const inner = hydrateLevel(children, component, block.parent, walk);
+  region.entries = inner.entries;
+  region.order = [];
+  flattenEntries(region.entries, region.order);
 
-  if (__DEV__) {
-    reportAttributeMismatches(component, host as unknown as Element, formatAttributes(rendered.attributes));
-  }
-
-  applyChangesOnAttributes(host, rendered.attributes);
-  hydrateChildren(rendered.children, component, host);
+  closeBlock(block.open, walk, component);
 
   for (const mount of runtime.mounts) {
     if (mount.env !== "server") queuePostCommit(component, () => mount.cb(componentRuntime.env));

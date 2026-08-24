@@ -1,11 +1,8 @@
 import type { BaseComponent, RamondaNode } from "../types/vdom";
-import { GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
-import { resolveHostTag } from "./hostTag";
-import type { HostMeta } from "../types/commonTypes";
-import { createRamonda } from "../vdom/CreateRamonda";
+import { GLOBAL_RUNTIME } from "../core/runtime";
 import { displayName, isArray } from "./utils";
-import { HOST_META, hostStyle, HOST_TAG, HAS_LIST } from "./constants";
-import { isListNode } from "../vdom/guards";
+import { HAS_REGION, COMPONENT_TYPE } from "./constants";
+import { isListNode, isVNode } from "../vdom/guards";
 import { renderPhase } from "../debug/renderPhase";
 import { checkRenderStability, isStrictRender } from "../debug/renderStability";
 import { currentOrigin } from "../core/origin";
@@ -14,8 +11,7 @@ import { diagnose } from "../debug/diagnostics";
 export function generateRenderOutput(component: BaseComponent) {
   if (__DEV__) {
     // render() is the one moment no signal setter may fire. Mark who is
-    // rendering so State.set can report the write (RMD001). Covers @Host's
-    // props callback too, since it also runs while building the output.
+    // rendering so State.set can report the write (RMD001).
     renderPhase.component = component;
     try {
       const output = buildRenderOutput(component);
@@ -57,8 +53,8 @@ function reportIfAsync(output: unknown, component: BaseComponent): void {
 function buildRenderOutput(component: BaseComponent) {
   // Everything render() builds is stamped with this component, so the diff can
   // tell a component's own elements from ones handed to it through a prop.
-  // Saved and restored rather than cleared: @Host's props callback and a hook
-  // getter both run inside here, and a list must carry its owner.
+  // Saved and restored rather than cleared: a hook getter runs inside here, and
+  // a list must carry its owner.
   const previousOrigin = currentOrigin.id;
   currentOrigin.id = component[GLOBAL_RUNTIME].id;
 
@@ -69,64 +65,39 @@ function buildRenderOutput(component: BaseComponent) {
     currentOrigin.id = previousOrigin;
   }
 
-  // Asked of what `render()` ITSELF returned, before it is wrapped in a host element — the wrapper
-  // is a node whatever is inside it, so the question cannot be asked one level up.
+  // Asked of what `render()` returned, which is the value itself: there is no wrapper between it
+  // and the caller, so a promise is visible here and nowhere else.
   if (__DEV__) reportIfAsync(innerRendered, component);
 
-  const ctor = component.constructor as { [HOST_META]?: HostMeta };
-  const meta = ctor[HOST_META];
-
-  // The default host is a transparent <ramonda-host display:contents>. @Host
-  // swaps it for a real element (tag already uppercased by the decorator).
-  //
-  // Resolved once per instance and cached: with a tag callback this reads
-  // rawProps, NOT the props proxy, on purpose. Going through the proxy would
-  // subscribe the component to that prop and make the host tag look reactive —
-  // and a host tag that changes under a live component is exactly what must not
-  // happen. `""` caches "no @Host", so the lookup is skipped on later renders.
-  const componentRuntime = component[COMPONENT_RUNTIME];
-  let resolvedTag = componentRuntime.hostTag;
-  if (resolvedTag === undefined) {
-    resolvedTag = resolveHostTag(component.constructor, componentRuntime.rawProps) ?? "";
-    componentRuntime.hostTag = resolvedTag;
-  }
-
-  let wrapperTag = HOST_TAG;
-  let baseStyle = hostStyle;
-  if (resolvedTag) {
-    wrapperTag = resolvedTag;
-    baseStyle = "";
-  }
-
-  const componentAttributes: Record<string, any> = {
-    style: baseStyle,
-    // Reactive host attributes from @Host's props callback. This runs on every
-    // render, so it tracks component state; spread over the defaults above.
-    ...(meta?.props ? meta.props(component) : undefined),
-  };
-
-  // Dev-only, namespaced debug marker (visible in the Elements panel). Not
-  // present in production, and cannot collide with a user's `name` attribute.
-  // Devtools reads the component reference (_componentDefinition), not this.
-  if (__DEV__) {
-    componentAttributes["data-ramonda"] = component.constructor.name;
-  }
-
-  const key = component.props.key;
-  if (key != null) componentAttributes.key = key;
-
+  /**
+   * The children ARE the output. There is no wrapper.
+   *
+   * A component owns a range of its parent's children, so what `render()` returned goes straight
+   * into the parent — one node, two, or none. The parent's record is what says which of them are
+   * this component's, and `ComponentRegion` is that entry.
+   *
+   * Nothing is derived from the class here any more: there is no tag to resolve, no `style` to
+   * default, no attribute bag, and no `key` to copy onto an element — the parent reads `key` off
+   * the vnode when it builds the region, which is the only place it was ever needed.
+   */
   const children = isArray(innerRendered) ? innerRendered : [innerRendered];
 
-  // render()'s output becomes the host's children directly — it never passes
-  // through flattenMixedArray, which is where the marker is normally set. Without
-  // this, a list returned straight from render() would reach the diff unmarked
-  // and be reconciled as if it were a single vnode. The scan is over the host's
-  // direct children only, which is one item in the overwhelming majority of
-  // components.
+  // render()'s output goes to the parent directly — it never passes through flattenMixedArray,
+  // which is where the marker is normally set. Without this, a list or a component returned
+  // straight from render() would reach the diff unmarked and be reconciled as if it were a single
+  // node. The scan is over the render's own children only, which is one item in the overwhelming
+  // majority of components.
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
+
+    // A component child owns a range of its own, so this render's own record has to exist.
+    if (isVNode(child) && child.type === COMPONENT_TYPE) {
+      (children as { [HAS_REGION]?: boolean })[HAS_REGION] = true;
+      continue;
+    }
+
     if (isListNode(child)) {
-      (children as { [HAS_LIST]?: boolean })[HAS_LIST] = true;
+      (children as { [HAS_REGION]?: boolean })[HAS_REGION] = true;
 
       // A `list()` descriptor returned STRAIGHT from render() — `return
       // list({...})` rather than `<ul>{list({...})}</ul>` — has no owner yet,
@@ -154,5 +125,5 @@ function buildRenderOutput(component: BaseComponent) {
     }
   }
 
-  return createRamonda(wrapperTag, componentAttributes, children);
+  return children;
 }

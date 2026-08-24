@@ -42,11 +42,19 @@ export function reportOrphanedUpdate(component: BaseComponent): void {
   // every render.
   if (componentRuntime.env === "server") return;
 
-  const node = componentRuntime.enhancedNode as ChildNode | undefined;
+  /**
+   * The component's own first node, or the parent its block sits in.
+   *
+   * A component may own no node at all — a render that returned `null` — and that is not the fault
+   * this reports: such a component is perfectly healthy as long as the parent it renders into is in
+   * the document. So the parent is the question when there is nothing of its own to ask.
+   */
+  const region = componentRuntime.region;
+  const node = region?.order[0] ?? region?.parent;
   if (!node || node.isConnected) return;
 
   const name = component.constructor.name;
-  diagnose("RMD016", name, `<${name} /> updated while its element is not in the document.`);
+  diagnose("RMD016", name, `<${name} /> updated while the markup it renders into is not in the document.`);
 }
 
 /**
