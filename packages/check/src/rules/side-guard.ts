@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { guardedBy } from "./guard-walk";
 
 /**
  * Whether a read sits behind a check that it only happens on the side where it works.
@@ -107,60 +108,13 @@ export function narrowsTo(condition: ts.Expression, side: Side): boolean {
 /**
  * Whether this node only runs on `side`, because something above it or before it says so.
  *
- * Three climbing shapes, the same three {@link insideADevGuard} takes — the THEN branch of an `if`,
- * the RIGHT of an `&&`, the chosen arm of a ternary — each also in its inverted form, because
- * `if (client) … else <here>` narrows to the server exactly as `if (server) <here>` does.
- *
- * And one shape a dev guard never needs: the EARLY RETURN. `if (typeof process === "undefined")
- * return null;` narrows everything after it in the same block, and it is how a `render()` is
- * written far more often than a nested `if` is — measured on the plant, it was one of the five
- * correct shapes being reported.
+ * The shapes are {@link guardedBy}'s, shared with the dev guard — this file only says what the
+ * CONDITIONS mean. Written with its own copy of the walk first, and the copy was the mistake: the
+ * dev guard turned out to need the early return too, and one of the two would have got it.
  */
 export function narrowedTo(node: ts.Node, side: Side): boolean {
-  let child: ts.Node = node;
-
-  for (let at = node.parent; at !== undefined; child = at, at = at.parent) {
-    if (ts.isIfStatement(at)) {
-      if (at.thenStatement === child && narrowsTo(at.expression, side)) return true;
-      // The `else` of a check for the OTHER side is this side.
-      if (at.elseStatement === child && narrowsTo(at.expression, opposite(side))) return true;
-    }
-
-    if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
-      if (at.right === child && narrowsTo(at.left, side)) return true;
-    }
-
-    if (ts.isConditionalExpression(at)) {
-      if (at.whenTrue === child && narrowsTo(at.condition, side)) return true;
-      if (at.whenFalse === child && narrowsTo(at.condition, opposite(side))) return true;
-    }
-
-    if (ts.isBlock(at) && ts.isStatement(child) && leavesEarlyBefore(at, child, side)) return true;
-  }
-  return false;
-}
-
-/**
- * `if (<the other side>) return;` somewhere ABOVE this statement in the same block.
- *
- * Only a guard that LEAVES counts — `return` or `throw`, and with no `else`, because an `if` with
- * an else does not fall through to here at all on that path. Anything else above this statement is
- * not a narrowing, and reading it as one would excuse a real crash.
- */
-function leavesEarlyBefore(block: ts.Block, statement: ts.Statement, side: Side): boolean {
-  for (const above of block.statements) {
-    if (above === statement) return false;
-    if (!ts.isIfStatement(above) || above.elseStatement !== undefined) continue;
-    if (!narrowsTo(above.expression, opposite(side))) continue;
-    if (leaves(above.thenStatement)) return true;
-  }
-  return false;
-}
-
-/** Whether this statement cannot fall through to the line below it. */
-function leaves(statement: ts.Statement): boolean {
-  if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
-  // `{ return null; }` — the braced form, which is what a formatter writes.
-  if (!ts.isBlock(statement)) return false;
-  return statement.statements.some(leaves);
+  return guardedBy(node, {
+    holds: (condition) => narrowsTo(condition, side),
+    denies: (condition) => narrowsTo(condition, opposite(side)),
+  });
 }
