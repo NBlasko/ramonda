@@ -59,6 +59,7 @@ export type {
   LabelThatNamesNothingIssue,
   AriaStateTheRoleDoesNotHaveIssue,
   AriaHiddenAroundSomethingFocusableIssue,
+  TableWithNoHeadersIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

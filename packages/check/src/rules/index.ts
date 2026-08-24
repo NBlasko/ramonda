@@ -50,6 +50,7 @@ import { moreThanOneMain } from "./more-than-one-main";
 import { labelThatNamesNothing } from "./label-that-names-nothing";
 import { ariaStateTheRoleDoesNotHave } from "./aria-state-the-role-does-not-have";
 import { ariaHiddenAroundSomethingFocusable } from "./aria-hidden-around-something-focusable";
+import { tableWithNoHeaders } from "./table-with-no-headers";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -172,6 +173,7 @@ export {
   ariaHiddenAroundSomethingFocusable,
   type AriaHiddenAroundSomethingFocusableIssue,
 } from "./aria-hidden-around-something-focusable";
+export { tableWithNoHeaders, type TableWithNoHeadersIssue } from "./table-with-no-headers";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -291,6 +293,7 @@ export const ELEMENT_RULES = [
   ariaStateTheRoleDoesNotHave,
   autocompleteThatFillsNothing,
   labelThatNamesNothing,
+  tableWithNoHeaders,
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,

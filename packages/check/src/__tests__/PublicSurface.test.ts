@@ -34,6 +34,7 @@ const EXPECTED_TYPES = [
   "LabelThatNamesNothingIssue",
   "AriaStateTheRoleDoesNotHaveIssue",
   "AriaHiddenAroundSomethingFocusableIssue",
+  "TableWithNoHeadersIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",
