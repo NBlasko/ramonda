@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, instanceOf } from "../test/setup";
 import { Component, state, createSubscriptionDecorator } from "../index";
 import { reactivityScope } from "../reactivity/tracker";
 
@@ -63,13 +63,14 @@ describe("the scheduler survives an uncaught error", () => {
     }
   }
 
-  const instanceOf = (container: HTMLElement, id: string) =>
-    (container.querySelector(`#${id}`)!.parentElement as unknown as { _componentInstance: any })._componentInstance;
+  // The component whose markup holds `#id`, asked of the record — a node points at no component.
+  const componentFor = (container: HTMLElement, id: string) =>
+    instanceOf<any>(container.querySelector(`#${id}`));
 
   test("a component that went dirty in the SAME drain still renders", async () => {
     const app = await getDOM<App>(<App />);
-    const queued = instanceOf(app.container, "queued") as Counter;
-    const exploder = instanceOf(app.container, "exploder") as Exploder;
+    const queued = componentFor(app.container, "queued") as Counter;
+    const exploder = componentFor(app.container, "exploder") as Exploder;
 
     // Order matters: the queue is popped from the end, so marking the counter
     // FIRST puts the exploder ahead of it — it throws before the counter builds.
@@ -86,8 +87,8 @@ describe("the scheduler survives an uncaught error", () => {
 
   test("a component that goes dirty AFTERWARDS still renders", async () => {
     const app = await getDOM<App>(<App />);
-    const later = instanceOf(app.container, "later") as Counter;
-    const exploder = instanceOf(app.container, "exploder") as Exploder;
+    const later = componentFor(app.container, "later") as Counter;
+    const exploder = componentFor(app.container, "exploder") as Exploder;
 
     exploder.n = 1;
     expect(() => app.settle()).toThrow("render-boom");
@@ -103,8 +104,8 @@ describe("the scheduler survives an uncaught error", () => {
 
   test("the app keeps working across repeated failures", async () => {
     const app = await getDOM<App>(<App />);
-    const later = instanceOf(app.container, "later") as Counter;
-    const exploder = instanceOf(app.container, "exploder") as Exploder;
+    const later = componentFor(app.container, "later") as Counter;
+    const exploder = componentFor(app.container, "exploder") as Exploder;
 
     for (let i = 1; i <= 3; i++) {
       exploder.n = i;

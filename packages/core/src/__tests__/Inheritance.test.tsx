@@ -165,11 +165,7 @@ describe("extending a component (no constructor anywhere)", () => {
     expect(app.container.querySelectorAll("span")[1].textContent).toBe("fancy:1");
 
     // Detaching it must survive too — that is what passing it as a prop does.
-    const fancy = (
-      app.container.querySelectorAll("button")[1] as Element & {
-        _componentInstance?: FancyButton;
-      }
-    )._componentInstance!;
+    const fancy = instanceOf<FancyButton>(app.container.querySelectorAll("button")[1]);
     const detached = fancy.handleClick;
     expect(() => detached()).not.toThrow();
     expect(fancy.clicks).toBe(2);

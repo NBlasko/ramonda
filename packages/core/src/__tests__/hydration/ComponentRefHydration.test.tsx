@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
 import { Component } from "../../base/Component";
 import { createRef } from "../../base/Ref";
+import { markComponents } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -40,6 +41,16 @@ describe("hydration: a component's ref", () => {
     // 1. "server": render and capture the HTML, then throw the instances away.
     const server = await getDOM(<App />);
     await server.settle();
+    /**
+     * The one step that turns a client render into SERVED markup.
+     *
+     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
+     * known from the record there. `markComponents` is the pass the server runs: the comment pair
+     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
+     * client finds no marker where one belongs, builds the component fresh, and the page ends up
+     * with both copies.
+     */
+    markComponents(server.container);
     const html = server.container.innerHTML;
     server.unmount();
 
@@ -76,6 +87,16 @@ describe("hydration: a component's ref", () => {
 
     const server = await getDOM(<App />);
     await server.settle();
+    /**
+     * The one step that turns a client render into SERVED markup.
+     *
+     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
+     * known from the record there. `markComponents` is the pass the server runs: the comment pair
+     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
+     * client finds no marker where one belongs, builds the component fresh, and the page ends up
+     * with both copies.
+     */
+    markComponents(server.container);
     const html = server.container.innerHTML;
     server.unmount();
     elementRef.setCurrent(null);

@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, findOne } from "../test/setup";
 import { Component, list, state, createContext } from "../index";
 import { HOOK_RUNTIME } from "../core/runtime";
 
@@ -74,11 +74,7 @@ describe("list scope cleanup", () => {
     // Three items plus the consuming component itself.
     expect(listenerCount(signal)).toBe(4);
 
-    const consumer = (
-      app.container.querySelector('[data-ramonda="Consumer"]') as unknown as {
-        _componentInstance: Consumer;
-      }
-    )._componentInstance;
+    const consumer = findOne<Consumer>(app.container, "Consumer");
 
     // Items that leave the list let go — this part already worked.
     consumer.rows = [{ t: "a" }];

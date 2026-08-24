@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, findOne } from "../test/setup";
 import { Component } from "../base/Component";
 import { state } from "../base/decorators";
 import { Head, resetHeadRegistry } from "../base/Head";
@@ -385,12 +385,11 @@ describe("the head when one page replaces another", () => {
     const app = await getDOM(<Layout />);
     await app.settle();
 
-    const page = app.container.querySelectorAll("div")[1] as { _componentInstance?: { loud: boolean } };
     expect(document.title).toBe("Page");
     expect(document.head.querySelector('meta[property="og:title"]')!.getAttribute("content")).toBe("page og");
 
     // The page stops setting both, and starts setting a description.
-    page._componentInstance!.loud = false;
+    findOne<{ loud: boolean }>(app.container, "Page").loud = false;
     await app.settle();
 
     // Handed back to the layout, not deleted.

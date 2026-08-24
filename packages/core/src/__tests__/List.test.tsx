@@ -136,11 +136,7 @@ describe("identity — the whole reason For exists, kept", () => {
   test("a reorder moves rows instead of rebuilding them", async () => {
     const { container, instance, settle } = await getDOM<Board>(<Board />);
 
-    const first = (
-      container.querySelectorAll("li")[0] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const first = instanceOf<Row>(container.querySelectorAll("li")[0]);
     first.clicks = 5;
     await settle();
     expect(texts(container)).toEqual(["a:5", "b:0", "c:0"]);
@@ -157,11 +153,7 @@ describe("identity — the whole reason For exists, kept", () => {
 
   test("removing from the middle keeps the survivors' state", async () => {
     const { container, instance, settle } = await getDOM<Board>(<Board />);
-    const third = (
-      container.querySelectorAll("li")[2] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const third = instanceOf<Row>(container.querySelectorAll("li")[2]);
     third.clicks = 9;
     await settle();
 
@@ -344,11 +336,7 @@ describe("the case list() was written for", () => {
     }
 
     const { container, instance, settle } = await getDOM<Two>(<Two />);
-    const todoRow = (
-      container.querySelector("#todo li") as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const todoRow = instanceOf<Row>(container.querySelector("#todo li"));
     todoRow.clicks = 4;
     await settle();
 
@@ -415,11 +403,7 @@ describe("the case list() was written for", () => {
     }
 
     const { container, instance, settle } = await getDOM<Shifting>(<Shifting />);
-    const bRow = (
-      container.querySelectorAll("li")[1] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const bRow = instanceOf<Row>(container.querySelectorAll("li")[1]);
     bRow.clicks = 7;
     await settle();
     expect(texts(container)).toEqual(["a:0", "b:7"]);
@@ -586,11 +570,7 @@ describe("server rendering and hydration", () => {
     await Promise.resolve();
 
     const instance = instanceOf<Board>(element.firstChild);
-    const first = (
-      element.querySelectorAll("li")[0] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const first = instanceOf<Row>(element.querySelectorAll("li")[0]);
     first.clicks = 5;
     await Promise.resolve();
     await Promise.resolve();
@@ -683,11 +663,7 @@ describe("a two-dimensional list", () => {
     const { container, instance, settle } = await getDOM<Grid>(<Grid />);
 
     // Give one cell in the first row some state of its own.
-    const cell = (
-      container.querySelectorAll("td")[0] as unknown as {
-        _componentInstance: CellView;
-      }
-    )._componentInstance;
+    const cell = instanceOf<CellView>(container.querySelectorAll("td")[0]);
     cell.clicks = 7;
     await settle();
 
@@ -708,11 +684,7 @@ describe("a two-dimensional list", () => {
   test("reordering CELLS moves them with their state", async () => {
     const { container, instance, settle } = await getDOM<Grid>(<Grid />);
 
-    const second = (
-      container.querySelectorAll("td")[1] as unknown as {
-        _componentInstance: CellView;
-      }
-    )._componentInstance;
+    const second = instanceOf<CellView>(container.querySelectorAll("td")[1]);
     second.clicks = 4;
     await settle();
     expect(grid(container)[0]).toEqual(["a:0", "b:4"]);
@@ -750,9 +722,7 @@ describe("a two-dimensional list", () => {
     // regions are per <tr>, which is what keeps them apart.
     const { container, settle } = await getDOM<Grid>(<Grid />);
 
-    const firstOfRowTwo = (
-      container.querySelectorAll("tr")[1].querySelectorAll("td")[0] as unknown as { _componentInstance: CellView }
-    )._componentInstance;
+    const firstOfRowTwo = instanceOf<CellView>(container.querySelectorAll("tr")[1].querySelectorAll("td")[0]);
     firstOfRowTwo.clicks = 2;
     await settle();
 
@@ -882,19 +852,11 @@ describe("two dimensions without keys", () => {
     const { container, settle } = await getDOM(<Sheet />);
     expect(grid2(container)).toEqual([["a:0", "b:0"], ["c:0"]]);
 
-    const cell = (
-      container.querySelectorAll("td")[0] as unknown as {
-        _componentInstance: Cell2View;
-      }
-    )._componentInstance;
+    const cell = instanceOf<Cell2View>(container.querySelectorAll("td")[0]);
     cell.clicks = 3;
     await settle();
 
-    const row = (
-      container.querySelector("tr") as unknown as {
-        _componentInstance: OwningRow;
-      }
-    )._componentInstance;
+    const row = instanceOf<OwningRow>(container.querySelector("tr"));
     row.reverse();
     await settle();
 
@@ -912,11 +874,7 @@ describe("two dimensions without keys", () => {
     const { container, settle } = await getDOM(<Sheet />);
     expect(container.querySelectorAll("tr").length).toBe(2);
 
-    const row = (
-      container.querySelector("tr") as unknown as {
-        _componentInstance: OwningRow;
-      }
-    )._componentInstance;
+    const row = instanceOf<OwningRow>(container.querySelector("tr"));
     row.reverse();
     await settle();
 

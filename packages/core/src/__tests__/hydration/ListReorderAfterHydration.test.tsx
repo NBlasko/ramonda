@@ -91,11 +91,7 @@ describe("a list keeps per-item state across a reorder", () => {
   test("on a freshly built tree", async () => {
     const { container, instance, settle } = await getDOM<Board>(<Board />);
 
-    const first = (
-      container.querySelectorAll("li")[0] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const first = instanceOf<Row>(container.querySelectorAll("li")[0]);
     first.clicks = 5;
     await settle();
     expect(texts(container)).toEqual(["a:5", "b:0", "c:0"]);
@@ -110,11 +106,7 @@ describe("a list keeps per-item state across a reorder", () => {
   test("on a hydrated tree", async () => {
     const { element, instance, settle } = await hydrated();
 
-    const first = (
-      element.querySelectorAll("li")[0] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const first = instanceOf<Row>(element.querySelectorAll("li")[0]);
     first.clicks = 5;
     await settle();
     await settle();

@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, instanceOf } from "../test/setup";
 import { Component, state, ShouldUpdateOnPropsChange } from "../index";
 
 /**
@@ -94,14 +94,13 @@ describe("a props update the rule refuses", () => {
     const app = await getDOM<Board>(<Board />);
     await app.settle();
 
-    const row = app.container.querySelector("p") as { _componentInstance?: { clicks: number } };
 
     // The parent offers a new label; the rule refuses it.
     app.instance.label = "second";
     await app.settle();
 
     // The component now re-renders for its OWN reason.
-    row._componentInstance!.clicks = 1;
+    instanceOf<{ clicks: number }>(app.container.querySelector("p")).clicks = 1;
     await app.settle();
 
     // The counter moved, the label did not — nothing ever wrote it.

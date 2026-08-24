@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../../test/setup";
 import { Component } from "../../base/Component";
 import { state, deferHydration, destroyed, interval } from "../../base/decorators";
+import { markComponents } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -77,6 +78,16 @@ describe("a deferred subtree that resumes with a different host tag", () => {
     // "server": the page rendered with a <div> host for the deferred part.
     const server = await getDOM(<Page as="div" />);
     await server.settle();
+    /**
+     * The one step that turns a client render into SERVED markup.
+     *
+     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
+     * known from the record there. `markComponents` is the pass the server runs: the comment pair
+     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
+     * client finds no marker where one belongs, builds the component fresh, and the page ends up
+     * with both copies.
+     */
+    markComponents(server.container);
     const html = server.container.innerHTML;
     server.unmount();
     destroyedCount = 0;

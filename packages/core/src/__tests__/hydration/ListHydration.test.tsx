@@ -3,6 +3,7 @@ import { getDOM, instanceOf } from "../../test/setup";
 import { state } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { list } from "../../base/list";
+import { markComponents } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 const microtask = () => Promise.resolve();
@@ -39,6 +40,16 @@ describe("hydration: a list is adopted, not rebuilt", () => {
   test("adopts the server's list nodes and keeps reordering them correctly", async () => {
     const server = await getDOM<List>(<List />);
     await server.settle();
+    /**
+     * The one step that turns a client render into SERVED markup.
+     *
+     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
+     * known from the record there. `markComponents` is the pass the server runs: the comment pair
+     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
+     * client finds no marker where one belongs, builds the component fresh, and the page ends up
+     * with both copies.
+     */
+    markComponents(server.container);
     const html = server.container.innerHTML;
     server.unmount();
 

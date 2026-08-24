@@ -4,149 +4,114 @@ exports[`TodoApp > After Create 1`] = `
 <div
   id="app-1"
 >
-  <ramonda-host
-    data-ramonda="TodoApp"
-    style="display: contents;"
-  >
-    <div>
-      <h1>
-        Todo List
-      </h1>
-      <button
-        style="cursor: pointer; color: blue;"
-      >
-        Klikni
-      </button>
-      <input
-        placeholder="kucaj ovde"
-        value=""
-      />
-      <div
-        class="list"
-      >
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+  <div>
+    <h1>
+      Todo List
+    </h1>
+    <button
+      style="cursor: pointer; color: blue;"
+    >
+      Klikni
+    </button>
+    <input
+      placeholder="kucaj ovde"
+      value=""
+    />
+    <div
+      class="list"
+    >
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Foo
+          </span>
+          <button
+            data-testid="Foo"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Foo
-              </span>
-              <button
-                data-testid="Foo"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Bar
+          </span>
+          <button
+            data-testid="Bar"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Bar
-              </span>
-              <button
-                data-testid="Bar"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Baz
+          </span>
+          <button
+            data-testid="Baz"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Baz
-              </span>
-              <button
-                data-testid="Baz"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nik
+          </span>
+          <button
+            data-testid="Nik"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nik
-              </span>
-              <button
-                data-testid="Nik"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Todi
+          </span>
+          <button
+            data-testid="Todi"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Todi
-              </span>
-              <button
-                data-testid="Todi"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nena
+          </span>
+          <button
+            data-testid="Nena"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nena
-              </span>
-              <button
-                data-testid="Nena"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
       </div>
     </div>
-  </ramonda-host>
+  </div>
 </div>
 `;
 
@@ -154,129 +119,99 @@ exports[`TodoApp > After Input 1`] = `
 <div
   id="app-1"
 >
-  <ramonda-host
-    data-ramonda="TodoApp"
-    style="display: contents;"
-  >
-    <div>
-      <h1>
-        Todo List
-      </h1>
-      <button
-        style="cursor: pointer; color: blue;"
-      >
-        Klikni
-      </button>
-      <input
-        placeholder="kucaj ovde"
-        value="Novi todo"
-      />
-      <div
-        class="list"
-      >
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+  <div>
+    <h1>
+      Todo List
+    </h1>
+    <button
+      style="cursor: pointer; color: blue;"
+    >
+      Klikni
+    </button>
+    <input
+      placeholder="kucaj ovde"
+      value="Novi todo"
+    />
+    <div
+      class="list"
+    >
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Bar
+          </span>
+          <button
+            data-testid="Bar"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Bar
-              </span>
-              <button
-                data-testid="Bar"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Baz
+          </span>
+          <button
+            data-testid="Baz"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Baz
-              </span>
-              <button
-                data-testid="Baz"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nik
+          </span>
+          <button
+            data-testid="Nik"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nik
-              </span>
-              <button
-                data-testid="Nik"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Todi
+          </span>
+          <button
+            data-testid="Todi"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Todi
-              </span>
-              <button
-                data-testid="Todi"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nena
+          </span>
+          <button
+            data-testid="Nena"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nena
-              </span>
-              <button
-                data-testid="Nena"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
       </div>
     </div>
-  </ramonda-host>
+  </div>
 </div>
 `;
 
@@ -284,149 +219,114 @@ exports[`TodoApp > After Submit 1`] = `
 <div
   id="app-1"
 >
-  <ramonda-host
-    data-ramonda="TodoApp"
-    style="display: contents;"
-  >
-    <div>
-      <h1>
-        Todo List
-      </h1>
-      <button
-        style="cursor: pointer; color: blue;"
-      >
-        Klikni
-      </button>
-      <input
-        placeholder="kucaj ovde"
-        value=""
-      />
-      <div
-        class="list"
-      >
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+  <div>
+    <h1>
+      Todo List
+    </h1>
+    <button
+      style="cursor: pointer; color: blue;"
+    >
+      Klikni
+    </button>
+    <input
+      placeholder="kucaj ovde"
+      value=""
+    />
+    <div
+      class="list"
+    >
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Bar
+          </span>
+          <button
+            data-testid="Bar"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Bar
-              </span>
-              <button
-                data-testid="Bar"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Baz
+          </span>
+          <button
+            data-testid="Baz"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Baz
-              </span>
-              <button
-                data-testid="Baz"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nik
+          </span>
+          <button
+            data-testid="Nik"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nik
-              </span>
-              <button
-                data-testid="Nik"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Todi
+          </span>
+          <button
+            data-testid="Todi"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Todi
-              </span>
-              <button
-                data-testid="Todi"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nena
+          </span>
+          <button
+            data-testid="Nena"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nena
-              </span>
-              <button
-                data-testid="Nena"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Novi todo
+          </span>
+          <button
+            data-testid="Novi todo"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Novi todo
-              </span>
-              <button
-                data-testid="Novi todo"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
       </div>
     </div>
-  </ramonda-host>
+  </div>
 </div>
 `;
 
@@ -434,128 +334,98 @@ exports[`TodoApp > After Update 1`] = `
 <div
   id="app-1"
 >
-  <ramonda-host
-    data-ramonda="TodoApp"
-    style="display: contents;"
-  >
-    <div>
-      <h1>
-        Todo List
-      </h1>
-      <button
-        style="cursor: pointer; color: blue;"
-      >
-        Klikni
-      </button>
-      <input
-        placeholder="kucaj ovde"
-        value=""
-      />
-      <div
-        class="list"
-      >
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+  <div>
+    <h1>
+      Todo List
+    </h1>
+    <button
+      style="cursor: pointer; color: blue;"
+    >
+      Klikni
+    </button>
+    <input
+      placeholder="kucaj ovde"
+      value=""
+    />
+    <div
+      class="list"
+    >
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Bar
+          </span>
+          <button
+            data-testid="Bar"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Bar
-              </span>
-              <button
-                data-testid="Bar"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Baz
+          </span>
+          <button
+            data-testid="Baz"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Baz
-              </span>
-              <button
-                data-testid="Baz"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nik
+          </span>
+          <button
+            data-testid="Nik"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nik
-              </span>
-              <button
-                data-testid="Nik"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Todi
+          </span>
+          <button
+            data-testid="Todi"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Todi
-              </span>
-              <button
-                data-testid="Todi"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
-        <div>
-          <ramonda-host
-            data-ramonda="TodoElement"
-            style="display: contents;"
+      </div>
+      <div>
+        <div
+          data-testid="todo-item"
+        >
+          <span>
+            Nena
+          </span>
+          <button
+            data-testid="Nena"
+            style="cursor: pointer;"
           >
-            <div
-              data-testid="todo-item"
-            >
-              <span>
-                Nena
-              </span>
-              <button
-                data-testid="Nena"
-                style="cursor: pointer;"
-              >
-                [X]
-              </button>
-            </div>
-          </ramonda-host>
+            [X]
+          </button>
         </div>
       </div>
     </div>
-  </ramonda-host>
+  </div>
 </div>
 `;
