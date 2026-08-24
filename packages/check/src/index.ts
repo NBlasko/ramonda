@@ -60,6 +60,7 @@ export type {
   AriaStateTheRoleDoesNotHaveIssue,
   AriaHiddenAroundSomethingFocusableIssue,
   TableWithNoHeadersIssue,
+  LandmarksThatCannotBeToldApartIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

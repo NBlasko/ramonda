@@ -51,6 +51,7 @@ import { labelThatNamesNothing } from "./label-that-names-nothing";
 import { ariaStateTheRoleDoesNotHave } from "./aria-state-the-role-does-not-have";
 import { ariaHiddenAroundSomethingFocusable } from "./aria-hidden-around-something-focusable";
 import { tableWithNoHeaders } from "./table-with-no-headers";
+import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-apart";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -174,6 +175,10 @@ export {
   type AriaHiddenAroundSomethingFocusableIssue,
 } from "./aria-hidden-around-something-focusable";
 export { tableWithNoHeaders, type TableWithNoHeadersIssue } from "./table-with-no-headers";
+export {
+  landmarksThatCannotBeToldApart,
+  type LandmarksThatCannotBeToldApartIssue,
+} from "./landmarks-that-cannot-be-told-apart";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -310,7 +315,7 @@ export const ELEMENT_RULES = [
  * the size of a render, and the guard they all need — whether an element is really on the page at
  * all — is computed once for them in `tree.ts`.
  */
-export const TREE_RULES = [duplicateId, headingSkipsALevel, moreThanOneMain] as const;
+export const TREE_RULES = [duplicateId, headingSkipsALevel, moreThanOneMain, landmarksThatCannotBeToldApart] as const;
 
 /** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
 /**
