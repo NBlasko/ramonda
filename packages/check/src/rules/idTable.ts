@@ -269,9 +269,21 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
         const written = literalOf(attribute.initializer, resolve);
         placeholder = written === undefined || written.trim().length > 0;
       } else if (NAMES_IT_DIRECTLY.has(name)) {
-        // Written at all, in any form. `aria-label={t("email")}` is somebody naming this control,
-        // and whether the string is empty is not a question this can answer.
-        namingAttribute = true;
+        /**
+         * Written at all, in any form — with one exception the source settles itself.
+         *
+         * `aria-label={t("email")}` is somebody naming this control and whether the string is empty
+         * is not a question this can answer, so anything unreadable counts. An EMPTY LITERAL is
+         * different: `aria-label=""` and `aria-labelledby=""` name nothing, and reading their
+         * presence as a name was a FALSE SILENCE — measured on a plant, `<input type="text"
+         * aria-labelledby="" />` had no name at all and was reported by nothing, because the
+         * attribute that names nothing had answered for the one that would have.
+         *
+         * The same shape as `placeholder=""` two branches up, found the same way and fixed the same
+         * way. When a rule reads an attribute's PRESENCE as its meaning, ask what it SAYS.
+         */
+        const written = literalOf(attribute.initializer, resolve);
+        if (written === undefined || written.trim().length > 0) namingAttribute = true;
       }
     }
 

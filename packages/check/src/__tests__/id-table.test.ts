@@ -217,3 +217,37 @@ describe("an id written beside a spread", () => {
     expect(found()["control-with-no-label"]).toEqual([]);
   });
 });
+
+/**
+ * An empty naming attribute names nothing, and reading its presence as a name was a FALSE SILENCE.
+ *
+ * `<input type="text" aria-labelledby="" />` has no accessible name at all, and was reported by
+ * NOTHING: the attribute that names nothing had answered for the one that would have. Found by
+ * planting a broad sweep of obviously-wrong markup and reading which lines nobody spoke about — the
+ * same method the ladder uses, pointed at the gaps BETWEEN rules rather than at one rule's own
+ * shapes.
+ *
+ * It is the same shape as `placeholder=""` in the branch above it, found the same way and fixed the
+ * same way: when a rule reads an attribute's PRESENCE as its meaning, ask what it SAYS. Three
+ * answers and not two — written-with-something, written-empty, and unreadable.
+ */
+describe("a naming attribute that names nothing", () => {
+  const lines = () =>
+    (analyzeProject(join(here, "fixtures", "empty-name", "tsconfig.json")).findings["control-with-no-label"] ?? []).map(
+      (issue) => issue.line,
+    );
+
+  test("all three spellings, and whitespace with them", () => {
+    // 11 `aria-labelledby=""`, 14 `aria-label=""`, 15 `title=""`, 18 whitespace — none of which a
+    // screen reader announces, and every one of which used to silence the rule.
+    expect(lines()).toEqual([11, 14, 15, 18]);
+  });
+
+  test("and a name this cannot read is somebody naming it", () => {
+    // `aria-label={t("email")}` is a name whose text this cannot know, and guessing would report a
+    // control that is correctly labelled. Only an empty LITERAL is the source saying otherwise.
+    expect(lines()).not.toContain(21);
+    expect(lines()).not.toContain(24);
+    expect(lines()).not.toContain(28);
+  });
+});
