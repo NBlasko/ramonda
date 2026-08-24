@@ -38,6 +38,7 @@ const EXPECTED_TYPES = [
   "LandmarksThatCannotBeToldApartIssue",
   "ParentWithAForeignChildIssue",
   "AriaThatContradictsTheTagIssue",
+  "RoleThatFightsTheTagIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

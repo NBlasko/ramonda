@@ -63,6 +63,7 @@ export type {
   LandmarksThatCannotBeToldApartIssue,
   ParentWithAForeignChildIssue,
   AriaThatContradictsTheTagIssue,
+  RoleThatFightsTheTagIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
