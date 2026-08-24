@@ -54,6 +54,7 @@ export type {
   AriaHiddenOnFocusableIssue,
   PresentationRoleOnFocusableIssue,
   AriaStateWithNoRoleIssue,
+  AutocompleteThatFillsNothingIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

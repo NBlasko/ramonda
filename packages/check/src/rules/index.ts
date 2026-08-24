@@ -45,6 +45,7 @@ import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
 import { ariaStateWithNoRole } from "./aria-state-with-no-role";
+import { autocompleteThatFillsNothing } from "./autocomplete-that-fills-nothing";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -153,6 +154,10 @@ export {
   type PresentationRoleOnFocusableIssue,
 } from "./presentation-role-on-focusable";
 export { ariaStateWithNoRole, type AriaStateWithNoRoleIssue } from "./aria-state-with-no-role";
+export {
+  autocompleteThatFillsNothing,
+  type AutocompleteThatFillsNothingIssue,
+} from "./autocomplete-that-fills-nothing";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -268,6 +273,7 @@ export const ELEMENT_RULES = [
   ariaHiddenOnFocusable,
   presentationRoleOnFocusable,
   ariaStateWithNoRole,
+  autocompleteThatFillsNothing,
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,
