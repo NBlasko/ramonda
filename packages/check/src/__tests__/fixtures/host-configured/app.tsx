@@ -55,7 +55,7 @@ class Shorthand extends Component {
  */
 @Host(
   (p: { as?: string }) => p.as ?? "div",
-  () => ({ "aria-lablled": "Filters" }),
+  () => ({ "aria-lablled": "Filters", class: "card" }),
 )
 class Polymorphic extends Component<{ as?: string }> {
   render() {
@@ -79,6 +79,28 @@ class SpreadFirst extends Component {
   }
 }
 
+/**
+ * An SVG host, whose tag name is CASE-SENSITIVE.
+ *
+ * `aria-labelledBy` reaches an HTML element as `aria-labelledby` and works — `setAttribute`
+ * lowercases — and reaches an SVG one verbatim through `setAttributeNS`, where it is an attribute
+ * nothing reads. So this is a fault here and is not one on a `<div>`.
+ */
+@Host("clipPath", () => ({ "aria-labelledBy": "title" }))
+class SvgHost extends Component {
+  render() {
+    return <span>svg</span>;
+  }
+}
+
+/** The same name on an HTML host, which is NOT a fault and must stay silent. */
+@Host("div", () => ({ "aria-labelledBy": "title" }))
+class HtmlHost extends Component {
+  render() {
+    return <span>html</span>;
+  }
+}
+
 /** No props bag at all: nothing to read, and nothing said. */
 @Host("div")
 class Bare extends Component {
@@ -99,6 +121,8 @@ class App extends Component {
         <Polymorphic />
         <SpreadLast />
         <SpreadFirst />
+        <SvgHost />
+        <HtmlHost />
         <Bare />
       </div>
     );

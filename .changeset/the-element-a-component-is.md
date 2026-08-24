@@ -28,5 +28,16 @@ All three spellings of the callback are read — `() => ({ … })`, `() => { ret
 takes. A tag chosen per props (`@Host((p) => p.as ?? "div", …)`) leaves the element unknowable, and
 the rules that turn on the tag stay quiet while the ones about the attribute name do not.
 
+Two faults in this work were found by a second pass over it, which is where fresh code is least
+examined. The host tag was lowercased before the SVG set was asked, so `@Host("clipPath")` answered
+`clippath` and an `aria-labelledBy` that really is unreadable in SVG was reported by nothing —
+`contextFor` has that distinction written down two lines from where the lowercasing was copied. And
+`class-instead-of-classname` printed `<the host element class=…>` for a `@Host` with a callback tag;
+a report about a host now names it as one, because the position lands on a decorator and `<div
+class=…>` sends a reader hunting for a tag that is not on that line.
+
+`ClassInsteadOfClassNameIssue` gains `onHost` and its `tag` is now optional — the one shape with no
+tag to print is a `@Host` whose tag is chosen per props.
+
 Measured over the seven real projects here: no new findings, and `apps/docs` runs in 1.38 s against
 1.36 s before.

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
+import { RULES } from "../rules/index";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "a11y", "tsconfig.json"));
@@ -491,7 +492,9 @@ describe("a fault written where a component configures its own element", () => {
   test("every fault in a `@Host` props bag is reported, beside the same fault on a tag", () => {
     // 11 is the `@Host` call, 28 the control element. The `aria-` name reports at the property
     // itself (13), because a report about ONE attribute among five has to say which.
-    expect(lines("class-instead-of-classname")).toEqual([11, 28]);
+    // 56 is the polymorphic host, which carries a `class` too: the tag has no one answer and this
+    // rule does not need one, because `class` is the wrong word on every tag it could be.
+    expect(lines("class-instead-of-classname")).toEqual([11, 28, 56]);
     expect(lines("positive-tabindex")).toEqual([11, 28]);
     expect(lines("access-key")).toEqual([11, 28]);
     expect(lines("unknown-aria-attribute")).toContain(13);
@@ -520,7 +523,42 @@ describe("a fault written where a component configures its own element", () => {
      * so the rules that turn on the tag say nothing. A misspelled `aria-` name is misspelled on
      * every tag it could be, and that one is reported: line 58.
      */
-    expect(lines("unknown-aria-attribute")).toEqual([13, 28, 58]);
+    expect(lines("unknown-aria-attribute")).toEqual([13, 28, 58, 89]);
+  });
+
+  /**
+   * A host tag name is CASE-SENSITIVE for exactly one question, and this is it.
+   *
+   * `aria-labelledBy` reaches an HTML element as `aria-labelledby` — `setAttribute` lowercases —
+   * and reaches an SVG one verbatim through `setAttributeNS`, where nothing reads it. So the same
+   * name is a fault on `@Host("clipPath")` (89) and is not one on `@Host("div")` (98).
+   *
+   * Caught in review of this branch's own code: the host tag was lowercased before the SVG set was
+   * asked, so `clipPath` answered `clippath` and the fault was reported by nothing. `contextFor`
+   * had the distinction written down two lines from where the lowercasing was copied.
+   */
+  test("an SVG host tag is matched by the name as WRITTEN", () => {
+    expect(lines("unknown-aria-attribute")).toContain(89);
+    expect(lines("unknown-aria-attribute")).not.toContain(98);
+  });
+
+  /**
+   * The report has to name what a reader is looking AT.
+   *
+   * The position lands on a decorator, so `<div class=…>` sends them hunting for a tag that is not
+   * on that line — and on a `@Host` with a callback tag the first version printed
+   * `<the host element class=…>`, which is not a sentence. Found in the second pass over this
+   * branch's own code, which is the least-examined code on it.
+   */
+  test("and a report about a host says so, whether or not the tag is knowable", () => {
+    const rule = RULES.find((r) => r.id === "class-instead-of-classname");
+    const said = (host()["class-instead-of-classname"] ?? []).map((issue) =>
+      (rule?.report.lines(issue as never) ?? []).join(" ").trim(),
+    );
+    expect(said.some((line) => line.includes('`class` in `@Host("div")`\'s props'))).toBe(true);
+    expect(said.some((line) => line.includes("`class` in this component's props"))).toBe(true);
+    expect(said.some((line) => line.includes("<div class=…>"))).toBe(true);
+    expect(said.some((line) => line.includes("the host element"))).toBe(false);
   });
 
   test("and a `@Host` with no props bag is read as saying nothing", () => {

@@ -102,11 +102,21 @@ export function hostAttributesOf(object: ts.ObjectLiteralExpression): {
  * `undefined` for the callback form, which is the silence contract: a tag chosen per props has no
  * one answer, and a rule that guessed would report an element half the pages do not have.
  */
-export function hostTagOf(call: ts.CallExpression): string | undefined {
-  const written = call.arguments[0];
-  if (written === undefined || !ts.isStringLiteralLike(written)) return undefined;
-  const name = written.text;
-  return /^[A-Z]/.test(name) ? undefined : name.toLowerCase();
+export function hostTagOf(call: ts.CallExpression): { written: string; tag: string } | undefined {
+  const first = call.arguments[0];
+  if (first === undefined || !ts.isStringLiteralLike(first)) return undefined;
+  /**
+   * BOTH spellings, and the difference is not cosmetic.
+   *
+   * A rule about `<img>` should not be defeated by `<IMG>`, so `tag` is lowercased exactly as
+   * `tagOf` lowercases a JSX tag name. But SVG tag names are CASE-SENSITIVE — `<clipPath>` is the
+   * SVG element and `<clippath>` is an unknown HTML one — so the SVG question has to be asked of
+   * the name as written. Lowercasing before that test was written first and caught in review:
+   * `@Host("clipPath", () => ({ "aria-labelledBy": … }))` came back `inSvg: false`, and an
+   * attribute that really is unreadable in SVG was reported by nothing. `contextFor` had the same
+   * distinction written down two lines from where this was copied.
+   */
+  return { written: first.text, tag: first.text.toLowerCase() };
 }
 
 /** Builds the context an element rule reads. */
@@ -178,12 +188,14 @@ export function hostContextFor(
     if (ts.isIdentifier(name) || ts.isStringLiteral(name)) positions.set(name.text.toLowerCase(), index);
   }
 
-  const tag = hostTagOf(call);
+  const named = hostTagOf(call);
   return build({
     attributes,
     at: call,
-    tag,
-    inSvg: tag !== undefined && svgElements.has(tag),
+    // A capital first letter is a component in JSX and cannot be a host tag; the callback form has
+    // no one answer, which is the silence contract. Both come back `undefined`.
+    tag: named === undefined || /^[A-Z]/.test(named.written) ? undefined : named.tag,
+    inSvg: named !== undefined && svgElements.has(named.written),
     spreads,
     overwritable: (name) => {
       const at = positions.get(name.toLowerCase());
