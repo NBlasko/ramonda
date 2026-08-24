@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import type { Rule } from "./rule";
+import { coreDecorators } from "./lifecycle-env";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * An `async` lifecycle method with nothing to catch what it awaits.
@@ -33,37 +34,102 @@ export interface UnguardedAsyncLifecycleIssue {
 
 const LIFECYCLES = new Set(["created", "mounted", "destroyed"]);
 
-/** The lifecycle decorator on a member, when it carries one. */
-function lifecycleOf(member: ts.ClassElement): string | undefined {
-  // `getDecorators`, NOT `getModifiers`. They are separate lists in the modern API, and asking the
-  // second for a decorator answers nothing at all — which made the first version of this rule
-  // silent on every input, including the fault planted to prove it worked.
-  for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
-    const expression = decorator.expression;
-    // `@mounted` and `@mounted({ env: "client" })` are both this.
-    const name = ts.isCallExpression(expression) ? expression.expression : expression;
-    if (ts.isIdentifier(name) && LIFECYCLES.has(name.text)) return name.text;
-  }
+/**
+ * The lifecycle decorator on a member, when it carries one — by the name CORE exports it under.
+ *
+ * This compared a BARE NAME, which is this repository's standing lesson arriving late: measured on
+ * a plant, `import { created as onCreate }` and `core.created()` both went quiet on the identical
+ * fault, and an app's own function called `created` would have been judged as the framework's.
+ *
+ * `coreDecorators` is `lifecycle-env`'s, not a second copy. Two rules answering one question about
+ * one decorator two different ways is exactly the drift a shared reader exists to prevent — and
+ * that rule had already been through this.
+ */
+function lifecycleOf(member: ts.ClassElement, context: RuleContext): string | undefined {
+  for (const { name } of coreDecorators(member, context)) if (LIFECYCLES.has(name)) return name;
   return undefined;
 }
 
 /** Whether anything in the body could catch a rejection — a `try` or an explicit `.catch()`. */
+/**
+ * Whether EVERY await in this body has something to catch it.
+ *
+ * This used to ask whether the body contained a `try` — any `try` — or a property called `catch`
+ * anywhere in it. Measured on a plant, that silenced three real faults:
+ *
+ * - a `try` around something else entirely, with the fetch below it unguarded;
+ * - `await a().catch(…)` followed by a second, bare `await`;
+ * - `try { await … } finally { … }`, which catches nothing at all — a `finally` runs on the way
+ *   past a rejection, it does not stop one.
+ *
+ * The question is about the AWAITS, so it is now asked of each of them: an await is handled when it
+ * sits inside a `try` that has a `catch`, or when the thing it awaits ends in `.catch(…)`. One
+ * unhandled await is the report, because one is all it takes.
+ */
 function guarded(body: ts.Node): boolean {
-  let found = false;
+  return unhandledAwaitIn(body) === false;
+}
+
+function unhandledAwaitIn(body: ts.Node): boolean {
+  let unhandled = false;
   (function look(node: ts.Node): void {
-    if (found) return;
-    if (ts.isTryStatement(node)) {
-      found = true;
-      return;
-    }
-    // `await this.load().catch(…)` and `void this.load().catch(…)` handle it themselves.
-    if (ts.isPropertyAccessExpression(node) && node.name.text === "catch") {
-      found = true;
+    if (unhandled) return;
+    // A nested function is its own timeline, and its rejection is its own business — the same line
+    // `late-request-read` draws about the same boundary.
+    if (node !== body && isFunctionLike(node)) return;
+
+    const awaited = ts.isAwaitExpression(node)
+      ? node.expression
+      : ts.isForOfStatement(node) && node.awaitModifier !== undefined
+        ? node.expression
+        : undefined;
+
+    if (awaited !== undefined && !handlesItself(awaited) && !insideACatchingTry(node, body)) {
+      unhandled = true;
       return;
     }
     ts.forEachChild(node, look);
   })(body);
-  return found;
+  return unhandled;
+}
+
+/** `fetchPosts().catch(…)` — the promise deals with its own rejection. */
+function handlesItself(expression: ts.Expression): boolean {
+  if (ts.isParenthesizedExpression(expression)) return handlesItself(expression.expression);
+  if (!ts.isCallExpression(expression)) return false;
+  const callee = expression.expression;
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === "catch";
+}
+
+/**
+ * A `try` between here and the method body that has a CATCH.
+ *
+ * `finally` does not count and that is the point of asking: it runs on the way past a rejection
+ * and does not stop one, so `try { await … } finally { spinner.stop() }` leaves the same unhandled
+ * rejection the rule is about.
+ */
+function insideACatchingTry(node: ts.Node, body: ts.Node): boolean {
+  for (let at: ts.Node | undefined = node; at !== undefined && at !== body.parent; at = at.parent) {
+    // Only the TRY BLOCK is protected. An await in the `catch` or the `finally` of the same
+    // statement is not caught by it — that is the whole point of where a handler sits.
+    if (ts.isTryStatement(at) && at.catchClause !== undefined && isWithin(node, at.tryBlock)) return true;
+  }
+  return false;
+}
+
+/** The four spellings of a function body, which is the boundary of one timeline. */
+function isFunctionLike(node: ts.Node): boolean {
+  return (
+    ts.isArrowFunction(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isMethodDeclaration(node)
+  );
+}
+
+function isWithin(node: ts.Node, container: ts.Node): boolean {
+  for (let at: ts.Node | undefined = node; at !== undefined; at = at.parent) if (at === container) return true;
+  return false;
 }
 
 /** Whether the body actually suspends — a method with no `await` cannot reject asynchronously. */
@@ -129,7 +195,8 @@ export const unguardedAsyncLifecycle = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
+  read(cls, context) {
+    const { self } = context;
     const found: UnguardedAsyncLifecycleIssue[] = [];
 
     for (const member of cls.members) {
@@ -137,7 +204,7 @@ export const unguardedAsyncLifecycle = {
       const isAsync = (ts.getModifiers(member) ?? []).some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
       if (!isAsync) continue;
 
-      const phase = lifecycleOf(member);
+      const phase = lifecycleOf(member, context);
       if (phase === undefined) continue;
       if (!awaits(member.body)) continue;
       if (guarded(member.body)) continue;
