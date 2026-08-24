@@ -3,6 +3,8 @@ import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { list } from "../base/list";
+import { findOne } from "../test/setup";
+import { CHILD_RECORD } from "../helpers/constants";
 
 /**
  * What a render costs the DOM, asserted.
@@ -222,6 +224,253 @@ describe("what a render costs the DOM", () => {
       setAttribute: 0,
       text: 0,
     });
+    dom.unmount();
+  });
+});
+
+/**
+ * The same list, one COMPONENT per row.
+ *
+ * The point of the comparison: a component owns a RANGE of nodes rather than an element, so a row is
+ * an entry in the parent's record rather than a node in its child list. That is a different code
+ * path through the diff, and the question this file exists to answer about it is whether it costs
+ * more DOM work than the plain rows above. It must not: the floors are the same floors.
+ */
+class RowView extends Component<{ row: Row }> {
+  render() {
+    return <li className="row">{this.props.row.label}</li>;
+  }
+}
+
+class KeyedComponentList extends Component {
+  @state data = rows(N);
+  render() {
+    return (
+      <ul>
+        {list(this.data, (row: Row) => (
+          <RowView key={row.id} row={row} />
+        ))}
+      </ul>
+    );
+  }
+}
+
+/** Three components deep, and only the innermost has markup. */
+class DeepInner extends Component<{ tick: number }> {
+  render() {
+    return <b data-tick={this.props.tick}>deep</b>;
+  }
+}
+class DeepMiddle extends Component<{ tick: number }> {
+  render() {
+    return <DeepInner tick={this.props.tick} />;
+  }
+}
+class DeepOuter extends Component {
+  @state tick = 0;
+  render() {
+    return (
+      <div>
+        <DeepMiddle tick={this.tick} />
+      </div>
+    );
+  }
+}
+
+/** A component that renders nothing until it is asked to, between two siblings that always do. */
+class Maybe extends Component {
+  @state open = false;
+  render() {
+    return this.open ? <b id="late">here</b> : null;
+  }
+}
+class Around extends Component {
+  render() {
+    return (
+      <div id="around">
+        <i>before</i>
+        <Maybe />
+        <u>after</u>
+      </div>
+    );
+  }
+}
+
+/**
+ * The same transition with no component in it: a hole in one element's own children.
+ *
+ * The control for the case above. Whatever it costs to put `<b>here</b>` between two siblings is
+ * what the DOM charges for the markup, and the question about the region path is only whether it
+ * charges anything on top.
+ */
+class AroundPlain extends Component {
+  @state open = false;
+  render() {
+    return (
+      <div id="around-plain">
+        <i>before</i>
+        {this.open ? <b id="late-plain">here</b> : null}
+        <u>after</u>
+      </div>
+    );
+  }
+}
+
+/** Elements holding a child record, and which ones. The record is the memory this design spends. */
+function recorded(root: Node): string[] {
+  const found: string[] = [];
+  const walk = (node: Node): void => {
+    if ((node as { [key: symbol]: unknown })[CHILD_RECORD] !== undefined) {
+      found.push((node as Element).nodeName.toLowerCase());
+    }
+    node.childNodes.forEach(walk);
+  };
+  walk(root);
+  return found;
+}
+
+describe("what a component costs, against the same markup without one", () => {
+  /**
+   * Every floor the plain list hits, hit by a list of components — append, prepend, swap, reverse,
+   * and a fresh array that changes nothing.
+   *
+   * Asserted together rather than one test each, so a regression cannot be read as "only the reverse
+   * case moved": the claim is that the region path costs the same as the node path across the whole
+   * set, and one number moving falsifies it.
+   */
+  test("a list of components costs what a list of elements costs", async () => {
+    const measure = async (change: (instance: KeyedComponentList) => void) => {
+      const dom = await getDOM<KeyedComponentList>(<KeyedComponentList />);
+      await dom.settle();
+      const counts = await cost(async () => {
+        change(dom.instance);
+        await dom.settle();
+      });
+      dom.unmount();
+      return counts;
+    };
+
+    const fresh = { id: 9999, label: "new" };
+
+    expect(await measure((self) => (self.data = [...self.data, fresh]))).toMatchObject({
+      insertBefore: 2,
+      removeChild: 0,
+      text: 0,
+    });
+    expect(await measure((self) => (self.data = [fresh, ...self.data]))).toMatchObject({
+      insertBefore: 2,
+      removeChild: 0,
+      text: 0,
+    });
+    expect(
+      await measure((self) => {
+        const next = [...self.data];
+        [next[1], next[N - 2]] = [next[N - 2], next[1]];
+        self.data = next;
+      }),
+    ).toMatchObject({ insertBefore: 2, removeChild: 0, text: 0 });
+    expect((await measure((self) => (self.data = [...self.data].reverse()))).insertBefore).toBe(N - 1);
+    expect(await measure((self) => (self.data = [...self.data]))).toMatchObject({
+      insertBefore: 0,
+      appendChild: 0,
+      removeChild: 0,
+      setAttribute: 0,
+      text: 0,
+    });
+  });
+
+  /**
+   * A prop travelling through three components writes one attribute, and nothing else.
+   *
+   * Each of the three is a region, so each one is a record entry that has to be matched, its props
+   * compared, and its own block reconciled. None of that is DOM work, and none of it may become DOM
+   * work: twenty passes, twenty attribute writes, no insertions.
+   */
+  test("a prop through three components writes one attribute per pass", async () => {
+    const dom = await getDOM<DeepOuter>(<DeepOuter />);
+    await dom.settle();
+
+    const counts = await cost(async () => {
+      for (let i = 0; i < 20; i++) {
+        dom.instance.tick++;
+        await dom.settle();
+      }
+    });
+
+    expect(counts.setAttribute).toBe(20);
+    expect(counts).toMatchObject({ insertBefore: 0, appendChild: 0, removeChild: 0, removeAttribute: 0, text: 0 });
+    dom.unmount();
+  });
+
+  /**
+   * The one case where the framework has to SEARCH for a position rather than carry one.
+   *
+   * A component that owns no node has nothing to place its first node relative to, and its parent is
+   * not re-rendering — so the insertion point comes from the siblings in the record. `ChildrenRegion`
+   * solves the same problem with a permanent comment anchor in the page; a component pays this search
+   * instead, which is why there is nothing of it in the DOM.
+   *
+   * Measured against the control rather than against a number I picked: whatever the plain hole
+   * costs, the component must cost the same. Both come out at two insertions — the text into the
+   * `<b>`, and the `<b>` into its parent — which is what the DOM charges for that markup and is the
+   * floor for it. The search costs no DOM operation at all, which is the claim.
+   */
+  test("an empty component filling in costs what a plain hole costs", async () => {
+    const withComponent = await getDOM<Around>(<Around />);
+    await withComponent.settle();
+    const maybe = findOne<{ open: boolean }>(withComponent.container, "Maybe");
+    const inner = () => withComponent.container.querySelector("#around")!.innerHTML;
+
+    expect(inner()).toBe("<i>before</i><u>after</u>");
+
+    const filled = await cost(async () => {
+      maybe.open = true;
+      await withComponent.settle();
+    });
+
+    // In the right PLACE, which is the half a count cannot show.
+    expect(inner()).toBe('<i>before</i><b id="late">here</b><u>after</u>');
+
+    const emptied = await cost(async () => {
+      maybe.open = false;
+      await withComponent.settle();
+    });
+    expect(inner()).toBe("<i>before</i><u>after</u>");
+    withComponent.unmount();
+
+    const plain = await getDOM<AroundPlain>(<AroundPlain />);
+    await plain.settle();
+    const plainFilled = await cost(async () => {
+      plain.instance.open = true;
+      await plain.settle();
+    });
+    const plainEmptied = await cost(async () => {
+      plain.instance.open = false;
+      await plain.settle();
+    });
+    plain.unmount();
+
+    expect({ ...filled }).toEqual({ ...plainFilled });
+    expect({ ...emptied }).toEqual({ ...plainEmptied });
+    expect(filled).toMatchObject({ insertBefore: 2, appendChild: 0, removeChild: 0 });
+  });
+
+  /**
+   * WHICH elements keep a child record, written down because it is the memory this design spends.
+   *
+   * A record is kept by an element that owns a REGION — a list, or a component — and by no other.
+   * It used to be lists alone, so this number went up with the change and the honest thing is to say
+   * by how much and where, rather than to leave it unmeasured.
+   *
+   * Here: the `<ul>` owns the list, and nothing else owns anything. The two hundred rows are
+   * components, so they are entries in the `<ul>`'s record rather than record-holders themselves —
+   * which is the shape that keeps this from growing with the list.
+   */
+  test("a record is kept by the elements that own a region, and by no others", async () => {
+    const dom = await getDOM<KeyedComponentList>(<KeyedComponentList />);
+    await dom.settle();
+
+    expect(recorded(dom.container)).toEqual(["div", "ul"]);
     dom.unmount();
   });
 });
