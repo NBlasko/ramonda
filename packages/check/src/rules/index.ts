@@ -44,6 +44,7 @@ import { controlWithNoLabel } from "./control-with-no-label";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
+import { ariaStateWithNoRole } from "./aria-state-with-no-role";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -151,6 +152,7 @@ export {
   presentationRoleOnFocusable,
   type PresentationRoleOnFocusableIssue,
 } from "./presentation-role-on-focusable";
+export { ariaStateWithNoRole, type AriaStateWithNoRoleIssue } from "./aria-state-with-no-role";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -265,6 +267,7 @@ export const ELEMENT_RULES = [
   positiveTabIndex,
   ariaHiddenOnFocusable,
   presentationRoleOnFocusable,
+  ariaStateWithNoRole,
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,

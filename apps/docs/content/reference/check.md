@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 55 of them.
+**Warnings.** These print and the run still passes. 56 of them.
 
 | rule | reported when |
 |---|---|
@@ -187,6 +187,7 @@ rules**, so a rule cannot be added without appearing here.
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
 | `presentation-role-on-focusable` | `role="presentation"` is written on an element a keyboard can still focus, where the role is ignored |
+| `aria-state-with-no-role` | an `aria-*` belonging to a role is written on an element that has no role |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
 | `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |

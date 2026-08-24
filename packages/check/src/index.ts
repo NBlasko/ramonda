@@ -53,6 +53,7 @@ export type {
   AccessKeyIssue,
   AriaHiddenOnFocusableIssue,
   PresentationRoleOnFocusableIssue,
+  AriaStateWithNoRoleIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,
