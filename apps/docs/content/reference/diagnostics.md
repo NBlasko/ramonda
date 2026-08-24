@@ -217,21 +217,14 @@ either counter is approached.
 Note that a *single* effect writing what it reads does **not** loop: the framework detaches a
 signal an effect mutated itself. See [Subscriptions](/concepts/subscriptions).
 
-## RMD010 — The default host is not allowed in this parent
-
-`<table>`, `<tbody>`, `<tr>`, `<select>` and `<svg>` reject unknown children — the browser's parser
-moves or deletes them, so the component is destroyed or split in two.
-
-Become the element the parent expects: `@Host("tbody")`, `@Host("tr")`, `@Host("td")`,
-`@Host("option")`, `@Host("g")`. See [the host element](/concepts/host).
-
 ## RMD011 — A function was used as a JSX tag
 
-A tag that is not an element, which breaks the rule the framework is built on. TypeScript rejects
-it; this fires when the build has no types.
+A function has nothing to construct, no state and no lifecycle, so as a tag it names nothing the
+framework can keep hold of. TypeScript rejects it; this fires when the build has no types.
 
-If you wanted vnodes from a function, call it as an expression — `{rows()}`. If you wanted state
-and lifecycle without an element, that is a [Hook](/hooks).
+For markup you reuse, call the function in an expression slot — `{sideBar()}` — where it reads as
+the value it is. For state and lifecycle with no markup, use a [Hook](/hooks). For both, make it a
+component: a component owns whatever its render returns, including nothing at all.
 
 ## RMD012 — retired
 
@@ -732,10 +725,9 @@ of flow content. Inline content — `<strong>`, `<em>`, `<a>`, `<span>` — is f
 is what a `<p>` is for.
 
 **Put the element where the parser allows it.** A block beside the paragraph rather than inside it,
-list items in a list, rows in a table. When the misplaced element is a component's own,
-[`@Host`](/concepts/host) is what decides its tag — and if a *default* host is what is in the wrong
-place, [RMD010](#rmd010-the-default-host-is-not-allowed-in-this-parent) reports that instead, with
-the host tag to reach for.
+list items in a list, rows in a table. A component in between is invisible to this: what it renders
+is what the parser sees, so the pair reported is the real parent and the real child however many
+components sit between them in your JSX.
 
 ## RMD029 — a boolean attribute given the string "false"
 
@@ -813,7 +805,7 @@ this one during a describe.
 // reported: a nested list() is a descriptor, not an element
 list(pages, (page: Post[]) => list(page, (item) => <PostRow item={item} />));
 
-// the way: a component, whose host element wraps the inner rows
+// the way: a component, which is ONE item and renders the inner rows
 list(pages, (item) => <PostPage item={item} />);
 ```
 
@@ -823,14 +815,14 @@ its identity — the item is **skipped**, and the page renders one row short.
 
 For plain values, wrap them: `list(names, (name) => <li>{name}</li>)`. For a nested list — a
 list of pages, each holding rows — put a component between them, as
-[nested lists](/lists/nested) shows. The component's host element is what wraps the inner rows.
+[nested lists](/lists/nested) shows: the component is one item to the outer list, and the rows are
+what it renders.
 
 TypeScript rejects all of this at the call site; this fires when the build has no types.
 
 ## RMD032 — More than one `@catchError` on a component
 
 ```tsx expect-error
-@Host("div")
 class Panel extends Component {
   @catchError logIt(e: unknown) { report(e); }
   @catchError showFallback() { this.failed = true; }   // reported: the first never runs
@@ -969,7 +961,6 @@ renders, as `class-instead-of-classname`.
 ```tsx expect-error
 @ShouldUpdateOnPropsChange((_self, previous, next) => next.v !== previous.v)   // this one decides
 @ShouldUpdateOnPropsChange(() => false)                                       // never consulted
-@Host("b")
 class Gated extends Component<{ v: number }> { render() { … } }
 ```
 
@@ -993,17 +984,8 @@ The handler is never attached, so the event it waits for cannot arrive. The sele
 at the moment the listener was set up, which usually means the element is rendered conditionally or
 arrives later.
 
-Attach to the host and let the event bubble, or move the listener to where the element certainly
-exists.
-
-## RMD042 — The default host cannot be the direct target of this event
-
-`<ramonda-host>` is `display: contents`, so it generates no box. Events that bubble from children
-still reach it; anything tied to a box — pointer position, hover, focus on the host itself — never
-will.
-
-Give the component a real host tag with `@Host("div")` if the event needs one. See
-[one tag, one element](/why/one-element).
+Attach to an element that is always there and let the event bubble up to it, or move the listener to
+where the element certainly exists.
 
 ## RMD043 — A `<meta>` with nothing to identify it
 
@@ -1030,35 +1012,15 @@ nothing the first did not.
 ## RMD044 — An unknown element type in JSX
 
 A tag has to be a string, a component class, or — for the one unsupported case — a function. This was
-none of them, so an empty host renders in its place and whatever it was meant to be is missing.
+none of them, so an inert `<template>` renders in its place and whatever it was meant to be is
+missing.
 
 Usually a value used where a tag belongs: an object read off a map with the wrong key, or a component
 whose import failed and arrived as `undefined`. A function in tag position is a different mistake with
 its own advice — see [`RMD011`](#rmd011-a-function-was-used-as-a-jsx-tag).
 
-The empty host is rendered in every build, so a failed import costs the one element rather than the
+The stand-in is rendered in every build, so a failed import costs that one element rather than the
 page. Reported once per component, so two of these in two files are two reports.
-
-## RMD045 — More than one `@Host` on a component
-
-```tsx expect-error
-@Host("div")
-@Host("span")     // throws: two answers to "which element am I?"
-class Panel extends Component { render() { … } }
-```
-
-A component is exactly one element, so there is one answer to which. Keep the `@Host` you meant and
-delete the rest.
-
-**It throws as well as reporting**, in every build. Unlike
-[`RMD032`](#rmd032-more-than-one-catcherror-on-a-component) and
-[`RMD040`](#rmd040-more-than-one-shouldupdateonpropschange-on-one-class), where one declaration quietly
-wins and the page still renders, there is no way to pick a winner here and carry on. The record is
-emitted for a collector all the same — a fault that only throws is invisible to anything shipping your
-diagnostics somewhere.
-
-A **subclass** declaring its own is not this. That overrides the base's, which is how a specialised
-component changes its element, and it is silent.
 
 ## RMD046 — More than one `@StableProps` on one class
 
@@ -1072,10 +1034,9 @@ class Watcher extends Hook<{ a: readonly unknown[]; b: readonly unknown[] }> { �
 rather than shadowing the base's. So two on one class has an unambiguous reading, the union, and both
 declarations take effect. Combine them: `@StableProps("a", "b")`.
 
-**A warning rather than a refusal**, which is the difference from
-[`RMD045`](#rmd045-more-than-one-host-on-a-component): there, two element names have no union and
-carrying on would mean picking one silently. Here the result is exactly what you asked for, written
-twice — so nothing is wrong except the spelling.
+**A warning rather than a refusal**, and the difference from the two above is the union: they have
+none, so one declaration wins and the other silently does nothing. Here the result is exactly what
+you asked for, written twice — so nothing is wrong except the spelling.
 
 A **subclass** declaring its own is not this. That adds to the base's list, which is the intended way to
 extend it.

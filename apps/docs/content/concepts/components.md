@@ -1,6 +1,6 @@
 ---
 title: Components
-description: What a component is, how you use one, and the single rule the framework rests on.
+description: What a component is, how you use one, and what it puts on the page.
 section: Core concepts
 order: 20
 ---
@@ -33,15 +33,25 @@ Write its name as a tag:
 A component can take input from whoever uses it (see [props](/concepts/props)) and
 keep its own memory (see [state](/concepts/state)).
 
-## One tag, one element
+## What ends up on the page
 
-Ramonda has a single rule that everything else rests on: **every tag in your JSX
-becomes exactly one element on the page.** A `<div>` is one `<div>`. Your own
-`<Card />` is one element too.
+A component puts exactly what its `render()` returns on the page, and nothing else.
+There is no wrapper around it.
 
-Because of that, the shape of what you write is the shape of what appears — nothing
-quietly splits into several elements or vanishes. Once you can picture the page from
-the code, a lot of guesswork goes away.
+```tsx
+export class Card extends Component {
+  render() {
+    return <div className="card">Hello</div>;
+  }
+}
+```
+
+`<Card />` gives you `<div class="card">Hello</div>`. One element, because that is what
+the render says — not because a component has to be one.
+
+That is the promise worth holding on to: **the page is what you wrote.** Every element
+in the DOM is an element you can point at in your JSX, and every element in your JSX is
+in the DOM. Once you can picture the page from the code, a lot of guesswork goes away.
 
 ## Showing one thing or another
 
@@ -67,16 +77,28 @@ Sometimes a component needs to place several elements at its spot rather than wr
 them in a container. `render()` may return an array:
 
 ```tsx
-@Host("tr")
-export class Row extends Component<{ name: string; score: number }> {
+export class Cells extends Component<{ name: string; score: number }> {
   render() {
     return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
   }
 }
 ```
 
-Here one `Row` is a table row — `<tr>`, its [host element](/concepts/host) — holding
-several cells, with no extra component per cell.
+Used inside a row, that is two cells and nothing between them:
+
+```tsx
+<tr>
+  <Cells name="Ada" score={9} />
+</tr>
+```
+
+```html
+<tr><td>Ada</td><td>9</td></tr>
+```
+
+This is the case a wrapper cannot serve at all: a `<tr>` accepts `<td>` and nothing
+else, so an element around the cells is not just untidy — the HTML parser moves it out
+of the table and the row falls apart.
 
 ## Reusing a component
 
@@ -84,10 +106,9 @@ Because a component is a class, one that is *almost* another can **extend** it: 
 what it had, change what differs.
 
 ```tsx
-@Host("th")
 export class HeaderCell extends Cell {
   render() {
-    return <strong>{super.render()}</strong>;
+    return <th>{super.render()}</th>;
   }
 }
 ```
@@ -95,20 +116,21 @@ export class HeaderCell extends Cell {
 Inherited state, hooks and lifecycle keep working. More in
 [inheritance](/composition/inheritance).
 
-## Why one tag, one element (optional)
+## Why there is no fragment (optional)
 
-Some frameworks let one tag stand for several elements at once (a *fragment*), or let
-a plain function be a tag (a *function component*). Ramonda allows neither, on
-purpose — both break the promise that a tag is one element, and that promise is what
-lets you read the page off the code.
+Other frameworks need a *fragment* — an invisible tag that groups children without
+being an element — and Ramonda has none, because a component already does the job. A
+component may return several elements, or one, or nothing, and it can hold state and a
+lifecycle while doing it. A fragment cannot: it takes no state, so a flag that decides
+what to show has to live somewhere else.
 
-The two cases people reach for them still have answers. Need state and lifecycle but
-no element of your own? That is a [Hook](/hooks). Bothered by a wrapper
-element? The default one takes part in no layout, so it usually isn't in the way —
-see [the host element](/concepts/host). Using a function as a tag is refused:
-TypeScript rejects it, and at runtime it is reported as `RMD011`.
+A plain function as a tag is refused, and that is a different refusal. A function has
+no state, no lifecycle and nothing to construct, so as a tag it names nothing the
+framework can keep. TypeScript rejects it; if one reaches the runtime it is reported as
+`RMD011`. When you want markup you reuse, call the function in an expression slot —
+`{sideBar()}` — where it reads as the value it is.
 
 ## Next
 
 - [JSX](/concepts/jsx) — the HTML-like syntax, up close.
-- [The host element](/concepts/host) — which element a component *is*.
+- [Refs](/concepts/refs) — reaching an element you rendered.

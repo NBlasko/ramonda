@@ -11,7 +11,6 @@ A grid, a table, a list of groups — an outer list whose items each contain a l
 Because `list()` is just an expression, it nests wherever you write it:
 
 ```tsx
-@Host("table")
 export class Grid extends Component<{ rows: RowData[] }> {
   private get rows() {
     return this.props.rows;
@@ -19,11 +18,13 @@ export class Grid extends Component<{ rows: RowData[] }> {
 
   render() {
     return (
-      <tbody>
-        {list(this.rows, (row) => (
+      <table>
+        <tbody>
+          {list(this.rows, (row) => (
             <tr>{list(row.cells, (cell) => <td>{cell.value}</td>)}</tr>
           ))}
-      </tbody>
+        </tbody>
+      </table>
     );
   }
 }
@@ -39,40 +40,52 @@ more — it owns state, you want it to re-render on its own, or the markup deser
 name:
 
 ```tsx
-@Host("tr")
 class Row extends Component<{ item: RowData }> {
   render() {
-    return list(this.props.item.cells, (item) => <CellView item={item} />);
+    return <tr>{list(this.props.item.cells, (item) => <CellView item={item} />)}</tr>;
   }
 }
 
-@Host("table")
 export class Grid extends Component<{ rows: RowData[] }> {
   private get rows() {
     return this.props.rows;
   }
 
   render() {
-    return <tbody>{list(this.rows, (item) => <Row item={item} />)}</tbody>;
+    return (
+      <table>
+        <tbody>{list(this.rows, (item) => <Row item={item} />)}</tbody>
+      </table>
+    );
   }
 }
 ```
 
-`render()` returns the list directly — `@Host("tr")` already supplies the one
-element, which is what lets a row hold many cells with no component per cell.
+## Inside a table, write the element the parent expects
 
-## Inside a table, become the right element
+`<table>`, `<tbody>` and `<tr>` accept only certain children, and that is about the
+elements you write rather than about components: a component in between is invisible to
+the parser, because what it renders is what the parser sees.
 
-`<table>`, `<tbody>` and `<tr>` only accept certain children, so a component inside
-one must be the element the parent expects:
+So a component used inside a `<tr>` renders cells:
 
-| inside | use |
-|---|---|
-| `<table>` | `@Host("tbody")` |
-| `<tbody>` | `@Host("tr")` |
-| `<tr>` | `@Host("td")` |
+```tsx
+class Cells extends Component<{ item: CellData }> {
+  render() {
+    return [<td>{this.props.item.label}</td>, <td>{this.props.item.value}</td>];
+  }
+}
+```
 
-Development reports a mismatch as `RMD010`. See [the host element](/concepts/host).
+```tsx
+<tr>
+  <Cells item={item} />
+</tr>
+```
+
+Two cells from one component, holding the state behind them, with nothing in between —
+which is the case a wrapper element cannot serve at all. An element there is moved out
+of the table by the parser and the row falls apart.
 
 ## Identity in two dimensions
 

@@ -31,7 +31,6 @@ export const routes = createRoutes({
 
 export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
 
-@Host("div")
 export class App extends Component {
   router = this.use(Router);
 

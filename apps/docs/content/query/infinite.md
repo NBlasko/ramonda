@@ -16,7 +16,7 @@ the list stale, one snapshot across the SSR boundary.
 import { InfiniteQuery } from "@ramonda/query";
 
 // One page of the feed. A `render:` callback has to produce an element, so a nested
-// list goes through a component — its host element is what wraps the rows.
+// list goes through a component — one item to the outer list, and the rows are what it renders.
 class PostPageView extends Component<{ item: PostPage }> {
   render() {
     return list(this.props.item.items, (item) => <PostRow item={item} />);

@@ -1,6 +1,6 @@
 ---
 title: Events
-description: React to clicks and keys — handlers as props, or decorators for window, document, and the host.
+description: React to clicks and keys — handlers as props, or decorators for window and document.
 section: Core concepts
 order: 24
 ---
@@ -66,7 +66,7 @@ So write it after a colon and it is taken exactly as it stands:
 The handler receives a plain `Event`; a custom event's `detail` is your own, so cast it
 to the shape you dispatched.
 
-## On window, document, or the component's own element
+## On window or document
 
 Some events don't come from an element you render — the window resizing, a key
 pressed anywhere on the page. Decorators handle those:
@@ -77,10 +77,10 @@ onResize(event: UIEvent) {}
 
 @onDocument("keydown")
 onKey(event: KeyboardEvent) {}
-
-@onElement("click")
-onClick(event: MouseEvent) {}
 ```
+
+An event from an element you *did* render needs no decorator: write the handler on that
+element, where you can see which element it is on.
 
 Each attaches when the component appears and removes itself when the component goes
 away — no cleanup to write, and no way to leave one dangling.
@@ -91,9 +91,8 @@ target has types the handler's parameter for you; any other string is accepted a
 over a plain `Event`, which is how a custom event works:
 
 ```tsx
-@Host("div")
 export class Thing extends Component {
-  @onElement("my-event")
+  @onDocument("my-event")
   onCustom(event: Event) {
     void event;
   }
@@ -107,13 +106,12 @@ Two spellings are refused, because neither can ever fire — `onclick` is the JS
 than the event, and `addEventListener` is case-sensitive. The error names the one to use:
 
 ```tsx expect-error
-@Host("div")
 export class Wrong extends Component {
-  @onElement("onclick")
+  @onWindow("onclick")
   a(event: Event) {
     void event;
   }
-  @onElement("MouseDown")
+  @onWindow("MouseDown")
   b(event: Event) {
     void event;
   }
@@ -138,16 +136,27 @@ Name the event and the handler's parameter is typed to match: `"keydown"` gives 
 `KeyboardEvent`, `"click"` a `MouseEvent`, with no cast. A custom event name the
 platform doesn't know is typed as the general `Event`.
 
-### `@onElement` and the default element
+### There is no decorator for your own elements
 
-`@onElement` listens on the component's own [host element](/concepts/host). By
-default that host takes up no space of its own, so events that need a physical box —
-hover, pointer position — won't reach it, though clicks that bubble up from children
-still do. If you need those, give the component a real element with `@Host("div")`.
-Development warns you when this bites.
+A component has no element of its own — it puts what its `render()` returns on the page —
+so there is nothing for a decorator to attach to, and nothing to guess about. Write the
+handler on the element that emits the event:
 
-`@onWindow` and `@onDocument` also work on a [Hook](/hooks); `@onElement`
-does not, because a hook has no element of its own.
+```tsx
+render() {
+  return (
+    <div onmouseenter={this.onEnter} onclick={this.onClick}>
+      …
+    </div>
+  );
+}
+```
+
+Which also settles the awkward cases. `mouseenter` needs a box to enter and `focus` needs
+something focusable — on the element in front of you, both are obviously fine.
+
+Both decorators work on a [Hook](/hooks) as well as on a component, because `window` and
+`document` are the same target whoever listens.
 
 ## A handler, or a value, per item
 
@@ -233,9 +242,9 @@ what keeps the listener from being re-attached — and what stops
 |---|---|
 | an element in your `render()` | a prop: `onclick={this.handle}` |
 | `window` or `document` | `@onWindow` / `@onDocument` |
-| the component's own element | `@onElement` |
+| an element you rendered | a handler in the markup — `onclick={this.handle}` |
 
 ## Next
 
 - [Timers](/concepts/timers) — the same idea, for time.
-- [The decorator table](/reference/decorators) — `@onElement` is components-only; the other two are not.
+- [The decorator table](/reference/decorators) — where each decorator may go.
