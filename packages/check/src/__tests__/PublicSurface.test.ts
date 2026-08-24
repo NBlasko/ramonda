@@ -32,6 +32,7 @@ const EXPECTED_TYPES = [
   "AutocompleteThatFillsNothingIssue",
   "MoreThanOneMainIssue",
   "LabelThatNamesNothingIssue",
+  "AriaStateTheRoleDoesNotHaveIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

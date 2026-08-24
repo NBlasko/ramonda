@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 59 of them.
+**Warnings.** These print and the run still passes. 60 of them.
 
 | rule | reported when |
 |---|---|
@@ -188,6 +188,7 @@ rules**, so a rule cannot be added without appearing here.
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
 | `presentation-role-on-focusable` | `role="presentation"` is written on an element a keyboard can still focus, where the role is ignored |
 | `aria-state-with-no-role` | an `aria-*` belonging to a role is written on an element that has no role |
+| `aria-state-the-role-does-not-have` | an `aria-*` sits beside a `role` that does not support it, so nothing exposes it |
 | `autocomplete-that-fills-nothing` | an `autocomplete` value names no autofill field, so the browser ignores it entirely |
 | `label-that-names-nothing` | a `<label>` has no `htmlFor` and no control inside it, so it labels nothing |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |

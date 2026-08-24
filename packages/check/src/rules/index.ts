@@ -48,6 +48,7 @@ import { ariaStateWithNoRole } from "./aria-state-with-no-role";
 import { autocompleteThatFillsNothing } from "./autocomplete-that-fills-nothing";
 import { moreThanOneMain } from "./more-than-one-main";
 import { labelThatNamesNothing } from "./label-that-names-nothing";
+import { ariaStateTheRoleDoesNotHave } from "./aria-state-the-role-does-not-have";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -162,6 +163,10 @@ export {
 } from "./autocomplete-that-fills-nothing";
 export { moreThanOneMain, type MoreThanOneMainIssue } from "./more-than-one-main";
 export { labelThatNamesNothing, type LabelThatNamesNothingIssue } from "./label-that-names-nothing";
+export {
+  ariaStateTheRoleDoesNotHave,
+  type AriaStateTheRoleDoesNotHaveIssue,
+} from "./aria-state-the-role-does-not-have";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -277,6 +282,7 @@ export const ELEMENT_RULES = [
   ariaHiddenOnFocusable,
   presentationRoleOnFocusable,
   ariaStateWithNoRole,
+  ariaStateTheRoleDoesNotHave,
   autocompleteThatFillsNothing,
   labelThatNamesNothing,
   linkWithoutADestination,
