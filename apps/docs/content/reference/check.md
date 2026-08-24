@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 66 of them.
+**Warnings.** These print and the run still passes. 67 of them.
 
 | rule | reported when |
 |---|---|
@@ -193,6 +193,7 @@ rules**, so a rule cannot be added without appearing here.
 | `aria-state-the-role-does-not-have` | an `aria-*` sits beside a `role` that does not support it, so nothing exposes it |
 | `aria-that-contradicts-the-tag` | an `aria-*` is written `false` beside the HTML attribute that says the opposite |
 | `role-that-fights-the-tag` | a `role` says the element behaves in a way the tag does not — a link as a button, or a button as a link |
+| `live-region-that-contradicts-its-role` | an `aria-live` replaces the politeness the element's role already carries |
 | `autocomplete-that-fills-nothing` | an `autocomplete` value names no autofill field, so the browser ignores it entirely |
 | `label-that-names-nothing` | a `<label>` has no `htmlFor` and no control inside it, so it labels nothing |
 | `table-with-no-headers` | a `<table>` written out with data rows has no `<th>` anywhere in it |

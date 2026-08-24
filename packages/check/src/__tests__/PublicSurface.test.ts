@@ -39,6 +39,7 @@ const EXPECTED_TYPES = [
   "ParentWithAForeignChildIssue",
   "AriaThatContradictsTheTagIssue",
   "RoleThatFightsTheTagIssue",
+  "LiveRegionThatContradictsItsRoleIssue",
   "AriaValueIssue",
   "AriaWithNoSubjectIssue",
   "ArrowFieldIssue",

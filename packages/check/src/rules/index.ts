@@ -55,6 +55,7 @@ import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
+import { liveRegionThatContradictsItsRole } from "./live-region-that-contradicts-its-role";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -188,6 +189,10 @@ export {
   type AriaThatContradictsTheTagIssue,
 } from "./aria-that-contradicts-the-tag";
 export { roleThatFightsTheTag, type RoleThatFightsTheTagIssue } from "./role-that-fights-the-tag";
+export {
+  liveRegionThatContradictsItsRole,
+  type LiveRegionThatContradictsItsRoleIssue,
+} from "./live-region-that-contradicts-its-role";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -308,6 +313,7 @@ export const ELEMENT_RULES = [
   ariaStateTheRoleDoesNotHave,
   ariaThatContradictsTheTag,
   roleThatFightsTheTag,
+  liveRegionThatContradictsItsRole,
   autocompleteThatFillsNothing,
   labelThatNamesNothing,
   tableWithNoHeaders,

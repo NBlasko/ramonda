@@ -64,6 +64,7 @@ export type {
   ParentWithAForeignChildIssue,
   AriaThatContradictsTheTagIssue,
   RoleThatFightsTheTagIssue,
+  LiveRegionThatContradictsItsRoleIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RoleTakesNoNameIssue,

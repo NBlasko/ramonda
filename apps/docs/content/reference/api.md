@@ -380,17 +380,17 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `HostTagIsNotAnElementIssue`, `IndexAsKeyIssue`,
 `InteractiveInsideInteractiveIssue`, `IntervalWithNoCleanupIssue`, `LabelThatNamesNothingIssue`,
 `LandmarksThatCannotBeToldApartIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
-`ListenerAddedByHandIssue`, `ListenerOnTheDefaultHostIssue`, `MediaWithNoCaptionsIssue`,
-`MoreThanOneMainIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
-`ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`,
-`PresentationRoleOnFocusableIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`,
-`RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`,
-`StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`,
-`TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
-`UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`,
-`UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`, `UnsplittableImportIssue`,
-`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`ListenerAddedByHandIssue`, `ListenerOnTheDefaultHostIssue`,
+`LiveRegionThatContradictsItsRoleIssue`, `MediaWithNoCaptionsIssue`, `MoreThanOneMainIssue`,
+`NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`, `ParentWithAForeignChildIssue`,
+`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`,
+`ReferenceToAnIdThatIsNotThereIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
+`RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
+`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
+`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
+`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
+`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
