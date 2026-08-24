@@ -1,12 +1,12 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const tracks: unknown[];
 
 /** `accessKey` and media without a track, each beside the shapes that are correct. */
-@Host("div")
 class Player extends Component {
   render() {
     return (
+    <div>{(
       <div>
         {/* REPORTED — a shortcut the reader's own software may already be using. */}
         <button accessKey="s">Save</button>
@@ -41,8 +41,8 @@ class Player extends Component {
         {/* Not reported: nothing claims a shortcut. */}
         <button>Cancel</button>
       </div>
-    );
-  }
+    );}</div>
+  )}
 }
 
 bootstrap(<Player />, null);

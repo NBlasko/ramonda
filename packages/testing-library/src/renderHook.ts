@@ -1,4 +1,5 @@
 import { Component, __h, state } from "@ramonda/core";
+import { getComponentsIn } from "@ramonda/core/testing";
 import type { RamondaNode } from "@ramonda/core";
 import { act } from "./act";
 import { render, type WrapperComponent } from "./render";
@@ -109,14 +110,16 @@ export function renderHook<T, O = undefined>(
   };
 
   function findHost(container: HTMLElement): HookHost {
-    const marked = container.querySelector("[data-ramonda-hook-host]");
-    // The host's own element is the ramonda-host ABOVE the marked div — walk up
-    // to whichever node carries the instance.
-    let node: Node | null = marked;
-    while (node) {
-      const instance = (node as { _componentInstance?: unknown })._componentInstance;
-      if (instance instanceof HookHost) return instance;
-      node = node.parentNode;
+    /**
+     * Asked of the child RECORD, not of a node.
+     *
+     * A component owns a range of nodes and none of them points back at it, so walking up from the
+     * marked element looking for a back-reference finds nothing. `componentsIn` reads the record,
+     * which is the only thing that knows a component is there — and it works whatever the host
+     * renders, including a wrapper around it.
+     */
+    for (const candidate of getComponentsIn(container)) {
+      if (candidate instanceof HookHost) return candidate;
     }
     throw new Error(
       "[Ramonda] renderHook could not find its host component. This is a bug in @ramonda/testing-library.",

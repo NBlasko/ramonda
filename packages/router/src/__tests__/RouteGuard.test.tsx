@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Component, Host, bootstrap, createContext, mounted, state, unmount, updated } from "@ramonda/core";
+import { Component, bootstrap, createContext, mounted, state, unmount, updated } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes } from "../match";
@@ -20,27 +20,32 @@ import { createRoutes } from "../match";
 /** The live app's Navigator, so a test can click through the way a visitor does. */
 let liveNav: Navigator | undefined;
 
-@Host("div")
 class RouterApp extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   private route = this.use(Navigator);
   render() {
     liveNav = this.route;
-    return this.props.children;
+    return <div>{this.props.children}</div>;
   }
 }
 
-@Host("div")
 class Home extends Component {
   render() {
-    return <p>home</p>;
+    return (
+      <div>
+        <p>home</p>
+      </div>
+    );
   }
 }
 
-@Host("div")
 class Login extends Component {
   render() {
-    return <p>login</p>;
+    return (
+      <div>
+        <p>login</p>
+      </div>
+    );
   }
 }
 
@@ -49,7 +54,6 @@ let renders = 0;
 let sideEffects = 0;
 
 /** The shape the docs warn against: render() trusts the guard. */
-@Host("div")
 class Trusting extends Component {
   private route = this.use(Navigator);
   @mounted guard() {
@@ -60,12 +64,15 @@ class Trusting extends Component {
   }
   render() {
     renders++;
-    return <h1>SECRET</h1>;
+    return (
+      <div>
+        <h1>SECRET</h1>
+      </div>
+    );
   }
 }
 
 /** The shape the docs recommend: render() answers for itself. */
-@Host("div")
 class Careful extends Component {
   private route = this.use(Navigator);
   @mounted guard() {
@@ -73,8 +80,12 @@ class Careful extends Component {
   }
   render() {
     renders++;
-    if (!signedIn) return null;
-    return <h1>SECRET</h1>;
+    if (!signedIn) return <div>{null}</div>;
+    return (
+      <div>
+        <h1>SECRET</h1>
+      </div>
+    );
   }
 }
 
@@ -90,7 +101,6 @@ class Careful extends Component {
 let releaseCheck: () => void = () => {};
 let checkInFlight: Promise<void>;
 
-@Host("div")
 class AwaitsTheNetwork extends Component {
   private route = this.use(Navigator);
   @mounted async guard() {
@@ -98,7 +108,11 @@ class AwaitsTheNetwork extends Component {
     if (!signedIn) this.route.replace("/login");
   }
   render() {
-    return <h1>SECRET</h1>;
+    return (
+      <div>
+        <h1>SECRET</h1>
+      </div>
+    );
   }
 }
 
@@ -244,19 +258,17 @@ describe("when the answer arrives after the page is already up", () => {
   let shell: SessionShell | undefined;
   let decisions = 0;
 
-  @Host("div")
   class SessionShell extends Component<{ children?: RamondaNode }> {
     router = this.use(Router);
     @state status: Status = "pending";
     session = this.use(SessionProvider, () => ({ status: this.status }));
     render() {
       shell = this;
-      return this.props.children;
+      return <div>{this.props.children}</div>;
     }
   }
 
   /** Guard in @mounted only. */
-  @Host("div")
   class OnlyOnMount extends Component {
     private route = this.use(Navigator);
     private session = this.use(SessionConsumer);
@@ -265,14 +277,22 @@ describe("when the answer arrives after the page is already up", () => {
       if (this.session.status === "out") this.route.replace("/login");
     }
     render() {
-      if (this.session.status === "pending") return <p>checking</p>;
-      if (this.session.status === "out") return null;
-      return <h1>SECRET</h1>;
+      if (this.session.status === "pending")
+        return (
+          <div>
+            <p>checking</p>
+          </div>
+        );
+      if (this.session.status === "out") return <div>{null}</div>;
+      return (
+        <div>
+          <h1>SECRET</h1>
+        </div>
+      );
     }
   }
 
   /** The same method, on both lifecycles. */
-  @Host("div")
   class OnEveryCommit extends Component {
     private route = this.use(Navigator);
     private session = this.use(SessionConsumer);
@@ -283,9 +303,18 @@ describe("when the answer arrives after the page is already up", () => {
       if (this.session.status === "out") this.route.replace("/login");
     }
     render() {
-      if (this.session.status === "pending") return <p>checking</p>;
-      if (this.session.status === "out") return null;
-      return <h1>SECRET</h1>;
+      if (this.session.status === "pending")
+        return (
+          <div>
+            <p>checking</p>
+          </div>
+        );
+      if (this.session.status === "out") return <div>{null}</div>;
+      return (
+        <div>
+          <h1>SECRET</h1>
+        </div>
+      );
     }
   }
 

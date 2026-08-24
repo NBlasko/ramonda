@@ -21,42 +21,50 @@ import {
 const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
 // Two answers to "who handles an error from below?" — the first never runs.
-@Host("div")
 class Twice extends Component {
   @catchError logIt() {}
   @catchError showFallback() {}
   render() {
-    return <i />;
+    return (
+      <div>
+        <i />
+      </div>
+    );
   }
 }
 
 // Two class decorators of the same single-use kind.
 @ShouldUpdateOnPropsChange(() => true)
 @ShouldUpdateOnPropsChange(() => false)
-@Host("div")
 class GatedTwice extends Component {
   render() {
-    return <i />;
+    return (
+      <div>
+        <i />
+      </div>
+    );
   }
 }
 
 // The other fault: applying it twice changes nothing, so the advice differs. Measured in core — a
 // doubled @state renders once per write with the right value, and @compute's body runs once for two
 // reads. Nothing is displaced; the belief is simply wrong.
-@Host("div")
 class RedundantTwice extends Component {
   @state @state n = 1;
   @compute @compute get doubled() {
     return this.n * 2;
   }
   render() {
-    return <i />;
+    return (
+      <div>
+        <i />
+      </div>
+    );
   }
 }
 
 // What every component looks like: several fields, one @state each. Counting @state per CLASS reported
 // this as "declares @state 3 times", which is why the redundant kind is counted per MEMBER.
-@Host("div")
 class ManyFields extends Component {
   @state a = 1;
   @state b = 2;
@@ -65,17 +73,11 @@ class ManyFields extends Component {
     return this.a + this.b + this.c;
   }
   render() {
-    return <i />;
-  }
-}
-
-// `refuses`: two @Host THROW at class definition (RMD045) — two element names have no union, so there
-// is no live declaration to point a reader at. Only analyzed here, never run.
-@Host("div")
-@Host("span")
-class HostTwice extends Component {
-  render() {
-    return <i />;
+    return (
+      <div>
+        <i />
+      </div>
+    );
   }
 }
 
@@ -88,11 +90,14 @@ class StableTwice extends Hook {
 }
 
 // The BASE declares one; the subclass overrides it. Not a duplicate.
-@Host("div")
 class Base extends Component {
   @catchError handle() {}
   render() {
-    return <i />;
+    return (
+      <div>
+        <i />
+      </div>
+    );
   }
 }
 
@@ -103,11 +108,14 @@ class Sub extends Base {
 
 // One of each: silent.
 @ShouldUpdateOnPropsChange(() => true)
-@Host("div")
 class Fine extends Component {
   @catchError handle() {}
   render() {
-    return <i />;
+    return (
+      <div>
+        <i />
+      </div>
+    );
   }
 }
 

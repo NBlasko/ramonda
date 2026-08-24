@@ -418,31 +418,4 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
     const body = ts.isMethodDeclaration(member) || ts.isGetAccessorDeclaration(member) ? member.body : undefined;
     if (body) walk(body, [name], true, 0);
   }
-
-  /**
-   * `@Host("nav", (self) => ({ className: … }))` — a render that is in no member body.
-   *
-   * It runs every time the component renders, and `entryPoints` looks only at members, so a clock
-   * read there was reached by nothing. The id table had the same gap for the same callback, in a
-   * different reader — a fix for one reader is not a fix for the other.
-   *
-   * `insideTheClass` is FALSE, exactly as it is for a static. The callback is handed the component
-   * as a PARAMETER rather than through `this`, so nothing about `this` is knowable inside it and
-   * only what depends on nothing — a clock, a random number — is worth finding.
-   */
-  const props = hostPropsCallback(cls, reach.resolve);
-  if (props !== undefined) walk(props, ["@Host props"], false, 0);
-}
-
-/** The second argument to `@Host`, when it is a function this can walk. */
-function hostPropsCallback(cls: ts.ClassDeclaration, resolve: Resolver): ts.Node | undefined {
-  for (const decorator of ts.getDecorators(cls) ?? []) {
-    const call = decorator.expression;
-    if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
-
-    const written = call.arguments[1];
-    if (written === undefined) continue;
-    if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written.body;
-  }
-  return undefined;
 }

@@ -1407,7 +1407,7 @@ export function disposeRegions(entries: RecordEntry[]): void {
   }
 }
 
-function releaseChildRecord(node: EnhancedChildNode): void {
+export function releaseChildRecord(node: EnhancedChildNode): void {
   const record = node[CHILD_RECORD];
   if (record === undefined) return;
   disposeRegions(record);

@@ -1,5 +1,5 @@
 import { renderToString } from "@ramonda/core";
-import { Component, Hook, Host, bootstrap, compute, persist, state } from "@ramonda/core";
+import { Component, Hook, bootstrap, compute, persist, state } from "@ramonda/core";
 
 import { Dates, Maps } from "./kinds";
 import { heldCache, level1, makeCache } from "./make";
@@ -23,7 +23,6 @@ class Storefront extends Component {
   @state inherited = new Maps<string, number>();
 }
 
-@Host("div")
 class Cart extends Storefront {
   /* REPORTED — a `Map` arrives as `{}`. */
   @state byId = new Maps<string, number>();
@@ -58,7 +57,11 @@ class Cart extends Storefront {
   }
 
   render() {
-    return <div>{this.label}</div>;
+    return (
+      <div>
+        <div>{this.label}</div>
+      </div>
+    );
   }
 }
 

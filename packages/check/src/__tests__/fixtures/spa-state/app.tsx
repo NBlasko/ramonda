@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, persist, state } from "@ramonda/core";
+import { Component, bootstrap, persist, state } from "@ramonda/core";
 
 declare class Maps<K, V> {
   get(key: K): V;
@@ -20,7 +20,6 @@ function makeCache(): Maps<string, number> {
  * Nothing here imports a server entry, so the rule is not part of the run at all. Reporting a `Map`
  * in state here would be reporting a working application.
  */
-@Host("div")
 class Cart extends Component {
   /* Silent: correct with no blob to cross. */
   @state byId = new Maps<string, number>();
@@ -40,7 +39,11 @@ class Cart extends Component {
   @state @persist both = new Dates();
 
   render() {
-    return <div>{this.label}</div>;
+    return (
+      <div>
+        <div>{this.label}</div>
+      </div>
+    );
   }
 }
 

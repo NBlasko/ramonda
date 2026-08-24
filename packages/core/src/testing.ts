@@ -20,7 +20,7 @@
  */
 
 import { drainSync } from "./core/Task";
-import { componentAt, rerenderRoot as reconcileRoot } from "./core/DiffAndMerge";
+import { componentAt, componentsIn, rerenderRoot as reconcileRoot } from "./core/DiffAndMerge";
 import type { BaseComponent, ComponentChild } from "./types/vdom";
 
 /**
@@ -71,4 +71,16 @@ export function rerenderRoot(vnode: ComponentChild, container: HTMLElement): voi
 export function getComponentInstance(node: Node | null | undefined): BaseComponent<never> | undefined {
   if (!node) return undefined;
   return componentAt(node) as BaseComponent<never> | undefined;
+}
+
+/**
+ * Every component under a node, outermost first, in document order.
+ *
+ * The answer `getComponentInstance` cannot give: a component that renders NOTHING owns no node, so
+ * there is nothing to ask about — and a harness looking for "the component of this class in here"
+ * is asking about the tree rather than about a node. Read from the child record, which is what
+ * knows a component is there.
+ */
+export function getComponentsIn(node: Node): BaseComponent<never>[] {
+  return componentsIn(node) as unknown as BaseComponent<never>[];
 }

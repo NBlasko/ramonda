@@ -1,14 +1,10 @@
 import {
   Component,
   Hook,
-  Host,
-  Host as Element,
   StableProps,
   StableProps as Stable,
   bootstrap,
   state,
-  onElement,
-  onElement as onHostEvent,
   watchProp,
   watchProp as onPropChange,
 } from "@ramonda/core";
@@ -18,7 +14,6 @@ interface Props {
 }
 
 /** Written plainly. */
-@Host("div")
 @StableProps("conf")
 class Plain extends Component<Props> {
   @state n = 0;
@@ -27,7 +22,11 @@ class Plain extends Component<Props> {
   onNope() {}
 
   render() {
-    return <div>{this.n}</div>;
+    return (
+      <div>
+        <div>{this.n}</div>
+      </div>
+    );
   }
 }
 
@@ -58,10 +57,13 @@ class AliasedStableChild extends Component<{ conf: unknown }> {
   }
 }
 
-@Host("div")
 class HandsAStableProp extends Component {
   render() {
-    return <AliasedStableChild conf={{ dense: true }} />;
+    return (
+      <div>
+        <AliasedStableChild conf={{ dense: true }} />
+      </div>
+    );
   }
 }
 

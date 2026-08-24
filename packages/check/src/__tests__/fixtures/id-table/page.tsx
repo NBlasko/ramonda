@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, list } from "@ramonda/core";
+import { Component, bootstrap, list } from "@ramonda/core";
 
 declare const rows: { id: string; name: string }[];
 declare const profileId: string;
@@ -10,33 +10,39 @@ declare const profileId: string;
  * both rules across the whole project. Found by running against `apps/docs`, where
  * `<ProfileCard id={this.id} />` hands its id to `getProfile()` and never touches the DOM.
  */
-/** A component whose HOST carries the id — written in `@Host` props, not in any JSX element. */
-@Host("section", () => ({ id: "host-anchor" }))
+/** A component that carries an id on its own outermost element. */
 class Anchored extends Component {
   render() {
-    return <p>anchored</p>;
+    return (
+      <section id="host-anchor">
+        <p>anchored</p>
+      </section>
+    );
   }
 }
 
-/** The same, with a props callback that has a BLOCK body rather than a concise one. */
-@Host("section", () => {
-  return { id: "block-anchor" };
-})
+/** The same id, written on an element one level in — still an id the project carries. */
 class BlockAnchored extends Component {
   render() {
-    return <p>anchored from a block</p>;
+    return (
+      <section>
+        <p id="block-anchor">anchored from within</p>
+      </section>
+    );
   }
 }
 
-@Host("article")
 class ProfileCard extends Component<{ id: string }> {
   render() {
-    return <article>{this.props.id}</article>;
+    return (
+      <article>
+        <article>{this.props.id}</article>
+      </article>
+    );
   }
 }
 
 /** Where the ids live. */
-@Host("main")
 export class Page extends Component {
   render() {
     return (
@@ -60,7 +66,7 @@ export class Page extends Component {
         <label for="email">Email again</label>
 
         {/* Not reported: a template can only produce ids beginning with `row-`, so this is one it
-            could have made. */}
+              could have made. */}
         <a href="#row-3">Third row</a>
         {list(rows, (row) => (
           <li id={`row-${row.id}`}>{row.name}</li>
@@ -70,17 +76,16 @@ export class Page extends Component {
         <div aria-controls="panel-that-never-was" />
 
         {/* Not reported, and it must not silence anything either: `id` on a COMPONENT may be data,
-            and here it is. If it were forwarded to a host element, that host element would be in
-            the source too and would silence the family on its own terms. */}
+              and here it is. If it were forwarded to a host element, that host element would be in
+              the source too and would silence the family on its own terms. */}
         <ProfileCard id={profileId} />
 
-        {/* Not reported: the id is written in `@Host` props rather than in any JSX element, and it
-            is on the page all the same. This used to be reported as a link to nowhere. */}
+        {/* Not reported: both ids are written on real elements inside a component, and a link
+              from anywhere in the project resolves against them. */}
         <Anchored />
         <a href="#host-anchor">to the anchored section</a>
-        {/* Not reported either: the same id, written in a props callback with a BLOCK body. */}
         <BlockAnchored />
-        <a href="#block-anchor">to the one written in a block</a>
+        <a href="#block-anchor">to the one written further in</a>
       </main>
     );
   }

@@ -1,4 +1,5 @@
 import { Component, hydrateRoot, list, type RamondaNode, renderPage, renderToString } from "@ramonda/core";
+import { getComponentInstance } from "@ramonda/core/testing";
 import { act } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
 import { Field } from "../field";
@@ -148,7 +149,7 @@ describe("through hydration", () => {
       // and then reading its value proves nothing, because the browser holds what was typed whether or
       // not anything re-rendered. A write from outside the DOM can only reach the screen through a
       // subscription.
-      const instance = (element.firstChild as unknown as { _componentInstance: Page })._componentInstance;
+      const instance = getComponentInstance(element.firstChild);
       const form = (instance as unknown as { f: Form<typeof schema> }).f;
 
       await act(async () => (form.fields.rows.$.rows[1].field as FieldNode<{ v: string }>).v.$.set("from code"));
@@ -202,7 +203,7 @@ describe("through hydration", () => {
       await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 5));
 
-      const instance = (element.firstChild as unknown as { _componentInstance: Fine })._componentInstance;
+      const instance = getComponentInstance(element.firstChild);
       const form = (instance as unknown as { f: Form<typeof schema> }).f;
 
       expect(form.isValid).toBe(true);

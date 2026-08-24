@@ -1,4 +1,4 @@
-import { Component, Host, list, type RamondaNode } from "@ramonda/core";
+import { Component, list, type RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
 import { Field } from "../field";
@@ -51,17 +51,20 @@ function count(label: string): void {
 }
 
 /** The adapter pattern: the host element is the wrapper a design system writes anyway. */
-@Host("label", (self: TextField) => ({ className: self.f.error === undefined ? "field" : "field field--invalid" }))
 class TextField extends Component<{ of: FieldNode<string>; label: string; id: string }> {
   f = this.use(Field<string>, () => ({ of: this.props.of }));
 
   render(): RamondaNode {
     count(this.props.id);
-    return [
-      <span className="field__label">{this.props.label}</span>,
-      <input id={this.props.id} {...this.f.bind} />,
-      <span id={`${this.props.id}-error`}>{this.f.error ?? ""}</span>,
-    ];
+    return (
+      <label className={this.f.error === undefined ? "field" : "field field--invalid"}>
+        {[
+          <span className="field__label">{this.props.label}</span>,
+          <input id={this.props.id} {...this.f.bind} />,
+          <span id={`${this.props.id}-error`}>{this.f.error ?? ""}</span>,
+        ]}
+      </label>
+    );
   }
 }
 

@@ -1,11 +1,10 @@
-import { Component, Host, bootstrap, created, state } from "@ramonda/core";
+import { Component, bootstrap, created, state } from "@ramonda/core";
 
 declare const __DEV__: boolean;
 declare function publish(what: string): void;
 declare function displayName(of: unknown): string;
 declare const ready: boolean;
 
-@Host("div")
 class Guards extends Component {
   @state n = 0;
 
@@ -45,10 +44,12 @@ class Guards extends Component {
     const armed = __DEV__ && this.n > 0;
     return (
       <div>
-        {label}
-        {/* ✓ A JSX child is a value too. */}
-        {__DEV__ && <span>dev</span>}
-        {armed}
+        <div>
+          {label}
+          {/* ✓ A JSX child is a value too. */}
+          {__DEV__ && <span>dev</span>}
+          {armed}
+        </div>
       </div>
     );
   }

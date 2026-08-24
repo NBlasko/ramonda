@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, Host, renderToString } from "@ramonda/core";
+import { Component, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -42,18 +42,24 @@ import { createRoutes } from "../match";
  * what happens the first time anything reads it back.
  */
 
-@Host("div")
 class Home extends Component {
   render() {
-    return <span id="home">home</span>;
+    return (
+      <div>
+        <span id="home">home</span>
+      </div>
+    );
   }
 }
 
-@Host("div")
 class Players extends Component {
   hook = this.use(Navigator);
   render() {
-    return <span id="players">players</span>;
+    return (
+      <div>
+        <span id="players">players</span>
+      </div>
+    );
   }
 }
 
@@ -62,11 +68,14 @@ const routes = createRoutes({
   "/players": <Players />,
 });
 
-@Host("div")
 class App extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   render() {
-    return <RouteOutlet routes={routes} />;
+    return (
+      <div>
+        <RouteOutlet routes={routes} />
+      </div>
+    );
   }
 }
 

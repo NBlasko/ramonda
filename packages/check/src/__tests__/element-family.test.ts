@@ -11,9 +11,9 @@ const AT = {
   imageType: 37,
   hiddenButton: 50,
   hiddenOnlyChild: 67,
-  levelOneHopAway: 98,
-  levelWrittenAsText: 111,
-  notAHeading: 129,
+  levelOneHopAway: 100,
+  levelWrittenAsText: 114,
+  notAHeading: 133,
 } as const;
 
 const linesOf = (issues: readonly { line: number }[]) => issues.map((issue) => issue.line);

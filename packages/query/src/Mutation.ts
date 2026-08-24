@@ -71,14 +71,17 @@ export interface MutationProps<TData, TVars> {
  *     invalidates: [["todos"]],
  *   }));
  *
- *   @onElement("submit")
  *   submit(event: SubmitEvent) {
  *     event.preventDefault();
  *     this.add.mutate(this.title);
  *   }
  *
  *   render() {
- *     return <button disabled={this.add.isPending}>Add</button>;
+ *     return (
+ *       <form onsubmit={this.submit}>
+ *         <button disabled={this.add.isPending}>Add</button>
+ *       </form>
+ *     );
  *   }
  * }
  * ```

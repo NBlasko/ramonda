@@ -83,7 +83,8 @@ describe("server rendering", () => {
     // No app wiring, no `dehydrate()` call, no script tag: the query's answer is in
     // the hook's own `@state`, which core already serializes per component.
     expect(html).toContain("ada");
-    expect(html).toMatch(/data-ramonda-state|ramonda-state/);
+    // The blob rides the opening marker, which is the address of a component with no element.
+    expect(html).toMatch(/<!--c\d+ \{"state"/);
   });
 
   test("`waitFor` is the tool when a real round trip is involved", async () => {

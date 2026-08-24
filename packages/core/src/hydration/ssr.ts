@@ -6,7 +6,6 @@ import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToBlob } from "./serialize";
 import { PORTAL_ATTR, REQUEST_ATTR, CHILD_RECORD } from "../helpers/constants";
 import { componentOpen, componentClose } from "../core/componentMarker";
-import { createId } from "../helpers/createId";
 import { anchorId, isCloseAnchor, isOpenAnchor, regionBlocks } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
@@ -137,6 +136,24 @@ export function markComponents(node: Node): void {
  */
 const markedRegions = new WeakSet<ComponentRegion>();
 
+/**
+ * The number on the next marker, counted PER PAGE rather than from a process-wide id.
+ *
+ * A build has to be repeatable: the same source and the same data must produce the same bytes, or
+ * every deploy is a diff nobody can review. Minting these from `createId()` made the second build of
+ * a page differ from the first in every marker — measured, and caught by the prerender loop's own
+ * determinism test.
+ *
+ * Nothing matches on the number. It is for a person reading the served HTML, which is exactly why it
+ * should read `c0`, `c1`, `c2` down the page instead of wherever the process counter happened to be.
+ */
+let nextMarker = 0;
+
+/** Starts the numbering over, once per page. Called beside the other per-render resets. */
+export function resetComponentMarkers(): void {
+  nextMarker = 0;
+}
+
 function markEntries(entries: RecordEntry[], parent: Node, before: ChildNode | null): ChildNode | null {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
@@ -165,7 +182,7 @@ function markEntries(entries: RecordEntry[], parent: Node, before: ChildNode | n
     // Nothing at all when nothing has moved off its initial value: an empty tree of shells is
     // around 90 bytes per component that the client would read and then do nothing with.
     const blob = serializeComponentToBlob(entry.instance);
-    const id = createId();
+    const id = nextMarker++;
 
     const close = document.createComment(componentClose(id));
     parent.insertBefore(close, before);
@@ -236,6 +253,11 @@ export interface RenderToStringOptions {
 }
 
 export async function renderToString(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<string> {
+  // One page, one numbering. Every render of a page goes through here, and the head and the portal
+  // targets are marked afterwards from the same counter — so a marker's number is where it sits in
+  // the page rather than where the process happened to be.
+  resetComponentMarkers();
+
   const container = document.createElement("div");
 
   // The module-level env is only live across this synchronous mount — no await

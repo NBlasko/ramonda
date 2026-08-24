@@ -42,7 +42,6 @@ export type {
   LateRequestReadIssue,
   IndexAsKeyIssue,
   LinkWithoutADestinationIssue,
-  ListenerOnTheDefaultHostIssue,
   ListenerAddedByHandIssue,
   MediaWithNoCaptionsIssue,
   NamedOnlyByAPlaceholderIssue,

@@ -38,9 +38,4 @@ describe("a decorator core exports, written under another name", () => {
     expect(found.map((issue) => issue.component)).not.toContain("AliasedStableChild");
     expect(found).toEqual([]);
   });
-
-  /** An aliased `@Host` is a real host, so a listener on it has a box and is not reported. */
-  test("an aliased `@Host` gives the component a real element", () => {
-    expect(run().findings["listener-on-the-default-host"]).toEqual([]);
-  });
 });

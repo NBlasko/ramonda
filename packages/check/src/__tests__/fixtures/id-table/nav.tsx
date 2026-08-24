@@ -1,13 +1,13 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 /**
  * The links, in one file — and the ids they point at in ANOTHER, which is the whole reason this
  * family exists. No per-render subject can see both ends of this pair.
  */
-@Host("nav")
 export class Nav extends Component {
   render() {
     return (
+    <nav>{(
       <nav>
         {/* Not reported: `pricing` is an id in page.tsx. */}
         <a href="#pricing">Pricing</a>
@@ -18,8 +18,8 @@ export class Nav extends Component {
         {/* Not reported: a real destination rather than a fragment. */}
         <a href="/about">About</a>
       </nav>
-    );
-  }
+    );}</nav>
+  )}
 }
 
 bootstrap(<Nav />, null);

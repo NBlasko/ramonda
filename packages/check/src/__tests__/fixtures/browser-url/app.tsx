@@ -55,16 +55,18 @@ class SelfIsALocal extends Component {
 /** ✗ An AMBIENT `declare const self` is the author writing down what the platform provides. */
 declare const self: { location: { pathname: string } };
 
-@Host("div")
 class AmbientSelf extends Component {
   route = this.use(Router);
   render() {
-    return <span>{self.location.pathname}</span>;
+    return (
+      <div>
+        <span>{self.location.pathname}</span>
+      </div>
+    );
   }
 }
 
 /** ✓ A PARAMETER called `window` is a name of their own, however it is spelled. */
-@Host("div")
 class WindowIsAParameter extends Component {
   route = this.use(Router);
 
@@ -73,7 +75,11 @@ class WindowIsAParameter extends Component {
   }
 
   render() {
-    return <span>{this.read({ location: { pathname: "/mine" } })}</span>;
+    return (
+      <div>
+        <span>{this.read({ location: { pathname: "/mine" } })}</span>
+      </div>
+    );
   }
 }
 

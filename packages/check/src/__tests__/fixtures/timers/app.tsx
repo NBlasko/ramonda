@@ -8,7 +8,6 @@ import { Component, Host, bootstrap, destroyed, interval, mounted, state } from 
  * one the app wrote — the same question `browser-url` asks about `location`. Declaring them here
  * would make the rule go quiet and the fixture prove nothing.
  */
-@Host("div")
 class Ticker extends Component {
   @state n = 0;
   private tick = 0;
@@ -43,7 +42,11 @@ class Ticker extends Component {
   }
 
   render() {
-    return <div>{this.n}</div>;
+    return (
+      <div>
+        <div>{this.n}</div>
+      </div>
+    );
   }
 }
 
@@ -54,7 +57,6 @@ class Ticker extends Component {
  * find — it errs towards silence, so it is not a false report, but it is the kind of muddle a later
  * reader has to re-derive.
  */
-@Host("div")
 class SameName extends Component {
   /* REPORTED — the property is never cleared; only a LOCAL of that name is. */
   private id = 0;
@@ -66,19 +68,26 @@ class SameName extends Component {
   }
 
   render() {
-    return <div />;
+    return (
+      <div>
+        <div />
+      </div>
+    );
   }
 }
 
 /** A local cleared in the same function is reachable, so it is not this fault. */
-@Host("div")
 class Once extends Component {
   @mounted start() {
     const id = setInterval(() => {}, 1000);
     clearInterval(id);
   }
   render() {
-    return <div />;
+    return (
+      <div>
+        <div />
+      </div>
+    );
   }
 }
 
@@ -98,13 +107,16 @@ abstract class Clearing extends Component {
 }
 
 /** Not reported: the base clears `this.handle`, on the same instance. */
-@Host("div")
 class StartsBelow extends Clearing {
   @mounted start() {
     this.handle = setInterval(() => {}, 1000);
   }
   render() {
-    return <div />;
+    return (
+      <div>
+        <div />
+      </div>
+    );
   }
 }
 
@@ -129,13 +141,16 @@ abstract class StartsAbove extends Component {
 }
 
 /** It IS cleared, one class down — which is the pair the upward walk cannot see. */
-@Host("div")
 class ClearsAbove extends StartsAbove {
   @destroyed stop() {
     clearInterval(this.handle);
   }
   render() {
-    return <div />;
+    return (
+      <div>
+        <div />
+      </div>
+    );
   }
 }
 
