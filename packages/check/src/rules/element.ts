@@ -36,13 +36,21 @@ export function contextFor(element: JsxElementLike, resolve: ElementContext["res
   let spreads = false;
   /** Lowercased name → the attribute, so a lookup is one map rather than a scan per question. */
   const byName = new Map<string, ts.JsxAttribute>();
+  /** Lowercased name → where it sits, against the last spread. */
+  const positions = new Map<string, number>();
+  let lastSpread = -1;
 
-  for (const attribute of attributes) {
+  for (const [index, attribute] of attributes.entries()) {
     if (ts.isJsxSpreadAttribute(attribute)) {
       spreads = true;
+      lastSpread = index;
       continue;
     }
-    byName.set(attribute.name.getText().toLowerCase(), attribute);
+    const name = attribute.name.getText().toLowerCase();
+    byName.set(name, attribute);
+    // The LAST one written wins, in JSX as in the object it compiles to, so the last position is
+    // the one that decides whether a spread can still reach over it.
+    positions.set(name, index);
   }
 
   const tag = tagOf(element);
@@ -54,6 +62,10 @@ export function contextFor(element: JsxElementLike, resolve: ElementContext["res
     // and `<clipPath>` is the SVG element while `<clippath>` is an unknown HTML one.
     inSvg: svgElements.has(openingOf(element).tagName.getText()),
     spreads,
+    overwritable: (name) => {
+      const at = positions.get(name.toLowerCase());
+      return at === undefined || at < lastSpread;
+    },
     children: ts.isJsxElement(element) ? element.children : [],
     has: (name) => byName.has(name.toLowerCase()),
     attr: (name) => {

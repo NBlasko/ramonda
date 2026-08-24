@@ -489,6 +489,24 @@ export interface ElementContext {
    */
   spreads: boolean;
 
+  /**
+   * Whether a spread could still change what this attribute SAYS.
+   *
+   * The half of the spread question a rule with `evenWhenSpreading` has to answer for itself, and
+   * it turns on ORDER. `<div role="buton" {...rest} />` may end up with whatever role `rest`
+   * carries, so a rule about the VALUE has nothing to report; `<div {...rest} role="buton" />` ends
+   * up with `buton` whatever `rest` holds, because the later attribute wins.
+   *
+   * A rule about a NAME does not need this at all. A spread can overwrite a value and cannot
+   * un-write a name — `aria-lablled` written on the tag is on the tag — which is why
+   * `unknown-aria-attribute` and `aria-with-no-subject` take no order guard and `unknown-role`
+   * does.
+   *
+   * `true` for an attribute that is not written here at all: nothing is proved about an absent one,
+   * which is the family-wide silence this whole mechanism is an exception to.
+   */
+  overwritable(name: string): boolean;
+
   /** The element's children, for the rules about what is INSIDE a tag rather than on it. */
   children: readonly ts.JsxChild[];
 

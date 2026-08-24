@@ -46,6 +46,16 @@ export const ariaWithNoSubject = {
       "This is a warning today and an error in a later version.",
   },
 
+  /**
+   * Both halves of this are beyond a spread's reach.
+   *
+   * The subject is the TAG — a spread cannot make a `<meta>` into something with an accessibility
+   * node — and what is reported is the attribute's NAME, which a spread can overwrite the value of
+   * and never remove. So the family-wide silence has nothing to protect here, and it was costing a
+   * real report: `<meta {...rest} aria-hidden="true" />` said nothing.
+   */
+  evenWhenSpreading: true,
+
   read(element, { tag }) {
     if (tag === undefined || !NO_ARIA.has(tag)) return [];
 

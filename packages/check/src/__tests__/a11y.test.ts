@@ -382,3 +382,43 @@ describe("a name on a role that takes none", () => {
     expect(found().filter((issue) => issue.from === "tag")).toHaveLength(6);
   });
 });
+
+/**
+ * What a spread can and cannot take away.
+ *
+ * The family goes quiet on a spreading element because a spread may CARRY the attribute a rule
+ * misses — `<img {...rest} />` may well have its `alt`, and nothing here can say whether it does.
+ * That argument is about an attribute that is ABSENT. It does not transfer to one plainly written
+ * down: a spread can overwrite a value and it cannot un-write a name.
+ *
+ * Measured before this was fixed: three rules were silent on the shape they exist for, on a page
+ * where the identical line without the spread was reported one line below.
+ */
+describe("an accessibility fault beside a spread", () => {
+  const spread = () => analyzeProject(join(here, "fixtures", "spread-a11y", "tsconfig.json")).findings;
+  const lines = (id: string) => (spread()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
+
+  test("a misspelled NAME is reported on either side of a spread", () => {
+    // 22 spread first, 23 spread last, 36 the control. A name is a name whichever side it is on.
+    expect(lines("unknown-aria-attribute")).toEqual([22, 23, 36]);
+  });
+
+  test("an accessibility attribute on a tag with no node is too, because the TAG is the subject", () => {
+    // 32, 33, 38 — and no spread makes a `<meta>` into something a screen reader exposes.
+    expect(lines("aria-with-no-subject")).toEqual([32, 33, 38]);
+  });
+
+  test("a role is reported only from the side a spread cannot reach over", () => {
+    /**
+     * 26 has the spread FIRST, so `role="buton"` is the last word and wins; 37 is the control.
+     * Line 28 writes the spread LAST and is silent — `rest` may carry a role of its own, and this
+     * is a rule about a value.
+     */
+    expect(lines("unknown-role")).toEqual([26, 37]);
+  });
+
+  test("and the silence the guard exists for is untouched", () => {
+    // `<img {...rest} />` — the `alt` may be in `rest`, and nothing here can say it is not.
+    expect(lines("unnamed-image")).toEqual([]);
+  });
+});

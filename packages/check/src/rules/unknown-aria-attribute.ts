@@ -99,6 +99,20 @@ export const unknownAriaAttribute = {
       "This is a warning today and an error in a later version.",
   },
 
+  /**
+   * A misspelling survives every spread there is.
+   *
+   * The family goes quiet on a spreading element because a spread may CARRY the attribute a rule
+   * misses — `<img {...rest} />` may well have its `alt`. This rule misses nothing: the wrong name
+   * is written on the tag, and no object spread beside it can take a name off. Measured on
+   * `fixtures/spread-a11y`, where `<div {...rest} aria-lablled="Filters" />` went unreported while
+   * the identical line without the spread was reported one line down.
+   *
+   * No order guard, unlike `unknown-role`: this reads the name and never the value, so which side
+   * of the spread it sits on changes nothing.
+   */
+  evenWhenSpreading: true,
+
   read(element, { tag, inSvg }) {
     // Components too: `<Panel aria-lablled="x" />` is a prop with a name, and the mistake is the
     // same one whether the tag is markup or a class that will pass it through.
