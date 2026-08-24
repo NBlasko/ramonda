@@ -1,5 +1,5 @@
-import { mountRootComponent, isRegion, isComponentRegion } from "../core/DiffAndMerge";
-import type { EnhancedChildNode, RecordEntry, VNodeComponent } from "../types/vdom";
+import { mountRoot, isRegion, isComponentRegion } from "../core/DiffAndMerge";
+import type { EnhancedChildNode, RecordEntry } from "../types/vdom";
 import { ServerRedirect } from "./serverRedirect";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
@@ -88,13 +88,17 @@ async function drainServerWork(work: ServerWork): Promise<void> {
  * of its own is recursed into, and one without cannot contain a component at all — that is what
  * `HAS_REGION` guarantees.
  *
+ * Exported because a test that wants "what the server would have served" needs this exact pass
+ * over a tree it built on the client — there is no way to fake it by hand any more, and a
+ * hand-rolled version would be a second implementation of the one thing hydration reads.
+ *
  * Backwards, carrying the node to insert before. That is the same shape the reorder pass has, and
  * for the same reason: the position of a block is known from what FOLLOWS it, and an empty
  * component — no nodes at all — has nothing of its own to be placed relative to. Its two markers
  * then land adjacent at exactly the right spot, which is what tells the client the component was
  * there and rendered nothing.
  */
-function markComponents(node: Node): void {
+export function markComponents(node: Node): void {
   const record = (node as EnhancedChildNode)[CHILD_RECORD];
   if (record === undefined) {
     for (const child of Array.from(node.childNodes)) markComponents(child);
@@ -229,7 +233,7 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   setRenderEnv("server");
   setServerWorkCollector(work);
   try {
-    mountRootComponent(vnode as VNodeComponent, container);
+    mountRoot(vnode, container);
     // Inside the server env, and before the task drain: a server @mounted may
     // write state, and those updates must be drained before serializing — which
     // is exactly what flushTaskQueue below is for.

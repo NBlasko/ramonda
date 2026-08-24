@@ -1,11 +1,4 @@
-import {
-  attach,
-  detach,
-  STATE_KEYS,
-  PERSIST_KEYS,
-  PROPS_GATE,
-  INITIAL_PRIMITIVES,
-} from "../helpers/constants";
+import { attach, detach, STATE_KEYS, PERSIST_KEYS, PROPS_GATE, INITIAL_PRIMITIVES } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import { isComponentClass } from "../vdom/guards";

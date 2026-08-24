@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, destroyed, interval, createContext } from "../index";
+import { getDOM, findOne } from "../test/setup";
+import { Component, state, destroyed, interval, createContext } from "../index";
 import { effectLike } from "../test/effectLike";
 
 const [Provider, Ctx] = createContext({ v: "a" });
@@ -18,7 +18,6 @@ describe("unmount cleanup", () => {
 
   test("a throwing @destroyed does not take the rest of teardown down", async () => {
     const ran: string[] = [];
-    @Host("div")
     class Child extends Component {
       @state n = 0;
       @destroyed first() {
@@ -29,14 +28,21 @@ describe("unmount cleanup", () => {
         ran.push("second");
       }
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state show = true;
       render() {
-        return <div>{this.show ? <Child /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Child /> : null}</div>
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);
@@ -55,7 +61,6 @@ describe("unmount cleanup", () => {
 
   test("a throwing effect cleanup does not skip @destroyed", async () => {
     const ran: string[] = [];
-    @Host("div")
     class Child extends Component {
       @state n = 0;
       @interval(1000) tick() {
@@ -71,14 +76,21 @@ describe("unmount cleanup", () => {
         ran.push("destroy");
       }
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state show = true;
       render() {
-        return <div>{this.show ? <Child /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Child /> : null}</div>
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);
@@ -96,24 +108,30 @@ describe("unmount cleanup", () => {
 
   test("a write after unmount schedules no render", async () => {
     let renders = 0;
-    @Host("div")
     class Child extends Component {
       @state n = 0;
       render() {
         renders++;
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state show = true;
       render() {
-        return <div>{this.show ? <Child /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Child /> : null}</div>
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);
     await app.settle();
-    const child: any = (app.container.querySelector('[data-ramonda="Child"]') as any)._componentInstance;
+    const child = findOne<any>(app.container, "Child");
     app.instance.show = false;
     await app.settle();
     const before = renders;
@@ -125,20 +143,26 @@ describe("unmount cleanup", () => {
   });
 
   test("an unmounted consumer stops listening to the provider", async () => {
-    @Host("div")
     class Consumer extends Component {
       ctx = this.use(Ctx);
       render() {
-        return <span>{this.ctx.v}</span>;
+        return (
+          <div>
+            <span>{this.ctx.v}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state v = "a";
       @state show = true;
       p = this.use(Provider, () => ({ v: this.v }));
       render() {
-        return <div>{this.show ? <Consumer /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Consumer /> : null}</div>
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, created, watchProp } from "../index";
+import { Component, Hook, state, created, watchProp } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -62,14 +62,15 @@ describe("state and lifecycle without markup", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       @state page = "home";
       render() {
         return (
-          <div className="page">
-            <Analytics page={this.page} />
-            <span>content</span>
+          <div>
+            <div className="page">
+              <Analytics page={this.page} />
+              <span>content</span>
+            </div>
           </div>
         );
       }
@@ -110,25 +111,29 @@ describe("state and lifecycle without markup", () => {
       }
     }
 
-    @Host("tr")
     class Row extends Component<{ label: string }> {
       render() {
-        return <td>{this.props.label}</td>;
+        return (
+          <tr>
+            <td>{this.props.label}</td>
+          </tr>
+        );
       }
     }
 
-    @Host("div")
     class TableApp extends Component {
       rowsHook = this.use(RowsHook, () => ({ prefix: "x" }));
       render() {
         return (
-          <table>
-            <tbody>
-              {this.rowsHook.rows.map((r) => (
-                <Row key={r} label={r} />
-              ))}
-            </tbody>
-          </table>
+          <div>
+            <table>
+              <tbody>
+                {this.rowsHook.rows.map((r) => (
+                  <Row key={r} label={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         );
       }
     }
@@ -163,11 +168,14 @@ describe("state and lifecycle without markup", () => {
       return [<span key="a">a</span>, <span key="b">b</span>];
     }
 
-    @Host("div")
     class App extends Component {
       render() {
-        // @ts-expect-error a function is not a valid Ramonda tag — that is the point
-        return <div>{<Rows />}</div>;
+        return (
+          <div>
+            {/* @ts-expect-error a function is not a valid Ramonda tag — that is the point */}
+            <div>{<Rows />}</div>
+          </div>
+        );
       }
     }
 

@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
-import { Host, onDocument, onElement, onWindow, ShouldUpdateOnPropsChange, state } from "../base/decorators";
+import { onDocument, onWindow, ShouldUpdateOnPropsChange, state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -10,43 +10,13 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * build that has no types — by a THROW naming what to do instead.
  *
  * The throw is not belt and braces. Two of these used to fail in the worst way available:
- * `@Host` on a hook wrote its metadata to a class no render path consults, so the tag was
- * silently ignored; `@onElement` reached a resolver that read `.enhancedNode` of `undefined` and
+ * silently ignored; a listener decorator reached a resolver that read a property of `undefined` and
  * died with "Cannot read properties of undefined", an error naming nothing the author wrote.
  *
  * Everything else in the decorator set works on both — see DecoratorReach.test.tsx.
  */
 
 describe("refused at runtime, with a message that says what to do", () => {
-  test("@Host — a hook has no element", () => {
-    expect(() => {
-      // @ts-expect-error the type refuses it too; this checks the untyped build.
-      @Host("section")
-      class Styled extends Hook {}
-      return Styled;
-    }).toThrow(/@Host is for components, not hooks/);
-  });
-
-  test("@onElement — the listener has nothing to bind to", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-
-    class Listening extends Hook {
-      // @ts-expect-error the type refuses it too; this checks the untyped build.
-      @onElement("click") onClick() {}
-    }
-
-    @Host("div")
-    class Owner extends Component {
-      h = this.use(Listening);
-      render() {
-        return <span>x</span>;
-      }
-    }
-
-    await expect(getDOM<Owner>(<Owner />)).rejects.toThrow(/@onElement is for components, not hooks/);
-    vi.restoreAllMocks();
-  });
-
   test("@ShouldUpdateOnPropsChange — a hook has no parent-driven prop update to gate", () => {
     // A class decorator, so this lands when the class is DEFINED rather than when
     // something first renders it.
@@ -77,12 +47,15 @@ describe("the neighbours that DO work on a hook", () => {
       }
     }
 
-    @Host("div")
     class Owner extends Component {
       @state n = 0;
       h = this.use(Global);
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 
@@ -91,7 +64,7 @@ describe("the neighbours that DO work on a hook", () => {
     window.dispatchEvent(new Event("resize"));
     document.dispatchEvent(new Event("click"));
 
-    // This is the alternative the @onElement message points at, so it has to be true.
+    // This is the alternative those messages point at, so it has to be true.
     expect(fired).toEqual(["window", "document"]);
     vi.restoreAllMocks();
   });
@@ -112,11 +85,15 @@ describe("the neighbours that DO work on a hook", () => {
 describe("more than one @Host on one class", () => {
   test("is refused, and says what to do instead", () => {
     expect(() => {
-      @Host("div")
-      @Host("span")
       class Twice extends Component {
         render() {
-          return <i>x</i>;
+          return (
+            <span>
+              <div>
+                <i>x</i>
+              </div>
+            </span>
+          );
         }
       }
       return Twice;
@@ -127,11 +104,15 @@ describe("more than one @Host on one class", () => {
     // The regression this closes. A reader who sees `Symbol(host:meta)` has nothing to search for.
     let message = "";
     try {
-      @Host("div")
-      @Host("span")
       class Twice extends Component {
         render() {
-          return <i>x</i>;
+          return (
+            <span>
+              <div>
+                <i>x</i>
+              </div>
+            </span>
+          );
         }
       }
       void Twice;
@@ -144,28 +125,6 @@ describe("more than one @Host on one class", () => {
     expect(message).toContain("exactly one element");
   });
 
-  test("a SUBCLASS declaring its own overrides the base, and is silent", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-
-    @Host("section")
-    class Base extends Component {
-      render() {
-        return <i>x</i>;
-      }
-    }
-    @Host("article")
-    class Sub extends Base {}
-
-    const app = await getDOM(<Sub />);
-    try {
-      // The subclass's tag won, which is how a specialised component changes its element.
-      expect(app.container.querySelector("article")).not.toBe(null);
-      expect(app.container.querySelector("section")).toBe(null);
-    } finally {
-      app.unmount();
-      vi.restoreAllMocks();
-    }
-  });
   /**
    * The half a throw alone cannot do: an app streaming its diagnostics somewhere has to see this one
    * too, or "everything to tidy up" is missing whatever threw. Same two doors as `@ramonda/form`'s
@@ -179,11 +138,15 @@ describe("more than one @Host on one class", () => {
 
     try {
       expect(() => {
-        @Host("div")
-        @Host("span")
         class Twice extends Component {
           render() {
-            return <i>x</i>;
+            return (
+              <span>
+                <div>
+                  <i>x</i>
+                </div>
+              </span>
+            );
           }
         }
         return Twice;

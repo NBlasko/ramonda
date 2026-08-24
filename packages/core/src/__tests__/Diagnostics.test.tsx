@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, compute, created, destroyed, mounted, interval, Host } from "../base/decorators";
+import { state, compute, created, destroyed, mounted, interval } from "../base/decorators";
 import { Component } from "../base/Component";
 import { createContext } from "../base/Context";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -499,14 +499,17 @@ describe("DEV diagnostics", () => {
   });
 
   test("RMD004: a write to props throws and is reported", async () => {
-    @Host("div")
     class Mutator extends Component<{ label: string }> {
       /** Exposed so the test can trigger the write outside the mount path. */
       mutate(): void {
         (this.props as { label: string }).label = "changed";
       }
       render() {
-        return <span>{this.props.label}</span>;
+        return (
+          <div>
+            <span>{this.props.label}</span>
+          </div>
+        );
       }
     }
 
@@ -676,13 +679,16 @@ describe("DEV diagnostics", () => {
   });
 
   test("RMD006: attributes a timer to the child that started it, not the parent", async () => {
-    @Host("div")
     class Child extends Component {
       @created start() {
         setInterval(() => {}, 10_000);
       }
       render() {
-        return <span>child</span>;
+        return (
+          <div>
+            <span>child</span>
+          </div>
+        );
       }
     }
     class Parent extends Component {

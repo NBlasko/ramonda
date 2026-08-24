@@ -1,10 +1,10 @@
 import { describe, test, expect } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { list } from "../../base/list";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
-import { getDOM } from "../../test/setup";
+import { getDOM, instanceOf } from "../../test/setup";
 
 /**
  * A list keeps its per-item identity across a reorder on a HYDRATED page.
@@ -44,28 +44,30 @@ interface Task {
   title: string;
 }
 
-@Host("li")
 class Row extends Component<{ item: Task }> {
   @state clicks = 0;
   render() {
     return (
-      <span>
-        {this.props.item.title}:{this.clicks}
-      </span>
+      <li>
+        <span>
+          {this.props.item.title}:{this.clicks}
+        </span>
+      </li>
     );
   }
 }
 
-@Host("div")
 class Board extends Component {
   @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
   render() {
     return (
-      <ul>
-        {list(this.tasks, (item) => (
-          <Row item={item} />
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.tasks, (item) => (
+            <Row item={item} />
+          ))}
+        </ul>
+      </div>
     );
   }
 }
@@ -81,7 +83,7 @@ async function hydrated() {
   element.innerHTML = page.body;
   hydrateRoot(<Board />, element);
   await Promise.resolve();
-  const instance = (element.firstChild as unknown as { _componentInstance: Board })._componentInstance;
+  const instance = instanceOf<Board>(element.firstChild);
   return { element, instance, settle: () => Promise.resolve() };
 }
 
@@ -137,7 +139,7 @@ describe("a list keeps per-item state across a reorder", () => {
     await settle();
 
     const before = [...element.querySelectorAll("li")];
-    const bumped = (before[0] as unknown as { _componentInstance: Row })._componentInstance;
+    const bumped = instanceOf<Row>(before[0]);
     bumped.clicks = 7;
     await settle();
     await settle();

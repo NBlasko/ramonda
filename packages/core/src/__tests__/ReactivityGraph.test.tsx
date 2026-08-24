@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, compute, watchProp, createContext, list } from "../index";
+import { Component, Hook, state, compute, watchProp, createContext, list } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { effectLike } from "../test/effectLike";
 
@@ -21,7 +21,6 @@ describe("reactivity graph", () => {
   test("an effect re-runs when a @compute it reads changes", async () => {
     const seen: number[] = [];
 
-    @Host("div")
     class C extends Component {
       @state n = 1;
       @compute get double() {
@@ -31,7 +30,11 @@ describe("reactivity graph", () => {
         seen.push(this.double);
       }
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 
@@ -46,18 +49,20 @@ describe("reactivity graph", () => {
   test("a @compute over context updates, and context fed by a @compute updates", async () => {
     const [Provider, Ctx] = createContext({ theme: "light" });
 
-    @Host("div")
     class Child extends Component {
       ctx = this.use(Ctx);
       @compute get loud() {
         return this.ctx.theme.toUpperCase();
       }
       render() {
-        return <span>{this.loud}</span>;
+        return (
+          <div>
+            <span>{this.loud}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state base = "light";
       @compute get decorated() {
@@ -65,7 +70,11 @@ describe("reactivity graph", () => {
       }
       p = this.use(Provider, () => ({ theme: this.decorated }));
       render() {
-        return <Child />;
+        return (
+          <div>
+            <Child />
+          </div>
+        );
       }
     }
 
@@ -90,11 +99,14 @@ describe("reactivity graph", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       outer = this.use(Outer);
       render() {
-        return <span>{this.outer.doubled}</span>;
+        return (
+          <div>
+            <span>{this.outer.doubled}</span>
+          </div>
+        );
       }
     }
 
@@ -109,25 +121,31 @@ describe("reactivity graph", () => {
   test("@watchProp fires for a prop that came from a @compute", async () => {
     const seen: number[] = [];
 
-    @Host("div")
     class Child extends Component<{ value: number }> {
       @watchProp((p: { value: number }) => p.value)
       onValue([next]: [number]) {
         seen.push(next);
       }
       render() {
-        return <span>{this.props.value}</span>;
+        return (
+          <div>
+            <span>{this.props.value}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state n = 1;
       @compute get double() {
         return this.n * 2;
       }
       render() {
-        return <Child value={this.double} />;
+        return (
+          <div>
+            <Child value={this.double} />
+          </div>
+        );
       }
     }
 
@@ -142,7 +160,6 @@ describe("reactivity graph", () => {
   test("a diamond recomputes once, not once per branch", async () => {
     let joins = 0;
 
-    @Host("div")
     class C extends Component {
       @state n = 1;
       @compute get left() {
@@ -156,7 +173,11 @@ describe("reactivity graph", () => {
         return `${this.left}/${this.right}`;
       }
       render() {
-        return <span>{this.both}</span>;
+        return (
+          <div>
+            <span>{this.both}</span>
+          </div>
+        );
       }
     }
 
@@ -174,7 +195,6 @@ describe("reactivity graph", () => {
   test("a @compute drops the branch it stopped reading", async () => {
     let runs = 0;
 
-    @Host("div")
     class C extends Component {
       @state useX = true;
       @state x = "x1";
@@ -184,7 +204,11 @@ describe("reactivity graph", () => {
         return this.useX ? this.x : this.y;
       }
       render() {
-        return <span>{this.pick}</span>;
+        return (
+          <div>
+            <span>{this.pick}</span>
+          </div>
+        );
       }
     }
 
@@ -215,7 +239,6 @@ describe("reactivity graph", () => {
   test("an effect drops a dependency it stopped reading", async () => {
     const seen: string[] = [];
 
-    @Host("div")
     class C extends Component {
       @state useX = true;
       @state x = "x1";
@@ -224,7 +247,11 @@ describe("reactivity graph", () => {
         seen.push(this.useX ? this.x : this.y);
       }
       render() {
-        return <span>{this.useX ? "X" : "Y"}</span>;
+        return (
+          <div>
+            <span>{this.useX ? "X" : "Y"}</span>
+          </div>
+        );
       }
     }
 
@@ -245,7 +272,6 @@ describe("reactivity graph", () => {
   test("a list item's scope drops a dependency it stopped reading", async () => {
     let mapperRuns = 0;
 
-    @Host("div")
     class C extends Component {
       @state rows = [{ t: "a" }];
       @state useFlag = true;
@@ -269,7 +295,11 @@ describe("reactivity graph", () => {
       }
 
       render() {
-        return <ul>{list(this.rows, this.row)}</ul>;
+        return (
+          <div>
+            <ul>{list(this.rows, this.row)}</ul>
+          </div>
+        );
       }
     }
 
@@ -293,22 +323,28 @@ describe("reactivity graph", () => {
   test("an unmounted component's effect stops running", async () => {
     const seen: number[] = [];
 
-    @Host("div")
     class Child extends Component<{ n: number }> {
       @effectLike() watch() {
         seen.push(this.props.n);
       }
       render() {
-        return <span>{this.props.n}</span>;
+        return (
+          <div>
+            <span>{this.props.n}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state n = 1;
       @state show = true;
       render() {
-        return <div>{this.show ? <Child n={this.n} /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Child n={this.n} /> : null}</div>
+          </div>
+        );
       }
     }
 
@@ -325,7 +361,6 @@ describe("reactivity graph", () => {
   test("effects run in declaration order, so a later one sees an earlier one's write", async () => {
     const seen: string[] = [];
 
-    @Host("div")
     class C extends Component {
       @state a = 1;
       @state b = 0;
@@ -337,9 +372,11 @@ describe("reactivity graph", () => {
       }
       render() {
         return (
-          <span>
-            {this.a}/{this.b}
-          </span>
+          <div>
+            <span>
+              {this.a}/{this.b}
+            </span>
+          </div>
         );
       }
     }
@@ -355,7 +392,6 @@ describe("reactivity graph", () => {
   });
 
   test("a compute read outside render is still fresh", async () => {
-    @Host("div")
     class C extends Component {
       @state n = 1;
       @compute get double() {
@@ -365,7 +401,11 @@ describe("reactivity graph", () => {
         return this.double;
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -379,7 +419,6 @@ describe("reactivity graph", () => {
   });
 
   test("chained computes render on the server", async () => {
-    @Host("div")
     class C extends Component {
       @state n = 7;
       @compute get double() {
@@ -390,9 +429,11 @@ describe("reactivity graph", () => {
       }
       render() {
         return (
-          <span>
-            {this.double}-{this.quad}
-          </span>
+          <div>
+            <span>
+              {this.double}-{this.quad}
+            </span>
+          </div>
         );
       }
     }

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, list, state } from "../index";
 import { Portal } from "../base/Portal";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -56,7 +56,6 @@ describe("list() inside a hook's children", () => {
     // goes through the real diff, so `h` stamps its owner and the <ul> gets its
     // own record. This is the case that must keep working, and the one the
     // direct-child test below is measured against.
-    @Host("div")
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       portal = this.use(Portal, () => ({
@@ -71,7 +70,11 @@ describe("list() inside a hook's children", () => {
         target,
       }));
       render() {
-        return <p>owner</p>;
+        return (
+          <div>
+            <p>owner</p>
+          </div>
+        );
       }
     }
 
@@ -83,7 +86,6 @@ describe("list() inside a hook's children", () => {
   });
 
   test("as the direct child, it renders into the target", async () => {
-    @Host("div")
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       portal = this.use(Portal, () => ({
@@ -94,7 +96,11 @@ describe("list() inside a hook's children", () => {
         target,
       }));
       render() {
-        return <p>owner</p>;
+        return (
+          <div>
+            <p>owner</p>
+          </div>
+        );
       }
     }
 
@@ -109,7 +115,6 @@ describe("list() inside a hook's children", () => {
     // the same DOM node before and after — it moved. Positionally, the two nodes
     // stay put and their text is rewritten, so the node that reads "b" afterwards
     // is the one that read "a".
-    @Host("div")
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       portal = this.use(Portal, () => ({
@@ -117,7 +122,11 @@ describe("list() inside a hook's children", () => {
         target,
       }));
       render() {
-        return <p>owner</p>;
+        return (
+          <div>
+            <p>owner</p>
+          </div>
+        );
       }
     }
 
@@ -139,7 +148,6 @@ describe("list() inside a hook's children", () => {
   test("an unrelated render does not run the mapper", async () => {
     // The whole-list skip, through a hook callback: `each` is the same array and
     // no item's scope was invalidated, so there is nothing for the region to do.
-    @Host("div")
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       @state tick = 0;
@@ -151,7 +159,11 @@ describe("list() inside a hook's children", () => {
         target,
       }));
       render() {
-        return <p>{String(this.tick)}</p>;
+        return (
+          <div>
+            <p>{String(this.tick)}</p>
+          </div>
+        );
       }
     }
 
@@ -175,7 +187,6 @@ describe("list() inside a hook's children", () => {
     // never sees it: its cached bag keeps its identity and nothing tells the
     // portal to reconcile. The item's own scope is what noticed, and it has to be
     // able to say so.
-    @Host("div")
     class Page extends Component {
       @state rows: Row[] = [{ t: "a" }, { t: "b" }];
       @state highlight = "";
@@ -191,7 +202,11 @@ describe("list() inside a hook's children", () => {
         target,
       }));
       render() {
-        return <p>owner</p>;
+        return (
+          <div>
+            <p>owner</p>
+          </div>
+        );
       }
     }
 
@@ -218,7 +233,6 @@ describe("list() inside a hook's children", () => {
     // Each portal owns a block. Neither may claim the other's nodes — the
     // property the hand-rolled reconcile had to be careful about, and which the
     // region boundary has to keep.
-    @Host("div")
     class Page extends Component {
       @state left: Row[] = [{ t: "l1" }, { t: "l2" }];
       @state right: Row[] = [{ t: "r1" }];
@@ -231,7 +245,11 @@ describe("list() inside a hook's children", () => {
         target,
       }));
       render() {
-        return <p>owner</p>;
+        return (
+          <div>
+            <p>owner</p>
+          </div>
+        );
       }
     }
 

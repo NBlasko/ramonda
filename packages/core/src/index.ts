@@ -1,5 +1,5 @@
-import type { ComponentChild, EnhancedChildNode, VNodeComponent } from "./types/vdom";
-import { mountRootComponent, unmountChildrenNodes } from "./core/DiffAndMerge";
+import type { ComponentChild, EnhancedChildNode } from "./types/vdom";
+import { mountRoot, unmountChildrenNodes } from "./core/DiffAndMerge";
 import { flushPostCommit } from "./core/commit";
 import { ramondaLog } from "./debug/logger";
 import { initDevtoolsBridge, setInspectRoot, notifyComponentUpdate } from "./debug/devtoolsBridge";
@@ -192,7 +192,7 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
   installClientRequestScope(undefined);
 
   try {
-    mountRootComponent(rootComponent as VNodeComponent, element);
+    mountRoot(rootComponent, element);
     // The tree is in the document now, which is what @mounted is waiting for.
     flushPostCommit();
     if (__DEV__) {

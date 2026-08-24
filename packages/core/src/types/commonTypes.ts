@@ -342,4 +342,3 @@ export type SVGArgs<T extends SVGElement> = Partial<
 export interface RamondaEvent<T extends EventTarget | null = any> extends Event {
   target: T;
 }
-

@@ -1,4 +1,6 @@
-import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS } from "../helpers/constants";
+import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS, CHILD_RECORD } from "../helpers/constants";
+import { isRegion, isComponentRegion } from "../core/DiffAndMerge";
+import type { EnhancedChildNode, RecordEntry } from "../types/vdom";
 import { INSPECT } from "../base/inspect";
 import { inspectPhase } from "./renderPhase";
 import { definitionOf, type SourceLocation } from "./sourceLocation";
@@ -257,35 +259,68 @@ function readHooks(instance: Inspectable): InspectedNode[] {
 export function scanComponentTree(node: Node = document.body, depth = 0): InspectedNode[] {
   // The root call clears the handles, so they always describe exactly what this scan returns.
   if (depth === 0) handles = [];
+
+  /**
+   * The CHILD RECORD is the tree, not the DOM.
+   *
+   * A component has no element of its own: it may own two nodes, or none, so there is nothing to
+   * read a `_componentInstance` back-reference off. The record is what says a component is here and
+   * which nodes are its own — and it is the only thing that can show a component that renders
+   * nothing at all, which the DOM walk could never have found.
+   *
+   * A list region is walked THROUGH rather than shown. It is not a component and has no state of
+   * its own to inspect; its rows are what the panel is looking for.
+   */
+  const record = (node as EnhancedChildNode)[CHILD_RECORD];
+  if (record === undefined) {
+    const tree: InspectedNode[] = [];
+    for (const child of Array.from(node.childNodes)) {
+      if (child.childNodes.length > 0) tree.push(...scanComponentTree(child, depth + 1));
+    }
+    return tree;
+  }
+
+  return scanEntries(record, depth);
+}
+
+function scanEntries(entries: RecordEntry[], depth: number): InspectedNode[] {
   const tree: InspectedNode[] = [];
 
-  for (const child of Array.from(node.childNodes)) {
-    const enhanced = child as Node & {
-      _componentInstance?: Inspectable;
-      _componentDefinition?: { name?: string } | string;
-    };
-
-    if (enhanced._componentInstance) {
-      const instance = enhanced._componentInstance;
-      const def = enhanced._componentDefinition;
-      const name = (typeof def === "string" ? def : def?.name) ?? instance.constructor?.name ?? "Unknown";
-
-      tree.push({
-        id: handles.push(instance) - 1,
-        name,
-        kind: "component",
-        state: readState(instance),
-        detail: readDetail(instance),
-        props: readProps(instance),
-        computes: computeStatsOf(instance),
-        source: definitionOf(instance.constructor),
-        hooks: readHooks(instance),
-        children: scanComponentTree(enhanced, depth + 1),
-        node: enhanced,
-      });
-    } else if (child.childNodes.length > 0) {
-      tree.push(...scanComponentTree(child, depth + 1));
+  for (const entry of entries) {
+    if (!isRegion(entry)) {
+      // A plain element. Its own children may hold components, and it keeps a record of its own when
+      // they do — so this is the same question one level down.
+      if (entry.childNodes.length > 0) tree.push(...scanComponentTree(entry, depth + 1));
+      continue;
     }
+
+    if (!isComponentRegion(entry)) {
+      tree.push(...scanEntries(entry.entries, depth + 1));
+      continue;
+    }
+
+    const instance = entry.instance as unknown as Inspectable;
+    const name = (entry.definition as { name?: string })?.name ?? instance.constructor?.name ?? "Unknown";
+
+    tree.push({
+      id: handles.push(instance) - 1,
+      name,
+      kind: "component",
+      state: readState(instance),
+      detail: readDetail(instance),
+      props: readProps(instance),
+      computes: computeStatsOf(instance),
+      source: definitionOf(instance.constructor),
+      hooks: readHooks(instance),
+      children: scanEntries(entry.entries, depth + 1),
+      /**
+       * The first node this component owns, for the panel to highlight.
+       *
+       * `undefined` for a component that rendered nothing, and that is the honest answer: it is in
+       * the tree, with its state and its hooks, and there is nothing on the page to point at.
+       */
+      node: entry.order[0] as Node | undefined,
+    });
   }
 
   return tree;

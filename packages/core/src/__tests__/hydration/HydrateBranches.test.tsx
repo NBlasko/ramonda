@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created, mounted, deferHydration } from "../../base/decorators";
+import { state, created, mounted, deferHydration } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
-import { STATE_ATTR } from "../../helpers/constants";
 
 /**
  * The adopt path's edge branches — the ones the happy-path round-trip tests never
@@ -64,17 +63,27 @@ describe("hydrateRoot", () => {
 
 describe("state restore", () => {
   test("a corrupt state blob is swallowed — hydration carries on", async () => {
-    @Host("div")
     class Card extends Component {
       @state msg = "hello";
       render() {
-        return <span>{this.msg}</span>;
+        return (
+          <div>
+            <span>{this.msg}</span>
+          </div>
+        );
       }
     }
 
     const container = await serverHtmlInto(<Card />);
     // Corrupt the blob the client is about to restore from.
-    container.firstElementChild!.setAttribute(STATE_ATTR, "{ not: valid json");
+    /**
+     * A corrupt blob, written where the server writes it: in the opening marker's data.
+     *
+     * It used to be an attribute on the host element. There is no host, and the marker is what
+     * hydration reads — so this is the same fault said in the place it can now occur.
+     */
+    const opening = Array.from(container.childNodes).find((n) => n.nodeType === 8) as Comment;
+    opening.data = `${opening.data.split(" ")[0]} { not: valid json`;
 
     expect(() => hydrateRoot(<Card />, container)).not.toThrow();
     // The restore failed, so the field keeps its initializer — which happens to be
@@ -87,13 +96,16 @@ describe("client-only @created", () => {
   test("runs on hydration, having been skipped on the server", async () => {
     let ranOn = "";
 
-    @Host("div")
     class Guarded extends Component {
       @created({ env: "client" }) init() {
         ranOn = SIDE;
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -125,7 +137,6 @@ describe("a SHARED @created and a SHARED @mounted part company on hydration", ()
   test("@created is skipped, @mounted runs again", async () => {
     const ran: string[] = [];
 
-    @Host("div")
     class Both extends Component {
       @created init() {
         ran.push(`create:${SIDE}`);
@@ -134,7 +145,11 @@ describe("a SHARED @created and a SHARED @mounted part company on hydration", ()
         ran.push(`mount:${SIDE}`);
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -153,10 +168,13 @@ describe("a SHARED @created and a SHARED @mounted part company on hydration", ()
 
 describe("shape divergence", () => {
   test("text expected where the server wrote an element → the text is inserted", async () => {
-    @Host("div")
     class Flip extends Component {
       render() {
-        return <div>{SIDE === "server" ? <b>B</b> : "T"}</div>;
+        return (
+          <div>
+            <div>{SIDE === "server" ? <b>B</b> : "T"}</div>
+          </div>
+        );
       }
     }
 
@@ -171,10 +189,13 @@ describe("shape divergence", () => {
   });
 
   test("text expected where the server wrote nothing → the text is appended", async () => {
-    @Host("div")
     class Flip extends Component {
       render() {
-        return <div>{SIDE === "server" ? null : "T"}</div>;
+        return (
+          <div>
+            <div>{SIDE === "server" ? null : "T"}</div>
+          </div>
+        );
       }
     }
 
@@ -189,10 +210,13 @@ describe("shape divergence", () => {
   });
 
   test("a host of the wrong element falls back to building fresh", () => {
-    @Host("section")
     class Panel extends Component {
       render() {
-        return <p>panel</p>;
+        return (
+          <section>
+            <p>panel</p>
+          </section>
+        );
       }
     }
 
@@ -212,7 +236,6 @@ describe("shape divergence", () => {
 
 describe("deferred hydration", () => {
   test("several deferrals are awaited together, then the subtree resumes", async () => {
-    @Host("div")
     class TwoWaits extends Component {
       @state a = false;
       @state b = false;
@@ -227,7 +250,11 @@ describe("deferred hydration", () => {
         });
       }
       render() {
-        return <p>{this.a && this.b ? "both" : "waiting"}</p>;
+        return (
+          <div>
+            <p>{this.a && this.b ? "both" : "waiting"}</p>
+          </div>
+        );
       }
     }
 
@@ -242,7 +269,6 @@ describe("deferred hydration", () => {
   });
 
   test("a deferral that never settles is reported as stalled (RMD017)", async () => {
-    @Host("div")
     class Stuck extends Component {
       @deferHydration wait() {
         return new Promise<void>(() => {
@@ -250,7 +276,11 @@ describe("deferred hydration", () => {
         });
       }
       render() {
-        return <p>stuck</p>;
+        return (
+          <div>
+            <p>stuck</p>
+          </div>
+        );
       }
     }
 
@@ -269,13 +299,16 @@ describe("deferred hydration", () => {
 });
 
 describe("deferred hydration that resolves late into a changed page", () => {
-  @Host("section")
   class Slow extends Component {
     @deferHydration wait() {
       return afterATick();
     }
     render() {
-      return <p>slow</p>;
+      return (
+        <section>
+          <p>slow</p>
+        </section>
+      );
     }
   }
 

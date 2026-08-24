@@ -1,6 +1,5 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Host } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { createRef } from "../../base/Ref";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -20,10 +19,13 @@ import { hydrateRoot } from "../../hydration/hydrate";
  */
 describe("hydration: a component's ref", () => {
   test("fills when the host is adopted rather than created", async () => {
-    @Host("div")
     class Child extends Component {
       render() {
-        return <span id="c">hi</span>;
+        return (
+          <div>
+            <span id="c">hi</span>
+          </div>
+        );
       }
     }
 
@@ -62,10 +64,13 @@ describe("hydration: a component's ref", () => {
   test("an element's ref fills too, on the same page", async () => {
     const elementRef = createRef<HTMLElement>();
 
-    @Host("div")
     class App extends Component {
       render() {
-        return <span id="e" ref={elementRef} />;
+        return (
+          <div>
+            <span id="e" ref={elementRef} />
+          </div>
+        );
       }
     }
 

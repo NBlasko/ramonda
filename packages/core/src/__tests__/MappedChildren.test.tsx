@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, instanceOf } from "../test/setup";
 import { Component } from "../base/Component";
 import { list } from "../base/list";
-import { Host, state } from "../base/decorators";
+import { state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 import type { RamondaNode } from "../types/vdom";
 
@@ -24,11 +24,14 @@ import type { RamondaNode } from "../types/vdom";
  * a selection and whatever was typed, and those follow the NODE.
  */
 
-@Host("li")
 class Row extends Component<{ label: string }> {
   @state hits = 0;
   render() {
-    return <span>{this.props.label}</span>;
+    return (
+      <li>
+        <span>{this.props.label}</span>
+      </li>
+    );
   }
 }
 
@@ -190,16 +193,14 @@ describe("RMD023", () => {
 
     // Mark the SECOND row, which is "b".
     const rows = () => Array.from(app.container.querySelectorAll("li"));
-    const second = rows()[1] as Element & { _componentInstance?: Row };
-    second._componentInstance!.hits = 99;
+    const second = rows()[1];
+    instanceOf<Row>(second).hits = 99;
 
     app.instance.items = ["b", "c"];
     await app.settle();
 
     // "b" is now first, and the marked instance stayed at position 1 — which is "c".
-    const marked = rows().findIndex(
-      (li) => (li as Element & { _componentInstance?: Row })._componentInstance?.hits === 99,
-    );
+    const marked = rows().findIndex((li) => instanceOf<Row>(li)?.hits === 99);
     expect(rows().map((li) => li.textContent)).toEqual(["b", "c"]);
     expect(marked).toBe(1);
     // The state that belonged to "b" is on "c". That is what a key or list() prevents,

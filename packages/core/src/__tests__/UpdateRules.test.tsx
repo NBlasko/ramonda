@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
-import { state, Host, updated, ShouldUpdateOnPropsChange } from "../base/decorators";
+import { getDOM, findOne } from "../test/setup";
+import { state, updated, ShouldUpdateOnPropsChange } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -40,20 +40,26 @@ describe("update rules", () => {
   describe("RMD008: state written after unmount", () => {
     let renders = 0;
 
-    @Host("div")
     class Child extends Component {
       @state count = 0;
       render() {
         renders++;
-        return <span>{this.count}</span>;
+        return (
+          <div>
+            <span>{this.count}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Parent extends Component {
       @state show = true;
       render() {
-        return <div>{this.show ? <Child /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Child /> : null}</div>
+          </div>
+        );
       }
     }
 
@@ -65,14 +71,12 @@ describe("update rules", () => {
       const app = await getDOM<Parent>(<Parent />);
       await app.settle();
 
-      const childEl = app.container.querySelector("[data-ramonda='Child']") as
-        | (Element & { _componentInstance?: Child })
-        | null;
-      const child = childEl!._componentInstance!;
+      const child = findOne<Child>(app.container, "Child");
+      const childNode = app.container.querySelector("p")!;
 
       app.instance.show = false;
       await app.settle();
-      expect(childEl!.isConnected).toBe(false);
+      expect(childNode.isConnected).toBe(false);
 
       const rendersWhileAlive = renders;
 
@@ -92,11 +96,7 @@ describe("update rules", () => {
       const app = await getDOM<Parent>(<Parent />);
       await app.settle();
 
-      const child = (
-        app.container.querySelector("[data-ramonda='Child']") as Element & {
-          _componentInstance?: Child;
-        }
-      )._componentInstance!;
+      const child = findOne<Child>(app.container, "Child");
 
       const before = renders;
       child.count = 7;
@@ -110,11 +110,14 @@ describe("update rules", () => {
     test("a write from @destroyed is not reported", async () => {
       // @destroyed runs before the component is marked dead, so tearing down own
       // state there is legitimate and must stay silent.
-      @Host("div")
       class SelfCleaning extends Component {
         @state value = 1;
         render() {
-          return <span>{this.value}</span>;
+          return (
+            <div>
+              <span>{this.value}</span>
+            </div>
+          );
         }
       }
 
@@ -131,7 +134,6 @@ describe("update rules", () => {
       let runsA = 0;
       let runsB = 0;
 
-      @Host("div")
       class PingPong extends Component {
         @state x = 0;
         @state y = 0;
@@ -153,7 +155,11 @@ describe("update rules", () => {
         }
 
         render() {
-          return <span>{this.x}</span>;
+          return (
+            <div>
+              <span>{this.x}</span>
+            </div>
+          );
         }
       }
 
@@ -175,14 +181,22 @@ describe("update rules", () => {
       // before the developer can read the message.
       let renders = 0;
 
-      @Host("div")
       class Runaway extends Component {
         @state count = 0;
         render() {
           renders++;
-          if (renders > 500) return <span>net</span>;
+          if (renders > 500)
+            return (
+              <div>
+                <span>net</span>
+              </div>
+            );
           this.count = this.count + 1;
-          return <span>{this.count}</span>;
+          return (
+            <div>
+              <span>{this.count}</span>
+            </div>
+          );
         }
       }
 
@@ -197,11 +211,14 @@ describe("update rules", () => {
       // The counter is per drain, and this is why. Counting rebuilds for the
       // lifetime of the component instead would just be counting normal work:
       // the 51st click on a counter would be reported as an infinite loop.
-      @Host("div")
       class Counter extends Component {
         @state count = 0;
         render() {
-          return <span>{this.count}</span>;
+          return (
+            <div>
+              <span>{this.count}</span>
+            </div>
+          );
         }
       }
 
@@ -223,7 +240,6 @@ describe("update rules", () => {
       // guard never has anything to count.
       let runs = 0;
 
-      @Host("div")
       class Converging extends Component {
         @state count = 0;
         @state kick = 0;
@@ -236,7 +252,11 @@ describe("update rules", () => {
         }
 
         render() {
-          return <span>{`${this.count}:${this.kick}`}</span>;
+          return (
+            <div>
+              <span>{`${this.count}:${this.kick}`}</span>
+            </div>
+          );
         }
       }
 
@@ -258,20 +278,26 @@ describe("@ShouldUpdateOnPropsChange", () => {
     const renders: string[] = [];
 
     @ShouldUpdateOnPropsChange((_self, previous, next) => previous.id !== next.id)
-    @Host("div")
     class Row extends Component<{ id: string; noise: number }> {
       render() {
         renders.push(`${this.props.id}/${this.props.noise}`);
-        return <p>{this.props.id}</p>;
+        return (
+          <div>
+            <p>{this.props.id}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Board extends Component {
       @state id = "a";
       @state noise = 0;
       render() {
-        return <Row id={this.id} noise={this.noise} />;
+        return (
+          <div>
+            <Row id={this.id} noise={this.noise} />
+          </div>
+        );
       }
     }
 
@@ -292,7 +318,6 @@ describe("@ShouldUpdateOnPropsChange", () => {
   test("a plain method by that name has no framework meaning", async () => {
     const renders: string[] = [];
 
-    @Host("div")
     class Row extends Component<{ n: number }> {
       // Before this was a decorator, defining this would have silently taken
       // control of the component's re-rendering.
@@ -301,15 +326,22 @@ describe("@ShouldUpdateOnPropsChange", () => {
       }
       render() {
         renders.push(String(this.props.n));
-        return <p>{this.props.n}</p>;
+        return (
+          <div>
+            <p>{this.props.n}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Board extends Component {
       @state n = 0;
       render() {
-        return <Row n={this.n} />;
+        return (
+          <div>
+            <Row n={this.n} />
+          </div>
+        );
       }
     }
 
@@ -344,21 +376,27 @@ describe("a prop change re-renders the whole component", () => {
   test("even a prop render() never reads triggers a re-render (coarse, like state)", async () => {
     let childRenders = 0;
 
-    @Host("div")
     class Child extends Component<{ a: number; b: number }> {
       render() {
         childRenders++;
         // Reads ONLY `a`, never `b`.
-        return <span>{this.props.a}</span>;
+        return (
+          <div>
+            <span>{this.props.a}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Parent extends Component {
       @state a = 1;
       @state b = 1;
       render() {
-        return <Child a={this.a} b={this.b} />;
+        return (
+          <div>
+            <Child a={this.a} b={this.b} />
+          </div>
+        );
       }
     }
 
@@ -375,21 +413,27 @@ describe("a prop change re-renders the whole component", () => {
   test("passing the same prop values again re-renders nothing", async () => {
     let childRenders = 0;
 
-    @Host("div")
     class Child extends Component<{ a: number }> {
       render() {
         childRenders++;
-        return <span>{this.props.a}</span>;
+        return (
+          <div>
+            <span>{this.props.a}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Parent extends Component {
       @state tick = 0;
       render() {
         // `a` never changes; bumping `tick` re-renders Parent and re-passes a={1}.
         void this.tick;
-        return <Child a={1} />;
+        return (
+          <div>
+            <Child a={1} />
+          </div>
+        );
       }
     }
 

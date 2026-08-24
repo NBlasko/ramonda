@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state } from "../base/decorators";
+import { state } from "../base/decorators";
 import { list } from "../base/list";
 
 /**
@@ -53,7 +53,6 @@ describe("a row callback that CANNOT capture keeps the fast path", () => {
   test("a METHOD wakes on the signal it reads and sleeps on the one it does not", async () => {
     let calls = 0;
 
-    @Host("div")
     class App extends Component {
       @state label = "old";
       @state unrelated = 0;
@@ -66,8 +65,10 @@ describe("a row callback that CANNOT capture keeps the fast path", () => {
       render() {
         return (
           <div>
-            <ul>{list(ROWS, this.row)}</ul>
-            <span id="u">{this.unrelated}</span>
+            <div>
+              <ul>{list(ROWS, this.row)}</ul>
+              <span id="u">{this.unrelated}</span>
+            </div>
           </div>
         );
       }
@@ -92,14 +93,15 @@ describe("a row callback that CANNOT capture keeps the fast path", () => {
 
   /** A module-level function cannot capture a render either, so it gets the same treatment. */
   test("a MODULE-LEVEL function is reused too", async () => {
-    @Host("div")
     class App extends Component {
       @state unrelated = 0;
       render() {
         return (
           <div>
-            <ul>{list(ROWS, moduleRow)}</ul>
-            <span id="u">{this.unrelated}</span>
+            <div>
+              <ul>{list(ROWS, moduleRow)}</ul>
+              <span id="u">{this.unrelated}</span>
+            </div>
           </div>
         );
       }
@@ -125,7 +127,6 @@ describe("an INLINE row callback is rebuilt, so it cannot serve a stale capture"
    * while the same field outside the list read `"new"`.
    */
   test("a value read OUTSIDE the callback is not stale any more", async () => {
-    @Host("div")
     class App extends Component {
       /** NOT `@state`, so there is nothing at all to track — the hardest version. */
       label = "old";
@@ -135,13 +136,15 @@ describe("an INLINE row callback is rebuilt, so it cannot serve a stale capture"
         const captured = this.label;
         return (
           <div>
-            <p id="outside">{this.label}</p>
-            <ul>
-              {list(ROWS, (r: Row) => (
-                <li id={`r-${r.id}`}>{captured}</li>
-              ))}
-            </ul>
-            <span id="t">{this.tick}</span>
+            <div>
+              <p id="outside">{this.label}</p>
+              <ul>
+                {list(ROWS, (r: Row) => (
+                  <li id={`r-${r.id}`}>{captured}</li>
+                ))}
+              </ul>
+              <span id="t">{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -164,19 +167,20 @@ describe("an INLINE row callback is rebuilt, so it cannot serve a stale capture"
   test("the price is paid in callback calls, not in correctness", async () => {
     let calls = 0;
 
-    @Host("div")
     class App extends Component {
       @state unrelated = 0;
       render() {
         return (
           <div>
-            <ul>
-              {list(ROWS, (r: Row) => {
-                calls++;
-                return <li>{r.id}</li>;
-              })}
-            </ul>
-            <span id="u">{this.unrelated}</span>
+            <div>
+              <ul>
+                {list(ROWS, (r: Row) => {
+                  calls++;
+                  return <li>{r.id}</li>;
+                })}
+              </ul>
+              <span id="u">{this.unrelated}</span>
+            </div>
           </div>
         );
       }
@@ -209,7 +213,6 @@ describe("nested lists, every combination of stable and inline", () => {
 
   /** Both inline: neither can be reused, and neither may be stale. */
   test("BOTH inline — nothing stale", async () => {
-    @Host("div")
     class App extends Component {
       label = "old";
       @state tick = 0;
@@ -217,18 +220,20 @@ describe("nested lists, every combination of stable and inline", () => {
         const captured = this.label;
         return (
           <div>
-            <ul>
-              {list(OUTER, (_o: Row) => (
-                <li>
-                  <ul>
-                    {list(INNER, (i: Row) => (
-                      <span id={`b-x${i.id}`}>{captured}</span>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-            <span id="t">{this.tick}</span>
+            <div>
+              <ul>
+                {list(OUTER, (_o: Row) => (
+                  <li>
+                    <ul>
+                      {list(INNER, (i: Row) => (
+                        <span id={`b-x${i.id}`}>{captured}</span>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+              <span id="t">{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -252,7 +257,6 @@ describe("nested lists, every combination of stable and inline", () => {
   test("BOTH stable — reuse kept, and a signal read inside still wakes the row", async () => {
     let inner = 0;
 
-    @Host("div")
     class App extends Component {
       @state label = "old";
       @state unrelated = 0;
@@ -272,8 +276,10 @@ describe("nested lists, every combination of stable and inline", () => {
       render() {
         return (
           <div>
-            <ul>{list(OUTER, this.outerRow)}</ul>
-            <span id="u">{this.unrelated}</span>
+            <div>
+              <ul>{list(OUTER, this.outerRow)}</ul>
+              <span id="u">{this.unrelated}</span>
+            </div>
           </div>
         );
       }
@@ -307,7 +313,6 @@ describe("nested lists, every combination of stable and inline", () => {
    * a stable method IS the cached thing. It is pinned separately below.
    */
   test("only the OUTER stable — the inner is still not stale", async () => {
-    @Host("div")
     class App extends Component {
       @state label = "old";
       @state tick = 0;
@@ -329,8 +334,10 @@ describe("nested lists, every combination of stable and inline", () => {
       render() {
         return (
           <div>
-            <ul>{list(OUTER, this.outerRow)}</ul>
-            <span id="t">{this.tick}</span>
+            <div>
+              <ul>{list(OUTER, this.outerRow)}</ul>
+              <span id="t">{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -348,7 +355,6 @@ describe("nested lists, every combination of stable and inline", () => {
 
   /** Only the INNER is stable: the outer is rebuilt every render, and the inner must keep up. */
   test("only the INNER stable — the outer rebuilds and the inner follows", async () => {
-    @Host("div")
     class App extends Component {
       @state label = "old";
       @state tick = 0;
@@ -360,14 +366,16 @@ describe("nested lists, every combination of stable and inline", () => {
       render() {
         return (
           <div>
-            <ul>
-              {list(OUTER, (_o: Row) => (
-                <li>
-                  <ul>{list(INNER, this.innerRow)}</ul>
-                </li>
-              ))}
-            </ul>
-            <span id="t">{this.tick}</span>
+            <div>
+              <ul>
+                {list(OUTER, (_o: Row) => (
+                  <li>
+                    <ul>{list(INNER, this.innerRow)}</ul>
+                  </li>
+                ))}
+              </ul>
+              <span id="t">{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -409,7 +417,6 @@ describe("the boundary: a plain field is untrackable, and a row is where that SH
    * `apps/docs/content/lists/index.md` states it because this asserts it.
    */
   test("a stable callback reading a plain field keeps the first value, like a @compute would", async () => {
-    @Host("div")
     class App extends Component {
       /** Not `@state` — nothing to subscribe to. */
       label = "old";
@@ -422,9 +429,11 @@ describe("the boundary: a plain field is untrackable, and a row is where that SH
       render() {
         return (
           <div>
-            <p id="outside">{this.label}</p>
-            <ul>{list(ROWS, this.row)}</ul>
-            <span id="t">{this.tick}</span>
+            <div>
+              <p id="outside">{this.label}</p>
+              <ul>{list(ROWS, this.row)}</ul>
+              <span id="t">{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -461,7 +470,6 @@ describe("an array that goes away and comes back", () => {
     ["an inline callback", false],
   ] as const) {
     test(`the SAME array reference renders again — ${name}`, async () => {
-      @Host("div")
       class App extends Component {
         @state rows: Row[] | undefined = ROWS;
 
@@ -471,7 +479,11 @@ describe("an array that goes away and comes back", () => {
 
         render() {
           const each = this.rows as Row[];
-          return <ul>{useMethod ? list(each, this.row) : list(each, (r: Row) => <li>{r.id}</li>)}</ul>;
+          return (
+            <div>
+              <ul>{useMethod ? list(each, this.row) : list(each, (r: Row) => <li>{r.id}</li>)}</ul>
+            </div>
+          );
         }
       }
 

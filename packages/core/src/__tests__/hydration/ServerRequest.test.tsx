@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created } from "../../base/decorators";
+import { state, created } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { requestContext, requestKey } from "../../hydration/requestContext";
 
@@ -15,14 +15,17 @@ const currentUser = requestKey<{ name: string } | null>("currentUser");
 
 describe("renderToString with a request", () => {
   test("a component reads a seeded value in @created", async () => {
-    @Host("main")
     class Greeting extends Component {
       @state name = "";
       @created init() {
         this.name = requestContext().get(currentUser)?.name ?? "guest";
       }
       render() {
-        return <h1>Hello {this.name}</h1>;
+        return (
+          <main>
+            <h1>Hello {this.name}</h1>
+          </main>
+        );
       }
     }
 
@@ -33,10 +36,13 @@ describe("renderToString with a request", () => {
   });
 
   test("a component reads a cookie synchronously in render()", async () => {
-    @Host("main")
     class Session extends Component {
       render() {
-        return <p>{requestContext().cookies.get("session") ?? "anon"}</p>;
+        return (
+          <main>
+            <p>{requestContext().cookies.get("session") ?? "anon"}</p>
+          </main>
+        );
       }
     }
 
@@ -47,10 +53,13 @@ describe("renderToString with a request", () => {
   });
 
   test("a seeded value the request did not provide reads as its default", async () => {
-    @Host("main")
     class Greeting extends Component {
       render() {
-        return <h1>{requestContext().get(currentUser)?.name ?? "guest"}</h1>;
+        return (
+          <main>
+            <h1>{requestContext().get(currentUser)?.name ?? "guest"}</h1>
+          </main>
+        );
       }
     }
 
@@ -61,10 +70,13 @@ describe("renderToString with a request", () => {
 
 describe("without a request", () => {
   test("a plain render of a component that never reads the request still works", async () => {
-    @Host("main")
     class Plain extends Component {
       render() {
-        return <h1>Plain</h1>;
+        return (
+          <main>
+            <h1>Plain</h1>
+          </main>
+        );
       }
     }
     const html = await renderToString(<Plain />);
@@ -84,14 +96,15 @@ describe("without a request", () => {
     const seats = requestKey<number>("seats");
     const role = requestKey<string>("role");
 
-    @Host("main")
     class Account extends Component {
       render() {
         const context = requestContext();
         return (
-          <p>
-            {context.get(currentUser)?.name}/{String(context.get(role))}/{String(context.get(seats))}
-          </p>
+          <main>
+            <p>
+              {context.get(currentUser)?.name}/{String(context.get(role))}/{String(context.get(seats))}
+            </p>
+          </main>
         );
       }
     }

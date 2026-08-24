@@ -1,8 +1,7 @@
 import { describe, test, expect } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, instanceOf } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component } from "../base/Component";
-import { Host } from "../base/decorators";
 
 /**
  * Keyed reconciliation must do BOTH jobs: preserve instances across a reorder
@@ -60,11 +59,14 @@ describe("keyed reconciliation: DOM order", () => {
   });
 
   test("keeps component state across a reorder", async () => {
-    @Host("li")
     class Row extends Component<{ label: string }> {
       @state touched = "";
       render() {
-        return <span>{this.props.label}</span>;
+        return (
+          <li>
+            <span>{this.props.label}</span>
+          </li>
+        );
       }
     }
     class List extends Component {
@@ -83,7 +85,7 @@ describe("keyed reconciliation: DOM order", () => {
     const app = await getDOM<List>(<List />);
     const rows = Array.from(app.container.querySelectorAll("li"));
     // Mark the middle row's instance so we can find it again after the move.
-    (rows[1] as any)._componentInstance.touched = "marked";
+    instanceOf<any>(rows[1]).touched = "marked";
     await app.settle();
 
     app.instance.items = ["B", "C", "A"];
@@ -92,7 +94,7 @@ describe("keyed reconciliation: DOM order", () => {
     const moved = Array.from(app.container.querySelectorAll("li"));
     expect(moved.map((r) => r.textContent)).toEqual(["B", "C", "A"]);
     // "B" is now first and still carries its state → instance survived the move.
-    expect((moved[0] as any)._componentInstance.touched).toBe("marked");
+    expect(instanceOf<any>(moved[0]).touched).toBe("marked");
   });
 
   test("handles insert, remove and move in one update", async () => {
@@ -143,16 +145,22 @@ describe("keyed reconciliation: DOM order", () => {
   });
 
   test("swaps in a new component when a key keeps but the type changes", async () => {
-    @Host("li")
     class Alpha extends Component {
       render() {
-        return <span>alpha</span>;
+        return (
+          <li>
+            <span>alpha</span>
+          </li>
+        );
       }
     }
-    @Host("li")
     class Beta extends Component {
       render() {
-        return <span>beta</span>;
+        return (
+          <li>
+            <span>beta</span>
+          </li>
+        );
       }
     }
     class List extends Component {

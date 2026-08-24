@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created, mounted } from "../../base/decorators";
+import { state, created, mounted } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { requestContext, requestKey } from "../../hydration/requestContext";
 
@@ -24,10 +24,13 @@ function request(user: string) {
 
 describe("two requests rendering at once", () => {
   test("each synchronous read sees its OWN request", async () => {
-    @Host("main")
     class Who extends Component {
       render() {
-        return <p>{requestContext().get(currentUser)}</p>;
+        return (
+          <main>
+            <p>{requestContext().get(currentUser)}</p>
+          </main>
+        );
       }
     }
 
@@ -45,14 +48,17 @@ describe("two requests rendering at once", () => {
   });
 
   test("a read in @created sees its own request, with ten renders interleaved", async () => {
-    @Host("main")
     class Who extends Component {
       @state seen = "";
       @created init() {
         this.seen = requestContext().get(currentUser);
       }
       render() {
-        return <p>{this.seen}</p>;
+        return (
+          <main>
+            <p>{this.seen}</p>
+          </main>
+        );
       }
     }
 
@@ -71,7 +77,6 @@ describe("two requests rendering at once", () => {
   test("a read AFTER an await throws — it does not silently answer with another request", async () => {
     const outcomes: string[] = [];
 
-    @Host("main")
     class Late extends Component {
       @mounted async late() {
         await Promise.resolve();
@@ -82,7 +87,11 @@ describe("two requests rendering at once", () => {
         }
       }
       render() {
-        return <p>late</p>;
+        return (
+          <main>
+            <p>late</p>
+          </main>
+        );
       }
     }
 
@@ -105,7 +114,6 @@ describe("two requests rendering at once", () => {
     const early: string[] = [];
     const late: string[] = [];
 
-    @Host("main")
     class Both extends Component {
       @created async init() {
         early.push(requestContext().get(currentUser));
@@ -117,7 +125,11 @@ describe("two requests rendering at once", () => {
         }
       }
       render() {
-        return <p>both</p>;
+        return (
+          <main>
+            <p>both</p>
+          </main>
+        );
       }
     }
 
@@ -146,7 +158,6 @@ describe("two requests rendering at once", () => {
 
     let reached: string | undefined;
 
-    @Host("main")
     class Uncaught extends Component {
       @mounted async late() {
         await Promise.resolve();
@@ -154,7 +165,11 @@ describe("two requests rendering at once", () => {
         reached = requestContext().get(uncaughtUser);
       }
       render() {
-        return <p>page</p>;
+        return (
+          <main>
+            <p>page</p>
+          </main>
+        );
       }
     }
 
@@ -176,7 +191,6 @@ describe("two requests rendering at once", () => {
   test("the object requestContext() returns is not a snapshot, and reads late through it also throw", async () => {
     const outcomes: string[] = [];
 
-    @Host("main")
     class Held extends Component {
       // Taken during the synchronous section — legal — and used after a yield, which is not.
       // Every member is a getter over the module scope, so the object carries no request of its own.
@@ -191,7 +205,11 @@ describe("two requests rendering at once", () => {
         }
       }
       render() {
-        return <p>held</p>;
+        return (
+          <main>
+            <p>held</p>
+          </main>
+        );
       }
     }
 

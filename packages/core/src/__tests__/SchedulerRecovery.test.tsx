@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, createSubscriptionDecorator } from "../index";
+import { Component, state, createSubscriptionDecorator } from "../index";
 import { reactivityScope } from "../reactivity/tracker";
 
 /**
@@ -26,31 +26,38 @@ describe("the scheduler survives an uncaught error", () => {
     reactivityScope.currentEffect = null;
   });
 
-  @Host("div")
   class Counter extends Component<{ id?: string }> {
     @state n = 0;
     render() {
-      return <span id={this.props.id}>{this.n}</span>;
+      return (
+        <div>
+          <span id={this.props.id}>{this.n}</span>
+        </div>
+      );
     }
   }
 
-  @Host("div")
   class Exploder extends Component {
     @state n = 0;
     render() {
       if (this.n > 0) throw new Error("render-boom");
-      return <span id="exploder">safe</span>;
+      return (
+        <div>
+          <span id="exploder">safe</span>
+        </div>
+      );
     }
   }
 
-  @Host("div")
   class App extends Component {
     render() {
       return (
         <div>
-          <Exploder />
-          <Counter id="queued" />
-          <Counter id="later" />
+          <div>
+            <Exploder />
+            <Counter id="queued" />
+            <Counter id="later" />
+          </div>
         </div>
       );
     }
@@ -122,13 +129,16 @@ describe("a throwing effect does not corrupt the tracking scope", () => {
   });
 
   test("currentEffect is cleared, so unrelated reads are not captured", async () => {
-    @Host("div")
     class Boom extends Component {
       @state n = 0;
       @onExplodingStore()
       whatever() {}
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 

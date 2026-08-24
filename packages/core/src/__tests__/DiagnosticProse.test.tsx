@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -154,20 +153,26 @@ describe("RMD010 — the parents it really speaks about", () => {
         return <span>row</span>;
       }
     }
-    @Host("ul")
     class InAList extends Component {
       render() {
-        return <Row />;
+        return (
+          <ul>
+            <Row />
+          </ul>
+        );
       }
     }
     const list = await getDOM(<InAList />);
     expect(all("RMD010")).toHaveLength(0);
     list.unmount();
 
-    @Host("table")
     class InATable extends Component {
       render() {
-        return <Row />;
+        return (
+          <table>
+            <Row />
+          </table>
+        );
       }
     }
     const table = await getDOM(<InATable />);

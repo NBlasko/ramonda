@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created } from "../../base/decorators";
+import { state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -114,14 +114,17 @@ describe("Portal SSR", () => {
 
 describe("Portal hydration", () => {
   test("adopts the server's node instead of duplicating it, and owns it", async () => {
-    @Host("div")
     class Page extends Component {
       portal = this.use(Portal, () => ({
         children: <meta name="p" content="v" />,
         target: document.head,
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -160,7 +163,6 @@ describe("Portal hydration", () => {
   });
 
   test("a reactive portal keeps following its source after hydration", async () => {
-    @Host("div")
     class Page extends Component {
       count = 0;
       portal = this.use(Portal, (self: Page) => ({
@@ -168,7 +170,11 @@ describe("Portal hydration", () => {
         target: document.head,
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -202,13 +208,14 @@ describe("Portal hydration", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <WithMeta n="a" />
-            <WithMeta n="b" />
+            <div>
+              <WithMeta n="a" />
+              <WithMeta n="b" />
+            </div>
           </div>
         );
       }
@@ -269,13 +276,14 @@ describe("Portal hydration", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <First />
-            <Second />
+            <div>
+              <First />
+              <Second />
+            </div>
           </div>
         );
       }

@@ -75,12 +75,10 @@ const EXPECTED = [
   "deferHydration",
   "catchError",
   "memoized",
-  "onElement",
   "onWindow",
   "onDocument",
   "interval",
   "timeout",
-  "Host",
   // building your own decorators
   "createSubscriptionDecorator",
   // development-time switches

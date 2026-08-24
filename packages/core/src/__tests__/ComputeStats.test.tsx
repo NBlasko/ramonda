@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
+import { getComponentInstance } from "../testing";
 import { compute, state } from "../base/decorators";
 import { inspectTree } from "../debug/devtoolsBridge";
 import { setInspectRoot } from "../debug/devtoolsBridge";
@@ -116,8 +117,10 @@ describe("what a @compute's cache did", () => {
     expect(before[0].computes?.doubled).toEqual(before[1].computes?.doubled);
 
     // Read ONE of them three more times. A shared counter would move both rows.
-    // Reached through the DOM node the scan carries, which is the same handle the panel uses.
-    const first = (before[0].node as unknown as { _componentInstance: Row })._componentInstance;
+    //
+    // Reached through the node the scan carries, ASKED of the record: a component owns a range of
+    // nodes rather than one, so a node carries no back-reference to it any more.
+    const first = getComponentInstance(before[0].node) as unknown as Row;
     void first.doubled;
     void first.doubled;
     void first.doubled;

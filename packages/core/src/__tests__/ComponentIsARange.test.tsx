@@ -45,9 +45,7 @@ describe("a component is a range", () => {
 
     // The whole reason the host had to go: an element here is fostered out of the table by the
     // parser, which is what RMD010 existed to refuse.
-    expect(container.querySelector("tr.person")!.innerHTML).toBe(
-      '<td class="name">Ana</td><td class="age">31</td>',
-    );
+    expect(container.querySelector("tr.person")!.innerHTML).toBe('<td class="name">Ana</td><td class="age">31</td>');
     expect(container.querySelectorAll("tr.person > td")).toHaveLength(2);
   });
 

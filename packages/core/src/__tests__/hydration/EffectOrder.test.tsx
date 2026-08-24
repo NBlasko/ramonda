@@ -1,6 +1,7 @@
+import { instanceOf } from "../../test/setup";
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, mounted, state } from "../../base/decorators";
+import { mounted, state } from "../../base/decorators";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { bootstrap } from "../../index";
@@ -23,7 +24,6 @@ import { effectLike } from "../../test/effectLike";
 
 const order: string[] = [];
 
-@Host("span")
 class Child extends Component {
   @effectLike() e() {
     order.push("child:effect");
@@ -32,11 +32,14 @@ class Child extends Component {
     order.push("child:mount");
   }
   render() {
-    return <b>x</b>;
+    return (
+      <span>
+        <b>x</b>
+      </span>
+    );
   }
 }
 
-@Host("div")
 class Panel extends Component<{ withChild: boolean }> {
   @effectLike() e() {
     order.push("parent:effect");
@@ -45,7 +48,11 @@ class Panel extends Component<{ withChild: boolean }> {
     order.push("parent:mount");
   }
   render() {
-    return <p>{this.props.withChild ? <Child /> : null}</p>;
+    return (
+      <div>
+        <p>{this.props.withChild ? <Child /> : null}</p>
+      </div>
+    );
   }
 }
 
@@ -71,7 +78,6 @@ describe("effects run children-first on an UPDATE too", () => {
     // Measured on a subscriber being remounted: the parent counted the store's
     // listeners as 0 immediately afterwards, because its own effect had run
     // before the child subscribed.
-    @Host("div")
     class Toggler extends Component {
       @state on = false;
       @effectLike() e() {
@@ -81,12 +87,16 @@ describe("effects run children-first on an UPDATE too", () => {
         order.push("parent:effect");
       }
       render() {
-        return <p>{this.on ? <Child /> : null}</p>;
+        return (
+          <div>
+            <p>{this.on ? <Child /> : null}</p>
+          </div>
+        );
       }
     }
 
     const element = mountInto(<Toggler />);
-    const instance = (element.firstChild as unknown as { _componentInstance: Toggler })._componentInstance;
+    const instance = instanceOf<Toggler>(element.firstChild);
     order.length = 0;
 
     instance.on = true;

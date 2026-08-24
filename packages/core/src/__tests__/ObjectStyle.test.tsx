@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, state } from "../index";
 
 /**
  * An object style is written as CSS text, so every property name has to be in
@@ -10,20 +10,21 @@ import { Component, Host, state } from "../index";
  * `style="color: blue;"`, with half the style gone and nothing reported.
  */
 
-@Host("div")
 class Styled extends Component {
   @state columns = 2;
   @state label = "x";
   render() {
     return (
-      <div
-        style={{
-          gridTemplateColumns: `repeat(${this.columns}, 1fr)`,
-          backgroundColor: "red",
-          color: "blue",
-        }}
-      >
-        {this.label}
+      <div>
+        <div
+          style={{
+            gridTemplateColumns: `repeat(${this.columns}, 1fr)`,
+            backgroundColor: "red",
+            color: "blue",
+          }}
+        >
+          {this.label}
+        </div>
       </div>
     );
   }
@@ -88,10 +89,13 @@ describe("object style", () => {
   });
 
   test("custom properties keep their name, and empty values are dropped", async () => {
-    @Host("div")
     class Custom extends Component {
       render() {
-        return <div style={{ "--brand": "#f05", marginTop: "4px", color: "" }}>x</div>;
+        return (
+          <div>
+            <div style={{ "--brand": "#f05", marginTop: "4px", color: "" }}>x</div>
+          </div>
+        );
       }
     }
 

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, created } from "../index";
+import { Component, Hook, state, created } from "../index";
 import type { RamondaNode } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -44,25 +44,29 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
   test("a reusable cell IS the <td>, and takes children", async () => {
     // Not a wrapper around a td — the td itself. Composition happens through
     // props and children, inside the element the parent already expects.
-    @Host("td")
     class StyledCell extends Component<{ tone?: string; children?: RamondaNode }> {
       render() {
-        return <span className={this.props.tone ?? "plain"}>{this.props.children}</span>;
+        return (
+          <td>
+            <span className={this.props.tone ?? "plain"}>{this.props.children}</span>
+          </td>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <table>
-            <tbody>
-              <tr>
-                <StyledCell tone="hot">a</StyledCell>
-                <td>b</td>
-              </tr>
-            </tbody>
-          </table>
+          <div>
+            <table>
+              <tbody>
+                <tr>
+                  <StyledCell tone="hot">a</StyledCell>
+                  <td>b</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         );
       }
     }
@@ -82,13 +86,16 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
     // Reuse by nesting would need a fragment to hide the extra element. Here the
     // subclass IS the same one element — HOST_META is a static, so it comes down
     // the chain.
-    @Host("td")
     class BaseCell extends Component<{ label?: string }> {
       protected decorate(v: string) {
         return v.toUpperCase();
       }
       render() {
-        return <span>{this.decorate(this.props.label ?? "")}</span>;
+        return (
+          <td>
+            <span>{this.decorate(this.props.label ?? "")}</span>
+          </td>
+        );
       }
     }
 
@@ -98,18 +105,19 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <table>
-            <tbody>
-              <tr>
-                <BaseCell label="a" />
-                <FancyCell label="b" />
-              </tr>
-            </tbody>
-          </table>
+          <div>
+            <table>
+              <tbody>
+                <tr>
+                  <BaseCell label="a" />
+                  <FancyCell label="b" />
+                </tr>
+              </tbody>
+            </table>
+          </div>
         );
       }
     }
@@ -130,10 +138,13 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
     // The actual fragment case: 3 of the 10 cells share state and want to be one
     // reusable unit. A component there would have to be an element, and only
     // <td> is legal — so the unit is a Hook, and its cells are spliced in.
-    @Host("td")
     class StyledCell extends Component<{ tone: string; children?: RamondaNode }> {
       render() {
-        return <span className={this.props.tone}>{this.props.children}</span>;
+        return (
+          <td>
+            <span className={this.props.tone}>{this.props.children}</span>
+          </td>
+        );
       }
     }
 
@@ -157,19 +168,20 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
       }
     }
 
-    @Host("div")
     class App extends Component {
       group = this.use(FirstThree, () => ({ labels: ["a", "b", "c"] }));
       render() {
         return (
-          <table>
-            <tbody>
-              <tr>
-                {this.group.cells()}
-                <td>4</td>
-              </tr>
-            </tbody>
-          </table>
+          <div>
+            <table>
+              <tbody>
+                <tr>
+                  {this.group.cells()}
+                  <td>4</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         );
       }
     }

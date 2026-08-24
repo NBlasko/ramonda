@@ -3,8 +3,9 @@ import { afterEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 
 import { bootstrap } from "../";
-import type { ComponentChild } from "../types/vdom";
-import { componentAt, unmountChildrenNodes } from "../core/DiffAndMerge";
+import type { ComponentChild, ComponentRegion } from "../types/vdom";
+import { COMPONENT_RUNTIME } from "../core/runtime";
+import { componentAt, componentsIn, unmountChildrenNodes } from "../core/DiffAndMerge";
 import { flushSync } from "../testing";
 import { configureDev } from "../";
 
@@ -50,6 +51,50 @@ afterEach(() => {
   for (const container of [...liveContainers]) teardown(container);
   containerSeq = 0;
 });
+
+/**
+ * The component whose markup this node is part of, typed.
+ *
+ * What `node._componentInstance` used to be. A component owns a RANGE of nodes now, so there is no
+ * node to hang a back-reference off and the answer comes from the child record — see `componentAt`.
+ * It THROWS rather than returning `undefined`, because a test asking this has already decided a
+ * component is there and a `!` on the answer would only move the failure somewhere less useful.
+ */
+export function instanceOf<T>(node: Node | null | undefined): T {
+  if (!node) throw new Error("[test] instanceOf was given no node");
+  const found = componentAt(node);
+  if (!found) throw new Error("[test] no component owns this node");
+  return found as unknown as T;
+}
+
+/**
+ * The components of a given class name under `root`, outermost first.
+ *
+ * What `[data-ramonda="Child"]` used to find. That attribute was a DEV marker on the host element,
+ * and there is no host element — so the question moves to the record, which is where the answer
+ * always really was. It also finds a component that renders NOTHING, which a selector never could.
+ */
+export function findAll<T>(root: Node, name: string): T[] {
+  return componentsIn(root).filter((c) => c.constructor.name === name) as unknown as T[];
+}
+
+/**
+ * A component's own record entry: the nodes it owns and the entries inside it.
+ *
+ * The internals, deliberately — a test that asks this is asking about the reconciler's bookkeeping
+ * rather than about a page, and there is no public way to see a region because nothing outside the
+ * diff has any business with one.
+ */
+export function regionOf(instance: object): ComponentRegion | undefined {
+  return (instance as unknown as { [COMPONENT_RUNTIME]: { region?: ComponentRegion } })[COMPONENT_RUNTIME].region;
+}
+
+/** The one component of that name, and a failure when there is not exactly one. */
+export function findOne<T>(root: Node, name: string): T {
+  const found = findAll<T>(root, name);
+  if (found.length !== 1) throw new Error(`[test] expected one <${name} />, found ${found.length}`);
+  return found[0];
+}
 
 export async function getDOM<T = any>(component: ComponentChild) {
   const user = userEvent.setup();

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, list, state } from "../index";
 
 /**
  * Two lists rendered into the SAME parent element.
@@ -24,14 +24,15 @@ interface Row {
   label: string;
 }
 
-@Host("li")
 class Item extends Component<{ row: Row }> {
   @state hits = 0;
   render() {
     return (
-      <span>
-        {this.props.row.label}#{this.hits}
-      </span>
+      <li>
+        <span>
+          {this.props.row.label}#{this.hits}
+        </span>
+      </li>
     );
   }
 }
@@ -43,21 +44,22 @@ const b1: Row = { label: "b1" };
 const b2: Row = { label: "b2" };
 const b3: Row = { label: "b3" };
 
-@Host("div")
 class TwoLists extends Component {
   @state listA: Row[] = [a1, a2, a3];
   @state listB: Row[] = [b1, b2, b3];
 
   render() {
     return (
-      <ul>
-        {list(this.listA, (row: Row) => (
-          <Item row={row} />
-        ))}
-        {list(this.listB, (row: Row) => (
-          <Item row={row} />
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.listA, (row: Row) => (
+            <Item row={row} />
+          ))}
+          {list(this.listB, (row: Row) => (
+            <Item row={row} />
+          ))}
+        </ul>
+      </div>
     );
   }
 }
@@ -83,7 +85,7 @@ describe("two lists in one parent", () => {
     Array.from(lis)
       .slice(3)
       .forEach((li, i) => {
-        (li as Element & { _componentInstance?: Item })._componentInstance!.hits = (i + 1) * 10;
+        instanceOf<Item>(li).hits = (i + 1) * 10;
       });
     await app.settle();
     expect(dump(app.container)).toBe("a1#0 | a2#0 | a3#0 | b1#10 | b2#20 | b3#30");

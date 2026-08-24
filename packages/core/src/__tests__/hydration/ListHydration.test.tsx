@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
-import { getDOM } from "../../test/setup";
-import { state, Host } from "../../base/decorators";
+import { getDOM, instanceOf } from "../../test/setup";
+import { state } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { list } from "../../base/list";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -15,16 +15,17 @@ const a: Row = { label: "a" };
 const b: Row = { label: "b" };
 const c: Row = { label: "c" };
 
-@Host("div")
 class List extends Component {
   @state items: Row[] = [a, b, c];
   render() {
     return (
-      <ul>
-        {list(this.items, (row: Row) => (
-          <li>{row.label}</li>
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.items, (row: Row) => (
+            <li>{row.label}</li>
+          ))}
+        </ul>
+      </div>
     );
   }
 }
@@ -59,8 +60,7 @@ describe("hydration: a list is adopted, not rebuilt", () => {
 
     // And the record built during hydration has to be good enough to drive the
     // first client update: a reorder must move the adopted nodes, not rebuild.
-    const host = container.firstElementChild as { _componentInstance?: List };
-    const instance = host._componentInstance!;
+    const instance = instanceOf<{ items: unknown[] }>(container.firstElementChild);
     instance.items = [c, a, b];
     await microtask();
     await microtask();

@@ -1,17 +1,5 @@
 import { describe, test, expect } from "vitest";
-import {
-  interval,
-  timeout,
-  onWindow,
-  onElement,
-  watchProp,
-  created,
-  Host,
-  state,
-  persist,
-  compute,
-  memoized,
-} from "../base/decorators";
+import { interval, timeout, onWindow, watchProp, created, state, persist, compute, memoized } from "../base/decorators";
 import { Component } from "../base/Component";
 import { getDOM } from "../test/setup";
 
@@ -80,72 +68,6 @@ describe("decorator argument validation", () => {
       }
       return Bad;
     }).toThrow(/\[@onWindow\].*non-empty string/s);
-  });
-
-  test("@onElement rejects a non-string event type", () => {
-    expect(() => {
-      class Bad extends Component {
-        // @ts-expect-error — runtime guard is the point.
-        @onElement(42) handle() {}
-        render() {
-          return <div />;
-        }
-      }
-      return Bad;
-    }).toThrow(/non-empty string.*42/s);
-  });
-
-  test("@Host rejects an invalid element name", () => {
-    expect(() => {
-      // @ts-expect-error — the TYPE refuses it first: not a platform tag, and no dash to make it a
-      // custom element. This is the second net, for the build that has no types.
-      @Host("9div")
-      class Bad extends Component {
-        render() {
-          return <span />;
-        }
-      }
-      return Bad;
-    }).toThrow(/not a valid element name/);
-  });
-
-  test("@Host rejects an empty tag", () => {
-    expect(() => {
-      // @ts-expect-error — refused by the type as well; see above.
-      @Host("")
-      class Bad extends Component {
-        render() {
-          return <span />;
-        }
-      }
-      return Bad;
-    }).toThrow(/non-empty string/);
-  });
-
-  test("@Host rejects a plain object where a props callback belongs", () => {
-    expect(() => {
-      // @ts-expect-error — runtime guard is the point.
-      @Host("div", { className: "x" })
-      class Bad extends Component {
-        render() {
-          return <span />;
-        }
-      }
-      return Bad;
-    }).toThrow(/must be a callback.*could never react/s);
-  });
-
-  test("@Host accepts a valid tag with a props callback", () => {
-    expect(() => {
-      @Host("my-widget", (self: Fine) => ({ className: self.cls }))
-      class Fine extends Component {
-        cls = "a";
-        render() {
-          return <span />;
-        }
-      }
-      return Fine;
-    }).not.toThrow();
   });
 
   test("@watchProp rejects a non-function selector", () => {

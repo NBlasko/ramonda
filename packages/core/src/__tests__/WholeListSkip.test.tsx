@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, list, state } from "../index";
 
 /**
  * The whole-list skip: when `each` is the same array reference and no item's
@@ -24,7 +24,6 @@ interface Row {
 
 let mapperCalls = 0;
 
-@Host("div")
 class App extends Component {
   @state rows: Row[] = [{ t: "a" }, { t: "b" }, { t: "c" }];
   @state tick = 0;
@@ -42,7 +41,11 @@ class App extends Component {
   }
 
   render() {
-    return <ul data-tick={String(this.tick)}>{list(this.rows, this.row)}</ul>;
+    return (
+      <div>
+        <ul data-tick={String(this.tick)}>{list(this.rows, this.row)}</ul>
+      </div>
+    );
   }
 }
 

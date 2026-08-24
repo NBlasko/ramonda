@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../../test/setup";
+import { getDOM, instanceOf } from "../../test/setup";
 import { Component } from "../../base/Component";
-import { Host, state } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { Head, resetHeadRegistry } from "../../base/Head";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { PORTAL_ATTR } from "../../helpers/constants";
@@ -35,7 +35,6 @@ describe("hydration: the Head owns what the server wrote", () => {
   const headTags = () => [...document.head.querySelectorAll(`[${PORTAL_ATTR}]`)];
 
   test("adopts the server's tags, so unmounting removes them", async () => {
-    @Host("div")
     class Page extends Component {
       head = this.use(Head, () => ({
         title: "Products",
@@ -43,7 +42,11 @@ describe("hydration: the Head owns what the server wrote", () => {
       }));
 
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -111,11 +114,14 @@ describe("hydration: the Head owns what the server wrote", () => {
      * So: one meta tag rather than two, and a title restored to what the document
      * had before rather than to the hook's own.
      */
-    @Host("div")
     class Page extends Component {
       head = this.use(Head, () => ({ title: "Client", description: "built here" }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -133,12 +139,15 @@ describe("hydration: the Head owns what the server wrote", () => {
   });
 
   test("the hook is live after hydration, and gives the title back on the way out", async () => {
-    @Host("div")
     class Page extends Component {
       @state title = "Products";
       head = this.use(Head, () => ({ title: this.title }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -163,7 +172,7 @@ describe("hydration: the Head owns what the server wrote", () => {
     hydrateRoot(<Page />, container);
     await Promise.resolve();
 
-    const instance = (container.firstChild as { _componentInstance?: Page })._componentInstance!;
+    const instance = instanceOf<Page>(container.firstChild);
 
     // Live: a later change reaches the document, which it could not if the hook
     // had never taken hold of the title.

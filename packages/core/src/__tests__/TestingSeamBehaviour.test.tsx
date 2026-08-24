@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { Component, Host, state, created, mounted, bootstrap, unmount } from "../index";
+import { Component, state, created, mounted, bootstrap, unmount } from "../index";
 import { flushSync, rerenderRoot, getComponentInstance } from "../testing";
 
 /**
@@ -26,14 +26,17 @@ afterEach(() => {
 
 describe("flushSync", () => {
   test("applies a batched update immediately", () => {
-    @Host("div")
     class Counter extends Component {
       @state n = 0;
       bump() {
         this.n++;
       }
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 
@@ -54,7 +57,6 @@ describe("rerenderRoot", () => {
   test("re-renders in place: same instance, @state survives, @created runs once", () => {
     let creates = 0;
 
-    @Host("div")
     class Card extends Component<{ title: string }> {
       @state hits = 0;
       @created init() {
@@ -65,9 +67,11 @@ describe("rerenderRoot", () => {
       }
       render() {
         return (
-          <span>
-            {this.props.title}:{this.hits}
-          </span>
+          <div>
+            <span>
+              {this.props.title}:{this.hits}
+            </span>
+          </div>
         );
       }
     }
@@ -89,10 +93,13 @@ describe("rerenderRoot", () => {
   });
 
   test("throws when the container was never rendered into", () => {
-    @Host("div")
     class Card extends Component {
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -103,10 +110,13 @@ describe("rerenderRoot", () => {
 
 describe("getComponentInstance", () => {
   test("returns the instance for a component's host node", () => {
-    @Host("div")
     class Widget extends Component {
       render() {
-        return <span>w</span>;
+        return (
+          <div>
+            <span>w</span>
+          </div>
+        );
       }
     }
 

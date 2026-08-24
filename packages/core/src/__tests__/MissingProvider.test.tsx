@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
-import { Host } from "../base/decorators";
 import { createContext } from "../base/Context";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -52,13 +51,16 @@ describe("reported at mount", () => {
   test("a consumer that is held and never read still reports", async () => {
     const [, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
-    @Host("div")
     class Panel extends Component {
       // Held, never read. This is the case the read-time report could not see, and it is the
       // reason the check moved: the page renders, the default fills in, nothing looks wrong.
       ctx = this.use(ThemeConsumer);
       render() {
-        return <p>panel</p>;
+        return (
+          <div>
+            <p>panel</p>
+          </div>
+        );
       }
     }
 
@@ -78,11 +80,14 @@ describe("reported at mount", () => {
       }
     }
 
-    @Host("div")
     class Toolbar extends Component {
       private theming = this.use(Theming);
       render() {
-        return <p>{this.theming.theme}</p>;
+        return (
+          <div>
+            <p>{this.theming.theme}</p>
+          </div>
+        );
       }
     }
 
@@ -96,19 +101,25 @@ describe("reported at mount", () => {
   test("silent when a provider is above", async () => {
     const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
-    @Host("div")
     class Panel extends Component {
       ctx = this.use(ThemeConsumer);
       render() {
-        return <p>{this.ctx.theme}</p>;
+        return (
+          <div>
+            <p>{this.ctx.theme}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       p = this.use(ThemeProvider, () => ({ theme: "dark" }));
       render() {
-        return <Panel />;
+        return (
+          <div>
+            <Panel />
+          </div>
+        );
       }
     }
 
@@ -122,22 +133,26 @@ describe("reported at mount", () => {
   test("once per component, however many instances mount", async () => {
     const [, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
-    @Host("div")
     class Row extends Component {
       ctx = this.use(ThemeConsumer);
       render() {
-        return <p>row</p>;
+        return (
+          <div>
+            <p>row</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <Row />
-            <Row />
-            <Row />
+            <div>
+              <Row />
+              <Row />
+              <Row />
+            </div>
           </div>
         );
       }
@@ -153,11 +168,14 @@ describe("optional: the default is a real answer", () => {
   test("no report, and the default is what the consumer reads", async () => {
     const [, ParamsConsumer] = createContext({ params: {} }, { label: "Params", optional: true });
 
-    @Host("div")
     class Nav extends Component {
       ctx = this.use(ParamsConsumer);
       render() {
-        return <p>{Object.keys(this.ctx.params).length}</p>;
+        return (
+          <div>
+            <p>{Object.keys(this.ctx.params).length}</p>
+          </div>
+        );
       }
     }
 
@@ -172,12 +190,15 @@ describe("optional: the default is a real answer", () => {
     const [, Loose] = createContext({ a: 1 }, { label: "Loose", optional: true });
     const [, Strict] = createContext({ b: 2 }, { label: "Strict" });
 
-    @Host("div")
     class Both extends Component {
       loose = this.use(Loose);
       strict = this.use(Strict);
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 
@@ -193,7 +214,6 @@ describe("the ordering rule this makes visible", () => {
   test("a provider declared AFTER the consumer in the same class is a real miss", async () => {
     const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label: "Theme" });
 
-    @Host("div")
     class Backwards extends Component {
       // Field initializers run in order, and the consumer resolves its channel once — so this
       // consumer never sees the provider below it and reads the default forever. Reporting at
@@ -201,7 +221,11 @@ describe("the ordering rule this makes visible", () => {
       ctx = this.use(ThemeConsumer);
       p = this.use(ThemeProvider, () => ({ theme: "dark" }));
       render() {
-        return <p>{this.ctx.theme}</p>;
+        return (
+          <div>
+            <p>{this.ctx.theme}</p>
+          </div>
+        );
       }
     }
 

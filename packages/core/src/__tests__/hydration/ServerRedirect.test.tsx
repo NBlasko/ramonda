@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Host, created, mounted } from "../../base/decorators";
+import { created, mounted } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { Head } from "../../base/Head";
 import { renderToString, renderPage } from "../../hydration/ssr";
@@ -33,14 +33,17 @@ describe("captureServerRedirect", () => {
   });
 
   test("a captured guard that fires makes renderToString throw ServerRedirect", async () => {
-    @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
       @created go() {
         this.redirect?.("/login");
       }
       render() {
-        return <span>secret</span>;
+        return (
+          <main>
+            <span>secret</span>
+          </main>
+        );
       }
     }
 
@@ -50,14 +53,17 @@ describe("captureServerRedirect", () => {
   });
 
   test("works from a @mounted, which fires after the synchronous mount window", async () => {
-    @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
       @mounted go() {
         this.redirect?.("/from-mount");
       }
       render() {
-        return <span>x</span>;
+        return (
+          <main>
+            <span>x</span>
+          </main>
+        );
       }
     }
 
@@ -66,7 +72,6 @@ describe("captureServerRedirect", () => {
   });
 
   test("first writer wins — a second redirect in the same render is ignored", async () => {
-    @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
       @created go() {
@@ -74,7 +79,11 @@ describe("captureServerRedirect", () => {
         this.redirect?.("/second");
       }
       render() {
-        return <span>x</span>;
+        return (
+          <main>
+            <span>x</span>
+          </main>
+        );
       }
     }
 
@@ -83,13 +92,16 @@ describe("captureServerRedirect", () => {
   });
 
   test("capturing without firing renders the page normally", async () => {
-    @Host("main")
     class NoGuard extends Component {
       private redirect = captureServerRedirect();
       render() {
         // Held but never called — this is a normal page.
         void this.redirect;
-        return <span>page</span>;
+        return (
+          <main>
+            <span>page</span>
+          </main>
+        );
       }
     }
 
@@ -100,7 +112,6 @@ describe("captureServerRedirect", () => {
 
 describe("renderPage on a redirect", () => {
   test("throws too, and does not leak the render's head tags", async () => {
-    @Host("main")
     class Guard extends Component {
       private redirect = captureServerRedirect();
       head = this.use(Head, () => ({ title: "Secret", description: "should not leak" }));
@@ -108,7 +119,11 @@ describe("renderPage on a redirect", () => {
         this.redirect?.("/login");
       }
       render() {
-        return <span>secret</span>;
+        return (
+          <main>
+            <span>secret</span>
+          </main>
+        );
       }
     }
 

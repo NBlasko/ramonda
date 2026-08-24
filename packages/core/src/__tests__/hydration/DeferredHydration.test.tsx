@@ -1,6 +1,7 @@
+import { instanceOf } from "../../test/setup";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, onElement } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { AsyncLoad } from "../../base/AsyncLoad";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -21,19 +22,20 @@ import { hydrateRoot } from "../../hydration/hydrate";
  * reader watches finished content collapse into a spinner.
  */
 
-@Host("div")
 class Loaded extends Component<{ label?: string }> {
   @state clicks = 0;
 
-  @onElement("click") bump() {
+  bump() {
     this.clicks = this.clicks + 1;
   }
 
   render() {
     return (
-      <p>
-        LOADED: {this.props.label ?? "-"} ({this.clicks})
-      </p>
+      <div onclick={this.bump}>
+        <p>
+          LOADED: {this.props.label ?? "-"} ({this.clicks})
+        </p>
+      </div>
     );
   }
 }
@@ -44,18 +46,19 @@ interface PageProps {
   lazy: () => Promise<Record<string, unknown>>;
 }
 
-@Host("div")
 class Page extends Component<PageProps> {
   render() {
     return (
-      <AsyncLoad
-        cacheKey={this.props.ck}
-        lazy={this.props.lazy}
-        namedExport="Loaded"
-        loadedProps={{ label: "from server" }}
-        onLoading={<p>loading…</p>}
-        errorFallback={<p>failed</p>}
-      />
+      <div>
+        <AsyncLoad
+          cacheKey={this.props.ck}
+          lazy={this.props.lazy}
+          namedExport="Loaded"
+          loadedProps={{ label: "from server" }}
+          onLoading={<p>loading…</p>}
+          errorFallback={<p>failed</p>}
+        />
+      </div>
     );
   }
 }
@@ -105,8 +108,8 @@ describe("hydration waits instead of destroying", () => {
 
     // The walk continued PAST the deferred subtree rather than stopping at it:
     // the page's own root is hydrated and owns its host.
-    const root = container!.firstChild as unknown as { _componentInstance?: object };
-    expect(root._componentInstance).toBeDefined();
+    const root = container!.firstChild;
+    expect(instanceOf<object>(root)).toBeDefined();
   });
 
   test("and the same node is still there once the import lands", async () => {
@@ -158,19 +161,20 @@ describe("hydration waits instead of destroying", () => {
 
 describe("updates are held, not lost, while hydration is deferred", () => {
   test("a prop that changes during the wait is picked up on resume", async () => {
-    @Host("div")
     class Parent extends Component {
       @state label = "first";
       render() {
         return (
-          <AsyncLoad
-            cacheKey="cold-props"
-            lazy={afterATick}
-            namedExport="Loaded"
-            loadedProps={{ label: this.label }}
-            onLoading={<p>loading…</p>}
-            errorFallback={<p>failed</p>}
-          />
+          <div>
+            <AsyncLoad
+              cacheKey="cold-props"
+              lazy={afterATick}
+              namedExport="Loaded"
+              loadedProps={{ label: this.label }}
+              onLoading={<p>loading…</p>}
+              errorFallback={<p>failed</p>}
+            />
+          </div>
         );
       }
     }
@@ -184,11 +188,7 @@ describe("updates are held, not lost, while hydration is deferred", () => {
     await Promise.resolve();
 
     // Change the prop while the subtree is still deferred.
-    const parent = (
-      container.firstChild as unknown as {
-        _componentInstance: Parent;
-      }
-    )._componentInstance;
+    const parent = instanceOf<Parent>(container.firstChild);
     parent.label = "second";
     await Promise.resolve();
 
@@ -240,7 +240,6 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
     const { deferHydration } = await import("../../base/decorators");
     let asked = 0;
 
-    @Host("div")
     class Slow extends Component {
       @state ready = false;
 
@@ -258,7 +257,11 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
       }
 
       render() {
-        return <p>{this.ready ? "ready" : "waiting"}</p>;
+        return (
+          <div>
+            <p>{this.ready ? "ready" : "waiting"}</p>
+          </div>
+        );
       }
     }
 
@@ -279,10 +282,13 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
   });
 
   test("a component with no @deferHydration pays nothing", async () => {
-    @Host("div")
     class Plain extends Component {
       render() {
-        return <p>plain</p>;
+        return (
+          <div>
+            <p>plain</p>
+          </div>
+        );
       }
     }
 
@@ -299,7 +305,6 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
   });
 
   test("a user method named deferHydration is just a method now", async () => {
-    @Host("div")
     class Innocent extends Component {
       @state note = "";
       // Before this was a decorator, defining this would have changed how the
@@ -309,7 +314,11 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
         return Promise.resolve();
       }
       render() {
-        return <p>{this.note || "untouched"}</p>;
+        return (
+          <div>
+            <p>{this.note || "untouched"}</p>
+          </div>
+        );
       }
     }
 

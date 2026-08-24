@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created, mounted } from "../../base/decorators";
+import { state, created, mounted } from "../../base/decorators";
 import { renderStatic } from "../../hydration/ssr";
 import { requestContext, requestKey, seedRequest } from "../../hydration/requestContext";
 
@@ -15,10 +15,13 @@ const url = new URL("https://example.com/");
 
 describe("renderStatic — bakes what is request-independent", () => {
   test("a route that reads nothing per-request produces html", async () => {
-    @Host("main")
     class Plain extends Component {
       render() {
-        return <h1>Static</h1>;
+        return (
+          <main>
+            <h1>Static</h1>
+          </main>
+        );
       }
     }
     const result = await renderStatic(<Plain />, url);
@@ -27,14 +30,17 @@ describe("renderStatic — bakes what is request-independent", () => {
   });
 
   test("reading the url is fine — it is the page identity, not per-request data", async () => {
-    @Host("main")
     class ReadsUrl extends Component {
       @state path = "";
       @created init() {
         this.path = requestContext().url.pathname;
       }
       render() {
-        return <h1>{this.path}</h1>;
+        return (
+          <main>
+            <h1>{this.path}</h1>
+          </main>
+        );
       }
     }
     const result = await renderStatic(<ReadsUrl />, new URL("https://example.com/docs"));
@@ -45,11 +51,14 @@ describe("renderStatic — bakes what is request-independent", () => {
 
 describe("renderStatic — blocks a route that reads the request", () => {
   test("a synchronous read in render() blocks, naming the field", async () => {
-    @Host("main")
     class ReadsCookieInRender extends Component {
       render() {
         const session = requestContext().cookies.get("session");
-        return <h1>{session ?? "?"}</h1>;
+        return (
+          <main>
+            <h1>{session ?? "?"}</h1>
+          </main>
+        );
       }
     }
     const result = await renderStatic(<ReadsCookieInRender />, url);
@@ -58,14 +67,17 @@ describe("renderStatic — blocks a route that reads the request", () => {
   });
 
   test("a read in @created blocks", async () => {
-    @Host("main")
     class ReadsInCreate extends Component {
       @state name = "";
       @created init() {
         this.name = requestContext().get(currentUser)?.name ?? "";
       }
       render() {
-        return <h1>{this.name}</h1>;
+        return (
+          <main>
+            <h1>{this.name}</h1>
+          </main>
+        );
       }
     }
     const result = await renderStatic(<ReadsInCreate />, url);
@@ -73,7 +85,6 @@ describe("renderStatic — blocks a route that reads the request", () => {
   });
 
   test("a read in an ASYNC @mounted blocks too — recorded even when the throw is swallowed", async () => {
-    @Host("main")
     class ReadsInAsyncMount extends Component {
       @state name = "";
       @mounted async load() {
@@ -82,7 +93,11 @@ describe("renderStatic — blocks a route that reads the request", () => {
         this.name = requestContext().get(currentUser)?.name ?? "";
       }
       render() {
-        return <h1>{this.name || "…"}</h1>;
+        return (
+          <main>
+            <h1>{this.name || "…"}</h1>
+          </main>
+        );
       }
     }
     const result = await renderStatic(<ReadsInAsyncMount />, url);
@@ -90,13 +105,16 @@ describe("renderStatic — blocks a route that reads the request", () => {
   });
 
   test("seedRequest during build does not un-block a read", async () => {
-    @Host("main")
     class ReadsSeeded extends Component {
       render() {
         // Even if something seeded a value, READING it per-request is what blocks baking.
         seedRequest(currentUser, { name: "Ada" });
         const user = requestContext().get(currentUser);
-        return <h1>{user?.name ?? "?"}</h1>;
+        return (
+          <main>
+            <h1>{user?.name ?? "?"}</h1>
+          </main>
+        );
       }
     }
     const result = await renderStatic(<ReadsSeeded />, url);

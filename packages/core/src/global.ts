@@ -38,13 +38,28 @@ declare global {
     interface IntrinsicAttributes {
       key?: string | number;
       /**
-       * On a COMPONENT, the ref receives its host element — a component is
-       * exactly one element (1-1), so there is no ambiguity about which. The
-       * host tag is not knowable statically, hence `HTMLElement`.
+       * On an ELEMENT, the ref receives that element.
+       *
+       * A component takes no ref: it owns a range of nodes rather than one, so there is no single
+       * element for a ref to mean. Put the ref on the element inside the component's render that
+       * should carry it, and hand it down as an ordinary prop if the caller is the one who needs it.
        */
       ref?: import("./base/Ref").RefTarget<HTMLElement>;
     }
     interface IntrinsicElements {
+      /**
+       * A CUSTOM ELEMENT — any tag with a dash in it, which is what the HTML spec reserves for them.
+       *
+       * Open on purpose: the framework cannot know the tags an application defines, and a custom
+       * element accepts whatever attributes its own definition reads. `@Host` used to accept these
+       * (its `HostTag` was `keyof JSX.IntrinsicElements | \`${string}-${string}\``), so without this
+       * an element a component could be would stop being an element it can render — the capability
+       * would have been lost in the move rather than given up on purpose.
+       *
+       * Anything WITHOUT a dash still has to be a real tag, so `<dvi>` is still a type error.
+       */
+      [tag: `${string}-${string}`]: RamondaArgs<HTMLElement> & Record<string, unknown>;
+
       // HTML
       a: RamondaArgs<HTMLAnchorElement>;
       abbr: RamondaArgs<HTMLElement>;

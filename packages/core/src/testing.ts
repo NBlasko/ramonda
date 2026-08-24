@@ -20,8 +20,8 @@
  */
 
 import { drainSync } from "./core/Task";
-import { componentAt, rerenderRootComponent } from "./core/DiffAndMerge";
-import type { BaseComponent, ComponentChild, VNodeComponent } from "./types/vdom";
+import { componentAt, rerenderRoot as reconcileRoot } from "./core/DiffAndMerge";
+import type { BaseComponent, ComponentChild } from "./types/vdom";
 
 /**
  * Runs every pending update and every pending mount NOW.
@@ -57,7 +57,7 @@ export function rerenderRoot(vnode: ComponentChild, container: HTMLElement): voi
     );
   }
 
-  rerenderRootComponent(vnode as VNodeComponent, container);
+  reconcileRoot(vnode, container);
 }
 
 /**

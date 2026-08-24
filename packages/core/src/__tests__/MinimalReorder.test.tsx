@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, list, state } from "../index";
 
 /**
  * A performance invariant, not a behaviour one — so it is asserted in DOM moves
@@ -17,10 +17,13 @@ interface Row {
   id: number;
 }
 
-@Host("li")
 class Item extends Component<{ row: Row }> {
   render() {
-    return <span>{this.props.row.id}</span>;
+    return (
+      <li>
+        <span>{this.props.row.id}</span>
+      </li>
+    );
   }
 }
 
@@ -36,16 +39,17 @@ function countMoves(parent: Element) {
   return () => moves;
 }
 
-@Host("div")
 class List extends Component {
   @state rows: Row[] = Array.from({ length: SIZE }, (_, i) => ({ id: i }));
   render() {
     return (
-      <ul>
-        {list(this.rows, (row: Row) => (
-          <Item row={row} />
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.rows, (row: Row) => (
+            <Item row={row} />
+          ))}
+        </ul>
+      </div>
     );
   }
 }

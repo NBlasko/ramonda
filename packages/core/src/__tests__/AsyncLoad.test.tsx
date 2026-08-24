@@ -1,28 +1,23 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, AsyncLoad } from "../index";
-import { renderToString } from "../hydration/ssr";
-import { serializeComponentToJSON } from "../hydration/serialize";
+import { Component, state, AsyncLoad } from "../index";
+import { markComponents, renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
-import { STATE_ATTR } from "../helpers/constants";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-@Host("span")
 class Loaded extends Component<{ text?: string }> {
   render() {
-    return <b>[{this.props.text ?? "-"}]</b>;
+    return (
+      <span>
+        <b>[{this.props.text ?? "-"}]</b>
+      </span>
+    );
   }
 }
 
-function injectBlobs(root: Node): void {
-  const node = root as { _componentInstance?: object } & Element;
-  if (node._componentInstance && typeof node.setAttribute === "function") {
-    node.setAttribute(STATE_ATTR, serializeComponentToJSON(node._componentInstance));
-  }
-  root.childNodes.forEach(injectBlobs);
-}
+const injectBlobs = markComponents;
 
 describe("AsyncLoad", () => {
   const codes: string[] = [];
@@ -46,16 +41,17 @@ describe("AsyncLoad", () => {
   test("shows the loading fallback, then the module", async () => {
     let resolveIt: (value: Record<string, unknown>) => void = () => {};
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => new Promise((resolve) => (resolveIt = resolve))}
-            onLoading={<i>loading…</i>}
-            errorFallback={<i>error</i>}
-            loadedProps={{ text: "hi" }}
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => new Promise((resolve) => (resolveIt = resolve))}
+              onLoading={<i>loading…</i>}
+              errorFallback={<i>error</i>}
+              loadedProps={{ text: "hi" }}
+            />
+          </div>
         );
       }
     }
@@ -73,16 +69,17 @@ describe("AsyncLoad", () => {
   test("a rejected import shows the error fallback", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.reject(new Error("boom"))}
-            onLoading={<i>loading…</i>}
-            errorFallback={<i>could not load</i>}
-            cacheKey="rejects"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.reject(new Error("boom"))}
+              onLoading={<i>loading…</i>}
+              errorFallback={<i>could not load</i>}
+              cacheKey="rejects"
+            />
+          </div>
         );
       }
     }
@@ -97,20 +94,21 @@ describe("AsyncLoad", () => {
   test("unmounting before the import lands writes nothing", async () => {
     let resolveIt: (value: Record<string, unknown>) => void = () => {};
 
-    @Host("div")
     class App extends Component {
       @state show = true;
       render() {
         return (
           <div>
-            {this.show ? (
-              <AsyncLoad
-                lazy={() => new Promise((resolve) => (resolveIt = resolve))}
-                onLoading={<i>loading…</i>}
-                errorFallback={<i>error</i>}
-                cacheKey="unmount-race"
-              />
-            ) : null}
+            <div>
+              {this.show ? (
+                <AsyncLoad
+                  lazy={() => new Promise((resolve) => (resolveIt = resolve))}
+                  onLoading={<i>loading…</i>}
+                  errorFallback={<i>error</i>}
+                  cacheKey="unmount-race"
+                />
+              ) : null}
+            </div>
           </div>
         );
       }
@@ -133,13 +131,14 @@ describe("AsyncLoad", () => {
   test("two AsyncLoads sharing one lazy are not duplicate-keyed", async () => {
     const lazy = () => Promise.resolve({ default: Loaded });
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <AsyncLoad lazy={lazy} onLoading={<i>L1</i>} errorFallback={<i>E</i>} loadedProps={{ text: "one" }} />
-            <AsyncLoad lazy={lazy} onLoading={<i>L2</i>} errorFallback={<i>E</i>} loadedProps={{ text: "two" }} />
+            <div>
+              <AsyncLoad lazy={lazy} onLoading={<i>L1</i>} errorFallback={<i>E</i>} loadedProps={{ text: "one" }} />
+              <AsyncLoad lazy={lazy} onLoading={<i>L2</i>} errorFallback={<i>E</i>} loadedProps={{ text: "two" }} />
+            </div>
           </div>
         );
       }
@@ -164,31 +163,32 @@ describe("AsyncLoad", () => {
     let seenAttempt = 0;
     let seenMessage = "";
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => {
-              attempts++;
-              // Fails twice, then works.
-              return attempts < 3
-                ? Promise.reject(new Error(`attempt ${attempts} failed`))
-                : Promise.resolve({ default: Loaded });
-            }}
-            onLoading={<i>loading…</i>}
-            cacheKey="retry-case"
-            loadedProps={{ text: "finally" }}
-            errorFallback={({ error, retry, attempt }) => {
-              seenAttempt = attempt;
-              seenMessage = (error as Error).message;
-              return (
-                <button className="retry" onclick={retry}>
-                  retry
-                </button>
-              );
-            }}
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => {
+                attempts++;
+                // Fails twice, then works.
+                return attempts < 3
+                  ? Promise.reject(new Error(`attempt ${attempts} failed`))
+                  : Promise.resolve({ default: Loaded });
+              }}
+              onLoading={<i>loading…</i>}
+              cacheKey="retry-case"
+              loadedProps={{ text: "finally" }}
+              errorFallback={({ error, retry, attempt }) => {
+                seenAttempt = attempt;
+                seenMessage = (error as Error).message;
+                return (
+                  <button className="retry" onclick={retry}>
+                    retry
+                  </button>
+                );
+              }}
+            />
+          </div>
         );
       }
     }
@@ -222,16 +222,17 @@ describe("AsyncLoad", () => {
   test("a plain node errorFallback still works", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.reject(new Error("nope"))}
-            onLoading={<i>loading…</i>}
-            errorFallback={<i>plain fallback</i>}
-            cacheKey="plain-fallback"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.reject(new Error("nope"))}
+              onLoading={<i>loading…</i>}
+              errorFallback={<i>plain fallback</i>}
+              cacheKey="plain-fallback"
+            />
+          </div>
         );
       }
     }
@@ -244,17 +245,18 @@ describe("AsyncLoad", () => {
   });
 
   test("the module renders on the server", async () => {
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.resolve({ default: Loaded })}
-            onLoading={<i>loading…</i>}
-            errorFallback={<i>error</i>}
-            loadedProps={{ text: "ssr" }}
-            cacheKey="ssr-case"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.resolve({ default: Loaded })}
+              onLoading={<i>loading…</i>}
+              errorFallback={<i>error</i>}
+              loadedProps={{ text: "ssr" }}
+              cacheKey="ssr-case"
+            />
+          </div>
         );
       }
     }
@@ -268,16 +270,17 @@ describe("AsyncLoad", () => {
     // its state blob, but the client's module cache is a different process's
     // and knows nothing. Simulated with a lazy that never resolves, so the
     // cache genuinely has no entry, plus a blob that claims it does.
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => new Promise<never>(() => {})}
-            onLoading={<i>loading…</i>}
-            errorFallback={<i>error</i>}
-            cacheKey="never-resolves"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => new Promise<never>(() => {})}
+              onLoading={<i>loading…</i>}
+              errorFallback={<i>error</i>}
+              cacheKey="never-resolves"
+            />
+          </div>
         );
       }
     }
@@ -314,32 +317,39 @@ describe("a changing lazy prop", () => {
    * changed, the title changed, and the content stayed on the previous page with
    * no request made.
    */
-  @Host("div")
   class First extends Component {
     render() {
-      return <p>FIRST</p>;
+      return (
+        <div>
+          <p>FIRST</p>
+        </div>
+      );
     }
   }
-  @Host("div")
   class Second extends Component {
     render() {
-      return <p>SECOND</p>;
+      return (
+        <div>
+          <p>SECOND</p>
+        </div>
+      );
     }
   }
 
-  @Host("div")
   class Switcher extends Component {
     @state which: "a" | "b" = "a";
 
     render() {
       return (
-        <AsyncLoad
-          cacheKey={`switch:${this.which}`}
-          lazy={this.which === "a" ? () => Promise.resolve({ Page: First }) : () => Promise.resolve({ Page: Second })}
-          namedExport="Page"
-          onLoading={<p>loading…</p>}
-          errorFallback={<p>failed</p>}
-        />
+        <div>
+          <AsyncLoad
+            cacheKey={`switch:${this.which}`}
+            lazy={this.which === "a" ? () => Promise.resolve({ Page: First }) : () => Promise.resolve({ Page: Second })}
+            namedExport="Page"
+            onLoading={<p>loading…</p>}
+            errorFallback={<p>failed</p>}
+          />
+        </div>
       );
     }
   }
@@ -364,18 +374,19 @@ describe("a changing lazy prop", () => {
       return Promise.resolve({ Page: which === "a" ? First : Second });
     };
 
-    @Host("div")
     class Counted extends Component {
       @state which: "a" | "b" = "a";
       render() {
         return (
-          <AsyncLoad
-            cacheKey={`counted:${this.which}`}
-            lazy={lazyFor(this.which)}
-            namedExport="Page"
-            onLoading={<p>loading…</p>}
-            errorFallback={<p>failed</p>}
-          />
+          <div>
+            <AsyncLoad
+              cacheKey={`counted:${this.which}`}
+              lazy={lazyFor(this.which)}
+              namedExport="Page"
+              onLoading={<p>loading…</p>}
+              errorFallback={<p>failed</p>}
+            />
+          </div>
         );
       }
     }

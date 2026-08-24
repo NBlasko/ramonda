@@ -86,21 +86,24 @@ export function diffAndMerge(
 }
 
 /**
- * Mounts a component as the root of a container, and hands back its region.
+ * Mounts a root into a container, and leaves the record that describes it.
  *
- * The container's own record holds it, which is what a re-render of the root needs to find its
- * block — `bootstrap`, `renderToString` and the test harness all enter here.
+ * The ordinary level reconcile, given one child and an empty history — so a root may be a component,
+ * an element, a list or a string, exactly as any child may. It used to be `mountNode`, which built
+ * one node and appended it; a component is a range now, so what a root leaves behind is a record.
+ *
+ * `bootstrap`, `renderToString` and the test harness all enter here.
  */
-export function mountRootComponent(vnode: VNodeComponent, container: ChildNode): ComponentRegion {
-  const owner = componentRegionOwner(vnode, 0);
-  const region = buildComponentRegion(vnode, undefined, owner, container);
-  const node = container as EnhancedChildNode;
-  node[CHILD_RECORD] = [region];
+export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
+  const unclaimed: (EnhancedChildNode | DONE)[] = [];
+  const result = reconcileEntries([vnode], [], undefined, undefined, container, unclaimed);
+  (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
   // Appended rather than reordered: a root mount has an empty container and nothing to move, which
   // is the same reason `mountNode` could append.
-  for (const child of region.order) container.appendChild(child);
-  return region;
+  const ordered: ChildNode[] = [];
+  flattenEntries(result.entries, ordered);
+  for (const child of ordered) container.appendChild(child);
 }
 
 /**
@@ -171,8 +174,11 @@ export function componentsIn(node: Node): BaseComponent[] {
   const walk = (entries: RecordEntry[]): void => {
     for (const entry of entries) {
       if (!isRegion(entry)) {
-        const inner = (entry as EnhancedChildNode)[CHILD_RECORD];
-        if (inner !== undefined) walk(inner);
+        // A plain element, which may hold components deeper down. It keeps a record only when a
+        // component is among its OWN children — an element in between keeps none, so descending has
+        // to go through the DOM until the next record turns up. Reading only the record here missed
+        // every component under an intermediate element: measured on `<div><section><Child/>`.
+        found.push(...componentsIn(entry));
         continue;
       }
       if (isComponentRegion(entry)) found.push(entry.instance);
@@ -193,7 +199,7 @@ export function componentsIn(node: Node): BaseComponent[] {
  * What `rerenderRoot` needs, and it cannot be the ordinary element path: the container is not
  * something a render produced, so there is no vnode for it — only the one entry inside it.
  */
-export function rerenderRootComponent(vnode: VNodeComponent, container: ChildNode): void {
+export function rerenderRoot(vnode: ComponentChild, container: ChildNode): void {
   const node = container as EnhancedChildNode;
   const previous = node[CHILD_RECORD] ?? [];
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
@@ -887,7 +893,29 @@ export function reconcileEntries(
         before.parent = parent;
         region = before;
       } else {
-        region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent);
+        try {
+          region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent);
+        } catch (e) {
+          /**
+           * The same door a plain child's build goes through, and it has to be here now.
+           *
+           * `buildDetachedNode` wraps every node it builds, so a throwing render used to reach
+           * `errorHandler` — which walks up to an `ErrorBoundary` — simply by being built there. A
+           * component is built on this path instead, and without this the throw went straight out of
+           * the drain: measured as every `ErrorBoundary` test failing with the child's own error.
+           *
+           * The child is dropped from this render, exactly as a failed node is. What was there
+           * before it is torn down by hand, because it has already been taken out of
+           * `previousRegions` and nothing downstream would find it again.
+           */
+          if (before !== undefined) {
+            collectRegionNodes(before, unclaimed);
+            disposeRegions([before]);
+            changed = true;
+          }
+          errorHandler(e, placeholderComponent);
+          continue;
+        }
       }
 
       entries.push(region);

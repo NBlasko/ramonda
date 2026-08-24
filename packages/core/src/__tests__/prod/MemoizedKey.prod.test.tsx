@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, Host, state, bootstrap, unmount, memoized } from "../../index";
+import { Component, state, bootstrap, unmount, memoized } from "../../index";
 import { flushSync, getComponentInstance } from "../../testing";
 
 /**
@@ -32,7 +32,6 @@ describe("production: a handler key that cannot be built", () => {
   test("the page keeps rendering, and the handler still works", () => {
     const calls: unknown[] = [];
 
-    @Host("div")
     class Panel extends Component {
       @state label = "one";
 
@@ -48,12 +47,14 @@ describe("production: a handler key that cannot be built", () => {
         const good = this.pick("7");
         return (
           <div>
-            <button id="bad" onclick={bad}>
-              {this.label}
-            </button>
-            <button id="good" onclick={good}>
-              ok
-            </button>
+            <div>
+              <button id="bad" onclick={bad}>
+                {this.label}
+              </button>
+              <button id="good" onclick={good}>
+                ok
+              </button>
+            </div>
           </div>
         );
       }
@@ -89,7 +90,6 @@ describe("production: a handler key that cannot be built", () => {
   });
 
   test("a keyable argument is still memoized — the same handler comes back", () => {
-    @Host("div")
     class Panel extends Component {
       @state tick = 0;
       handlers: unknown[] = [];
@@ -101,7 +101,11 @@ describe("production: a handler key that cannot be built", () => {
 
       render() {
         this.handlers.push(this.pick("a"));
-        return <div>{this.tick}</div>;
+        return (
+          <div>
+            <div>{this.tick}</div>
+          </div>
+        );
       }
     }
 

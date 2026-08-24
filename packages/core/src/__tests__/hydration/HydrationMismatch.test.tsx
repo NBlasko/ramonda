@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { state, mounted, Host } from "../../base/decorators";
+import { state, mounted } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
@@ -68,10 +68,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("matching output hydrates silently", async () => {
-    @Host("div")
     class Greeting extends Component {
       render() {
-        return <span>Hello {"Nikola"}!</span>;
+        return (
+          <div>
+            <span>Hello {"Nikola"}!</span>
+          </div>
+        );
       }
     }
 
@@ -86,10 +89,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("adjacent text children are adopted, not rebuilt", async () => {
-    @Host("div")
     class Greeting extends Component {
       render() {
-        return <span>Hello {"Nikola"}!</span>;
+        return (
+          <div>
+            <span>Hello {"Nikola"}!</span>
+          </div>
+        );
       }
     }
 
@@ -116,10 +122,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a text value that differs across the boundary reports RMD007", async () => {
-    @Host("div")
     class Clock extends Component {
       render() {
-        return <span>{SIDE}</span>;
+        return (
+          <div>
+            <span>{SIDE}</span>
+          </div>
+        );
       }
     }
 
@@ -133,10 +142,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a mismatch inside a fused run is pinpointed and still repaired", async () => {
-    @Host("div")
     class Greeting extends Component {
       render() {
-        return <span>Hello {SIDE}!</span>;
+        return (
+          <div>
+            <span>Hello {SIDE}!</span>
+          </div>
+        );
       }
     }
 
@@ -153,13 +165,14 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("an attribute that differs across the boundary reports RMD007", async () => {
-    @Host("div")
     class Themed extends Component {
       render() {
         return (
-          <span className={SIDE} title={SIDE}>
-            hi
-          </span>
+          <div>
+            <span className={SIDE} title={SIDE}>
+              hi
+            </span>
+          </div>
         );
       }
     }
@@ -182,12 +195,15 @@ describe("hydration mismatch (RMD007)", () => {
    * comparator was wrong.
    */
   test("a style the DOM rewrites is not a mismatch", async () => {
-    @Host("div")
     class Styled extends Component {
       render() {
         // None of these survive a DOM round-trip unchanged: no trailing
         // semicolon, an uppercase property, and loose spacing.
-        return <span style="COLOR:red;   font-weight: bold">hi</span>;
+        return (
+          <div>
+            <span style="COLOR:red;   font-weight: bold">hi</span>
+          </div>
+        );
       }
     }
 
@@ -198,10 +214,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a style that genuinely differs still reports RMD007", async () => {
-    @Host("div")
     class Styled extends Component {
       render() {
-        return <span style={`color: ${SIDE === "server" ? "red" : "blue"}`}>hi</span>;
+        return (
+          <div>
+            <span style={`color: ${SIDE === "server" ? "red" : "blue"}`}>hi</span>
+          </div>
+        );
       }
     }
 
@@ -216,10 +235,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a declaration the server dropped reports RMD007", async () => {
-    @Host("div")
     class Styled extends Component {
       render() {
-        return <span style={SIDE === "server" ? "color: red" : "color: red; display: none"}>hi</span>;
+        return (
+          <div>
+            <span style={SIDE === "server" ? "color: red" : "color: red; display: none"}>hi</span>
+          </div>
+        );
       }
     }
 
@@ -232,10 +254,9 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a different element reports RMD007", async () => {
-    @Host("div")
     class Swap extends Component {
       render() {
-        return SIDE === "server" ? <span>x</span> : <b>x</b>;
+        return <div>{SIDE === "server" ? <span>x</span> : <b>x</b>}</div>;
       }
     }
 
@@ -249,14 +270,15 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("extra server children report RMD007", async () => {
-    @Host("div")
     class List extends Component {
       render() {
         return (
-          <ul>
-            {SIDE === "server" ? <li>a</li> : null}
-            <li>b</li>
-          </ul>
+          <div>
+            <ul>
+              {SIDE === "server" ? <li>a</li> : null}
+              <li>b</li>
+            </ul>
+          </div>
         );
       }
     }
@@ -274,7 +296,6 @@ describe("hydration mismatch (RMD007)", () => {
   test("the prescribed two-pass pattern hydrates without a mismatch", async () => {
     // This is the fix RMD007 tells people to use instead of `typeof window`.
     // It must not trip the very diagnostic that recommends it.
-    @Host("div")
     class Widget extends Component {
       @state isClient = false;
 
@@ -284,7 +305,11 @@ describe("hydration mismatch (RMD007)", () => {
       }
 
       render() {
-        return <span>{this.isClient ? "interactive" : "static"}</span>;
+        return (
+          <div>
+            <span>{this.isClient ? "interactive" : "static"}</span>
+          </div>
+        );
       }
     }
 

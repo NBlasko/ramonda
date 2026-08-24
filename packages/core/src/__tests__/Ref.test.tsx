@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, createRef } from "../index";
+import { Component, state, createRef } from "../index";
 
 /**
  * `Ref` was a public export with no test at all. Four things were wrong, and
@@ -12,17 +12,18 @@ describe("Ref", () => {
 
   test("points at the element, and is cleared when it goes", async () => {
     const ref = createRef<HTMLElement>();
-    @Host("div")
     class C extends Component {
       @state show = true;
       render() {
         return (
           <div>
-            {this.show ? (
-              <p id="target" ref={ref}>
-                x
-              </p>
-            ) : null}
+            <div>
+              {this.show ? (
+                <p id="target" ref={ref}>
+                  x
+                </p>
+              ) : null}
+            </div>
           </div>
         );
       }
@@ -43,17 +44,18 @@ describe("Ref", () => {
   test("a callback ref is told when the element goes away", async () => {
     const seen: string[] = [];
     const ref = createRef<HTMLElement>((el) => seen.push(el ? `set:${el.id}` : "cleared"));
-    @Host("div")
     class C extends Component {
       @state show = true;
       render() {
         return (
           <div>
-            {this.show ? (
-              <p id="cb" ref={ref}>
-                x
-              </p>
-            ) : null}
+            <div>
+              {this.show ? (
+                <p id="cb" ref={ref}>
+                  x
+                </p>
+              ) : null}
+            </div>
           </div>
         );
       }
@@ -68,16 +70,22 @@ describe("Ref", () => {
 
   test("a ref on a component receives its host element", async () => {
     const ref = createRef<HTMLElement>();
-    @Host("section")
     class Child extends Component {
       render() {
-        return <span>child</span>;
+        return (
+          <section>
+            <span>child</span>
+          </section>
+        );
       }
     }
-    @Host("div")
     class C extends Component {
       render() {
-        return <Child ref={ref} />;
+        return (
+          <div>
+            <Child ref={ref} />
+          </div>
+        );
       }
     }
     const app = await getDOM<C>(<C />);
@@ -92,13 +100,14 @@ describe("Ref", () => {
     const seen: string[] = [];
     const ref = createRef<HTMLElement>((el) => seen.push(el ? "set" : "cleared"));
 
-    @Host("div")
     class C extends Component {
       @state label = "a";
       render() {
         return (
           <div>
-            <p ref={ref}>{this.label}</p>
+            <div>
+              <p ref={ref}>{this.label}</p>
+            </div>
           </div>
         );
       }
@@ -120,21 +129,22 @@ describe("Ref", () => {
 
   test("a ref handed from one element to another keeps the new one", async () => {
     const ref = createRef<HTMLElement>();
-    @Host("div")
     class C extends Component {
       @state which = "a";
       render() {
         return (
           <div>
-            {this.which === "a" ? (
-              <p id="a" ref={ref}>
-                a
-              </p>
-            ) : (
-              <b id="b" ref={ref}>
-                b
-              </b>
-            )}
+            <div>
+              {this.which === "a" ? (
+                <p id="a" ref={ref}>
+                  a
+                </p>
+              ) : (
+                <b id="b" ref={ref}>
+                  b
+                </b>
+              )}
+            </div>
           </div>
         );
       }

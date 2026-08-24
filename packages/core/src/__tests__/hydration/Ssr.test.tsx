@@ -1,15 +1,13 @@
 import { describe, test, expect } from "vitest";
-import { state, Host, mounted, onElement } from "../../base/decorators";
+import { state, mounted } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
-import { STATE_ATTR } from "../../helpers/constants";
 
 const microtask = () => Promise.resolve();
 
 describe("SSR wiring", () => {
   test("runs server/shared lifecycle (not client/effects) and stamps blobs", async () => {
-    @Host("div")
     class Counter extends Component {
       @state count = 0;
       // shared @mounted → runs on the server, after the initial render.
@@ -17,12 +15,15 @@ describe("SSR wiring", () => {
         this.count = 5;
       }
       // client-only effect → must NOT run/attach on the server.
-      @onElement("click")
       onClick() {
         this.count++;
       }
       render() {
-        return <span id="c">{this.count}</span>;
+        return (
+          <div onclick={this.onClick}>
+            <span id="c">{this.count}</span>
+          </div>
+        );
       }
     }
 
@@ -31,29 +32,37 @@ describe("SSR wiring", () => {
     // Parse the server markup to inspect it robustly.
     const probe = document.createElement("div");
     probe.innerHTML = html;
-    const host = probe.firstElementChild!;
 
     // @mounted (shared) ran on the server → count reflected.
-    expect(host.querySelector("#c")?.textContent).toBe("5");
+    expect(probe.querySelector("#c")?.textContent).toBe("5");
 
-    // Blob embedded on the carrier and holds the server state.
-    const blob = JSON.parse(host.getAttribute(STATE_ATTR)!);
+    /**
+     * The blob rides the OPENING MARKER, and holds the server's state.
+     *
+     * It used to be an attribute on the component's host element. A component owns a range of nodes
+     * now, so the address of its state is the comment in front of that range — which is also the
+     * only marker a parser leaves inside a `<tr>`.
+     */
+    const opening = Array.from(probe.childNodes).find((n) => n.nodeType === 8) as Comment;
+    const blob = JSON.parse(opening.data.slice(opening.data.indexOf(" ") + 1));
     expect(blob.state.count).toBe(5);
   });
 
   test("round-trip: renderToString → hydrateRoot → interactive", async () => {
-    @Host("div")
     class Counter extends Component {
       @state count = 0;
       @mounted ready() {
         this.count = 3;
       }
-      @onElement("click")
       onClick() {
         this.count++;
       }
       render() {
-        return <span id="c">{this.count}</span>;
+        return (
+          <div onclick={this.onClick}>
+            <span id="c">{this.count}</span>
+          </div>
+        );
       }
     }
 
@@ -78,25 +87,29 @@ describe("SSR wiring", () => {
   });
 
   test("nested components each get a blob and render server-side", async () => {
-    @Host("div")
     class Item extends Component<{ label: string }> {
       @state n = 0;
       @mounted ready() {
         this.n = this.props.label.length;
       }
       render() {
-        return <span data-item={this.props.label}>{this.n}</span>;
+        return (
+          <div>
+            <span data-item={this.props.label}>{this.n}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class List extends Component {
       render() {
         return (
-          <ul>
-            <Item label="ab" />
-            <Item label="xyz" />
-          </ul>
+          <div>
+            <ul>
+              <Item label="ab" />
+              <Item label="xyz" />
+            </ul>
+          </div>
         );
       }
     }
@@ -108,9 +121,17 @@ describe("SSR wiring", () => {
     expect(probe.querySelector('[data-item="ab"]')?.textContent).toBe("2");
     expect(probe.querySelector('[data-item="xyz"]')?.textContent).toBe("3");
 
-    // Each Item carrier (a <div> host under the <ul>) has its own blob.
-    const itemHosts = probe.querySelectorAll("ul > div");
-    expect(itemHosts).toHaveLength(2);
-    itemHosts.forEach((h) => expect(h.hasAttribute(STATE_ATTR)).toBe(true));
+    /**
+     * Each Item has its own marker pair inside the `<ul>`, and its own blob on the opening one.
+     *
+     * There is no per-item element to carry it: an Item renders an `<li>` and that `<li>` is the
+     * Item's own markup, not a wrapper the framework put there. The comments are what say which
+     * `<li>` belongs to which component.
+     */
+    const openings = Array.from(probe.querySelector("ul")!.childNodes).filter(
+      (n) => n.nodeType === 8 && (n as Comment).data.startsWith("c"),
+    ) as Comment[];
+    expect(openings).toHaveLength(2);
+    openings.forEach((c) => expect(c.data).toContain('"state"'));
   });
 });

@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../../test/setup";
 import { Component } from "../../base/Component";
-import { Host, state, deferHydration, destroyed, interval } from "../../base/decorators";
+import { state, deferHydration, destroyed, interval } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -33,7 +33,6 @@ describe("a deferred subtree that resumes with a different host tag", () => {
       release = resolve;
     });
 
-    @Host((p: { as?: string }) => p.as ?? "div")
     class Deferred extends Component<{ as?: string }> {
       @state n = 0;
 
@@ -51,18 +50,26 @@ describe("a deferred subtree that resumes with a different host tag", () => {
       }
 
       render() {
-        return <p>deferred {this.n}</p>;
+        /**
+         * The element the caller asked for, chosen in the render.
+         *
+         * The point of this test is a RESUME that cannot adopt what the server wrote, so the two
+         * sides have to be able to disagree about the tag — which used to be a `@Host` callback and
+         * is now an ordinary conditional. Same disagreement, written where the markup is.
+         */
+        return this.props.as === "section" ? <section>deferred {this.n}</section> : <div>deferred {this.n}</div>;
       }
     }
 
-    @Host("main")
     class Page extends Component<{ as?: string }> {
       render() {
         return (
-          <div>
-            <Deferred as={this.props.as} />
-            <b id="after">after</b>
-          </div>
+          <main>
+            <div>
+              <Deferred as={this.props.as} />
+              <b id="after">after</b>
+            </div>
+          </main>
         );
       }
     }
