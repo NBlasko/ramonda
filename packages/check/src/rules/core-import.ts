@@ -56,6 +56,21 @@ export function coreExportName(
   resolveStep?: (node: ts.Node) => ts.Symbol | undefined,
   resolveFully?: (node: ts.Node) => ts.Symbol | undefined,
 ): string | undefined {
+  /**
+   * `core.state` — a NAMESPACE import, which keeps the export's own name on the property.
+   *
+   * The whole point of this function is that identity is the name the MODULE gave a binding, and a
+   * namespace access is the one spelling where that name is written down verbatim at the call site.
+   * Reading only an identifier meant `@core.Host` was invisible to `duplicate-decorators` and
+   * `@core.state` to `decorator-that-adds-nothing` — measured on a plant, both silent on the
+   * identical fault their aliased form was reported for.
+   *
+   * Fixed HERE rather than in each caller, because it had already been patched inline in
+   * `lifecycle-env` an hour earlier and a third caller would have needed it next.
+   */
+  if (ts.isPropertyAccessExpression(id)) {
+    return importedFromCore(id.expression, resolveLocal, resolveStep) ? id.name.text : undefined;
+  }
   if (!ts.isIdentifier(id)) return undefined;
   const byChain = nameAtCore(resolveLocal(id), resolveStep, 0);
   if (byChain !== undefined) return byChain;

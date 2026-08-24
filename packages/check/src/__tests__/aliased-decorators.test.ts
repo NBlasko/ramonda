@@ -69,3 +69,39 @@ describe("a core decorator imported under another name", () => {
     expect(everything.filter((one) => one.endsWith(":ThroughABarrel"))).toHaveLength(2);
   });
 });
+
+/**
+ * The two decorator rules that sit on the same line, asked the same identity question.
+ *
+ * `duplicate-decorators` resolves through `Resolver.coreName`. `decorator-that-adds-nothing` read
+ * the written IDENTIFIER — and measured on a plant that was wrong three ways at once: an alias and
+ * a namespace both went quiet on the identical pair, and an app's own `persist` beside core's
+ * `@state` was REPORTED. Somebody else's code, told one of its lines does nothing, for the
+ * framework's rule.
+ *
+ * Two rules answering one question about one decorator two different ways is the drift a shared
+ * reader exists to prevent, and one of them always turns out to be wrong.
+ */
+describe("who wrote this decorator", () => {
+  const found = () => analyzeProject(join(here, "fixtures", "decorator-identity", "tsconfig.json")).findings;
+  const adds = () => (found()["decorator-that-adds-nothing"] ?? []).map((issue) => issue.component);
+  const twice = () => (found()["duplicate-decorators"] ?? []).map((issue) => issue.component);
+
+  test("an alias and a namespace are still core's, for both rules", () => {
+    expect(adds()).toEqual(["Plain", "Aliased", "Namespaced"]);
+    // The namespace half was missing here too, and fixing it in `coreExportName` fixed both — it
+    // had already been patched inline in `lifecycle-env` an hour earlier, which is the copy this
+    // removed.
+    expect(twice()).toEqual(["HostTwiceNamespaced", "HostTwiceAliased"]);
+  });
+
+  test("and an app's own decorator of that name is nobody's business", () => {
+    /**
+     * Both spellings: renamed on import, and imported under its own name in a file that never sees
+     * core's. The second is the one that was falsely reported — the first was silent only because
+     * the local name happened not to match, which is not the same as being right.
+     */
+    expect(adds()).not.toContain("OwnDecorator");
+    expect(adds()).not.toContain("OursUnderItsOwnName");
+  });
+});

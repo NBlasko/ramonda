@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { coreExportName, importedFromCore } from "./core-import";
+import { coreExportName } from "./core-import";
 import type { RuleContext } from "./rule";
 
 /**
@@ -85,18 +85,9 @@ export function coreDecorators(
      * wrong key. `import { created as onCreate }` found nothing in it and every rule reading this
      * went quiet about the member.
      */
-    /**
-     * `@core.created()` — a NAMESPACE import, which keeps the export's own name on the property.
-     *
-     * `coreExportName` takes an identifier and a namespace decorator is a property access, so this
-     * was silent on it. `late-request-read` reads `core.requestContext()` the same way and has for
-     * longer, which is what says the shape is written rather than hypothetical.
-     */
-    const name = ts.isPropertyAccessExpression(expression)
-      ? importedFromCore(expression.expression, context.resolveLocal, context.resolveStep)
-        ? expression.name.text
-        : undefined
-      : coreExportName(expression, context.resolveLocal, context.resolveStep);
+    // `@core.created()` — a namespace import keeps the export's own name on the property, and
+    // `coreExportName` reads that itself. It was patched here first; the copy is gone.
+    const name = coreExportName(expression, context.resolveLocal, context.resolveStep);
     if (name !== undefined) found.push({ decorator, name });
   }
   return found;
