@@ -47,12 +47,15 @@ export const ariaWithNoSubject = {
   },
 
   /**
-   * Both halves of this are beyond a spread's reach.
+   * The subject is the TAG, and no spread makes a `<meta>` into something a screen reader exposes.
    *
-   * The subject is the TAG — a spread cannot make a `<meta>` into something with an accessibility
-   * node — and what is reported is the attribute's NAME, which a spread can overwrite the value of
-   * and never remove. So the family-wide silence has nothing to protect here, and it was costing a
-   * real report: `<meta {...rest} aria-hidden="true" />` said nothing.
+   * So the family-wide silence has nothing to protect here, and it was costing a real report:
+   * `<meta {...rest} aria-hidden="true" />` said nothing at all.
+   *
+   * No order guard, though a later spread carrying `undefined` really can take the attribute off —
+   * measured through `renderToString`. This is a rule about a MISUNDERSTANDING: somebody wrote
+   * `aria-hidden` on a `<meta>` believing it hid something, and whatever they meant to hide is
+   * still there whether or not the attribute survives to the DOM.
    */
   evenWhenSpreading: true,
 

@@ -100,16 +100,19 @@ export const unknownAriaAttribute = {
   },
 
   /**
-   * A misspelling survives every spread there is.
+   * A misspelling is in the source whatever the spread does.
    *
    * The family goes quiet on a spreading element because a spread may CARRY the attribute a rule
    * misses — `<img {...rest} />` may well have its `alt`. This rule misses nothing: the wrong name
-   * is written on the tag, and no object spread beside it can take a name off. Measured on
-   * `fixtures/spread-a11y`, where `<div {...rest} aria-lablled="Filters" />` went unreported while
-   * the identical line without the spread was reported one line down.
+   * is written on the tag. Measured on `fixtures/spread-a11y`, where
+   * `<div {...rest} aria-lablled="Filters" />` went unreported while the identical line without the
+   * spread was reported one line down.
    *
-   * No order guard, unlike `unknown-role`: this reads the name and never the value, so which side
-   * of the spread it sits on changes nothing.
+   * No order guard, and NOT because a spread cannot reach it — a later spread carrying `undefined`
+   * really does remove an attribute, measured through `renderToString`. Because this rule is about
+   * what was WRITTEN: `aria-lablled` is a typo whether the browser ends up seeing it or not, and
+   * the attribute the author meant is missing either way. `unknown-role` is the other kind and
+   * takes the guard.
    */
   evenWhenSpreading: true,
 

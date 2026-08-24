@@ -76,9 +76,19 @@ export const roleTakesNoName = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, attr, has }) {
+  /**
+   * Reported past a spread, from the side a spread cannot reach over.
+   *
+   * Two attributes decide this — the `role` and the name written beside it — and a spread after
+   * either one can replace or remove it, measured through `renderToString`. The naming attribute
+   * is asked about its own position in the loop below; the `role` is asked here.
+   */
+  evenWhenSpreading: true,
+
+  read(element, { tag, attr, has, overwritable, spreads }) {
     // Markup only: what `<Panel aria-label="x" />` does with the prop is decided inside it.
     if (tag === undefined) return [];
+    if (overwritable("role") && has("role")) return [];
 
     const written = attr("role")?.trim().toLowerCase();
     let role: string;
@@ -97,6 +107,14 @@ export const roleTakesNoName = {
     } else {
       const own = NAME_PROHIBITED_TAGS.get(tag);
       if (own === undefined) return [];
+      /**
+       * The role is the TAG's own, and a spread — on either side — may be carrying a `role` that
+       * overrides it with one that does take a name.
+       *
+       * The `role` branch above needs no such question: it is written down, and only what comes
+       * after it can reach it. Here there is nothing written to come after.
+       */
+      if (spreads) return [];
       role = own;
       from = "tag";
     }
@@ -120,6 +138,8 @@ export const roleTakesNoName = {
        */
       const name = attribute.name.getText().toLowerCase();
       if (!NAMES.includes(name)) continue;
+      // A spread after this one may take the name away, and then there is nothing to report.
+      if (overwritable(name)) continue;
       found.push({ attribute: name, tag, role, from, ...positionOf(attribute) });
     }
     return found;

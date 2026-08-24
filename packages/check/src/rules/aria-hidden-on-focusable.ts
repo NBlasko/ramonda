@@ -74,6 +74,8 @@ export const ariaHiddenOnFocusable = {
       "This is a warning today and an error in a later version.",
   },
 
+  evenWhenSpreading: true,
+
   read(element, context) {
     const { tag } = context;
     if (tag === undefined) return [];
@@ -82,16 +84,36 @@ export const ariaHiddenOnFocusable = {
     // `{true}` and `"true"` all reach the element the same way. `aria-hidden={busy}` may be either,
     // and a rule that guessed would report the correct half of it.
     if (trueAttr(element, "aria-hidden", context.resolve) !== true) return [];
+    /**
+     * The `aria-hidden` half has to survive the spread; the other half is asked below.
+     *
+     * A spread written after it can replace it or remove it outright — measured through
+     * `renderToString` — and then the element this reports is not the element that renders.
+     */
+    if (context.overwritable("aria-hidden")) return [];
 
     // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
     // `tabIndex={-1}` takes a `<button>` back out of it. A rule that asked the tag first would
     // report `<button aria-hidden="true" tabIndex={-1}>`, which is the correct way to write this.
     const tabIndex = numberAttr(element, "tabIndex", context.resolve);
     if (tabIndex !== undefined) {
+      // A spread after it may replace this number, or take the attribute away entirely.
+      if (context.overwritable("tabIndex")) return [];
       return tabIndex >= 0 ? [{ tag, because: "tabIndex" as const, ...positionOf(openingOf(element)) }] : [];
     }
 
     if (!focusableByTag(tag, context)) return [];
+
+    /**
+     * The tag branch, and the one place a spread on EITHER side matters.
+     *
+     * `<button aria-hidden="true">` is reported for what the tag is. But `tabIndex={-1}` takes it
+     * back out of the tab order and is the correct way to write this — and a spread anywhere on
+     * the tag may be carrying exactly that, since nothing here can see what an absent attribute
+     * would have said. The other branch above needs no such question: the `tabIndex` is written
+     * down, and only what comes after it can reach it.
+     */
+    if (context.spreads) return [];
 
     return [{ tag, because: "the tag" as const, ...positionOf(openingOf(element)) }];
   },

@@ -21,5 +21,21 @@ plainly written down.
 `ElementContext` grows `overwritable(name)` for the third of those — whether a spread is written
 after the attribute — so the order question is answered once rather than per rule.
 
+Ten more rules were then asked the same question, and seven of them were silent for the same
+reason: `class-instead-of-classname` and `tag-needs-its-parent` (which read a written name and a
+tag, and report on either side of a spread), and `positive-tabindex`, `access-key`, `aria-value`,
+`aria-hidden-on-focusable` and `role-takes-no-name` (which read what the element will BE, and
+report only from the side a spread cannot reach over).
+
+The line between the two is NOT name-versus-value, which is what it looked like at first. Measured
+through `renderToString`: `<span aria-hidden="true" {...{"aria-hidden": undefined}} />` renders
+`<span></span>` — a later spread carrying `undefined` really does remove an attribute. What decides
+it is what the rule is about. A misspelling is in the source whether or not the browser sees it; a
+claim about the rendered element is not.
+
+Two rules also had to give up a report a spread could ADD its way out of: `<button aria-hidden>`
+with no `tabIndex` written, and a role taken from the TAG, are both settled by an attribute that
+is not there — and a spread on either side may be carrying it.
+
 Measured on the six real projects in this repository: no new findings. The silence the guard
 exists for is unchanged — `<img {...rest} />` still reports nothing.

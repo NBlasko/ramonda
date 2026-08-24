@@ -422,3 +422,52 @@ describe("an accessibility fault beside a spread", () => {
     expect(lines("unnamed-image")).toEqual([]);
   });
 });
+
+/**
+ * The rest of the family, asked the same question.
+ *
+ * `spread-a11y` settled the principle on three rules. Asked of every other element rule, seven more
+ * were silent beside a spread that could not have changed their answer — measured on
+ * `fixtures/spread-sweep`, where each fault was written with the spread first, with the spread
+ * last, and with no spread at all.
+ *
+ * The line between them is not name-versus-value. A later spread carrying `undefined` really does
+ * remove an attribute — `<span aria-hidden="true" {...{"aria-hidden": undefined}} />` renders
+ * `<span></span>`, measured through `renderToString` — so what decides it is what the rule is
+ * ABOUT: what the author WROTE, or what the element WILL BE.
+ */
+describe("the rest of the element family beside a spread", () => {
+  const sweep = () => analyzeProject(join(here, "fixtures", "spread-sweep", "tsconfig.json")).findings;
+  const lines = (id: string) => (sweep()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
+
+  test("a rule about what was WRITTEN reports on either side of a spread", () => {
+    // `class` where `className` was meant: 22 spread first, 23 spread last, 24 the control. The
+    // prop the author meant is missing whether or not the attribute survives to the DOM.
+    expect(lines("class-instead-of-classname")).toEqual([22, 23, 24]);
+  });
+
+  test("and so does a rule whose subject is the TAG, because no spread changes a tag", () => {
+    // An `<li>` with no list around it — 32 with a spread, 33 without.
+    expect(lines("tag-needs-its-parent")).toEqual([32, 33]);
+  });
+
+  /**
+   * The other five, one at a time, so a regression names the rule rather than moving a number.
+   *
+   * Each is a claim about the element that RENDERS, and each is written three times in the
+   * fixture: spread first (reported, the attribute has the last word), spread last (silent, the
+   * spread may replace or remove it), and no spread (reported).
+   */
+  test("a rule about what the element WILL BE reports only from the side a spread cannot reach", () => {
+    expect(lines("positive-tabindex")).toEqual([27, 29]);
+    expect(lines("aria-value")).toEqual([36, 38]);
+    expect(lines("access-key")).toEqual([41, 43]);
+    expect(lines("aria-hidden-on-focusable")).toEqual([46, 48]);
+    // Two attributes decide this one, and each is asked about its own position.
+    expect(lines("role-takes-no-name")).toEqual([51, 53]);
+  });
+
+  test("and the silence the family guard exists for is untouched", () => {
+    expect(lines("unnamed-image")).toEqual([]);
+  });
+});

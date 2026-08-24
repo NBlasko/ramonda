@@ -45,8 +45,19 @@ export const positiveTabIndex = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, resolve }) {
+  /**
+   * Reported past a spread, from the side a spread cannot reach over.
+   *
+   * A rule about what the element WILL BE, so it takes the order guard itself:
+   * `<div {...rest} tabIndex={5} />` is in the tab order at 5 whatever `rest` holds, and
+   * `<div tabIndex={5} {...rest} />` may end up with any tabIndex at all — or none, since a later
+   * `undefined` removes the attribute outright, measured through `renderToString`.
+   */
+  evenWhenSpreading: true,
+
+  read(element, { tag, resolve, overwritable }) {
     if (tag === undefined) return [];
+    if (overwritable("tabIndex")) return [];
 
     /**
      * Read as a literal only, which is the silence contract doing its job.

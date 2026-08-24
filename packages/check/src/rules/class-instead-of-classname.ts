@@ -69,6 +69,15 @@ export const classInsteadOfClassName = {
       "meant, and only the source is misleading.",
   },
 
+  /**
+   * `class` written on the tag is a mistake in the source, and a spread does not unmake it.
+   *
+   * This is a rule about what the author WROTE — they meant `className` and typed the HTML name —
+   * so no order guard: a later spread carrying `undefined` can take the attribute off the DOM
+   * (measured through `renderToString`) and the prop the author meant is still missing.
+   */
+  evenWhenSpreading: true,
+
   read(element, { tag, has }) {
     if (!has("class")) return [];
 

@@ -96,7 +96,16 @@ export const ariaValue = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, attr }) {
+  /**
+   * Reported past a spread, from the side a spread cannot reach over.
+   *
+   * A rule about what the attribute SAYS — `aria-valuenow="lots"` where a number is wanted — so a
+   * later spread that replaces or removes it makes the report untrue, and each attribute is asked
+   * about its own position rather than the element's.
+   */
+  evenWhenSpreading: true,
+
+  read(element, { tag, attr, overwritable }) {
     // Markup only. `<Panel aria-hidden="yes" />` is a prop on a component, and what that component
     // does with it is decided inside it — where this rule meets the real attribute again.
     if (tag === undefined) return [];
@@ -110,6 +119,8 @@ export const ariaValue = {
 
       const value = attr(name);
       if (value === undefined) continue;
+      // A spread written after it may replace this value with any other, or with nothing at all.
+      if (overwritable(name)) continue;
 
       const wants = judge(spec, value.trim());
       if (wants !== undefined) {

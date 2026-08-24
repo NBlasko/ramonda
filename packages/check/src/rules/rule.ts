@@ -494,13 +494,25 @@ export interface ElementContext {
    *
    * The half of the spread question a rule with `evenWhenSpreading` has to answer for itself, and
    * it turns on ORDER. `<div role="buton" {...rest} />` may end up with whatever role `rest`
-   * carries, so a rule about the VALUE has nothing to report; `<div {...rest} role="buton" />` ends
-   * up with `buton` whatever `rest` holds, because the later attribute wins.
+   * carries; `<div {...rest} role="buton" />` ends up with `buton` whatever `rest` holds, because
+   * the later attribute wins.
    *
-   * A rule about a NAME does not need this at all. A spread can overwrite a value and cannot
-   * un-write a name — `aria-lablled` written on the tag is on the tag — which is why
-   * `unknown-aria-attribute` and `aria-with-no-subject` take no order guard and `unknown-role`
-   * does.
+   * ## A later spread can REMOVE an attribute, and that was measured rather than assumed
+   *
+   * The first version of this said a spread can overwrite a value and never un-write a name, so a
+   * rule reading names needed no order guard at all. **Rendered through `renderToString`, that is
+   * false**: `<span aria-hidden="true" {...{"aria-hidden": undefined}} />` comes out `<span></span>`.
+   * An `undefined` in a later spread takes the attribute off.
+   *
+   * So the line is not name-versus-value. It is what the rule is ABOUT:
+   *
+   * - a rule about what the author WROTE — `unknown-aria-attribute` on a misspelling,
+   *   `class-instead-of-classname`, `aria-with-no-subject` — stands whatever the spread does,
+   *   because the misspelling is in the source either way and the attribute meant by it is still
+   *   not there. No order guard.
+   * - a rule about what the element will BE — `unknown-role`, `positive-tabindex`, `access-key`,
+   *   `aria-value`, `role-takes-no-name`, `aria-hidden-on-focusable` — is reporting a fact a later
+   *   spread can make untrue. Order guard.
    *
    * `true` for an attribute that is not written here at all: nothing is proved about an absent one,
    * which is the family-wide silence this whole mechanism is an exception to.

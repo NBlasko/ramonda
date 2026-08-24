@@ -57,7 +57,8 @@ export const unknownRole = {
   /**
    * Reported past a spread, but only from the side of it a spread cannot reach over.
    *
-   * This is a rule about a VALUE, so it takes the guard the family would otherwise give it:
+   * This is a rule about what the element WILL BE, so it takes the guard the family would
+   * otherwise give it:
    * `<div role="buton" {...rest} />` may end up with whatever role `rest` carries and is left
    * alone, while `<div {...rest} role="buton" />` ends up with `buton` whatever `rest` holds,
    * because the later attribute wins. Measured on `fixtures/spread-a11y` — the second shape was
