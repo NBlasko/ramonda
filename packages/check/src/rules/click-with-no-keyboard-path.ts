@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { eventTypeOf } from "./events";
 import { hasContent, openingOf } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
@@ -79,23 +80,36 @@ const INTERACTIVE: ReadonlySet<string> = new Set([
  * `ondblclick`, not `ondoubleclick`: the DOM event is `dblclick`, so `ondoubleclick` named nothing
  * and matched nothing — a set entry that had never been able to fire.
  */
-const POINTER_ONLY: ReadonlySet<string> = new Set(["onclick", "onmousedown", "onmouseup", "ondblclick"]);
+/** By EVENT TYPE, not by attribute name, so both spellings land on one entry. */
+const POINTER_ONLY: ReadonlySet<string> = new Set(["click", "mousedown", "mouseup", "dblclick"]);
 
-/** Whether any keyboard handler is written at all. Which one is not this rule's business. */
+/**
+ * Whether any keyboard handler is written at all. Which one is not this rule's business.
+ *
+ * Through `eventTypeOf`, because the framework takes TWO spellings and this knew one. A regex on
+ * the written name missed `on:keydown` — measured, and the cost was the worst kind: an element with
+ * a keyboard handler written on the same line was reported as having no keyboard path.
+ */
 function hasAKeyHandler(opening: ts.JsxOpeningLikeElement): boolean {
   for (const attribute of opening.attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
-    if (/^onkey/i.test(attribute.name.getText())) return true;
+    if (eventTypeOf(attribute.name.getText())?.type.startsWith("key") === true) return true;
   }
   return false;
 }
 
-/** The pointer-only handler written on this element, if there is one. */
+/**
+ * The pointer-only handler written on this element, if there is one.
+ *
+ * `on:click` is the same listener as `onclick` — the framework's second spelling, for names the
+ * first cannot reach — and it was not recognised as a handler at all, so the whole rule was silent
+ * on an element written that way.
+ */
 function pointerHandlerOn(opening: ts.JsxOpeningLikeElement): string | undefined {
   for (const attribute of opening.attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
     const name = attribute.name.getText();
-    if (POINTER_ONLY.has(name.toLowerCase())) return name;
+    if (POINTER_ONLY.has(eventTypeOf(name)?.type ?? "")) return name;
   }
   return undefined;
 }

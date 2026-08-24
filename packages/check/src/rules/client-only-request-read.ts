@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
 import { importedFromCore } from "./core-import";
+import { eventTypeOf } from "./events";
 import { narrowedTo } from "./side-guard";
 import { clientOnlyBecause } from "./lifecycle-env";
 import type { Rule, RuleContext } from "./rule";
@@ -212,8 +213,13 @@ const DOM_EVENTS: ReadonlySet<string> = new Set([
  * spelling — has no capital, so every handler in every project would have been missed.
  */
 function isEventAttribute(name: string): boolean {
-  if (name.startsWith("on:")) return name.length > 3;
-  return name.startsWith("on") && DOM_EVENTS.has(name.slice(2).toLowerCase());
+  // Through `eventTypeOf`, so the two spellings have ONE reader. This rule had them right and
+  // `click-with-no-keyboard-path` did not — which is the drift a shared reader prevents, and the
+  // one that had it right is not always the one a third rule would have copied.
+  const event = eventTypeOf(name);
+  if (event === undefined) return false;
+  // A verbatim name is a CUSTOM event by definition, so the DOM's list cannot answer for it.
+  return event.verbatim || DOM_EVENTS.has(event.type);
 }
 
 /** The JSX event attribute this node sits inside, if any — however deeply. */

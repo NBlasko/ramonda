@@ -145,16 +145,37 @@ function handsChildrenToTheHost(cls: ts.ClassDeclaration): boolean {
     const only = body.statements[0];
     if (only === undefined || !ts.isReturnStatement(only) || only.expression === undefined) return false;
 
-    const returned = only.expression;
-    return (
-      ts.isPropertyAccessExpression(returned) &&
-      returned.name.text === "children" &&
-      ts.isPropertyAccessExpression(returned.expression) &&
-      returned.expression.name.text === "props" &&
-      returned.expression.expression.kind === ts.SyntaxKind.ThisKeyword
-    );
+    return isTheChildren(only.expression);
   }
   return false;
+}
+
+/**
+ * `this.props.children`, bare or in a fragment that holds nothing else.
+ *
+ * `return <>{this.props.children}</>` is what a wrapper is usually written as — a fragment adds no
+ * element, so the children land on the host either way. Reading only the bare form meant
+ * `<LinkBox><a/></LinkBox>` with `@Host("a")` was a link inside a link that nothing reported, and
+ * `tag-needs-its-parent` was equally blind through the same wrapper.
+ *
+ * Nothing else in the fragment, which is what keeps it provable: a sibling beside the children
+ * means the host holds more than they do, and this helper's whole claim is that what is written
+ * inside the wrapper is what is inside its element.
+ */
+function isTheChildren(returned: ts.Expression): boolean {
+  if (ts.isJsxFragment(returned)) {
+    const meaningful = returned.children.filter((child) => !(ts.isJsxText(child) && child.text.trim().length === 0));
+    const only = meaningful.length === 1 ? meaningful[0] : undefined;
+    if (only === undefined || !ts.isJsxExpression(only) || only.expression === undefined) return false;
+    return isTheChildren(only.expression);
+  }
+  return (
+    ts.isPropertyAccessExpression(returned) &&
+    returned.name.text === "children" &&
+    ts.isPropertyAccessExpression(returned.expression) &&
+    returned.expression.name.text === "props" &&
+    returned.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+  );
 }
 
 /** The tag `@Host` names — written, or one name away. A callback has no single answer. */
