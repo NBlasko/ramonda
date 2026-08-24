@@ -20,7 +20,7 @@ to it: **`Router`** (tracks the URL), **`RouteOutlet`** (shows the matching page
 **`Navigator`** (below), and **`route`** (for `:param` links).
 
 ```tsx
-import { Component, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 import { createRoutes, createRouter } from "@ramonda/router";
 
 export const routes = createRoutes({

@@ -70,17 +70,17 @@ the parser, because what it renders is what the parser sees.
 So a component used inside a `<tr>` renders cells:
 
 ```tsx
-class Cells extends Component<{ item: CellData }> {
+class Cells extends Component<{ item: RowData }> {
   render() {
-    return [<td>{this.props.item.label}</td>, <td>{this.props.item.value}</td>];
+    return [<td>{this.props.item.id}</td>, <td>{this.props.item.cells.length}</td>];
   }
 }
-```
 
-```tsx
+const row: RowData = { id: "r1", cells: [] };
+
 <tr>
-  <Cells item={item} />
-</tr>
+  <Cells item={row} />
+</tr>;
 ```
 
 Two cells from one component, holding the state behind them, with nothing in between —

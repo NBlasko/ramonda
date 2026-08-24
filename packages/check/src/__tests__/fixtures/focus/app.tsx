@@ -15,8 +15,8 @@ declare const index: number;
 class Toolbar extends Component {
   render() {
     return (
-    <div>
       <div>
+        <div>
           {/* REPORTED — a button is focusable on its own, and this one cannot be announced. */}
           <button aria-hidden="true">Save</button>
           {/* REPORTED — an `<a>` with an `href` is focusable too. */}
@@ -62,8 +62,8 @@ class Toolbar extends Component {
           {/* Not reported: a COMPONENT is not markup yet — what it renders is decided inside it. */}
           <Toolbar aria-hidden="true" />
         </div>
-    </div>
-  );
+      </div>
+    );
   }
 }
 
@@ -81,8 +81,8 @@ declare const to: string;
 class Links extends Component {
   render() {
     return (
-    <nav>
       <nav>
+        <nav>
           {/* REPORTED — no `href`, and a handler where the destination should be. */}
           <a onclick={() => {}}>Open</a>
           {/* REPORTED — a destination that is this page. */}
@@ -108,8 +108,8 @@ class Links extends Component {
           {/* Not reported: the legacy anchor TARGET, written to be jumped to rather than to jump. */}
           <a id="pricing" />
         </nav>
-    </nav>
-  );
+      </nav>
+    );
   }
 }
 
@@ -125,7 +125,6 @@ bootstrap(<Links />, null);
 class Cards extends Component {
   render() {
     return (
-    <section>{(
       <section>
         {/* REPORTED — a pointer and nothing else. */}
         <div onclick={() => {}}>Open</div>
@@ -163,8 +162,8 @@ class Cards extends Component {
             reports were exactly this and both were correct. */}
         <div className="backdrop" onclick={() => {}} />
       </section>
-    );}</section>
-  )}
+    );
+  }
 }
 
 bootstrap(<Cards />, null);

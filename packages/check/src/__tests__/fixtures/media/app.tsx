@@ -6,7 +6,6 @@ declare const tracks: unknown[];
 class Player extends Component {
   render() {
     return (
-    <div>{(
       <div>
         {/* REPORTED — a shortcut the reader's own software may already be using. */}
         <button accessKey="s">Save</button>
@@ -41,8 +40,8 @@ class Player extends Component {
         {/* Not reported: nothing claims a shortcut. */}
         <button>Cancel</button>
       </div>
-    );}</div>
-  )}
+    );
+  }
 }
 
 bootstrap(<Player />, null);

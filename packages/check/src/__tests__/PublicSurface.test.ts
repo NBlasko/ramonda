@@ -65,7 +65,6 @@ const EXPECTED_TYPES = [
   "InteractiveInsideInteractiveIssue",
   "LateRequestReadIssue",
   "LinkWithoutADestinationIssue",
-  "ListenerOnTheDefaultHostIssue",
   "ListenerAddedByHandIssue",
   "MediaWithNoCaptionsIssue",
   "NamedOnlyByAPlaceholderIssue",

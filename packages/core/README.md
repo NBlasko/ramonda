@@ -9,14 +9,14 @@ One rule carries most of the design:
 
 > **Every JSX tag is exactly one element.**
 
-The DOM is readable straight off the JSX. There are no fragments, no wrapper
-components that vanish at runtime, and no function components — because a
-function has no element, so as a tag it would be a lie.
+The DOM is readable straight off the JSX. Every element on the page is one you
+wrote, the framework adds none of its own, and there are no function components —
+a function has nothing to construct, no state and no lifecycle, so as a tag it
+names nothing the framework can keep hold of.
 
 ```tsx
-import { Component, Host, state } from "@ramonda/core";
+import { Component, state } from "@ramonda/core";
 
-@Host("button")
 class Counter extends Component {
   @state clicks = 0;
 
@@ -25,15 +25,15 @@ class Counter extends Component {
   }
 
   render() {
-    return <span onclick={this.bump}>clicked {this.clicks} times</span>;
+    return <button onclick={this.bump}>clicked {this.clicks} times</button>;
   }
 }
 ```
 
 ## Before anything else: your bundler must transform decorators
 
-**TC39 decorators are not yet parseable by any JavaScript engine.** `@Host("div")
-class …` is a syntax error in Node and in every browser. If your toolchain
+**TC39 decorators are not yet parseable by any JavaScript engine.** `@state count
+= 0` is a syntax error in Node and in every browser. If your toolchain
 leaves them in the output, the bundle does not fail to work — it fails to
 *parse*, and the page is blank with `Uncaught SyntaxError: Invalid or unexpected
 token`.
@@ -62,36 +62,23 @@ trivially detectable — parse each emitted chunk after building. See
 
 ### Components
 
-A class with a `render()`. `@Host(tag)` chooses the element it becomes; without
-it the component gets `<ramonda-host>`, an inert custom element styled
-`display: contents` so it takes part in no layout. That is what makes wrapping
-something in a component free.
-
-`@Host` takes a second argument for reactive host attributes:
+A class with a `render()`, and what it renders is what appears — one element,
+several, or none.
 
 ```tsx
-@Host("div", (self: Card) => ({ className: self.open ? "open" : "" }))
-class Card extends Component { … }
+class Cells extends Component<{ name: string; score: number }> {
+  render() {
+    return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
+  }
+}
 ```
 
-The tag may be a callback instead of a string, so the caller picks the element:
+Two cells from one component, and inside a `<tr>` they are the row's only
+children. There is no wrapper to be foster-parented out of the table, and no
+element to pick: a component that wants one writes it.
 
-```tsx
-@Host((p: CardProps) => p.as ?? "div")
-class Card extends Component<CardProps> { … }
-
-<Card as="section" />
-```
-
-It receives the props and must be **pure** — the diff calls it while deciding
-whether an existing element can be reused, so it runs more than once.
-
-One instance's host never changes: the tag is resolved when the component is
-built and kept for its lifetime, because the host element *is* the component and
-swapping it would destroy its state, its listeners and anything a ref points at.
-A prop that resolves to a different tag does not retag the element — it fails to
-match in the diff, and a fresh component is built. No `key` needed; the framework
-decides, so there is nothing to remember and nothing to get silently wrong.
+A component may also render nothing at all and still hold state, a lifecycle and
+hooks — which is what a fragment cannot do, and why there is no fragment here.
 
 ### Lifecycle
 
@@ -100,8 +87,8 @@ decides, so there is nothing to remember and nothing to get silently wrong.
 document: measure it, focus it, hand it to a library. `@destroyed` runs on teardown.
 
 Within one commit the order is: every child's `@mounted` before its parent's, and
-per component `@mounted` before its effects — so listeners registered by
-`@onElement` are live by the time `@mounted` runs.
+per component `@mounted` before its effects — so a subscription is live by the
+time `@mounted` runs.
 
 A component torn down before the commit finishes never mounts at all; its
 `@destroyed` still runs.
@@ -213,7 +200,7 @@ because it follows the position rather than the row.
 | `@created` / `@mounted` / `@destroyed` | lifecycle; `{ env: "client" \| "server" \| "shared" }` |
 | `@updated` | after every commit but the first; the DOM is the one you are looking at |
 | `@watchProp(selector)` | syncs derived state *before* the render when a prop changes |
-| `@onWindow` / `@onDocument` / `@onElement` | listeners, removed on unmount; typed from the event name |
+| `@onWindow` / `@onDocument` | listeners, removed on unmount; typed from the event name |
 | `@interval` / `@timeout` | timers that clear themselves on unmount |
 | `@persist` | state that survives SSR → hydration |
 | `@memoized` | a stable callback identity across renders |
@@ -221,10 +208,13 @@ because it follows the position rather than the row.
 Event handlers are typed from the name, via the DOM's own event maps:
 
 ```tsx
-@onElement("click") onClick(e: MouseEvent) { … }     // ✅
-@onDocument("keydown") onKey(e: KeyboardEvent) { … } // ✅
-@onElement("click") onClick(e: KeyboardEvent) { … }  // ❌ does not compile
+@onWindow("resize") onResize(e: UIEvent) { … }        // ✅
+@onDocument("keydown") onKey(e: KeyboardEvent) { … }  // ✅
+@onDocument("keydown") onKey(e: MouseEvent) { … }     // ❌ does not compile
 ```
+
+A listener on an element you rendered needs no decorator — write it in the markup,
+where the handler and the element it is on are the same line: `onclick={this.bump}`.
 
 An unknown name — a custom event — is still accepted and arrives as `Event`.
 

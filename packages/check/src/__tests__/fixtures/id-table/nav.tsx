@@ -7,7 +7,6 @@ import { Component, bootstrap } from "@ramonda/core";
 export class Nav extends Component {
   render() {
     return (
-    <nav>{(
       <nav>
         {/* Not reported: `pricing` is an id in page.tsx. */}
         <a href="#pricing">Pricing</a>
@@ -18,8 +17,8 @@ export class Nav extends Component {
         {/* Not reported: a real destination rather than a fragment. */}
         <a href="/about">About</a>
       </nav>
-    );}</nav>
-  )}
+    );
+  }
 }
 
 bootstrap(<Nav />, null);

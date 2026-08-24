@@ -45,7 +45,7 @@ fragment holds no state, so a component that exists only to decide what to show 
 something a fragment cannot be.
 
 ```tsx
-class WhenOpen extends Component<{ children?: RamondaNode }> {
+class WhenOpen extends Component {
   @state open = false;
 
   toggle() {
@@ -55,14 +55,14 @@ class WhenOpen extends Component<{ children?: RamondaNode }> {
   render() {
     return [
       <button onclick={this.toggle}>{this.open ? "hide" : "show"}</button>,
-      this.open ? this.props.children : null,
+      this.open ? <p>Now you see it.</p> : null,
     ];
   }
 }
 ```
 
-That is a button and, sometimes, whatever it was given. Closed, it is a live component
-with state and no nodes at all.
+That is a button and, sometimes, a paragraph. Closed, it is a live component with state
+and one node; open, two — and either way there is nothing of the framework's around it.
 
 ## And no function components
 

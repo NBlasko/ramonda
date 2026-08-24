@@ -12,7 +12,6 @@ declare const generated: string;
 class App extends Component {
   render() {
     return (
-    <div>{(
       <div>
         <div id={generated} />
         {/* Would be reported in any project whose ids are all readable. Here: nothing. */}
@@ -28,8 +27,8 @@ class App extends Component {
             real distinction rather than an oversight, and this is where it is proved. */}
         <input type="text" />
       </div>
-    );}</div>
-  )}
+    );
+  }
 }
 
 bootstrap(<App />, null);

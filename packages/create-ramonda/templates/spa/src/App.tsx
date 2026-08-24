@@ -1,8 +1,7 @@
-import { Component, Host, state } from "@ramonda/core";
+import { Component, state } from "@ramonda/core";
 
-// A component is a class. `@Host("main")` says the element this component *is* —
-// here a <main>. `@state` marks a signal: changing it re-renders the component.
-@Host("main")
+// A component is a class, and what it renders is what appears — here a <main> and
+// everything inside it. `@state` marks a signal: changing it re-renders the component.
 export class App extends Component {
   @state count = 0;
 
@@ -12,7 +11,7 @@ export class App extends Component {
 
   render() {
     return (
-      <div className="card">
+      <main className="card">
         <svg className="mark" viewBox="-32 -32 64 64" width="64" height="64" aria-hidden="true">
           <g fill="currentColor">
             <ellipse cx="0" cy="-14" rx="8.6" ry="14" />
@@ -37,7 +36,7 @@ export class App extends Component {
         <a className="docs" href="https://ramonda.dev" target="_blank" rel="noreferrer">
           Read the docs →
         </a>
-      </div>
+      </main>
     );
   }
 }

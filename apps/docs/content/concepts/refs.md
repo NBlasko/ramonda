@@ -56,6 +56,8 @@ to *which* element it would mean. Put the ref inside the component, on the eleme
 should carry it:
 
 ```tsx
+import { createRef } from "@ramonda/core";
+
 class Card extends Component {
   private box = createRef<HTMLDivElement>();
 
@@ -69,6 +71,8 @@ If the caller is the one who needs it, take the ref as an ordinary prop and plac
 where you know it belongs:
 
 ```tsx
+import type { RefTarget } from "@ramonda/core";
+
 class Card extends Component<{ box?: RefTarget<HTMLDivElement> }> {
   render() {
     return <div ref={this.props.box}>…</div>;

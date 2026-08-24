@@ -320,7 +320,7 @@ class AroundPlain extends Component {
 function recorded(root: Node): string[] {
   const found: string[] = [];
   const walk = (node: Node): void => {
-    if ((node as { [key: symbol]: unknown })[CHILD_RECORD] !== undefined) {
+    if ((node as unknown as { [key: symbol]: unknown })[CHILD_RECORD] !== undefined) {
       found.push((node as Element).nodeName.toLowerCase());
     }
     node.childNodes.forEach(walk);

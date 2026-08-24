@@ -9,7 +9,6 @@ import { Component, bootstrap } from "@ramonda/core";
 class Signup extends Component {
   render() {
     return (
-    <form>{(
       <form>
         {/* Not reported: a label points at it by id, written as HTML writes it. */}
         <label for="email">Email</label>
@@ -67,8 +66,8 @@ class Signup extends Component {
         {/* Not reported: a button is named by what is inside it. */}
         <button type="button">Send</button>
       </form>
-    );}</form>
-  )}
+    );
+  }
 }
 
 bootstrap(<Signup />, null);

@@ -77,20 +77,28 @@ Sometimes a component needs to place several elements at its spot rather than wr
 them in a container. `render()` may return an array:
 
 ```tsx
-export class Cells extends Component<{ name: string; score: number }> {
+class Cells extends Component<{ name: string; score: number }> {
   render() {
     return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
+  }
+}
+
+class Table extends Component {
+  render() {
+    return (
+      <table>
+        <tbody>
+          <tr>
+            <Cells name="Ada" score={9} />
+          </tr>
+        </tbody>
+      </table>
+    );
   }
 }
 ```
 
 Used inside a row, that is two cells and nothing between them:
-
-```tsx
-<tr>
-  <Cells name="Ada" score={9} />
-</tr>
-```
 
 ```html
 <tr><td>Ada</td><td>9</td></tr>
