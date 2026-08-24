@@ -502,6 +502,43 @@ export function applyElement(
 }
 
 /**
+ * Every active element rule that has an answer for the element a component IS.
+ *
+ * `@Host("section", () => ({ role: "buton" }))` is one element on one page with one bad role on it,
+ * and the whole family used to be silent about it — measured with a plant: five faults written in a
+ * props bag, zero reported, against the identical five on a tag with all five reported. A rule that
+ * reads elements misses everything written where a component CONFIGURES its own.
+ *
+ * Only the rules that declare `alsoOnHost` are asked, and they are the ones whose question has an
+ * answer here: a host has attributes, and it does not have children this can hand over or a parent
+ * this can name.
+ */
+export function applyHost(
+  active: readonly (typeof ELEMENT_RULES)[number][],
+  context: ElementContext,
+  findings: Findings,
+  silenced: Silencer,
+): void {
+  const asked = active.filter(answersForAHost);
+  const past = context.spreads ? asked.filter((rule) => "evenWhenSpreading" in rule) : asked;
+  for (const rule of past) collect(findings, rule, rule.read(undefined, context), silenced);
+}
+
+/**
+ * A predicate rather than a cast, and the difference is the whole safety of this.
+ *
+ * `HostCapable` is computed FROM the registry, so a rule reaches `read(undefined, …)` only if its
+ * own declaration says it can take that. A cast here would have compiled just as happily and would
+ * have handed `undefined` to a rule reaching for `openingOf(element)` the first time somebody
+ * forgot the flag.
+ */
+type HostCapable = Extract<(typeof ELEMENT_RULES)[number], { alsoOnHost: true }>;
+
+function answersForAHost(rule: (typeof ELEMENT_RULES)[number]): rule is HostCapable {
+  return "alsoOnHost" in rule && rule.alsoOnHost === true;
+}
+
+/**
  * Every active project rule, over the table built from the whole source set.
  *
  * Called ONCE per run rather than once per file, which is what having the project as a subject

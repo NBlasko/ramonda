@@ -471,3 +471,61 @@ describe("the rest of the element family beside a spread", () => {
     expect(lines("unnamed-image")).toEqual([]);
   });
 });
+
+/**
+ * The element a component IS.
+ *
+ * `@Host("section", () => ({ role: "buton" }))` puts a role on a real element on a real page, and
+ * it is written in no render. The family only ever met TAGS, so — measured with a plant — five
+ * faults written in a props bag were reported by NOTHING, while the identical five on a `<div>`
+ * one class below were all reported. That is where a component configures its own element, and a
+ * rule that reads elements and misses it is reading half of them.
+ *
+ * The fix was one reader rather than ten: `ElementContext` is built from a normalised attribute
+ * list, and a rule declaring `alsoOnHost` gets both sources for free.
+ */
+describe("a fault written where a component configures its own element", () => {
+  const host = () => analyzeProject(join(here, "fixtures", "host-configured", "tsconfig.json")).findings;
+  const lines = (id: string) => (host()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
+
+  test("every fault in a `@Host` props bag is reported, beside the same fault on a tag", () => {
+    // 11 is the `@Host` call, 28 the control element. The `aria-` name reports at the property
+    // itself (13), because a report about ONE attribute among five has to say which.
+    expect(lines("class-instead-of-classname")).toEqual([11, 28]);
+    expect(lines("positive-tabindex")).toEqual([11, 28]);
+    expect(lines("access-key")).toEqual([11, 28]);
+    expect(lines("unknown-aria-attribute")).toContain(13);
+    expect(lines("unknown-role")).toContain(11);
+  });
+
+  test("all three spellings of the callback are read", () => {
+    /**
+     * 33 is `() => { return { … } }` and 45 is the `{ role }` shorthand — the two the id table's
+     * own reader had to be taught one at a time, each after the other was already fixed. 11 is the
+     * long form and 28 the control.
+     */
+    expect(lines("unknown-role")).toEqual([11, 28, 33, 45, 75]);
+  });
+
+  test("a spread in the props bag reaches over what came before it, and not what comes after", () => {
+    // 75 writes the spread FIRST, so `role: "buton"` has the last word and is reported. 67 writes
+    // it LAST and is silent — the same rule the tag family lives by, on the same reasoning.
+    expect(lines("unknown-role")).toContain(75);
+    expect(lines("unknown-role")).not.toContain(67);
+  });
+
+  test("a tag chosen per props does not silence what IS knowable", () => {
+    /**
+     * `@Host((p) => p.as ?? "div", () => ({ "aria-lablled": … }))` — the element has no one answer,
+     * so the rules that turn on the tag say nothing. A misspelled `aria-` name is misspelled on
+     * every tag it could be, and that one is reported: line 58.
+     */
+    expect(lines("unknown-aria-attribute")).toEqual([13, 28, 58]);
+  });
+
+  test("and a `@Host` with no props bag is read as saying nothing", () => {
+    // `@Host("div")` on its own, and on `App`. Neither appears anywhere above.
+    expect(lines("unknown-role")).not.toContain(83);
+    expect(lines("unknown-role")).not.toContain(90);
+  });
+});

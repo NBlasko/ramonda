@@ -1,7 +1,6 @@
 import { positionOf } from "../syntax";
 import { ROLE_REQUIRES, STATE_FROM_THE_ELEMENT } from "./aria";
-import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * A role that promises something the element never says.
@@ -79,7 +78,9 @@ export const roleMissingRequiredAria = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, attr, has }) {
+  alsoOnHost: true,
+
+  read(_element, { tag, attr, has, attributes, at }) {
     // Markup only: a `role` prop on a component is decided inside that component.
     if (tag === undefined) return [];
     // The element's own markup already carries the state — see `STATE_FROM_THE_ELEMENT`.
@@ -98,9 +99,8 @@ export const roleMissingRequiredAria = {
     const missing = required.filter((name) => !has(name));
     if (missing.length === 0) return [];
 
-    const site = openingOf(element).attributes.properties.find(
-      (property) => "name" in property && property.name?.getText().toLowerCase() === "role",
-    );
-    return [{ role, tag, missing, ...positionOf(site ?? element) }];
+    // The `role` itself is what a reader has to look at, so the report points there when it can.
+    const site = attributes.find((attribute) => attribute.name.toLowerCase() === "role");
+    return [{ role, tag, missing, ...positionOf(site?.at ?? at) }];
   },
-} as const satisfies ElementRule<RoleMissingRequiredAriaIssue>;
+} as const satisfies HostElementRule<RoleMissingRequiredAriaIssue>;

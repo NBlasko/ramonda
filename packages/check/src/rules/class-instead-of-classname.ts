@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * `class` written where Ramonda reads `className`.
@@ -78,14 +78,21 @@ export const classInsteadOfClassName = {
    */
   evenWhenSpreading: true,
 
-  read(element, { tag, has }) {
+  alsoOnHost: true,
+
+  read(element, { tag, has, at, onHost }) {
     if (!has("class")) return [];
 
-    // `tag` is undefined for a component, and the component's own name is what names the report:
-    // the rename reaches it too, so the report is about a prop rather than about an attribute.
-    const onComponent = tag === undefined;
-    const name = tag ?? openingOf(element).tagName.getText();
+    /**
+     * `tag` is undefined for a component, and the component's own name is what names the report:
+     * the rename reaches it too, so the report is about a prop rather than about an attribute.
+     *
+     * A HOST always has a tag when its tag is written out, and when it is not — `@Host((p) => …)` —
+     * there is no name to print and no component being handed a prop either, so it is neither.
+     */
+    const onComponent = tag === undefined && !onHost;
+    const name = tag ?? (element === undefined ? "the host element" : openingOf(element).tagName.getText());
 
-    return [{ tag: name, onComponent, dropped: has("className"), ...positionOf(openingOf(element)) }];
+    return [{ tag: name, onComponent, dropped: has("className"), ...positionOf(at) }];
   },
-} as const satisfies ElementRule<ClassInsteadOfClassNameIssue>;
+} as const satisfies HostElementRule<ClassInsteadOfClassNameIssue>;

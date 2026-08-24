@@ -1,7 +1,6 @@
 import { positionOf } from "../syntax";
 import { NAME_PROHIBITED, NAME_PROHIBITED_TAGS, ROLES } from "./aria";
-import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * A name written on something that cannot be named.
@@ -85,7 +84,9 @@ export const roleTakesNoName = {
    */
   evenWhenSpreading: true,
 
-  read(element, { tag, attr, has, overwritable, spreads }) {
+  alsoOnHost: true,
+
+  read(_element, { tag, attr, has, overwritable, spreads, attributes }) {
     // Markup only: what `<Panel aria-label="x" />` does with the prop is decided inside it.
     if (tag === undefined) return [];
     if (overwritable("role") && has("role")) return [];
@@ -122,8 +123,7 @@ export const roleTakesNoName = {
     if (from === "role" && !NAME_PROHIBITED.has(role)) return [];
 
     const found: RoleTakesNoNameIssue[] = [];
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!("name" in attribute) || attribute.name === undefined) continue;
+    for (const attribute of attributes) {
       /**
        * Lowercased, because the DOM lowercases it.
        *
@@ -136,12 +136,12 @@ export const roleTakesNoName = {
        * It is true inside SVG, where `setAttributeNS(null, name)` writes the name verbatim — but
        * every tag in `NAME_PROHIBITED_TAGS` is an HTML tag, so that case cannot arrive here.
        */
-      const name = attribute.name.getText().toLowerCase();
+      const name = attribute.name.toLowerCase();
       if (!NAMES.includes(name)) continue;
       // A spread after this one may take the name away, and then there is nothing to report.
       if (overwritable(name)) continue;
-      found.push({ attribute: name, tag, role, from, ...positionOf(attribute) });
+      found.push({ attribute: name, tag, role, from, ...positionOf(attribute.at) });
     }
     return found;
   },
-} as const satisfies ElementRule<RoleTakesNoNameIssue>;
+} as const satisfies HostElementRule<RoleTakesNoNameIssue>;

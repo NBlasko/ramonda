@@ -1,8 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { ARIA_ATTRIBUTES } from "./aria";
-import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * An `aria-*` attribute the specification does not have.
@@ -116,15 +115,16 @@ export const unknownAriaAttribute = {
    */
   evenWhenSpreading: true,
 
-  read(element, { tag, inSvg }) {
+  alsoOnHost: true,
+
+  read(_element, { tag, inSvg, attributes }) {
     // Components too: `<Panel aria-lablled="x" />` is a prop with a name, and the mistake is the
     // same one whether the tag is markup or a class that will pass it through.
     void tag;
     const found: UnknownAriaAttributeIssue[] = [];
 
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!ts.isJsxAttribute(attribute)) continue;
-      const written = attribute.name.getText();
+    for (const attribute of attributes) {
+      const written = attribute.name;
       if (!written.toLowerCase().startsWith("aria-")) continue;
       if (ARIA_ATTRIBUTES.has(written)) continue;
 
@@ -138,9 +138,9 @@ export const unknownAriaAttribute = {
       if (!inSvg && ARIA_ATTRIBUTES.has(written.toLowerCase())) continue;
 
       const meant = probably(written);
-      found.push({ attribute: written, ...(meant ? { meant } : {}), ...positionOf(attribute) });
+      found.push({ attribute: written, ...(meant ? { meant } : {}), ...positionOf(attribute.at) });
     }
 
     return found;
   },
-} as const satisfies ElementRule<UnknownAriaAttributeIssue>;
+} as const satisfies HostElementRule<UnknownAriaAttributeIssue>;

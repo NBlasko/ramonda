@@ -181,10 +181,40 @@ export type JsxElementLike = ts.JsxElement | ts.JsxSelfClosingElement;
  * once, and hands the pair to every active rule. A rule that walked the tree itself would be the
  * fortieth walk of the same source.
  */
+/**
+ * One attribute as written, wherever it was written.
+ *
+ * An element rule's subject used to be a TAG, and every reader in this file walked
+ * `openingOf(element).attributes.properties` to find one. That is not where all of an element's
+ * attributes are: `@Host("div", () => ({ role: "buton" }))` puts a role on a real element that is
+ * on a real page, and — measured on a plant — not one rule in the family said a word about any of
+ * the five faults written there, while the identical five on a tag were all reported.
+ *
+ * So the readers work from THIS instead, and a context can be built from either source. The
+ * alternative was for every rule to learn about decorators, which is the forty-walks problem in a
+ * different shape.
+ */
+export interface WrittenAttribute {
+  /** The name exactly as written — `aria-labelledBy`, `class`, `tabIndex`. */
+  name: string;
+  /** The node a report about this one attribute should point at. */
+  at: ts.Node;
+  /**
+   * The value, when one is written. `undefined` for a bare JSX attribute, which is `{true}`.
+   *
+   * A JSX `alt="a cat"` and a `@Host` `{ alt: "a cat" }` both arrive as the same string literal,
+   * which is the point: below this line there is nothing left to tell the two spellings apart.
+   */
+  value?: ts.Expression;
+  /** `<input disabled />` — no value at all, which JSX reads as `true`. */
+  bare: boolean;
+}
+
 export interface ElementRule<Issue> {
   id: string;
   report: Report<Issue>;
   needs?: string;
+
   /**
    * Whether this rule is still asked about an element that SPREADS.
    *
@@ -198,6 +228,32 @@ export interface ElementRule<Issue> {
    */
   evenWhenSpreading?: true;
   read(element: JsxElementLike, context: ElementContext): Issue[];
+}
+
+/**
+ * An element rule that also answers for a component's own host element.
+ *
+ * The only difference is the signature, and it is the whole guarantee: `element` is optional, so
+ * a rule declaring `alsoOnHost` cannot reach for a JSX node that is not there. Everything it needs
+ * is on the context — `attributes`, `at`, `tag`, `attr`, `truth`, `number` — which is the same
+ * "one reader, not one per rule" the element family was fixed by twice before.
+ */
+export interface HostElementRule<Issue> {
+  id: string;
+  report: Report<Issue>;
+  needs?: string;
+  evenWhenSpreading?: true;
+  /**
+   * Declares that this rule is also asked about the element a component IS.
+   *
+   * `@Host("section", () => ({ role: "buton" }))` configures a real element on a real page, and the
+   * family was silent about every fault written there. A rule opts in when its question has an
+   * answer for a host: one about the ATTRIBUTES does, one about the element's CHILDREN or about
+   * what encloses it does not — a host's children are whatever `render` returned, and what it sits
+   * inside is decided by whoever mounts the component.
+   */
+  alsoOnHost: true;
+  read(element: JsxElementLike | undefined, context: ElementContext): Issue[];
 }
 
 /**
@@ -518,6 +574,33 @@ export interface ElementContext {
    * which is the family-wide silence this whole mechanism is an exception to.
    */
   overwritable(name: string): boolean;
+
+  /**
+   * Every attribute written on this element, normalised — from a TAG or from a `@Host` props bag.
+   *
+   * The rules that report one attribute among several read this rather than the JSX node, which is
+   * what lets the same rule answer for both. Measured before it existed: five faults written in
+   * `@Host("div", () => ({ role: "buton", … }))` were reported by nothing at all, while the
+   * identical five on a `<div>` were all reported.
+   */
+  attributes: readonly WrittenAttribute[];
+
+  /** The node a report about the ELEMENT should point at — the opening tag, or the `@Host` call. */
+  at: ts.Node;
+
+  /**
+   * Whether this context is a component's own host element rather than a tag in a render.
+   *
+   * A rule reads it to say WHERE, because "on this component's host element" and "on this tag" are
+   * different sentences to a reader looking for the line.
+   */
+  onHost: boolean;
+
+  /** An attribute read as a claim of TRUE — bare, `{true}`, `"true"`, or a name holding one. */
+  truth(name: string): boolean | undefined;
+
+  /** An attribute read as a NUMBER — `{0}`, `"0"`, `{-1}`, or a name holding one. */
+  number(name: string): number | undefined;
 
   /** The element's children, for the rules about what is INSIDE a tag rather than on it. */
   children: readonly ts.JsxChild[];

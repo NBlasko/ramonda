@@ -1,6 +1,5 @@
 import { positionOf } from "../syntax";
-import { numberAttr, openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * A `tabIndex` above zero, which moves the element to the front of the tab order.
@@ -55,7 +54,9 @@ export const positiveTabIndex = {
    */
   evenWhenSpreading: true,
 
-  read(element, { tag, resolve, overwritable }) {
+  alsoOnHost: true,
+
+  read(_element, { tag, number, overwritable, at }) {
     if (tag === undefined) return [];
     if (overwritable("tabIndex")) return [];
 
@@ -67,9 +68,9 @@ export const positiveTabIndex = {
      * shared with `aria-hidden-on-focusable` so the two rules cannot disagree about what a
      * `tabIndex` says on the same line.
      */
-    const value = numberAttr(element, "tabIndex", resolve);
+    const value = number("tabIndex");
     if (value === undefined || value <= 0) return [];
 
-    return [{ tag, value, ...positionOf(openingOf(element)) }];
+    return [{ tag, value, ...positionOf(at) }];
   },
-} as const satisfies ElementRule<PositiveTabIndexIssue>;
+} as const satisfies HostElementRule<PositiveTabIndexIssue>;

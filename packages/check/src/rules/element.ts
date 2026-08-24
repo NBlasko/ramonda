@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { svgElements } from "@ramonda/dom-facts";
 import { follow, type Looking } from "./follow-value";
-import type { ElementContext, JsxElementLike } from "./rule";
+import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
 
 /**
  * What every element rule reads, computed once per element rather than once per rule.
@@ -29,35 +29,110 @@ export function tagOf(element: JsxElementLike): string | undefined {
   return name.toLowerCase();
 }
 
+/** The attributes written on a TAG, normalised. */
+export function attributesOf(element: JsxElementLike): WrittenAttribute[] {
+  const found: WrittenAttribute[] = [];
+  for (const attribute of openingOf(element).attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    const name = attribute.name.getText();
+    const written = attribute.initializer;
+    if (written === undefined) {
+      found.push({ name, at: attribute, bare: true });
+      continue;
+    }
+    if (ts.isStringLiteral(written)) {
+      found.push({ name, at: attribute, value: written, bare: false });
+      continue;
+    }
+    // `alt={…}` with nothing in the braces is `alt={}`, which carries no value either.
+    const inside = ts.isJsxExpression(written) ? written.expression : undefined;
+    found.push({ name, at: attribute, ...(inside ? { value: inside } : {}), bare: false });
+  }
+  return found;
+}
+
+/**
+ * The object literal a `@Host` props callback hands back, when it hands back one this can read.
+ *
+ * Both bodies a callback is written with — `() => ({ … })` and `() => { return { … } }`. A block
+ * with anything else in it is not read: what it hands back is a value, and that is the dataflow
+ * this package refuses.
+ */
+export function hostPropsObject(call: ts.CallExpression): ts.ObjectLiteralExpression | undefined {
+  const written = call.arguments[1];
+  if (written === undefined) return undefined;
+  if (!ts.isArrowFunction(written) && !ts.isFunctionExpression(written)) return undefined;
+
+  const returned = ts.isBlock(written.body)
+    ? written.body.statements.length === 1 && ts.isReturnStatement(written.body.statements[0])
+      ? written.body.statements[0].expression
+      : undefined
+    : written.body;
+  const object = returned !== undefined && ts.isParenthesizedExpression(returned) ? returned.expression : returned;
+  return object !== undefined && ts.isObjectLiteralExpression(object) ? object : undefined;
+}
+
+/** The attributes written in a `@Host` props bag, normalised to the same shape as a tag's. */
+export function hostAttributesOf(object: ts.ObjectLiteralExpression): {
+  attributes: WrittenAttribute[];
+  spreads: boolean;
+} {
+  const attributes: WrittenAttribute[] = [];
+  let spreads = false;
+  for (const property of object.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      spreads = true;
+      continue;
+    }
+    // `({ role })` and `({ role: "x" })` are the same claim, and reading only the second one is how
+    // the id table missed a real id until the shorthand was planted.
+    const shorthand = ts.isShorthandPropertyAssignment(property);
+    if (!ts.isPropertyAssignment(property) && !shorthand) continue;
+    const name = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+    if (name === undefined) continue;
+    const value = shorthand ? property.name : property.initializer;
+    attributes.push({ name, at: property, value, bare: false });
+  }
+  return { attributes, spreads };
+}
+
+/**
+ * `@Host("aside", …)` — the tag a component IS, when it is written out.
+ *
+ * `undefined` for the callback form, which is the silence contract: a tag chosen per props has no
+ * one answer, and a rule that guessed would report an element half the pages do not have.
+ */
+export function hostTagOf(call: ts.CallExpression): string | undefined {
+  const written = call.arguments[0];
+  if (written === undefined || !ts.isStringLiteralLike(written)) return undefined;
+  const name = written.text;
+  return /^[A-Z]/.test(name) ? undefined : name.toLowerCase();
+}
+
 /** Builds the context an element rule reads. */
 export function contextFor(element: JsxElementLike, resolve: ElementContext["resolve"]): ElementContext {
-  const attributes = openingOf(element).attributes.properties;
+  const written = openingOf(element).attributes.properties;
 
   let spreads = false;
-  /** Lowercased name → the attribute, so a lookup is one map rather than a scan per question. */
-  const byName = new Map<string, ts.JsxAttribute>();
   /** Lowercased name → where it sits, against the last spread. */
   const positions = new Map<string, number>();
   let lastSpread = -1;
 
-  for (const [index, attribute] of attributes.entries()) {
+  for (const [index, attribute] of written.entries()) {
     if (ts.isJsxSpreadAttribute(attribute)) {
       spreads = true;
       lastSpread = index;
       continue;
     }
-    const name = attribute.name.getText().toLowerCase();
-    byName.set(name, attribute);
     // The LAST one written wins, in JSX as in the object it compiles to, so the last position is
     // the one that decides whether a spread can still reach over it.
-    positions.set(name, index);
+    positions.set(attribute.name.getText().toLowerCase(), index);
   }
 
-  const tag = tagOf(element);
-
-  return {
-    resolve,
-    tag,
+  return build({
+    attributes: attributesOf(element),
+    at: openingOf(element),
+    tag: tagOf(element),
     // The tag as WRITTEN decides this, not the lowercased one: SVG tag names are case-sensitive,
     // and `<clipPath>` is the SVG element while `<clippath>` is an unknown HTML one.
     inSvg: svgElements.has(openingOf(element).tagName.getText()),
@@ -67,27 +142,78 @@ export function contextFor(element: JsxElementLike, resolve: ElementContext["res
       return at === undefined || at < lastSpread;
     },
     children: ts.isJsxElement(element) ? element.children : [],
-    has: (name) => byName.has(name.toLowerCase()),
-    attr: (name) => {
-      const found = byName.get(name.toLowerCase());
-      if (!found) return undefined;
+    onHost: false,
+    resolve,
+  });
+}
 
-      // `alt` with no value at all is `alt={true}` in JSX, which is not a string and not a label.
-      const value = found.initializer;
-      if (value === undefined) return undefined;
-      if (ts.isStringLiteral(value)) return value.text;
+/**
+ * The same context, built from the element a component IS rather than from a tag it writes.
+ *
+ * `@Host("section", () => ({ role: "buton" }))` is one element on the page with one bad role on it,
+ * and until this existed the whole family was silent about it — measured with a plant, five faults
+ * written in a props bag against the identical five on a tag, and only the tag's were reported.
+ *
+ * What is NOT carried over, and why. `children` is empty: a host wraps whatever the component's
+ * `render` returns, which is not a list of JSX children this can hand over, so the rules about what
+ * is INSIDE a tag are not asked here. `overwritable` answers from the object's own order, on the
+ * same reasoning as a tag's — a later key wins, and a `{...rest}` after one may replace it.
+ */
+export function hostContextFor(
+  call: ts.CallExpression,
+  object: ts.ObjectLiteralExpression,
+  resolve: ElementContext["resolve"],
+): ElementContext {
+  const { attributes, spreads } = hostAttributesOf(object);
 
-      /**
-       * `alt={"a cat"}` — a literal that happens to be written in braces, and `role={ROLE}`, which
-       * is the same fact one hop away.
-       *
-       * Read because it is the same fact spelled differently, and a rule that saw one and not the
-       * other would report a page that is correct. Anything the walk cannot settle on ONE answer
-       * for is an expression this cannot evaluate, and `undefined` is the honest answer to it.
-       */
-      if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-      return textBehind(value.expression, resolve);
+  const positions = new Map<string, number>();
+  let lastSpread = -1;
+  for (const [index, property] of object.properties.entries()) {
+    if (ts.isSpreadAssignment(property)) {
+      lastSpread = index;
+      continue;
+    }
+    const name = property.name;
+    if (name === undefined) continue;
+    if (ts.isIdentifier(name) || ts.isStringLiteral(name)) positions.set(name.text.toLowerCase(), index);
+  }
+
+  const tag = hostTagOf(call);
+  return build({
+    attributes,
+    at: call,
+    tag,
+    inSvg: tag !== undefined && svgElements.has(tag),
+    spreads,
+    overwritable: (name) => {
+      const at = positions.get(name.toLowerCase());
+      return at === undefined || at < lastSpread;
     },
+    children: [],
+    onHost: true,
+    resolve,
+  });
+}
+
+/**
+ * The half of a context that is the same whatever it was built from.
+ *
+ * `has`, `attr`, `truth` and `number` all read the normalised attribute list, so there is ONE
+ * answer per question rather than one per source. That is the lesson the element readers were
+ * fixed by twice already: `attr` was taught to follow a name and `stringAttr`, `trueAttr` and the
+ * id table's reader were all still literal-only afterwards, because each had its own copy.
+ */
+function build(parts: Omit<ElementContext, "has" | "attr" | "truth" | "number">): ElementContext {
+  /** Lowercased name → the attribute, so a lookup is one map rather than a scan per question. */
+  const byName = new Map<string, WrittenAttribute>();
+  for (const attribute of parts.attributes) byName.set(attribute.name.toLowerCase(), attribute);
+
+  return {
+    ...parts,
+    has: (name) => byName.has(name.toLowerCase()),
+    attr: (name) => textOf(byName.get(name.toLowerCase()), parts.resolve),
+    truth: (name) => truthOf(byName.get(name.toLowerCase()), parts.resolve),
+    number: (name) => numberOfAttribute(byName.get(name.toLowerCase()), parts.resolve),
   };
 }
 
@@ -130,17 +256,31 @@ export function stringAttr(
   name: string,
   resolve: ElementContext["resolve"],
 ): string | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+  return textOf(named(attributesOf(element), name), resolve);
+}
 
-    const value = attribute.initializer;
-    if (value === undefined) return undefined;
-    if (ts.isStringLiteral(value)) return value.text;
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-    return textBehind(value.expression, resolve);
-  }
-  return undefined;
+/** The attribute of that name, whatever the source; the LAST one written, because it wins. */
+function named(attributes: readonly WrittenAttribute[], name: string): WrittenAttribute | undefined {
+  const wanted = name.toLowerCase();
+  let found: WrittenAttribute | undefined;
+  for (const attribute of attributes) if (attribute.name.toLowerCase() === wanted) found = attribute;
+  return found;
+}
+
+/**
+ * An attribute as a STRING.
+ *
+ * `alt="a cat"` and `alt={"a cat"}` are the same fact spelled differently, and `alt={LABEL}` is the
+ * same fact one hop away — read, because a rule that saw one and not the others would report a page
+ * that is correct. Anything the walk cannot settle on ONE answer for is `undefined`, which is the
+ * silence contract.
+ *
+ * A bare attribute is `{true}` in JSX, which is not a string and not a label.
+ */
+function textOf(attribute: WrittenAttribute | undefined, resolve: ElementContext["resolve"]): string | undefined {
+  if (attribute === undefined || attribute.value === undefined) return undefined;
+  if (ts.isStringLiteral(attribute.value)) return attribute.value.text;
+  return textBehind(attribute.value, resolve);
 }
 
 /**
@@ -159,19 +299,18 @@ export function trueAttr(
   name: string,
   resolve: ElementContext["resolve"],
 ): boolean | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+  return truthOf(named(attributesOf(element), name), resolve);
+}
 
-    const value = attribute.initializer;
-    // `aria-hidden` on its own — JSX reads a bare attribute as `{true}`.
-    if (value === undefined) return true;
-    if (ts.isStringLiteral(value)) return value.text === "true" ? true : value.text === "false" ? false : undefined;
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-    // `aria-hidden={HIDDEN}` — the fourth spelling of the same fact, and the one that was missed.
-    return truthBehind(value.expression, resolve);
-  }
-  return undefined;
+function truthOf(attribute: WrittenAttribute | undefined, resolve: ElementContext["resolve"]): boolean | undefined {
+  if (attribute === undefined) return undefined;
+  // `aria-hidden` on its own — JSX reads a bare attribute as `{true}`.
+  if (attribute.bare) return true;
+  const value = attribute.value;
+  if (value === undefined) return undefined;
+  if (ts.isStringLiteral(value)) return value.text === "true" ? true : value.text === "false" ? false : undefined;
+  // `aria-hidden={HIDDEN}` — the fourth spelling of the same fact, and the one that was missed.
+  return truthBehind(value, resolve);
 }
 
 /**
@@ -199,34 +338,31 @@ export function numberAttr(
   name: string,
   resolve: ElementContext["resolve"],
 ): number | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+  return numberOfAttribute(named(attributesOf(element), name), resolve);
+}
 
-    const value = attribute.initializer;
-    if (value === undefined) return undefined;
+function numberOfAttribute(
+  attribute: WrittenAttribute | undefined,
+  resolve: ElementContext["resolve"],
+): number | undefined {
+  const written = attribute?.value;
+  if (written === undefined) return undefined;
 
-    // `tabIndex="0"` — valid JSX, and the same fact as `{0}`.
-    if (ts.isStringLiteral(value)) return numberOf(value.text);
+  // `tabIndex="0"` — valid JSX, and the same fact as `{0}`.
+  if (ts.isStringLiteral(written)) return numberOf(written.text);
+  if (ts.isNumericLiteral(written)) return numberOf(written.text);
 
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-
-    const written = value.expression;
-    if (ts.isNumericLiteral(written)) return numberOf(written.text);
-
-    // `{-1}` is a prefix expression rather than a literal, which is the whole reason this exists.
-    if (
-      ts.isPrefixUnaryExpression(written) &&
-      written.operator === ts.SyntaxKind.MinusToken &&
-      ts.isNumericLiteral(written.operand)
-    ) {
-      const magnitude = numberOf(written.operand.text);
-      return magnitude === undefined ? undefined : -magnitude;
-    }
-    // `tabIndex={PRIORITY}` — the same number, declared elsewhere.
-    return numberBehind(written, resolve);
+  // `{-1}` is a prefix expression rather than a literal, which is the whole reason this exists.
+  if (
+    ts.isPrefixUnaryExpression(written) &&
+    written.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(written.operand)
+  ) {
+    const magnitude = numberOf(written.operand.text);
+    return magnitude === undefined ? undefined : -magnitude;
   }
-  return undefined;
+  // `tabIndex={PRIORITY}` — the same number, declared elsewhere.
+  return numberBehind(written, resolve);
 }
 
 /**

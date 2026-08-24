@@ -1,7 +1,6 @@
 import { positionOf } from "../syntax";
 import { ABSTRACT_ROLES, ROLES } from "./aria";
-import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * A `role` that is not one, or one the specification forbids in markup.
@@ -66,7 +65,9 @@ export const unknownRole = {
    */
   evenWhenSpreading: true,
 
-  read(element, { attr, overwritable }) {
+  alsoOnHost: true,
+
+  read(_element, { attr, overwritable, at }) {
     const written = attr("role");
     if (written === undefined) return [];
     // A spread written AFTER the role can replace it, and then nothing here is provable.
@@ -85,10 +86,10 @@ export const unknownRole = {
       found.push({
         role: token,
         kind: ABSTRACT_ROLES.has(role) ? "abstract" : "unknown",
-        ...positionOf(openingOf(element)),
+        ...positionOf(at),
       });
     }
 
     return found;
   },
-} as const satisfies ElementRule<UnknownRoleIssue>;
+} as const satisfies HostElementRule<UnknownRoleIssue>;

@@ -1,7 +1,6 @@
 import { positionOf } from "../syntax";
 import { ARIA_VALUES, type AriaValue } from "./aria";
-import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { HostElementRule } from "./rule";
 
 /**
  * An `aria-*` attribute carrying a value its specification does not allow.
@@ -105,15 +104,16 @@ export const ariaValue = {
    */
   evenWhenSpreading: true,
 
-  read(element, { tag, attr, overwritable }) {
+  alsoOnHost: true,
+
+  read(_element, { tag, attr, overwritable, attributes }) {
     // Markup only. `<Panel aria-hidden="yes" />` is a prop on a component, and what that component
     // does with it is decided inside it — where this rule meets the real attribute again.
     if (tag === undefined) return [];
 
     const found: AriaValueIssue[] = [];
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!("name" in attribute) || attribute.name === undefined) continue;
-      const name = attribute.name.getText().toLowerCase();
+    for (const attribute of attributes) {
+      const name = attribute.name.toLowerCase();
       const spec = ARIA_VALUES.get(name);
       if (spec === undefined) continue;
 
@@ -124,9 +124,9 @@ export const ariaValue = {
 
       const wants = judge(spec, value.trim());
       if (wants !== undefined) {
-        found.push({ attribute: name, value, wants, ...positionOf(attribute) });
+        found.push({ attribute: name, value, wants, ...positionOf(attribute.at) });
       }
     }
     return found;
   },
-} as const satisfies ElementRule<AriaValueIssue>;
+} as const satisfies HostElementRule<AriaValueIssue>;

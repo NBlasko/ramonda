@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { numberAttr, openingOf, trueAttr } from "./element";
-import type { ElementContext, ElementRule } from "./rule";
+import type { ElementContext, HostElementRule } from "./rule";
 
 /**
  * `aria-hidden="true"` on something a keyboard can still reach.
@@ -76,14 +76,16 @@ export const ariaHiddenOnFocusable = {
 
   evenWhenSpreading: true,
 
-  read(element, context) {
+  alsoOnHost: true,
+
+  read(_element, context) {
     const { tag } = context;
     if (tag === undefined) return [];
 
     // Only a literal TRUE is a claim, in any of the three spellings that mean it — `aria-hidden`,
     // `{true}` and `"true"` all reach the element the same way. `aria-hidden={busy}` may be either,
     // and a rule that guessed would report the correct half of it.
-    if (trueAttr(element, "aria-hidden", context.resolve) !== true) return [];
+    if (context.truth("aria-hidden") !== true) return [];
     /**
      * The `aria-hidden` half has to survive the spread; the other half is asked below.
      *
@@ -95,11 +97,11 @@ export const ariaHiddenOnFocusable = {
     // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
     // `tabIndex={-1}` takes a `<button>` back out of it. A rule that asked the tag first would
     // report `<button aria-hidden="true" tabIndex={-1}>`, which is the correct way to write this.
-    const tabIndex = numberAttr(element, "tabIndex", context.resolve);
+    const tabIndex = context.number("tabIndex");
     if (tabIndex !== undefined) {
       // A spread after it may replace this number, or take the attribute away entirely.
       if (context.overwritable("tabIndex")) return [];
-      return tabIndex >= 0 ? [{ tag, because: "tabIndex" as const, ...positionOf(openingOf(element)) }] : [];
+      return tabIndex >= 0 ? [{ tag, because: "tabIndex" as const, ...positionOf(context.at) }] : [];
     }
 
     if (!focusableByTag(tag, context)) return [];
@@ -115,6 +117,6 @@ export const ariaHiddenOnFocusable = {
      */
     if (context.spreads) return [];
 
-    return [{ tag, because: "the tag" as const, ...positionOf(openingOf(element)) }];
+    return [{ tag, because: "the tag" as const, ...positionOf(context.at) }];
   },
-} as const satisfies ElementRule<AriaHiddenOnFocusableIssue>;
+} as const satisfies HostElementRule<AriaHiddenOnFocusableIssue>;

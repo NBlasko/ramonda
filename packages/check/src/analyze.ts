@@ -4,8 +4,8 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import { coreExportName } from "./rules/core-import";
-import { stringAttr } from "./rules/element";
+import { coreDecoratorName, coreExportName } from "./rules/core-import";
+import { hostContextFor, hostPropsObject, stringAttr } from "./rules/element";
 import { hostFactOf } from "./rules/html";
 import type { HostFact } from "./graph";
 import type { Resolver, Silencer } from "./rules/rule";
@@ -13,6 +13,7 @@ import {
   activate,
   applyClass,
   applyElement,
+  applyHost,
   applyModule,
   applyProject,
   applyTree,
@@ -907,9 +908,31 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
    */
   const elementRules = activate(ELEMENT_RULES, imported, rendersOnServer);
 
+  /**
+   * And the element a component IS, which is written nowhere in its render.
+   *
+   * `@Host("section", () => ({ role: "buton" }))` puts a role on a real element on a real page. The
+   * walk below only ever met TAGS, so every fault written in a props bag was reported by nobody —
+   * measured with a plant: five of them, zero reports, against the identical five on a `<div>` with
+   * all five reported.
+   *
+   * Only the rules declaring `alsoOnHost` are asked. A host has attributes; it does not have
+   * children this can hand over, and what encloses it is decided by whoever mounts the component.
+   */
+  const readHostElement = (cls: ts.ClassLikeDeclaration): void => {
+    for (const decorator of ts.getDecorators(cls) ?? []) {
+      const call = decorator.expression;
+      if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolver) !== "Host") continue;
+      const object = hostPropsObject(call);
+      if (object === undefined) continue;
+      applyHost(elementRules, hostContextFor(call, object, resolver), findings, silenced);
+    }
+  };
+
   const readElements = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node))
       applyElement(elementRules, node, findings, resolver, silenced);
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) readHostElement(node);
     ts.forEachChild(node, readElements);
   };
 
