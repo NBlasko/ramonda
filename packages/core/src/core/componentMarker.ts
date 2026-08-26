@@ -29,6 +29,20 @@
  * `^r\d+$`. A shared vocabulary would mean a portal's block and a component's block could be
  * mistaken for one another, and `anchorId`'s comment records what that costs — a stray anchor
  * swallowing a `<meta>`.
+ *
+ * ## The blob cannot be trusted to stay inside the comment
+ *
+ * A comment ends at the first `-->`, and the blob is state — which is user data as often as not. A
+ * `@state` holding `--><img src=x onerror=…><!--` closed its own marker and the rest of it was
+ * parsed as MARKUP: measured on exactly that value, one real `<img>` with a live `onerror` in the
+ * served page. An attribute could not do this, because the serializer escapes one; a comment is
+ * copied out verbatim, so the escaping is this module's job.
+ *
+ * `--` is what does it — `-->` and `--!>` both contain it — and inside JSON `--` can only ever
+ * occur inside a STRING, because the only bare `-` in the grammar is a number's sign and no number
+ * has two. So the second dash of every pair is written as its JSON escape, which `JSON.parse` reads
+ * straight back as `-`. Nothing on the client has to know: the blob is only ever consumed by
+ * parsing it.
  */
 
 /** A comment node, and one that opens a component's block. */
@@ -55,6 +69,6 @@ export function markerBlob(node: Node): string | undefined {
 }
 
 export const componentOpen = (id: number, blob: string | undefined): string =>
-  blob === undefined ? `c${id}` : `c${id} ${blob}`;
+  blob === undefined ? `c${id}` : `c${id} ${blob.replace(/--/g, "-\\u002d")}`;
 
 export const componentClose = (id: number): string => `/c${id}`;
