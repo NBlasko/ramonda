@@ -147,6 +147,44 @@ function nextOf(node: EnhancedChildNode | null): EnhancedChildNode | null {
  * That also makes the mismatch check precise: the server node must *start with*
  * the text we rendered, and anything else is real divergence (RMD007).
  */
+/**
+ * Text nodes that a split above produced and nobody has claimed yet.
+ *
+ * A fused server text node is cut to the length each child rendered, and the tail is left for the
+ * children after it. When they take it, it stops being a remainder by being walked past. When there
+ * are none — one text child whose value simply differs, and is SHORTER on the client — the tail is a
+ * fragment of the server's text with no owner, and it stayed in the page: measured on a `<span>` that
+ * read `waiting` on the server and `ready` on the client, which hydrated to `readyng`.
+ *
+ * Marked rather than removed on the spot, because at that moment the two cases are the same node.
+ * The level knows the difference: what the walk never reached is unclaimed. A WeakSet keeps this out
+ * of the way of the shell's own content, which is the one thing a leftover sweep must never touch.
+ */
+const splitRemainders = new WeakSet<Node>();
+
+/**
+ * Removes the split tails this level's repairs left behind, and nothing else — and answers with the
+ * first node that is NOT one, which is where the walk really stopped.
+ *
+ * The cursor has to move: it points AT the tail when the tail is what is left, and a removed node
+ * still reads as a node. Leaving it there made the level report one server child more than there
+ * was, naming a fragment of its own repair as markup the server sent.
+ */
+function dropUnclaimedRemainders(from: ChildNode | null): EnhancedChildNode | null {
+  let node = from;
+  while (node !== null && splitRemainders.has(node)) {
+    const next: ChildNode | null = node.nextSibling;
+    node.remove();
+    node = next;
+  }
+  for (let after = node; after !== null; ) {
+    const next: ChildNode | null = after.nextSibling;
+    if (splitRemainders.has(after)) after.remove();
+    after = next;
+  }
+  return node as EnhancedChildNode | null;
+}
+
 function hydrateText(
   text: string,
   placeholder: MaybeComponent,
@@ -160,7 +198,7 @@ function hydrateText(
 
     if (found.startsWith(text)) {
       // Fused with the following text children — split our part off the front.
-      (cursor as Text).splitText(text.length);
+      splitRemainders.add((cursor as Text).splitText(text.length));
       return nextOf(cursor);
     }
 
@@ -170,7 +208,7 @@ function hydrateText(
     // still belongs to the children after us. Cut our slice to the length we
     // rendered and leave the rest for them, or replacing this node would eat
     // their text and report them as missing too: one fault, one diagnostic.
-    if (found.length > text.length) (cursor as Text).splitText(text.length);
+    if (found.length > text.length) splitRemainders.add((cursor as Text).splitText(text.length));
     cursor.textContent = text;
     return nextOf(cursor);
   }
@@ -353,9 +391,23 @@ function hydrateComponentRegion(
      * right now, and a record entry is exactly "a node this region holds". Kept anywhere else, the
      * parent's own reorder would not know these nodes are its children, and a teardown while the
      * promise is still in flight would not find them.
+     *
+     * **The MARKERS are entries too, and only while the block is pending.** They are the block's
+     * boundary, and the whole point of deferring is that the rest of the page stays live — so the
+     * ordinary case is a parent re-rendering while the promise is in flight. With the record saying
+     * the block began at the first node INSIDE it, a freshly built preceding sibling was inserted
+     * there, which is between the opening marker and the server's content. Measured on a page that
+     * revealed a `<p>` while a subtree waited:
+     * `<!--c1--><p id="top">top</p><div id="slow">…</div><!--/c1-->`. `resumeHydration` starts its
+     * walk at `open.nextSibling`, so it then hydrated the deferred component's first child against
+     * its sibling's node.
+     *
+     * They leave the record on resume, when `region.entries` is replaced by what the walk adopted
+     * and `closeBlock` takes the pair out.
      */
-    const held: ChildNode[] = [];
+    const held: ChildNode[] = [open as unknown as ChildNode];
     const close = skipToClose((open as unknown as Comment).nextSibling, held);
+    if (close !== undefined) held.push(close);
     region.entries = held as EnhancedChildNode[];
     deferredBlocks.set(component, { open: open as unknown as Comment, close, parent });
     componentRuntime.hydrationPending = true;
@@ -506,6 +558,10 @@ function hydrateChildren(
   if (level.hasRegion) {
     (existingParent as EnhancedChildNode)[CHILD_RECORD] = level.entries;
   }
+
+  // Before the count below, so a tail this level's own repair produced is not reported as content
+  // the server sent: it is not content, it is the half of a split nobody claimed.
+  walk.cursor = dropUnclaimedRemainders(walk.cursor);
 
   if (__DEV__ && walk.cursor) {
     let extra = 0;

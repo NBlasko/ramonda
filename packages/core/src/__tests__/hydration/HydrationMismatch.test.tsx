@@ -164,6 +164,64 @@ describe("hydration mismatch (RMD007)", () => {
     expect(container.querySelector("span")!.textContent).toBe("Hello client!");
   });
 
+  test("a client text SHORTER than the server's leaves no tail behind", async () => {
+    /**
+     * The repair cuts the server's node to the length this child rendered and leaves the tail for
+     * the children after it — which is right when there ARE children after it, because a fused run
+     * arrives as one node and each of them takes its own slice.
+     *
+     * With no child left to claim it, the tail is a fragment of the server's text belonging to
+     * nobody, and it stayed in the page: measured on a `<span>` reading `waiting` on the server and
+     * `ready` on the client, which hydrated to `readyng`.
+     */
+    class Status extends Component {
+      render() {
+        return (
+          <div>
+            <span id="s">{SIDE === "server" ? "waiting" : "ready"}</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Status />);
+    expect(container.querySelector("#s")!.textContent).toBe("waiting");
+
+    SIDE = "client";
+    hydrateRoot(<Status />, container);
+
+    expect(container.querySelector("#s")!.textContent).toBe("ready");
+    expect(container.querySelector("#s")!.childNodes).toHaveLength(1);
+    // One fault, one diagnostic: the tail is not reported as a child the server sent.
+    expect(captured.codes).toEqual(["RMD007"]);
+  });
+
+  test("a longer run after a shorter one still takes its own slice", async () => {
+    // The case the tail exists FOR, kept beside the one above so a fix for either cannot quietly
+    // break the other: three children fused into one server node, the first of them divergent.
+    class Greeting extends Component {
+      render() {
+        return (
+          <div>
+            <span id="g">
+              {SIDE === "server" ? "Hi " : "Hello "}
+              {SIDE}
+              {"!"}
+            </span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Greeting />);
+    expect(container.querySelector("#g")!.textContent).toBe("Hi server!");
+
+    SIDE = "client";
+    hydrateRoot(<Greeting />, container);
+
+    expect(container.querySelector("#g")!.textContent).toBe("Hello client!");
+  });
+
   test("an attribute that differs across the boundary reports RMD007", async () => {
     class Themed extends Component {
       render() {
