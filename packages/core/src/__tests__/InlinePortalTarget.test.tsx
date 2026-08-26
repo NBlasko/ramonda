@@ -19,13 +19,13 @@ import { Portal } from "../base/Portal";
 
 const gone: string[] = [];
 
-class Pinned extends Component {
+class Pinned extends Component<{ n?: number }> {
   @state n = 0;
   @destroyed bye() {
     gone.push("Pinned");
   }
   render() {
-    return <span id="pin">pin{String(this.n)}</span>;
+    return <span id="pin">pin{String(this.props.n ?? this.n)}</span>;
   }
 }
 
@@ -158,6 +158,137 @@ describe("a portal aimed inside its owner's render", () => {
     findAll<Pinned>(app.container, "Pinned")[0]!.n = 5;
     await app.settle();
     expect(slot.querySelector("#pin")!.textContent).toBe("pin5");
+  });
+
+  test("a freshly built child lands before the block, not past it", async () => {
+    /**
+     * An element is given no anchor to reorder against, so `null` — the end of the PARENT — is where
+     * an insertion goes. That is the end of its own children only while the parent holds nothing
+     * else, and a hosted block is exactly something else: the new child was appended past the guest,
+     * leaving it in the middle of the host's own run.
+     *
+     * A keyed list of the host's own, so the new row really is built rather than claimed.
+     */
+    class Rows extends Component {
+      @state tick = 0;
+      @state items = ["1", "2"];
+      slot: Element = document.createElement("div");
+
+      portal = this.use(Portal, (self: Rows) => ({
+        children: <Pinned />,
+        target: self.tick >= 0 ? self.slot : self.slot,
+      }));
+
+      @mounted({ env: "client" }) aim() {
+        const found = document.querySelector("#slot");
+        if (found) this.slot = found;
+        this.tick++;
+      }
+
+      render() {
+        return (
+          <div id="body">
+            <section id="slot">
+              {this.items.map((n) => (
+                <span key={n}>{n}</span>
+              ))}
+            </section>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+
+    const slot = app.container.querySelector("#slot")!;
+    const shape = () =>
+      [...slot.childNodes].map((node) => (node.nodeType === 8 ? "|" : (node as Element).textContent)).join(",");
+
+    expect(shape()).toBe("1,2,|,pin0,|");
+
+    app.instance.items = ["1", "2", "3"];
+    await app.settle();
+
+    // The new row is the host's own, so it belongs before the guest — not after it.
+    expect(shape()).toBe("1,2,3,|,pin0,|");
+  });
+
+  test("the owner removing the element the block lives in, and bringing it back", async () => {
+    /**
+     * The host element is the owner's to remove, and the block's nodes are inside it, so they go —
+     * every component in there is torn down. What the teardown could not do was TELL the region,
+     * which went on believing them mounted.
+     *
+     * Measured before the fix: the next reconcile adopted the destroyed instance, RMD008 reported a
+     * write after unmount, and when the element came back the block carried the dead markup into the
+     * live DOM, reading `pin1` where the portal had asked for `pin3` — and it could never update
+     * again.
+     *
+     * The region is RELEASED rather than disposed, which is the decision this pins: its owner is
+     * still alive and its target may come back, so it is placed afresh instead of being a live hook
+     * rendering nowhere for good.
+     */
+    class Host extends Component {
+      @state tick = 0;
+      @state show = true;
+      slot: Element = document.createElement("div");
+
+      portal = this.use(Portal, (self: Host) => ({
+        children: <Pinned n={self.tick} />,
+        target: self.slot,
+      }));
+
+      @mounted({ env: "client" }) aim() {
+        this.reaim();
+      }
+
+      reaim() {
+        const found = document.querySelector("#slot");
+        if (found) this.slot = found;
+        this.tick++;
+      }
+
+      render() {
+        return (
+          <div id="body">
+            {this.show ? <section id="slot" /> : null}
+            <p id="t">{String(this.tick)}</p>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Host>(<Host />);
+    await app.settle();
+    gone.length = 0;
+
+    expect(app.container.querySelector("#slot")!.querySelector("#pin")).not.toBeNull();
+
+    // The owner takes the element out. The block goes with it, and the component is destroyed.
+    app.instance.show = false;
+    await app.settle();
+    expect(gone).toEqual(["Pinned"]);
+    expect(app.container.querySelector("#pin")).toBeNull();
+
+    // And back: a fresh element, so the region is placed again from nothing.
+    app.instance.show = true;
+    await app.settle();
+    app.instance.reaim();
+    await app.settle();
+
+    const slot = app.container.querySelector("#slot")!;
+    const pin = slot.querySelector("#pin");
+    expect(pin).not.toBeNull();
+    // A LIVE component, showing what the portal asked for — not the dead instance's last markup.
+    expect(pin!.textContent).toBe(`pin${app.instance.tick}`);
+
+    expect(findAll<Pinned>(app.container, "Pinned")).toHaveLength(1);
+
+    // Still following the portal: a component that could never update again would sit where it was.
+    app.instance.reaim();
+    await app.settle();
+    expect(slot.querySelector("#pin")!.textContent).toBe(`pin${app.instance.tick}`);
   });
 
   test("the server's markers wrap each range without swallowing the block", async () => {

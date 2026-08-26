@@ -14,7 +14,7 @@ import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration
 import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
-import { BLOCK_CLOSE, CHILD_RECORD, type DONE } from "../helpers/constants";
+import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, type DONE } from "../helpers/constants";
 
 /**
  * The comments that delimit a region's block in the DOM, and in the markup a
@@ -160,6 +160,49 @@ export class ChildrenRegion {
     if (open === undefined) return;
     open[CHILD_RECORD] = this.record;
     (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE] = this.close;
+    // And the region itself, so a teardown of the HOST element can tell it. See `hostRemoved`.
+    (open as unknown as { [BLOCK_OWNER]?: { hostRemoved(): void } })[BLOCK_OWNER] = this;
+  }
+
+  /**
+   * The element this block lived in is being removed by whoever owns it.
+   *
+   * The nodes go — they are inside it — and every component in here is torn down, which is what the
+   * teardown was already doing by finding the record on the anchor. What it could not do is TELL the
+   * region, so the region went on believing those instances mounted: measured, the next `reconcile`
+   * adopted a destroyed component, RMD008 reported a write after unmount, and the block carried that
+   * dead markup into the live DOM, where it could never update again.
+   *
+   * Released rather than DISPOSED, and that is the decision worth naming: the owner of this region is
+   * still alive, and its target may come back — the same `<section>` re-rendered, or a different one.
+   * So the region forgets what it held and is placed afresh on its next reconcile, exactly as it was
+   * before it was ever placed. Disposing it instead would leave a live hook rendering nowhere for
+   * good.
+   */
+  hostRemoved(): void {
+    if (this.disposed || this.open === undefined) return;
+
+    const held = this.order;
+    if (held.length > 0) unmountChildrenNodes(held as EnhancedChildNode[], false);
+    // The engines are reachable only from the record — the nodes going is not enough, or every item
+    // that read an ancestor's signal stays subscribed.
+    disposeRegions(this.record);
+    this.record = [];
+
+    /**
+     * The anchors are dropped rather than removed: they are children of the element being taken out,
+     * so the host removes them. Clearing what they published matters all the same — the teardown walk
+     * may still be holding them, and a stale record on a detached comment is exactly what a later
+     * reader would take for the truth.
+     */
+    const open = this.open as unknown as EnhancedChildNode;
+    open[CHILD_RECORD] = undefined;
+    (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE] = undefined;
+    (open as unknown as { [BLOCK_OWNER]?: unknown })[BLOCK_OWNER] = undefined;
+
+    this.open = undefined;
+    this.close = undefined;
+    this.parent = undefined;
   }
 
   /** Brings the block into line with `children`, inside `parent`. */

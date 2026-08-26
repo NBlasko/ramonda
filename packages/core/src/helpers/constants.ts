@@ -90,6 +90,19 @@ export const CHILD_RECORD = Symbol("childRecord");
  * parent's children find a block without anything keeping a registry of live regions.
  */
 export const BLOCK_CLOSE = Symbol("blockClose");
+/**
+ * On a `ChildrenRegion`'s OPENING anchor: the region itself, so a teardown can tell it.
+ *
+ * A block lives in an element it does not own, and that element may be removed by whoever DOES own
+ * it. The nodes go with it — they are inside it — but the region has to hear about it, or it keeps
+ * believing the components in there are mounted: measured, a later `reconcile` adopted a destroyed
+ * instance, RMD008 reported a write after unmount, and the block moved that dead markup into the
+ * live DOM where it could never update again.
+ *
+ * Typed as the one method the teardown calls, so nothing outside `core/` needs the class.
+ */
+export const BLOCK_OWNER = Symbol("blockOwner");
+
 export const STATE_KEYS = Symbol("stateKeys");
 /**
  * DEV-only, on a context Consumer: hands the inspector the context keys this consumer reads and
