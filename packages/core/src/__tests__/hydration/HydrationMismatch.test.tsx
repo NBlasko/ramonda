@@ -293,6 +293,86 @@ describe("hydration mismatch (RMD007)", () => {
     expect(captured.messages.join("\n")).toContain("the server sent");
   });
 
+  test("a component whose block is longer on the server keeps the siblings after it", async () => {
+    /**
+     * The client renders FEWER children than the server wrote for one component.
+     *
+     * A component owns a RUN of siblings, and the markers are the only thing that says where that run
+     * ends. Adopting one child of a two-child block leaves the walk standing on the server's second
+     * node — inside the block, in the middle of the parent's level — so everything the parent has
+     * left is matched one position too early: the sibling AFTER the component is diffed against a
+     * node that belongs to the component, and the closing marker stays in the page.
+     */
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>, <i>two</i>] : [<b>one</b>];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    expect(container.querySelectorAll("b, i").length).toBe(2);
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    // Exactly what a client-side render produces: the extra node gone, the sibling intact, and no
+    // marker left behind.
+    expect(container.innerHTML).toBe('<div><b>one</b><span id="after">after</span></div>');
+    expect(container.querySelector("#after")!.textContent).toBe("after");
+
+    // Reported as what it is — a render that disagreed — rather than as a block the server failed to
+    // close, which is a different fault and sends the reader looking in the wrong place.
+    expect(captured.codes).toContain("RMD007");
+    expect(captured.messages.join("\n")).not.toContain("no closing marker");
+  });
+
+  test("a dropped child that is itself a component does not confuse the block's end", async () => {
+    // The leftover run holds a whole component's markers, so "the first `/c…` after the cursor" is
+    // the NESTED one. Stopping there leaves the outer block's own marker in the page and puts the
+    // walk back inside a block it thinks it has left.
+    class Nested extends Component {
+      render() {
+        return <em>nested</em>;
+      }
+    }
+
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>, <Nested />] : [<b>one</b>];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    expect(container.querySelector("em")).not.toBeNull();
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    expect(container.innerHTML).toBe('<div><b>one</b><span id="after">after</span></div>');
+  });
+
   test("the prescribed two-pass pattern hydrates without a mismatch", async () => {
     // This is the fix RMD007 tells people to use instead of `typeof window`.
     // It must not trip the very diagnostic that recommends it.

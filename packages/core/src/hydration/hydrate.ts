@@ -25,6 +25,7 @@ import {
   reportTextMismatch,
   reportStructureMismatch,
   reportChildCountMismatch,
+  reportBlockLengthMismatch,
   reportAttributeMismatches,
 } from "../debug/hydrationMismatch";
 import type {
@@ -353,7 +354,7 @@ function hydrateComponentRegion(
      * promise is still in flight would not find them.
      */
     const held: ChildNode[] = [];
-    const close = skipToClose(open as unknown as Comment, held);
+    const close = skipToClose((open as unknown as Comment).nextSibling, held);
     region.entries = held as EnhancedChildNode[];
     deferredBlocks.set(component, { open: open as unknown as Comment, close, parent });
     componentRuntime.hydrationPending = true;
@@ -409,14 +410,14 @@ function hydrateComponentRegion(
 }
 
 /**
- * Where a deferred block ends, and the nodes inside it.
+ * Where a block ends, and the nodes between `from` and there.
  *
  * Nesting is why this counts rather than taking the first close it meets: a deferred component's
  * markup holds its children's markers, and the first `/c…` down there is not this one's.
  */
-function skipToClose(open: Comment, out: ChildNode[]): Comment | undefined {
+function skipToClose(from: ChildNode | null, out: ChildNode[]): Comment | undefined {
   let depth = 0;
-  for (let node = open.nextSibling; node !== null; node = node.nextSibling) {
+  for (let node = from; node !== null; node = node.nextSibling) {
     if (isComponentOpen(node)) depth++;
     else if (isComponentClose(node)) {
       if (depth === 0) return node as Comment;
@@ -428,28 +429,59 @@ function skipToClose(open: Comment, out: ChildNode[]): Comment | undefined {
 }
 
 /**
- * Takes the pair out, once the block between them has been adopted.
+ * Takes the pair out, once the block between them has been adopted — and puts the walk on the first
+ * node that is NOT this component's.
  *
  * Where the walk stopped IS the closing marker, when the server wrote what this render wants. It is
- * not when the client rendered MORE children than the server did: those were built and inserted
- * before the marker, and the walk stopped on it all the same. Either way the marker is the node the
- * walk ran into — so the only case left is a block the server never closed, which is a divergence
- * worth reporting rather than a shape to repair.
+ * also the marker when the client rendered MORE children than the server did: those were built and
+ * inserted before it, and the walk stopped on it all the same.
+ *
+ * The case left is the client rendering FEWER, and it cannot be reported and walked past. The walk is
+ * standing on a node that belongs to this component, in the middle of the parent's children, so
+ * whatever the parent has left is matched one position too early: the sibling AFTER the component is
+ * diffed against the component's leftover node and takes it over, and then rendered a second time in
+ * its own place. Measured on a component that dropped its second child across the boundary — the page
+ * came back holding two copies of the sibling and a stray marker between them.
+ *
+ * So the block is closed properly: its own closing marker is found by counting depth (a leftover run
+ * may hold a whole nested component's markers), everything up to it goes, and the walk continues
+ * after it. The nodes removed were never adopted — no instance, no listener and no record points at
+ * one — so removing them is all there is to do.
  */
 function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent): void {
   const stop = walk.cursor;
   if (stop !== null && isComponentClose(stop)) {
     walk.cursor = nextOf(stop);
     stop.remove();
-  } else if (__DEV__) {
-    const name = component.constructor.name;
-    diagnose(
-      "RMD007",
-      `${name}:unclosed`,
-      `<${name} />'s block in the server markup has no closing marker, so the walk cannot tell where it ends.`,
-    );
+    open.remove();
+    return;
   }
+
+  const extra: ChildNode[] = [];
+  const close = skipToClose(stop, extra);
+  const name = component.constructor.name;
+
+  if (close === undefined) {
+    // No closing marker anywhere after the cursor: the server never closed this block, which is not a
+    // shape to repair — the walk has no way to tell where the component ends, and guessing would
+    // delete a sibling. Left alone, reported, and the cursor stays where it is.
+    if (__DEV__) {
+      diagnose(
+        "RMD007",
+        `${name}:unclosed`,
+        `<${name} />'s block in the server markup has no closing marker, so the walk cannot tell where it ends.`,
+      );
+    }
+    open.remove();
+    return;
+  }
+
+  walk.cursor = nextOf(close);
+  for (const node of extra) node.remove();
+  close.remove();
   open.remove();
+
+  if (__DEV__) reportBlockLengthMismatch(component, extra.length);
 }
 
 function hydrateChildren(
