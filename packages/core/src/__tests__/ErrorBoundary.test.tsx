@@ -3,6 +3,7 @@ import { getDOM, findAll } from "../test/setup";
 import { Component } from "../base/Component";
 import { state, created, interval, destroyed as destroyedDecorator } from "../base/decorators";
 import { list } from "../base/list";
+import { ShouldUpdateOnPropsChange } from "../index";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 
 describe("ErrorBoundary", () => {
@@ -145,6 +146,112 @@ describe("ErrorBoundary", () => {
     expect(app.container.querySelector("#fallback")).not.toBeNull();
     expect(app.container.querySelector("#child")).toBeNull();
     expect(destroyed).toEqual(["Child"]);
+  });
+
+  test("a props gate that throws reaches the boundary, and its component leaves", async () => {
+    /**
+     * `@ShouldUpdateOnPropsChange` is user code the diff calls SYNCHRONOUSLY, while the parent is
+     * still reconciling — so it is one of the very few things that can throw with a LIVE region in
+     * hand. The region has already been taken out of the map the loop's own teardown pass walks, so
+     * nothing downstream would ever find it: without the by-hand teardown its nodes stay on the page
+     * under the fallback and its `@destroyed` never runs.
+     *
+     * Found by removing that teardown and watching all 1295 tests pass — the branch was reachable
+     * and nothing was asking it anything.
+     */
+    const torn: string[] = [];
+    let gateThrows = false;
+
+    @ShouldUpdateOnPropsChange(() => {
+      if (gateThrows) throw new Error("gate boom");
+      return true;
+    })
+    class Gated extends Component<{ n: number }> {
+      @destroyedDecorator bye() {
+        torn.push("gated");
+      }
+      render() {
+        return <b id="gated">gated {String(this.props.n)}</b>;
+      }
+    }
+
+    class Shell extends Component {
+      @state n = 1;
+      render() {
+        return (
+          <div id="shell">
+            <ErrorBoundary fallback={() => <i id="fb">fb</i>}>
+              <Gated n={this.n} />
+            </ErrorBoundary>
+            <u id="tail">tail</u>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Shell>(<Shell />);
+    expect(app.container.querySelector("#gated")!.textContent).toBe("gated 1");
+
+    gateThrows = true;
+    app.instance.n = 2;
+    await app.settle();
+
+    expect(app.container.querySelector("#fb")).not.toBeNull();
+    expect(app.container.querySelector("#gated")).toBeNull();
+    expect(app.container.querySelector("#tail")).not.toBeNull();
+    expect(torn).toEqual(["gated"]);
+  });
+
+  test("a replacement that fails to build leaves the one it replaced torn down exactly once", async () => {
+    /**
+     * A DIFFERENT class in the same slot: the one that was there is disposed by hand, because it has
+     * already been taken out of the map the loop's own teardown pass walks. Then the replacement's
+     * build throws — so the same region is reached a second time, by the catch around the child.
+     *
+     * Both halves are worth pinning. The old component must be gone (its `@destroyed` run, its nodes
+     * out) rather than left standing invisibly under a fallback; and it must be torn down ONCE, or a
+     * `@destroyed` that releases a lock or closes a connection would do it twice.
+     */
+    const torn: string[] = [];
+
+    class Alpha extends Component {
+      @destroyedDecorator bye() {
+        torn.push("alpha");
+      }
+      render() {
+        return <b id="alpha">alpha</b>;
+      }
+    }
+
+    class Beta extends Component {
+      render(): never {
+        throw new Error("beta cannot build");
+      }
+    }
+
+    class Shell extends Component {
+      @state beta = false;
+      render() {
+        return (
+          <div id="shell">
+            <ErrorBoundary fallback={() => <i id="fb">fb</i>}>{this.beta ? <Beta /> : <Alpha />}</ErrorBoundary>
+            <u id="tail">tail</u>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Shell>(<Shell />);
+    expect(app.container.querySelector("#alpha")).not.toBeNull();
+
+    app.instance.beta = true;
+    await app.settle();
+
+    expect(app.container.querySelector("#alpha")).toBeNull();
+    expect(app.container.querySelector("#fb")).not.toBeNull();
+    // The sibling after the boundary is untouched, and alpha left exactly once.
+    expect(app.container.querySelector("#tail")).not.toBeNull();
+    expect(torn).toEqual(["alpha"]);
   });
 
   test("a sibling built BEFORE the throw is torn down, not left ticking", async () => {
