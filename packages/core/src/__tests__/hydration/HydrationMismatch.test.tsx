@@ -439,9 +439,7 @@ describe("hydration mismatch (RMD007)", () => {
     SIDE = "client";
     hydrateRoot(<Page />, container);
 
-    expect(container.querySelector("#shell")!.innerHTML).toBe(
-      '<span id="one">one</span><span id="two">two</span>',
-    );
+    expect(container.querySelector("#shell")!.innerHTML).toBe('<span id="one">one</span><span id="two">two</span>');
     // The server's node was adopted, not rebuilt to make room for the new one.
     expect(container.querySelector("#one")).toBe(one);
     expect(captured.codes).toContain("RMD007");

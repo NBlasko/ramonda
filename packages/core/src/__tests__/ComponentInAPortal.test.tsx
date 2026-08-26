@@ -229,9 +229,7 @@ describe("a component in a portal", () => {
    * empty component reads `||` and the node has to land between them.
    */
   const shape = (el: Element) =>
-    [...el.childNodes]
-      .map((n) => (n.nodeType === 8 ? "|" : `<${n.nodeName.toLowerCase()}>`))
-      .join("");
+    [...el.childNodes].map((n) => (n.nodeType === 8 ? "|" : `<${n.nodeName.toLowerCase()}>`)).join("");
 
   test("one level deeper in the block, with a sibling after its owner", async () => {
     class Late extends Component {
