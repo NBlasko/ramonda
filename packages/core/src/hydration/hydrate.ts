@@ -81,6 +81,10 @@ export function hydrateRoot(vnode: ComponentChild, container: HTMLElement): void
    */
   const walk: HydrationWalk = { cursor: container.firstChild as EnhancedChildNode | null, count: 0 };
   const level = hydrateLevel([vchild], undefined, container, walk);
+  // This level ends here, so a tail no child claimed is nobody's — the same sweep `hydrateChildren`
+  // does, and it belongs to whoever ENDS a level rather than to `hydrateLevel`, which is shared by
+  // a list's recursion and must leave a tail for the outer level's next text child.
+  walk.cursor = dropUnclaimedRemainders(walk.cursor);
   if (level.hasRegion) (container as EnhancedChildNode)[CHILD_RECORD] = level.entries;
   flushPostCommit();
 }
@@ -186,6 +190,17 @@ const splitRemainders = new WeakSet<Node>();
  * The end-of-level sweep cannot cover this — by then the tail has already displaced every sibling
  * that came after it.
  */
+/**
+ * Whether this node is the tail of a split THIS hydration made, rather than markup the server sent.
+ *
+ * Exported for `ChildrenRegion`, which ends a level of its own and has the same question to answer:
+ * a tail is the second half of a divergence already reported, and counting it as a node the server
+ * sent turns one fault into two diagnostics.
+ */
+export function isSplitRemainder(node: Node): boolean {
+  return splitRemainders.has(node);
+}
+
 function skipUnclaimableRemainder(walk: HydrationWalk): void {
   const at = walk.cursor;
   if (at === null || !splitRemainders.has(at)) return;

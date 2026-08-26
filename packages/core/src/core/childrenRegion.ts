@@ -10,7 +10,7 @@ import {
 } from "./DiffAndMerge";
 import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
-import { hydrateLevel, type HydrationWalk } from "../hydration/hydrate";
+import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration/hydrate";
 import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
@@ -247,9 +247,17 @@ export class ChildrenRegion {
       if (isOpenAnchor(node)) depth++;
       else if (isCloseAnchor(node)) {
         if (depth === 0) {
-          for (const spare of extra) spare.remove();
+          // What is REPORTED is what the server sent and this render did not want. A split tail is
+          // the second half of a text divergence already reported, and counting it said "your block
+          // is one node shorter" about a node this hydration made — the same distinction
+          // `closeBlock` draws one level up.
+          let fromServer = 0;
+          for (const spare of extra) {
+            if (!isSplitRemainder(spare)) fromServer++;
+            spare.remove();
+          }
           this.close = node as Comment;
-          if (__DEV__) reportBlockLengthMismatch(this.owner, extra.length);
+          if (__DEV__ && fromServer > 0) reportBlockLengthMismatch(this.owner, fromServer);
           this.publish();
           return;
         }

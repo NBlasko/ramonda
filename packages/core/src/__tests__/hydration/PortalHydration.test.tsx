@@ -4,6 +4,7 @@ import { state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
+import { resetDiagnostics } from "../../debug/diagnostics";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
 import { PORTAL_ATTR } from "../../helpers/constants";
 import { isOpenAnchor, isCloseAnchor } from "../../core/childrenRegion";
@@ -420,6 +421,63 @@ describe("a comment that only looks like an anchor", () => {
     // And what is left is the block's own: the teardown takes it.
     unmountChildrenNodes([container as unknown as never]);
     expect(document.head.querySelectorAll("meta")).toHaveLength(0);
+    container.remove();
+  });
+
+  test("a text divergence inside a block reports one diagnostic, not two", async () => {
+    /**
+     * A block ends a level of its own, so it has the question `closeBlock` has one level up: the
+     * tail of a text repair is the second half of a divergence already reported, and counting it as
+     * a node the server sent says "your block is one node shorter" about a node this hydration made.
+     *
+     * The text is a child of the BLOCK itself rather than of a component inside it — a component
+     * ends its own level through `closeBlock`, and this is the level the region ends for itself.
+     *
+     * Found by walking the callers of the rule rather than by a failure: six places end a level and
+     * only one of them had been taught this.
+     */
+    let onServer = true;
+
+    class Page extends Component {
+      portal = this.use(Portal, () => ({
+        children: onServer ? "waiting" : "ready",
+        target: document.head,
+      }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const codes: string[] = [];
+    const onLog = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { message: string };
+      const code = detail.message.match(/^\[(RMD\d+)\]/)?.[1];
+      if (code) codes.push(code);
+    };
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    onServer = false;
+    // The registry dedupes by code and key across a run, and earlier tests in this file have already
+    // reported RMD007 — without this the assertion below passes on a suppressed message.
+    resetDiagnostics();
+    window.addEventListener("ramonda:dev-log", onLog);
+    try {
+      hydrateRoot(<Page />, container);
+      await Promise.resolve();
+    } finally {
+      window.removeEventListener("ramonda:dev-log", onLog);
+    }
+
+    // One divergence, one message — and the block holds exactly the text this render produced.
+    expect(codes).toEqual(["RMD007"]);
+    expect(document.head.textContent).toContain("ready");
+    expect(document.head.textContent).not.toContain("waiting");
     container.remove();
   });
 
