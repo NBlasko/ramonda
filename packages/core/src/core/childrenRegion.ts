@@ -10,6 +10,7 @@ import {
 import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
 import { hydrateLevel, type HydrationWalk } from "../hydration/hydrate";
+import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
 import { BLOCK_CLOSE, CHILD_RECORD, type DONE } from "../helpers/constants";
@@ -215,16 +216,53 @@ export class ChildrenRegion {
     this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
     this.publish();
 
-    // Where the walk stopped IS the closing anchor, when the server wrote as many
-    // nodes as this render wants. It is not when the client renders more children
-    // than the server did: those were built and inserted before the anchor, and
-    // the walk stopped on it all the same. Either way the anchor is the node the
-    // walk ran into, so the only case left is a block the server never closed.
+    /**
+     * Where the walk stopped IS the closing anchor, when the server wrote as many nodes as this
+     * render wants — and also when it wrote FEWER, because those extra children were built and
+     * inserted in front of the anchor and the walk stopped on it all the same.
+     */
     const stop = walk.cursor;
     if (stop !== null && isCloseAnchor(stop)) {
       this.close = stop as unknown as Comment;
       return;
     }
+
+    /**
+     * The walk stopped on a leftover SERVER node, still inside this block: the client rendered
+     * FEWER children than the server did.
+     *
+     * Minting a close in front of it is what this used to do, and it put every remaining server node
+     * — and the server's own close — OUTSIDE the region. Measured on a two-`<meta>` block hydrated by
+     * a one-`<meta>` render: the head kept `<!--r7--><meta a><!--/r14--><meta b><!--/r7-->`, so the
+     * stale tag stayed on screen and `dispose()` could never reclaim it, because the teardown only
+     * ever removes what the record holds plus its two anchors.
+     *
+     * The server's own close is the answer, and the run in front of it is what this render did not
+     * ask for. Depth is counted because a block may hold another block, whose close comes first.
+     */
+    let depth = 0;
+    const extra: ChildNode[] = [];
+    for (let node: ChildNode | null = stop; node !== null; node = node.nextSibling) {
+      if (isOpenAnchor(node)) depth++;
+      else if (isCloseAnchor(node)) {
+        if (depth === 0) {
+          for (const spare of extra) spare.remove();
+          this.close = node as Comment;
+          if (__DEV__) reportBlockLengthMismatch(this.owner, extra.length);
+          this.publish();
+          return;
+        }
+        depth--;
+      }
+      extra.push(node);
+    }
+
+    /**
+     * No close anywhere after the cursor: the server never closed this block. Nothing before it can
+     * be trusted as an end, so the region writes its own — without one, `reconcile` and `dispose`
+     * have no boundary to work against and the next render inserts past every other block in a
+     * shared target.
+     */
     this.close = document.createComment(closeAnchor(this.id));
     parent.insertBefore(this.close, stop);
     this.publish();

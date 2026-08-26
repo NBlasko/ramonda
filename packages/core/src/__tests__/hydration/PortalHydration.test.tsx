@@ -376,6 +376,53 @@ describe("Portal hydration restores components", () => {
 });
 
 describe("a comment that only looks like an anchor", () => {
+  test("a client render SHORTER than the server's leaves nothing outside the block", async () => {
+    /**
+     * The third outcome the adoption did not have: the walk stops on a leftover SERVER node that is
+     * still INSIDE the block. A fresh close anchor minted in front of it puts every remaining server
+     * node — and the server's own close — OUTSIDE the region, where the stale markup stays on screen
+     * and `dispose()` can never reach it.
+     *
+     * This is the same divergence the component path handles in `closeBlock`, one level up.
+     */
+    let onServer = true;
+
+    class Page extends Component {
+      portal = this.use(Portal, () => ({
+        children: onServer
+          ? [<meta name="a" content="x" />, <meta name="b" content="x" />]
+          : [<meta name="a" content="x" />],
+        target: document.head,
+      }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+    expect(document.head.querySelectorAll('meta[name="b"]')).toHaveLength(1);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    onServer = false;
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // One block, one close, and the child this render did not ask for is gone rather than stranded.
+    expect(headPortalBlocks()).toHaveLength(1);
+    expect([...document.head.childNodes].filter(isCloseAnchor)).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="a"]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="b"]')).toHaveLength(0);
+
+    // And what is left is the block's own: the teardown takes it.
+    unmountChildrenNodes([container as unknown as never]);
+    expect(document.head.querySelectorAll("meta")).toHaveLength(0);
+    container.remove();
+  });
+
   test("a block the server never closed is closed by the client that adopts it", async () => {
     /**
      * The closing anchor gone from the served markup — a truncated response, or a sanitizer that
