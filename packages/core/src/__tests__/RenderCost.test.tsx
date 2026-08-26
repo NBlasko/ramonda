@@ -45,7 +45,13 @@ function countDom() {
     };
   }
 
-  // Text updates go through `data`, which is an accessor rather than a method.
+  /**
+   * Text updates are accessors rather than methods, and there are two of them.
+   *
+   * `textContent` is the one the diff writes — `data` was patched alone here, so every `text: 0`
+   * in this file was true of a counter nothing incremented. A meter that cannot go up is not a
+   * measurement.
+   */
   const data = Object.getOwnPropertyDescriptor(CharacterData.prototype, "data")!;
   Object.defineProperty(CharacterData.prototype, "data", {
     ...data,
@@ -54,12 +60,21 @@ function countDom() {
       data.set!.call(this, value);
     },
   });
+  const textContent = Object.getOwnPropertyDescriptor(Node.prototype, "textContent")!;
+  Object.defineProperty(Node.prototype, "textContent", {
+    ...textContent,
+    set(this: unknown, value: string) {
+      counts.text++;
+      textContent.set!.call(this, value);
+    },
+  });
 
   return {
     counts,
     stop() {
       for (const [owner, name, original] of patched) owner[name] = original;
       Object.defineProperty(CharacterData.prototype, "data", data);
+      Object.defineProperty(Node.prototype, "textContent", textContent);
     },
   };
 }
@@ -471,6 +486,58 @@ describe("what a component costs, against the same markup without one", () => {
     await dom.settle();
 
     expect(recorded(dom.container)).toEqual(["div", "ul"]);
+    dom.unmount();
+  });
+
+  /**
+   * A component re-rendering ITSELF, with a big list inside it that nothing asked about.
+   *
+   * This is the path that has no parent above it doing the work: the region reconciles its own
+   * entries and puts its own run of nodes back in order. It reads the run it holds TWICE — once
+   * before, for the position map, once after — and neither reading is cached, which is the whole
+   * point: a cache is right only for the region that last wrote it.
+   *
+   * What that costs is a walk over this region's own entry tree, and a plain element is ONE entry
+   * however much is under it. So the 300 rows are behind the `<ul>` and are never visited, and the
+   * DOM sees exactly the one write the state change asked for. A number above 1 here means the
+   * self-render is moving nodes it has no business moving.
+   */
+  test("a self-render with a list inside it writes only what changed", async () => {
+    class Row extends Component<{ label: string }> {
+      render() {
+        return <li>{this.props.label}</li>;
+      }
+    }
+    class Panel extends Component {
+      @state title = "one";
+      rows = Array.from({ length: 300 }, (_, i) => `row-${i}`);
+      row = (label: string) => <Row label={label} key={label} />;
+      render() {
+        return [<h2 id="title">{this.title}</h2>, <ul id="rows">{list(this.rows, this.row)}</ul>];
+      }
+    }
+
+    const dom = await getDOM<Panel>(<Panel />);
+    await dom.settle();
+    const list300 = dom.container.querySelector("#rows")!;
+    expect(list300.childNodes).toHaveLength(300);
+
+    const counts = await cost(async () => {
+      dom.instance.title = "two";
+      await dom.settle();
+    });
+
+    expect(dom.container.querySelector("#title")!.textContent).toBe("two");
+    expect(counts).toEqual({
+      insertBefore: 0,
+      appendChild: 0,
+      removeChild: 0,
+      setAttribute: 0,
+      removeAttribute: 0,
+      text: 1,
+    });
+    // The same `<ul>`, in the same place, untouched.
+    expect(dom.container.querySelector("#rows")).toBe(list300);
     dom.unmount();
   });
 });
