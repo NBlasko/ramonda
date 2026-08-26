@@ -81,6 +81,15 @@ export const HAS_REGION = Symbol("hasRegion");
  * plain markup, which keeps reading `childNodes` as it always has.
  */
 export const CHILD_RECORD = Symbol("childRecord");
+/**
+ * On a `ChildrenRegion`'s OPENING anchor comment: the closing one.
+ *
+ * A block's record hangs off that same comment, and a reader that finds it needs to know where the
+ * block ends — to insert inside it rather than past every other block in a shared target. The anchor
+ * is a permanent node in the target, so putting both there is what lets an ordinary walk over the
+ * parent's children find a block without anything keeping a registry of live regions.
+ */
+export const BLOCK_CLOSE = Symbol("blockClose");
 export const STATE_KEYS = Symbol("stateKeys");
 /**
  * DEV-only, on a context Consumer: hands the inspector the context keys this consumer reads and

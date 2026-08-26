@@ -271,16 +271,29 @@ export function scanComponentTree(node: Node = document.body, depth = 0): Inspec
    * A list region is walked THROUGH rather than shown. It is not a component and has no state of
    * its own to inspect; its rows are what the panel is looking for.
    */
+  const tree: InspectedNode[] = [];
+
+  /**
+   * A `ChildrenRegion`'s block, published on its opening anchor — a portal's children, the `Head`'s
+   * tags. Its record belongs to the region, so a panel reading only the parent's record showed none
+   * of it: the old DOM walk found those components through a back-reference on a node.
+   */
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block !== undefined) tree.push(...scanEntries(block, depth + 1));
+  }
+
   const record = (node as EnhancedChildNode)[CHILD_RECORD];
   if (record === undefined) {
-    const tree: InspectedNode[] = [];
     for (const child of Array.from(node.childNodes)) {
       if (child.childNodes.length > 0) tree.push(...scanComponentTree(child, depth + 1));
     }
     return tree;
   }
 
-  return scanEntries(record, depth);
+  tree.push(...scanEntries(record, depth));
+  return tree;
 }
 
 function scanEntries(entries: RecordEntry[], depth: number): InspectedNode[] {

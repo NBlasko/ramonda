@@ -5,8 +5,9 @@ import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToBlob } from "./serialize";
 import { PORTAL_ATTR, REQUEST_ATTR, CHILD_RECORD } from "../helpers/constants";
+import { blockCloseOf } from "../core/DiffAndMerge";
 import { componentOpen, componentClose } from "../core/componentMarker";
-import { anchorId, isCloseAnchor, isOpenAnchor, regionBlocks } from "../core/childrenRegion";
+import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
 import { resetHeadRegistry } from "../base/Head";
@@ -99,22 +100,22 @@ async function drainServerWork(work: ServerWork): Promise<void> {
  */
 export function markComponents(node: Node): void {
   /**
-   * A `ChildrenRegion`'s block, marked before anything else.
+   * A `ChildrenRegion`'s block, found where it publishes itself: on its own opening anchor.
    *
    * Its record belongs to the region rather than to the element it writes into — a portal shares its
    * target with the shell and with every other portal — so the walk below cannot reach the components
    * inside it. Without this a portalled component has no marker, and a hydrating client builds a
    * second copy of the whole block beside the server's.
    *
-   * Marked from every call rather than once at the end: `renderToString` marks the body container and
-   * each portal target separately, and a block may sit in any of them. Doing it per block is
-   * idempotent because a marked block's components are still exactly the entries in its record.
+   * Read off the anchor rather than from a registry of live regions. The registry was only emptied by
+   * `dispose`, and nothing disposes a server render's tree, so it grew by one per portal per request
+   * for the life of the process — and this pass rebuilt the whole of it once per DOM node.
    */
-  for (const block of regionBlocks()) {
-    if (block.before.parentNode !== (block.parent as unknown as ParentNode)) continue;
-    if (block.parent === node || node.contains(block.parent)) {
-      markEntries(block.entries, block.parent, block.before);
-    }
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block === undefined) continue;
+    markEntries(block, node, blockCloseOf(child) ?? null);
   }
 
   const record = (node as EnhancedChildNode)[CHILD_RECORD];

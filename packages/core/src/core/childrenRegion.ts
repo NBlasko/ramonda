@@ -12,7 +12,7 @@ import { queuePostCommit } from "./commit";
 import { hydrateLevel, type HydrationWalk } from "../hydration/hydrate";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
-import type { DONE } from "../helpers/constants";
+import { BLOCK_CLOSE, CHILD_RECORD, type DONE } from "../helpers/constants";
 
 /**
  * The comments that delimit a region's block in the DOM, and in the markup a
@@ -102,39 +102,25 @@ export function anchorId(node: Node): string | undefined {
  * own `"7:g0"` from its JSX. Every id comes from one process-wide counter, so an
  * id minted here is one no component can also hold.
  */
-/**
- * Every region currently holding nodes, for the server's marker pass.
- *
- * A region's record is its own — that is the whole point of the class — so a walk over the target
- * element cannot see the components inside it. The server has to mark those too, or a hydrating
- * client finds no marker in a portal and builds a second copy of everything there. A registry rather
- * than a back-reference on the anchor: the pass needs the block's CLOSING anchor to know where the
- * markers go, and only the region knows that.
- */
-const liveRegions = new Set<ChildrenRegion>();
-
-/** What the server's marker pass needs from each live region: its record, and where its block ends. */
-export function regionBlocks(): { entries: RecordEntry[]; parent: ChildNode; before: ChildNode }[] {
-  const blocks: { entries: RecordEntry[]; parent: ChildNode; before: ChildNode }[] = [];
-  for (const region of liveRegions) {
-    const block = region.block();
-    if (block !== undefined) blocks.push(block);
-  }
-  return blocks;
-}
-
 export class ChildrenRegion {
   private readonly id = createId();
   /** What this block held last pass — the region's own `CHILD_RECORD`. */
   private record: RecordEntry[] = [];
   /**
-   * The block's nodes in order, as of last pass.
+   * The nodes this block holds, in order, derived from `record` on every read.
    *
-   * Doubles as the position map for the reorder: the nodes are contiguous and
-   * nothing else moves them, so this IS their DOM order, and reading it back
-   * costs nothing where a walk over a shared parent's children would.
+   * Deliberately not a cached array. A COMPONENT inside this block re-renders on its own, straight
+   * into the record entry it owns, without this region hearing about it — so a list captured when
+   * the region last reconciled is stale the moment a child's state moves, and every reader of it is
+   * then working from a description of a DOM that no longer exists. `dispose()` unmounted the nodes
+   * of the last pass and left the new ones in a target it no longer has an anchor in. Walking the
+   * record instead walks into that child's CURRENT entries, which is the only place the truth is.
    */
-  private order: ChildNode[] = [];
+  private get order(): ChildNode[] {
+    const nodes: ChildNode[] = [];
+    flattenEntries(this.record, nodes);
+    return nodes;
+  }
   private open: Comment | undefined;
   private close: Comment | undefined;
   private parent: ChildNode | undefined;
@@ -152,13 +138,26 @@ export class ChildrenRegion {
       reBuild: () => this.invalidate(),
       name,
     };
-    liveRegions.add(this);
   }
 
-  /** This block, for the server's marker pass — see `regionBlocks`. */
-  block(): { entries: RecordEntry[]; parent: ChildNode; before: ChildNode } | undefined {
-    if (this.parent === undefined || this.close === undefined) return undefined;
-    return { entries: this.record, parent: this.parent, before: this.close };
+  /**
+   * Publishes this block on its own OPENING ANCHOR: the record it holds, and where it ends.
+   *
+   * The record belongs to the region — that is the whole point of the class — so a walk over the
+   * target element cannot see the components inside it, and three readers need to: the server's
+   * marker pass, the devtools tree, and the search an empty component does for its own position.
+   *
+   * On the anchor rather than in a registry of live regions, and that is the fix for two faults at
+   * once. A registry is only emptied by `dispose`, and nothing disposes a server render's tree — so
+   * it grew by one per portal per request for the life of the process, and the marker pass rebuilt
+   * the whole of it once per DOM node. The anchor is a node already in the target: it goes when the
+   * block goes, and an ordinary walk finds it where it is.
+   */
+  private publish(): void {
+    const open = this.open as unknown as EnhancedChildNode | undefined;
+    if (open === undefined) return;
+    open[CHILD_RECORD] = this.record;
+    (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE] = this.close;
   }
 
   /** Brings the block into line with `children`, inside `parent`. */
@@ -172,18 +171,20 @@ export class ChildrenRegion {
     // this region as the origin instead of a component's render.
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
 
+    // Read before the record is replaced: this is where the nodes ARE, and the reorder needs it to
+    // tell a node that has not moved from one that has.
+    const before = this.order;
+
     const unclaimed: (EnhancedChildNode | DONE)[] = [];
     const result = reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost);
     this.record = result.entries;
+    this.publish();
 
     // Before the reorder, for the reason the render path has: stale nodes still
     // in the DOM make correctly-placed ones look misplaced and cause moves.
     unmountChildrenNodes(unclaimed, false);
 
-    const ordered: ChildNode[] = [];
-    flattenEntries(result.entries, ordered);
-    reorderChildren(parent, ordered, this.close!, this.order);
-    this.order = ordered;
+    reorderChildren(parent, this.order, this.close!, before);
   }
 
   /** The nodes this region owns, in order — what a caller needs to move or seed. */
@@ -217,10 +218,7 @@ export class ChildrenRegion {
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
     this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
-
-    const ordered: ChildNode[] = [];
-    flattenEntries(this.record, ordered);
-    this.order = ordered;
+    this.publish();
 
     // Where the walk stopped IS the closing anchor, when the server wrote as many
     // nodes as this render wants. It is not when the client renders more children
@@ -234,6 +232,7 @@ export class ChildrenRegion {
     }
     this.close = document.createComment(closeAnchor(this.id));
     parent.insertBefore(this.close, stop);
+    this.publish();
   }
 
   /**
@@ -243,13 +242,13 @@ export class ChildrenRegion {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    liveRegions.delete(this);
-    if (this.order.length > 0) unmountChildrenNodes(this.order as EnhancedChildNode[], false);
+    const held = this.order;
+    if (held.length > 0) unmountChildrenNodes(held as EnhancedChildNode[], false);
     // The engines are reachable only from the record — the nodes going is not
     // enough, or every item that read an ancestor's signal stays subscribed.
     disposeRegions(this.record);
     this.record = [];
-    this.order = [];
+    this.publish();
     this.open?.remove();
     this.close?.remove();
     this.open = undefined;
@@ -270,6 +269,7 @@ export class ChildrenRegion {
       parent.appendChild(this.open);
       parent.appendChild(this.close);
       this.parent = parent;
+      this.publish();
       return;
     }
     if (this.parent === parent) return;

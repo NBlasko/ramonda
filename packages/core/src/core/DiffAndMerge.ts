@@ -27,6 +27,7 @@ import {
   IS_SVG,
   KEY_SYM,
   SLOT_SYM,
+  BLOCK_CLOSE,
   HAS_REGION,
   COMPONENT_TYPE,
   CHILD_RECORD,
@@ -187,8 +188,31 @@ export function componentsIn(node: Node): BaseComponent[] {
   };
 
   const record = (node as EnhancedChildNode)[CHILD_RECORD];
-  if (record !== undefined) walk(record);
-  else for (const child of Array.from(node.childNodes)) found.push(...componentsIn(child));
+  if (record === undefined) {
+    // No record of its own: the walk goes through the DOM, and a comment child is descended into
+    // like any other — the block published on it is read by the branch below, one level down.
+    for (const child of Array.from(node.childNodes)) found.push(...componentsIn(child));
+    return found;
+  }
+
+  walk(record);
+
+  /**
+   * A `ChildrenRegion`'s block, published on its opening anchor.
+   *
+   * Its record is the region's own, so this node's record does not describe it — a portal writes
+   * into a target it SHARES, and a walk that read only the parent's record lost the portalled
+   * component entirely, where the old DOM walk found it through the back-reference on a node.
+   *
+   * Only on this branch. Where the node has no record the loop above already descends into the
+   * comment, and doing both visited every block twice: the harness reported one portalled component
+   * as two, and the devtools tree drew it twice.
+   */
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block !== undefined) walk(block);
+  }
 
   return found;
 }
@@ -282,27 +306,71 @@ function anchorAfterRegion(region: ComponentRegion, parent: ChildNode, held: rea
   const last = held[held.length - 1];
   if (last !== undefined) return last.nextSibling;
 
-  const record = (parent as EnhancedChildNode)[CHILD_RECORD];
-  if (record === undefined) return null;
+  const own = (parent as EnhancedChildNode)[CHILD_RECORD];
+  if (own !== undefined) {
+    const found = nextNodeAfter(own, region);
+    if (found !== NOT_IN_RECORD) return found;
+  }
 
+  /**
+   * A `ChildrenRegion`'s block, whose record is its own rather than the parent's.
+   *
+   * A portalled component is not in the target's record at all, so the search above cannot find it —
+   * and answering `null` means "the end of the parent", which put the node PAST every other block in
+   * a shared target. It escaped its own anchors, so `dispose()` did not take it away with the rest.
+   *
+   * The block publishes its record on its opening anchor, and the answer inside a block that has
+   * nothing after this region is the block's CLOSE: that is what keeps the node inside its own
+   * anchors, and it is the same node `ChildrenRegion` reorders against.
+   */
+  for (const child of parent.childNodes) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block === undefined) continue;
+    const found = nextNodeAfter(block, region);
+    if (found !== NOT_IN_RECORD) return found ?? blockCloseOf(child) ?? null;
+  }
+
+  return null;
+}
+
+/** The closing anchor of the block published on this opening one. See `BLOCK_CLOSE`. */
+export function blockCloseOf(open: Node): ChildNode | undefined {
+  return (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE];
+}
+
+/** Says the region is not in this record at all, which is not the same as "nothing follows it". */
+const NOT_IN_RECORD = Symbol("notInRecord");
+
+/**
+ * The first node after `region` within `entries`, `null` when it is there with nothing after it, and
+ * `NOT_IN_RECORD` when it is not in this record.
+ *
+ * The three answers have to be told apart. Collapsing the last two into `null` is what let a
+ * portalled component — absent from the parent's record — be read as "found, and last", which is an
+ * append at the end of the parent.
+ */
+function nextNodeAfter(entries: RecordEntry[], region: ComponentRegion): ChildNode | null | typeof NOT_IN_RECORD {
   let passed = false;
-  const walk = (entries: RecordEntry[]): ChildNode | null => {
-    for (const entry of entries) {
+
+  const walk = (level: RecordEntry[]): ChildNode | null | typeof NOT_IN_RECORD => {
+    for (const entry of level) {
       if (entry === (region as RecordEntry)) {
         passed = true;
         continue;
       }
       if (isRegion(entry)) {
         const found = walk(entry.entries);
-        if (found !== null) return found;
+        if (found !== NOT_IN_RECORD) return found;
         continue;
       }
       if (passed) return entry;
     }
-    return null;
+    return passed ? null : NOT_IN_RECORD;
   };
 
-  return walk(record);
+  const answer = walk(entries);
+  return passed ? answer : NOT_IN_RECORD;
 }
 
 /**
