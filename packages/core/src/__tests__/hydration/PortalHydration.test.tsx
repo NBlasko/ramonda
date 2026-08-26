@@ -314,10 +314,9 @@ describe("Portal hydration", () => {
 describe("Portal hydration restores components", () => {
   test("a component inside a portal keeps the state the server gave it", async () => {
     // The portal's block is in a target the main hydration walk never visits, so
-    // adopting it used to mean "reuse the element" and nothing more: the node
-    // carried no `_componentInstance`, so the reconcile CREATED a component
-    // against it. A fresh instance means the server's `@created` never ran here
-    // and its state is gone — the tag stays, its contents revert.
+    // adopting it used to mean "reuse the element" and nothing more: no node says a component is
+    // here, so the reconcile CREATED one against it. A fresh instance means the server's `@created`
+    // never ran here and its state is gone — the tag stays, its contents revert.
     //
     // `n` is set by a SERVER-only create, so it can only reach the client through
     // the blob. Reading 0 back means the component was rebuilt, not hydrated.

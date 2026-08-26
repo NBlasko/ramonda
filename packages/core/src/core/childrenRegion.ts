@@ -200,9 +200,9 @@ export class ChildrenRegion {
    * everything under a parent. That is the whole reason it exists: a portalled
    * COMPONENT is only restored if `hydrateComponent` runs on it, reading the
    * state blob off its host and adopting it as the instance's own. Reusing the
-   * element and reconciling against it is not the same thing — the node carries
-   * no `_componentInstance`, so the diff builds a fresh component, the server's
-   * `@created` never happened on this side, and its state is gone.
+   * element and reconciling against it is not the same thing — no node says a component is here, so
+   * the diff builds a fresh one, the server's `@created` never happened on this side, and its state
+   * is gone.
    *
    * The server's own anchors are REUSED rather than replaced. Their ids belong to
    * the server's regions and will not match this one's, but an id is only ever

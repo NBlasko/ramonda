@@ -1402,8 +1402,8 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
  * so a slot does not shift under its siblings and the unkeyed case is stable in practice.
  *
  * A DIFFERENT class in the same slot is not an adoption: the previous region is left in
- * `previousRegions` to be disposed, and a fresh component is built. That is the rule
- * `_componentDefinition !== vnode.name` used to enforce on a node.
+ * `previousRegions` to be disposed, and a fresh component is built. The region names the class it was
+ * built from, which is what makes that answerable without a node to read it off.
  */
 function reconcileComponentEntry(
   vnode: VNodeComponent,
@@ -1496,7 +1496,23 @@ function findIndexOfSimilarNodes(
  */
 export function disposeRegions(entries: RecordEntry[]): void {
   for (const entry of entries) {
-    if (!isRegion(entry)) continue;
+    if (!isRegion(entry)) {
+      /**
+       * A plain node, which may hold whole components deeper down — and they have to go FIRST.
+       *
+       * An element between two components is not a region: it is one node in this record, keeping a
+       * record of its own for the components among ITS children, and an element with none keeps no
+       * record at all, so the search goes through the DOM. Skipping it left every such component to
+       * whatever removed the nodes afterwards, which runs after this — so a child's `@destroyed` ran
+       * after its parent's. Measured on `<Middle><div><Leaf/></div></Middle>`: `["middle", "leaf"]`,
+       * where a teardown can only be written against `["leaf", "middle"]`.
+       *
+       * Every caller of this is dropping the nodes it passes, so the node's own teardown belongs
+       * here, and running it twice is harmless — the record is cleared as it goes.
+       */
+      unmountNodeInPlace(entry);
+      continue;
+    }
     // Regions nest, and only the outermost is reachable from the record. Inside-out: a child's
     // `@destroyed` must run while its parent is still standing, which is the order the DOM walk
     // gave when a component was an element and its children were under it.
@@ -1506,11 +1522,10 @@ export function disposeRegions(entries: RecordEntry[]): void {
       /**
        * This is where a component is torn down now — not the DOM walk.
        *
-       * `unmountNodeInPlace` finds a component by reading `_componentInstance` off a node, and a
-       * component has no node of its own any more: it may own two, or none. The record is the only
-       * thing that knows an instance is here, so the record is what has to release it. Reached from
-       * every path that drops nodes, because each one already calls `releaseChildRecord` or
-       * `disposeRegions` on what it drops.
+       * A component has no node of its own: it may own two, or none, so there is nothing to hang a
+       * back-reference off and a DOM walk cannot find one. The record is the only thing that knows an
+       * instance is here, so the record is what releases it. Reached from every path that drops nodes,
+       * because each one already calls `releaseChildRecord` or `disposeRegions` on what it drops.
        */
       lifecycleCleanupManagement(entry.instance);
       continue;
@@ -1568,12 +1583,6 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
 
   releaseRef(node);
   releaseChildRecord(node);
-
-  const component = node._componentInstance;
-  if (component) {
-    lifecycleCleanupManagement(component);
-    node._componentInstance = undefined;
-  }
 }
 
 function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNode>) {
@@ -1584,13 +1593,6 @@ function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNod
 
     releaseRef(child);
     releaseChildRecord(child);
-
-    const component = child._componentInstance;
-
-    if (component) {
-      lifecycleCleanupManagement(component);
-      child._componentInstance = undefined;
-    }
   }
 }
 

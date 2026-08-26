@@ -56,8 +56,8 @@ afterEach(() => {
 /**
  * The component whose markup this node is part of, typed.
  *
- * What `node._componentInstance` used to be. A component owns a RANGE of nodes now, so there is no
- * node to hang a back-reference off and the answer comes from the child record — see `componentAt`.
+ * A component owns a RANGE of nodes, so there is no node to hang a back-reference off: the answer
+ * comes from the child record — see `componentAt`.
  * It THROWS rather than returning `undefined`, because a test asking this has already decided a
  * component is there and a `!` on the answer would only move the failure somewhere less useful.
  */

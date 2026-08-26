@@ -10,8 +10,6 @@ import type { RenderEnv } from "../core/renderEnv";
 export type { RenderEnv };
 
 interface EnhancedElement {
-  _componentInstance?: BaseComponent<unknown>;
-  _componentDefinition?: ComponentClassKind;
   /**
    * What was attached, so it can be removed again — and `EventListener` rather than `any` because that
    * is the only thing put in or taken out: `Attribute.ts` hands each value straight to

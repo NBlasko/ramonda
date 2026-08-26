@@ -264,7 +264,7 @@ export function scanComponentTree(node: Node = document.body, depth = 0): Inspec
    * The CHILD RECORD is the tree, not the DOM.
    *
    * A component has no element of its own: it may own two nodes, or none, so there is nothing to
-   * read a `_componentInstance` back-reference off. The record is what says a component is here and
+   * read a back-reference off. The record is what says a component is here and
    * which nodes are its own — and it is the only thing that can show a component that renders
    * nothing at all, which the DOM walk could never have found.
    *
