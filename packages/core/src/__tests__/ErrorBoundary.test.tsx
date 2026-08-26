@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest";
 import { getDOM, findAll } from "../test/setup";
 import { Component } from "../base/Component";
-import { state, destroyed as destroyedDecorator } from "../base/decorators";
+import { state, created, interval, destroyed as destroyedDecorator } from "../base/decorators";
+import { list } from "../base/list";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 
 describe("ErrorBoundary", () => {
@@ -144,6 +145,68 @@ describe("ErrorBoundary", () => {
     expect(app.container.querySelector("#fallback")).not.toBeNull();
     expect(app.container.querySelector("#child")).toBeNull();
     expect(destroyed).toEqual(["Child"]);
+  });
+
+  test("a sibling built BEFORE the throw is torn down, not left ticking", async () => {
+    /**
+     * The throw comes from the list's mapper, after the component in front of it has already been
+     * built. That component is only in the entries of the pass that threw, and a pass that throws
+     * never returns them — so no record points at it, and `disposeRegions` walks records.
+     *
+     * Measured before the fix: `@created` had run, its `@interval` fired 8 times while the page
+     * showed the fallback, `@destroyed` never ran, and it went on ticking after the whole root was
+     * unmounted. A leak for the life of the page.
+     */
+    const events: string[] = [];
+    let ticks = 0;
+
+    class Early extends Component {
+      @created({ env: "shared" }) hi() {
+        events.push("created");
+      }
+      @destroyedDecorator bye() {
+        events.push("destroyed");
+      }
+      @interval(5) beat() {
+        ticks++;
+      }
+      render() {
+        return <b id="early">early</b>;
+      }
+    }
+
+    class Broken extends Component {
+      render() {
+        return [
+          <Early />,
+          list([1, 2], () => {
+            throw new Error("mapper boom");
+          }),
+        ];
+      }
+    }
+
+    class App extends Component {
+      render() {
+        return (
+          <ErrorBoundary fallback={() => <i id="fb">fallback</i>}>
+            <Broken />
+          </ErrorBoundary>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(app.container.querySelector("#fb")).not.toBeNull();
+    expect(app.container.querySelector("#early")).toBeNull();
+    expect(events).toEqual(["created", "destroyed"]);
+
+    // And nothing it armed is still running: an interval this component started must be out.
+    ticks = 0;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(ticks).toBe(0);
   });
 
   test("a child that throws on a LATER render is torn down, not left behind", async () => {

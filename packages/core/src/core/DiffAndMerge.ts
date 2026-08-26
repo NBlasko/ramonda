@@ -919,6 +919,23 @@ export function reconcileEntries(
    */
   let displacedRegions: (ListRegion | ComponentRegion)[] | undefined;
 
+  /**
+   * Components this pass BUILT, so a throw can take them back down.
+   *
+   * A pass that throws never returns its entries, so everything new in them is unreachable: no
+   * record points at it, and `disposeRegions` only ever walks a record. Their `@created` has already
+   * run and their queued `@mounted` and effects still would, so they arm timers and subscribe to
+   * signals and then leak for the life of the page. Measured on a component built before a list
+   * whose mapper threw: its `@interval` fired 8 times while the page showed a fallback, `@destroyed`
+   * never ran, and it went on ticking after the whole root was unmounted.
+   *
+   * Only the ones whose INSTANCE is new — an adopted region is still in the caller's old record,
+   * which stands unchanged when the pass throws, and tearing that down would kill a live component
+   * the page is still showing. `undefined` until something is built, so an ordinary render that
+   * claims everything allocates nothing.
+   */
+  let born: ComponentRegion[] | undefined;
+
   for (const entry of previous) {
     if (!isRegion(entry)) {
       cloneChildren.push(entry);
@@ -943,6 +960,24 @@ export function reconcileEntries(
   let changed = false;
   let plainIndex = 0;
 
+  try {
+    reconcileChildren();
+  } catch (e) {
+    /**
+     * The pass is over and its entries are going nowhere, so what it BUILT has to come back down
+     * here — see `born`. Everything else it touched is still described by the record the caller
+     * keeps, which this throw leaves exactly as it was.
+     */
+    if (born !== undefined) {
+      const orphans: (EnhancedChildNode | DONE)[] = [];
+      for (const region of born) collectRegionNodes(region, orphans);
+      unmountChildrenNodes(orphans, false);
+      disposeRegions(born);
+    }
+    throw e;
+  }
+
+  function reconcileChildren(): void {
   for (let i = 0; i < children.length; i++) {
     const rawVchild = children[i];
 
@@ -1044,6 +1079,8 @@ export function reconcileEntries(
         }
       }
 
+      if (region !== before) (born ??= []).push(region);
+
       entries.push(region);
       if (previous[entries.length - 1] !== region) changed = true;
       continue;
@@ -1073,6 +1110,7 @@ export function reconcileEntries(
       entries.push(placed as EnhancedChildNode);
       if (previous[entries.length - 1] !== placed) changed = true;
     }
+  }
   }
 
   // A region this render no longer asks for — a list that is gone, a component that is gone — and

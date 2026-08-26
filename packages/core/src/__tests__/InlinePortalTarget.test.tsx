@@ -31,16 +31,21 @@ class Pinned extends Component {
 
 class Page extends Component {
   @state tick = 0;
-  /** A plain field: an element is not state, and the tick is what re-runs the factory. */
-  slot: Element | undefined;
+  /**
+   * A plain field, and the tick is what re-runs the props factory — a target change is noticed
+   * through the same `children` signal. It starts detached because the element this portal is aimed
+   * at does not exist until the first render has produced it.
+   */
+  slot: Element = document.createElement("div");
 
   portal = this.use(Portal, (self: Page) => ({
     children: <Pinned />,
-    target: self.tick >= 0 ? self.slot : undefined,
+    target: self.tick >= 0 ? self.slot : self.slot,
   }));
 
   @mounted({ env: "client" }) aim() {
-    this.slot = document.querySelector("#slot") ?? undefined;
+    const found = document.querySelector("#slot");
+    if (found) this.slot = found;
     this.tick++;
   }
 
