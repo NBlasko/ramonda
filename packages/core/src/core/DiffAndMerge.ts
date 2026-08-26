@@ -1132,6 +1132,27 @@ export function firstNodeOf(entries: RecordEntry[]): ChildNode | undefined {
   return undefined;
 }
 
+/**
+ * Tells every region under `entries` which DOM parent it is in now, at any depth.
+ *
+ * A `ComponentRegion` carries its parent because a self-render has no one above it to be told the
+ * answer by — see `refreshComponentRegion`. The diff refreshes that field on the regions it VISITS,
+ * and a nested one is not visited unless its own props changed, so a block that MOVES has to say so
+ * itself: a component that renders a component puts one region inside another with no element
+ * between them, and a target change does not touch either one's props.
+ *
+ * Measured: after a portal moved from one target to another, the inner region still held the old
+ * element, and its next self-render called `insertBefore` on a parent the nodes had left —
+ * `NotFoundError: The child can not be found in the parent`.
+ */
+export function reparentRegions(entries: RecordEntry[], parent: ChildNode): void {
+  for (const entry of entries) {
+    if (!isRegion(entry)) continue;
+    if (isComponentRegion(entry)) entry.parent = parent;
+    reparentRegions(entry.entries, parent);
+  }
+}
+
 export function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
   for (const entry of entries) {
     if (isRegion(entry)) flattenEntries(entry.entries, out);

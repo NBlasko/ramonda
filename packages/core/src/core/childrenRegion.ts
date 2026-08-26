@@ -6,6 +6,7 @@ import {
   disposeRegions,
   unmountChildrenNodes,
   reorderChildren,
+  reparentRegions,
 } from "./DiffAndMerge";
 import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
@@ -311,6 +312,7 @@ export class ChildrenRegion {
     for (const node of this.order) parent.appendChild(node);
     parent.appendChild(this.close);
     this.parent = parent;
+    reparentRegions(this.record, parent);
   }
 
   /**
