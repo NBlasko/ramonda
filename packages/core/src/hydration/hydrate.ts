@@ -805,10 +805,32 @@ function hydrationFallback(
     );
   }
   const fresh = diffAndMerge(vnode, placeholder, undefined);
-  if (existingNode) {
-    parent.replaceChild(fresh, existingNode);
-  } else {
+
+  /**
+   * Replaced only when the node in the way is CONTENT. A comment is structure — a component's
+   * marker, or a block's anchor — and replacing one deletes the answer to "where does this run
+   * end", which nothing can work out again.
+   *
+   * The cursor is a closing marker exactly when the client renders one child MORE than the server
+   * did, which is an ordinary divergence. Replacing it left the block with no close of its own, so
+   * `closeBlock` took the ENCLOSING component's close for its own and removed everything in
+   * between: the next sibling's opening marker, its nodes and its state blob. That sibling was then
+   * reached with no marker at all, built fresh, and the server's state thrown away. Measured on a
+   * component that rendered one extra `<i>`: its neighbour went from `sib42` to `sib0` and its
+   * `shared` `@created` ran a second time.
+   *
+   * Text and components have always inserted in front of the cursor here; this is the path that
+   * did not.
+   */
+  if (existingNode === null) {
     parent.appendChild(fresh);
+  } else if (existingNode.nodeType === 8) {
+    parent.insertBefore(fresh, existingNode);
+    // The marker still belongs to whoever owns it, so the walk must not step past it: it is the
+    // node the caller has to see next.
+    return existingNode;
+  } else {
+    parent.replaceChild(fresh, existingNode);
   }
   return nextOf(fresh as EnhancedChildNode);
 }

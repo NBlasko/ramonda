@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { state, mounted } from "../../base/decorators";
+import { state, mounted, created } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
@@ -414,6 +414,67 @@ describe("hydration mismatch (RMD007)", () => {
     expect(container.querySelectorAll("#inner")).toHaveLength(1);
     expect(container.querySelectorAll("#after")).toHaveLength(1);
     container.remove();
+  });
+
+  test("an extra element at the END of a component's run keeps its sibling whole", async () => {
+    /**
+     * The mirror of the shorter-render case, and the worse of the two.
+     *
+     * The client renders one child MORE than the server did, and that child's cursor is the
+     * component's OWN closing marker. Replacing it — which is what the element path did, while text
+     * and components insert in front of it — leaves the block with no close of its own, so the walk
+     * takes the ENCLOSING component's close for its own and removes everything in between: the next
+     * sibling's opening marker, its nodes and its state blob. That sibling is then reached with no
+     * marker at all, so a fresh instance is built and the server's state is thrown away.
+     */
+    const createdOn: string[] = [];
+
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>] : [<b>one</b>, <i>two</i>];
+      }
+    }
+
+    class Sib extends Component {
+      @state n = 0;
+      @created({ env: "server" }) load() {
+        this.n = 42;
+      }
+      @created({ env: "shared" }) note() {
+        createdOn.push(SIDE);
+      }
+      render() {
+        return <span id="sib">sib{String(this.n)}</span>;
+      }
+    }
+
+    class Middle extends Component {
+      render() {
+        return [<Inner />, <Sib />];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Middle />
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    expect(container.querySelector("#sib")!.textContent).toBe("sib42");
+    createdOn.length = 0;
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    // The extra child is in, and the sibling after it is the one the server sent: same state, and
+    // its `shared` @created did not run a second time.
+    expect(container.innerHTML).toBe('<div><b>one</b><i>two</i><span id="sib">sib42</span></div>');
+    expect(createdOn).toEqual([]);
   });
 
   test("a child the server never wrote is built and appended", async () => {
