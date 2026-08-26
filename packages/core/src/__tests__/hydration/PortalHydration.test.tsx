@@ -376,6 +376,46 @@ describe("Portal hydration restores components", () => {
 });
 
 describe("a comment that only looks like an anchor", () => {
+  test("a block the server never closed is closed by the client that adopts it", async () => {
+    /**
+     * The closing anchor gone from the served markup — a truncated response, or a sanitizer that
+     * strips comments. The walk then has nothing to stop on, and the region has to write its own
+     * close before it can insert anything: without one, `reconcile` and `dispose` have no end to
+     * work against and the next render puts nodes past every other block in the target.
+     */
+    class Page extends Component {
+      portal = this.use(Portal, () => ({
+        children: <meta name="unclosed" content="v" />,
+        target: document.head,
+      }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    expect(page.head).toMatch(/<!--\/r\d+-->/);
+    document.head.insertAdjacentHTML("beforeend", page.head.replace(/<!--\/r\d+-->/, ""));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // One opening anchor, one closing anchor, and the server's tag between them — adopted, not
+    // duplicated.
+    expect(headPortalBlocks()).toHaveLength(1);
+    expect([...document.head.childNodes].filter(isCloseAnchor)).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="unclosed"]')).toHaveLength(1);
+
+    // And the block owns what it adopted: the teardown takes the tag with it.
+    unmountChildrenNodes([container as unknown as never]);
+    expect(document.head.querySelectorAll('meta[name="unclosed"]')).toHaveLength(0);
+    container.remove();
+  });
+
   test("does not swallow the shell's head, or hide a real block", async () => {
     // A portal's block is delimited by comments, and a shell is entitled to have
     // one that reads the same way. Two ways of pairing them were wrong, and both

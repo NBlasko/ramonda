@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, findAll } from "../test/setup";
 import { Component } from "../base/Component";
+import { state, destroyed as destroyedDecorator } from "../base/decorators";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 
 describe("ErrorBoundary", () => {
@@ -102,5 +103,94 @@ describe("ErrorBoundary", () => {
 
     expect(container.textContent).toContain("recovered");
     expect(container.querySelector("button")).toBeNull();
+  });
+
+  test("a child that throws in its OWN re-render reaches the boundary", async () => {
+    /**
+     * A component re-rendering itself is not reached through its parent, so nothing above it is
+     * inside a build that could catch the throw — this is the path with no parent on the stack.
+     */
+    const destroyed: string[] = [];
+
+    class Child extends Component {
+      @state broken = false;
+      @destroyedDecorator gone() {
+        destroyed.push("Child");
+      }
+      render() {
+        if (this.broken) throw new Error("boom in my own render");
+        return <p id="child">child</p>;
+      }
+    }
+
+    class App extends Component {
+      render() {
+        return (
+          <div id="shell">
+            <ErrorBoundary fallback={() => <p id="fallback">fallback</p>}>
+              <Child />
+            </ErrorBoundary>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    const child = findAll<Child>(app.container, "Child")[0]!;
+
+    child.broken = true;
+    await app.settle();
+
+    expect(app.container.querySelector("#fallback")).not.toBeNull();
+    expect(app.container.querySelector("#child")).toBeNull();
+    expect(destroyed).toEqual(["Child"]);
+  });
+
+  test("a child that throws on a LATER render is torn down, not left behind", async () => {
+    /**
+     * The first render worked, so there is a live region — an instance with state, hooks and a
+     * lifecycle, and a run of nodes in the parent. The throw drops the child from this render, and
+     * that region is nobody else's to find: it has already been taken out of the index the teardown
+     * pass walks, so it has to be disposed by hand right there.
+     *
+     * Left undone, the nodes stay in the page under the fallback and `@destroyed` never runs.
+     */
+    let shouldThrow = false;
+    const destroyed: string[] = [];
+
+    class Child extends Component<{ tick: number }> {
+      @destroyedDecorator gone() {
+        destroyed.push("Child");
+      }
+      render() {
+        if (shouldThrow) throw new Error("boom on the second pass");
+        return <p id="child">child {this.props.tick}</p>;
+      }
+    }
+
+    class App extends Component {
+      @state tick = 0;
+      render() {
+        return (
+          <div id="shell" data-tick={String(this.tick)}>
+            <ErrorBoundary fallback={() => <p id="fallback">fallback</p>}>
+              <Child tick={this.tick} />
+            </ErrorBoundary>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    expect(app.container.querySelector("#child")).not.toBeNull();
+
+    shouldThrow = true;
+    app.instance.tick++;
+    await app.settle();
+
+    expect(app.container.querySelector("#fallback")).not.toBeNull();
+    expect(app.container.querySelector("#child")).toBeNull();
+    // The instance really went: its region was disposed rather than dropped on the floor.
+    expect(destroyed).toEqual(["Child"]);
   });
 });
