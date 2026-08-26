@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { getDOM, findAll } from "../test/setup";
+import { getDOM, findAll, servedMarkup } from "../test/setup";
 import { state, destroyed, mounted } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Portal } from "../base/Portal";
@@ -29,6 +29,12 @@ class Pinned extends Component {
   }
 }
 
+class Own extends Component {
+  render() {
+    return <b id="own">own</b>;
+  }
+}
+
 class Page extends Component {
   @state tick = 0;
   /**
@@ -52,7 +58,9 @@ class Page extends Component {
   render() {
     return (
       <div id="body">
-        <section id="slot" />
+        <section id="slot">
+          <Own />
+        </section>
         <p id="t">{String(this.tick)}</p>
       </div>
     );
@@ -83,5 +91,29 @@ describe("a portal aimed inside its owner's render", () => {
     findAll<Pinned>(app.container, "Pinned")[0]!.n = 7;
     await app.settle();
     expect(slot.querySelector("#pin")!.textContent).toBe("pin7");
+  });
+
+  test("the server's markers wrap each range without swallowing the block", async () => {
+    /**
+     * The element that hosts the block also has a record of its own, and the marker pass walks
+     * BACKWARDS from the end of the parent — so a component whose nodes come before the block would
+     * put its closing marker past the block's anchors and read the whole block as part of its own
+     * range. The pass reaches a block where it is published, on its opening anchor, and marks it
+     * within its own bounds.
+     */
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+
+    const slot = app.container.querySelector("#slot")!;
+    const markup = servedMarkup(slot as HTMLElement, { state: false }).replace(/r\d+/g, "rN");
+
+    /**
+     * Its own component's markers, then the block's anchors with the portalled component's markers
+     * inside them. Neither pair straddles the other — which is the claim; the numbering is not, and
+     * the block is numbered first because the pass reaches it first. Nothing matches on the number.
+     */
+    expect(markup).toBe(
+      '<!--c1--><b id="own">own</b><!--/c1--><!--rN--><!--c0--><span id="pin">pin0</span><!--/c0--><!--/rN-->',
+    );
   });
 });

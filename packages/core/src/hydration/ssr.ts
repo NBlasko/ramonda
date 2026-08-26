@@ -1,6 +1,7 @@
-import { mountRoot, isRegion, isComponentRegion } from "../core/DiffAndMerge";
+import { mountRoot, isRegion, isComponentRegion, flattenEntries } from "../core/DiffAndMerge";
 import type { ComponentRegion, EnhancedChildNode, RecordEntry } from "../types/vdom";
 import { ServerRedirect } from "./serverRedirect";
+import { escapeText } from "./escape";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToBlob } from "./serialize";
@@ -123,7 +124,31 @@ export function markComponents(node: Node): void {
     for (const child of Array.from(node.childNodes)) markComponents(child);
     return;
   }
-  markEntries(record, node, null);
+  markEntries(record, node, afterOwnNodes(node, record));
+}
+
+/**
+ * Where this element's OWN markup ends — which is not the end of the element.
+ *
+ * The pass walks backwards, and a component whose nodes are last in the record had its closing
+ * marker put at the end of the PARENT. That is the same node only while the element holds nothing
+ * else, and it may host a block it does not own: a `Portal` aimed at a node in the owner's own
+ * render, or the `Head` hook's tags in a head that also holds the shell's.
+ *
+ * Measured on a `<section>` that rendered one component and hosted an inline portal:
+ * `<!--c1--><b id="own">own</b><!--rN--><!--c0-->…<!--/c0--><!--/rN--><!--/c1-->` — the component's
+ * range swallowed the whole block, so a hydrating client would read the portal's content as that
+ * component's own and take it apart.
+ *
+ * The record knows what this element's nodes are, so the node AFTER the last of them is the answer.
+ * With no nodes at all, everything in the parent belongs to something else and the markers go in
+ * front of all of it.
+ */
+function afterOwnNodes(parent: Node, record: RecordEntry[]): ChildNode | null {
+  const own: ChildNode[] = [];
+  flattenEntries(record, own);
+  const last = own[own.length - 1];
+  return last !== undefined ? last.nextSibling : parent.firstChild;
 }
 
 /**
@@ -649,7 +674,7 @@ function collectPortals(): Record<string, string> {
 function serializeNode(node: Node): string {
   if (node.nodeType === 1) return (node as Element).outerHTML;
   if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`;
-  return (node as Text).data ?? "";
+  return escapeText((node as Text).data ?? "");
 }
 
 /** Clears the tags a previous `Head` left behind, the portal blocks, and the title. */
