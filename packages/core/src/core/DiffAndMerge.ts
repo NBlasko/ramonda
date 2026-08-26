@@ -349,11 +349,22 @@ const NOT_IN_RECORD = Symbol("notInRecord");
  * The three answers have to be told apart. Collapsing the last two into `null` is what let a
  * portalled component — absent from the parent's record — be read as "found, and last", which is an
  * append at the end of the parent.
+ *
+ * The search is over the record in DOCUMENT order, and it does not stop at the level the region sits
+ * on: a nested region that holds the region and nothing after it answers nothing, and the answer is
+ * then the next entry of the level ABOVE. Reading that "nothing" as the final answer is what made an
+ * empty component one level down append past its owner's later siblings — measured on
+ * `<div><Wrapper /><u>after</u></div>`, where `Wrapper` renders the empty component and its first
+ * markup landed as `<u>after</u><b>here</b>`.
+ *
+ * So `walk` returns a NODE or nothing, and whether the region was seen at all is `passed`, which is
+ * shared across the levels — the same flag that keeps a node BEFORE the region from being returned by
+ * a recursion into an earlier sibling region.
  */
 function nextNodeAfter(entries: RecordEntry[], region: ComponentRegion): ChildNode | null | typeof NOT_IN_RECORD {
   let passed = false;
 
-  const walk = (level: RecordEntry[]): ChildNode | null | typeof NOT_IN_RECORD => {
+  const walk = (level: RecordEntry[]): ChildNode | null => {
     for (const entry of level) {
       if (entry === (region as RecordEntry)) {
         passed = true;
@@ -361,12 +372,12 @@ function nextNodeAfter(entries: RecordEntry[], region: ComponentRegion): ChildNo
       }
       if (isRegion(entry)) {
         const found = walk(entry.entries);
-        if (found !== NOT_IN_RECORD) return found;
+        if (found !== null) return found;
         continue;
       }
       if (passed) return entry;
     }
-    return passed ? null : NOT_IN_RECORD;
+    return null;
   };
 
   const answer = walk(entries);

@@ -158,4 +158,76 @@ describe("a component in a portal", () => {
       document.title = "";
     }
   });
+
+  /**
+   * The block's record is the only place a portalled component appears, and the search over it is a
+   * search in document order: one level down, "nothing after me in my owner" is not the answer.
+   *
+   * The shape of the last two comment-only assertions: `|` is an anchor, so a block that holds an
+   * empty component reads `||` and the node has to land between them.
+   */
+  const shape = (el: Element) =>
+    [...el.childNodes]
+      .map((n) => (n.nodeType === 8 ? "|" : `<${n.nodeName.toLowerCase()}>`))
+      .join("");
+
+  test("one level deeper in the block, with a sibling after its owner", async () => {
+    class Late extends Component {
+      @state shown = false;
+      render() {
+        return this.shown ? <b id="late">late</b> : null;
+      }
+    }
+    class Wrap extends Component {
+      render() {
+        return <Late />;
+      }
+    }
+    class Page extends Component {
+      portal = this.use(Portal, () => ({ children: [<Wrap />, <u id="after">after</u>], target }));
+      render() {
+        return <div id="body">body</div>;
+      }
+    }
+
+    const { settle } = await getDOM(<Page />);
+    expect(shape(target)).toBe("|<u>|");
+
+    findAll<{ shown: boolean }>(target, "Late")[0]!.shown = true;
+    await settle();
+
+    // Inside the block AND before its own sibling — not after it, and not past the closing anchor.
+    expect(shape(target)).toBe("|<b><u>|");
+  });
+
+  test("last in its block, with a second block after it in the same target", async () => {
+    class Late extends Component {
+      @state shown = false;
+      render() {
+        return this.shown ? <b id="late">late</b> : null;
+      }
+    }
+    class Wrap extends Component {
+      render() {
+        return <Late />;
+      }
+    }
+    class Page extends Component {
+      first = this.use(Portal, () => ({ children: <Wrap />, target }));
+      second = this.use(Portal, () => ({ children: <i id="other">other</i>, target }));
+      render() {
+        return <div id="body">body</div>;
+      }
+    }
+
+    const { settle } = await getDOM(<Page />);
+    expect(shape(target)).toBe("|||<i>|");
+
+    findAll<{ shown: boolean }>(target, "Late")[0]!.shown = true;
+    await settle();
+
+    // Its own close is the answer here: the node stays in the first block rather than joining the
+    // second one's contents.
+    expect(shape(target)).toBe("|<b>||<i>|");
+  });
 });
