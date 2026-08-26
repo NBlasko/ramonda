@@ -236,6 +236,44 @@ describe("a throw while hydrating", () => {
     expect(container.innerHTML).toBe('<div id="shell"><i id="fb">fb</i><b id="after">after</b></div>');
   });
 
+  test("a component the server never wrote, whose render also throws", async () => {
+    /**
+     * The one branch of the adoption that has no block to take out: the client renders a component
+     * where the server wrote no marker, so it is BUILT — and the build throws.
+     *
+     * `buildComponentRegion`'s own catch releases the instance and rethrows, and there is nothing of
+     * this component's in the markup to remove, so all that is left is to put the error where the
+     * build path puts it. Written because it is the error path of the repair above, and a repair's
+     * own error path is where the last two rounds found their faults.
+     */
+    class Missing extends Component {
+      render(): never {
+        throw new Error("built and broken");
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div id="shell">
+            <ErrorBoundary fallback={() => <i id="fb">fb</i>}>{SIDE === "client" ? <Missing /> : null}</ErrorBoundary>
+            <b id="after">after</b>
+          </div>
+        );
+      }
+    }
+
+    const container = await servedInto(<Page />);
+    expect(container.querySelector("#fb")).toBeNull();
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+    await settle();
+
+    // The boundary took it, and the sibling after the boundary is untouched.
+    expect(container.innerHTML).toBe('<div id="shell"><i id="fb">fb</i><b id="after">after</b></div>');
+  });
+
   test("what the server wrote for the throwing component is taken out", async () => {
     const gone: string[] = [];
 

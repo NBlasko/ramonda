@@ -120,4 +120,22 @@ describe("renderStatic — blocks a route that reads the request", () => {
     const result = await renderStatic(<ReadsSeeded />, url);
     expect(result.blockedBy).toBe('get("currentUser")');
   });
+
+  test("a genuine error is the caller's, not a blocked read", async () => {
+    /**
+     * `renderStatic` answers `blockedBy` for the one thing it is looking for — a per-request read
+     * during a build — and passes everything else through. The distinction matters because the two
+     * mean opposite things to a build: `blockedBy` says "bake this per request instead", while an
+     * error says "this route is broken and the build should stop".
+     *
+     * The pass-through had no test, so nothing said which of the two a plain throw would become.
+     */
+    class Broken extends Component {
+      render(): never {
+        throw new Error("route is broken");
+      }
+    }
+
+    await expect(renderStatic(<Broken />, new URL("https://example.com/broken"))).rejects.toThrow("route is broken");
+  });
 });
