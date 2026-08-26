@@ -455,30 +455,67 @@ export interface RenderedPage {
  * claimed the before-reset was what covered that case. It is not.
  */
 export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
-  resetHead();
-  resetPortalTargets();
-
-  try {
-    // Forwarded, so a per-request render can use this instead of `renderToString` —
-    // it could not before, and a server that needed `request` had to give up the head
-    // to get it.
-    const body = await renderToString(vnode, opts);
-
-    return { body, ...collectHead(), portals: collectPortals() };
-  } finally {
-    // Cleared once the markup is safely captured — and in a `finally` so a render
-    // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
-    // so left its head tags behind) does not leak them into the next request. The
-    // reset above is the one that guarantees correctness; this keeps a long-lived
-    // server process from carrying a rendered page's tags between requests.
-    //
-    // Portals for the same reason, and they were missing it — measured, a container still held
-    // the last page's markup after this returned. They matter MORE than the head here: a head
-    // block is a few tags, a portal container holds a whole DOM subtree, and it stayed reachable
-    // until the next request happened to arrive.
+  return inTurn(async () => {
     resetHead();
     resetPortalTargets();
-  }
+
+    try {
+      // Forwarded, so a per-request render can use this instead of `renderToString` —
+      // it could not before, and a server that needed `request` had to give up the head
+      // to get it.
+      const body = await renderToString(vnode, opts);
+
+      return { body, ...collectHead(), portals: collectPortals() };
+    } finally {
+      // Cleared once the markup is safely captured — and in a `finally` so a render
+      // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
+      // so left its head tags behind) does not leak them into the next request. The
+      // reset above is the one that guarantees correctness; this keeps a long-lived
+      // server process from carrying a rendered page's tags between requests.
+      //
+      // Portals for the same reason, and they were missing it — measured, a container still held
+      // the last page's markup after this returned. They matter MORE than the head here: a head
+      // block is a few tags, a portal container holds a whole DOM subtree, and it stayed reachable
+      // until the next request happened to arrive.
+      resetHead();
+      resetPortalTargets();
+    }
+  });
+}
+
+/**
+ * One render at a time, because a render's head and portals are not its own.
+ *
+ * `Head` writes into the real `document.head`, and a portal into its target — both reached from the
+ * one `document` this process has. `renderPage` brackets a render with a reset on each side, which
+ * makes one call independent of everything before it, and that is the whole of the isolation. It
+ * holds only while nothing else is inside the bracket.
+ *
+ * Two requests in flight are inside it together: the second's opening reset runs while the first is
+ * awaiting its data, and empties the head the first has already filled. Measured on two `renderPage`
+ * calls started together — the first came back with the SECOND page's title and meta, and the second
+ * came back with an empty head. Two visitors, one of them served the other's page.
+ *
+ * The DOM is what is really shared, and a per-request DOM would be the other answer — but a server
+ * installs one on `globalThis`, so two requests overwrite each other there as well. Taking turns is
+ * what makes the bracket true, and it costs little that matters: rendering is CPU-bound on one
+ * thread, so the calls were already taking turns for most of their length. What it does cost is a
+ * render that AWAITS — server work, a fetch — while another request waits behind it.
+ *
+ * `renderStatic` is not routed through this: a build is sequential by construction, which its own
+ * comment says, and it keeps a poisoned request scope live across its whole render.
+ */
+let renderTurn: Promise<unknown> = Promise.resolve();
+
+function inTurn<T>(work: () => Promise<T>): Promise<T> {
+  const mine = renderTurn.then(work, work);
+  // The chain continues whichever way this settled: a render that throws must not stop every later
+  // one, and an unhandled rejection on the tail is not a caller's to catch.
+  renderTurn = mine.then(
+    () => undefined,
+    () => undefined,
+  );
+  return mine;
 }
 
 /**
@@ -597,6 +634,18 @@ function collectPortals(): Record<string, string> {
   return collectPortalTargets();
 }
 
+/**
+ * One node of a collected block, as the bytes that will be served.
+ *
+ * An element goes through `outerHTML`, which escapes its own text and attributes. A TEXT node does
+ * not: it was handed back raw, so a value a component rendered into a head block reached the page as
+ * MARKUP. Measured on a `@state` holding `</title><img src=x onerror="…">` inside a `Portal` aimed
+ * at `document.head` — a real `<img>` with a live `onerror` in the served head. State is user data as
+ * often as not, so this is an injection rather than a broken tag.
+ *
+ * A COMMENT is a block's anchor or a component's marker, both of which this package writes and
+ * neither of which carries user data unescaped — `componentOpen` escapes the blob it embeds.
+ */
 function serializeNode(node: Node): string {
   if (node.nodeType === 1) return (node as Element).outerHTML;
   if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`;
