@@ -12,6 +12,7 @@ import {
   filterVirtualChild,
   flattenEntries,
   listHostFor,
+  stampSlot,
 } from "../core/DiffAndMerge";
 import { isComponentClose, isComponentOpen, markerBlob } from "../core/componentMarker";
 import { isListNode, isVNode } from "../vdom/guards";
@@ -612,8 +613,21 @@ export function hydrateLevel(
     // Reading it back from the parent survives the replace and insert paths,
     // where `before` is detached and useless.
     const placed = walk.cursor ? walk.cursor.previousSibling : parent.lastChild;
-    if (placed) entries.push(placed as EnhancedChildNode);
-    else if (before) entries.push(before);
+    const claimed = (placed ?? before) as EnhancedChildNode | null;
+    if (claimed) {
+      /**
+       * The slot goes on now, at adoption, and not on the first update that happens to touch it.
+       *
+       * A node the client adopts is matched by POSITION until something stamps it, and position is
+       * exactly what moves when a child above it appears. So the first update after hydration that
+       * added a leading child handed each of these nodes its neighbour's slot: the text was patched
+       * either way, and focus, scroll and an uncontrolled input's value went with the node rather
+       * than with the row. `i` is the same slot the diff would write — its own children index,
+       * counting the ones that render nothing.
+       */
+      stampSlot(claimed, i, typeof vchild !== "string" && vchild.attributes?.key != null);
+      entries.push(claimed);
+    }
   }
 
   return { entries, hasRegion };

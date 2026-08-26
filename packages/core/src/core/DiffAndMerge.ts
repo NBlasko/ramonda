@@ -726,8 +726,15 @@ function claimOrMount(
  * stronger identity, and a keyed child is allowed to move between slots. Stamping them meant
  * 3000 real writes on every rotation of a keyed list, for an answer no one reads. A keyed node
  * therefore carries no slot, and `findIndexOfSlot` walks past it rather than stopping.
+ *
+ * Exported for HYDRATION, which adopts nodes without going through the claim above and so used to
+ * leave a whole page unstamped. The first update then matched those nodes by POSITION, and a child
+ * appearing above them handed each one its neighbour's node: measured on a hydrated
+ * `<span id="one">`/`<span id="two">` pair, where inserting a `<b>` in front left the text right and
+ * the two nodes swapped — which is what carries focus, scroll and an uncontrolled input's value to
+ * the wrong row.
  */
-function stampSlot(node: EnhancedChildNode, slot: number, keyed: boolean): void {
+export function stampSlot(node: EnhancedChildNode, slot: number, keyed: boolean): void {
   if (keyed) {
     // It was unkeyed on an earlier render and a key has since been added: the old slot would
     // be a lie to any sibling scanning past it.
