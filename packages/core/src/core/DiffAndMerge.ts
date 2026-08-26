@@ -883,10 +883,31 @@ export function reconcileEntries(
   // Looked up by owner, never by position: a region keeps its nodes even when it
   // moves among its siblings.
   const previousRegions = new Map<unknown, ListRegion | ComponentRegion>();
+  /**
+   * Regions a LATER one with the same owner pushed out of the index.
+   *
+   * One entry per owner, and two siblings can answer the same one: a component's owner is its `key`
+   * when the parent wrote one, so `<Row key="a" /><Row key="a" />` collides. That is user error and
+   * `RMD002` says so — but the page has to survive it on every render, and the loser of the collision
+   * is not in the index at all: nothing claims it and the teardown below only walks the index. Its
+   * nodes stayed in the DOM and its `@destroyed` never ran, once per render, for as long as the
+   * mistake was in the source. Measured: three `<li>` after the first re-render of two rows, four
+   * after the second.
+   *
+   * The later one wins, which is what a plain node with a duplicate key already does — `keyIndexOf`
+   * overwrites, and the displaced NODE ends up in `cloneChildren` and is unmounted as a leftover.
+   * This is the same outcome for a region: retired with the ones this render no longer asks for.
+   */
+  let displacedRegions: (ListRegion | ComponentRegion)[] | undefined;
 
   for (const entry of previous) {
-    if (isRegion(entry)) previousRegions.set(entry.owner, entry);
-    else cloneChildren.push(entry);
+    if (!isRegion(entry)) {
+      cloneChildren.push(entry);
+      continue;
+    }
+    const clash = previousRegions.get(entry.owner);
+    if (clash !== undefined) (displacedRegions ??= []).push(clash);
+    previousRegions.set(entry.owner, entry);
   }
 
   /**
@@ -1037,14 +1058,16 @@ export function reconcileEntries(
 
   // A region this render no longer asks for — a list that is gone, a component that is gone — and
   // children that were not claimed.
-  for (const region of previousRegions.values()) {
+  const retire = (region: ListRegion | ComponentRegion): void => {
     collectRegionNodes(region, unclaimed);
     // The nodes go to `unclaimed` to be unmounted, but the instance and the list engine are
     // reachable only from here: the region entry itself is about to be dropped. `disposeRegions`
     // takes the entry rather than its children, so a component region's own `@destroyed` runs.
     disposeRegions([region]);
     changed = true;
-  }
+  };
+  for (const region of previousRegions.values()) retire(region);
+  if (displacedRegions !== undefined) for (const region of displacedRegions) retire(region);
   for (const leftover of cloneChildren) {
     if (leftover !== DONE) unclaimed.push(leftover);
   }
