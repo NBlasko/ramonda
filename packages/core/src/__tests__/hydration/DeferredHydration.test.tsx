@@ -1,9 +1,10 @@
 import { instanceOf } from "../../test/setup";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component } from "../../base/Component";
-import { state } from "../../base/decorators";
+import { state, deferHydration } from "../../base/decorators";
+import { Hook } from "../../base/Hook";
 import { AsyncLoad } from "../../base/AsyncLoad";
-import { renderPage } from "../../hydration/ssr";
+import { renderPage, renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -332,5 +333,98 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
 
     // The framework never called it; the component hydrated normally.
     expect(container.textContent).toContain("untouched");
+  });
+});
+
+describe("a resume renders from the state the deferral left", () => {
+  test("its hooks see what the deferral changed", async () => {
+    /**
+     * `useCommon` calls a hook's options callback during CONSTRUCTION, so a hook holds whatever the
+     * component's fields held then. The direct hydration path refreshes them after the restore and
+     * the client `@created`; the resume did not.
+     *
+     * A deferral exists to change something before the subtree renders — that is what it is FOR, and
+     * what `AsyncLoad` does with it. Whatever it moved reached the component and not its hooks, so
+     * the resume rendered the pre-deferral answer: measured `5 usd` where the component's own state
+     * already said `sr`.
+     */
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    class Suffix extends Hook<{ locale: string }> {
+      get text() {
+        return this.props.locale === "sr" ? " din" : " usd";
+      }
+    }
+
+    class Amount extends Component {
+      @state locale = "en";
+      suffix = this.use(Suffix, (self: Amount) => ({ locale: self.locale }));
+      @deferHydration wait() {
+        return gate.then(() => {
+          this.locale = "sr";
+        });
+      }
+      render() {
+        return <p id="amount">5{this.suffix.text}</p>;
+      }
+    }
+
+    const html = await renderToString(<Amount />);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+    expect(container.querySelector("#amount")!.textContent).toBe("5 usd");
+
+    hydrateRoot(<Amount />, container);
+    await Promise.resolve();
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+
+    expect(container.querySelector("#amount")!.textContent).toBe("5 din");
+  });
+
+  test("one rejecting deferral does not leave an unhandled rejection", async () => {
+    /**
+     * The subtree is released whichever way the promise settled — that is what `allSettled` is for,
+     * and the comment on it has said so all along. But a SINGLE promise was handed back raw, and the
+     * caller does `void deferred.finally(…)`, so its rejection had nobody to take it: an
+     * `unhandledrejection` in a browser, and a process a Node runtime may refuse to keep alive. Two
+     * deferrals in one component never did this, because `allSettled` takes the rejection itself —
+     * so the common case was the broken one.
+     */
+    class Failing extends Component {
+      @deferHydration wait() {
+        return Promise.reject(new Error("chunk 404"));
+      }
+      render() {
+        return <div id="failing">failing</div>;
+      }
+    }
+
+    const html = await renderToString(<Failing />);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      hydrateRoot(<Failing />, container);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+      // And it still resumed: a failed deferral releases the subtree rather than freezing it.
+      expect(container.querySelector("#failing")).not.toBeNull();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });

@@ -196,6 +196,86 @@ describe("hydration mismatch (RMD007)", () => {
     expect(captured.codes).toEqual(["RMD007"]);
   });
 
+  test("a diverging text child does not displace the component after it", async () => {
+    /**
+     * The repair cuts the server's node to the length this child rendered and leaves the tail for
+     * the children after it — which only a TEXT child can claim. A component in that position looks
+     * for its opening marker, finds a `Text`, and builds itself from scratch: its blob is never
+     * read, its `shared` `@created` runs again, and the server's whole block is left standing behind
+     * the fresh copy.
+     *
+     * Measured on the shape below — a count that moved between the render and the hydrate, which is
+     * the ordinary way this happens: two `<button id="c">`, the new one at `0` and the server's
+     * still there carrying `{"n":5}`.
+     */
+    class Counter extends Component {
+      @state n = 0;
+      @created({ env: "server" }) load() {
+        this.n = 5;
+      }
+      render() {
+        return <button id="c">{String(this.n)}</button>;
+      }
+    }
+
+    class Panel extends Component {
+      render() {
+        return (
+          <div id="p">
+            {SIDE === "server" ? "10" : "9"}
+            <Counter />
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Panel />);
+    expect(container.querySelector("#c")!.textContent).toBe("5");
+    const served = container.querySelector("#c")!;
+
+    SIDE = "client";
+    hydrateRoot(<Panel />, container);
+
+    // One button, the server's own, with the state the server gave it.
+    expect(container.querySelectorAll("#c")).toHaveLength(1);
+    expect(container.querySelector("#c")).toBe(served);
+    expect(container.innerHTML).toBe('<div id="p">9<button id="c">5</button></div>');
+  });
+
+  test("one text divergence inside a component reports one diagnostic", async () => {
+    /**
+     * The tail a text repair leaves is the second half of a divergence already reported. Counting it
+     * as markup the server sent turned one fault into two messages, the second of which — "your
+     * block is one node shorter" — describes nothing a reader can act on and sends them looking for
+     * a structural difference that is not there.
+     */
+    class Status extends Component {
+      render() {
+        return SIDE === "server" ? "waiting" : "ready";
+      }
+    }
+
+    class Shell extends Component {
+      render() {
+        return (
+          <div id="d">
+            <Status />
+            <b id="after">after</b>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Shell />);
+
+    SIDE = "client";
+    hydrateRoot(<Shell />, container);
+
+    expect(captured.codes).toEqual(["RMD007"]);
+    expect(captured.messages[0]).toContain('rendered the text "ready"');
+    expect(container.innerHTML).toBe('<div id="d">ready<b id="after">after</b></div>');
+  });
+
   test("a longer run after a shorter one still takes its own slice", async () => {
     // The case the tail exists FOR, kept beside the one above so a fix for either cannot quietly
     // break the other: three children fused into one server node, the first of them divergent.
