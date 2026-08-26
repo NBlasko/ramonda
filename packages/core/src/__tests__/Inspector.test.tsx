@@ -1,4 +1,5 @@
 import { describe, test, expect } from "vitest";
+import { list } from "../base/list";
 import { getDOM } from "../test/setup";
 import { created, state, persist } from "../base/decorators";
 import { Component } from "../base/Component";
@@ -287,5 +288,32 @@ describe("inspector: component + hook state", () => {
     expect(node.children).toHaveLength(1);
     expect(node.children[0].name).toBe("Leaf");
     expect(node.children[0].state).toEqual({ v: "leaf" });
+  });
+
+  test("nests the components a list built, one entry per row", async () => {
+    class Row extends Component<{ label: string }> {
+      @state clicks = 0;
+      render() {
+        return <li>{this.props.label}</li>;
+      }
+    }
+    class Board extends Component {
+      @state rows = ["a", "b", "c"];
+      row = (label: string) => <Row label={label} key={label} />;
+      render() {
+        return <ul>{list(this.rows, this.row)}</ul>;
+      }
+    }
+
+    const app = await getDOM<Board>(<Board />);
+    const node = scanComponentTree(app.container)[0];
+
+    /**
+     * A list is a region and not a component, so it is not a NODE in the panel's tree — its rows
+     * are the children of whatever holds the list. The record nests, and the tree reads through it.
+     */
+    expect(node.name).toBe("Board");
+    expect(node.children.map((child) => child.name)).toEqual(["Row", "Row", "Row"]);
+    expect(node.children[1].state).toEqual({ clicks: 0 });
   });
 });

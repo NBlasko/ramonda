@@ -92,6 +92,43 @@ describe("rerenderRoot", () => {
     expect(creates).toBe(1);
   });
 
+  test("a root whose range changes length reorders the container", () => {
+    class Root extends Component<{ wide: boolean }> {
+      render() {
+        return this.props.wide ? [<b>one</b>, <i>two</i>, <u>three</u>] : [<b>one</b>];
+      }
+    }
+
+    const el = mountInto(<Root wide={false} />);
+    expect(el.innerHTML).toBe("<b>one</b>");
+
+    rerenderRoot(<Root wide={true} />, el);
+    flushSync();
+    expect(el.innerHTML).toBe("<b>one</b><i>two</i><u>three</u>");
+
+    rerenderRoot(<Root wide={false} />, el);
+    flushSync();
+    expect(el.innerHTML).toBe("<b>one</b>");
+  });
+
+  test("a different root component replaces what was there", () => {
+    class First extends Component {
+      render() {
+        return <b>first</b>;
+      }
+    }
+    class Second extends Component {
+      render() {
+        return [<i>second</i>, <u>and more</u>];
+      }
+    }
+
+    const el = mountInto(<First />);
+    rerenderRoot(<Second />, el);
+    flushSync();
+    expect(el.innerHTML).toBe("<i>second</i><u>and more</u>");
+  });
+
   test("throws when the container was never rendered into", () => {
     class Card extends Component {
       render() {

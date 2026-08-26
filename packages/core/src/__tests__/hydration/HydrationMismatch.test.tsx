@@ -373,6 +373,80 @@ describe("hydration mismatch (RMD007)", () => {
     expect(container.innerHTML).toBe('<div><b>one</b><span id="after">after</span></div>');
   });
 
+  test("a block the server never closed is reported and left alone", async () => {
+    /**
+     * The one shape that cannot be repaired: with no closing marker anywhere after the cursor there
+     * is no way to say where the component's run ends, and guessing takes a sibling with it. So the
+     * walk stops, says so, and touches nothing after it.
+     *
+     * Reached by cutting the marker out of the served markup, which is what a truncated response or
+     * a sanitizer that strips comments leaves behind.
+     */
+    class Inner extends Component {
+      render() {
+        return <b id="inner">inner</b>;
+      }
+    }
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const html = await renderToString(<Page />);
+    expect(html).toMatch(/<!--\/c\d+-->/);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html.replace(/<!--\/c\d+-->/, "");
+
+    hydrateRoot(<Page />, container);
+
+    expect(captured.codes).toContain("RMD007");
+    expect(captured.messages.join("\n")).toContain("no closing marker");
+
+    // Both are still there, exactly once each: nothing was deleted on a guess.
+    expect(container.querySelectorAll("#inner")).toHaveLength(1);
+    expect(container.querySelectorAll("#after")).toHaveLength(1);
+    container.remove();
+  });
+
+  test("a child the server never wrote is built and appended", async () => {
+    /**
+     * The client's level is LONGER than the server's, and the extra child is the last one — so the
+     * walk runs out of nodes rather than finding a wrong one. There is nothing to replace, and the
+     * node is appended.
+     */
+    class Page extends Component {
+      render() {
+        return (
+          <div id="shell">
+            <span id="one">one</span>
+            {SIDE === "client" ? <span id="two">two</span> : null}
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    const one = container.querySelector("#one")!;
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    expect(container.querySelector("#shell")!.innerHTML).toBe(
+      '<span id="one">one</span><span id="two">two</span>',
+    );
+    // The server's node was adopted, not rebuilt to make room for the new one.
+    expect(container.querySelector("#one")).toBe(one);
+    expect(captured.codes).toContain("RMD007");
+  });
+
   test("the prescribed two-pass pattern hydrates without a mismatch", async () => {
     // This is the fix RMD007 tells people to use instead of `typeof window`.
     // It must not trip the very diagnostic that recommends it.

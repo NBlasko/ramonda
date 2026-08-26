@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
+import { bootstrap, unmount } from "../index";
 import { state } from "../base/decorators";
 import { Portal } from "../base/Portal";
 import { getDOM, findAll } from "../test/setup";
@@ -115,6 +116,67 @@ describe("a component in a portal", () => {
     expect(names).toContain("Page");
     expect(names).toContain("Shown");
     void container;
+  });
+
+  test("found once when the target is an element that keeps a record of its own", async () => {
+    class Shown extends Component {
+      render() {
+        return <i id="shown">shown</i>;
+      }
+    }
+    class Own extends Component {
+      render() {
+        return <em id="own">own</em>;
+      }
+    }
+
+    /**
+     * The target here is the app container, so it holds BOTH: its own record, from the tree
+     * rendered into it, and a block, from the portal.
+     *
+     * Two readers walk that element. The record is one of them and it does not mention the block —
+     * a block's record hangs off its opening anchor, because a target is shared and cannot be any
+     * one region's. So the walk over a recorded element also has to look at its comment children,
+     * and reading BOTH the record and every child was how a portalled component came back twice:
+     * once from the record's own recursion into the comment, once from the comment loop.
+     */
+    const host = document.createElement("main");
+    document.body.appendChild(host);
+
+    class Page extends Component {
+      portal = this.use(Portal, () => ({ children: <Shown />, target: host }));
+      render() {
+        return (
+          <div id="body">
+            <Own />
+          </div>
+        );
+      }
+    }
+
+    try {
+      bootstrap(<Page />, host);
+      await Promise.resolve();
+
+      expect(findAll<object>(host, "Shown")).toHaveLength(1);
+      expect(findAll<object>(host, "Own")).toHaveLength(1);
+
+      setInspectRoot(host);
+      const names: string[] = [];
+      const collect = (nodes: ReturnType<typeof scanComponentTree>): void => {
+        for (const node of nodes) {
+          names.push(node.name);
+          collect(node.children);
+        }
+      };
+      collect(scanComponentTree(host));
+
+      expect(names.filter((name) => name === "Shown")).toHaveLength(1);
+      expect(names).toEqual(expect.arrayContaining(["Page", "Own", "Shown"]));
+    } finally {
+      unmount(host);
+      host.remove();
+    }
   });
 
   test("the server marks it exactly once, from whichever pass reaches it first", async () => {
