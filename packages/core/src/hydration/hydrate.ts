@@ -15,10 +15,12 @@ import {
   stampSlot,
 } from "../core/DiffAndMerge";
 import { isComponentClose, isComponentOpen, markerBlob } from "../core/componentMarker";
+import { errorHandler } from "../core/errorHandler";
 import { isListNode, isVNode } from "../vdom/guards";
 import { buildLazyList, isLazyList, type ListEngine, type LazyListNode, type ListHost } from "../helpers/listEngine";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
+import { addTaskToQueue } from "../core/Task";
 import { diagnose } from "../debug/diagnostics";
 import { reportFault } from "../debug/fault";
 import { isThenable } from "../core/serverWork";
@@ -577,6 +579,29 @@ function hydrateChildren(
   }
 }
 
+/**
+ * Takes out the block the walk is standing on, and puts the walk after it.
+ *
+ * For a component whose adoption threw: whatever the server wrote for it is markup nobody owns now,
+ * and leaving it in place puts stale content under a fallback. The walk has to end up past the
+ * block either way, or the siblings after it are matched against nodes that were never theirs.
+ *
+ * A cursor that is not on an opening marker means the throw happened before this component's block
+ * was reached — there is nothing of its own to remove, and the walk is already where it should be.
+ */
+function dropBlockAt(walk: HydrationWalk, parent: Node): void {
+  const open = walk.cursor;
+  if (open === null || !isComponentOpen(open)) return;
+
+  const inside: ChildNode[] = [];
+  const close = skipToClose(open.nextSibling as EnhancedChildNode | null, inside);
+  walk.cursor = nextOf((close ?? open) as EnhancedChildNode);
+  for (const node of inside) node.remove();
+  close?.remove();
+  open.remove();
+  void parent;
+}
+
 /** The position the walk has reached, shared across nesting levels. */
 export interface HydrationWalk {
   cursor: EnhancedChildNode | null;
@@ -649,7 +674,31 @@ export function hydrateLevel(
      * it owns a run of siblings, not the single node `hydrateNode` is shaped around.
      */
     if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
-      const region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
+      let region: ComponentRegion | undefined;
+      try {
+        region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
+      } catch (e) {
+        /**
+         * The same door the build path has, and hydration had none: a throw went straight out of
+         * `hydrateRoot`, so the whole page was left as the server sent it — every marker still in
+         * the DOM, nothing adopted, nothing interactive, and an `ErrorBoundary` two lines above it
+         * never told. Measured on a component that renders on the server and throws on the client,
+         * which is exactly what a `typeof window` branch does.
+         *
+         * The block is taken out and the child dropped from this render, which is what the build
+         * path does with a child that throws. `errorHandler` walks up to the boundary, and its
+         * re-render fills the gap with the fallback.
+         */
+        dropBlockAt(walk, parent);
+        const handler = errorHandler(e, placeholder);
+
+        /**
+         * The boundary that took it is being adopted right now, so it is not initialized and the
+         * state its handler wrote scheduled nothing — the page would sit on a gap where the child
+         * used to be. Queued for after the commit, which is when this walk has finished with it.
+         */
+        if (handler !== undefined) queuePostCommit(handler, () => addTaskToQueue(handler));
+      }
       if (region !== undefined) {
         entries.push(region);
         hasRegion = true;

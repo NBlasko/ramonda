@@ -978,139 +978,139 @@ export function reconcileEntries(
   }
 
   function reconcileChildren(): void {
-  for (let i = 0; i < children.length; i++) {
-    const rawVchild = children[i];
+    for (let i = 0; i < children.length; i++) {
+      const rawVchild = children[i];
 
-    if (isListNode(rawVchild)) {
-      const found = previousRegions.get(rawVchild.owner);
-      previousRegions.delete(rawVchild.owner);
-      // A list's owner and a component's owner are minted differently and cannot collide, so this
-      // narrowing never actually discards a region — it is what tells the two kinds apart in types.
-      const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
+      if (isListNode(rawVchild)) {
+        const found = previousRegions.get(rawVchild.owner);
+        previousRegions.delete(rawVchild.owner);
+        // A list's owner and a component's owner are minted differently and cannot collide, so this
+        // narrowing never actually discards a region — it is what tells the two kinds apart in types.
+        const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
 
-      // The engine hands back the identical ListNode when nothing about the
-      // list changed. Same object -> same items, same order, same length: the
-      // region is left exactly as it is, without touching one of its nodes.
-      if (before !== undefined && before.source === rawVchild) {
-        entries.push(before);
-        if (previous[entries.length - 1] !== before) changed = true;
-        continue;
-      }
-
-      // A `list()` descriptor has not run its mapper yet. This is the moment to:
-      // the previous region is in hand, and with it the engine holding the
-      // minted ids, the per-item scopes and the whole-list skip.
-      let listNode = rawVchild;
-      let engine = before?.engine;
-
-      if (isLazyList(rawVchild)) {
-        const materialized = buildLazyList(
-          rawVchild as unknown as LazyListNode,
-          engine as ListEngine<unknown> | undefined,
-          listHost ?? listHostFor(placeholderComponent),
-        );
-        listNode = materialized.node as typeof rawVchild;
-        engine = materialized.engine;
-      }
-
-      const inner = reconcileEntries(
-        listNode.vnodes,
-        before?.entries ?? [],
-        listNode.clean,
-        placeholderComponent,
-        parent,
-        unclaimed,
-        listHost,
-      );
-      entries.push({
-        owner: listNode.owner,
-        entries: inner.entries,
-        // The BUILT node, not the descriptor: the whole-list skip below compares
-        // this by identity, and the engine hands back the very same object when
-        // nothing about the list changed.
-        source: listNode,
-        engine,
-      });
-      changed = true;
-      continue;
-    }
-
-    /**
-     * A COMPONENT is a region, so it never reaches `claimOrMount` and never takes a slot from the
-     * node pool. It is looked up by its own identity instead — see `componentRegionOwner`.
-     *
-     * Ahead of the clean check on purpose: `claimByKey` looks for a NODE in the pool, and a
-     * component has none there. A clean component is one whose vnode is the very object from last
-     * render, so its props cannot have changed either and adopting the region is the whole job.
-     */
-    if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
-      const owner = componentRegionOwner(rawVchild, i);
-      const found = previousRegions.get(owner);
-      previousRegions.delete(owner);
-      const before = found !== undefined && isComponentRegion(found) ? found : undefined;
-
-      let region: ComponentRegion;
-      if (clean !== undefined && clean[i] === true && before !== undefined && before.definition === rawVchild.name) {
-        before.parent = parent;
-        region = before;
-      } else {
-        try {
-          region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
-        } catch (e) {
-          /**
-           * The same door a plain child's build goes through, and it has to be here now.
-           *
-           * `buildDetachedNode` wraps every node it builds, so a throwing render used to reach
-           * `errorHandler` — which walks up to an `ErrorBoundary` — simply by being built there. A
-           * component is built on this path instead, and without this the throw went straight out of
-           * the drain: measured as every `ErrorBoundary` test failing with the child's own error.
-           *
-           * The child is dropped from this render, exactly as a failed node is. What was there
-           * before it is torn down by hand, because it has already been taken out of
-           * `previousRegions` and nothing downstream would find it again.
-           */
-          if (before !== undefined) {
-            collectRegionNodes(before, unclaimed);
-            disposeRegions([before]);
-            changed = true;
-          }
-          errorHandler(e, placeholderComponent);
+        // The engine hands back the identical ListNode when nothing about the
+        // list changed. Same object -> same items, same order, same length: the
+        // region is left exactly as it is, without touching one of its nodes.
+        if (before !== undefined && before.source === rawVchild) {
+          entries.push(before);
+          if (previous[entries.length - 1] !== before) changed = true;
           continue;
         }
-      }
 
-      if (region !== before) (born ??= []).push(region);
+        // A `list()` descriptor has not run its mapper yet. This is the moment to:
+        // the previous region is in hand, and with it the engine holding the
+        // minted ids, the per-item scopes and the whole-list skip.
+        let listNode = rawVchild;
+        let engine = before?.engine;
 
-      entries.push(region);
-      if (previous[entries.length - 1] !== region) changed = true;
-      continue;
-    }
+        if (isLazyList(rawVchild)) {
+          const materialized = buildLazyList(
+            rawVchild as unknown as LazyListNode,
+            engine as ListEngine<unknown> | undefined,
+            listHost ?? listHostFor(placeholderComponent),
+          );
+          listNode = materialized.node as typeof rawVchild;
+          engine = materialized.engine;
+        }
 
-    // Clean item: same vnode object, and nothing it read has changed. Its DOM
-    // subtree is therefore still correct, so it is claimed by key and left
-    // alone — no attribute pass, no recursion, no work proportional to its size.
-    if (clean !== undefined && clean[i] === true) {
-      const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
-      if (claimedNode !== undefined) {
-        // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
-        stampSlot(claimedNode, i, true);
-        entries.push(claimedNode);
-        if (previous[entries.length - 1] !== claimedNode) changed = true;
-        plainIndex++;
+        const inner = reconcileEntries(
+          listNode.vnodes,
+          before?.entries ?? [],
+          listNode.clean,
+          placeholderComponent,
+          parent,
+          unclaimed,
+          listHost,
+        );
+        entries.push({
+          owner: listNode.owner,
+          entries: inner.entries,
+          // The BUILT node, not the descriptor: the whole-list skip below compares
+          // this by identity, and the engine hands back the very same object when
+          // nothing about the list changed.
+          source: listNode,
+          engine,
+        });
+        changed = true;
         continue;
       }
-      // No node to reuse (first render, or it was unmounted): build it normally.
-    }
 
-    const vchild = filterVirtualChild(rawVchild);
-    if (vchild === undefined) continue;
+      /**
+       * A COMPONENT is a region, so it never reaches `claimOrMount` and never takes a slot from the
+       * node pool. It is looked up by its own identity instead — see `componentRegionOwner`.
+       *
+       * Ahead of the clean check on purpose: `claimByKey` looks for a NODE in the pool, and a
+       * component has none there. A clean component is one whose vnode is the very object from last
+       * render, so its props cannot have changed either and adopting the region is the whole job.
+       */
+      if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
+        const owner = componentRegionOwner(rawVchild, i);
+        const found = previousRegions.get(owner);
+        previousRegions.delete(owner);
+        const before = found !== undefined && isComponentRegion(found) ? found : undefined;
 
-    const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
-    if (placed) {
-      entries.push(placed as EnhancedChildNode);
-      if (previous[entries.length - 1] !== placed) changed = true;
+        let region: ComponentRegion;
+        if (clean !== undefined && clean[i] === true && before !== undefined && before.definition === rawVchild.name) {
+          before.parent = parent;
+          region = before;
+        } else {
+          try {
+            region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
+          } catch (e) {
+            /**
+             * The same door a plain child's build goes through, and it has to be here now.
+             *
+             * `buildDetachedNode` wraps every node it builds, so a throwing render used to reach
+             * `errorHandler` — which walks up to an `ErrorBoundary` — simply by being built there. A
+             * component is built on this path instead, and without this the throw went straight out of
+             * the drain: measured as every `ErrorBoundary` test failing with the child's own error.
+             *
+             * The child is dropped from this render, exactly as a failed node is. What was there
+             * before it is torn down by hand, because it has already been taken out of
+             * `previousRegions` and nothing downstream would find it again.
+             */
+            if (before !== undefined) {
+              collectRegionNodes(before, unclaimed);
+              disposeRegions([before]);
+              changed = true;
+            }
+            errorHandler(e, placeholderComponent);
+            continue;
+          }
+        }
+
+        if (region !== before) (born ??= []).push(region);
+
+        entries.push(region);
+        if (previous[entries.length - 1] !== region) changed = true;
+        continue;
+      }
+
+      // Clean item: same vnode object, and nothing it read has changed. Its DOM
+      // subtree is therefore still correct, so it is claimed by key and left
+      // alone — no attribute pass, no recursion, no work proportional to its size.
+      if (clean !== undefined && clean[i] === true) {
+        const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
+        if (claimedNode !== undefined) {
+          // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
+          stampSlot(claimedNode, i, true);
+          entries.push(claimedNode);
+          if (previous[entries.length - 1] !== claimedNode) changed = true;
+          plainIndex++;
+          continue;
+        }
+        // No node to reuse (first render, or it was unmounted): build it normally.
+      }
+
+      const vchild = filterVirtualChild(rawVchild);
+      if (vchild === undefined) continue;
+
+      const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
+      if (placed) {
+        entries.push(placed as EnhancedChildNode);
+        if (previous[entries.length - 1] !== placed) changed = true;
+      }
     }
-  }
   }
 
   // A region this render no longer asks for — a list that is gone, a component that is gone — and
