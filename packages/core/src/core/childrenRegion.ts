@@ -187,11 +187,6 @@ export class ChildrenRegion {
     reorderChildren(parent, this.order, this.close!, before);
   }
 
-  /** The nodes this region owns, in order — what a caller needs to move or seed. */
-  get nodes(): readonly ChildNode[] {
-    return this.order;
-  }
-
   /**
    * Adopts the block a server render left behind, starting at `open`.
    *

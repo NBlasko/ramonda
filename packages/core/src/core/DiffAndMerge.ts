@@ -90,8 +90,8 @@ export function diffAndMerge(
  * Mounts a root into a container, and leaves the record that describes it.
  *
  * The ordinary level reconcile, given one child and an empty history — so a root may be a component,
- * an element, a list or a string, exactly as any child may. It used to be `mountNode`, which built
- * one node and appended it; a component is a range now, so what a root leaves behind is a record.
+ * an element, a list or a string, exactly as any child may. A component is a range, so what a root
+ * leaves behind is a record rather than the one node it used to be.
  *
  * `bootstrap`, `renderToString` and the test harness all enter here.
  */
@@ -100,8 +100,8 @@ export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
   const result = reconcileEntries([vnode], [], undefined, undefined, container, unclaimed);
   (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
-  // Appended rather than reordered: a root mount has an empty container and nothing to move, which
-  // is the same reason `mountNode` could append.
+  // Appended rather than reordered: a root mount has an empty container and nothing to move, so
+  // there is no teardown for an insertion to race with.
   const ordered: ChildNode[] = [];
   flattenEntries(result.entries, ordered);
   for (const child of ordered) container.appendChild(child);
@@ -414,21 +414,6 @@ function buildDetachedNode(
   }
 }
 
-/**
- * Builds a child and appends it. The ROOT mounts use this — `bootstrap` and
- * `renderToString` have an empty container and nothing to reorder, so there is
- * no teardown for the insertion to race with.
- */
-export function mountNode(
-  vchild: ComponentChild,
-  placeholderComponent: MaybeComponent,
-  enhancedNode: ChildNode,
-): ChildNode | undefined {
-  const built = buildDetachedNode(vchild, placeholderComponent, enhancedNode);
-  if (built) enhancedNode.appendChild(built);
-  return built;
-}
-
 function executeChangesOnStringNode(
   vnode: VNodeString,
   placeholderComponent: MaybeComponent,
@@ -445,19 +430,6 @@ function executeChangesOnStringNode(
   applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
 
   const vnodeChildren = vnode.children;
-
-  if (!vnodeChildren) {
-    // `childNodes` is a live NodeList and unmounting calls `.remove()` — snapshot
-    // it first, otherwise the list shrinks mid-iteration and skips children.
-    const EnhancedChildNodes = Array.from(enhancedNode.childNodes as unknown as EnhancedChildNode[]);
-    unmountChildrenNodes(EnhancedChildNodes, false);
-    // Everything under this element is gone, so any list record describes nodes
-    // that no longer exist. Left behind, it would be read as truth next render —
-    // and its regions would keep their items subscribed to whatever they read.
-    releaseChildRecord(enhancedNode as EnhancedChildNode);
-
-    return enhancedNode;
-  }
 
   const { cloneChildren, orderedNodes } = applyDiffOnChildren(vnodeChildren, placeholderComponent, enhancedNode);
 
@@ -1150,7 +1122,8 @@ function collectRegionNodes(region: ListRegion | ComponentRegion, out: (Enhanced
  * few nodes as possible.
  *
  * The naive backwards walk ("move whenever `nextSibling` is not the node placed
- * after me") cascades: `mountNode` appends new children at the END, so inserting
+ * after me") cascades: a child this render built arrives uninserted and is placed at the END, so
+ * inserting
  * one row near the front made every node between the insertion point and the end
  * look misplaced, and each got its own `insertBefore`. Measured at 10000 items:
  * 38.9s for an insert at index 0, 20.5s at the middle — while the mapper and the
@@ -1815,36 +1788,6 @@ function buildComponent(
   // inline would move it ahead of @mounted. No-op on the server.
   queuePostCommit(component, () => runComponentEffects(component));
   return region;
-}
-
-/**
- * Points a component's ref at its host, and releases the one it replaces.
- *
- * Called on UPDATE as well as on creation, and that is the whole point. It used
- * to run from `createComponent` alone, so a component that stayed put while its
- * `ref` prop changed kept the ref it was born with: the new one never filled, and
- * the old one went on pointing at a host that no longer claimed it. Both silent,
- * and the opposite of what the same JSX does on a plain element — `Attribute.ts`
- * has released and re-pointed an element's ref all along.
- *
- * A ref is not a render input, so this is deliberately outside the props-changed
- * branch: pointing a ref somewhere else changes nothing the component renders,
- * and it must happen even when nothing schedules a render.
- */
-export function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
-  type RefHandle = { current: unknown; setCurrent(current: unknown): void };
-
-  const next = ref as RefHandle | undefined;
-  const previous = node[REF_SYM];
-  if (previous === next) return;
-
-  node[REF_SYM] = next;
-
-  // Cleared only if it still points HERE — the same guard `releaseRef` needs,
-  // and for the same reason: another node may already have claimed it earlier in
-  // this pass, and wiping it then would erase a value that is now correct.
-  if (previous && previous.current === node) previous.setCurrent(null);
-  next?.setCurrent(node);
 }
 
 function componentFactory(component: ComponentClassKind, props: Record<string, unknown>, ctx: Context): BaseComponent {

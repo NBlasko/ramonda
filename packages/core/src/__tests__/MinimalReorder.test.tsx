@@ -6,8 +6,8 @@ import { Component, list, state } from "../index";
  * A performance invariant, not a behaviour one — so it is asserted in DOM moves
  * rather than in milliseconds, which would be flaky.
  *
- * `mountNode` appends new children at the END, so before the minimal reorder a
- * single insertion near the front made every node after it look misplaced and
+ * A child this render built arrives uninserted and is placed at the END, so before the minimal
+ * reorder a single insertion near the front made every node after it look misplaced and
  * each got its own `insertBefore`. At 10000 items that measured 38.9s. These
  * lists are small enough to stay fast either way; what they lock is the COUNT.
  * The fault it stands for: inserting one item near the front of a long list.

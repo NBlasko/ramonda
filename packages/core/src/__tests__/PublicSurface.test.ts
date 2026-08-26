@@ -96,7 +96,7 @@ const FORBIDDEN = [
   "COMPONENT_RUNTIME",
   "HOOK_RUNTIME",
   "diffAndMerge",
-  "mountNode",
+  "mountRoot",
   "createRamonda",
   "KEY_SYM",
   "IS_LIST",
