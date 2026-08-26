@@ -505,10 +505,39 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
     return applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasRegion);
   }
 
+  /**
+   * The pool to claim from: this element's children, MINUS the ones it does not own.
+   *
+   * An element may hold a `ChildrenRegion`'s block — a `Portal` aimed at a node in the owner's own
+   * render, which is how "inline" is done, and the `Head` hook's tags in a head that also holds the
+   * shell's. A block keeps its record on its opening anchor rather than on the element, because a
+   * target is SHARED and cannot be any one region's, so this element's record says nothing about it.
+   *
+   * Read as ordinary children, the whole block is this render's leftovers: its anchors and nodes are
+   * unmounted, and `releaseChildRecord` on the anchor runs `@destroyed` for every component inside
+   * it while the portal still believes them mounted. Measured on a portal aimed at a `<section>` the
+   * owner renders: the block was gone on the render that placed it. A node inside it can also be
+   * CLAIMED rather than removed, when it happens to match a tag this element renders — the same
+   * origin, because the same component built both.
+   *
+   * The block publishes where it ends (`BLOCK_CLOSE`) on the anchor a walk finds first, so the run
+   * is skippable in one pass. A comment is left out either way: nothing in a vnode list can claim
+   * one, and removing one is never this element's business.
+   */
   const enhancedChildNodes = enhancedNode.childNodes as unknown as EnhancedChildNode[];
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
+  let skipUntil: ChildNode | undefined;
   for (let i = 0; i < enhancedChildNodes.length; i++) {
-    cloneChildren[i] = enhancedChildNodes[i];
+    const child = enhancedChildNodes[i];
+    if (skipUntil !== undefined) {
+      if (child === skipUntil) skipUntil = undefined;
+      continue;
+    }
+    if (child.nodeType === 8) {
+      skipUntil = blockCloseOf(child);
+      continue;
+    }
+    cloneChildren.push(child);
   }
   const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
