@@ -4,6 +4,7 @@ import { state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
+import { findAll } from "../../test/setup";
 import { resetDiagnostics } from "../../debug/diagnostics";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
 import { PORTAL_ATTR } from "../../helpers/constants";
@@ -421,6 +422,59 @@ describe("a comment that only looks like an anchor", () => {
     // And what is left is the block's own: the teardown takes it.
     unmountChildrenNodes([container as unknown as never]);
     expect(document.head.querySelectorAll("meta")).toHaveLength(0);
+    container.remove();
+  });
+
+  test("a hydrated block publishes where it ends, so an empty component lands inside it", async () => {
+    /**
+     * `BLOCK_CLOSE` on the opening anchor is what tells a reader where a block ends, and two readers
+     * need it: the position search an empty component does for its first node, and the host element
+     * whose claim pool has to skip the run.
+     *
+     * On a HYDRATED page it was not published. The adoption published once before the closing anchor
+     * was known and only the two divergence exits published again — so the ordinary exit, which is
+     * every correct SSR page, left it unset until the region's first `reconcile()`. The fallback for
+     * a missing answer is "the end of the target", which is exactly the fault the client-built case
+     * pins two tests above.
+     */
+    class Late extends Component {
+      @state shown = false;
+      render() {
+        return this.shown ? <meta name="late" content="v" /> : null;
+      }
+    }
+
+    class Page extends Component {
+      first = this.use(Portal, () => ({ children: <Late />, target: document.head }));
+      second = this.use(Portal, () => ({ children: <meta name="other" content="v" />, target: document.head }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    findAll<{ shown: boolean }>(document.head, "Late")[0]!.shown = true;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    /**
+     * Inside the FIRST block's anchors, not appended past the second one. `|` is an anchor, so the
+     * shape to read is: open, the node, close, then the second block.
+     */
+    const shape = [...document.head.childNodes]
+      .filter((node) => node.nodeType === 8 || (node as Element).getAttribute?.("name"))
+      .map((node) => (node.nodeType === 8 ? "|" : (node as Element).getAttribute("name")))
+      .join(",");
+    expect(shape).toBe("|,late,|,|,other,|");
     container.remove();
   });
 

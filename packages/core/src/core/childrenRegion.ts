@@ -215,16 +215,24 @@ export class ChildrenRegion {
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
     this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
-    this.publish();
 
     /**
      * Where the walk stopped IS the closing anchor, when the server wrote as many nodes as this
      * render wants — and also when it wrote FEWER, because those extra children were built and
      * inserted in front of the anchor and the walk stopped on it all the same.
+     *
+     * **Every exit publishes, and it publishes AFTER `this.close` is known.** This used to publish
+     * once up here, while the close was still `undefined`, and only the two divergence exits below
+     * published again — so the ordinary exit, which is every correct SSR page, left
+     * `open[BLOCK_CLOSE]` unset until the region's first `reconcile()`. Both readers of it then took
+     * their fallback: an empty portalled component's first node was placed at the END OF THE TARGET
+     * rather than inside its own anchors, and a host element read the block's nodes as its own
+     * because the run had no end to skip to.
      */
     const stop = walk.cursor;
     if (stop !== null && isCloseAnchor(stop)) {
       this.close = stop as unknown as Comment;
+      this.publish();
       return;
     }
 
