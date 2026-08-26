@@ -93,6 +93,73 @@ describe("a portal aimed inside its owner's render", () => {
     expect(slot.querySelector("#pin")!.textContent).toBe("pin7");
   });
 
+  test("survives the element momentarily owning no region of its own", async () => {
+    /**
+     * The element's record is kept only while it still owns a region, so a render where its own
+     * component disappears DELETES it — and the next render that brings one back reads `childNodes`
+     * instead. That fallback had no block skip: the whole portal became the render's leftovers.
+     *
+     * Measured before the fix: `#pin` gone from the page, `@destroyed` run for the portalled
+     * component while the `Portal` still held its region, and the region's next reorder throwing
+     * `NotFoundError` on its own detached closing anchor.
+     *
+     * The same fallback is taken on the render an element gains its FIRST region, which needs no
+     * toggle at all — this is the shape that also covers it.
+     */
+    class Toggling extends Component {
+      @state tick = 0;
+      @state show = true;
+      slot: Element = document.createElement("div");
+
+      portal = this.use(Portal, (self: Toggling) => ({
+        children: <Pinned />,
+        target: self.tick >= 0 ? self.slot : self.slot,
+      }));
+
+      @mounted({ env: "client" }) aim() {
+        const found = document.querySelector("#slot");
+        if (found) this.slot = found;
+        this.tick++;
+      }
+
+      render() {
+        return (
+          <div id="body">
+            <section id="slot">{this.show ? <Own /> : null}</section>
+            <p id="t">{String(this.tick)}</p>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Toggling>(<Toggling />);
+    await app.settle();
+    gone.length = 0;
+
+    const slot = app.container.querySelector("#slot")!;
+    const pinNode = slot.querySelector("#pin")!;
+    expect(pinNode).not.toBeNull();
+
+    // Its own component goes: the element stops owning a region and its record is dropped.
+    app.instance.show = false;
+    await app.settle();
+    expect(slot.querySelector("#pin")).toBe(pinNode);
+
+    // And comes back, on the render that reads the DOM instead of a record.
+    app.instance.show = true;
+    await app.settle();
+
+    expect(slot.querySelector("#own")).not.toBeNull();
+    expect(slot.querySelector("#pin")).toBe(pinNode);
+    expect(gone).toEqual([]);
+    expect(findAll<Pinned>(app.container, "Pinned")).toHaveLength(1);
+
+    // Still the region's own: a refresh that changes its length reorders against a live anchor.
+    findAll<Pinned>(app.container, "Pinned")[0]!.n = 5;
+    await app.settle();
+    expect(slot.querySelector("#pin")!.textContent).toBe("pin5");
+  });
+
   test("the server's markers wrap each range without swallowing the block", async () => {
     /**
      * The element that hosts the block also has a record of its own, and the marker pass walks

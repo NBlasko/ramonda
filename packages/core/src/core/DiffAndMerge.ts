@@ -334,6 +334,49 @@ function anchorAfterRegion(region: ComponentRegion, parent: ChildNode, held: rea
   return null;
 }
 
+/**
+ * This element's OWN children, with any block it merely HOSTS left out.
+ *
+ * An element may hold a `ChildrenRegion`'s block — a `Portal` aimed at a node in the owner's own
+ * render, which is how "inline" is done, or the `Head` hook's tags in a head that also holds the
+ * shell's. A block keeps its record on its opening anchor rather than on the element, because a
+ * target is SHARED and cannot be any one region's, so this element's record says nothing about it.
+ *
+ * Read as ordinary children, the whole block becomes this render's leftovers: its anchors and nodes
+ * are unmounted, and `releaseChildRecord` on the anchor runs `@destroyed` for every component inside
+ * it while the region still believes them mounted. A node inside it can also be CLAIMED rather than
+ * removed, when it matches a tag this element renders — the same origin, because the same component
+ * built both.
+ *
+ * BOTH child paths need this, which is what the first version of it got wrong: only the pool path
+ * had it, and the record path fell back to `childNodes` whenever the element momentarily owned no
+ * region — measured, the portalled component was destroyed on the next render that brought a
+ * component back, and the block's detached close anchor then threw `NotFoundError` out of the
+ * region's own reorder.
+ *
+ * The block publishes where it ends (`BLOCK_CLOSE`) on the anchor a walk meets first, so the run is
+ * skipped in one pass. A comment is left out either way: nothing in a vnode list can claim one, and
+ * removing one is never this element's business.
+ */
+function ownChildNodes(parent: ChildNode): EnhancedChildNode[] {
+  const children = parent.childNodes as unknown as EnhancedChildNode[];
+  const own: EnhancedChildNode[] = [];
+  let skipUntil: ChildNode | undefined;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (skipUntil !== undefined) {
+      if (child === skipUntil) skipUntil = undefined;
+      continue;
+    }
+    if (child.nodeType === 8) {
+      skipUntil = blockCloseOf(child);
+      continue;
+    }
+    own.push(child);
+  }
+  return own;
+}
+
 /** The closing anchor of the block published on this opening one. See `BLOCK_CLOSE`. */
 export function blockCloseOf(open: Node): ChildNode | undefined {
   return (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE];
@@ -524,21 +567,7 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
    * is skippable in one pass. A comment is left out either way: nothing in a vnode list can claim
    * one, and removing one is never this element's business.
    */
-  const enhancedChildNodes = enhancedNode.childNodes as unknown as EnhancedChildNode[];
-  const cloneChildren: (EnhancedChildNode | DONE)[] = [];
-  let skipUntil: ChildNode | undefined;
-  for (let i = 0; i < enhancedChildNodes.length; i++) {
-    const child = enhancedChildNodes[i];
-    if (skipUntil !== undefined) {
-      if (child === skipUntil) skipUntil = undefined;
-      continue;
-    }
-    if (child.nodeType === 8) {
-      skipUntil = blockCloseOf(child);
-      continue;
-    }
-    cloneChildren.push(child);
-  }
+  const cloneChildren: (EnhancedChildNode | DONE)[] = ownChildNodes(enhancedNode);
   const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
   // The nodes the vnode list wants, in its order. Feeds the reorder pass.
@@ -832,7 +861,10 @@ function applyDiffWithRegions(
   enhancedNode: EnhancedChildNode,
   hasRegion: boolean,
 ) {
-  const previous = enhancedNode[CHILD_RECORD] ?? (Array.from(enhancedNode.childNodes) as unknown as RecordEntry[]);
+  // The fallback is reached on the render an element gains its FIRST region, and again on any render
+  // after it momentarily owned none — the line below clears the record then. Both read the DOM, so
+  // both have to leave a hosted block out of it: see `ownChildNodes`.
+  const previous = enhancedNode[CHILD_RECORD] ?? (ownChildNodes(enhancedNode) as unknown as RecordEntry[]);
 
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
   const result = reconcileEntries(vnodeChildren, previous, undefined, placeholderComponent, enhancedNode, unclaimed);
