@@ -316,6 +316,66 @@ describe("ErrorBoundary", () => {
     expect(ticks).toBe(0);
   });
 
+  test("a sibling built inside a LIST before the throw is torn down too", async () => {
+    /**
+     * The same fault as the test above, one level of nesting down — and the undo list did not reach
+     * it. A list recurses into a fresh `reconcileEntries`, whose own record of what it built is a
+     * local that is discarded when it returns; so a throw LATER in this level tore nothing down.
+     *
+     * Measured before the fix: `@created` had run, the `@interval` went on firing under the
+     * fallback, and `@destroyed` never ran — for a component no record points at.
+     */
+    const events: string[] = [];
+    let ticks = 0;
+
+    class Early extends Component {
+      @created({ env: "shared" }) hi() {
+        events.push("created");
+      }
+      @destroyedDecorator bye() {
+        events.push("destroyed");
+      }
+      @interval(5) beat() {
+        ticks++;
+      }
+      render() {
+        return <b id="early">early</b>;
+      }
+    }
+
+    class Broken extends Component {
+      render() {
+        return [
+          list([1], () => <Early />),
+          list([2], () => {
+            throw new Error("mapper boom");
+          }),
+        ];
+      }
+    }
+
+    class App extends Component {
+      render() {
+        return (
+          <ErrorBoundary fallback={() => <i id="fb">fallback</i>}>
+            <Broken />
+          </ErrorBoundary>
+        );
+      }
+    }
+
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+
+    expect(app.container.querySelector("#fb")).not.toBeNull();
+    expect(app.container.querySelector("#early")).toBeNull();
+    expect(events).toEqual(["created", "destroyed"]);
+
+    ticks = 0;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(ticks).toBe(0);
+  });
+
   test("a child that throws on a LATER render is torn down, not left behind", async () => {
     /**
      * The first render worked, so there is a live region — an instance with state, hooks and a

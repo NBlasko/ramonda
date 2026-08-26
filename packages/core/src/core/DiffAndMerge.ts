@@ -28,6 +28,7 @@ import {
   KEY_SYM,
   SLOT_SYM,
   BLOCK_CLOSE,
+  BLOCK_OWNER,
   HAS_REGION,
   COMPONENT_TYPE,
   CHILD_RECORD,
@@ -929,7 +930,7 @@ export function reconcileEntries(
    * supplies a host that refreshes the region itself.
    */
   listHost?: ListHost,
-): { entries: RecordEntry[]; changed: boolean } {
+): { entries: RecordEntry[]; changed: boolean; born?: (ListRegion | ComponentRegion)[] } {
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
   // Looked up by owner, never by position: a region keeps its nodes even when it
   // moves among its siblings.
@@ -966,7 +967,7 @@ export function reconcileEntries(
    * the page is still showing. `undefined` until something is built, so an ordinary render that
    * claims everything allocates nothing.
    */
-  let born: ComponentRegion[] | undefined;
+  let born: (ListRegion | ComponentRegion)[] | undefined;
 
   for (const entry of previous) {
     if (!isRegion(entry)) {
@@ -1054,7 +1055,25 @@ export function reconcileEntries(
           unclaimed,
           listHost,
         );
-        entries.push({
+
+        /**
+         * What the recursion built belongs to THIS pass's undo list.
+         *
+         * The nested call keeps its own `born`, and it is discarded when the call returns — so a
+         * throw LATER in this level (the next list's mapper, which nothing wraps) tore nothing down
+         * and rethrew, and no record ever pointed at the components the list had just built.
+         * Measured on `[list([1], () => <Early/>), list([2], () => { throw })]`: `Early`'s
+         * `@created` had run, its `@interval` went on firing under the fallback, and its
+         * `@destroyed` never ran.
+         *
+         * A list this pass CREATED is added whole, which is also what releases its engine — an
+         * engine nothing holds keeps every item subscribed to whatever it read. An ADOPTED list is
+         * not: it is still in the caller's record, and the rows it built come through `inner.born`.
+         */
+
+        if (inner.born !== undefined) (born ??= []).push(...inner.born);
+
+        const region: ListRegion = {
           owner: listNode.owner,
           entries: inner.entries,
           // The BUILT node, not the descriptor: the whole-list skip below compares
@@ -1062,7 +1081,11 @@ export function reconcileEntries(
           // nothing about the list changed.
           source: listNode,
           engine,
-        });
+        };
+
+        if (before === undefined) (born ??= []).push(region);
+
+        entries.push(region);
         changed = true;
         continue;
       }
@@ -1162,7 +1185,7 @@ export function reconcileEntries(
   }
   if (previous.length !== entries.length) changed = true;
 
-  return { entries, changed };
+  return { entries, changed, born };
 }
 
 /** Claims the node a clean item already owns, without diffing into it. */
@@ -1332,9 +1355,21 @@ export function reorderChildren(
 
   const keep = keptInOrder(current, fresh);
   let keepIndex = keep.length - 1;
-  // The block's trailing anchor for a region, `null` — the parent's end — for an
-  // element whose children are the whole block.
-  let reference: ChildNode | null = anchor;
+  /**
+   * Where an insertion lands when nothing of this run follows it.
+   *
+   * A region is given its trailing anchor. An ELEMENT is given nothing, and `null` means the end of
+   * the PARENT — which is the end of its own children only while the parent holds nothing else. An
+   * element may host a `ChildrenRegion`'s block, and then the end of the parent is past the block:
+   * a freshly built child was appended there, leaving the guest sitting in the middle of the host's
+   * own run until some later render moved a node across it and healed it by accident.
+   *
+   * The first hosted block's opening anchor is the answer, because a block is APPENDED into its
+   * target (`ChildrenRegion.place`) and so sits after the host's own children. It is also the same
+   * node the host's claim pool skips to, which is what keeps the two passes agreeing about which
+   * nodes are whose.
+   */
+  let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
 
   for (let n = length - 1; n >= 0; n--) {
     const node = orderedNodes[n];
@@ -1346,6 +1381,19 @@ export function reorderChildren(
     }
     reference = node;
   }
+}
+
+/**
+ * The opening anchor of the first block this element merely HOSTS, or `null`.
+ *
+ * Read off `BLOCK_CLOSE`, the same property `ownChildNodes` skips a block by — so a comment that
+ * merely looks like an anchor, which a shell is entitled to write, is not mistaken for one.
+ */
+function firstHostedBlock(parent: ChildNode): ChildNode | null {
+  for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
+    if (node.nodeType === 8 && blockCloseOf(node) !== undefined) return node;
+  }
+  return null;
 }
 
 /** Marks a node that is not in the parent yet, so it has no current position. */
@@ -1647,6 +1695,20 @@ export function disposeRegions(entries: RecordEntry[]): void {
 }
 
 export function releaseChildRecord(node: EnhancedChildNode): void {
+  /**
+   * A `ChildrenRegion`'s block, whose host element is being removed.
+   *
+   * The record on this anchor is the REGION's, not the node's, so tearing it down behind the
+   * region's back left it believing those components mounted — measured, its next reconcile adopted
+   * a destroyed instance and carried its markup into the live DOM. It is handed the news instead,
+   * and does the same teardown plus the bookkeeping only it can do.
+   */
+  const block = (node as unknown as { [BLOCK_OWNER]?: { hostRemoved(): void } })[BLOCK_OWNER];
+  if (block !== undefined) {
+    block.hostRemoved();
+    return;
+  }
+
   const record = node[CHILD_RECORD];
   if (record === undefined) return;
   disposeRegions(record);
