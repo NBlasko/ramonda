@@ -22,32 +22,29 @@ A UI framework. **Explicit. Predictable. Readable.**
 ## What it is
 
 ```tsx
-import { Component, Host, state, onElement } from "@ramonda/core";
+import { Component, state } from "@ramonda/core";
 
-@Host("button")
 export class Counter extends Component {
   @state count = 0;
 
-  @onElement("click")
   bump() {
     this.count++;
   }
 
   render() {
-    return <span>Clicked {this.count} times</span>;
+    return <button onclick={this.bump}>Clicked {this.count} times</button>;
   }
 }
 ```
 
 A few ideas set Ramonda apart:
 
-- **One component, one element.** A component *is* a single DOM node (its host),
-  so the JSX maps straight to the DOM you inspect — there is no wrapper, no
-  fragment ambiguity, and the parent–child rules the browser enforces are the
-  rules you write against.
+- **One JSX tag, one DOM node.** A component's markup is what its `render()`
+  returns and nothing else — one element, several, or none — so the JSX maps
+  straight to the DOM you inspect. There is no wrapper element, no fragment tag
+  to write, and two `<td>` from one component sit inside the `<tr>`.
 - **Decorators, not conventions.** `@state`, `@compute`, `@mounted`, `@destroyed`,
-  `@updated`, `@interval`, `@onElement`… behavior is declared on ordinary methods
-  and fields.
+  `@updated`, `@interval`… behavior is declared on ordinary methods and fields.
 - **Signals under the hood.** Reactivity tracks reads, so a `@compute`
   recomputes only when something it actually read changed — no dependency arrays.
 - **Region-aware diffing.** Lists get identity from their items, not from

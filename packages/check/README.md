@@ -138,8 +138,8 @@ $ ramonda-check-bundle dist
 It **parses** rather than grepping for `@`, and that distinction is the whole design. A grep is
 weaker, because a decorator is only one way to emit unparseable output. And it is wrong, because a
 bundle may legitimately contain decorator text inside a string — Ramonda's own diagnostics put
-`@Host("div")` in a suggestion message, so it appears in any bundle that ships them. A parser does
-not care what is inside a string.
+`@state isClient = false` in a suggestion message, so it appears in any bundle that ships them. A
+parser does not care what is inside a string.
 
 `node --check` does the parsing, on purpose: the failure being guarded against is "no engine can
 read this", and that is the engine.
@@ -190,7 +190,6 @@ differs, and pointing a reader at the wrong thing is worse than pointing them at
 
 | declared twice | what happens | what the report says |
 |---|---|---|
-| `@Host` | **throws** (`RMD045`) — two element names have no union | there is no live line to look for |
 | `@catchError` · `@ShouldUpdateOnPropsChange` | one wins, the rest are dead code (`RMD032`, `RMD040`) | **which** one is live |
 | `@StableProps` | both apply; the result is the union (`RMD046`) | nothing is lost, write it as one call |
 | `@state` · `@compute` · `@persist` · `@memoized` | nothing at all | delete the extras |

@@ -471,7 +471,6 @@ function ownerOfDecoration(instance: object, name: string, fn: unknown): object 
  * Declares the method that handles an error thrown anywhere below this component.
  *
  * ```tsx
- * @Host("div")
  * class Panel extends Component {
  *   @state failed = "";
  *
@@ -570,7 +569,6 @@ export function deferHydration(value: (...args: never[]) => unknown, context: En
  *
  * ```tsx
  * @ShouldUpdateOnPropsChange((self, previous, next) => previous.id !== next.id)
- * @Host("li")
  * class Row extends Component<{ id: number; noisy: unknown }> { … }
  * ```
  *
@@ -1451,10 +1449,10 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
      *
      * This decorator names a SET, and it already merges along the class chain — a subclass adds names
      * rather than shadowing the base's. So `@StableProps("a") @StableProps("b")` has an unambiguous
-     * reading, the union, and there is no answer to pick between. That is what separates it from
-     * `@Host` (RMD045), where two answers to "which element am I?" cannot both be honoured and the only
-     * honest response is to refuse: here carrying on gives exactly what the author asked for, spelled
-     * awkwardly.
+     * reading, the union, and there is no answer to pick between. That is what separates it from a
+     * decorator that names ONE answer — `@catchError` (RMD032), where the second declaration can only
+     * shadow the first and the honest response is to say which one is live. Here carrying on gives
+     * exactly what the author asked for, spelled awkwardly.
      *
      * It used to throw, and not on purpose — `configurable: false` below meant the second
      * `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`, an internal

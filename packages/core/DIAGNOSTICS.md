@@ -277,7 +277,6 @@ is for.** A component that renders `this.props.children` scopes the context to
 what is inside it:
 
 ```tsx
-@Host("div")
 class FormScope extends Component<{ children?: RamondaNode }> {
   private form = this.use(Form, () => ({ … }));
   render() { return this.props.children; }
@@ -529,13 +528,13 @@ element, and the fragment hides it. Ramonda's units are the **class** and the
 fragment to hide.
 
 **"Someone styled a `<td>` and I want to add to it, but it must stay a `<td>`"**
-— extend it. `@Host` is a static, so it comes down the chain, and a subclass may
-override it:
+— extend it. The tag is written in `render()`, so a subclass inherits it by
+inheriting the render, and changes it by writing its own:
 
 ```tsx
-@Host("td") class BaseCell extends Component<{ label?: string }> {
+class BaseCell extends Component<{ label?: string }> {
   decorate(v: string) { return v.toUpperCase(); }
-  render() { return <span>{this.decorate(this.props.label ?? "")}</span>; }
+  render() { return <td>{this.decorate(this.props.label ?? "")}</td>; }
 }
 
 class FancyCell extends BaseCell {
@@ -545,9 +544,9 @@ class FancyCell extends BaseCell {
 
 Both are still exactly one `<td>`; the subclass adds no element. **No constructor
 is needed** — and none should be written. Everything survives `extends`:
-`@Host` (override it by re-declaring), `render()`, plain methods (`super.` works),
-`@state` (inherited and new), hooks (inherited and new), and lifecycle — `@created`
-runs base-first, then the subclass's.
+`render()`, plain methods (`super.` works), `@state` (inherited and new), hooks
+(inherited and new), and lifecycle — `@created` runs base-first, then the
+subclass's.
 
 **A group of cells sharing state** is the one case that is genuinely not a
 component: it would have to be an element, and only `<td>` is legal there. That
