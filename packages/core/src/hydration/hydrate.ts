@@ -253,7 +253,9 @@ function hydrateComponentRegion(
       );
     }
     const region = buildComponentRegion(vnode, placeholder, owner, parent as ChildNode);
-    for (const node of region.order) parent.insertBefore(node, open);
+    const built: ChildNode[] = [];
+    flattenEntries(region.entries, built);
+    for (const node of built) parent.insertBefore(node, open);
     return region;
   }
 
@@ -324,7 +326,6 @@ function hydrateComponentRegion(
     definition: vnode.name,
     instance: component,
     entries: [],
-    order: [],
     parent: parent as ChildNode,
   };
   componentRuntime.region = region;
@@ -343,7 +344,17 @@ function hydrateComponentRegion(
      * them out then. Its nodes are collected into the region's order so the parent's own record
      * describes what is really on screen in the meantime.
      */
-    const close = skipToClose(open as unknown as Comment, region.order);
+    /**
+     * The block's nodes become the region's ENTRIES, not a cache beside them.
+     *
+     * They have not been diffed — that is what resuming does — but they are what this region holds
+     * right now, and a record entry is exactly "a node this region holds". Kept anywhere else, the
+     * parent's own reorder would not know these nodes are its children, and a teardown while the
+     * promise is still in flight would not find them.
+     */
+    const held: ChildNode[] = [];
+    const close = skipToClose(open as unknown as Comment, held);
+    region.entries = held as EnhancedChildNode[];
     deferredBlocks.set(component, { open: open as unknown as Comment, close, parent });
     componentRuntime.hydrationPending = true;
 
@@ -372,7 +383,6 @@ function hydrateComponentRegion(
   walk.cursor = nextOf(open);
   const inner = hydrateLevel(children, component, parent, walk);
   region.entries = inner.entries;
-  flattenEntries(region.entries, region.order);
 
   closeBlock(open as unknown as Comment, walk, component);
   componentRuntime.isInitialized = true;
@@ -648,8 +658,6 @@ function resumeHydration(component: BaseComponent): void {
   const walk: HydrationWalk = { cursor: block.open.nextSibling as EnhancedChildNode | null, count: 0 };
   const inner = hydrateLevel(children, component, block.parent, walk);
   region.entries = inner.entries;
-  region.order = [];
-  flattenEntries(region.entries, region.order);
 
   closeBlock(block.open, walk, component);
 

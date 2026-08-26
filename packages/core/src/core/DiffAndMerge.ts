@@ -229,21 +229,29 @@ export function refreshComponentRegion(component: BaseComponent): void {
   const parent = region.parent;
   if (parent === undefined) return;
 
+  /**
+   * What this block holds right now, DERIVED rather than remembered, and read before anything moves.
+   *
+   * `entries` still describe the previous pass at this point — the reconcile below replaces them —
+   * and every region keeps its own entries current, so flattening walks into a descendant that
+   * re-rendered on its own and gets what is really in the document. That is the whole reason there is
+   * no cached order: a cache is correct only for the region that last wrote it.
+   */
+  const before: ChildNode[] = [];
+  flattenEntries(region.entries, before);
+
+  /**
+   * And the anchor comes from that same reading, BEFORE anything is unmounted, because the answer is
+   * a NEIGHBOUR of the nodes about to go. Asked afterwards it saw a detached node, whose
+   * `nextSibling` is `null` — which reads as "the end of the parent", so fresh markup was appended
+   * past every later sibling. Measured on two `AsyncLoad`s side by side: they came back `[two][one]`.
+   */
+  const anchor = anchorAfterRegion(region, parent, before);
+
   const children = generateRenderOutput(component);
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
   const result = reconcileEntries(children, region.entries, undefined, component, parent, unclaimed);
   region.entries = result.entries;
-
-  /**
-   * Read BEFORE anything is unmounted, because the answer is a NEIGHBOUR of the nodes about to go.
-   *
-   * `anchorAfterRegion` takes the node after this block's last one, and the block's last node is
-   * exactly what a render that replaced its markup is about to remove. Asked afterwards it saw a
-   * detached node, whose `nextSibling` is `null` — which reads as "the end of the parent", so the
-   * fresh markup was appended past every later sibling. Measured on two `AsyncLoad`s side by side:
-   * they came back `[two][one]`.
-   */
-  const anchor = anchorAfterRegion(region, parent);
 
   // Before the reorder, for the reason the element path has: stale nodes still in the DOM make
   // correctly-placed ones look misplaced and cause pointless moves.
@@ -253,9 +261,8 @@ export function refreshComponentRegion(component: BaseComponent): void {
   flattenEntries(region.entries, ordered);
 
   if (result.changed || unclaimed.length > 0) {
-    reorderChildren(parent, ordered, anchor, region.order);
+    reorderChildren(parent, ordered, anchor, before);
   }
-  region.order = ordered;
 }
 
 /**
@@ -271,8 +278,8 @@ export function refreshComponentRegion(component: BaseComponent): void {
  * an append. This is the only place the framework searches for a position rather than carrying one,
  * and it is reached only on the render where an empty component starts producing markup.
  */
-function anchorAfterRegion(region: ComponentRegion, parent: ChildNode): ChildNode | null {
-  const last = region.order[region.order.length - 1];
+function anchorAfterRegion(region: ComponentRegion, parent: ChildNode, held: readonly ChildNode[]): ChildNode | null {
+  const last = held[held.length - 1];
   if (last !== undefined) return last.nextSibling;
 
   const record = (parent as EnhancedChildNode)[CHILD_RECORD];
@@ -1000,6 +1007,21 @@ function claimByKey(
   return node;
 }
 
+/**
+ * The first node a record holds, without flattening the rest of it.
+ *
+ * For the callers that want "somewhere to point at" — a devtools highlight, the connectedness check
+ * behind RMD016 — where building the whole list to read `[0]` is the wrong shape.
+ */
+export function firstNodeOf(entries: RecordEntry[]): ChildNode | undefined {
+  for (const entry of entries) {
+    if (!isRegion(entry)) return entry;
+    const inner = firstNodeOf(entry.entries);
+    if (inner !== undefined) return inner;
+  }
+  return undefined;
+}
+
 export function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
   for (const entry of entries) {
     if (isRegion(entry)) flattenEntries(entry.entries, out);
@@ -1658,10 +1680,8 @@ function buildComponent(
     definition: vnode.name,
     instance: component,
     entries: inner.entries,
-    order: [],
     parent,
   };
-  flattenEntries(region.entries, region.order);
 
   componentRuntime.region = region;
 

@@ -126,15 +126,15 @@ export interface ComponentRegion {
    */
   entries: RecordEntry[];
   /**
-   * The nodes this region owns, in order, as of the last pass.
+   * The DOM parent the block sits in, so a self-render knows where to reorder.
    *
-   * A component that re-renders ITSELF is not reached through its parent's render, so it has to
-   * restore the order of its own block inside a parent it shares with its siblings. This is the
-   * position map for that reorder — the nodes are contiguous and nothing else moves them, so it IS
-   * their DOM order, and `ChildrenRegion` keeps the same field for the same reason.
+   * There is deliberately no cached list of the nodes this region owns. `flattenEntries` derives it
+   * from `entries`, which every region keeps current for itself — so an ANCESTOR reading it walks
+   * into its descendants' current entries and gets the truth. A cached `order` was right only for
+   * the region that last re-rendered: a nested component that re-rendered on its own left every
+   * ancestor holding detached nodes, and the ancestor's next render read `nextSibling` on one of
+   * them, got `null`, and appended its markup past every later sibling.
    */
-  order: ChildNode[];
-  /** The DOM parent the block sits in, so a self-render knows where to reorder. */
   parent: ChildNode | undefined;
 }
 

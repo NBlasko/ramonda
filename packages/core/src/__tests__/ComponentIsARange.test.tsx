@@ -346,10 +346,10 @@ describe("markers live only in served markup", () => {
  * usually not the one a test is holding a node for. From there the chain of owners is walked, which
  * is the only way outwards now: a component has no element, so there is no ancestor node to ask.
  */
-function findInstance(node: Node, name: string): unknown {
+function findInstance<T = unknown>(node: Node, name: string): T {
   let at = componentAt(node);
   while (at !== undefined) {
-    if (at.constructor.name === name) return at;
+    if (at.constructor.name === name) return at as T;
     at = at[COMPONENT_RUNTIME].parent;
   }
 
@@ -359,8 +359,128 @@ function findInstance(node: Node, name: string): unknown {
    * contains nothing. The record is what knows it is there, so the record is what to ask.
    */
   for (const candidate of componentsIn(node)) {
-    if (candidate.constructor.name === name) return candidate;
+    if (candidate.constructor.name === name) return candidate as T;
   }
 
   throw new Error(`no <${name} /> owns this node`);
 }
+
+describe("a region's node set is derived, not remembered", () => {
+  /**
+   * A nested component that re-renders on its own, and then its ANCESTOR re-renders.
+   *
+   * The bug this pins: the region used to cache the nodes it held, and only the region that
+   * re-rendered updated its own cache. So an ancestor was left holding nodes a descendant had
+   * already detached — and the ancestor's next render read `nextSibling` on one of them, got `null`,
+   * and read that as "the end of the parent". Its fresh markup landed past every later sibling.
+   *
+   * Nothing is cached now: the previous set is flattened out of `entries`, which every region keeps
+   * current for itself, so an ancestor walking it sees what is really in the document.
+   */
+  test("an ancestor re-rendering after a descendant did puts its markup in the right place", async () => {
+    class Maybe extends Component {
+      @state open = true;
+      render() {
+        return this.open ? <b id="inner">inner</b> : null;
+      }
+    }
+
+    class Wrapper extends Component {
+      @state extra = false;
+      render() {
+        return this.extra ? [<Maybe />, <em id="new">new</em>] : [<Maybe />];
+      }
+    }
+
+    class Shell extends Component {
+      render() {
+        return (
+          <div id="shell">
+            <Wrapper />
+            <span id="tail">tail</span>
+          </div>
+        );
+      }
+    }
+
+    const { container, settle } = await getDOM(<Shell />);
+    const shell = () => container.querySelector("#shell")!.innerHTML;
+
+    expect(shell()).toBe('<b id="inner">inner</b><span id="tail">tail</span>');
+
+    // The DESCENDANT re-renders on its own and gives up its node.
+    findInstance<{ open: boolean }>(container.querySelector("#shell")!, "Maybe").open = false;
+    await settle();
+    expect(shell()).toBe('<span id="tail">tail</span>');
+
+    // Now the ANCESTOR re-renders and adds markup. It has to land inside its own block — before the
+    // tail, which is its sibling and not its child.
+    findInstance<{ extra: boolean }>(container.querySelector("#shell")!, "Wrapper").extra = true;
+    await settle();
+    expect(shell()).toBe('<em id="new">new</em><span id="tail">tail</span>');
+  });
+
+  /**
+   * RMD016 says a component updated while its markup is out of the document, and it read the same
+   * cache — so a component whose descendant had just replaced a node was accused of being orphaned
+   * while its parent was in the document the whole time.
+   *
+   * A node that is not connected is not evidence. Only a component whose PARENT has left is.
+   */
+  test("a healthy component is not reported as orphaned after a descendant re-renders", async () => {
+    const codes: string[] = [];
+    const handler = (event: Event) => {
+      const message = (event as CustomEvent<{ message: string }>).detail.message;
+      const code = message.match(/^\[(RMD\d+)\]/)?.[1];
+      if (code) codes.push(code);
+    };
+    window.addEventListener("ramonda:dev-log", handler);
+
+    class Leaf extends Component {
+      @state shown = true;
+      render() {
+        return this.shown ? <i id="leaf">leaf</i> : <b id="leaf">leaf</b>;
+      }
+    }
+
+    class Holder extends Component {
+      @state n = 0;
+      render() {
+        return [<Leaf />, <u id="count">{this.n}</u>];
+      }
+    }
+
+    try {
+      const { container, settle } = await getDOM(
+        <div>
+          <Holder />
+        </div>,
+      );
+
+      // The descendant swaps its element, which detaches the node the holder's record started with.
+      findInstance<{ shown: boolean }>(container.querySelector("#leaf")!, "Leaf").shown = false;
+      await settle();
+
+      codes.length = 0;
+      findInstance<{ n: number }>(container.querySelector("#count")!, "Holder").n = 1;
+      await settle();
+
+      expect(container.querySelector("#count")!.textContent).toBe("1");
+      expect(codes).not.toContain("RMD016");
+
+      /**
+       * And the listener really hears this channel, so the assertion above is not vacuous.
+       *
+       * A capture that silently attached to the wrong event name would make every `not.toContain`
+       * pass against nothing — a green test proving only that the wiring broke.
+       */
+      const orphan = findInstance<{ n: number }>(container.querySelector("#count")!, "Holder");
+      container.querySelector("div")!.remove();
+      orphan.n = 2;
+      await settle();
+      expect(codes).toContain("RMD016");
+    } finally {
+      window.removeEventListener("ramonda:dev-log", handler);
+    }
+  });
+});

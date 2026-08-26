@@ -1,5 +1,5 @@
 import { STATE_KEYS, PERSIST_KEYS, CONTEXT_READS, CHILD_RECORD } from "../helpers/constants";
-import { isRegion, isComponentRegion } from "../core/DiffAndMerge";
+import { firstNodeOf, isRegion, isComponentRegion } from "../core/DiffAndMerge";
 import type { EnhancedChildNode, RecordEntry } from "../types/vdom";
 import { INSPECT } from "../base/inspect";
 import { inspectPhase } from "./renderPhase";
@@ -319,7 +319,7 @@ function scanEntries(entries: RecordEntry[], depth: number): InspectedNode[] {
        * `undefined` for a component that rendered nothing, and that is the honest answer: it is in
        * the tree, with its state and its hooks, and there is nothing on the page to point at.
        */
-      node: entry.order[0] as Node | undefined,
+      node: firstNodeOf(entry.entries) as Node | undefined,
     });
   }
 
