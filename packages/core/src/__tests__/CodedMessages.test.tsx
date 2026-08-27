@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { onElement, ShouldUpdateOnPropsChange, state, watchProp } from "../base/decorators";
+import { ShouldUpdateOnPropsChange, state, watchProp } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Head } from "../base/Head";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -156,28 +156,10 @@ describe("the ten that were messages", () => {
   }
   const Missing = undefined as unknown as typeof Present;
 
-  test("RMD042 — the default host cannot be the target of this event", async () => {
-    // No `@Host`, so the host is `<ramonda-host>`: `display: contents`, no box, and therefore never
-    // the direct target of a pointer event.
-    class OnHost extends Component {
-      @onElement("mouseenter")
-      onEnter() {}
-      render() {
-        return <p>hover me</p>;
-      }
-    }
-    const { unmount } = await getDOM(<OnHost />);
-
-    expect(codes()).toContain("RMD042");
-    expect(of("RMD042")?.severity).toBe("warn");
-    expect(of("RMD042")?.data).toMatchObject({ component: "OnHost", event: "mouseenter" });
-    unmount();
-  });
-
   /**
    * `RMD041` — a listener whose target resolver returns nothing — is not here, and the reason is
    * worth writing down rather than leaving as a gap: no supported decorator reaches it from an
-   * ordinary mount. `@onElement` always resolves the host, `@onWindow` and `@onDocument` always
+   * ordinary mount. `@onWindow` and `@onDocument` always
    * resolve a global, and a component with no host throws at construction instead. It is reachable
    * only by a resolver that gives up, which is why the check exists — but nothing in the public API
    * can produce one to test with.

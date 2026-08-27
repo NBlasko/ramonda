@@ -1,4 +1,4 @@
-import { Component, Host, state, compute, list } from "@ramonda/core";
+import { Component, state, compute, list } from "@ramonda/core";
 
 interface Person {
   name: string;
@@ -9,7 +9,6 @@ interface Person {
 // demo visible: star a row, then filter OTHER rows away, and the survivor keeps
 // its own star exactly where it belongs — it never inherits the star of a row
 // the filter removed, which is the thing positional `.map()` gets wrong.
-@Host("li")
 class PersonRow extends Component<{ item: Person }> {
   @state starred = false;
 
@@ -19,17 +18,23 @@ class PersonRow extends Component<{ item: Person }> {
 
   render() {
     return (
-      <span>
-        <button type="button" className="star" aria-pressed={this.starred ? "true" : "false"} onclick={this.toggleStar}>
-          {this.starred ? "★" : "☆"}
-        </button>{" "}
-        {this.props.item.name} <span className="demo-note">{this.props.item.role}</span>
-      </span>
+      <li>
+        <span>
+          <button
+            type="button"
+            className="star"
+            aria-pressed={this.starred ? "true" : "false"}
+            onclick={this.toggleStar}
+          >
+            {this.starred ? "★" : "☆"}
+          </button>{" "}
+          {this.props.item.name} <span className="demo-note">{this.props.item.role}</span>
+        </span>
+      </li>
     );
   }
 }
 
-@Host("div")
 export class FilteredList extends Component {
   // The objects are created once and never replaced, so their identity is stable
   // — which is why a filtered view of them needs no key.
@@ -60,30 +65,32 @@ export class FilteredList extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          <input
-            type="text"
-            aria-label="Filter by name or role"
-            placeholder="filter by name or role"
-            value={this.query}
-            oninput={this.onInput}
-          />
-          <span className="demo-note">
-            star a row, then filter — a row that stays keeps its own star, and no row inherits one from a person the
-            filter removed
-          </span>
-        </p>
-        {/*
-          `each` is bound to the DERIVED array, read the moment the list is built,
-          so it is always the current filter. No key: the objects are the same
-          references a filter selected, so identity already holds.
-        */}
-        <ul className="demo-list">
-          {list(this.visible, (item) => (
-            <PersonRow item={item} />
-          ))}
-        </ul>
-        {this.visible.length === 0 ? <p className="demo-note">No one matches “{this.query}”.</p> : null}
+        <div>
+          <p className="demo-row">
+            <input
+              type="text"
+              aria-label="Filter by name or role"
+              placeholder="filter by name or role"
+              value={this.query}
+              oninput={this.onInput}
+            />
+            <span className="demo-note">
+              star a row, then filter — a row that stays keeps its own star, and no row inherits one from a person the
+              filter removed
+            </span>
+          </p>
+          {/*
+            `each` is bound to the DERIVED array, read the moment the list is built,
+            so it is always the current filter. No key: the objects are the same
+            references a filter selected, so identity already holds.
+          */}
+          <ul className="demo-list">
+            {list(this.visible, (item) => (
+              <PersonRow item={item} />
+            ))}
+          </ul>
+          {this.visible.length === 0 ? <p className="demo-note">No one matches “{this.query}”.</p> : null}
+        </div>
       </div>
     );
   }

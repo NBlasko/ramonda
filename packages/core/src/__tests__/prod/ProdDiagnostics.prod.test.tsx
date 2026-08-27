@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
 import { Hook } from "../../base/Hook";
-import { Host, state, deferHydration, memoized } from "../../base/decorators";
+import { state, deferHydration, memoized } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { bootstrap, unmount } from "../../index";
@@ -45,7 +45,6 @@ async function serverHtmlInto(vnode: Parameters<typeof renderToString>[0]): Prom
   return container;
 }
 
-@Host("div")
 class Stuck extends Component {
   @deferHydration wait() {
     return new Promise<void>(() => {
@@ -53,11 +52,14 @@ class Stuck extends Component {
     });
   }
   render() {
-    return <p>stuck</p>;
+    return (
+      <div>
+        <p>stuck</p>
+      </div>
+    );
   }
 }
 
-@Host("div")
 class Panel extends Component {
   @state label = "one";
 
@@ -70,9 +72,11 @@ class Panel extends Component {
     // An object cannot be part of a cache key. Development throws on this; production degrades.
     const bad = this.pick({ id: 7 } as unknown as string);
     return (
-      <button type="button" onclick={bad}>
-        {this.label}
-      </button>
+      <div>
+        <button type="button" onclick={bad}>
+          {this.label}
+        </button>
+      </div>
     );
   }
 }

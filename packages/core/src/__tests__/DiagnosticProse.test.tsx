@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -139,40 +138,5 @@ describe("RMD021 — randomness, and no clock", () => {
     expect(fix).toContain("props callback");
     expect(fix).toContain("render()");
     unmount();
-  });
-});
-
-/**
- * RMD010's fix named "list elements" among the parents that only accept specific children. They
- * are the ones it deliberately does NOT report: measured, the parser leaves an unknown element
- * inside a `<ul>` alone, and warning there would fire on the commonest list in any app.
- */
-describe("RMD010 — the parents it really speaks about", () => {
-  test("a default host inside a <ul> is silent, and a <tbody> is not", async () => {
-    class Row extends Component {
-      render() {
-        return <span>row</span>;
-      }
-    }
-    @Host("ul")
-    class InAList extends Component {
-      render() {
-        return <Row />;
-      }
-    }
-    const list = await getDOM(<InAList />);
-    expect(all("RMD010")).toHaveLength(0);
-    list.unmount();
-
-    @Host("table")
-    class InATable extends Component {
-      render() {
-        return <Row />;
-      }
-    }
-    const table = await getDOM(<InATable />);
-    expect(all("RMD010").length).toBeGreaterThan(0);
-    expect(of("RMD010")?.fix).not.toContain("list elements");
-    table.unmount();
   });
 });

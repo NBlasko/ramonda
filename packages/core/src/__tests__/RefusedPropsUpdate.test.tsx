@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, ShouldUpdateOnPropsChange } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, state, ShouldUpdateOnPropsChange } from "../index";
 
 /**
  * Exactly what a refused props update leaves behind.
@@ -28,24 +28,28 @@ describe("a props update the rule refuses", () => {
     @ShouldUpdateOnPropsChange(
       (_self, previous: { id: string; noise: number }, next: { id: string; noise: number }) => previous.id !== next.id,
     )
-    @Host("p")
     class Row extends Component<{ id: string; noise: number }> {
       render() {
         seen.push(`${this.props.id}/${this.props.noise}`);
         return (
-          <span>
-            {this.props.id}/{this.props.noise}
-          </span>
+          <p>
+            <span>
+              {this.props.id}/{this.props.noise}
+            </span>
+          </p>
         );
       }
     }
 
-    @Host("div")
     class Board extends Component {
       @state id = "a";
       @state noise = 0;
       render() {
-        return <Row id={this.id} noise={this.noise} />;
+        return (
+          <div>
+            <Row id={this.id} noise={this.noise} />
+          </div>
+        );
       }
     }
 
@@ -62,38 +66,40 @@ describe("a props update the rule refuses", () => {
 
   test("a render the component causes ITSELF still shows the old props", async () => {
     @ShouldUpdateOnPropsChange(() => false)
-    @Host("p")
     class Row extends Component<{ label: string }> {
       @state clicks = 0;
 
       render() {
         return (
-          <span>
-            {this.props.label}/{this.clicks}
-          </span>
+          <p>
+            <span>
+              {this.props.label}/{this.clicks}
+            </span>
+          </p>
         );
       }
     }
 
-    @Host("div")
     class Board extends Component {
       @state label = "first";
       render() {
-        return <Row label={this.label} />;
+        return (
+          <div>
+            <Row label={this.label} />
+          </div>
+        );
       }
     }
 
     const app = await getDOM<Board>(<Board />);
     await app.settle();
 
-    const row = app.container.querySelector("p") as { _componentInstance?: { clicks: number } };
-
     // The parent offers a new label; the rule refuses it.
     app.instance.label = "second";
     await app.settle();
 
     // The component now re-renders for its OWN reason.
-    row._componentInstance!.clicks = 1;
+    instanceOf<{ clicks: number }>(app.container.querySelector("p")).clicks = 1;
     await app.settle();
 
     // The counter moved, the label did not — nothing ever wrote it.
@@ -106,20 +112,26 @@ describe("a props update the rule refuses", () => {
     @ShouldUpdateOnPropsChange(
       (_self, previous: { id: string; noise: number }, next: { id: string; noise: number }) => previous.id !== next.id,
     )
-    @Host("p")
     class Row extends Component<{ id: string; noise: number }> {
       render() {
         seen.push(`${this.props.id}/${this.props.noise}`);
-        return <span>x</span>;
+        return (
+          <p>
+            <span>x</span>
+          </p>
+        );
       }
     }
 
-    @Host("div")
     class Board extends Component {
       @state id = "a";
       @state noise = 0;
       render() {
-        return <Row id={this.id} noise={this.noise} />;
+        return (
+          <div>
+            <Row id={this.id} noise={this.noise} />
+          </div>
+        );
       }
     }
 

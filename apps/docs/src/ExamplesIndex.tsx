@@ -1,4 +1,4 @@
-import { Component, Host, list } from "@ramonda/core";
+import { Component, list } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { demos } from "./demos";
 import { Demo } from "./Demo";
@@ -15,13 +15,16 @@ import { Demo } from "./Demo";
 /** Read once: a fresh `Object.keys()` every render would be a new array each time. */
 const demoNames = Object.keys(demos);
 
-@Host("div")
 export class ExamplesIndex extends Component {
   renderDemo(name: string): VNode {
     return <Demo name={name} titled={true} />;
   }
 
   render(): RamondaNode {
-    return <div className="examples">{list(demoNames, this.renderDemo)}</div>;
+    return (
+      <div>
+        <div className="examples">{list(demoNames, this.renderDemo)}</div>
+      </div>
+    );
   }
 }

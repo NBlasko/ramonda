@@ -14,6 +14,7 @@ import type {
   VNodeString,
   EnhancedSVGElement,
   ListRegion,
+  ComponentRegion,
   RecordEntry,
 } from "../types/vdom";
 import { addTaskToQueue } from "./Task";
@@ -26,7 +27,10 @@ import {
   IS_SVG,
   KEY_SYM,
   SLOT_SYM,
-  HAS_LIST,
+  BLOCK_CLOSE,
+  BLOCK_OWNER,
+  HAS_REGION,
+  COMPONENT_TYPE,
   CHILD_RECORD,
   ORIGIN_SYM,
   REF_SYM,
@@ -34,11 +38,9 @@ import {
   STABLE_PROPS,
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
-import { isListNode } from "../vdom/guards";
-import { hostTagMatches } from "../helpers/hostTag";
+import { isListNode, isVNode } from "../vdom/guards";
 import { queuePostCommit, flushAfterCommit } from "./commit";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
-import { checkHostPlacement } from "../debug/hostPlacement";
 import { checkNesting } from "../debug/domNesting";
 import { seedWatchProps } from "../helpers/watchProps";
 import type { Context } from "../types/commonTypes";
@@ -54,6 +56,13 @@ import type { Runtime } from "./runtime";
 
 type PropsGate = (self: unknown, previous: unknown, next: unknown) => boolean;
 
+/**
+ * Brings one ELEMENT into line with its vnode. Components do not come through here.
+ *
+ * A component owns a range rather than a node, so it is reconciled where ranges live —
+ * `reconcileEntries`, beside a list — and it never has a node for this to be handed. What is left
+ * here is exactly what it always did for markup: attributes, then children.
+ */
 export function diffAndMerge(
   vnode: VNode,
   placeholderComponent: MaybeComponent,
@@ -63,7 +72,387 @@ export function diffAndMerge(
     return executeChangesOnStringNode(vnode, placeholderComponent, maybeenhancedNode);
   }
 
-  return createOrUpdateComponent(vnode, placeholderComponent, maybeenhancedNode);
+  /**
+   * A component reached the node path, which means a children array lost its `HAS_REGION` mark.
+   *
+   * Loud rather than silent: without the mark the parent keeps no record, so the component would be
+   * built with nowhere to say which nodes are its own — and the failure would surface much later, as
+   * a sibling adopting its nodes. Every producer of a children array stamps the flag
+   * (`normalizeChildren`, `generateRenderOutput`), so reaching this is a framework bug.
+   */
+  throw new Error(
+    `[Ramonda] <${(vnode.name as { name?: string })?.name ?? "component"}> reached the element diff. ` +
+      "A component is a region and is reconciled by reconcileEntries; the children array it arrived " +
+      "in was not marked as holding one.",
+  );
+}
+
+/**
+ * Mounts a root into a container, and leaves the record that describes it.
+ *
+ * The ordinary level reconcile, given one child and an empty history — so a root may be a component,
+ * an element, a list or a string, exactly as any child may. A component is a range, so what a root
+ * leaves behind is a record rather than the one node it used to be.
+ *
+ * `bootstrap`, `renderToString` and the test harness all enter here.
+ */
+export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
+  const unclaimed: (EnhancedChildNode | DONE)[] = [];
+  const result = reconcileEntries([vnode], [], undefined, undefined, container, unclaimed);
+  (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
+
+  /**
+   * Inserted before whatever the BUILD itself put in the container, not appended past it.
+   *
+   * "A root mount has an empty container" was the assumption, and it is wrong by the time this line
+   * runs: `reconcileEntries` above has already executed every `@created` in the tree, and a `Portal`
+   * aimed at this same container — `document.body`, or the app root — appends its anchors there
+   * during that call. Measured on `bootstrap(<App/>, host)` with a portal aimed at `host`: the page
+   * came out `|<pin>|<own><tail>`, the portal's block permanently in front of the app's own markup,
+   * and no later render healed it.
+   *
+   * There is still no teardown to race with, which is what the old note was really about — nothing
+   * has been unmounted here. Only the "empty" half was untrue.
+   */
+  const ordered: ChildNode[] = [];
+  flattenEntries(result.entries, ordered);
+  const guest = firstHostedBlock(container);
+  for (const child of ordered) container.insertBefore(child, guest);
+}
+
+/**
+ * The component whose block a node sits in — the innermost one, when they nest.
+ *
+ * The reverse of the record, and it has to be computed rather than read: a node no longer carries a
+ * back-reference to a component, because a component is not a node. Nothing in the render path needs
+ * this — the diff walks the record forwards — so it is deliberately a search rather than a map
+ * maintained on every mount. Its callers are the devtools inspector and the test harness, both of
+ * which start from "the user clicked this node".
+ *
+ * The search stops at the FIRST record that answers, and that is what makes the answer the deepest
+ * one. Records are met innermost-first while climbing, and the component that owns a node has its
+ * region in the record of that node's own DOM parent — so the first hit is already the innermost
+ * component. Carrying on would find every ancestor component too and overwrite the real answer with
+ * the root: measured, `componentAt(span)` said `Two` where `Counter` owns the span.
+ */
+export function componentAt(node: Node): BaseComponent | undefined {
+  let found: BaseComponent | undefined;
+
+  const search = (entries: RecordEntry[]): void => {
+    for (const entry of entries) {
+      if (!isRegion(entry)) continue;
+
+      const nodes: ChildNode[] = [];
+      flattenEntries([entry], nodes);
+      if (!nodes.some((one) => one === node || one.contains(node))) continue;
+
+      if (isComponentRegion(entry)) found = entry.instance;
+      search(entry.entries);
+    }
+  };
+
+  for (let at: Node | null = node; at !== null; at = at.parentNode) {
+    const record = (at as EnhancedChildNode)[CHILD_RECORD];
+    if (record === undefined) continue;
+    search(record);
+    if (found !== undefined) return found;
+  }
+
+  /**
+   * The MOUNT CONTAINER, which no component's range covers — it is the thing the root was rendered
+   * into, not part of what anything rendered. Asking about it means asking for the root, which is
+   * what a test harness and a devtools panel both want, so the record it holds is read directly
+   * rather than answering `undefined` for the one node a caller is most likely to start from.
+   */
+  if (found === undefined) {
+    for (const entry of (node as EnhancedChildNode)[CHILD_RECORD] ?? []) {
+      if (isRegion(entry) && isComponentRegion(entry)) return entry.instance;
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Every component under a node, outermost first, in document order.
+ *
+ * The record read as a tree, which is the only way to see a component that owns NO nodes: a render
+ * that returned `null` is a live component with state and a lifecycle, and `componentAt` can never
+ * answer for it because there is no node to ask about. Nothing in the render path needs this either —
+ * it is for the devtools tree and for a harness that wants to name a component rather than point at
+ * a node.
+ */
+export function componentsIn(node: Node): BaseComponent[] {
+  const found: BaseComponent[] = [];
+
+  const walk = (entries: RecordEntry[]): void => {
+    for (const entry of entries) {
+      if (!isRegion(entry)) {
+        // A plain element, which may hold components deeper down. It keeps a record only when a
+        // component is among its OWN children — an element in between keeps none, so descending has
+        // to go through the DOM until the next record turns up. Reading only the record here missed
+        // every component under an intermediate element: measured on `<div><section><Child/>`.
+        found.push(...componentsIn(entry));
+        continue;
+      }
+      if (isComponentRegion(entry)) found.push(entry.instance);
+      walk(entry.entries);
+    }
+  };
+
+  const record = (node as EnhancedChildNode)[CHILD_RECORD];
+  if (record === undefined) {
+    // No record of its own: the walk goes through the DOM, and a comment child is descended into
+    // like any other — the block published on it is read by the branch below, one level down.
+    for (const child of Array.from(node.childNodes)) found.push(...componentsIn(child));
+    return found;
+  }
+
+  walk(record);
+
+  /**
+   * A `ChildrenRegion`'s block, published on its opening anchor.
+   *
+   * Its record is the region's own, so this node's record does not describe it — a portal writes
+   * into a target it SHARES, and a walk that read only the parent's record lost the portalled
+   * component entirely, where the old DOM walk found it through the back-reference on a node.
+   *
+   * Only on this branch. Where the node has no record the loop above already descends into the
+   * comment, and doing both visited every block twice: the harness reported one portalled component
+   * as two, and the devtools tree drew it twice.
+   */
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block !== undefined) walk(block);
+  }
+
+  return found;
+}
+
+/**
+ * Reconciles a root that is already mounted, against the record its container holds.
+ *
+ * What `rerenderRoot` needs, and it cannot be the ordinary element path: the container is not
+ * something a render produced, so there is no vnode for it — only the one entry inside it.
+ */
+export function rerenderRoot(vnode: ComponentChild, container: ChildNode): void {
+  const node = container as EnhancedChildNode;
+  const previous = node[CHILD_RECORD] ?? [];
+  const unclaimed: (EnhancedChildNode | DONE)[] = [];
+  const result = reconcileEntries([vnode], previous, undefined, undefined, container, unclaimed);
+  node[CHILD_RECORD] = result.entries;
+
+  unmountChildrenNodes(unclaimed, false);
+
+  if (result.changed || unclaimed.length > 0) {
+    const ordered: ChildNode[] = [];
+    flattenEntries(result.entries, ordered);
+    reorderChildren(container, ordered);
+  }
+}
+
+/**
+ * Brings a component's own block into line, for a render nobody else asked for.
+ *
+ * A component re-rendering itself is not reached through its parent, so it reconciles its own
+ * entries and restores the order of its own run of nodes inside a parent it shares with its
+ * siblings. `reorderChildren` takes both halves of what that needs: the trailing anchor, so
+ * insertions land inside the block, and the previous order as the position map.
+ */
+export function refreshComponentRegion(component: BaseComponent): void {
+  const region = component[COMPONENT_RUNTIME].region;
+  if (region === undefined) return;
+  const parent = region.parent;
+  if (parent === undefined) return;
+
+  /**
+   * What this block holds right now, DERIVED rather than remembered, and read before anything moves.
+   *
+   * `entries` still describe the previous pass at this point — the reconcile below replaces them —
+   * and every region keeps its own entries current, so flattening walks into a descendant that
+   * re-rendered on its own and gets what is really in the document. That is the whole reason there is
+   * no cached order: a cache is correct only for the region that last wrote it.
+   */
+  const before: ChildNode[] = [];
+  flattenEntries(region.entries, before);
+
+  /**
+   * And the anchor comes from that same reading, BEFORE anything is unmounted, because the answer is
+   * a NEIGHBOUR of the nodes about to go. Asked afterwards it saw a detached node, whose
+   * `nextSibling` is `null` — which reads as "the end of the parent", so fresh markup was appended
+   * past every later sibling. Measured on two `AsyncLoad`s side by side: they came back `[two][one]`.
+   */
+  const anchor = anchorAfterRegion(region, parent, before);
+
+  const children = generateRenderOutput(component);
+  const unclaimed: (EnhancedChildNode | DONE)[] = [];
+  const result = reconcileEntries(children, region.entries, undefined, component, parent, unclaimed);
+  region.entries = result.entries;
+
+  // Before the reorder, for the reason the element path has: stale nodes still in the DOM make
+  // correctly-placed ones look misplaced and cause pointless moves.
+  unmountChildrenNodes(unclaimed, false);
+
+  const ordered: ChildNode[] = [];
+  flattenEntries(region.entries, ordered);
+
+  if (result.changed || unclaimed.length > 0) {
+    /**
+     * The anchor is re-checked here, because the unmount above runs USER CODE.
+     *
+     * It is a NEIGHBOUR rather than one of this region's own nodes, and it has to be read before the
+     * unmount — that is the fault the comment above it records. But the window between the two is a
+     * `@destroyed`, and a `@destroyed` may take that neighbour out: a dropped child whose `Portal`
+     * aimed at this same parent disposes its block, and the block's opening anchor IS the node that
+     * was captured. Measured: `NotFoundError: The child can not be found in the parent`, thrown out
+     * of the re-render, with the markup this pass produced never reaching the page at all.
+     *
+     * A detached anchor answers the same question the empty case answers, so the search runs again
+     * rather than falling back to `null` — `null` means the end of the parent, which is what put
+     * fresh markup past every later sibling in the first place.
+     */
+    const stillThere = anchor === null || anchor.parentNode === (parent as unknown as ParentNode);
+    reorderChildren(parent, ordered, stillThere ? anchor : anchorAfterRegion(region, parent, ordered), before);
+  }
+}
+
+/**
+ * The node a fresh child of this region has to land in front of.
+ *
+ * Cheap in the case that happens: the block owns nodes, so the node after its last one is the
+ * answer and one property read finds it.
+ *
+ * The EMPTY block is the one that cannot be answered from the DOM — a component whose render
+ * returned nothing owns no node, so there is nothing to read a `nextSibling` from, and its position
+ * exists only in its parent's record. So the record is walked, in order, and the first node past
+ * this region is taken. `null` means the end of the parent, which is what `insertBefore` wants for
+ * an append. This is the only place the framework searches for a position rather than carrying one,
+ * and it is reached only on the render where an empty component starts producing markup.
+ */
+function anchorAfterRegion(region: ComponentRegion, parent: ChildNode, held: readonly ChildNode[]): ChildNode | null {
+  const last = held[held.length - 1];
+  if (last !== undefined) return last.nextSibling;
+
+  const own = (parent as EnhancedChildNode)[CHILD_RECORD];
+  if (own !== undefined) {
+    const found = nextNodeAfter(own, region);
+    if (found !== NOT_IN_RECORD) return found;
+  }
+
+  /**
+   * A `ChildrenRegion`'s block, whose record is its own rather than the parent's.
+   *
+   * A portalled component is not in the target's record at all, so the search above cannot find it —
+   * and answering `null` means "the end of the parent", which put the node PAST every other block in
+   * a shared target. It escaped its own anchors, so `dispose()` did not take it away with the rest.
+   *
+   * The block publishes its record on its opening anchor, and the answer inside a block that has
+   * nothing after this region is the block's CLOSE: that is what keeps the node inside its own
+   * anchors, and it is the same node `ChildrenRegion` reorders against.
+   */
+  for (const child of parent.childNodes) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block === undefined) continue;
+    const found = nextNodeAfter(block, region);
+    if (found !== NOT_IN_RECORD) return found ?? blockCloseOf(child) ?? null;
+  }
+
+  return null;
+}
+
+/**
+ * This element's OWN children, with any block it merely HOSTS left out.
+ *
+ * An element may hold a `ChildrenRegion`'s block — a `Portal` aimed at a node in the owner's own
+ * render, which is how "inline" is done, or the `Head` hook's tags in a head that also holds the
+ * shell's. A block keeps its record on its opening anchor rather than on the element, because a
+ * target is SHARED and cannot be any one region's, so this element's record says nothing about it.
+ *
+ * Read as ordinary children, the whole block becomes this render's leftovers: its anchors and nodes
+ * are unmounted, and `releaseChildRecord` on the anchor runs `@destroyed` for every component inside
+ * it while the region still believes them mounted. A node inside it can also be CLAIMED rather than
+ * removed, when it matches a tag this element renders — the same origin, because the same component
+ * built both.
+ *
+ * BOTH child paths need this, which is what the first version of it got wrong: only the pool path
+ * had it, and the record path fell back to `childNodes` whenever the element momentarily owned no
+ * region — measured, the portalled component was destroyed on the next render that brought a
+ * component back, and the block's detached close anchor then threw `NotFoundError` out of the
+ * region's own reorder.
+ *
+ * The block publishes where it ends (`BLOCK_CLOSE`) on the anchor a walk meets first, so the run is
+ * skipped in one pass. A comment is left out either way: nothing in a vnode list can claim one, and
+ * removing one is never this element's business.
+ */
+function ownChildNodes(parent: ChildNode): EnhancedChildNode[] {
+  const children = parent.childNodes as unknown as EnhancedChildNode[];
+  const own: EnhancedChildNode[] = [];
+  let skipUntil: ChildNode | undefined;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (skipUntil !== undefined) {
+      if (child === skipUntil) skipUntil = undefined;
+      continue;
+    }
+    if (child.nodeType === 8) {
+      skipUntil = blockCloseOf(child);
+      continue;
+    }
+    own.push(child);
+  }
+  return own;
+}
+
+/** The closing anchor of the block published on this opening one. See `BLOCK_CLOSE`. */
+export function blockCloseOf(open: Node): ChildNode | undefined {
+  return (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE];
+}
+
+/** Says the region is not in this record at all, which is not the same as "nothing follows it". */
+const NOT_IN_RECORD = Symbol("notInRecord");
+
+/**
+ * The first node after `region` within `entries`, `null` when it is there with nothing after it, and
+ * `NOT_IN_RECORD` when it is not in this record.
+ *
+ * The three answers have to be told apart. Collapsing the last two into `null` is what let a
+ * portalled component — absent from the parent's record — be read as "found, and last", which is an
+ * append at the end of the parent.
+ *
+ * The search is over the record in DOCUMENT order, and it does not stop at the level the region sits
+ * on: a nested region that holds the region and nothing after it answers nothing, and the answer is
+ * then the next entry of the level ABOVE. Reading that "nothing" as the final answer is what made an
+ * empty component one level down append past its owner's later siblings — measured on
+ * `<div><Wrapper /><u>after</u></div>`, where `Wrapper` renders the empty component and its first
+ * markup landed as `<u>after</u><b>here</b>`.
+ *
+ * So `walk` returns a NODE or nothing, and whether the region was seen at all is `passed`, which is
+ * shared across the levels — the same flag that keeps a node BEFORE the region from being returned by
+ * a recursion into an earlier sibling region.
+ */
+function nextNodeAfter(entries: RecordEntry[], region: ComponentRegion): ChildNode | null | typeof NOT_IN_RECORD {
+  let passed = false;
+
+  const walk = (level: RecordEntry[]): ChildNode | null => {
+    for (const entry of level) {
+      if (entry === (region as RecordEntry)) {
+        passed = true;
+        continue;
+      }
+      if (isRegion(entry)) {
+        const found = walk(entry.entries);
+        if (found !== null) return found;
+        continue;
+      }
+      if (passed) return entry;
+    }
+    return null;
+  };
+
+  const answer = walk(entries);
+  return passed ? answer : NOT_IN_RECORD;
 }
 
 /**
@@ -89,29 +478,11 @@ function buildDetachedNode(
     }
 
     const diff = diffAndMerge(vchild, placeholderComponent, undefined);
-    if (__DEV__) {
-      checkHostPlacement(parent, diff);
-      checkNesting(parent, diff);
-    }
+    if (__DEV__) checkNesting(parent, diff);
     return diff;
   } catch (e) {
     errorHandler(e, placeholderComponent);
   }
-}
-
-/**
- * Builds a child and appends it. The ROOT mounts use this — `bootstrap` and
- * `renderToString` have an empty container and nothing to reorder, so there is
- * no teardown for the insertion to race with.
- */
-export function mountNode(
-  vchild: ComponentChild,
-  placeholderComponent: MaybeComponent,
-  enhancedNode: ChildNode,
-): ChildNode | undefined {
-  const built = buildDetachedNode(vchild, placeholderComponent, enhancedNode);
-  if (built) enhancedNode.appendChild(built);
-  return built;
 }
 
 function executeChangesOnStringNode(
@@ -130,19 +501,6 @@ function executeChangesOnStringNode(
   applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
 
   const vnodeChildren = vnode.children;
-
-  if (!vnodeChildren) {
-    // `childNodes` is a live NodeList and unmounting calls `.remove()` — snapshot
-    // it first, otherwise the list shrinks mid-iteration and skips children.
-    const EnhancedChildNodes = Array.from(enhancedNode.childNodes as unknown as EnhancedChildNode[]);
-    unmountChildrenNodes(EnhancedChildNodes, false);
-    // Everything under this element is gone, so any list record describes nodes
-    // that no longer exist. Left behind, it would be read as truth next render —
-    // and its regions would keep their items subscribed to whatever they read.
-    releaseListRecord(enhancedNode as EnhancedChildNode);
-
-    return enhancedNode;
-  }
 
   const { cloneChildren, orderedNodes } = applyDiffOnChildren(vnodeChildren, placeholderComponent, enhancedNode);
 
@@ -210,19 +568,34 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
   }
 
   const owner = enhancedNode as EnhancedChildNode;
-  // O(1): `flattenMixedArray` marked the array when it kept a list in it. The
-  // record check catches the render where the last list just disappeared.
-  const hasList = (vnodeChildren as { [HAS_LIST]?: boolean })[HAS_LIST] === true;
+  // O(1): `flattenMixedArray` marked the array when it kept a region in it — a list, or a
+  // component. The record check catches the render where the last one just disappeared.
+  const hasRegion = (vnodeChildren as { [HAS_REGION]?: boolean })[HAS_REGION] === true;
 
-  if (hasList || owner[CHILD_RECORD] !== undefined) {
-    return applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasList);
+  if (hasRegion || owner[CHILD_RECORD] !== undefined) {
+    return applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasRegion);
   }
 
-  const enhancedChildNodes = enhancedNode.childNodes as unknown as EnhancedChildNode[];
-  const cloneChildren: (EnhancedChildNode | DONE)[] = [];
-  for (let i = 0; i < enhancedChildNodes.length; i++) {
-    cloneChildren[i] = enhancedChildNodes[i];
-  }
+  /**
+   * The pool to claim from: this element's children, MINUS the ones it does not own.
+   *
+   * An element may hold a `ChildrenRegion`'s block — a `Portal` aimed at a node in the owner's own
+   * render, which is how "inline" is done, and the `Head` hook's tags in a head that also holds the
+   * shell's. A block keeps its record on its opening anchor rather than on the element, because a
+   * target is SHARED and cannot be any one region's, so this element's record says nothing about it.
+   *
+   * Read as ordinary children, the whole block is this render's leftovers: its anchors and nodes are
+   * unmounted, and `releaseChildRecord` on the anchor runs `@destroyed` for every component inside
+   * it while the portal still believes them mounted. Measured on a portal aimed at a `<section>` the
+   * owner renders: the block was gone on the render that placed it. A node inside it can also be
+   * CLAIMED rather than removed, when it happens to match a tag this element renders — the same
+   * origin, because the same component built both.
+   *
+   * The block publishes where it ends (`BLOCK_CLOSE`) on the anchor a walk finds first, so the run
+   * is skippable in one pass. A comment is left out either way: nothing in a vnode list can claim
+   * one, and removing one is never this element's business.
+   */
+  const cloneChildren: (EnhancedChildNode | DONE)[] = ownChildNodes(enhancedNode);
   const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
   // The nodes the vnode list wants, in its order. Feeds the reorder pass.
@@ -411,8 +784,15 @@ function claimOrMount(
  * stronger identity, and a keyed child is allowed to move between slots. Stamping them meant
  * 3000 real writes on every rotation of a keyed list, for an answer no one reads. A keyed node
  * therefore carries no slot, and `findIndexOfSlot` walks past it rather than stopping.
+ *
+ * Exported for HYDRATION, which adopts nodes without going through the claim above and so used to
+ * leave a whole page unstamped. The first update then matched those nodes by POSITION, and a child
+ * appearing above them handed each one its neighbour's node: measured on a hydrated
+ * `<span id="one">`/`<span id="two">` pair, where inserting a `<b>` in front left the text right and
+ * the two nodes swapped — which is what carries focus, scroll and an uncontrolled input's value to
+ * the wrong row.
  */
-function stampSlot(node: EnhancedChildNode, slot: number, keyed: boolean): void {
+export function stampSlot(node: EnhancedChildNode, slot: number, keyed: boolean): void {
   if (keyed) {
     // It was unkeyed on an earlier render and a key has since been added: the old slot would
     // be a lie to any sibling scanning past it.
@@ -481,12 +861,24 @@ function findIndexOfSlot(
   return findIndexOfSimilarNodes(vchild, cloneChildren, preferredIndex, low);
 }
 
-/** A record entry is either a DOM node or a region; only the region has `owner`. */
-function isRegion(entry: RecordEntry): entry is ListRegion {
+/**
+ * A record entry is either a DOM node or a region; only a region has `owner`.
+ *
+ * Deliberately blind to WHICH kind of region. A list and a component both own a contiguous run of
+ * nodes and nest the same way, and every caller here — `flattenEntries`, `collectRegionNodes`,
+ * `disposeRegions`, the previous-region map — asks only that one question. Two of them would be two
+ * walks over the same tree answering it twice.
+ */
+export function isRegion(entry: RecordEntry): entry is ListRegion | ComponentRegion {
   return (entry as ListRegion).owner !== undefined;
 }
+
+/** Which kind. A component region carries the instance; a list carries its `source`. */
+export function isComponentRegion(entry: ListRegion | ComponentRegion): entry is ComponentRegion {
+  return (entry as ComponentRegion).instance !== undefined;
+}
 /**
- * The path for an element that owns at least one list.
+ * The path for an element that owns at least one region — a list, or a component.
  *
  * Previous state comes from the element's record rather than from `childNodes`,
  * because the DOM has nowhere to say "these three nodes are that list".
@@ -495,16 +887,19 @@ function applyDiffWithRegions(
   vnodeChildren: unknown[],
   placeholderComponent: MaybeComponent,
   enhancedNode: EnhancedChildNode,
-  hasList: boolean,
+  hasRegion: boolean,
 ) {
-  const previous = enhancedNode[CHILD_RECORD] ?? (Array.from(enhancedNode.childNodes) as unknown as RecordEntry[]);
+  // The fallback is reached on the render an element gains its FIRST region, and again on any render
+  // after it momentarily owned none — the line below clears the record then. Both read the DOM, so
+  // both have to leave a hosted block out of it: see `ownChildNodes`.
+  const previous = enhancedNode[CHILD_RECORD] ?? (ownChildNodes(enhancedNode) as unknown as RecordEntry[]);
 
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
   const result = reconcileEntries(vnodeChildren, previous, undefined, placeholderComponent, enhancedNode, unclaimed);
 
-  // Kept only while this element still owns a list — every other element pays
-  // nothing and keeps reading childNodes exactly as before.
-  enhancedNode[CHILD_RECORD] = hasList ? result.entries : undefined;
+  // Kept only while this element still owns a region — every other element pays nothing and keeps
+  // reading childNodes exactly as before.
+  enhancedNode[CHILD_RECORD] = hasRegion ? result.entries : undefined;
 
   // Nothing moved, mounted or unmounted, and every region reported itself
   // unchanged — so there is no order to restore and no reason to flatten.
@@ -562,15 +957,53 @@ export function reconcileEntries(
    * supplies a host that refreshes the region itself.
    */
   listHost?: ListHost,
-): { entries: RecordEntry[]; changed: boolean } {
+): { entries: RecordEntry[]; changed: boolean; born?: (ListRegion | ComponentRegion)[] } {
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
-  // Looked up by owner, never by position: a list keeps its nodes even when it
+  // Looked up by owner, never by position: a region keeps its nodes even when it
   // moves among its siblings.
-  const previousRegions = new Map<unknown, ListRegion>();
+  const previousRegions = new Map<unknown, ListRegion | ComponentRegion>();
+  /**
+   * Regions a LATER one with the same owner pushed out of the index.
+   *
+   * One entry per owner, and two siblings can answer the same one: a component's owner is its `key`
+   * when the parent wrote one, so `<Row key="a" /><Row key="a" />` collides. That is user error and
+   * `RMD002` says so — but the page has to survive it on every render, and the loser of the collision
+   * is not in the index at all: nothing claims it and the teardown below only walks the index. Its
+   * nodes stayed in the DOM and its `@destroyed` never ran, once per render, for as long as the
+   * mistake was in the source. Measured: three `<li>` after the first re-render of two rows, four
+   * after the second.
+   *
+   * The later one wins, which is what a plain node with a duplicate key already does — `keyIndexOf`
+   * overwrites, and the displaced NODE ends up in `cloneChildren` and is unmounted as a leftover.
+   * This is the same outcome for a region: retired with the ones this render no longer asks for.
+   */
+  let displacedRegions: (ListRegion | ComponentRegion)[] | undefined;
+
+  /**
+   * Components this pass BUILT, so a throw can take them back down.
+   *
+   * A pass that throws never returns its entries, so everything new in them is unreachable: no
+   * record points at it, and `disposeRegions` only ever walks a record. Their `@created` has already
+   * run and their queued `@mounted` and effects still would, so they arm timers and subscribe to
+   * signals and then leak for the life of the page. Measured on a component built before a list
+   * whose mapper threw: its `@interval` fired 8 times while the page showed a fallback, `@destroyed`
+   * never ran, and it went on ticking after the whole root was unmounted.
+   *
+   * Only the ones whose INSTANCE is new — an adopted region is still in the caller's old record,
+   * which stands unchanged when the pass throws, and tearing that down would kill a live component
+   * the page is still showing. `undefined` until something is built, so an ordinary render that
+   * claims everything allocates nothing.
+   */
+  let born: (ListRegion | ComponentRegion)[] | undefined;
 
   for (const entry of previous) {
-    if (isRegion(entry)) previousRegions.set(entry.owner, entry);
-    else cloneChildren.push(entry);
+    if (!isRegion(entry)) {
+      cloneChildren.push(entry);
+      continue;
+    }
+    const clash = previousRegions.get(entry.owner);
+    if (clash !== undefined) (displacedRegions ??= []).push(clash);
+    previousRegions.set(entry.owner, entry);
   }
 
   /**
@@ -587,101 +1020,199 @@ export function reconcileEntries(
   let changed = false;
   let plainIndex = 0;
 
-  for (let i = 0; i < children.length; i++) {
-    const rawVchild = children[i];
+  try {
+    reconcileChildren();
+  } catch (e) {
+    /**
+     * The pass is over and its entries are going nowhere, so what it BUILT has to come back down
+     * here — see `born`. Everything else it touched is still described by the record the caller
+     * keeps, which this throw leaves exactly as it was.
+     */
+    if (born !== undefined) {
+      const orphans: (EnhancedChildNode | DONE)[] = [];
+      for (const region of born) collectRegionNodes(region, orphans);
+      unmountChildrenNodes(orphans, false);
+      disposeRegions(born);
+    }
+    throw e;
+  }
 
-    if (isListNode(rawVchild)) {
-      const before = previousRegions.get(rawVchild.owner);
-      previousRegions.delete(rawVchild.owner);
+  function reconcileChildren(): void {
+    for (let i = 0; i < children.length; i++) {
+      const rawVchild = children[i];
 
-      // The engine hands back the identical ListNode when nothing about the
-      // list changed. Same object -> same items, same order, same length: the
-      // region is left exactly as it is, without touching one of its nodes.
-      if (before !== undefined && before.source === rawVchild) {
-        entries.push(before);
-        if (previous[entries.length - 1] !== before) changed = true;
-        continue;
-      }
+      if (isListNode(rawVchild)) {
+        const found = previousRegions.get(rawVchild.owner);
+        previousRegions.delete(rawVchild.owner);
+        // A list's owner and a component's owner are minted differently and cannot collide, so this
+        // narrowing never actually discards a region — it is what tells the two kinds apart in types.
+        const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
 
-      // A `list()` descriptor has not run its mapper yet. This is the moment to:
-      // the previous region is in hand, and with it the engine holding the
-      // minted ids, the per-item scopes and the whole-list skip.
-      let listNode = rawVchild;
-      let engine = before?.engine;
+        // The engine hands back the identical ListNode when nothing about the
+        // list changed. Same object -> same items, same order, same length: the
+        // region is left exactly as it is, without touching one of its nodes.
+        if (before !== undefined && before.source === rawVchild) {
+          entries.push(before);
+          if (previous[entries.length - 1] !== before) changed = true;
+          continue;
+        }
 
-      if (isLazyList(rawVchild)) {
-        const materialized = buildLazyList(
-          rawVchild as unknown as LazyListNode,
-          engine as ListEngine<unknown> | undefined,
-          listHost ?? listHostFor(placeholderComponent),
+        // A `list()` descriptor has not run its mapper yet. This is the moment to:
+        // the previous region is in hand, and with it the engine holding the
+        // minted ids, the per-item scopes and the whole-list skip.
+        let listNode = rawVchild;
+        let engine = before?.engine;
+
+        if (isLazyList(rawVchild)) {
+          const materialized = buildLazyList(
+            rawVchild as unknown as LazyListNode,
+            engine as ListEngine<unknown> | undefined,
+            listHost ?? listHostFor(placeholderComponent),
+          );
+          listNode = materialized.node as typeof rawVchild;
+          engine = materialized.engine;
+        }
+
+        const inner = reconcileEntries(
+          listNode.vnodes,
+          before?.entries ?? [],
+          listNode.clean,
+          placeholderComponent,
+          parent,
+          unclaimed,
+          listHost,
         );
-        listNode = materialized.node as typeof rawVchild;
-        engine = materialized.engine;
-      }
 
-      const inner = reconcileEntries(
-        listNode.vnodes,
-        before?.entries ?? [],
-        listNode.clean,
-        placeholderComponent,
-        parent,
-        unclaimed,
-        listHost,
-      );
-      entries.push({
-        owner: listNode.owner,
-        entries: inner.entries,
-        // The BUILT node, not the descriptor: the whole-list skip below compares
-        // this by identity, and the engine hands back the very same object when
-        // nothing about the list changed.
-        source: listNode,
-        engine,
-      });
-      changed = true;
-      continue;
-    }
+        /**
+         * What the recursion built belongs to THIS pass's undo list.
+         *
+         * The nested call keeps its own `born`, and it is discarded when the call returns — so a
+         * throw LATER in this level (the next list's mapper, which nothing wraps) tore nothing down
+         * and rethrew, and no record ever pointed at the components the list had just built.
+         * Measured on `[list([1], () => <Early/>), list([2], () => { throw })]`: `Early`'s
+         * `@created` had run, its `@interval` went on firing under the fallback, and its
+         * `@destroyed` never ran.
+         *
+         * A list this pass CREATED is added whole, which is also what releases its engine — an
+         * engine nothing holds keeps every item subscribed to whatever it read. An ADOPTED list is
+         * not: it is still in the caller's record, and the rows it built come through `inner.born`.
+         */
 
-    // Clean item: same vnode object, and nothing it read has changed. Its DOM
-    // subtree is therefore still correct, so it is claimed by key and left
-    // alone — no attribute pass, no recursion, no work proportional to its size.
-    if (clean !== undefined && clean[i] === true) {
-      const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
-      if (claimedNode !== undefined) {
-        // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
-        stampSlot(claimedNode, i, true);
-        entries.push(claimedNode);
-        if (previous[entries.length - 1] !== claimedNode) changed = true;
-        plainIndex++;
+        if (inner.born !== undefined) (born ??= []).push(...inner.born);
+
+        const region: ListRegion = {
+          owner: listNode.owner,
+          entries: inner.entries,
+          // The BUILT node, not the descriptor: the whole-list skip below compares
+          // this by identity, and the engine hands back the very same object when
+          // nothing about the list changed.
+          source: listNode,
+          engine,
+        };
+
+        if (before === undefined) (born ??= []).push(region);
+
+        entries.push(region);
+        changed = true;
         continue;
       }
-      // No node to reuse (first render, or it was unmounted): build it normally.
-    }
 
-    const vchild = filterVirtualChild(rawVchild);
-    if (vchild === undefined) continue;
+      /**
+       * A COMPONENT is a region, so it never reaches `claimOrMount` and never takes a slot from the
+       * node pool. It is looked up by its own identity instead — see `componentRegionOwner`.
+       *
+       * Ahead of the clean check on purpose: `claimByKey` looks for a NODE in the pool, and a
+       * component has none there. A clean component is one whose vnode is the very object from last
+       * render, so its props cannot have changed either and adopting the region is the whole job.
+       */
+      if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
+        const owner = componentRegionOwner(rawVchild, i);
+        const found = previousRegions.get(owner);
+        previousRegions.delete(owner);
+        const before = found !== undefined && isComponentRegion(found) ? found : undefined;
 
-    const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
-    if (placed) {
-      entries.push(placed as EnhancedChildNode);
-      if (previous[entries.length - 1] !== placed) changed = true;
+        let region: ComponentRegion;
+        if (clean !== undefined && clean[i] === true && before !== undefined && before.definition === rawVchild.name) {
+          before.parent = parent;
+          region = before;
+        } else {
+          try {
+            region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
+          } catch (e) {
+            /**
+             * The same door a plain child's build goes through, and it has to be here now.
+             *
+             * `buildDetachedNode` wraps every node it builds, so a throwing render used to reach
+             * `errorHandler` — which walks up to an `ErrorBoundary` — simply by being built there. A
+             * component is built on this path instead, and without this the throw went straight out of
+             * the drain: measured as every `ErrorBoundary` test failing with the child's own error.
+             *
+             * The child is dropped from this render, exactly as a failed node is. What was there
+             * before it is torn down by hand, because it has already been taken out of
+             * `previousRegions` and nothing downstream would find it again.
+             */
+            if (before !== undefined) {
+              collectRegionNodes(before, unclaimed);
+              disposeRegions([before]);
+              changed = true;
+            }
+            errorHandler(e, placeholderComponent);
+            continue;
+          }
+        }
+
+        if (region !== before) (born ??= []).push(region);
+
+        entries.push(region);
+        if (previous[entries.length - 1] !== region) changed = true;
+        continue;
+      }
+
+      // Clean item: same vnode object, and nothing it read has changed. Its DOM
+      // subtree is therefore still correct, so it is claimed by key and left
+      // alone — no attribute pass, no recursion, no work proportional to its size.
+      if (clean !== undefined && clean[i] === true) {
+        const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
+        if (claimedNode !== undefined) {
+          // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
+          stampSlot(claimedNode, i, true);
+          entries.push(claimedNode);
+          if (previous[entries.length - 1] !== claimedNode) changed = true;
+          plainIndex++;
+          continue;
+        }
+        // No node to reuse (first render, or it was unmounted): build it normally.
+      }
+
+      const vchild = filterVirtualChild(rawVchild);
+      if (vchild === undefined) continue;
+
+      const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
+      if (placed) {
+        entries.push(placed as EnhancedChildNode);
+        if (previous[entries.length - 1] !== placed) changed = true;
+      }
     }
   }
 
-  // A list that is no longer rendered, and children that were not claimed.
-  for (const region of previousRegions.values()) {
+  // A region this render no longer asks for — a list that is gone, a component that is gone — and
+  // children that were not claimed.
+  const retire = (region: ListRegion | ComponentRegion): void => {
     collectRegionNodes(region, unclaimed);
-    // The nodes go to `unclaimed` to be unmounted, but the engine is reachable
-    // only from here — the region entry itself is about to be dropped.
-    region.engine?.dispose();
-    disposeRegions(region.entries);
+    // The nodes go to `unclaimed` to be unmounted, but the instance and the list engine are
+    // reachable only from here: the region entry itself is about to be dropped. `disposeRegions`
+    // takes the entry rather than its children, so a component region's own `@destroyed` runs.
+    disposeRegions([region]);
     changed = true;
-  }
+  };
+  for (const region of previousRegions.values()) retire(region);
+  if (displacedRegions !== undefined) for (const region of displacedRegions) retire(region);
   for (const leftover of cloneChildren) {
     if (leftover !== DONE) unclaimed.push(leftover);
   }
   if (previous.length !== entries.length) changed = true;
 
-  return { entries, changed };
+  return { entries, changed, born };
 }
 
 /** Claims the node a clean item already owns, without diffing into it. */
@@ -706,6 +1237,42 @@ function claimByKey(
   return node;
 }
 
+/**
+ * The first node a record holds, without flattening the rest of it.
+ *
+ * For the callers that want "somewhere to point at" — a devtools highlight, the connectedness check
+ * behind RMD016 — where building the whole list to read `[0]` is the wrong shape.
+ */
+export function firstNodeOf(entries: RecordEntry[]): ChildNode | undefined {
+  for (const entry of entries) {
+    if (!isRegion(entry)) return entry;
+    const inner = firstNodeOf(entry.entries);
+    if (inner !== undefined) return inner;
+  }
+  return undefined;
+}
+
+/**
+ * Tells every region under `entries` which DOM parent it is in now, at any depth.
+ *
+ * A `ComponentRegion` carries its parent because a self-render has no one above it to be told the
+ * answer by — see `refreshComponentRegion`. The diff refreshes that field on the regions it VISITS,
+ * and a nested one is not visited unless its own props changed, so a block that MOVES has to say so
+ * itself: a component that renders a component puts one region inside another with no element
+ * between them, and a target change does not touch either one's props.
+ *
+ * Measured: after a portal moved from one target to another, the inner region still held the old
+ * element, and its next self-render called `insertBefore` on a parent the nodes had left —
+ * `NotFoundError: The child can not be found in the parent`.
+ */
+export function reparentRegions(entries: RecordEntry[], parent: ChildNode): void {
+  for (const entry of entries) {
+    if (!isRegion(entry)) continue;
+    if (isComponentRegion(entry)) entry.parent = parent;
+    reparentRegions(entry.entries, parent);
+  }
+}
+
 export function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
   for (const entry of entries) {
     if (isRegion(entry)) flattenEntries(entry.entries, out);
@@ -713,7 +1280,7 @@ export function flattenEntries(entries: RecordEntry[], out: ChildNode[]): void {
   }
 }
 
-function collectRegionNodes(region: ListRegion, out: (EnhancedChildNode | DONE)[]): void {
+function collectRegionNodes(region: ListRegion | ComponentRegion, out: (EnhancedChildNode | DONE)[]): void {
   for (const entry of region.entries) {
     if (isRegion(entry)) collectRegionNodes(entry, out);
     else out.push(entry);
@@ -725,7 +1292,8 @@ function collectRegionNodes(region: ListRegion, out: (EnhancedChildNode | DONE)[
  * few nodes as possible.
  *
  * The naive backwards walk ("move whenever `nextSibling` is not the node placed
- * after me") cascades: `mountNode` appends new children at the END, so inserting
+ * after me") cascades: a child this render built arrives uninserted and is placed at the END, so
+ * inserting
  * one row near the front made every node between the insertion point and the end
  * look misplaced, and each got its own `insertBefore`. Measured at 10000 items:
  * 38.9s for an insert at index 0, 20.5s at the middle — while the mapper and the
@@ -814,9 +1382,21 @@ export function reorderChildren(
 
   const keep = keptInOrder(current, fresh);
   let keepIndex = keep.length - 1;
-  // The block's trailing anchor for a region, `null` — the parent's end — for an
-  // element whose children are the whole block.
-  let reference: ChildNode | null = anchor;
+  /**
+   * Where an insertion lands when nothing of this run follows it.
+   *
+   * A region is given its trailing anchor. An ELEMENT is given nothing, and `null` means the end of
+   * the PARENT — which is the end of its own children only while the parent holds nothing else. An
+   * element may host a `ChildrenRegion`'s block, and then the end of the parent is past the block:
+   * a freshly built child was appended there, leaving the guest sitting in the middle of the host's
+   * own run until some later render moved a node across it and healed it by accident.
+   *
+   * The first hosted block's opening anchor is the answer, because a block is APPENDED into its
+   * target (`ChildrenRegion.place`) and so sits after the host's own children. It is also the same
+   * node the host's claim pool skips to, which is what keeps the two passes agreeing about which
+   * nodes are whose.
+   */
+  let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
 
   for (let n = length - 1; n >= 0; n--) {
     const node = orderedNodes[n];
@@ -828,6 +1408,19 @@ export function reorderChildren(
     }
     reference = node;
   }
+}
+
+/**
+ * The opening anchor of the first block this element merely HOSTS, or `null`.
+ *
+ * Read off `BLOCK_CLOSE`, the same property `ownChildNodes` skips a block by — so a comment that
+ * merely looks like an anchor, which a shell is entitled to write, is not mistaken for one.
+ */
+function firstHostedBlock(parent: ChildNode): ChildNode | null {
+  for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
+    if (node.nodeType === 8 && blockCloseOf(node) !== undefined) return node;
+  }
+  return null;
 }
 
 /** Marks a node that is not in the parent yet, so it has no current position. */
@@ -924,21 +1517,16 @@ function applyDiffOnTextNode(vnode: string, enhancedNode: ChildNode): void {
   if (enhancedNode.textContent !== vnode) enhancedNode.textContent = vnode;
 }
 
-function createOrUpdateComponent(
-  vnode: VNodeComponent,
-  placeholderComponent: MaybeComponent,
-  enhancedNode: MaybeEnhancedNode | EnhancedChildNode,
-): EnhancedHTMLNode | EnhancedChildNode {
-  if (!enhancedNode) return createComponent(vnode, placeholderComponent);
-  if (enhancedNode._componentDefinition !== vnode.name) return createComponent(vnode, placeholderComponent);
-  // Same class is not enough when @Host takes its tag from props: two <Card>s
-  // with a different `as` would otherwise reuse each other's element and carry
-  // the wrong tag. See helpers/hostTag.ts.
-  if (!hostTagMatches(vnode, enhancedNode)) return createComponent(vnode, placeholderComponent);
-
-  const component = enhancedNode._componentInstance;
-
-  if (!component) return createComponent(vnode, placeholderComponent);
+/**
+ * A component that is staying put takes the parent's new props, and nothing else happens here.
+ *
+ * Its DOM is not touched: taking props may schedule a render (`addTaskToQueue`), and that render is
+ * what reconciles its own block later in the drain. The region — its entries, its node order — is
+ * the same object throughout, so the parent's `flattenEntries` keeps reporting the nodes that are
+ * really there.
+ */
+function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): void {
+  const component = region.instance;
 
   /**
    * `@StableProps` on a COMPONENT, applied here because here is where the parent's JSX arrives.
@@ -956,10 +1544,6 @@ function createOrUpdateComponent(
   const declaredStable = (component.constructor as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
   const nextProps = resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
 
-  // Before the props comparison, and independent of it: a ref is not data the
-  // component renders from, so it is neither compared with the props nor gated
-  // on them changing.
-  applyRefFromProps(enhancedNode, nextProps.ref);
   // Read off the CLASS, so a subclass inherits its base's rule through the static
   // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.
   const decide = (component.constructor as { [PROPS_GATE]?: PropsGate })[PROPS_GATE];
@@ -992,8 +1576,57 @@ function createOrUpdateComponent(
 
     addTaskToQueue(component);
   }
+}
 
-  return enhancedNode;
+/**
+ * The component branch of `reconcileEntries` — adopt the region that was here, or build one.
+ *
+ * `owner` is what makes adoption possible across a render: the `key` the parent wrote, otherwise the
+ * child slot. Those are the two channels a list row is matched on, and a component gets them for the
+ * same reason — position holds until a conditional sibling appears, and then only a key can say what
+ * moved where. `normalizeChildren` leaves a `false` hole where a conditional child renders nothing,
+ * so a slot does not shift under its siblings and the unkeyed case is stable in practice.
+ *
+ * A DIFFERENT class in the same slot is not an adoption: the previous region is left in
+ * `previousRegions` to be disposed, and a fresh component is built. The region names the class it was
+ * built from, which is what makes that answerable without a node to read it off.
+ */
+function reconcileComponentEntry(
+  vnode: VNodeComponent,
+  owner: unknown,
+  before: ComponentRegion | undefined,
+  placeholderComponent: MaybeComponent,
+  parent: ChildNode,
+  unclaimed: (EnhancedChildNode | DONE)[],
+): ComponentRegion {
+  if (before !== undefined && before.definition === vnode.name) {
+    updateComponentRegion(before, vnode);
+    // A region that moved between parents takes its nodes with it, so state relocates rather than
+    // being rebuilt beside a stale copy. The reorder does the moving; this only records where.
+    before.parent = parent;
+    return before;
+  }
+
+  /**
+   * A DIFFERENT class in this slot, so the one that was here has to go — by hand.
+   *
+   * It has already been taken out of `previousRegions`, which is the map the loop's own teardown
+   * pass walks at the end. Leaving it there would mean nothing ever unmounts its nodes or runs its
+   * `@destroyed`: measured as `["alpha", "beta", "tail"]` where the replaced row must leave —
+   * the old markup sitting beside the new, and a live component behind it.
+   */
+  if (before !== undefined) {
+    collectRegionNodes(before, unclaimed);
+    disposeRegions([before]);
+  }
+
+  return buildComponentRegion(vnode, placeholderComponent, owner, parent);
+}
+
+/** The identity a component region is found by next render: its key, or the slot it occupies. */
+export function componentRegionOwner(vnode: VNodeComponent, slot: number): string {
+  const key = vnode.attributes?.key;
+  return key == null ? `c${slot}` : `k${String(key)}`;
 }
 
 /**
@@ -1049,14 +1682,60 @@ function findIndexOfSimilarNodes(
  */
 export function disposeRegions(entries: RecordEntry[]): void {
   for (const entry of entries) {
-    if (!isRegion(entry)) continue;
-    entry.engine?.dispose();
-    // Regions nest, and only the outermost is reachable from the record.
+    if (!isRegion(entry)) {
+      /**
+       * A plain node, which may hold whole components deeper down — and they have to go FIRST.
+       *
+       * An element between two components is not a region: it is one node in this record, keeping a
+       * record of its own for the components among ITS children, and an element with none keeps no
+       * record at all, so the search goes through the DOM. Skipping it left every such component to
+       * whatever removed the nodes afterwards, which runs after this — so a child's `@destroyed` ran
+       * after its parent's. Measured on `<Middle><div><Leaf/></div></Middle>`: `["middle", "leaf"]`,
+       * where a teardown can only be written against `["leaf", "middle"]`.
+       *
+       * Every caller of this is dropping the nodes it passes, so the node's own teardown belongs
+       * here, and running it twice is harmless — the record is cleared as it goes.
+       */
+      unmountNodeInPlace(entry);
+      continue;
+    }
+    // Regions nest, and only the outermost is reachable from the record. Inside-out: a child's
+    // `@destroyed` must run while its parent is still standing, which is the order the DOM walk
+    // gave when a component was an element and its children were under it.
     disposeRegions(entry.entries);
+
+    if (isComponentRegion(entry)) {
+      /**
+       * This is where a component is torn down now — not the DOM walk.
+       *
+       * A component has no node of its own: it may own two, or none, so there is nothing to hang a
+       * back-reference off and a DOM walk cannot find one. The record is the only thing that knows an
+       * instance is here, so the record is what releases it. Reached from every path that drops nodes,
+       * because each one already calls `releaseChildRecord` or `disposeRegions` on what it drops.
+       */
+      lifecycleCleanupManagement(entry.instance);
+      continue;
+    }
+
+    entry.engine?.dispose();
   }
 }
 
-function releaseListRecord(node: EnhancedChildNode): void {
+export function releaseChildRecord(node: EnhancedChildNode): void {
+  /**
+   * A `ChildrenRegion`'s block, whose host element is being removed.
+   *
+   * The record on this anchor is the REGION's, not the node's, so tearing it down behind the
+   * region's back left it believing those components mounted — measured, its next reconcile adopted
+   * a destroyed instance and carried its markup into the live DOM. It is handed the news instead,
+   * and does the same teardown plus the bookkeeping only it can do.
+   */
+  const block = (node as unknown as { [BLOCK_OWNER]?: { hostRemoved(): void } })[BLOCK_OWNER];
+  if (block !== undefined) {
+    block.hostRemoved();
+    return;
+  }
+
   const record = node[CHILD_RECORD];
   if (record === undefined) return;
   disposeRegions(record);
@@ -1103,13 +1782,7 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
   }
 
   releaseRef(node);
-  releaseListRecord(node);
-
-  const component = node._componentInstance;
-  if (component) {
-    lifecycleCleanupManagement(component);
-    node._componentInstance = undefined;
-  }
+  releaseChildRecord(node);
 }
 
 function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNode>) {
@@ -1119,14 +1792,7 @@ function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNod
     }
 
     releaseRef(child);
-    releaseListRecord(child);
-
-    const component = child._componentInstance;
-
-    if (component) {
-      lifecycleCleanupManagement(component);
-      child._componentInstance = undefined;
-    }
+    releaseChildRecord(child);
   }
 }
 
@@ -1177,33 +1843,24 @@ function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtual
     if (String(vKey) !== String(eKey)) return false;
   }
 
-  if (typeof virtualNode.name === "string") {
-    // A component's HOST element has the same nodeName as a plain element of
-    // that tag, so nodeName alone is not enough to tell them apart — and getting
-    // it wrong is silent and expensive.
-    //
-    // `{on ? <Child /> : <span>gone</span>}`, where Child is @Host("span"),
-    // used to claim Child's host for the plain <span>: the node was reused, the
-    // component instance was dropped on the floor, and nothing tore it down. No
-    // @destroyed, no effect cleanups — its subscriptions, intervals and listeners
-    // ran for the life of the page. Not even RMD006 fired, because the timer
-    // guard lives in the teardown that never happened.
-    //
-    // Measured: `{on ? <Child /> : null}` cleaned up correctly, the ternary with
-    // an element did not. The reverse direction was always safe — a plain
-    // element has no `_componentDefinition`, so it can never be claimed FOR a
-    // component. Only this side was open.
-    if (enhancedNode._componentDefinition !== undefined) return false;
-    return enhancedNode.nodeName === virtualNode.name;
-  }
-
-  return enhancedNode._componentDefinition === virtualNode.name && hostTagMatches(virtualNode, enhancedNode);
+  /**
+   * Only markup reaches here, so the tag is the whole question.
+   *
+   * The pool this searches holds plain nodes; a component is a region and never enters it. That
+   * closes a hole this function used to have to guard by hand: `{on ? <Child /> : <span>gone</span>}`
+   * with `Child` hosted on a `<span>` claimed the component's element for the plain one, dropping a
+   * live instance with no teardown. There is no host element to be confused for a `<span>` now, and
+   * a component that stops being rendered loses its region — which is what runs its `@destroyed`.
+   */
+  return enhancedNode.nodeName === virtualNode.name;
 }
 
-function createComponent(
+export function buildComponentRegion(
   vnode: VNodeComponent,
   placeholderComponent: MaybeComponent,
-): EnhancedHTMLNode | EnhancedChildNode {
+  owner: unknown,
+  parent: ChildNode,
+): ComponentRegion {
   const placeholderComponentRuntime = placeholderComponent?.[COMPONENT_RUNTIME];
   const parentContext = placeholderComponent?.[GLOBAL_RUNTIME].context;
   const currentContext = Object.create(parentContext || null) as Context;
@@ -1254,16 +1911,15 @@ function createComponent(
   }
 
   try {
-    return buildComponent(component, vnode, runtime, skipEnv, lintBefore);
+    return buildComponent(component, vnode, runtime, skipEnv, lintBefore, owner, parent);
   } catch (e) {
     // The build failed, but the component was already CONSTRUCTED and its
     // @created may already have run and taken something — a subscription, a
     // hand-written listener, an open connection.
     //
-    // Nothing else would ever tear it down. Teardown is reached from
-    // `unmountChildrenNodes`, which walks the DOM, and this component's host was
-    // never inserted anywhere: `render()` threw before there was one, or
-    // `@created` threw before `render()`. So it is unreachable and whatever it
+    // Nothing else would ever tear it down. Teardown is reached from `disposeRegions`, which walks
+    // the child record, and this component never got an entry in one: `render()` threw before there
+    // were children, or `@created` threw before `render()`. So it is unreachable and whatever it
     // took leaks for the life of the page.
     //
     // Runs unconditionally, not only when @created completed. @destroyed may
@@ -1287,7 +1943,9 @@ function buildComponent(
   runtime: Runtime,
   skipEnv: "client" | "server",
   lintBefore: ReturnType<typeof snapshotOwnProps> | undefined,
-): EnhancedHTMLNode | EnhancedChildNode {
+  owner: unknown,
+  parent: ChildNode,
+): ComponentRegion {
   const componentRuntime = component[COMPONENT_RUNTIME];
 
   for (const create of runtime.creates) {
@@ -1298,23 +1956,31 @@ function buildComponent(
   // no callback fires here.
   seedWatchProps(component);
 
-  const rendered = generateRenderOutput(component);
+  /**
+   * The render's children go straight into the region — there is no element in between.
+   *
+   * Built detached, exactly as a plain child is: `reconcileEntries` hands its nodes over uninserted
+   * and the CALLER's reorder places them, after the nodes this render drops have been unmounted.
+   * `flattenEntries` walks into this region, so a fresh component's nodes are in the parent's
+   * ordered list without the parent knowing there is a region there at all.
+   */
+  const children = generateRenderOutput(component);
+  const unclaimed: (EnhancedChildNode | DONE)[] = [];
+  const inner = reconcileEntries(children, [], undefined, component, parent, unclaimed);
 
-  const enhancedNode = diffAndMerge(rendered, component, undefined);
+  const region: ComponentRegion = {
+    owner,
+    definition: vnode.name,
+    instance: component,
+    entries: inner.entries,
+    parent,
+  };
 
-  enhancedNode._componentInstance = component;
-  enhancedNode._componentDefinition = vnode.name;
-  enhancedNode[ORIGIN_SYM] = vnode[ORIGIN_SYM];
-  // `<Child ref={r} />` — a component is exactly one element (1-1), so the ref
-  // points at its host. It used to be accepted and silently do nothing, because
-  // a component's props never reach applyChangesOnAttributes.
-  applyRefFromProps(enhancedNode, vnode.attributes?.ref);
-  componentRuntime.enhancedNode = enhancedNode;
+  componentRuntime.region = region;
 
-  // Queued, not called: the host element is inserted by the CALLER after this
-  // returns, so running any of this here meant running it before the element was
-  // in the document. Queued in the order they used to run — mounts, lint, then
-  // effects — so only the timing moved. See core/commit.ts.
+  // Queued, not called: the nodes are inserted by the CALLER after this returns, so running any of
+  // this here meant running it before they were in the document. Queued in the order they used to
+  // run — mounts, lint, then effects — so only the timing moved. See core/commit.ts.
   for (const mount of runtime.mounts) {
     if (mount.env !== skipEnv) queuePostCommit(component, () => mount.cb(componentRuntime.env));
   }
@@ -1327,41 +1993,10 @@ function buildComponent(
     }
   }
 
-  // Deferred with the rest, not left inline: this is what attaches @onElement
-  // listeners and runs effects for the first time, and running it inline would
-  // move it ahead of @mounted. No-op on the server.
+  // Deferred with the rest, not left inline: this runs effects for the first time, and running it
+  // inline would move it ahead of @mounted. No-op on the server.
   queuePostCommit(component, () => runComponentEffects(component));
-  return enhancedNode;
-}
-
-/**
- * Points a component's ref at its host, and releases the one it replaces.
- *
- * Called on UPDATE as well as on creation, and that is the whole point. It used
- * to run from `createComponent` alone, so a component that stayed put while its
- * `ref` prop changed kept the ref it was born with: the new one never filled, and
- * the old one went on pointing at a host that no longer claimed it. Both silent,
- * and the opposite of what the same JSX does on a plain element — `Attribute.ts`
- * has released and re-pointed an element's ref all along.
- *
- * A ref is not a render input, so this is deliberately outside the props-changed
- * branch: pointing a ref somewhere else changes nothing the component renders,
- * and it must happen even when nothing schedules a render.
- */
-export function applyRefFromProps(node: EnhancedChildNode, ref: unknown): void {
-  type RefHandle = { current: unknown; setCurrent(current: unknown): void };
-
-  const next = ref as RefHandle | undefined;
-  const previous = node[REF_SYM];
-  if (previous === next) return;
-
-  node[REF_SYM] = next;
-
-  // Cleared only if it still points HERE — the same guard `releaseRef` needs,
-  // and for the same reason: another node may already have claimed it earlier in
-  // this pass, and wiping it then would erase a value that is now correct.
-  if (previous && previous.current === node) previous.setCurrent(null);
-  next?.setCurrent(node);
+  return region;
 }
 
 function componentFactory(component: ComponentClassKind, props: Record<string, unknown>, ctx: Context): BaseComponent {

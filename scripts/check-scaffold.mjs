@@ -262,10 +262,12 @@ try {
       fail('the baked page carries no <meta name="description"> — the head never reached the HTML');
     }
     // The app is IN the file. A shell that lost its `<!--ssr-->` still produces a valid page with
-    // a title and a description — and nothing in it. The state attribute is the structural proof:
-    // it is written per component during the render, so it cannot be there unless the app was.
-    if (!html.includes("data-ramonda-state")) {
-      fail("the baked page carries no rendered app — no hydration state in it", html.slice(0, 400));
+    // a title and a description — and nothing in it. The component markers are the structural
+    // proof: the server writes a pair around each component's nodes during the render, so they
+    // cannot be there unless the app was. They used to be a `data-ramonda-state` attribute on each
+    // component's host element, and a component has no host.
+    if (!/<!--c\d+/.test(html)) {
+      fail("the baked page carries no rendered app — no component markers in it", html.slice(0, 400));
     }
 
     // Left behind by a shell whose markers nothing filled.

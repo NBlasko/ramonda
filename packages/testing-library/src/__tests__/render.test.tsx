@@ -1,16 +1,5 @@
 import { describe, test, expect } from "vitest";
-import {
-  Component,
-  Host,
-  state,
-  created,
-  mounted,
-  destroyed,
-  onElement,
-  watchProp,
-  createRef,
-  type RamondaNode,
-} from "@ramonda/core";
+import { Component, state, created, mounted, destroyed, watchProp, createRef, type RamondaNode } from "@ramonda/core";
 import { render, act, fireEvent, screen, cleanup } from "../index";
 
 class Counter extends Component<{ start?: number }> {
@@ -20,12 +9,16 @@ class Counter extends Component<{ start?: number }> {
     this.count = this.props.start ?? 0;
   }
 
-  @onElement("click") bump() {
+  bump() {
     this.count = this.count + 1;
   }
 
   render(): RamondaNode {
-    return <button type="button">count: {this.count}</button>;
+    return (
+      <button type="button" onclick={this.bump}>
+        count: {this.count}
+      </button>
+    );
   }
 }
 
@@ -52,10 +45,18 @@ describe("render", () => {
     expect(screen.getByText("count: 7")).toBeTruthy();
   });
 
-  test("container.firstChild is the component's own host, with no harness wrapper", () => {
+  test("container.firstChild is the component's own markup, with no harness wrapper", () => {
     const { container } = render(<Counter />);
-    const first = container.firstChild as HTMLElement;
-    expect(first.getAttribute("data-ramonda")).toBe("Counter");
+
+    /**
+     * The component's own element, and nothing of the harness or the framework around it.
+     *
+     * It used to be the host — `<ramonda-host data-ramonda="Counter">` — and the assertion read
+     * that DEV attribute. A component owns a range and renders its own markup, so what the
+     * container holds is exactly what `Counter.render()` returned.
+     */
+    expect((container.firstChild as HTMLElement).tagName).toBe("BUTTON");
+    expect(container.childNodes).toHaveLength(1);
   });
 
   test("fireEvent commits the render it causes", () => {
@@ -151,10 +152,9 @@ describe("rerender", () => {
 
 describe("options", () => {
   test("a wrapper component sits above the tree", () => {
-    @Host("section")
     class Frame extends Component<{ children?: RamondaNode }> {
       render(): RamondaNode {
-        return this.props.children;
+        return <section>{this.props.children}</section>;
       }
     }
 
@@ -189,7 +189,6 @@ describe("lifecycle ordering is preserved through the harness", () => {
     let connectedAtMount: boolean | undefined;
     const element = createRef<HTMLElement>();
 
-    @Host("div")
     class Probe extends Component {
       @created a() {
         order.push("create");
@@ -202,11 +201,17 @@ describe("lifecycle ordering is preserved through the harness", () => {
       }
       render(): RamondaNode {
         order.push("render");
-        return <p>probe</p>;
+        return (
+          // The ref goes on the ELEMENT it means. A component takes none: it owns a range of nodes
+          // rather than one, so there is no single element for a ref on the tag to point at.
+          <div ref={element}>
+            <p>probe</p>
+          </div>
+        );
       }
     }
 
-    render(<Probe ref={element} />);
+    render(<Probe />);
 
     expect(order).toEqual(["create", "render", "mount"]);
     expect(connectedAtMount).toBe(true);

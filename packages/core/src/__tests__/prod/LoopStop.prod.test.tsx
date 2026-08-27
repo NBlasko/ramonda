@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, Host, state, bootstrap, unmount } from "../../index";
+import { Component, state, bootstrap, unmount } from "../../index";
 import { flushSync, getComponentInstance } from "../../testing";
 
 /**
@@ -22,13 +22,16 @@ describe("production update-loop stop", () => {
   });
 
   test("a render that never settles is stopped, not left to freeze the tab", () => {
-    @Host("div")
     class Runaway extends Component {
       @state n = 0;
       render() {
         // A write inside render: each rebuild schedules the next, forever.
         this.n = this.n + 1;
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 

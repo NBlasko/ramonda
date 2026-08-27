@@ -10,8 +10,6 @@ import type { RenderEnv } from "../core/renderEnv";
 export type { RenderEnv };
 
 interface EnhancedElement {
-  _componentInstance?: BaseComponent<unknown>;
-  _componentDefinition?: ComponentClassKind;
   /**
    * What was attached, so it can be removed again — and `EventListener` rather than `any` because that
    * is the only thing put in or taken out: `Attribute.ts` hands each value straight to
@@ -93,8 +91,53 @@ export interface ListRegion {
   source: ListNode;
 }
 
-/** One entry of a parent's child record: a plain node, or a whole list. */
-export type RecordEntry = EnhancedChildNode | ListRegion;
+/**
+ * A component, as it sits in its parent's record: one entry, holding the nodes its render produced.
+ *
+ * A component owns a RANGE rather than a node. It has no element of its own — the markup a render
+ * returns lands straight in the parent — so "which nodes are this component's" is a question the DOM
+ * cannot answer and the record has to. That is the same question a `ListRegion` answers, and the
+ * answer has the same shape on purpose: `isRegion` reads `owner`, so `flattenEntries`,
+ * `collectRegionNodes` and `disposeRegions` treat both without knowing there are two.
+ *
+ * The instance lives here rather than on a node because there may be no node: a render that returns
+ * `null` produces an entry with no children at all, and it is still a mounted component with state,
+ * hooks and a lifecycle.
+ */
+export interface ComponentRegion {
+  /**
+   * Identifies this same component across renders.
+   *
+   * The `key` when the parent wrote one, otherwise the child slot it occupies — the same two
+   * channels a list row is matched on, and for the same reason: position is right until the
+   * siblings move, and then only a key can say what moved where.
+   */
+  readonly owner: unknown;
+  /** The class, so a vnode of a DIFFERENT component in this slot rebuilds rather than adopts. */
+  readonly definition: ComponentClassKind;
+  /** The live instance. Everything that used to be read off the host element is read from here. */
+  readonly instance: BaseComponent<unknown>;
+  /**
+   * This region's children, in order, with a list or a nested component kept as its own entry.
+   * Regions nest, so a component inside a list inside a component is reconciled by the same rules at
+   * every depth.
+   */
+  entries: RecordEntry[];
+  /**
+   * The DOM parent the block sits in, so a self-render knows where to reorder.
+   *
+   * There is deliberately no cached list of the nodes this region owns. `flattenEntries` derives it
+   * from `entries`, which every region keeps current for itself — so an ANCESTOR reading it walks
+   * into its descendants' current entries and gets the truth. A cached `order` was right only for
+   * the region that last re-rendered: a nested component that re-rendered on its own left every
+   * ancestor holding detached nodes, and the ancestor's next render read `nextSibling` on one of
+   * them, got `null`, and appended its markup past every later sibling.
+   */
+  parent: ChildNode | undefined;
+}
+
+/** One entry of a parent's child record: a plain node, a whole list, or a whole component. */
+export type RecordEntry = EnhancedChildNode | ListRegion | ComponentRegion;
 
 export type LifecycleEnv = "client" | "server" | "shared";
 
@@ -195,10 +238,23 @@ type RamondaAtom = VNode | ListNode | string | undefined | null | boolean | numb
 /**
  * Anything that may appear as a child — including a whole list.
  *
- * `render()` may return one too: the host element always wraps the output, so a
- * bare `return this.rows.nodes` still produces exactly one element. 1-1 holds.
+ * `render()` returns one of these, and the array is not an exception it has to apologise for: a
+ * component owns a RANGE of nodes, so returning two siblings, or a list, or nothing at all, are all
+ * ordinary answers. There is no wrapper to make N look like one, and no fragment tag to write —
+ * the array IS the spelling.
+ *
+ * **Recursive, because a slot is a `RamondaNode` and a slot goes in an array.** It used to be
+ * `RamondaAtom | RamondaAtom[]` — one level — and that is one level short of the shape the two
+ * features here compose into: `props.children` is itself an array, so
+ * `return [<i class="chrome"/>, this.props.children]` is an array holding an array. The runtime
+ * handles it (`generateRenderOutput` normalizes its output exactly as every other children position
+ * is normalized), and the type refusing it meant the plainest way to wrap a slot in a range did not
+ * compile.
+ *
+ * Nothing reads this expecting flatness: `normalizeChildren` recurses, and it is what every path
+ * into the diff goes through.
  */
-export type RamondaNode = RamondaAtom | RamondaAtom[];
+export type RamondaNode = RamondaAtom | RamondaNode[];
 
 export declare class BaseComponent<P = DefaultProps> {
   public static readonly __isComponent = true;

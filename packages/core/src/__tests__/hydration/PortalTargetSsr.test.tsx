@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created } from "../../base/decorators";
+import { state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { portalTarget, PORTAL_TARGET_ATTR } from "../../base/portalTarget";
 import { renderPage, renderDocument, renderStatic } from "../../index";
@@ -81,14 +81,17 @@ describe("a portal into a named target", () => {
   });
 
   test("the client adopts the server's block instead of building a second one", async () => {
-    @Host("div")
     class Page extends Component {
       portal = this.use(Portal, () => ({
         children: <div class="modal">hello</div>,
         target: modals,
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -137,11 +140,14 @@ describe("a portal into a named target", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       portal = this.use(Portal, () => ({ children: <Dialog />, target: modals }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -172,14 +178,17 @@ describe("a portal into a named target", () => {
     // the page was server rendered.
     const { getDOM } = await import("../../test/setup");
 
-    @Host("div")
     class Page extends Component {
       portal = this.use(Portal, () => ({
         children: <div class="modal">client</div>,
         target: modals,
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 

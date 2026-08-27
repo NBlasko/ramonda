@@ -1,5 +1,5 @@
 import type { ComponentChild, EnhancedChildNode } from "./types/vdom";
-import { mountNode, unmountChildrenNodes } from "./core/DiffAndMerge";
+import { mountRoot, releaseChildRecord, unmountChildrenNodes } from "./core/DiffAndMerge";
 import { flushPostCommit } from "./core/commit";
 import { ramondaLog } from "./debug/logger";
 import { initDevtoolsBridge, setInspectRoot, notifyComponentUpdate } from "./debug/devtoolsBridge";
@@ -192,7 +192,7 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
   installClientRequestScope(undefined);
 
   try {
-    mountNode(rootComponent, undefined, element);
+    mountRoot(rootComponent, element);
     // The tree is in the document now, which is what @mounted is waiting for.
     flushPostCommit();
     if (__DEV__) {
@@ -229,5 +229,15 @@ export function bootstrap(rootComponent: ComponentChild, element: HTMLElement) {
  * listeners stay attached.
  */
 export function unmount(element: HTMLElement): void {
+  /**
+   * The RECORD first, and it is not tidying up — it is where the components are.
+   *
+   * `bootstrap` leaves the root's region in the container's own record, so the instances are reached
+   * from there and from nowhere else: a component owns a range of nodes and none of them points back
+   * at it. Unmounting the child NODES alone found every component while a component WAS a node, and
+   * after the change it found none — measured as a `Router` that never learnt it was gone, so the
+   * next one mounted into its still-live guard.
+   */
+  releaseChildRecord(element as unknown as EnhancedChildNode);
   unmountChildrenNodes(Array.from(element.childNodes) as unknown as EnhancedChildNode[]);
 }

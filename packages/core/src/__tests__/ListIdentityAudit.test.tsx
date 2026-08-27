@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, list, SAME_ITEM, state } from "../index";
-import { created, destroyed, Host as HostDec } from "../base/decorators";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, list, SAME_ITEM, state } from "../index";
+import { created, destroyed } from "../base/decorators";
 
 /**
  * Every operation people actually perform on an array, measured — the contract
@@ -76,7 +76,6 @@ beforeEach(() => {
   destroys = 0;
 });
 
-@HostDec("li")
 class RowView extends Component<{ item: Row }> {
   /** Stands in for anything a row holds: a half-typed input, an open menu. */
   @state draft = "";
@@ -92,11 +91,14 @@ class RowView extends Component<{ item: Row }> {
   }
 
   render() {
-    return <span data-draft={this.draft}>{this.props.item.title}</span>;
+    return (
+      <li>
+        <span data-draft={this.draft}>{this.props.item.title}</span>
+      </li>
+    );
   }
 }
 
-@Host("div")
 class App extends Component {
   @state rows: Row[] = [
     { id: 1, title: "a", done: false },
@@ -106,11 +108,13 @@ class App extends Component {
   ];
   render() {
     return (
-      <ul>
-        {list(this.rows, (item) => (
-          <RowView item={item} />
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.rows, (item) => (
+            <RowView item={item} />
+          ))}
+        </ul>
+      </div>
     );
   }
 }
@@ -123,7 +127,7 @@ async function operate(op: (rows: Row[]) => Row[]) {
   await app.settle();
 
   const before = [...app.container.querySelectorAll("li")];
-  (before[1] as unknown as { _componentInstance: RowView })._componentInstance.draft = MARK;
+  instanceOf<RowView>(before[1]).draft = MARK;
   await app.settle();
 
   creates = 0;
@@ -253,7 +257,6 @@ describe("two dimensions", () => {
   let cellCreates = 0;
   let cellDestroys = 0;
 
-  @HostDec("td")
   class CellView extends Component<{ item: Cell }> {
     @state draft = "";
 
@@ -268,11 +271,14 @@ describe("two dimensions", () => {
     }
 
     render() {
-      return <span data-draft={this.draft}>{this.props.item.label}</span>;
+      return (
+        <td>
+          <span data-draft={this.draft}>{this.props.item.label}</span>
+        </td>
+      );
     }
   }
 
-  @Host("table")
   class Grid extends Component {
     @state rows: GridRow[] = [
       {
@@ -296,15 +302,17 @@ describe("two dimensions", () => {
     ];
     render() {
       return (
-        <tbody>
-          {list(this.rows, (row: GridRow) => (
-            <tr>
-              {list(row.cells, (item) => (
-                <CellView item={item} />
-              ))}
-            </tr>
-          ))}
-        </tbody>
+        <table>
+          <tbody>
+            {list(this.rows, (row: GridRow) => (
+              <tr>
+                {list(row.cells, (item) => (
+                  <CellView item={item} />
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       );
     }
   }
@@ -315,7 +323,7 @@ describe("two dimensions", () => {
     await app.settle();
 
     const before = [...app.container.querySelectorAll("td")];
-    (before[3] as unknown as { _componentInstance: CellView })._componentInstance.draft = MARK;
+    instanceOf<CellView>(before[3]).draft = MARK;
     await app.settle();
 
     cellCreates = 0;

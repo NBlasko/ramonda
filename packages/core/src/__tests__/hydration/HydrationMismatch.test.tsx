@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { state, mounted, Host } from "../../base/decorators";
+import { state, mounted, created } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
@@ -68,10 +68,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("matching output hydrates silently", async () => {
-    @Host("div")
     class Greeting extends Component {
       render() {
-        return <span>Hello {"Nikola"}!</span>;
+        return (
+          <div>
+            <span>Hello {"Nikola"}!</span>
+          </div>
+        );
       }
     }
 
@@ -86,10 +89,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("adjacent text children are adopted, not rebuilt", async () => {
-    @Host("div")
     class Greeting extends Component {
       render() {
-        return <span>Hello {"Nikola"}!</span>;
+        return (
+          <div>
+            <span>Hello {"Nikola"}!</span>
+          </div>
+        );
       }
     }
 
@@ -116,10 +122,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a text value that differs across the boundary reports RMD007", async () => {
-    @Host("div")
     class Clock extends Component {
       render() {
-        return <span>{SIDE}</span>;
+        return (
+          <div>
+            <span>{SIDE}</span>
+          </div>
+        );
       }
     }
 
@@ -133,10 +142,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a mismatch inside a fused run is pinpointed and still repaired", async () => {
-    @Host("div")
     class Greeting extends Component {
       render() {
-        return <span>Hello {SIDE}!</span>;
+        return (
+          <div>
+            <span>Hello {SIDE}!</span>
+          </div>
+        );
       }
     }
 
@@ -152,14 +164,153 @@ describe("hydration mismatch (RMD007)", () => {
     expect(container.querySelector("span")!.textContent).toBe("Hello client!");
   });
 
+  test("a client text SHORTER than the server's leaves no tail behind", async () => {
+    /**
+     * The repair cuts the server's node to the length this child rendered and leaves the tail for
+     * the children after it — which is right when there ARE children after it, because a fused run
+     * arrives as one node and each of them takes its own slice.
+     *
+     * With no child left to claim it, the tail is a fragment of the server's text belonging to
+     * nobody, and it stayed in the page: measured on a `<span>` reading `waiting` on the server and
+     * `ready` on the client, which hydrated to `readyng`.
+     */
+    class Status extends Component {
+      render() {
+        return (
+          <div>
+            <span id="s">{SIDE === "server" ? "waiting" : "ready"}</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Status />);
+    expect(container.querySelector("#s")!.textContent).toBe("waiting");
+
+    SIDE = "client";
+    hydrateRoot(<Status />, container);
+
+    expect(container.querySelector("#s")!.textContent).toBe("ready");
+    expect(container.querySelector("#s")!.childNodes).toHaveLength(1);
+    // One fault, one diagnostic: the tail is not reported as a child the server sent.
+    expect(captured.codes).toEqual(["RMD007"]);
+  });
+
+  test("a diverging text child does not displace the component after it", async () => {
+    /**
+     * The repair cuts the server's node to the length this child rendered and leaves the tail for
+     * the children after it — which only a TEXT child can claim. A component in that position looks
+     * for its opening marker, finds a `Text`, and builds itself from scratch: its blob is never
+     * read, its `shared` `@created` runs again, and the server's whole block is left standing behind
+     * the fresh copy.
+     *
+     * Measured on the shape below — a count that moved between the render and the hydrate, which is
+     * the ordinary way this happens: two `<button id="c">`, the new one at `0` and the server's
+     * still there carrying `{"n":5}`.
+     */
+    class Counter extends Component {
+      @state n = 0;
+      @created({ env: "server" }) load() {
+        this.n = 5;
+      }
+      render() {
+        return <button id="c">{String(this.n)}</button>;
+      }
+    }
+
+    class Panel extends Component {
+      render() {
+        return (
+          <div id="p">
+            {SIDE === "server" ? "10" : "9"}
+            <Counter />
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Panel />);
+    expect(container.querySelector("#c")!.textContent).toBe("5");
+    const served = container.querySelector("#c")!;
+
+    SIDE = "client";
+    hydrateRoot(<Panel />, container);
+
+    // One button, the server's own, with the state the server gave it.
+    expect(container.querySelectorAll("#c")).toHaveLength(1);
+    expect(container.querySelector("#c")).toBe(served);
+    expect(container.innerHTML).toBe('<div id="p">9<button id="c">5</button></div>');
+  });
+
+  test("one text divergence inside a component reports one diagnostic", async () => {
+    /**
+     * The tail a text repair leaves is the second half of a divergence already reported. Counting it
+     * as markup the server sent turned one fault into two messages, the second of which — "your
+     * block is one node shorter" — describes nothing a reader can act on and sends them looking for
+     * a structural difference that is not there.
+     */
+    class Status extends Component {
+      render() {
+        return SIDE === "server" ? "waiting" : "ready";
+      }
+    }
+
+    class Shell extends Component {
+      render() {
+        return (
+          <div id="d">
+            <Status />
+            <b id="after">after</b>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Shell />);
+
+    SIDE = "client";
+    hydrateRoot(<Shell />, container);
+
+    expect(captured.codes).toEqual(["RMD007"]);
+    expect(captured.messages[0]).toContain('rendered the text "ready"');
+    expect(container.innerHTML).toBe('<div id="d">ready<b id="after">after</b></div>');
+  });
+
+  test("a longer run after a shorter one still takes its own slice", async () => {
+    // The case the tail exists FOR, kept beside the one above so a fix for either cannot quietly
+    // break the other: three children fused into one server node, the first of them divergent.
+    class Greeting extends Component {
+      render() {
+        return (
+          <div>
+            <span id="g">
+              {SIDE === "server" ? "Hi " : "Hello "}
+              {SIDE}
+              {"!"}
+            </span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Greeting />);
+    expect(container.querySelector("#g")!.textContent).toBe("Hi server!");
+
+    SIDE = "client";
+    hydrateRoot(<Greeting />, container);
+
+    expect(container.querySelector("#g")!.textContent).toBe("Hello client!");
+  });
+
   test("an attribute that differs across the boundary reports RMD007", async () => {
-    @Host("div")
     class Themed extends Component {
       render() {
         return (
-          <span className={SIDE} title={SIDE}>
-            hi
-          </span>
+          <div>
+            <span className={SIDE} title={SIDE}>
+              hi
+            </span>
+          </div>
         );
       }
     }
@@ -182,12 +333,15 @@ describe("hydration mismatch (RMD007)", () => {
    * comparator was wrong.
    */
   test("a style the DOM rewrites is not a mismatch", async () => {
-    @Host("div")
     class Styled extends Component {
       render() {
         // None of these survive a DOM round-trip unchanged: no trailing
         // semicolon, an uppercase property, and loose spacing.
-        return <span style="COLOR:red;   font-weight: bold">hi</span>;
+        return (
+          <div>
+            <span style="COLOR:red;   font-weight: bold">hi</span>
+          </div>
+        );
       }
     }
 
@@ -198,10 +352,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a style that genuinely differs still reports RMD007", async () => {
-    @Host("div")
     class Styled extends Component {
       render() {
-        return <span style={`color: ${SIDE === "server" ? "red" : "blue"}`}>hi</span>;
+        return (
+          <div>
+            <span style={`color: ${SIDE === "server" ? "red" : "blue"}`}>hi</span>
+          </div>
+        );
       }
     }
 
@@ -216,10 +373,13 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a declaration the server dropped reports RMD007", async () => {
-    @Host("div")
     class Styled extends Component {
       render() {
-        return <span style={SIDE === "server" ? "color: red" : "color: red; display: none"}>hi</span>;
+        return (
+          <div>
+            <span style={SIDE === "server" ? "color: red" : "color: red; display: none"}>hi</span>
+          </div>
+        );
       }
     }
 
@@ -232,10 +392,9 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("a different element reports RMD007", async () => {
-    @Host("div")
     class Swap extends Component {
       render() {
-        return SIDE === "server" ? <span>x</span> : <b>x</b>;
+        return <div>{SIDE === "server" ? <span>x</span> : <b>x</b>}</div>;
       }
     }
 
@@ -249,14 +408,15 @@ describe("hydration mismatch (RMD007)", () => {
   });
 
   test("extra server children report RMD007", async () => {
-    @Host("div")
     class List extends Component {
       render() {
         return (
-          <ul>
-            {SIDE === "server" ? <li>a</li> : null}
-            <li>b</li>
-          </ul>
+          <div>
+            <ul>
+              {SIDE === "server" ? <li>a</li> : null}
+              <li>b</li>
+            </ul>
+          </div>
         );
       }
     }
@@ -271,10 +431,222 @@ describe("hydration mismatch (RMD007)", () => {
     expect(captured.messages.join("\n")).toContain("the server sent");
   });
 
+  test("a component whose block is longer on the server keeps the siblings after it", async () => {
+    /**
+     * The client renders FEWER children than the server wrote for one component.
+     *
+     * A component owns a RUN of siblings, and the markers are the only thing that says where that run
+     * ends. Adopting one child of a two-child block leaves the walk standing on the server's second
+     * node — inside the block, in the middle of the parent's level — so everything the parent has
+     * left is matched one position too early: the sibling AFTER the component is diffed against a
+     * node that belongs to the component, and the closing marker stays in the page.
+     */
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>, <i>two</i>] : [<b>one</b>];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    expect(container.querySelectorAll("b, i").length).toBe(2);
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    // Exactly what a client-side render produces: the extra node gone, the sibling intact, and no
+    // marker left behind.
+    expect(container.innerHTML).toBe('<div><b>one</b><span id="after">after</span></div>');
+    expect(container.querySelector("#after")!.textContent).toBe("after");
+
+    // Reported as what it is — a render that disagreed — rather than as a block the server failed to
+    // close, which is a different fault and sends the reader looking in the wrong place.
+    expect(captured.codes).toContain("RMD007");
+    expect(captured.messages.join("\n")).not.toContain("no closing marker");
+  });
+
+  test("a dropped child that is itself a component does not confuse the block's end", async () => {
+    // The leftover run holds a whole component's markers, so "the first `/c…` after the cursor" is
+    // the NESTED one. Stopping there leaves the outer block's own marker in the page and puts the
+    // walk back inside a block it thinks it has left.
+    class Nested extends Component {
+      render() {
+        return <em>nested</em>;
+      }
+    }
+
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>, <Nested />] : [<b>one</b>];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    expect(container.querySelector("em")).not.toBeNull();
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    expect(container.innerHTML).toBe('<div><b>one</b><span id="after">after</span></div>');
+  });
+
+  test("a block the server never closed is reported and left alone", async () => {
+    /**
+     * The one shape that cannot be repaired: with no closing marker anywhere after the cursor there
+     * is no way to say where the component's run ends, and guessing takes a sibling with it. So the
+     * walk stops, says so, and touches nothing after it.
+     *
+     * Reached by cutting the marker out of the served markup, which is what a truncated response or
+     * a sanitizer that strips comments leaves behind.
+     */
+    class Inner extends Component {
+      render() {
+        return <b id="inner">inner</b>;
+      }
+    }
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const html = await renderToString(<Page />);
+    expect(html).toMatch(/<!--\/c\d+-->/);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html.replace(/<!--\/c\d+-->/, "");
+
+    hydrateRoot(<Page />, container);
+
+    expect(captured.codes).toContain("RMD007");
+    expect(captured.messages.join("\n")).toContain("no closing marker");
+
+    // Both are still there, exactly once each: nothing was deleted on a guess.
+    expect(container.querySelectorAll("#inner")).toHaveLength(1);
+    expect(container.querySelectorAll("#after")).toHaveLength(1);
+    container.remove();
+  });
+
+  test("an extra element at the END of a component's run keeps its sibling whole", async () => {
+    /**
+     * The mirror of the shorter-render case, and the worse of the two.
+     *
+     * The client renders one child MORE than the server did, and that child's cursor is the
+     * component's OWN closing marker. Replacing it — which is what the element path did, while text
+     * and components insert in front of it — leaves the block with no close of its own, so the walk
+     * takes the ENCLOSING component's close for its own and removes everything in between: the next
+     * sibling's opening marker, its nodes and its state blob. That sibling is then reached with no
+     * marker at all, so a fresh instance is built and the server's state is thrown away.
+     */
+    const createdOn: string[] = [];
+
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>] : [<b>one</b>, <i>two</i>];
+      }
+    }
+
+    class Sib extends Component {
+      @state n = 0;
+      @created({ env: "server" }) load() {
+        this.n = 42;
+      }
+      @created({ env: "shared" }) note() {
+        createdOn.push(SIDE);
+      }
+      render() {
+        return <span id="sib">sib{String(this.n)}</span>;
+      }
+    }
+
+    class Middle extends Component {
+      render() {
+        return [<Inner />, <Sib />];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Middle />
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    expect(container.querySelector("#sib")!.textContent).toBe("sib42");
+    createdOn.length = 0;
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    // The extra child is in, and the sibling after it is the one the server sent: same state, and
+    // its `shared` @created did not run a second time.
+    expect(container.innerHTML).toBe('<div><b>one</b><i>two</i><span id="sib">sib42</span></div>');
+    expect(createdOn).toEqual([]);
+  });
+
+  test("a child the server never wrote is built and appended", async () => {
+    /**
+     * The client's level is LONGER than the server's, and the extra child is the last one — so the
+     * walk runs out of nodes rather than finding a wrong one. There is nothing to replace, and the
+     * node is appended.
+     */
+    class Page extends Component {
+      render() {
+        return (
+          <div id="shell">
+            <span id="one">one</span>
+            {SIDE === "client" ? <span id="two">two</span> : null}
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    const one = container.querySelector("#one")!;
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    expect(container.querySelector("#shell")!.innerHTML).toBe('<span id="one">one</span><span id="two">two</span>');
+    // The server's node was adopted, not rebuilt to make room for the new one.
+    expect(container.querySelector("#one")).toBe(one);
+    expect(captured.codes).toContain("RMD007");
+  });
+
   test("the prescribed two-pass pattern hydrates without a mismatch", async () => {
     // This is the fix RMD007 tells people to use instead of `typeof window`.
     // It must not trip the very diagnostic that recommends it.
-    @Host("div")
     class Widget extends Component {
       @state isClient = false;
 
@@ -284,7 +656,11 @@ describe("hydration mismatch (RMD007)", () => {
       }
 
       render() {
-        return <span>{this.isClient ? "interactive" : "static"}</span>;
+        return (
+          <div>
+            <span>{this.isClient ? "interactive" : "static"}</span>
+          </div>
+        );
       }
     }
 

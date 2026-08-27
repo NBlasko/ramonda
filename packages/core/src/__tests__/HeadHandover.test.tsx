@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, findOne } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state } from "../base/decorators";
+import { state } from "../base/decorators";
 import { Head, resetHeadRegistry } from "../base/Head";
 import { PORTAL_ATTR } from "../helpers/constants";
 
@@ -39,27 +39,32 @@ describe("the head when one page replaces another", () => {
      * its own list, and takes it out of the document on its way past. The reader
      * is left on a page that described itself and has no description.
      */
-    @Host("div")
     class Home extends Component {
       head = this.use(Head, () => ({ title: "Home", description: "the home page" }));
       render() {
-        return <p>home</p>;
+        return (
+          <div>
+            <p>home</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class About extends Component {
       head = this.use(Head, () => ({ title: "About", description: "who we are" }));
       render() {
-        return <p>about</p>;
+        return (
+          <div>
+            <p>about</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state route = "home";
       render() {
-        return this.route === "home" ? <Home /> : <About />;
+        return <div>{this.route === "home" ? <Home /> : <About />}</div>;
       }
     }
 
@@ -76,33 +81,38 @@ describe("the head when one page replaces another", () => {
   });
 
   test("and a link the two pages share is not taken away either", async () => {
-    @Host("div")
     class Home extends Component {
       head = this.use(Head, () => ({
         title: "Home",
         link: [{ rel: "icon", href: "/favicon.ico" }],
       }));
       render() {
-        return <p>home</p>;
+        return (
+          <div>
+            <p>home</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class About extends Component {
       head = this.use(Head, () => ({
         title: "About",
         link: [{ rel: "icon", href: "/favicon.ico" }],
       }));
       render() {
-        return <p>about</p>;
+        return (
+          <div>
+            <p>about</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state route = "home";
       render() {
-        return this.route === "home" ? <Home /> : <About />;
+        return <div>{this.route === "home" ? <Home /> : <About />}</div>;
       }
     }
 
@@ -132,39 +142,54 @@ describe("the head when one page replaces another", () => {
      * nothing, so a descendant inherits the nearest `Head` above it however many
      * components apart the two are.
      */
-    @Host("div")
     class Deep extends Component {
       head = this.use(Head, () => ({ description: "the deep page" }));
       render() {
-        return <p>deep</p>;
+        return (
+          <div>
+            <p>deep</p>
+          </div>
+        );
       }
     }
 
     // Three components with no Head at all between the layout and the page.
-    @Host("div")
     class Guard extends Component {
       render() {
-        return <Shell />;
+        return (
+          <div>
+            <Shell />
+          </div>
+        );
       }
     }
-    @Host("div")
     class Shell extends Component {
       render() {
-        return <Frame />;
+        return (
+          <div>
+            <Frame />
+          </div>
+        );
       }
     }
-    @Host("div")
     class Frame extends Component {
       render() {
-        return <Deep />;
+        return (
+          <div>
+            <Deep />
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Layout extends Component {
       head = this.use(Head, () => ({ title: "Layout", description: "the layout" }));
       render() {
-        return <Guard />;
+        return (
+          <div>
+            <Guard />
+          </div>
+        );
       }
     }
 
@@ -193,25 +218,34 @@ describe("the head when one page replaces another", () => {
     const titles: string[] = [];
     const descriptor = Object.getOwnPropertyDescriptor(Document.prototype, "title");
 
-    @Host("div")
     class Page extends Component {
       head = this.use(Head, () => ({ title: "Page" }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
-    @Host("div")
     class Section extends Component {
       head = this.use(Head, () => ({ title: "Section" }));
       render() {
-        return <Page />;
+        return (
+          <div>
+            <Page />
+          </div>
+        );
       }
     }
-    @Host("div")
     class Layout extends Component {
       head = this.use(Head, () => ({ title: "Layout" }));
       render() {
-        return <Section />;
+        return (
+          <div>
+            <Section />
+          </div>
+        );
       }
     }
 
@@ -247,18 +281,20 @@ describe("the head when one page replaces another", () => {
      * the chain each time rather than patched — there is no accumulated state to go
      * stale, so no write can leave a tag behind that nothing asks for.
      */
-    @Host("div")
     class Page extends Component {
       head = this.use(Head, () => ({
         description: "the page",
         meta: [{ property: "og:title", content: "page og" }],
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Section extends Component {
       head = this.use(Head, () => ({
         meta: [
@@ -267,11 +303,14 @@ describe("the head when one page replaces another", () => {
         ],
       }));
       render() {
-        return <Page />;
+        return (
+          <div>
+            <Page />
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Layout extends Component {
       head = this.use(Head, () => ({
         title: "Site",
@@ -279,7 +318,11 @@ describe("the head when one page replaces another", () => {
         meta: [{ name: "viewport", content: "width=device-width" }],
       }));
       render() {
-        return <Section />;
+        return (
+          <div>
+            <Section />
+          </div>
+        );
       }
     }
 
@@ -308,7 +351,6 @@ describe("the head when one page replaces another", () => {
      * title has to leave every description alone, and a page that stops setting
      * `og:title` has to hand it back to whoever set it above rather than delete it.
      */
-    @Host("div")
     class Page extends Component {
       @state loud = true;
       head = this.use(Head, () =>
@@ -317,11 +359,14 @@ describe("the head when one page replaces another", () => {
           : { description: "still here" },
       );
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Layout extends Component {
       head = this.use(Head, () => ({
         title: "Site",
@@ -329,19 +374,22 @@ describe("the head when one page replaces another", () => {
         meta: [{ property: "og:title", content: "site og" }],
       }));
       render() {
-        return <Page />;
+        return (
+          <div>
+            <Page />
+          </div>
+        );
       }
     }
 
     const app = await getDOM(<Layout />);
     await app.settle();
 
-    const page = app.container.querySelectorAll("div")[1] as { _componentInstance?: { loud: boolean } };
     expect(document.title).toBe("Page");
     expect(document.head.querySelector('meta[property="og:title"]')!.getAttribute("content")).toBe("page og");
 
     // The page stops setting both, and starts setting a description.
-    page._componentInstance!.loud = false;
+    findOne<{ loud: boolean }>(app.container, "Page").loud = false;
     await app.settle();
 
     // Handed back to the layout, not deleted.
@@ -362,7 +410,6 @@ describe("the head when one page replaces another", () => {
      * anything else on it is left over. `data-ramonda-portal` survives, because it is
      * not part of the tag's meaning.
      */
-    @Host("div")
     class Page extends Component {
       @state full = true;
       head = this.use(Head, () =>
@@ -371,7 +418,11 @@ describe("the head when one page replaces another", () => {
           : { link: [{ rel: "alternate", href: "/a" }] },
       );
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 
@@ -398,12 +449,15 @@ describe("the head when one page replaces another", () => {
      * page had no description, nothing said so, and the next write did not fix it
      * either, because the registry went on believing it had one.
      */
-    @Host("div")
     class Page extends Component {
       @state version = 1;
       head = this.use(Head, () => ({ description: `v${this.version}` }));
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 
@@ -422,19 +476,21 @@ describe("the head when one page replaces another", () => {
   });
 
   test("what the last page owned still goes when nothing replaces it", async () => {
-    @Host("div")
     class Page extends Component {
       head = this.use(Head, () => ({ title: "Page", description: "only page" }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state show = true;
       render() {
-        return this.show ? <Page /> : <i>gone</i>;
+        return <div>{this.show ? <Page /> : <i>gone</i>}</div>;
       }
     }
 
@@ -464,30 +520,37 @@ describe("the head when one page replaces another", () => {
      * publishes — while the sidebar is still on screen. A tree keeps both children and
      * merges per tag: different tags coexist, and only a genuine conflict is resolved.
      */
-    @Host("aside")
     class Sidebar extends Component {
       head = this.use(Head, () => ({ meta: [{ name: "sidebar", content: "s" }] }));
       render() {
-        return <span>side</span>;
+        return (
+          <aside>
+            <span>side</span>
+          </aside>
+        );
       }
     }
 
-    @Host("main")
     class Main extends Component {
       head = this.use(Head, () => ({ title: "Main", meta: [{ name: "main", content: "m" }] }));
       render() {
-        return <span>main</span>;
+        return (
+          <main>
+            <span>main</span>
+          </main>
+        );
       }
     }
 
-    @Host("div")
     class Layout extends Component {
       head = this.use(Head, () => ({ title: "Layout", description: "the layout" }));
       render() {
         return (
           <div>
-            <Sidebar />
-            <Main />
+            <div>
+              <Sidebar />
+              <Main />
+            </div>
           </div>
         );
       }

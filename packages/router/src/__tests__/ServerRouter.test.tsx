@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, Host, renderToString } from "@ramonda/core";
+import { Component, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "../Router";
 import { createRoutes } from "../match";
@@ -11,22 +11,26 @@ import { createRoutes } from "../match";
  * from the client path into a server render.
  */
 
-@Host("div")
 class Home extends Component {
   render() {
-    return <span>home</span>;
+    return (
+      <div>
+        <span>home</span>
+      </div>
+    );
   }
 }
 
 const routes = createRoutes({ "/": <Home /> });
 
-@Host("div")
 class App extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   render() {
     return (
-      <div className="app">
-        <RouteOutlet routes={routes} />
+      <div>
+        <div className="app">
+          <RouteOutlet routes={routes} />
+        </div>
       </div>
     );
   }

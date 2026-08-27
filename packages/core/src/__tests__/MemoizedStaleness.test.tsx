@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state, memoized } from "../base/decorators";
+import { state, memoized } from "../base/decorators";
 
 /**
  * What a memoized handler is allowed to remember.
@@ -25,7 +25,6 @@ describe("a memoized handler whose builder read a signal", () => {
   test("is rebuilt when that signal moves, and the click sees the new value", async () => {
     const seen: string[] = [];
 
-    @Host("div")
     class App extends Component {
       @state prefix = "old";
       @state tick = 0;
@@ -40,10 +39,12 @@ describe("a memoized handler whose builder read a signal", () => {
       render() {
         return (
           <div>
-            <button type="button" id="b" onclick={this.pick("a")}>
-              go
-            </button>
-            <span id="t">{this.tick}</span>
+            <div>
+              <button type="button" id="b" onclick={this.pick("a")}>
+                go
+              </button>
+              <span id="t">{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -73,7 +74,6 @@ describe("a memoized handler whose builder read a signal", () => {
     let one!: () => void;
     let two!: () => void;
 
-    @Host("div")
     class App extends Component {
       @state mode = "m1";
       @state tick = 0;
@@ -90,7 +90,11 @@ describe("a memoized handler whose builder read a signal", () => {
       render() {
         one = this.pick(1);
         two = this.pick(2);
-        return <span id="t">{this.tick}</span>;
+        return (
+          <div>
+            <span id="t">{this.tick}</span>
+          </div>
+        );
       }
     }
 
@@ -122,7 +126,6 @@ describe("a memoized handler whose builder read nothing", () => {
   test("keeps the same function across renders, whatever else changes", async () => {
     const handlers: Array<() => void> = [];
 
-    @Host("div")
     class App extends Component {
       @state tick = 0;
       @state unrelated = "a";
@@ -139,8 +142,10 @@ describe("a memoized handler whose builder read nothing", () => {
         handlers.push(this.pick("row-1"));
         return (
           <div>
-            <span id="t">{this.tick}</span>
-            <span id="u">{this.unrelated}</span>
+            <div>
+              <span id="t">{this.tick}</span>
+              <span id="u">{this.unrelated}</span>
+            </div>
           </div>
         );
       }

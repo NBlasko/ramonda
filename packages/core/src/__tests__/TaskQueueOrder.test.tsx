@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, state } from "../index";
 import { COMPONENT_RUNTIME } from "../core/runtime";
 
 /**
@@ -38,12 +38,15 @@ describe("the build queue drains shallowest-first", () => {
         return <b>{<GrandChild v={this.props.v} />}</b>;
       }
     }
-    @Host("div")
     class App extends Component {
       @state v = 0;
       render() {
         order.push("app");
-        return <Child v={this.v} />;
+        return (
+          <div>
+            <Child v={this.v} />
+          </div>
+        );
       }
     }
 
@@ -78,14 +81,17 @@ describe("the build queue drains shallowest-first", () => {
         return <div>{kids}</div>;
       }
     }
-    @Host("div")
     class App extends Component {
       @state v = 0;
       render() {
         depths.push(this[COMPONENT_RUNTIME].depth);
         const kids = [];
         for (let i = 0; i < 8; i++) kids.push(<Branch key={i} v={this.v} deeper={true} />);
-        return <div>{kids}</div>;
+        return (
+          <div>
+            <div>{kids}</div>
+          </div>
+        );
       }
     }
 
@@ -123,12 +129,15 @@ describe("the build queue drains shallowest-first", () => {
         );
       }
     }
-    @Host("div")
     class App extends Component {
       @state v = 0;
       render() {
         order.push(`app:${this[COMPONENT_RUNTIME].depth}`);
-        return <Middle v={this.v} />;
+        return (
+          <div>
+            <Middle v={this.v} />
+          </div>
+        );
       }
     }
 

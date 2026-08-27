@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, list, state, createContext } from "../index";
+import { getDOM, findOne } from "../test/setup";
+import { Component, list, state, createContext } from "../index";
 import { HOOK_RUNTIME } from "../core/runtime";
 
 /**
@@ -20,30 +20,34 @@ interface Row {
   t: string;
 }
 
-@Host("div")
 class Consumer extends Component {
   ctx = this.use(ThemeConsumer);
   @state rows: Row[] = [{ t: "a" }, { t: "b" }, { t: "c" }];
   render() {
     return (
-      <ul>
-        {list(this.rows, (row: Row) => (
-          <li>
-            {row.t}-{this.ctx.theme}
-          </li>
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.rows, (row: Row) => (
+            <li>
+              {row.t}-{this.ctx.theme}
+            </li>
+          ))}
+        </ul>
+      </div>
     );
   }
 }
 
-@Host("div")
 class App extends Component {
   @state theme = "light";
   @state show = true;
   provider = this.use(ThemeProvider, () => ({ theme: this.theme }));
   render() {
-    return <div>{this.show ? <Consumer /> : null}</div>;
+    return (
+      <div>
+        <div>{this.show ? <Consumer /> : null}</div>
+      </div>
+    );
   }
 }
 
@@ -70,11 +74,7 @@ describe("list scope cleanup", () => {
     // Three items plus the consuming component itself.
     expect(listenerCount(signal)).toBe(4);
 
-    const consumer = (
-      app.container.querySelector('[data-ramonda="Consumer"]') as unknown as {
-        _componentInstance: Consumer;
-      }
-    )._componentInstance;
+    const consumer = findOne<Consumer>(app.container, "Consumer");
 
     // Items that leave the list let go — this part already worked.
     consumer.rows = [{ t: "a" }];

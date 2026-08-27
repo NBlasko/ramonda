@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, Host, Hook, state, created, mounted, createRef } from "../../index";
+import { Component, Hook, state, created, mounted, createRef } from "../../index";
 import { renderToString } from "../../hydration/ssr";
 
 /**
@@ -29,7 +29,6 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
   const warnedAbout = (key: string) => warnings.some((w) => w.includes(`"${key}"`));
 
   test("a ref is not warned about — it is re-established on the client", async () => {
-    @Host("div")
     class C extends Component {
       myRef = createRef<HTMLElement>();
       other: unknown;
@@ -37,7 +36,11 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
         this.other = createRef<HTMLElement>();
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     await renderToString(<C />);
@@ -48,14 +51,17 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
     class Helper extends Hook {
       @state v = 1;
     }
-    @Host("div")
     class C extends Component {
       later: unknown;
       @created seed() {
         this.later = this.use(Helper);
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     await renderToString(<C />);
@@ -63,14 +69,17 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
   });
 
   test("a function is not warned about", async () => {
-    @Host("div")
     class C extends Component {
       fn: unknown;
       @created seed() {
         this.fn = () => 1;
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     await renderToString(<C />);
@@ -78,14 +87,17 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
   });
 
   test("writing the same value back is not a change", async () => {
-    @Host("div")
     class C extends Component {
       keep = "same";
       @created seed() {
         this.keep = "same";
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     await renderToString(<C />);
@@ -93,14 +105,17 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
   });
 
   test("MUTATING an object is caught, not just reassigning one", async () => {
-    @Host("div")
     class C extends Component {
       cfg: Record<string, unknown> = {};
       @created seed() {
         this.cfg.loaded = true;
       }
       render() {
-        return <span>{String(this.cfg.loaded)}</span>;
+        return (
+          <div>
+            <span>{String(this.cfg.loaded)}</span>
+          </div>
+        );
       }
     }
     const html = await renderToString(<C />);
@@ -113,14 +128,17 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
   });
 
   test("a field set in @mounted is caught too, not only @created", async () => {
-    @Host("div")
     class C extends Component {
       late: unknown;
       @mounted seed() {
         this.late = "x";
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     await renderToString(<C />);

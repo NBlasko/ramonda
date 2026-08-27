@@ -46,7 +46,6 @@ so a component that misuses the same property on every render reports once.
 | `RMD007` | error | Server and client rendered different output |
 | `RMD008` | warning | State changed after the component was unmounted |
 | `RMD009` | error | Update loop — a component never stopped re-rendering |
-| `RMD010` | error | The default host is not allowed in this parent |
 | `RMD011` | error | A function was used as a JSX tag |
 | `RMD013` | error | A list item produced nothing |
 | `RMD015` | error | A hook wrote to its own props |
@@ -75,10 +74,8 @@ so a component that misuses the same property on every render reports once.
 | `RMD039` | warning | `class` where `className` was meant |
 | `RMD040` | error | More than one `@ShouldUpdateOnPropsChange` on one class |
 | `RMD041` | warning | A listener with no target |
-| `RMD042` | warning | The default host cannot be the direct target of this event |
 | `RMD043` | warning | A `<meta>` with nothing to identify it |
 | `RMD044` | error | An unknown element type in JSX |
-| `RMD045` | error | More than one `@Host` on a component |
 | `RMD046` | warning | More than one `@StableProps` on one class |
 | `RMD047` | error | A memoized handler was given an argument it cannot key on |
 | `RMD048` | error | Object in state changed in place |
@@ -181,7 +178,7 @@ and never again, and its inline functions keep their identity. `__tests__/PropsB
 both halves — and, in its second suite, what a DEVELOPMENT build adds on top: a second call at mount for
 RMD022's comparison and one per render for RMD027's freshness probe, both discarded.
 
-### RMD033–RMD042 — the ten that were messages before they were codes
+### RMD033–RMD041 — the nine that were messages before they were codes
 
 Each of these was a `ramondaLog` call with its advice written inline: a real fault, reported, but with
 no stable name to search for, no `fix` a panel could render apart from the message, and no way for a
@@ -280,7 +277,6 @@ is for.** A component that renders `this.props.children` scopes the context to
 what is inside it:
 
 ```tsx
-@Host("div")
 class FormScope extends Component<{ children?: RamondaNode }> {
   private form = this.use(Form, () => ({ … }));
   render() { return this.props.children; }
@@ -502,140 +498,6 @@ bet that a loop this violent shows up the first time the code runs. Adding a che
 counter to the production drain, and throwing there, is a live question — see the
 roadmap.
 
-### RMD010 — The default host is not allowed in this parent
-
-A component is always exactly one element. Without `@Host` that element is
-`<ramonda-host style="display: contents">`, which is layout-neutral — but it is
-still an element, and a few parents accept only specific children.
-
-Developers cannot be expected to know which, and working it out from the JSX is
-genuinely hard. At mount, though, it is not a guess at all: `mountNode` is
-holding the real parent node and the freshly built host. That is the whole idea
-behind this check — it names the exact tag to use because it can see where the
-component actually landed.
-
-**The list is measured, not reasoned about.** Every restricted parent was
-round-tripped through the parser:
-
-| parent | what the parser does |
-|---|---|
-| `<table>` `<tbody>` `<tr>` | foster-parents the host out in front of the table, **empty**, and re-parses its children into the table separately |
-| `<select>` `<optgroup>` | discards the host outright — it simply vanishes |
-| `<ul>` `<ol>` `<dl>` `<p>` | nothing; survives untouched |
-
-So the table family splits a component in two: the host (carrying the state
-blob) ends up outside the table while the rows it rendered end up inside.
-`<select>` is worse — the host is deleted and the options are kept.
-
-**`<ul>` is the trap, and it is why this list is short.** Its content model says
-"only `<li>`", so it looks like it belongs above. But foster-parenting is a
-*table* rule; the parser leaves `<ul>` alone and the markup round-trips fine.
-Warning there would fire on `<ul>{items.map(...)}</ul>` — the most common list in
-any app — for no defect at all. Being invalid per the spec is the developer's
-business; being silently destroyed is ours. A first draft did include `UL`, and
-the existing "a well-behaved app produces no diagnostics at all" test caught it.
-
-**SVG is a different failure.** The host is created with `createElement`, i.e. in
-the HTML namespace, and SVG renders only SVG-namespace content — so the subtree
-is dropped. Re-parsing puts the same tag in the SVG namespace instead
-(`namespaceURI: http://www.w3.org/2000/svg`, and `nodeName` lowercase rather than
-uppercase), so server and client disagree about what the node even is. Use
-`@Host("g")`.
-
-Only the **default** host is checked. Once a developer has chosen a tag, the
-choice is theirs.
-
-#### What to use inside a table (and why the rule is simple)
-
-The guidance falls straight out of the 1-1 rule: **a component IS one element, so
-become the element the parent expects.**
-
-| the component sits in | give it | render inside it |
-|---|---|---|
-| `<table>` | `@Host("tbody")` (or `thead`, `tfoot`, `caption`, `colgroup`) | the `<tr>`s |
-| `<tbody>` `<thead>` `<tfoot>` | `@Host("tr")` | the `<td>` / `<th>` cells |
-| `<tr>` | `@Host("td")` (or `th`) | the cell content |
-| `<select>` `<optgroup>` | `@Host("option")` (or `optgroup`) | the label |
-| inside `<svg>` | `@Host("g")` | the shapes |
-
-Two facts remove most of the awkwardness people expect here:
-
-**`render()` may return an array.** Those become children of the host, so one
-`@Host("tr")` component holds as many `<td>`s as it likes. You do not need a
-component per cell — you need one only when you want one.
-
-**A `<table>` may contain several `<tbody>` elements.** So the "I need to emit
-many rows" case, which looks like it needs a fragment, does not: make the
-component the `<tbody>` and put it directly under `<table>`. Two such components
-give two tbodys, which is valid HTML and renders as one continuous table.
-
-Verified end to end — this exact shape is a test, round-tripped through the
-parser byte-for-byte, because a prescribed fix that is not tested is only an
-opinion:
-
-```tsx
-@Host("tr")    class Cells   { render() { return cells.map(c => <td>{c}</td>); } }
-@Host("tbody") class Section { render() { return [<Cells .../>, <Cells .../>]; } }
-@Host("div")   class App     { render() { return <table><Section/><Section/></table>; } }
-```
-
-#### State and lifecycle with no markup of your own
-
-The table above is the view from the parent. The other half is the view from the
-component: *how do I keep a piece that has its own state and lifecycle but no markup
-of its own — a tracker, a subscription, a keyboard listener — when every Ramonda
-component is an element?*
-
-**Most of the time the question dissolves: just write the component.** Let
-`render()` return `null`. It keeps `@state`, `@created`, `@watchProp`, `@onWindow`,
-and its own re-render boundary, and leaves behind
-`<ramonda-host style="display: contents">` — an element that takes part in **no
-layout at all**.
-
-```tsx
-class Analytics extends Component<{ page: string }> {
-  @watchProp((props) => props.page) track(page: string) { send(page); }
-  render() { return null; }
-}
-```
-
-That is the natural use, and the wrapper is not a cost: `display: contents`
-means the box does not exist. This covers everywhere except the three parents
-that reject even an inert element — `<table>`, `<select>`, `<svg>`.
-
-**There, the answer is a Hook.** A Hook is precisely "state and lifecycle with no
-element": it has `@state`, `@created`/`@destroyed`, `@watchProp`, `@onWindow`, it can
-provide context, and it adds no node for the parser to destroy.
-
-```tsx
-class RowsHook extends Hook<{ prefix: string }> {
-  @state rows: string[] = [];
-  @created load() { this.rows = fetchRows(); }
-}
-
-@Host("div")
-class TableApp extends Component {
-  rowsHook = this.use(RowsHook, () => ({ prefix: "x" }));
-  render() {
-    return <table><tbody>
-      {this.rowsHook.rows.map(r => <Row key={r} label={r} />)}
-    </tbody></table>;
-  }
-}
-```
-
-**The Hook's one real cost:** it shares its owner's runtime, so its state writes
-re-render the **owner**, not itself. It has no re-render boundary of its own.
-A re-render boundary is the single thing a component has and a Hook does not.
-
-| you need | use | you get |
-|---|---|---|
-| state + lifecycle, own re-render boundary | a component (may `render()` null) | one element — inert by default, free in layout |
-| state + lifecycle where no element is legal | a Hook | no node at all; re-renders its owner |
-| just vnodes, no state | a method or hook returning an array, called as `{rows()}` | plain values, spliced into the parent's children |
-
-**Functions are not a third kind of component** — see RMD011.
-
 ### RMD011 — A function was used as a JSX tag
 
 Every Ramonda tag is exactly one element. That is what lets you read the DOM
@@ -666,13 +528,13 @@ element, and the fragment hides it. Ramonda's units are the **class** and the
 fragment to hide.
 
 **"Someone styled a `<td>` and I want to add to it, but it must stay a `<td>`"**
-— extend it. `@Host` is a static, so it comes down the chain, and a subclass may
-override it:
+— extend it. The tag is written in `render()`, so a subclass inherits it by
+inheriting the render, and changes it by writing its own:
 
 ```tsx
-@Host("td") class BaseCell extends Component<{ label?: string }> {
+class BaseCell extends Component<{ label?: string }> {
   decorate(v: string) { return v.toUpperCase(); }
-  render() { return <span>{this.decorate(this.props.label ?? "")}</span>; }
+  render() { return <td>{this.decorate(this.props.label ?? "")}</td>; }
 }
 
 class FancyCell extends BaseCell {
@@ -682,9 +544,9 @@ class FancyCell extends BaseCell {
 
 Both are still exactly one `<td>`; the subclass adds no element. **No constructor
 is needed** — and none should be written. Everything survives `extends`:
-`@Host` (override it by re-declaring), `render()`, plain methods (`super.` works),
-`@state` (inherited and new), hooks (inherited and new), and lifecycle — `@created`
-runs base-first, then the subclass's.
+`render()`, plain methods (`super.` works), `@state` (inherited and new), hooks
+(inherited and new), and lifecycle — `@created` runs base-first, then the
+subclass's.
 
 **A group of cells sharing state** is the one case that is genuinely not a
 component: it would have to be an element, and only `<td>` is legal there. That
@@ -1095,8 +957,9 @@ about what looks reasonable; `ONLY_INSIDE` covers the list, table, select and de
 `<form>` and `<a>` are the two tags the parser actively repairs rather than tolerates. Anything the
 parser merely allows is absent, per the standard below.
 
-**A default host in between is left to RMD010**, which can name the `@Host` to reach for. A component
-that IS the misplaced element is checked like any other, because by then the pair is the real one.
+**A component in between is transparent to this**, and that is the point of a component owning a
+range rather than an element: the pair this reads is the real parent and the real child, whatever
+number of components sit between them in the JSX.
 
 ### RMD027 — a props callback reads a value that is not reactive
 

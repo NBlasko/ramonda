@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created } from "../../base/decorators";
+import { state, created } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { bootstrap } from "../../index";
@@ -73,10 +73,13 @@ async function serverThenHydrate(
 
 describe("the server sends only what opted in", () => {
   test("an exposed key rides the root element; a non-exposed one does not", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
 
@@ -92,10 +95,13 @@ describe("the server sends only what opted in", () => {
   });
 
   test("nothing opted in → no blob at all", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { html } = await serverThenHydrate(<Page />, [[sessionId, "s-123"]]);
@@ -121,10 +127,13 @@ describe("the server sends only what opted in", () => {
   test("exposure rides the key, whenever it was declared", async () => {
     const lateKey = requestKey<string>("declaredLate", { exposeToClient: true });
 
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { html } = await serverThenHydrate(<Page />, [[lateKey, "carried"]]);
@@ -144,14 +153,17 @@ describe("the server sends only what opted in", () => {
     const midRender = requestKey<string>("midRender", { exposeToClient: true });
     const midRenderPrivate = requestKey<string>("midRenderPrivate");
 
-    @Host("main")
     class Page extends Component {
       @created init() {
         seedRequest(midRender, "resolved-late");
         seedRequest(midRenderPrivate, "server-only");
       }
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { html } = await serverThenHydrate(<Page />, []);
@@ -160,10 +172,13 @@ describe("the server sends only what opted in", () => {
   });
 
   test("a label cannot be seeded at all — only a key", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { html } = await serverThenHydrate(<Page />, [
@@ -176,14 +191,17 @@ describe("the server sends only what opted in", () => {
   });
 
   test("a cookie is never exposed, even when read during the render", async () => {
-    @Host("main")
     class Page extends Component {
       @state seen = "";
       @created init() {
         this.seen = requestContext().cookies.get("session") ?? "";
       }
       render() {
-        return <p>ok</p>;
+        return (
+          <main>
+            <p>ok</p>
+          </main>
+        );
       }
     }
     const { html } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
@@ -196,10 +214,13 @@ describe("the server sends only what opted in", () => {
 
 describe("the browser reads what was exposed", () => {
   test("get(key) returns the exposed value after hydration", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { container } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
@@ -210,10 +231,13 @@ describe("the browser reads what was exposed", () => {
   });
 
   test("THE BUG THIS FIXES: a direct read in render() survives hydration and matches", async () => {
-    @Host("main")
     class Greeting extends Component {
       render() {
-        return <h1>Hello {requestContext().get(currentUser)?.name ?? "guest"}</h1>;
+        return (
+          <main>
+            <h1>Hello {requestContext().get(currentUser)?.name ?? "guest"}</h1>
+          </main>
+        );
       }
     }
 
@@ -227,10 +251,13 @@ describe("the browser reads what was exposed", () => {
   });
 
   test("url reads live from the browser, not the server's frozen one", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { container } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
@@ -241,10 +268,13 @@ describe("the browser reads what was exposed", () => {
 
 describe("what was not exposed reports instead of throwing", () => {
   test("a non-exposed key reads as undefined and reports RMD025", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { container } = await serverThenHydrate(<Page />, [[sessionId, "s-123"]]);
@@ -255,10 +285,13 @@ describe("what was not exposed reports instead of throwing", () => {
   });
 
   test("cookies and headers read empty and report, never throw", async () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const { container } = await serverThenHydrate(<Page />, [[currentUser, { name: "Ada" }]]);
@@ -271,10 +304,13 @@ describe("what was not exposed reports instead of throwing", () => {
   });
 
   test("a client-only app (bootstrap, no SSR) reads empty rather than throwing", () => {
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
     const container = document.createElement("div");

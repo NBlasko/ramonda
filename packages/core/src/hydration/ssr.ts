@@ -1,9 +1,13 @@
-import { mountNode } from "../core/DiffAndMerge";
+import { mountRoot, isRegion, isComponentRegion, flattenEntries } from "../core/DiffAndMerge";
+import type { ComponentRegion, EnhancedChildNode, RecordEntry } from "../types/vdom";
 import { ServerRedirect } from "./serverRedirect";
+import { escapeText } from "./escape";
 import { setRenderEnv } from "../core/renderEnv";
 import { flushTaskQueue } from "../core/Task";
 import { serializeComponentToBlob } from "./serialize";
-import { STATE_ATTR, PORTAL_ATTR, REQUEST_ATTR } from "../helpers/constants";
+import { PORTAL_ATTR, REQUEST_ATTR, CHILD_RECORD } from "../helpers/constants";
+import { blockCloseOf } from "../core/DiffAndMerge";
+import { componentOpen, componentClose } from "../core/componentMarker";
 import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
@@ -77,16 +81,146 @@ async function drainServerWork(work: ServerWork): Promise<void> {
   );
 }
 
-/** Stamps each carrier element with its component's serialized state blob. */
-function stampBlobs(node: Node): void {
-  const el = node as { _componentInstance?: object } & Element;
-  if (el._componentInstance && typeof el.setAttribute === "function") {
+/**
+ * Wraps every component's nodes in the marker pair a hydrating client reads, blob included.
+ *
+ * Walks the CHILD RECORD, not the DOM, because the record is the only thing that knows a component
+ * is here: it may own two nodes, or none, and neither is visible in the markup. A node with a record
+ * of its own is recursed into, and one without cannot contain a component at all — that is what
+ * `HAS_REGION` guarantees.
+ *
+ * Exported because a test that wants "what the server would have served" needs this exact pass
+ * over a tree it built on the client — there is no way to fake it by hand any more, and a
+ * hand-rolled version would be a second implementation of the one thing hydration reads.
+ *
+ * Backwards, carrying the node to insert before. That is the same shape the reorder pass has, and
+ * for the same reason: the position of a block is known from what FOLLOWS it, and an empty
+ * component — no nodes at all — has nothing of its own to be placed relative to. Its two markers
+ * then land adjacent at exactly the right spot, which is what tells the client the component was
+ * there and rendered nothing.
+ */
+export function markComponents(node: Node): void {
+  /**
+   * A `ChildrenRegion`'s block, found where it publishes itself: on its own opening anchor.
+   *
+   * Its record belongs to the region rather than to the element it writes into — a portal shares its
+   * target with the shell and with every other portal — so the walk below cannot reach the components
+   * inside it. Without this a portalled component has no marker, and a hydrating client builds a
+   * second copy of the whole block beside the server's.
+   *
+   * Read off the anchor rather than from a registry of live regions. The registry was only emptied by
+   * `dispose`, and nothing disposes a server render's tree, so it grew by one per portal per request
+   * for the life of the process — and this pass rebuilt the whole of it once per DOM node.
+   */
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType !== 8) continue;
+    const block = (child as EnhancedChildNode)[CHILD_RECORD];
+    if (block === undefined) continue;
+    markEntries(block, node, blockCloseOf(child) ?? null);
+  }
+
+  const record = (node as EnhancedChildNode)[CHILD_RECORD];
+  if (record === undefined) {
+    for (const child of Array.from(node.childNodes)) markComponents(child);
+    return;
+  }
+  markEntries(record, node, afterOwnNodes(node, record));
+}
+
+/**
+ * Where this element's OWN markup ends — which is not the end of the element.
+ *
+ * The pass walks backwards, and a component whose nodes are last in the record had its closing
+ * marker put at the end of the PARENT. That is the same node only while the element holds nothing
+ * else, and it may host a block it does not own: a `Portal` aimed at a node in the owner's own
+ * render, or the `Head` hook's tags in a head that also holds the shell's.
+ *
+ * Measured on a `<section>` that rendered one component and hosted an inline portal:
+ * `<!--c1--><b id="own">own</b><!--rN--><!--c0-->…<!--/c0--><!--/rN--><!--/c1-->` — the component's
+ * range swallowed the whole block, so a hydrating client would read the portal's content as that
+ * component's own and take it apart.
+ *
+ * The record knows what this element's nodes are, so the node AFTER the last of them is the answer.
+ * With no nodes at all, everything in the parent belongs to something else and the markers go in
+ * front of all of it.
+ */
+function afterOwnNodes(parent: Node, record: RecordEntry[]): ChildNode | null {
+  const own: ChildNode[] = [];
+  flattenEntries(record, own);
+  const last = own[own.length - 1];
+  return last !== undefined ? last.nextSibling : parent.firstChild;
+}
+
+/**
+ * Components already marked in this render, so the pass can be run more than once.
+ *
+ * It has to be: `renderToString` marks the body, `collectHead` marks the head, and a portal's block
+ * may be reached from either — and a second visit would INSERT A SECOND PAIR, which reads to a
+ * hydrating client as a component inside a component. Held per region object rather than per record,
+ * because the record array is replaced on every reconcile while the region is the same thing
+ * throughout.
+ */
+const markedRegions = new WeakSet<ComponentRegion>();
+
+/**
+ * The number on the next marker, counted PER PAGE rather than from a process-wide id.
+ *
+ * A build has to be repeatable: the same source and the same data must produce the same bytes, or
+ * every deploy is a diff nobody can review. Minting these from `createId()` made the second build of
+ * a page differ from the first in every marker — measured, and caught by the prerender loop's own
+ * determinism test.
+ *
+ * Nothing matches on the number. It is for a person reading the served HTML, which is exactly why it
+ * should read `c0`, `c1`, `c2` down the page instead of wherever the process counter happened to be.
+ */
+let nextMarker = 0;
+
+/** Starts the numbering over, once per page. Called beside the other per-render resets. */
+export function resetComponentMarkers(): void {
+  nextMarker = 0;
+}
+
+function markEntries(entries: RecordEntry[], parent: Node, before: ChildNode | null): ChildNode | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+
+    if (!isRegion(entry)) {
+      markComponents(entry);
+      before = entry;
+      continue;
+    }
+
+    if (!isComponentRegion(entry)) {
+      // A list owns no marker of its own: its rows are components or plain nodes, and the client
+      // rebuilds the list's own identity from `list()` rather than from the markup.
+      const first = markEntries(entry.entries, parent, before);
+      if (first !== null) before = first;
+      continue;
+    }
+
+    if (markedRegions.has(entry)) {
+      const first = markEntries(entry.entries, parent, before);
+      if (first !== null) before = first;
+      continue;
+    }
+    markedRegions.add(entry);
+
     // Nothing at all when nothing has moved off its initial value: an empty tree of shells is
     // around 90 bytes per component that the client would read and then do nothing with.
-    const blob = serializeComponentToBlob(el._componentInstance);
-    if (blob !== undefined) el.setAttribute(STATE_ATTR, blob);
+    const blob = serializeComponentToBlob(entry.instance);
+    const id = nextMarker++;
+
+    const close = document.createComment(componentClose(id));
+    parent.insertBefore(close, before);
+
+    const firstInside = markEntries(entry.entries, parent, close);
+
+    const open = document.createComment(componentOpen(id, blob));
+    parent.insertBefore(open, firstInside ?? close);
+    before = open;
   }
-  node.childNodes.forEach(stampBlobs);
+
+  return before;
 }
 
 /**
@@ -145,6 +279,11 @@ export interface RenderToStringOptions {
 }
 
 export async function renderToString(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<string> {
+  // One page, one numbering. Every render of a page goes through here, and the head and the portal
+  // targets are marked afterwards from the same counter — so a marker's number is where it sits in
+  // the page rather than where the process happened to be.
+  resetComponentMarkers();
+
   const container = document.createElement("div");
 
   // The module-level env is only live across this synchronous mount — no await
@@ -179,7 +318,7 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
   setRenderEnv("server");
   setServerWorkCollector(work);
   try {
-    mountNode(vnode, undefined, container);
+    mountRoot(vnode, container);
     // Inside the server env, and before the task drain: a server @mounted may
     // write state, and those updates must be drained before serializing — which
     // is exactly what flushTaskQueue below is for.
@@ -205,7 +344,7 @@ export async function renderToString(vnode: ComponentChild, opts?: RenderToStrin
     throw new ServerRedirect(work.redirect);
   }
 
-  stampBlobs(container);
+  markComponents(container);
   stampExposedRequest(container, requestScope);
   return container.innerHTML;
 }
@@ -341,30 +480,67 @@ export interface RenderedPage {
  * claimed the before-reset was what covered that case. It is not.
  */
 export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
-  resetHead();
-  resetPortalTargets();
-
-  try {
-    // Forwarded, so a per-request render can use this instead of `renderToString` —
-    // it could not before, and a server that needed `request` had to give up the head
-    // to get it.
-    const body = await renderToString(vnode, opts);
-
-    return { body, ...collectHead(), portals: collectPortals() };
-  } finally {
-    // Cleared once the markup is safely captured — and in a `finally` so a render
-    // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
-    // so left its head tags behind) does not leak them into the next request. The
-    // reset above is the one that guarantees correctness; this keeps a long-lived
-    // server process from carrying a rendered page's tags between requests.
-    //
-    // Portals for the same reason, and they were missing it — measured, a container still held
-    // the last page's markup after this returned. They matter MORE than the head here: a head
-    // block is a few tags, a portal container holds a whole DOM subtree, and it stayed reachable
-    // until the next request happened to arrive.
+  return inTurn(async () => {
     resetHead();
     resetPortalTargets();
-  }
+
+    try {
+      // Forwarded, so a per-request render can use this instead of `renderToString` —
+      // it could not before, and a server that needed `request` had to give up the head
+      // to get it.
+      const body = await renderToString(vnode, opts);
+
+      return { body, ...collectHead(), portals: collectPortals() };
+    } finally {
+      // Cleared once the markup is safely captured — and in a `finally` so a render
+      // that redirects (a thrown `ServerRedirect`, whose tree was NOT torn down and
+      // so left its head tags behind) does not leak them into the next request. The
+      // reset above is the one that guarantees correctness; this keeps a long-lived
+      // server process from carrying a rendered page's tags between requests.
+      //
+      // Portals for the same reason, and they were missing it — measured, a container still held
+      // the last page's markup after this returned. They matter MORE than the head here: a head
+      // block is a few tags, a portal container holds a whole DOM subtree, and it stayed reachable
+      // until the next request happened to arrive.
+      resetHead();
+      resetPortalTargets();
+    }
+  });
+}
+
+/**
+ * One render at a time, because a render's head and portals are not its own.
+ *
+ * `Head` writes into the real `document.head`, and a portal into its target — both reached from the
+ * one `document` this process has. `renderPage` brackets a render with a reset on each side, which
+ * makes one call independent of everything before it, and that is the whole of the isolation. It
+ * holds only while nothing else is inside the bracket.
+ *
+ * Two requests in flight are inside it together: the second's opening reset runs while the first is
+ * awaiting its data, and empties the head the first has already filled. Measured on two `renderPage`
+ * calls started together — the first came back with the SECOND page's title and meta, and the second
+ * came back with an empty head. Two visitors, one of them served the other's page.
+ *
+ * The DOM is what is really shared, and a per-request DOM would be the other answer — but a server
+ * installs one on `globalThis`, so two requests overwrite each other there as well. Taking turns is
+ * what makes the bracket true, and it costs little that matters: rendering is CPU-bound on one
+ * thread, so the calls were already taking turns for most of their length. What it does cost is a
+ * render that AWAITS — server work, a fetch — while another request waits behind it.
+ *
+ * `renderStatic` is not routed through this: a build is sequential by construction, which its own
+ * comment says, and it keeps a poisoned request scope live across its whole render.
+ */
+let renderTurn: Promise<unknown> = Promise.resolve();
+
+function inTurn<T>(work: () => Promise<T>): Promise<T> {
+  const mine = renderTurn.then(work, work);
+  // The chain continues whichever way this settled: a render that throws must not stop every later
+  // one, and an unhandled rejection on the tail is not a caller's to catch.
+  renderTurn = mine.then(
+    () => undefined,
+    () => undefined,
+  );
+  return mine;
 }
 
 /**
@@ -399,15 +575,22 @@ const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
  * them), and outside a block, the elements `Head` marked.
  */
 function collectHead(): { title: string; head: string } {
+  /**
+   * Marked BEFORE anything is read, and before the block is paired.
+   *
+   * A portalled component's marker pair is inserted into the head itself, so marking inside the walk
+   * below did it while `nextSibling` was carrying the walk along — the comments landed behind the
+   * cursor and were never serialized, and a hydrating client found a block with no markers in it and
+   * built a second copy of the whole thing. Pairing the block afterwards is the other half: the new
+   * comments are inside it and have to be collected with everything else.
+   */
+  markComponents(document.head);
+
   const inBlock = blockNodes(document.head);
   let head = "";
 
   for (let node = document.head.firstChild; node !== null; node = node.nextSibling) {
     if (inBlock.has(node)) {
-      // Inside a portal's block, where a component may be sitting on any node —
-      // `stampBlobs` only ever walked the body container, so a portalled
-      // component reached the client with no state to restore.
-      stampBlobs(node);
       head += serializeNode(node);
     } else if (node.nodeType === 1 && (node as Element).matches(MANAGED_HEAD)) {
       head += (node as Element).outerHTML;
@@ -467,19 +650,31 @@ function blockNodes(head: Node): Set<Node> {
 /**
  * The named targets' blocks, with their state blobs written first.
  *
- * `stampBlobs` walked only the body container, so a component a portal placed
+ * The marker pass walked only the body container, so a component a portal placed
  * anywhere else reached the client with no state to restore and was rebuilt from
  * its initial values. Same reason `collectHead` stamps inside a head block.
  */
 function collectPortals(): Record<string, string> {
-  for (const container of portalTargetContainers()) stampBlobs(container);
+  for (const container of portalTargetContainers()) markComponents(container);
   return collectPortalTargets();
 }
 
+/**
+ * One node of a collected block, as the bytes that will be served.
+ *
+ * An element goes through `outerHTML`, which escapes its own text and attributes. A TEXT node does
+ * not: it was handed back raw, so a value a component rendered into a head block reached the page as
+ * MARKUP. Measured on a `@state` holding `</title><img src=x onerror="…">` inside a `Portal` aimed
+ * at `document.head` — a real `<img>` with a live `onerror` in the served head. State is user data as
+ * often as not, so this is an injection rather than a broken tag.
+ *
+ * A COMMENT is a block's anchor or a component's marker, both of which this package writes and
+ * neither of which carries user data unescaped — `componentOpen` escapes the blob it embeds.
+ */
 function serializeNode(node: Node): string {
   if (node.nodeType === 1) return (node as Element).outerHTML;
   if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`;
-  return (node as Text).data ?? "";
+  return escapeText((node as Text).data ?? "");
 }
 
 /** Clears the tags a previous `Head` left behind, the portal blocks, and the title. */

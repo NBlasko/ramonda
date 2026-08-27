@@ -1,7 +1,6 @@
 import type { BaseComponent } from "../types/vdom";
-import { diffAndMerge } from "./DiffAndMerge";
+import { refreshComponentRegion } from "./DiffAndMerge";
 import { errorHandler } from "./errorHandler";
-import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "./runtime";
 import { runComponentEffects } from "../reactivity/effect";
 import { runWatchProps } from "../helpers/watchProps";
@@ -150,9 +149,11 @@ function updateBuild(component: BaseComponent<unknown>) {
   // render below.
   runWatchProps(component);
   componentRuntime.inBuildQueue = false;
-  const rendered = generateRenderOutput(component);
 
-  diffAndMerge(rendered, component, componentRuntime.enhancedNode);
+  // Renders and reconciles its own block. The render lives in there rather than here because a
+  // component owns a RANGE: what comes back is a list of children, and only the region knows which
+  // parent they belong in and which nodes it held last time.
+  refreshComponentRegion(component);
 
   // `@updated` — the post-commit door, and only on this path: the first commit
   // belongs to @mounted, so neither the build path nor hydration queues these.
@@ -171,7 +172,7 @@ function updateBuild(component: BaseComponent<unknown>) {
   }
 
   // Queued, not inline — the third place this had to be fixed, after the build
-  // path and hydration. `diffAndMerge` above can create components, and a new
+  // path and hydration. The reconcile above can create components, and a new
   // one defers its own effects to the post-commit flush. Running this component's
   // effects here would put them BEFORE its freshly built children's, inverting
   // the rule that holds everywhere else: a component's effects run after its

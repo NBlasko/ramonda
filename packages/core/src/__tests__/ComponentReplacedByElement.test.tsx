@@ -1,31 +1,29 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { Host, state, destroyed, interval } from "../base/decorators";
+import { state, destroyed, interval } from "../base/decorators";
 import { getDOM } from "../test/setup";
 import { effectLike } from "../test/effectLike";
 
 /**
- * A component swapped out for a plain element of the SAME TAG must be torn down.
+ * A component swapped out for a plain element of the same tag must be torn down.
  *
- * `areSimilarNodes` matched an intrinsic vnode against a node by `nodeName`
- * alone — and a component's host element has exactly the nodeName of its `@Host`
- * tag. So `{on ? <Panel /> : <div>empty</div>}`, with `@Host("div")` on Panel,
- * claimed Panel's own host for the plain `<div>`: the node was reused, the
- * component instance was dropped, and NOTHING tore it down.
+ * The failure this guards against is invisible from the page: the DOM looks right — the div is
+ * there, with the right content — while the component behind it keeps its subscriptions, intervals
+ * and window listeners for the life of the tab. Not even RMD006 fires, because the leaked-timer
+ * check runs inside the teardown that never happens.
  *
- * The failure is invisible from the page. The DOM looks right — the div is
- * there, with the right content — while the component behind it keeps its
- * subscriptions, intervals and window listeners for the life of the tab. Not
- * even RMD006 fires, because the leaked-timer check runs inside the teardown
- * that never happens.
+ * It used to be a real hazard in the node matcher. A component WAS an element, and its host had
+ * exactly the nodeName of its `@Host` tag, so `areSimilarNodes` handed Panel's own host to the plain
+ * `<div>` and dropped the instance on the floor. That confusion is gone with the host: a component
+ * is a region in the record and a plain element is a node in the pool, and the two cannot be
+ * mistaken for one another. What replaces the old guard is the region going away — the vnode is no
+ * longer a component, so nothing claims the region, and `disposeRegions` runs its teardown.
  *
- * The reverse was always safe: a plain element has no `_componentDefinition`, so
- * it can never be claimed for a component vnode. Only this direction was open.
+ * Which is exactly what this still has to prove, by the mechanism rather than by the tag.
  */
 
 const log: string[] = [];
 
-@Host("div")
 class Panel extends Component {
   @effectLike() subscribe() {
     log.push("effect");
@@ -38,17 +36,29 @@ class Panel extends Component {
     log.push("tick");
   }
   render() {
-    return <b>panel</b>;
+    return (
+      <div>
+        <b>panel</b>
+      </div>
+    );
   }
 }
 
-@Host("section")
 class Swapper extends Component<{ tag?: string }> {
   @state on = true;
   render() {
-    if (this.on) return <Panel />;
+    if (this.on)
+      return (
+        <section>
+          <Panel />
+        </section>
+      );
     // Same tag as Panel's host — the case that used to reuse the node.
-    return <div>empty</div>;
+    return (
+      <section>
+        <div>empty</div>
+      </section>
+    );
   }
 }
 
@@ -106,11 +116,10 @@ describe("a component replaced by a plain element of the same tag", () => {
   test("a plain element is still never claimed for a component", async () => {
     // The direction that was always correct — pinned so a fix to the other one
     // cannot quietly open this.
-    @Host("div")
     class Reverse extends Component {
       @state on = false;
       render() {
-        return this.on ? <Panel /> : <div>plain</div>;
+        return <div>{this.on ? <Panel /> : <div>plain</div>}</div>;
       }
     }
 

@@ -1,4 +1,4 @@
-import { Component, Host, state, onDocument } from "@ramonda/core";
+import { Component, state, onDocument } from "@ramonda/core";
 
 // @onDocument listens on the document, which is what a global shortcut needs —
 // the key event does not reach this component's own element unless the focus
@@ -7,7 +7,6 @@ import { Component, Host, state, onDocument } from "@ramonda/core";
 // The handler's parameter is typed from the event NAME: "keydown" gives a
 // KeyboardEvent with no cast. A name the DOM's map does not know falls back to
 // Event, which is all the platform can promise about it.
-@Host("div")
 export class KeyboardShortcut extends Component {
   @state lastKey = "—";
   @state count = 0;
@@ -21,12 +20,14 @@ export class KeyboardShortcut extends Component {
 
   render() {
     return (
-      <p className="demo-row">
-        <span>
-          last key: <kbd>{this.lastKey}</kbd>
-        </span>
-        <span className="demo-note">pressed {this.count} times — type anywhere on the page</span>
-      </p>
+      <div>
+        <p className="demo-row">
+          <span>
+            last key: <kbd>{this.lastKey}</kbd>
+          </span>
+          <span className="demo-note">pressed {this.count} times — type anywhere on the page</span>
+        </p>
+      </div>
     );
   }
 }

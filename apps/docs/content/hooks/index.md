@@ -50,11 +50,14 @@ is the whole reason hooks exist.**
 
 ## Why not just a component?
 
-A component is always exactly one element, so "state and lifecycle but no markup"
-can't be a component — it would still be an element. That is the gap a hook fills.
-(If a wrapper element wouldn't bother you, an ordinary component works too — its
-default element takes up no space. Reach for a hook when you want *no* element, or
-when the goal is to share the behaviour itself.)
+A component can do this too — one may render nothing and still hold state, a lifecycle
+and hooks of its own. So the question is not what is possible but what the thing IS.
+
+A hook is behaviour a component **uses**, and one component can use several: a disclosure,
+a fetch and a keyboard shortcut in the same class, each a `this.use(...)` on its own line.
+A component is a thing that is **placed**, once per tag. When what you have is behaviour to
+share rather than a place in the tree, a hook says so — and it is the only one of the two
+that a hook can itself use.
 
 ## Synchronising with the owner
 

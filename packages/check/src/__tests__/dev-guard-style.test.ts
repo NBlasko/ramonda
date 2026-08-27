@@ -22,13 +22,13 @@ const found = () => run().findings["dev-guard-as-an-expression"];
 describe("a `__DEV__` guard written as an operator", () => {
   test("both spellings are reported, with what the guard runs", () => {
     expect(found().map((issue) => `${issue.line} ${issue.written} ${issue.guarding}`)).toEqual([
-      '15 && publish("started")',
-      '17 ?: publish("again")',
+      '14 && publish("started")',
+      '16 ?: publish("again")',
       // Chained: `__DEV__ && ready && publish(…)` parses as `(__DEV__ && ready) && publish(…)`, so
       // asking whether the immediate left was the flag missed every one — while `dev-guard.ts`
       // recognised it. Both read `guardsDev` now.
-      '24 && publish("chained")',
-      '25 && publish("parens")',
+      '23 && publish("chained")',
+      '24 && publish("parens")',
     ]);
   });
 

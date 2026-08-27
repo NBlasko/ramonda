@@ -11,14 +11,13 @@ import type { ElementRule } from "./rule";
  * element it was in the middle of. So the tree the browser builds is not the tree in the source,
  * and everything downstream reasons about the wrong one.
  *
- * ## Why this is worth a static rule when the framework already watches at runtime
+ * ## Why this is worth a static rule
  *
- * It watches a narrower thing. `RMD010` fires when a COMPONENT's default host lands in a parent
- * that will not take it, and it can only fire once that component mounts — so a table behind a tab
- * nobody opened ships with the fault. And a tag written directly in the markup, which is this rule,
- * is not what RMD010 looks at.
+ * Nothing catches it at runtime any more, and what used to come closest was about a different
+ * fault: `RMD010` reported a COMPONENT's host element landing in a parent that would not take it,
+ * and a component has no element now — the tag this rule reads is one somebody wrote.
  *
- * There is a worse version of the same story: hydration reports a bad nesting as `RMD007`, a
+ * What is left at runtime is worse than nothing: hydration reports a bad nesting as `RMD007`, a
  * server/client MISMATCH, because the parser moved the node and the client's tree no longer matches
  * the server's. The advice RMD007 gives is about non-determinism, so a reader is sent looking for a
  * clock or a random number that is not there.
@@ -56,8 +55,8 @@ export const tagNeedsItsParent = {
       "On a server-rendered page the symptom is especially misleading: the parser moves the node,\n" +
       "the client's tree stops matching the server's, and it is reported as a hydration mismatch\n" +
       "whose advice is about clocks and random numbers.\n\n" +
-      "An element reached through a component is NOT reported here — this cannot see what host that\n" +
-      "component renders. The framework watches that side at runtime (RMD010).\n\n" +
+      "An element reached through a component is NOT reported here — what a component renders is\n" +
+      "decided inside it, and it may well be the parent this tag needs.\n\n" +
       "This is a warning today and an error in a later version.",
   },
 

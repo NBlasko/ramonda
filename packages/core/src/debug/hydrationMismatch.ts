@@ -1,5 +1,4 @@
 import { diagnose } from "./diagnostics";
-import { STATE_ATTR } from "../helpers/constants";
 import type { BaseComponent } from "../types/vdom";
 
 /**
@@ -83,6 +82,24 @@ export function reportStructureMismatch(owner: BaseComponent | undefined, expect
   );
 }
 
+/**
+ * A component whose block in the server markup holds MORE nodes than its render produced.
+ *
+ * Its own diagnostic because the repair is different from the one above. An element's extra children
+ * sit at the end of a level and can be left where they are; a component's sit INSIDE its markers, in
+ * the middle of its parent's children — so leaving them there hands the component's node to the
+ * sibling that comes after it and the whole rest of the level lands one position early. They are
+ * taken out, and this says so.
+ */
+export function reportBlockLengthMismatch(owner: BaseComponent | undefined, extra: number): void {
+  const name = ownerName(owner);
+  diagnose(
+    "RMD007",
+    `${name}:block`,
+    `<${name} />'s markup in the server output holds ${extra} node(s) more than its render produced; the extra ones are removed so the siblings after it keep their own.`,
+  );
+}
+
 export function reportChildCountMismatch(
   owner: BaseComponent | undefined,
   parentTag: string,
@@ -116,7 +133,6 @@ export function reportAttributeMismatches(
 
     // Ramonda normalizes to the JSX spelling; the DOM's names are `class` and `for`.
     const domName = attribute === "className" ? "class" : attribute === "htmlFor" ? "for" : attribute;
-    if (domName === STATE_ATTR || domName === "data-ramonda") continue;
 
     const found = node.getAttribute(domName);
     if (found === null) continue;

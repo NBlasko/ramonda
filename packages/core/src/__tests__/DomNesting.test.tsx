@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -193,10 +192,13 @@ describe("RMD028", () => {
   });
 
   test("a component that IS the element is checked like any other", async () => {
-    @Host("li")
     class Row extends Component {
       render() {
-        return <span>proper</span>;
+        return (
+          <li>
+            <span>proper</span>
+          </li>
+        );
       }
     }
 

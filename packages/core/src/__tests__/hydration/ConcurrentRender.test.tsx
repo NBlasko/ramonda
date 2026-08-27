@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { state, mounted, created, Host } from "../../base/decorators";
+import { state, mounted, created } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 import { getRenderEnv } from "../../core/renderEnv";
@@ -24,7 +24,6 @@ beforeEach(() => {
 
 /** Appears only after its parent's @mounted schedules an update — i.e. it is built
  *  during flushTaskQueue, after renderToString has already restored the flag. */
-@Host("span")
 class Late extends Component<{ tag: string }> {
   @created({ env: "client" }) onClient() {
     clientRan.push(this.props.tag);
@@ -36,25 +35,35 @@ class Late extends Component<{ tag: string }> {
     effectsRan.push(this.props.tag);
   }
   render() {
-    return <i>late-{this.props.tag}</i>;
+    return (
+      <span>
+        <i>late-{this.props.tag}</i>
+      </span>
+    );
   }
 }
 
-@Host("div")
 class Reveals extends Component<{ tag: string }> {
   @state show = false;
   @mounted reveal() {
     this.show = true;
   }
   render() {
-    return <div>{this.show ? <Late tag={this.props.tag} /> : null}</div>;
+    return (
+      <div>
+        <div>{this.show ? <Late tag={this.props.tag} /> : null}</div>
+      </div>
+    );
   }
 }
 
-@Host("div")
 class Plain extends Component {
   render() {
-    return <span>plain</span>;
+    return (
+      <div>
+        <span>plain</span>
+      </div>
+    );
   }
 }
 
@@ -116,7 +125,6 @@ describe("render env: concurrent renders", () => {
     // so at that moment the task queue is empty and nothing makes Plain wait.
     // With the flag restored in a `finally` after the await, Plain's cleanup
     // fires first and `Late` would then be built believing it is on the client.
-    @Host("div")
     class Deferred extends Component<{ tag: string }> {
       @state show = false;
       @mounted reveal() {
@@ -125,7 +133,11 @@ describe("render env: concurrent renders", () => {
         });
       }
       render() {
-        return <div>{this.show ? <Late tag={this.props.tag} /> : null}</div>;
+        return (
+          <div>
+            <div>{this.show ? <Late tag={this.props.tag} /> : null}</div>
+          </div>
+        );
       }
     }
 

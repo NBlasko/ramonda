@@ -1,6 +1,7 @@
-import { Component, Head, Host, Portal, created, list, portalTarget, state } from "@ramonda/core";
+import { Component, Head, Portal, created, list, portalTarget, state } from "@ramonda/core";
 import { Router, RouteOutlet, createRouter, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
+import { NestingPage } from "./NestingPage";
 import { ProductsPage } from "./ProductsPage";
 import { SignupPage } from "./SignupPage";
 
@@ -10,7 +11,6 @@ import { SignupPage } from "./SignupPage";
  * adopt that markup instead of rebuilding it.
  */
 
-@Host("div")
 class Counter extends Component {
   @state clicks = 0;
   bump() {
@@ -38,10 +38,13 @@ class Counter extends Component {
  */
 const noticesTarget = portalTarget("notices");
 
-@Host("li")
 class Notice extends Component<{ text: string }> {
   render() {
-    return <span className="notice">{this.props.text}</span>;
+    return (
+      <li>
+        <span className="notice">{this.props.text}</span>
+      </li>
+    );
   }
 }
 
@@ -60,7 +63,6 @@ class Notice extends Component<{ text: string }> {
  * - **`list()` in a hook's children.** The rows come from a real region reconcile, not a positional
  *   fallback: a reorder MOVES them, which is what the adoption count below proves.
  */
-@Host("div")
 class NoticeStack extends Component {
   /** What a REBUILD would leave behind. The server overwrites it; nothing on the client does. */
   @state origin = "client";
@@ -103,7 +105,6 @@ class NoticeStack extends Component {
   }
 }
 
-@Host("div")
 class HomePage extends Component {
   head = this.use(Head, () => ({
     title: "Home — Ramonda SSR",
@@ -120,7 +121,6 @@ class HomePage extends Component {
   }
 }
 
-@Host("div")
 class AboutPage extends Component {
   // Title only. The layout's description and og:site_name must still be there.
   head = this.use(Head, () => ({ title: "About — Ramonda SSR" }));
@@ -134,7 +134,6 @@ class AboutPage extends Component {
   }
 }
 
-@Host("div")
 class UserPage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
@@ -161,7 +160,6 @@ class UserPage extends Component {
  * is served dynamically. This one reads nothing but the URL, so every one of its pages is known at
  * build time — and `entry-server.tsx` is where they are named, because the data belongs to the app.
  */
-@Host("div")
 class GuidePage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
@@ -179,7 +177,6 @@ class GuidePage extends Component {
   }
 }
 
-@Host("div")
 class NotFoundPage extends Component {
   route = this.use(Navigator);
   head = this.use(Head, () => ({
@@ -202,6 +199,7 @@ export const routes = createRoutes({
   "/about": <AboutPage />,
   "/users/:id": <UserPage />,
   "/guide/:slug": <GuidePage />,
+  "/nesting": <NestingPage />,
   "/products": <ProductsPage />,
   "/signup": <SignupPage />,
   "*": <NotFoundPage />,
@@ -216,7 +214,6 @@ export const routes = createRoutes({
  */
 export const { Link, Navigator, route } = createRouter(routes);
 
-@Host("div")
 export class App extends Component {
   router = this.use(Router);
   /**
@@ -252,6 +249,7 @@ export class App extends Component {
           <Link href="/">Home</Link>
           <Link href="/about">About</Link>
           <Link href="/users/42">User 42</Link>
+          <Link href="/nesting">Nesting</Link>
           <Link href="/products">Products</Link>
           <Link href="/signup">Sign up</Link>
           {/*

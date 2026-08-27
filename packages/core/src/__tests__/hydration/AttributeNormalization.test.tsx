@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { Host, state } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
@@ -73,10 +73,13 @@ describe("attribute normalization across the hydration boundary", () => {
   test("the harness reports a genuine difference (control)", async () => {
     let side = "server";
 
-    @Host("div")
     class Drifting extends Component {
       render() {
-        return <span title={side}>hi</span>;
+        return (
+          <div>
+            <span title={side}>hi</span>
+          </div>
+        );
       }
     }
 
@@ -89,26 +92,27 @@ describe("attribute normalization across the hydration boundary", () => {
   });
 
   test("a broad spread of HTML attributes survives the round-trip silently", async () => {
-    @Host("div")
     class Wide extends Component {
       render() {
         return (
-          <section
-            className="card  is-open"
-            id="wide"
-            title="Tom & Jerry <hi>"
-            lang="en-GB"
-            tabIndex={-1}
-            data-count={42}
-            data-empty=""
-            aria-label="a label"
-            aria-hidden={true}
-            role="region"
-          >
-            <a href="/about?a=1&b=2" rel="noopener noreferrer">
-              link
-            </a>
-          </section>
+          <div>
+            <section
+              className="card  is-open"
+              id="wide"
+              title="Tom & Jerry <hi>"
+              lang="en-GB"
+              tabIndex={-1}
+              data-count={42}
+              data-empty=""
+              aria-label="a label"
+              aria-hidden={true}
+              role="region"
+            >
+              <a href="/about?a=1&b=2" rel="noopener noreferrer">
+                link
+              </a>
+            </section>
+          </div>
         );
       }
     }
@@ -120,7 +124,6 @@ describe("attribute normalization across the hydration boundary", () => {
   });
 
   test("an object style compares equal — it always did", async () => {
-    @Host("div")
     class Boxed extends Component {
       render() {
         // Written expecting a mismatch, and there is none: `objectStyleToString`
@@ -129,7 +132,11 @@ describe("attribute normalization across the hydration boundary", () => {
         // the DOM produces. So the object form never had RMD007's bug; only a
         // raw style STRING out of JSX did, which is why the framework's own
         // `display: contents` was the one that got noticed.
-        return <span style={{ backgroundColor: "red", fontWeight: "bold", marginTop: "4px" }}>hi</span>;
+        return (
+          <div>
+            <span style={{ backgroundColor: "red", fontWeight: "bold", marginTop: "4px" }}>hi</span>
+          </div>
+        );
       }
     }
 
@@ -140,18 +147,19 @@ describe("attribute normalization across the hydration boundary", () => {
   });
 
   test("form attributes and a live value survive the round-trip", async () => {
-    @Host("form")
     class Fields extends Component {
       @state text = "typed";
       render() {
         return (
-          <div>
-            <input type="text" value={this.text} placeholder="name" maxLength={10} />
-            <input type="checkbox" checked={true} disabled={true} />
-            <button type="submit" name="go" value="1">
-              go
-            </button>
-          </div>
+          <form>
+            <div>
+              <input type="text" value={this.text} placeholder="name" maxLength={10} />
+              <input type="checkbox" checked={true} disabled={true} />
+              <button type="submit" name="go" value="1">
+                go
+              </button>
+            </div>
+          </form>
         );
       }
     }
@@ -163,7 +171,6 @@ describe("attribute normalization across the hydration boundary", () => {
   });
 
   test("SVG attributes keep their case across the boundary", async () => {
-    @Host("div")
     class Icon extends Component {
       render() {
         // The one place attribute NAMES are case-sensitive. `setAttribute` on an
@@ -175,9 +182,11 @@ describe("attribute normalization across the hydration boundary", () => {
         // do not compile. That is a hole in the public types, not in hydration —
         // see TODO.md.
         return (
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
-            <circle />
-          </svg>
+          <div>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+              <circle />
+            </svg>
+          </div>
         );
       }
     }

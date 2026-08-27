@@ -1,9 +1,8 @@
-import { Component, Host, bootstrap, created, state } from "@ramonda/core";
+import { Component, bootstrap, created, state } from "@ramonda/core";
 import { created as onCreate, state as reactive } from "@ramonda/core";
 import { state as barrelState } from "./barrel";
 
 /** Written the ordinary way — every rule here reports something. */
-@Host("div")
 class Plain extends Component {
   @state items: string[] = [];
   @state n = 0;
@@ -19,12 +18,15 @@ class Plain extends Component {
 
   render() {
     this.n = 2;
-    return <div>{this.items.length}</div>;
+    return (
+      <div>
+        <div>{this.items.length}</div>
+      </div>
+    );
   }
 }
 
 /** The same class, with both decorators imported under another name. */
-@Host("div")
 class Aliased extends Component {
   @reactive items: string[] = [];
   @reactive n = 0;
@@ -40,12 +42,15 @@ class Aliased extends Component {
 
   render() {
     this.n = 2;
-    return <div>{this.items.length}</div>;
+    return (
+      <div>
+        <div>{this.items.length}</div>
+      </div>
+    );
   }
 }
 
 /** The same class again, reached through a star re-export. */
-@Host("div")
 class ThroughABarrel extends Component {
   @barrelState items: string[] = [];
   @barrelState n = 0;
@@ -56,7 +61,11 @@ class ThroughABarrel extends Component {
 
   render() {
     this.n = 2;
-    return <div>{this.items.length}</div>;
+    return (
+      <div>
+        <div>{this.items.length}</div>
+      </div>
+    );
   }
 }
 

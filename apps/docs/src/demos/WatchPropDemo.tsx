@@ -1,4 +1,4 @@
-import { Component, Host, list, state, watchProp, memoized } from "@ramonda/core";
+import { Component, list, state, watchProp, memoized } from "@ramonda/core";
 
 /** Module scope, so `each` is the SAME array every render — a fresh literal would be a new value
  *  each time and cost the list the identity it mints from its items. */
@@ -11,7 +11,6 @@ const USERS = ["ada", "grace", "alan"];
 // Type it by annotating the SELECTOR's parameter. That fills in both the props
 // type and the value type by inference; an explicit generic cannot, because
 // TypeScript has no partial inference and naming one would drop the other.
-@Host("div")
 class Profile extends Component<{ userId: string }> {
   @state loadedFor = "—";
   @state loads = 0;
@@ -24,21 +23,22 @@ class Profile extends Component<{ userId: string }> {
 
   render() {
     return (
-      <p className="demo-row">
-        <span>
-          showing <strong>{this.props.userId}</strong>
-        </span>
-        <span className="demo-note">
-          {this.loads === 0
-            ? "no change yet — @watchProp does not fire on mount"
-            : `${this.loadedFor} (${this.loads} reloads)`}
-        </span>
-      </p>
+      <div>
+        <p className="demo-row">
+          <span>
+            showing <strong>{this.props.userId}</strong>
+          </span>
+          <span className="demo-note">
+            {this.loads === 0
+              ? "no change yet — @watchProp does not fire on mount"
+              : `${this.loadedFor} (${this.loads} reloads)`}
+          </span>
+        </p>
+      </div>
     );
   }
 }
 
-@Host("div")
 export class WatchPropDemo extends Component {
   @state userId = "ada";
 
@@ -61,8 +61,10 @@ export class WatchPropDemo extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">{list(USERS, this.renderChoice)}</p>
-        <Profile userId={this.userId} />
+        <div>
+          <p className="demo-row">{list(USERS, this.renderChoice)}</p>
+          <Profile userId={this.userId} />
+        </div>
       </div>
     );
   }

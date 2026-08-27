@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { getDOM, findOne, regionOf } from "../test/setup";
+import { Component, list, state } from "../index";
 import { CHILD_RECORD } from "../helpers/constants";
 
 /**
@@ -28,13 +28,18 @@ describe("a list returned straight from render()", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("keeps its rows across a re-render", async () => {
-    @Host("ul")
     class L extends Component {
       @state rows = [{ id: 1 }, { id: 2 }];
       @state tick = 0;
 
       render() {
-        return list(this.rows, (r: { id: number }) => <li>{r.id}</li>);
+        return (
+          <ul>
+            {list(this.rows, (r: { id: number }) => (
+              <li>{r.id}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -53,25 +58,31 @@ describe("a list returned straight from render()", () => {
   });
 
   test("two of them side by side keep their own rows", async () => {
-    @Host("ul")
     class L extends Component<{ from: number }> {
       @state tick = 0;
 
       render() {
         const rows = [{ id: this.props.from }, { id: this.props.from + 1 }];
-        return list(rows, (r: { id: number }) => <li>{r.id}</li>);
+        return (
+          <ul>
+            {list(rows, (r: { id: number }) => (
+              <li>{r.id}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state tick = 0;
 
       render() {
         return (
-          <div data-tick={String(this.tick)}>
-            <L from={10} />
-            <L from={20} />
+          <div>
+            <div data-tick={String(this.tick)}>
+              <L from={10} />
+              <L from={20} />
+            </div>
           </div>
         );
       }
@@ -90,34 +101,34 @@ describe("a list returned straight from render()", () => {
   });
 
   test("its owner is the component's own id, the same as a wrapped list's", async () => {
-    @Host("ul")
     class Straight extends Component {
       render() {
+        // The list IS the output: no element of its own, so its nodes are this component's range.
         return list([1], (n: number) => <li>{n}</li>);
       }
     }
 
-    @Host("div")
     class Wrapped extends Component {
       render() {
         return (
-          <ul>
-            {list([1], (n: number) => (
-              <li>{n}</li>
-            ))}
-          </ul>
+          <li>
+            <ul id="wrapped">
+              {list([1], (n: number) => (
+                <li>{n}</li>
+              ))}
+            </ul>
+          </li>
         );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <div>
+          <ul>
             <Straight />
             <Wrapped />
-          </div>
+          </ul>
         );
       }
     }
@@ -133,11 +144,18 @@ describe("a list returned straight from render()", () => {
       return String(region?.owner ?? "");
     };
 
-    const straightHost = app.container.querySelector('[data-ramonda="Straight"]');
-    const wrappedInner = app.container.querySelector('[data-ramonda="Wrapped"] ul');
-
-    const straightOwner = ownerOf(straightHost);
-    const wrappedOwner = ownerOf(wrappedInner);
+    /**
+     * Where each list's region hangs, found through the RECORD rather than a marker attribute.
+     *
+     * `Straight` returns the list itself, so its region is an entry in ITS OWN region — a component
+     * owns a range now, and a list returned straight from a render is one entry in that range.
+     * `Wrapped` puts it inside a `<ul>`, so the region hangs off that element as it always did.
+     */
+    const straight = findOne<object>(app.container, "Straight");
+    const straightOwner = String(
+      ((regionOf(straight)?.entries ?? []) as { owner?: unknown }[]).find((e) => e?.owner !== undefined)?.owner ?? "",
+    );
+    const wrappedOwner = ownerOf(app.container.querySelector("#wrapped"));
 
     // Both are "<the component's id>:g<position>", so the shape is the same and
     // the id is the component's rather than whatever the origin had been reset to.

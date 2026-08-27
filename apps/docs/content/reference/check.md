@@ -134,13 +134,13 @@ rules**, so a rule cannot be added without appearing here.
 | `compute-takes-no-arguments` | a `@compute` declares a parameter, and its cache is keyed by nothing so the argument is ignored |
 | `async-render` | `render()` is `async`, so it returns a promise where the diff expects markup — also [`RMD060`](/reference/diagnostics) |
 | `arrow-fields` | a class field holds a function literal, so every instance builds a fresh one and props comparison can never match |
-| `duplicate-decorators` | a single-use decorator is written twice: `@Host`, `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD045`](/reference/diagnostics), [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics), [`RMD050`](/reference/diagnostics) |
+| `duplicate-decorators` | a single-use decorator is written twice: `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics), [`RMD050`](/reference/diagnostics) |
 | `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
 | `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 53 of them.
+**Warnings.** These print and the run still passes. 52 of them.
 
 | rule | reported when |
 |---|---|
@@ -156,7 +156,6 @@ rules**, so a rule cannot be added without appearing here.
 | `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |
 | `unserializable-state` | a `@state` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, and the project renders on a server — also [`RMD019`](/reference/diagnostics), [`RMD033`](/reference/diagnostics) |
 | `interval-with-no-cleanup` | a component starts a raw `setInterval` whose id nothing ever clears, so it keeps firing after unmount — also [`RMD006`](/reference/diagnostics) |
-| `listener-on-the-default-host` | `@onElement` is on a component with no `@Host`, so the listener sits on a `display: contents` host that has no box — also [`RMD042`](/reference/diagnostics) |
 | `listener-added-by-hand` | a component adds a `window` or `document` listener by hand, where `@onWindow` or `@onDocument` would do it — or, inside `if (__DEV__)` where a decorator cannot be used, adds one that nothing ever removes |
 | `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
 | `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
@@ -493,7 +492,7 @@ silently emitted nothing is the same shape of bug.
 
 Searching for decorator syntax is both weaker and wrong. Weaker, because a surviving decorator is
 only one way to emit something an engine cannot read. Wrong, because a bundle may legitimately
-**contain** decorator text inside a string: Ramonda's own diagnostics put `@Host("div")` into a
+**contain** decorator text inside a string: a diagnostic's advice can put `@state` into a
 suggestion message, so it appears in any bundle that ships them, as data. A parser does not care
 what is inside a string — and that is exactly the distinction being asked for.
 

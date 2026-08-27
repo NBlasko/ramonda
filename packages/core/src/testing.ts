@@ -20,8 +20,8 @@
  */
 
 import { drainSync } from "./core/Task";
-import { diffAndMerge } from "./core/DiffAndMerge";
-import type { BaseComponent, ComponentChild, VNode } from "./types/vdom";
+import { componentAt, componentsIn, rerenderRoot as reconcileRoot } from "./core/DiffAndMerge";
+import type { BaseComponent, ComponentChild } from "./types/vdom";
 
 /**
  * Runs every pending update and every pending mount NOW.
@@ -50,25 +50,37 @@ export function flushSync(): void {
  * schedules a render like any other change. Call `flushSync` after it.
  */
 export function rerenderRoot(vnode: ComponentChild, container: HTMLElement): void {
-  const existing = container.firstChild;
-  if (existing === null) {
+  if (container.firstChild === null) {
     throw new Error(
       "[Ramonda] rerenderRoot was given an empty container. Render into it first — " +
         "there is nothing to diff against.",
     );
   }
 
-  diffAndMerge(vnode as VNode, undefined, existing as never);
+  reconcileRoot(vnode, container);
 }
 
 /**
- * The component instance a DOM node belongs to, if it is a component's host.
+ * The component whose markup a DOM node is part of — the innermost one, when they nest.
  *
- * The back-reference is written by the diff and is what the devtools inspector
- * and the SSR serializer already read. Exposed here so a harness can hand a test
- * the instance without reaching into the node's internals itself.
+ * A COMPUTED answer, not a back-reference: a component owns a range of nodes rather than one, so
+ * there is nothing to hang a pointer off. `componentAt` searches the child record, which is the only
+ * thing that knows. Exposed here so a harness can hand a test the instance without walking the
+ * record itself.
  */
 export function getComponentInstance(node: Node | null | undefined): BaseComponent<never> | undefined {
   if (!node) return undefined;
-  return (node as { _componentInstance?: BaseComponent<never> })._componentInstance;
+  return componentAt(node) as BaseComponent<never> | undefined;
+}
+
+/**
+ * Every component under a node, outermost first, in document order.
+ *
+ * The answer `getComponentInstance` cannot give: a component that renders NOTHING owns no node, so
+ * there is nothing to ask about — and a harness looking for "the component of this class in here"
+ * is asking about the tree rather than about a node. Read from the child record, which is what
+ * knows a component is there.
+ */
+export function getComponentsIn(node: Node): BaseComponent<never>[] {
+  return componentsIn(node) as unknown as BaseComponent<never>[];
 }

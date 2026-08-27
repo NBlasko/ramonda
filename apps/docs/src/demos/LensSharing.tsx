@@ -1,4 +1,4 @@
-import { Component, Host, state, list } from "@ramonda/core";
+import { Component, state, list } from "@ramonda/core";
 import { focusOn } from "@ramonda/lens";
 
 // Structural sharing is invisible in the rendered output — every version of the
@@ -46,20 +46,20 @@ function compare(before: AppState, after: AppState): Row[] {
   ];
 }
 
-@Host("li")
 class PathRow extends Component<{ item: Row }> {
   render() {
     const { path, fresh } = this.props.item;
     return (
-      <span>
-        <code>{path}</code>{" "}
-        <strong className={fresh ? "lens-fresh" : "lens-shared"}>{fresh ? "new object" : "same object"}</strong>
-      </span>
+      <li>
+        <span>
+          <code>{path}</code>{" "}
+          <strong className={fresh ? "lens-fresh" : "lens-shared"}>{fresh ? "new object" : "same object"}</strong>
+        </span>
+      </li>
     );
   }
 }
 
-@Host("div")
 export class LensSharing extends Component {
   @state data: AppState = initial();
   @state rows: Row[] = [];
@@ -131,39 +131,41 @@ export class LensSharing extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          <button type="button" onclick={this.rename}>
-            rename post 102
-          </button>
-          <button type="button" onclick={this.addTag}>
-            add a tag
-          </button>
-          <button type="button" onclick={this.fork}>
-            both, with .and()
-          </button>
-          <button type="button" onclick={this.writeSameValue}>
-            write the same value
-          </button>
-          <button type="button" onclick={this.reset}>
-            reset
-          </button>
-        </p>
+        <div>
+          <p className="demo-row">
+            <button type="button" onclick={this.rename}>
+              rename post 102
+            </button>
+            <button type="button" onclick={this.addTag}>
+              add a tag
+            </button>
+            <button type="button" onclick={this.fork}>
+              both, with .and()
+            </button>
+            <button type="button" onclick={this.writeSameValue}>
+              write the same value
+            </button>
+            <button type="button" onclick={this.reset}>
+              reset
+            </button>
+          </p>
 
-        <p className="demo-note">
-          last: <code>{this.lastAction}</code>
-        </p>
+          <p className="demo-note">
+            last: <code>{this.lastAction}</code>
+          </p>
 
-        <ul className="demo-log">
-          {list(this.rows, (item) => (
-            <PathRow item={item} />
-          ))}
-        </ul>
+          <ul className="demo-log">
+            {list(this.rows, (item) => (
+              <PathRow item={item} />
+            ))}
+          </ul>
 
-        <p className="demo-note">
-          Only what is ON the path gets a new object. `state.users` and `state.posts[0]` come out of every edit as the
-          very same objects, so a shallow compare rejects those branches without looking inside them — which is what
-          makes the diff cheap. Write a value that is already there and nothing is copied at all, not even the root.
-        </p>
+          <p className="demo-note">
+            Only what is ON the path gets a new object. `state.users` and `state.posts[0]` come out of every edit as the
+            very same objects, so a shallow compare rejects those branches without looking inside them — which is what
+            makes the diff cheap. Write a value that is already there and nothing is copied at all, not even the root.
+          </p>
+        </div>
       </div>
     );
   }

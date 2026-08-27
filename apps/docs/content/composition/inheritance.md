@@ -11,10 +11,9 @@ When a component is *almost* another one, you don't have to copy it — you can
 **extend** it: keep everything it had, and change only what's different.
 
 ```tsx
-@Host("th")
 class HeaderCell extends Cell {
   render() {
-    return <strong>{super.render()}</strong>;
+    return <th>{super.render()}</th>;
   }
 }
 ```
@@ -22,15 +21,14 @@ class HeaderCell extends Cell {
 ```demo:InheritanceDemo
 ```
 
-`HeaderCell` is a `Cell` that renders in bold and is a `<th>` instead of a `<td>`.
-`super.render()` calls the parent's version.
+`HeaderCell` is a `Cell` in a `<th>` instead of a `<td>`. `super.render()` calls the
+parent's version, so the cell's own markup comes from `Cell` and only the element around
+it changes.
 
 ## What carries over
 
 Everything, and you don't write a constructor:
 
-- **`@Host`** is inherited and can be overridden — so "keep it a `<td>` but add
-  behaviour" is just extending `Cell`.
 - **`@state` fields** on the parent keep working; the subclass can add more.
 - **Hooks** the parent used are still used.
 - **Lifecycle callbacks** belong to the class that declares them, and each one runs
@@ -44,9 +42,12 @@ Everything, and you don't write a constructor:
 > Ten `<td>`s, and the first three need special behaviour. What component do I wrap
 > them in?
 
-None — and that isn't a gap. Write a `Cell` with `@Host("td")`, and a `SpecialCell`
-that extends it. Both are `<td>`s; nothing wraps anything. (If the special group also
-needs shared state, that's a [hook](/hooks) that returns the cells.)
+None — and that isn't a gap. Write a `Cell` that renders a `<td>`, and a `SpecialCell`
+that extends it. Both are `<td>`s; nothing wraps anything.
+
+And if the special three want one shared state between them, that is a component too: a
+component may return several cells at once, so `<SpecialCells />` inside the row is three
+`<td>`s and one place to keep what they share.
 
 ## `override` is optional
 

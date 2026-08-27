@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const generated: string;
 
@@ -9,7 +9,6 @@ declare const generated: string;
  * and a project has exactly one answer to it. An author writing `id={generated}` has said their ids
  * are built at runtime, and "nothing carries this id" stops being something anybody can prove.
  */
-@Host("div")
 class App extends Component {
   render() {
     return (

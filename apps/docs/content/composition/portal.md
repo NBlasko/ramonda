@@ -87,7 +87,7 @@ taking its contents. There is no key to write — see [lists](/lists).
 
 ## Events follow the DOM, not where you wrote it
 
-There is no synthetic event layer — `@onElement` attaches a real listener to a real node —
+There is no synthetic event layer — a handler in the markup is a real listener on a real node —
 so a portalled subtree's events bubble through the DOM, from the **target's** ancestors,
 not from the component that declared the portal. A handler on an ancestor of the portal's
 owner will **not** see them. Put the handler on the portalled content itself, or on an

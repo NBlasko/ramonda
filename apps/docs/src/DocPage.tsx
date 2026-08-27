@@ -1,4 +1,4 @@
-import { Component, Host, Head, AsyncLoad } from "@ramonda/core";
+import { Component, Head, AsyncLoad } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { Link } from "./routes";
 import type { PageMeta } from "./content-types";
@@ -36,7 +36,6 @@ interface DocPageProps {
  * site-wide default, which is the thing that makes every page in a docs site
  * compete with itself in search results.
  */
-@Host("article")
 export class DocPage extends Component<DocPageProps> {
   head = this.use(Head, (self: DocPage) => ({
     title: self.props.notFound
@@ -66,21 +65,23 @@ export class DocPage extends Component<DocPageProps> {
 
     const path = this.props.meta.path;
     return (
-      <AsyncLoad
-        cacheKey={`page:${path}`}
-        lazy={pageLoaders[path]}
-        namedExport="Page"
-        preload={pagePreloads[path]}
-        onLoading={<div className="page-loading" />}
-        errorFallback={({ retry }) => (
-          <p className="demo-error">
-            This page could not be loaded.{" "}
-            <button type="button" onclick={retry}>
-              retry
-            </button>
-          </p>
-        )}
-      />
+      <article>
+        <AsyncLoad
+          cacheKey={`page:${path}`}
+          lazy={pageLoaders[path]}
+          namedExport="Page"
+          preload={pagePreloads[path]}
+          onLoading={<div className="page-loading" />}
+          errorFallback={({ retry }) => (
+            <p className="demo-error">
+              This page could not be loaded.{" "}
+              <button type="button" onclick={retry}>
+                retry
+              </button>
+            </p>
+          )}
+        />
+      </article>
     );
   }
 }

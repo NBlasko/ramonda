@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, state } from "../index";
 import { AsyncLoad, __lazyCacheSize } from "../base/AsyncLoad";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -36,16 +36,22 @@ describe("a lazy whose source does not name a module", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("two modules from one factory each render their own", async () => {
-    @Host("i")
     class Dashboard extends Component {
       render() {
-        return <span>dashboard</span>;
+        return (
+          <i>
+            <span>dashboard</span>
+          </i>
+        );
       }
     }
-    @Host("i")
     class Settings extends Component {
       render() {
-        return <span>settings</span>;
+        return (
+          <i>
+            <span>settings</span>
+          </i>
+        );
       }
     }
 
@@ -53,13 +59,14 @@ describe("a lazy whose source does not name a module", () => {
     // functions stringify identically.
     const make = (module: unknown) => () => Promise.resolve({ default: module });
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <AsyncLoad lazy={make(Dashboard)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
-            <AsyncLoad lazy={make(Settings)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+            <div>
+              <AsyncLoad lazy={make(Dashboard)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+              <AsyncLoad lazy={make(Settings)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+            </div>
           </div>
         );
       }
@@ -84,31 +91,38 @@ describe("a lazy whose source does not name a module", () => {
      * time and minted a NEW key — three strong cache entries per render — for the
      * same module, without bound. It must reuse the key the module already holds.
      */
-    @Host("i")
     class Base extends Component {
       render() {
-        return <span>base</span>;
+        return (
+          <i>
+            <span>base</span>
+          </i>
+        );
       }
     }
-    @Host("i")
     class Target extends Component {
       render() {
-        return <span>target</span>;
+        return (
+          <i>
+            <span>target</span>
+          </i>
+        );
       }
     }
     // A source unique to this test, so `Base` claims a clean key rather than
     // colliding on one a prior test left in the shared cache.
     const make = (module: unknown) => () => Promise.resolve({ default: module, tag: "t5-leak" });
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <AsyncLoad lazy={make(Base)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
-            <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
-            <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
-            <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+            <div>
+              <AsyncLoad lazy={make(Base)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+              <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+              <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+              <AsyncLoad lazy={make(Target)} onLoading={<i>…</i>} errorFallback={<i>x</i>} />
+            </div>
           </div>
         );
       }
@@ -128,19 +142,25 @@ describe("a lazy whose source does not name a module", () => {
   });
 
   test("and it is reported, with the way to get the sharing back", async () => {
-    @Host("i")
     class Thing extends Component {
       render() {
-        return <span>thing</span>;
+        return (
+          <i>
+            <span>thing</span>
+          </i>
+        );
       }
     }
 
     const make = (module: unknown) => () => Promise.resolve({ default: module });
 
-    @Host("div")
     class Page extends Component {
       render() {
-        return <AsyncLoad lazy={make(Thing)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />;
+        return (
+          <div>
+            <AsyncLoad lazy={make(Thing)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+          </div>
+        );
       }
     }
 
@@ -162,31 +182,34 @@ describe("a lazy whose source does not name a module", () => {
      * cache entry, a second loading frame, and a diagnostic accusing correct code.
      * The source is the right answer here — it is only wrong when it names nothing.
      */
-    @Host("div")
     class One extends Component {
       render() {
         return (
-          <AsyncLoad lazy={() => import("./fixtures/LazyThing")} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+          <div>
+            <AsyncLoad lazy={() => import("./fixtures/LazyThing")} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+          </div>
         );
       }
     }
 
-    @Host("div")
     class Two extends Component {
       render() {
         return (
-          <AsyncLoad lazy={() => import("./fixtures/LazyThing")} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+          <div>
+            <AsyncLoad lazy={() => import("./fixtures/LazyThing")} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+          </div>
         );
       }
     }
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <One />
-            <Two />
+            <div>
+              <One />
+              <Two />
+            </div>
           </div>
         );
       }
@@ -223,31 +246,38 @@ describe("a lazy whose source does not name a module", () => {
      * frame of the wrong module; what it buys is the right one arriving at all,
      * where before it never did.
      */
-    @Host("i")
     class Alpha extends Component {
       render() {
-        return <span>alpha</span>;
+        return (
+          <i>
+            <span>alpha</span>
+          </i>
+        );
       }
     }
-    @Host("i")
     class Beta extends Component {
       render() {
-        return <span>beta</span>;
+        return (
+          <i>
+            <span>beta</span>
+          </i>
+        );
       }
     }
 
     const make = (module: unknown) => () => Promise.resolve({ default: module });
 
-    @Host("div")
     class Page extends Component {
       @state showSecond = false;
       render() {
         return (
           <div>
-            <AsyncLoad lazy={make(Alpha)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
-            {this.showSecond ? (
-              <AsyncLoad lazy={make(Beta)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
-            ) : null}
+            <div>
+              <AsyncLoad lazy={make(Alpha)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+              {this.showSecond ? (
+                <AsyncLoad lazy={make(Beta)} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+              ) : null}
+            </div>
           </div>
         );
       }
@@ -274,22 +304,26 @@ describe("a lazy whose source does not name a module", () => {
   test("the same lazy handed to two of them still shares one entry", async () => {
     // Nothing names a module here, so both get a minted key — but it is minted per
     // FUNCTION, and this is one function, so the two still share what they load.
-    @Host("i")
     class Thing extends Component {
       render() {
-        return <span>shared</span>;
+        return (
+          <i>
+            <span>shared</span>
+          </i>
+        );
       }
     }
 
     const lazy = () => Promise.resolve({ default: Thing });
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <AsyncLoad lazy={lazy} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
-            <AsyncLoad lazy={lazy} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+            <div>
+              <AsyncLoad lazy={lazy} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+              <AsyncLoad lazy={lazy} onLoading={<i>…</i>} errorFallback={<i>failed</i>} />
+            </div>
           </div>
         );
       }

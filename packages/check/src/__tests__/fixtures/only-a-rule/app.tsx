@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, state } from "@ramonda/core";
+import { Component, bootstrap, state } from "@ramonda/core";
 
 /**
  * A project that trips exactly ONE rule and nothing else.
@@ -12,13 +12,16 @@ import { Component, Host, bootstrap, state } from "@ramonda/core";
  * nothing unreachable. The single fault is the doubled `@state`, which is `duplicate-decorators`
  * and nothing else.
  */
-@Host("div")
 class Panel extends Component {
   // Applied twice, which changes nothing about how it behaves — that is the point of the report.
   @state @state count = 0;
 
   render() {
-    return <span>{this.count}</span>;
+    return (
+      <div>
+        <span>{this.count}</span>
+      </div>
+    );
   }
 }
 

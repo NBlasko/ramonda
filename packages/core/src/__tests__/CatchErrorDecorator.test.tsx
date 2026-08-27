@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state, catchError } from "../base/decorators";
+import { state, catchError } from "../base/decorators";
 import { Hook } from "../base/Hook";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -42,7 +42,6 @@ describe("@catchError", () => {
       }
     }
 
-    @Host("div")
     class Guard extends Component {
       @state failed = "";
 
@@ -52,7 +51,11 @@ describe("@catchError", () => {
       }
 
       render() {
-        return <div>{this.failed ? `caught: ${this.failed}` : <Boom />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? `caught: ${this.failed}` : <Boom />}</div>
+          </div>
+        );
       }
     }
 
@@ -71,7 +74,6 @@ describe("@catchError", () => {
       }
     }
 
-    @Host("div")
     class NotAGuard extends Component {
       @state failed = false;
 
@@ -83,11 +85,14 @@ describe("@catchError", () => {
       }
 
       render() {
-        return <div>{this.failed ? "caught" : <Boom />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? "caught" : <Boom />}</div>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Above extends Component {
       @state failed = false;
 
@@ -96,7 +101,11 @@ describe("@catchError", () => {
       }
 
       render() {
-        return <div>{this.failed ? "outer caught" : <NotAGuard />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? "outer caught" : <NotAGuard />}</div>
+          </div>
+        );
       }
     }
 
@@ -114,24 +123,30 @@ describe("@catchError", () => {
       }
     }
 
-    @Host("div")
     class Inner extends Component {
       @catchError decline() {
         return false;
       }
       render() {
-        return <div>{<Boom />}</div>;
+        return (
+          <div>
+            <div>{<Boom />}</div>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Outer extends Component {
       @state failed = false;
       @catchError handle() {
         this.failed = true;
       }
       render() {
-        return <div>{this.failed ? "outer caught" : <Inner />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? "outer caught" : <Inner />}</div>
+          </div>
+        );
       }
     }
 
@@ -150,7 +165,6 @@ describe("@catchError", () => {
       }
     }
 
-    @Host("div")
     class BaseGuard extends Component {
       @state failed = "";
 
@@ -160,13 +174,16 @@ describe("@catchError", () => {
       }
 
       render() {
-        return <div>{this.failed ? `caught:${this.failed}` : <Boom />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? `caught:${this.failed}` : <Boom />}</div>
+          </div>
+        );
       }
     }
 
     // No decorator: the base declared the role, this only changes what it does —
     // and `super` is why this is a method decorator rather than a class one.
-    @Host("div")
     class SubGuard extends BaseGuard {
       override handle(e: unknown) {
         order.push("sub");
@@ -199,7 +216,6 @@ describe("@catchError", () => {
       }
     }
 
-    @Host("div")
     class Twice extends Component {
       @state failed = "";
       @catchError first(e: unknown) {
@@ -211,7 +227,11 @@ describe("@catchError", () => {
         this.failed = (e as Error).message;
       }
       render() {
-        return <div>{this.failed ? "caught" : <Boom />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? "caught" : <Boom />}</div>
+          </div>
+        );
       }
     }
 
@@ -225,14 +245,16 @@ describe("@catchError", () => {
     logged.length = 0;
     resetDiagnostics();
 
-    @Host("div")
     class Base extends Component {
       @catchError handle() {}
       render() {
-        return <i>x</i>;
+        return (
+          <div>
+            <i>x</i>
+          </div>
+        );
       }
     }
-    @Host("div")
     class Sub extends Base {
       @catchError ownHandle() {}
     }
@@ -248,18 +270,20 @@ describe("@catchError", () => {
     // prototype for BOTH declarations and reported this — advice to delete a line
     // that is doing exactly what it should. The owner is found by the decorated
     // FUNCTION's identity instead, which is the only thing that separates them.
-    @Host("div")
     class Base extends Component {
       @state failed = false;
       @catchError handle() {
         this.failed = true;
       }
       render() {
-        return <i>{this.failed ? "caught" : "ok"}</i>;
+        return (
+          <div>
+            <i>{this.failed ? "caught" : "ok"}</i>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Sub extends Base {
       @catchError override handle() {
         this.failed = true;
@@ -280,11 +304,14 @@ describe("@catchError", () => {
       @catchError never() {}
     }
 
-    @Host("div")
     class Owner extends Component {
       orphan = this.use(Orphan);
       render() {
-        return <i>x</i>;
+        return (
+          <div>
+            <i>x</i>
+          </div>
+        );
       }
     }
 
@@ -304,7 +331,6 @@ describe("@catchError", () => {
       }
     }
 
-    @Host("div")
     class Guard extends Component {
       @state seen: unknown = undefined;
       @state failed = false;
@@ -315,7 +341,11 @@ describe("@catchError", () => {
       }
 
       render() {
-        return <div>{this.failed ? `caught:${String(this.seen)}` : <Boom />}</div>;
+        return (
+          <div>
+            <div>{this.failed ? `caught:${String(this.seen)}` : <Boom />}</div>
+          </div>
+        );
       }
     }
 

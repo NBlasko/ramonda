@@ -1,6 +1,9 @@
 import { createRamonda } from "../vdom/CreateRamonda";
 import type { ComponentChild, ComponentKind, ComponentClassKind, UnsupportedTagFn, VNode } from "../types/vdom";
-import { svgElements, IS_SVG, HOST_TAG, IS_LIST, HAS_LIST, OWN_CHILDREN } from "../helpers/constants";
+import { svgElements, IS_SVG, IS_LIST, HAS_REGION, OWN_CHILDREN, COMPONENT_TYPE } from "../helpers/constants";
+
+/** What a tag the framework cannot use becomes, so a bad tag cannot take the page down. */
+const FALLBACK_TAG = "TEMPLATE";
 import { isArray } from "../helpers/utils";
 import { isListNode, isVNode } from "./guards";
 import { diagnose } from "../debug/diagnostics";
@@ -75,7 +78,7 @@ function checkUnkeyedArrayChildren(children: unknown[]): void {
  */
 export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
   const result: unknown[] = [];
-  let hasList = false;
+  let hasRegion = false;
 
   for (let index = 0; index < arr.length; index++) {
     const el = arr[index];
@@ -100,7 +103,7 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
       // caller passed a list. Wrapping it again would add a pointless level.
       if (inner.length === 1 && isListNode(inner[0])) {
         result.push(inner[0]);
-        hasList = true;
+        hasRegion = true;
         continue;
       }
 
@@ -113,7 +116,7 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
         vnodes: inner,
         clean: [],
       });
-      hasList = true;
+      hasRegion = true;
     } else if (isListNode(el)) {
       // A list stays ONE child. Splicing its vnodes in here is exactly what let
       // two lists share the parent's key index and swap each other's nodes
@@ -131,11 +134,15 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
       if (el.owner === undefined) (el as { owner: unknown }).owner = regionOwner(index, originId);
 
       result.push(el);
-      hasList = true;
+      hasRegion = true;
     } else if (el !== null && typeof el === "object") {
       // A valid vnode is one of exactly two shapes (TEXT_TYPE or COMPONENT_TYPE) —
       // which is what `isVNode` asks, so the `@ts-ignore` this line carried is gone.
       if (isVNode(el)) {
+        // A COMPONENT is a region: it owns a range of this parent's children rather than one node,
+        // so the parent needs a record to say which nodes are whose. Text vnodes are one node and
+        // cost the parent nothing.
+        if (el.type === COMPONENT_TYPE) hasRegion = true;
         result.push(el);
       } else {
         if (__DEV__) {
@@ -185,8 +192,8 @@ export function normalizeChildren(arr: unknown[], originId: number): unknown[] {
   }
 
   // O(1) signal for the diff. Without it, finding out whether an element owns a
-  // list would mean scanning its children on every render, for every element.
-  if (hasList) (result as { [HAS_LIST]?: boolean })[HAS_LIST] = true;
+  // region would mean scanning its children on every render, for every element.
+  if (hasRegion) (result as { [HAS_REGION]?: boolean })[HAS_REGION] = true;
 
   // Brands this array as the framework's own, so `{this.props.children}` — which is this
   // very array, handed one level down — is not mistaken for a mapped one.
@@ -328,12 +335,12 @@ export function __h(
           e,
         );
       }
-      // In production, return an empty host rather than take the whole site
-      // down. It must be HOST_TAG and not "template": the name goes into the
-      // vnode verbatim and the diff compares it against nodeName (always
-      // uppercase), so a lowercase tag would never match and would mint a new
-      // node on every render.
-      return createRamonda(HOST_TAG, {}, []);
+      // In production, return an inert element rather than take the whole site down. Uppercase
+      // because the name goes into the vnode verbatim and the diff compares it against `nodeName`,
+      // which is always uppercase — a lowercase tag would never match and would mint a new node on
+      // every render. A `<template>` renders nothing and the parser accepts one anywhere, including
+      // inside a table.
+      return createRamonda(FALLBACK_TAG, {}, []);
     }
   }
   // Nothing matched: not a string, not a component class, not a function.
@@ -348,5 +355,5 @@ export function __h(
     });
   }
 
-  return createRamonda(HOST_TAG, {}, []);
+  return createRamonda(FALLBACK_TAG, {}, []);
 }

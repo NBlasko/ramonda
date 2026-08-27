@@ -1,9 +1,8 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const tracks: unknown[];
 
 /** `accessKey` and media without a track, each beside the shapes that are correct. */
-@Host("div")
 class Player extends Component {
   render() {
     return (

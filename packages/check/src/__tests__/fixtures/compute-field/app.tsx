@@ -1,4 +1,4 @@
-import { Component, Hook, Host, bootstrap, compute, created, destroyed, mounted, state } from "@ramonda/core";
+import { Component, Hook, bootstrap, compute, created, destroyed, mounted, state } from "@ramonda/core";
 
 declare function expensive(): number;
 declare function makeProps(): { rate: number };
@@ -15,7 +15,6 @@ class Clock extends Hook {
  * most components. The write is what makes it a fault, and every kind of write that cannot make it
  * one sits here beside the one that can.
  */
-@Host("div")
 class Cart extends Component {
   @state tick = 0;
 
@@ -81,12 +80,14 @@ class Cart extends Component {
 
   render() {
     return (
-      <div onclick={() => this.bump()}>
-        {this.label}
-        {String(this.total)}
-        {String(this.heavy)}
-        {String(this.stamp)}
-        {String(this.closed)}
+      <div>
+        <div onclick={() => this.bump()}>
+          {this.label}
+          {String(this.total)}
+          {String(this.heavy)}
+          {String(this.stamp)}
+          {String(this.closed)}
+        </div>
       </div>
     );
   }

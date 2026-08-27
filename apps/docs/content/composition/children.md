@@ -62,6 +62,88 @@ export class Dialog extends Component<{
 </Dialog>
 ```
 
+## A slot belongs where it lands
+
+Markup you pass through a prop is *placed* by the component that receives it, and that is the
+component it belongs to: its `@created` runs with that one's subtree, its `@destroyed` with it, and a
+[context](/composition/context) it reads is the one above **the place it renders**, not the one above
+the file it was written in.
+
+That has a consequence worth knowing before you put state in a component you intend to move. A slot
+is found again by its position, so two slots that trade content do not trade *instances*:
+
+```tsx
+export class Toolbar extends Component {
+  @state swapped = false;
+
+  render() {
+    return (
+      <Dialog
+        header={this.swapped ? <Badge label="b" /> : <Badge label="a" />}
+        footer={this.swapped ? <Badge label="a" /> : <Badge label="b" />}
+      />
+    );
+  }
+}
+```
+
+Flipping `swapped` looks like the two badges changed places. They did not: the `Badge` in the header
+stays where it is and is handed the other one's props, and the same for the footer. Nothing is
+created and nothing is destroyed — so whatever state each `Badge` held stays in the header and the
+footer respectively, under new content.
+
+Give them a `key` when you mean the content to carry its state with it:
+
+```tsx
+export class KeyedToolbar extends Component {
+  @state swapped = false;
+
+  render() {
+    return (
+      <Dialog
+        header={this.swapped ? <Badge key="b" label="b" /> : <Badge key="a" label="a" />}
+        footer={this.swapped ? <Badge key="a" label="a" /> : <Badge key="b" label="b" />}
+      />
+    );
+  }
+}
+```
+
+Then the two are torn down and rebuilt in their new places, which is what moving actually costs.
+
+## Another trap: changing the shape around a slot
+
+A component may return several siblings, so it is natural to wrap a slot in an array. Write the
+condition *inside* the array rather than around it:
+
+```tsx
+interface BusyProps {
+  busy: boolean;
+  children?: RamondaNode;
+}
+
+// keeps the slot
+export class Keeps extends Component<BusyProps> {
+  render() {
+    return [this.props.busy ? <Badge label="loading" /> : null, this.props.children];
+  }
+}
+
+// rebuilds it
+export class Rebuilds extends Component<BusyProps> {
+  render() {
+    return this.props.busy ? [<Badge label="loading" />, this.props.children] : [this.props.children];
+  }
+}
+```
+
+Both render the same two shapes. The second writes them as two different arrays, so `children` sits
+at position 1 in one and position 0 in the other — and position is how a child is found again. The
+markup comes out right either way, which is what makes this easy to miss; what goes is the state
+inside the slot, because it is torn down and built anew.
+
+A `null` in the array holds the place. That is all the first spelling is doing.
+
 ## One trap: passing an unkeyed list as children
 
 If a component wraps its `children` in its own markup, it can't control how the caller

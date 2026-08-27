@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, mounted, created } from "../../base/decorators";
+import { state, mounted, created } from "../../base/decorators";
 import { AsyncLoad } from "../../base/AsyncLoad";
 import { renderPage, renderToString } from "../../hydration/ssr";
 
@@ -32,7 +32,6 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("the server waits for async @mounted", () => {
   test("a fetch that takes a macrotask lands in the HTML", async () => {
-    @Host("div")
     class Profile extends Component {
       @state name = "";
 
@@ -41,7 +40,11 @@ describe("the server waits for async @mounted", () => {
       }
 
       render() {
-        return <p>{this.name || "…"}</p>;
+        return (
+          <div>
+            <p>{this.name || "…"}</p>
+          </div>
+        );
       }
     }
 
@@ -52,7 +55,6 @@ describe("the server waits for async @mounted", () => {
   });
 
   test("and the value is in the state blob, so the client does not refetch", async () => {
-    @Host("div")
     class Profile extends Component {
       @state name = "";
       @mounted async load() {
@@ -60,7 +62,11 @@ describe("the server waits for async @mounted", () => {
         this.name = await afterATick("Grace");
       }
       render() {
-        return <p>{this.name || "…"}</p>;
+        return (
+          <div>
+            <p>{this.name || "…"}</p>
+          </div>
+        );
       }
     }
 
@@ -69,31 +75,34 @@ describe("the server waits for async @mounted", () => {
     // @state is serialized, which is what makes the guard above work on the
     // client: a shared @mounted runs on BOTH sides, and the blob is the memo.
     expect(page.body).toContain("Grace");
-    expect(page.body).toContain("data-ramonda-state");
+    // The blob rides the opening marker rather than an attribute on a host element.
+    expect(page.body).toMatch(/<!--c\d+ \{"state"/);
   });
 
   test("work started by the result of earlier work is awaited too", async () => {
     // The reason one pass is not enough: a resolved fetch writes state, which
     // schedules a render, which builds a component whose own @mounted fetches.
-    @Host("span")
     class Detail extends Component<{ id: string }> {
       @state text = "";
       @mounted async load() {
         this.text = await afterATick(`detail-for-${this.props.id}`);
       }
       render() {
-        return <i>{this.text || "…"}</i>;
+        return (
+          <span>
+            <i>{this.text || "…"}</i>
+          </span>
+        );
       }
     }
 
-    @Host("div")
     class Page extends Component {
       @state id = "";
       @mounted async load() {
         this.id = await afterATick("42");
       }
       render() {
-        return this.id ? <Detail id={this.id} /> : <p>…</p>;
+        return <div>{this.id ? <Detail id={this.id} /> : <p>…</p>}</div>;
       }
     }
 
@@ -103,7 +112,6 @@ describe("the server waits for async @mounted", () => {
   });
 
   test("a rejected fetch does not cost the rest of the page", async () => {
-    @Host("div")
     class Flaky extends Component {
       @state status = "pending";
       @mounted async load() {
@@ -114,28 +122,36 @@ describe("the server waits for async @mounted", () => {
         }
       }
       render() {
-        return <p>flaky: {this.status}</p>;
+        return (
+          <div>
+            <p>flaky: {this.status}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Fine extends Component {
       @state value = "";
       @mounted async load() {
         this.value = await afterATick("ok");
       }
       render() {
-        return <p>fine: {this.value || "…"}</p>;
+        return (
+          <div>
+            <p>fine: {this.value || "…"}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <Flaky />
-            <Fine />
+            <div>
+              <Flaky />
+              <Fine />
+            </div>
           </div>
         );
       }
@@ -149,12 +165,15 @@ describe("the server waits for async @mounted", () => {
   });
 
   test("a page with no async work is not slowed down", async () => {
-    @Host("div")
     class Plain extends Component {
       @created init() {}
       @mounted ready() {}
       render() {
-        return <p>plain</p>;
+        return (
+          <div>
+            <p>plain</p>
+          </div>
+        );
       }
     }
 
@@ -188,14 +207,13 @@ describe("the server waits for async @mounted", () => {
     // Here every resolved fetch renders the next level down, which mounts and
     // fetches again — the shape the bound exists for. A server cannot know how
     // deep it goes, so it has to stop.
-    @Host("div")
     class Chain extends Component<{ depth: number }> {
       @state loaded = false;
       @mounted async load() {
         this.loaded = await afterATick(true, 1);
       }
       render() {
-        return this.loaded ? <Chain depth={this.props.depth + 1} /> : <p>…</p>;
+        return <div>{this.loaded ? <Chain depth={this.props.depth + 1} /> : <p>…</p>}</div>;
       }
     }
 
@@ -216,7 +234,6 @@ describe("the server waits for async @mounted", () => {
     let rendersAfterThrow = 0;
     let thrown = false;
 
-    @Host("div")
     class Chain extends Component<{ depth: number }> {
       @state loaded = false;
       @mounted async load() {
@@ -225,7 +242,7 @@ describe("the server waits for async @mounted", () => {
       }
       render() {
         if (thrown) rendersAfterThrow++;
-        return this.loaded ? <Chain depth={this.props.depth + 1} /> : <p>…</p>;
+        return <div>{this.loaded ? <Chain depth={this.props.depth + 1} /> : <p>…</p>}</div>;
       }
     }
 
@@ -243,26 +260,30 @@ describe("the server waits for async @mounted", () => {
 });
 
 describe("AsyncLoad on the server", () => {
-  @Host("div")
   class Loaded extends Component<{ label?: string }> {
     render() {
-      return <p>LOADED: {this.props.label ?? "-"}</p>;
+      return (
+        <div>
+          <p>LOADED: {this.props.label ?? "-"}</p>
+        </div>
+      );
     }
   }
 
   test("a realistic import is awaited, so the chunk's content is in the HTML", async () => {
-    @Host("div")
     class Page extends Component {
       render() {
         return (
-          <AsyncLoad
-            cacheKey="server-slow-import"
-            lazy={() => afterATick({ Loaded }, 8)}
-            namedExport="Loaded"
-            loadedProps={{ label: "from server" }}
-            onLoading={<p>loading…</p>}
-            errorFallback={<p>failed</p>}
-          />
+          <div>
+            <AsyncLoad
+              cacheKey="server-slow-import"
+              lazy={() => afterATick({ Loaded }, 8)}
+              namedExport="Loaded"
+              loadedProps={{ label: "from server" }}
+              onLoading={<p>loading…</p>}
+              errorFallback={<p>failed</p>}
+            />
+          </div>
         );
       }
     }
@@ -273,23 +294,31 @@ describe("AsyncLoad on the server", () => {
     // state blob, ready for the client to adopt rather than rebuild.
     expect(page.body).toContain("LOADED: from server");
     expect(page.body).not.toContain("loading…");
-    expect(page.body).toContain('data-ramonda="Loaded"');
+    /**
+     * And it is a MOUNTED component rather than markup that happens to say the right thing: its
+     * marker pair is in the body, which only a component that reached the reconciler has.
+     *
+     * `data-ramonda="Loaded"` used to be the proof. That was a DEV attribute on a host element, and
+     * a component has no element of its own — the marker is what says one is here.
+     */
+    expect(page.body).toMatch(/<!--c\d+/);
   });
 
   test("a failed import renders its fallback rather than losing the page", async () => {
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <p>chrome</p>
-            <AsyncLoad
-              cacheKey="server-failed-import"
-              lazy={() => Promise.reject(new Error("chunk 404"))}
-              namedExport="Loaded"
-              onLoading={<p>loading…</p>}
-              errorFallback={<p>failed</p>}
-            />
+            <div>
+              <p>chrome</p>
+              <AsyncLoad
+                cacheKey="server-failed-import"
+                lazy={() => Promise.reject(new Error("chunk 404"))}
+                namedExport="Loaded"
+                onLoading={<p>loading…</p>}
+                errorFallback={<p>failed</p>}
+              />
+            </div>
           </div>
         );
       }
@@ -304,26 +333,30 @@ describe("AsyncLoad on the server", () => {
 });
 
 describe("modulepreload hints", () => {
-  @Host("div")
   class Chunk extends Component {
     render() {
-      return <p>chunk</p>;
+      return (
+        <div>
+          <p>chunk</p>
+        </div>
+      );
     }
   }
 
   function page(preload: string | readonly string[] | undefined, key: string) {
-    @Host("div")
     class Page extends Component {
       render() {
         return (
-          <AsyncLoad
-            cacheKey={key}
-            preload={preload}
-            lazy={() => afterATick({ Chunk }, 4)}
-            namedExport="Chunk"
-            onLoading={<p>loading…</p>}
-            errorFallback={<p>failed</p>}
-          />
+          <div>
+            <AsyncLoad
+              cacheKey={key}
+              preload={preload}
+              lazy={() => afterATick({ Chunk }, 4)}
+              namedExport="Chunk"
+              onLoading={<p>loading…</p>}
+              errorFallback={<p>failed</p>}
+            />
+          </div>
         );
       }
     }

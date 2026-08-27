@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, destroyed, state, watchProp } from "@ramonda/core";
+import { Component, bootstrap, destroyed, state, watchProp } from "@ramonda/core";
 
 import { makeBag, makeRows, stamp } from "./make";
 
@@ -11,7 +11,6 @@ declare const flag: boolean;
  * The guard wraps a plain array whatever produced it, so the same array a name away is the same
  * fault.
  */
-@Host("div")
 class Rows extends Component {
   @state written: string[] = [];
   @state fromHelper = makeRows();
@@ -28,12 +27,15 @@ class Rows extends Component {
   }
 
   render() {
-    return <div>{this.written.length}</div>;
+    return (
+      <div>
+        <div>{this.written.length}</div>
+      </div>
+    );
   }
 }
 
 /** `interval-with-no-cleanup` — the id reaches the property through a local. */
-@Host("div")
 class Ticker extends Component {
   tick = 0;
   other = 0;
@@ -51,19 +53,24 @@ class Ticker extends Component {
   }
 
   render() {
-    return <div>tick</div>;
+    return (
+      <div>
+        <div>tick</div>
+      </div>
+    );
   }
 }
 
 /** `clock-read-while-rendering` — the read is behind a helper in another file. */
-@Host("div")
 class Clock extends Component {
   render() {
     return (
       <div>
-        {Date.now()}
-        {stamp()}
-        {new Date("2020-01-01").toString()}
+        <div>
+          {Date.now()}
+          {stamp()}
+          {new Date("2020-01-01").toString()}
+        </div>
       </div>
     );
   }
@@ -76,7 +83,6 @@ interface Props {
 const SELECT_MISSING = (p: Props) => p.nope;
 
 /** `watch-of-a-prop-that-is-not-there` — the selector written here, and a name away. */
-@Host("div")
 class Watcher extends Component<Props> {
   @watchProp((p: Props) => p.userId)
   onUser() {}
@@ -88,7 +94,11 @@ class Watcher extends Component<Props> {
   onNamed() {}
 
   render() {
-    return <div>{this.props.userId}</div>;
+    return (
+      <div>
+        <div>{this.props.userId}</div>
+      </div>
+    );
   }
 }
 

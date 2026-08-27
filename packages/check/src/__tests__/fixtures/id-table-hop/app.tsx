@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 import { EMAIL_ID, OVERVIEW_ID, SUMMARY_ID } from "./ids";
 
@@ -10,47 +10,54 @@ import { EMAIL_ID, OVERVIEW_ID, SUMMARY_ID } from "./ids";
  * silences `reference-to-an-id-that-is-not-there` for the entire project. The two faults at the
  * bottom of this render were reported by nothing.
  */
-@Host("div")
 class Page extends Component {
   render() {
     return (
       <div>
-        {/* Every one of these pairs UP. Nothing here is a fault. */}
-        <h2 id={SUMMARY_ID}>Summary</h2>
-        <section aria-labelledby="summary">a</section>
+        <div>
+          {/* Every one of these pairs UP. Nothing here is a fault. */}
+          <h2 id={SUMMARY_ID}>Summary</h2>
+          <section aria-labelledby="summary">a</section>
 
-        <label htmlFor={EMAIL_ID}>Email</label>
-        <input id={EMAIL_ID} type="text" />
+          <label htmlFor={EMAIL_ID}>Email</label>
+          <input id={EMAIL_ID} type="text" />
 
-        <a href="#summary">to the summary</a>
+          <a href="#summary">to the summary</a>
 
-        {/* A REAL fault, in the same project: the typo resolves to nothing. */}
-        <section aria-labelledby="sumary">b</section>
-        <a href="#sumary">nowhere</a>
+          {/* A REAL fault, in the same project: the typo resolves to nothing. */}
+          <section aria-labelledby="sumary">b</section>
+          <a href="#sumary">nowhere</a>
 
-        {/* Pairs up with the `@Host` id below, which is also a name away. */}
-        <a href="#overview">to the overview</a>
-        <a href="#filters">to the filters</a>
+          {/* Pairs up with the ids below, each of them a name away from its literal. */}
+          <a href="#overview">to the overview</a>
+          <a href="#filters">to the filters</a>
+        </div>
       </div>
     );
   }
 }
 
-/** An id written in `@Host` props, which is on the page and is in no JSX element. */
-@Host("section", () => ({ id: OVERVIEW_ID }))
+/** An id that reaches its element through a NAME rather than as a literal. */
 class Overview extends Component {
   render() {
-    return <section>overview</section>;
+    return (
+      <section id={OVERVIEW_ID}>
+        <section>overview</section>
+      </section>
+    );
   }
 }
 
 /** The SHORTHAND spelling of the same claim, which was read by nothing at all. */
 const id = "filters";
 
-@Host("aside", () => ({ id }))
 class Filters extends Component {
   render() {
-    return <aside>filters</aside>;
+    return (
+      <aside id={id}>
+        <aside>filters</aside>
+      </aside>
+    );
   }
 }
 

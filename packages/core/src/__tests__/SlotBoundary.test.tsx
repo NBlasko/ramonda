@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, list, state } from "../index";
 import type { RamondaNode, VNode } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -19,27 +19,29 @@ import { resetDiagnostics } from "../debug/diagnostics";
  *   depth, because it keys off who BUILT the vnode, not how it arrived.
  */
 
-@Host("li")
 class Chip extends Component<{ label: string }> {
   @state hits = 0;
   render() {
     return (
-      <span>
-        {this.props.label}#{this.hits}
-      </span>
+      <li>
+        <span>
+          {this.props.label}#{this.hits}
+        </span>
+      </li>
     );
   }
 }
 
-@Host("div")
 class Panel extends Component<{ children?: RamondaNode }> {
   render() {
     return (
-      <ul>
-        <Chip label="HEAD" />
-        {this.props.children}
-        <Chip label="FOOT" />
-      </ul>
+      <div>
+        <ul>
+          <Chip label="HEAD" />
+          {this.props.children}
+          <Chip label="FOOT" />
+        </ul>
+      </div>
     );
   }
 }
@@ -53,10 +55,8 @@ const dump = (c: Element) =>
     .join(" | ");
 
 const mark = (c: Element, i: number, v: number) => {
-  const li = c.querySelectorAll("li")[i] as Element & {
-    _componentInstance?: Chip;
-  };
-  li._componentInstance!.hits = v;
+  const li = c.querySelectorAll("li")[i];
+  instanceOf<{ hits: number }>(li).hits = v;
 };
 
 describe("the slot boundary", () => {
@@ -79,16 +79,17 @@ describe("the slot boundary", () => {
   });
 
   test("a listed slot keeps the component's chrome out of reach", async () => {
-    @Host("div")
     class Caller extends Component {
       @state items = [{ l: "a" }, { l: "b" }, { l: "c" }];
       render() {
         return (
-          <Panel>
-            {list(this.items, (i: { l: string }) => (
-              <Chip label={i.l} />
-            ))}
-          </Panel>
+          <div>
+            <Panel>
+              {list(this.items, (i: { l: string }) => (
+                <Chip label={i.l} />
+              ))}
+            </Panel>
+          </div>
         );
       }
     }
@@ -112,17 +113,18 @@ describe("the slot boundary", () => {
   });
 
   test("hand-written slot content cannot take the component's own chrome", async () => {
-    @Host("div")
     class Caller extends Component {
       @state flipped = false;
       render() {
         const a = <Chip label="a" />;
         const c = <Chip label="c" />;
         return (
-          <Panel>
-            {this.flipped ? c : a}
-            {this.flipped ? a : c}
-          </Panel>
+          <div>
+            <Panel>
+              {this.flipped ? c : a}
+              {this.flipped ? a : c}
+            </Panel>
+          </div>
         );
       }
     }
@@ -147,24 +149,28 @@ describe("the slot boundary", () => {
     // from the panel's own <Chip>s. Measured without the stamp:
     // "HEAD#10 | ICON#40 | FOOT#0" — FOOT's state moved onto the icon when it
     // was hidden and shown again.
-    @Host("div")
     class IconPanel extends Component<{ icon: VNode | null }> {
       render() {
         return (
-          <ul>
-            <Chip label="HEAD" />
-            {this.props.icon}
-            <Chip label="FOOT" />
-          </ul>
+          <div>
+            <ul>
+              <Chip label="HEAD" />
+              {this.props.icon}
+              <Chip label="FOOT" />
+            </ul>
+          </div>
         );
       }
     }
 
-    @Host("div")
     class Caller extends Component {
       @state show = true;
       render() {
-        return <IconPanel icon={this.show ? <Chip label="ICON" /> : null} />;
+        return (
+          <div>
+            <IconPanel icon={this.show ? <Chip label="ICON" /> : null} />
+          </div>
+        );
       }
     }
 
@@ -188,30 +194,34 @@ describe("the slot boundary", () => {
     // Text has no tag and no key, so it is the child with the least to match on,
     // and removing the element before it shifts every position after it. Mixed
     // with elements on both sides on purpose.
-    @Host("p")
     class TextPanel extends Component<{
       before: RamondaNode;
       children?: RamondaNode;
     }> {
       render() {
         return (
-          <span>
-            <b>start·</b>
-            {this.props.before}
-            <em>·middle·</em>
-            {this.props.children}
-            <b>·end</b>
-          </span>
+          <p>
+            <span>
+              <b>start·</b>
+              {this.props.before}
+              <em>·middle·</em>
+              {this.props.children}
+              <b>·end</b>
+            </span>
+          </p>
         );
       }
     }
 
-    @Host("div")
     class Caller extends Component {
       @state showBefore = true;
       @state text = "slotted text";
       render() {
-        return <TextPanel before={this.showBefore ? <i>·before·</i> : null}>{this.text}</TextPanel>;
+        return (
+          <div>
+            <TextPanel before={this.showBefore ? <i>·before·</i> : null}>{this.text}</TextPanel>
+          </div>
+        );
       }
     }
 
@@ -236,11 +246,14 @@ describe("the slot boundary", () => {
     // A module-level vnode has no rendering component to be stamped with. It
     // must not therefore match anything — that would leave exactly the elements
     // a developer hoists to module scope as the unprotected ones.
-    @Host("div")
     class Caller extends Component {
       @state swap = false;
       render() {
-        return <Panel>{this.swap ? HOISTED_B : HOISTED_A}</Panel>;
+        return (
+          <div>
+            <Panel>{this.swap ? HOISTED_B : HOISTED_A}</Panel>
+          </div>
+        );
       }
     }
 

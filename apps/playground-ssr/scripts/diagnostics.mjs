@@ -85,10 +85,13 @@ if (html.includes("signup")) {
   fail("The `use()` label reached the hydration blob. It is a devtools name, not state.");
 }
 
-const blob = /data-ramonda-state="([^"]*)"/.exec(html);
+// The blob rides the component's OPENING MARKER. It used to be an attribute on the component's host
+// element, and there is no host: a component owns a range of nodes, so the address of its state is
+// the comment in front of that range.
+const blob = /<!--c\d+ (\{.*?\})-->/.exec(html);
 if (!blob) fail("No hydration blob in the rendered HTML, so the assertion below would prove nothing.");
 
-const decoded = blob[1].replace(/&quot;/g, '"');
+const decoded = blob[1];
 // `value` is 10 rather than the seed: the hook moves it in `@created`, because core omits a field
 // still holding its initial primitive and two EMPTY blobs would prove nothing about the label.
 const EXPECTED_BLOB = '{"state":{},"hooks":[{"state":{"value":10}}]}';

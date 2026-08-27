@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, ShouldUpdateOnPropsChange } from "../index";
+import { Component, state, ShouldUpdateOnPropsChange } from "../index";
 
 /**
  * `@ShouldUpdateOnPropsChange` — the rule a component follows when its parent
@@ -47,20 +47,24 @@ describe("@ShouldUpdateOnPropsChange", () => {
       seen.push(`${previous.v}->${next.v}`);
       return false;
     })
-    @Host("b")
     class Gated extends Component<{ v: number }> {
       render() {
-        return <i>{this.props.v}</i>;
+        return (
+          <b>
+            <i>{this.props.v}</i>
+          </b>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state v = 1;
       render() {
         return (
           <div>
-            <Gated v={this.v} />
+            <div>
+              <Gated v={this.v} />
+            </div>
           </div>
         );
       }
@@ -83,21 +87,25 @@ describe("@ShouldUpdateOnPropsChange", () => {
       sawSelf = self;
       return next.v !== self.floor;
     })
-    @Host("b")
     class Gated extends Component<{ v: number }> {
       floor = 99;
       render() {
-        return <i>{this.props.v}</i>;
+        return (
+          <b>
+            <i>{this.props.v}</i>
+          </b>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state v = 1;
       render() {
         return (
           <div>
-            <Gated v={this.v} />
+            <div>
+              <Gated v={this.v} />
+            </div>
           </div>
         );
       }
@@ -115,10 +123,13 @@ describe("@ShouldUpdateOnPropsChange", () => {
 
   test("a subclass inherits the rule without redeclaring it", async () => {
     @ShouldUpdateOnPropsChange(() => false)
-    @Host("b")
     class Base extends Component<{ v: number }> {
       render() {
-        return <i>{this.props.v}</i>;
+        return (
+          <b>
+            <i>{this.props.v}</i>
+          </b>
+        );
       }
     }
 
@@ -128,13 +139,14 @@ describe("@ShouldUpdateOnPropsChange", () => {
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state v = 1;
       render() {
         return (
           <div>
-            <Sub v={this.v} />
+            <div>
+              <Sub v={this.v} />
+            </div>
           </div>
         );
       }
@@ -152,29 +164,36 @@ describe("@ShouldUpdateOnPropsChange", () => {
 
   test("a subclass redeclaring it overrides the base, with nothing reported", async () => {
     @ShouldUpdateOnPropsChange(() => false)
-    @Host("b")
     class Base extends Component<{ v: number }> {
       render() {
-        return <i>{this.props.v}</i>;
+        return (
+          <b>
+            <i>{this.props.v}</i>
+          </b>
+        );
       }
     }
 
     @ShouldUpdateOnPropsChange(() => true)
-    @Host("b")
     class Sub extends Base {
       override render() {
-        return <u>{this.props.v}</u>;
+        return (
+          <b>
+            <u>{this.props.v}</u>
+          </b>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state v = 1;
       render() {
         return (
           <div>
-            <Base v={this.v} />
-            <Sub v={this.v} />
+            <div>
+              <Base v={this.v} />
+              <Sub v={this.v} />
+            </div>
           </div>
         );
       }
@@ -211,20 +230,24 @@ describe("@ShouldUpdateOnPropsChange", () => {
       asked.push("closest");
       return false;
     })
-    @Host("b")
     class Twice extends Component<{ v: number }> {
       render() {
-        return <i>{this.props.v}</i>;
+        return (
+          <b>
+            <i>{this.props.v}</i>
+          </b>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state v = 1;
       render() {
         return (
           <div>
-            <Twice v={this.v} />
+            <div>
+              <Twice v={this.v} />
+            </div>
           </div>
         );
       }
@@ -247,29 +270,36 @@ describe("@ShouldUpdateOnPropsChange", () => {
     // reads another's, the order becomes load-bearing and nothing in the source
     // says so.
     @ShouldUpdateOnPropsChange(() => false)
-    @Host("b")
     class GateFirst extends Component<{ v: number }> {
       render() {
-        return <i>{this.props.v}</i>;
+        return (
+          <b>
+            <i>{this.props.v}</i>
+          </b>
+        );
       }
     }
 
-    @Host("b")
     @ShouldUpdateOnPropsChange(() => false)
     class HostFirst extends Component<{ v: number }> {
       render() {
-        return <u>{this.props.v}</u>;
+        return (
+          <b>
+            <u>{this.props.v}</u>
+          </b>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state v = 1;
       render() {
         return (
           <div>
-            <GateFirst v={this.v} />
-            <HostFirst v={this.v} />
+            <div>
+              <GateFirst v={this.v} />
+              <HostFirst v={this.v} />
+            </div>
           </div>
         );
       }

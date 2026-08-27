@@ -8,7 +8,6 @@ declare const signal: { addEventListener(kind: string, run: () => void, options?
 window.addEventListener("online", () => {});
 
 /** The fault, written where the rule looks. */
-@Host("div")
 class Leaks extends Component {
   @state n = 0;
 
@@ -22,12 +21,15 @@ class Leaks extends Component {
   onKey() {}
 
   render() {
-    return <div>{this.n}</div>;
+    return (
+      <div>
+        <div>{this.n}</div>
+      </div>
+    );
   }
 }
 
 /** The same event name, one hop away. */
-@Host("div")
 class LeaksThroughAName extends Component {
   @created
   start() {
@@ -35,16 +37,23 @@ class LeaksThroughAName extends Component {
   }
 
   render() {
-    return <div>named</div>;
+    return (
+      <div>
+        <div>named</div>
+      </div>
+    );
   }
 }
 
 /** Once per PASS rather than once per mount — measured at 6 listeners over 6 renders. */
-@Host("div")
 class LeaksPerRender extends Component {
   render() {
     window.addEventListener("scroll", () => {});
-    return <div>per render</div>;
+    return (
+      <div>
+        <div>per render</div>
+      </div>
+    );
   }
 }
 
@@ -55,7 +64,6 @@ class LeaksPerRender extends Component {
  * `@onWindow` exists and does both halves. Outside a dev guard there is nothing this arrangement
  * buys.
  */
-@Host("div")
 class Paired extends Component {
   @created
   start() {
@@ -70,12 +78,15 @@ class Paired extends Component {
   }
 
   render() {
-    return <div>paired</div>;
+    return (
+      <div>
+        <div>paired</div>
+      </div>
+    );
   }
 }
 
 /** `@onWindow` takes the same options, so closing the hatch is not an answer to this either. */
-@Host("div")
 class ClosesItself extends Component {
   controller = { signal: {} };
 
@@ -86,12 +97,15 @@ class ClosesItself extends Component {
   }
 
   render() {
-    return <div>closes itself</div>;
+    return (
+      <div>
+        <div>closes itself</div>
+      </div>
+    );
   }
 }
 
 /** An `AbortSignal` dies with the request, and an element dies with the element. */
-@Host("div")
 class NotAGlobal extends Component {
   box = { addEventListener(kind: string, run: () => void) {} };
 
@@ -102,12 +116,15 @@ class NotAGlobal extends Component {
   }
 
   render() {
-    return <div>not a global</div>;
+    return (
+      <div>
+        <div>not a global</div>
+      </div>
+    );
   }
 }
 
 /** An unreadable event name costs nothing here — the decorator was the answer whatever it is. */
-@Host("div")
 class UnreadableEvent extends Component {
   kind = "resize";
 
@@ -117,7 +134,11 @@ class UnreadableEvent extends Component {
   }
 
   render() {
-    return <div>unreadable</div>;
+    return (
+      <div>
+        <div>unreadable</div>
+      </div>
+    );
   }
 }
 
@@ -154,10 +175,13 @@ abstract class AbstractAdds extends Component {
   }
 }
 
-@Host("div")
 class Concrete extends AbstractAdds {
   render() {
-    return <div>concrete</div>;
+    return (
+      <div>
+        <div>concrete</div>
+      </div>
+    );
   }
 }
 
@@ -172,7 +196,6 @@ declare const __DEV__: boolean;
  * production too, for an event nothing dispatches. The raw call is the right answer, and the only
  * question left is whether anything removes it. This one does.
  */
-@Host("div")
 class DevOnlyAndPaired extends Component {
   @created
   start() {
@@ -191,7 +214,11 @@ class DevOnlyAndPaired extends Component {
   }
 
   render() {
-    return <div>dev only</div>;
+    return (
+      <div>
+        <div>dev only</div>
+      </div>
+    );
   }
 }
 
@@ -201,7 +228,6 @@ class DevOnlyAndPaired extends Component {
  * This is the `@ramonda/query` / `@ramonda/form` devtools shape with one word changed, and it was
  * reported: the removal set was keyed on the spelling rather than on what the spelling names.
  */
-@Host("div")
 class DevOnlyAcrossTwoNames extends Component {
   @created
   start() {
@@ -220,12 +246,15 @@ class DevOnlyAcrossTwoNames extends Component {
   }
 
   render() {
-    return <div>two names</div>;
+    return (
+      <div>
+        <div>two names</div>
+      </div>
+    );
   }
 }
 
 /** ✗ The same, with the hatch left open — a leak, in development. */
-@Host("div")
 class DevOnlyAndLeaking extends Component {
   @created
   start() {
@@ -237,7 +266,11 @@ class DevOnlyAndLeaking extends Component {
   ready = true;
 
   render() {
-    return <div>dev only, leaking</div>;
+    return (
+      <div>
+        <div>dev only, leaking</div>
+      </div>
+    );
   }
 }
 
@@ -246,7 +279,6 @@ class DevOnlyAndLeaking extends Component {
  * `packages/core` alone — and which was read as no guard at all, so the same code written the other
  * way was reported.
  */
-@Host("div")
 class DevOnlyWithAnAnd extends Component {
   @created
   start() {
@@ -261,12 +293,15 @@ class DevOnlyWithAnAnd extends Component {
   }
 
   render() {
-    return <div>and</div>;
+    return (
+      <div>
+        <div>and</div>
+      </div>
+    );
   }
 }
 
 /** ✓ And the ternary, which is the same claim once more. */
-@Host("div")
 class DevOnlyWithATernary extends Component {
   @created
   start() {
@@ -281,12 +316,15 @@ class DevOnlyWithATernary extends Component {
   }
 
   render() {
-    return <div>ternary</div>;
+    return (
+      <div>
+        <div>ternary</div>
+      </div>
+    );
   }
 }
 
 /** A guard is not a guard when it is an `||`, or when the code is in the `else`. */
-@Host("div")
 class NotReallyGuarded extends Component {
   @created
   start() {
@@ -303,7 +341,11 @@ class NotReallyGuarded extends Component {
   always = false;
 
   render() {
-    return <div>not guarded</div>;
+    return (
+      <div>
+        <div>not guarded</div>
+      </div>
+    );
   }
 }
 

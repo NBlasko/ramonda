@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { state, Host } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -20,7 +20,6 @@ import { hydrateRoot } from "../../hydration/hydrate";
  */
 describe("controlled form values on the server", () => {
   test("value and checked are serialized", async () => {
-    @Host("form")
     class Editor extends Component {
       @state text = "hello";
       @state agreed = true;
@@ -28,11 +27,13 @@ describe("controlled form values on the server", () => {
 
       render() {
         return (
-          <div>
-            <input id="t" value={this.text} />
-            <input id="a" type="checkbox" checked={this.agreed} />
-            <input id="s" type="checkbox" checked={this.subscribed} />
-          </div>
+          <form>
+            <div>
+              <input id="t" value={this.text} />
+              <input id="a" type="checkbox" checked={this.agreed} />
+              <input id="s" type="checkbox" checked={this.subscribed} />
+            </div>
+          </form>
         );
       }
     }
@@ -46,11 +47,14 @@ describe("controlled form values on the server", () => {
   });
 
   test("an empty value still reaches the markup", async () => {
-    @Host("form")
     class Editor extends Component {
       @state text = "";
       render() {
-        return <input id="t" value={this.text} />;
+        return (
+          <form>
+            <input id="t" value={this.text} />
+          </form>
+        );
       }
     }
 
@@ -63,17 +67,18 @@ describe("controlled form values on the server", () => {
   });
 
   test("hydration adopts the server's control without changing it", async () => {
-    @Host("form")
     class Editor extends Component {
       @state text = "hello";
       @state agreed = true;
 
       render() {
         return (
-          <div>
-            <input id="t" value={this.text} />
-            <input id="a" type="checkbox" checked={this.agreed} />
-          </div>
+          <form>
+            <div>
+              <input id="t" value={this.text} />
+              <input id="a" type="checkbox" checked={this.agreed} />
+            </div>
+          </form>
         );
       }
     }

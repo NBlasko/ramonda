@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, __h } from "../index";
+import { Component, state, __h } from "../index";
 
 /**
  * `createRamonda` builds every vnode, so anything it gets wrong is wrong
@@ -8,10 +8,13 @@ import { Component, Host, state, __h } from "../index";
  * vnode rather than on every attribute diff, and attaching a component's
  * children to its props.
  */
-@Host("div")
 class Box extends Component<{ label?: string; children?: unknown }> {
   render() {
-    return <span>{this.props.children as never}</span>;
+    return (
+      <div>
+        <span>{this.props.children as never}</span>
+      </div>
+    );
   }
 }
 
@@ -23,10 +26,9 @@ describe("createRamonda", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("class is normalized to className on an element", async () => {
-    @Host("div")
     class C extends Component {
       render() {
-        return __h("p", { class: "legacy" }, "x") as any;
+        return <div>{__h("p", { class: "legacy" }, "x") as any}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -36,10 +38,9 @@ describe("createRamonda", () => {
   });
 
   test("an explicit className wins over a stray class", async () => {
-    @Host("div")
     class C extends Component {
       render() {
-        return __h("p", { class: "old", className: "new" }, "x") as any;
+        return <div>{__h("p", { class: "old", className: "new" }, "x") as any}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -48,16 +49,18 @@ describe("createRamonda", () => {
   });
 
   test("class is normalized on a component prop too", async () => {
-    @Host("div")
     class Inner extends Component<{ className?: string }> {
       render() {
-        return <span>{this.props.className ?? "none"}</span>;
+        return (
+          <div>
+            <span>{this.props.className ?? "none"}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class C extends Component {
       render() {
-        return __h(Inner as any, { class: "from-class" }) as any;
+        return <div>{__h(Inner as any, { class: "from-class" }) as any}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -78,14 +81,15 @@ describe("createRamonda", () => {
 
   test("two components sharing one props object keep their own children", async () => {
     const shared: Record<string, unknown> = { label: "A" };
-    @Host("div")
     class C extends Component {
       @state tick = 0;
       render() {
         return (
           <div>
-            {__h(Box as any, shared, "one") as any}
-            {__h(Box as any, shared, "two") as any}
+            <div>
+              {__h(Box as any, shared, "one") as any}
+              {__h(Box as any, shared, "two") as any}
+            </div>
           </div>
         );
       }

@@ -123,6 +123,21 @@ export function flushUpdated(): void {
     // order they were built in.
     components.sort((a, b) => b[COMPONENT_RUNTIME].depth - a[COMPONENT_RUNTIME].depth);
 
+    /**
+     * One component's throw must not cost the others theirs.
+     *
+     * `errorHandler` RETHROWS when no `ErrorBoundary` claims the error — that is what carries an
+     * app's own error up to the console with its real stack. But this loop is the last thing between
+     * that throw and the rest of the commit: the snapshot was cleared up front, so what has not run
+     * yet is only in this local array, and `resumeIfWorkRemains` asks `hasPendingUpdated()`, which is
+     * already empty. Measured on three rows where the FIRST throws: `u1` alone, `u2` and `u3` never
+     * run, and no later render brings them back.
+     *
+     * So the escaping error is held and rethrown after the loop. The first one wins — the rest of an
+     * app's errors in one commit are consequences, and reporting them all would bury it.
+     */
+    let escaped: { value: unknown } | undefined;
+
     for (const component of components) {
       const componentRuntime = component[COMPONENT_RUNTIME];
       if (componentRuntime.isDestroyed || componentRuntime.env === "server") continue;
@@ -131,9 +146,15 @@ export function flushUpdated(): void {
       try {
         for (let i = 0; i < updates.length; i++) updates[i]();
       } catch (e) {
-        errorHandler(e, component);
+        try {
+          errorHandler(e, component);
+        } catch (unhandled) {
+          escaped ??= { value: unhandled };
+        }
       }
     }
+
+    if (escaped !== undefined) throw escaped.value;
   } finally {
     flushingUpdates = false;
   }
@@ -249,6 +270,8 @@ export function flushPostCommit(): void {
   if (flushing) return;
   flushing = true;
 
+  let escapedMount: { value: unknown } | undefined;
+
   try {
     let ran = 0;
     while (pending.length > 0) {
@@ -280,9 +303,24 @@ export function flushPostCommit(): void {
           addServerWork(next.component[COMPONENT_RUNTIME].serverWork, result);
         }
       } catch (e) {
-        // One component's @mounted must not stop the rest of the tree from
-        // mounting — the same rule teardown follows.
-        errorHandler(e, next.component);
+        /**
+         * One component's @mounted must not stop the rest of the tree from mounting — the same rule
+         * teardown follows.
+         *
+         * `errorHandler` rethrows an error no `ErrorBoundary` claims, which is right: it is the app's
+         * own error on its way to the console. But letting it escape the loop leaves every LATER
+         * entry in `pending` unrun, and only `processTask` recovers from that (`resumeIfWorkRemains`
+         * sees the leftovers and schedules another drain). `bootstrap` and the other entry points do
+         * not: measured, a component sitting in the page whose `@mounted` never ran and never will.
+         *
+         * Held and rethrown once the queue is drained. The first error wins — later ones in the same
+         * commit are usually consequences of it.
+         */
+        try {
+          errorHandler(e, next.component);
+        } catch (unhandled) {
+          escapedMount ??= { value: unhandled };
+        }
       }
     }
   } finally {
@@ -299,6 +337,10 @@ export function flushPostCommit(): void {
     flushAfterCommit();
     flushing = false;
   }
+
+  // After the flag is cleared and the commit-level work has run, so an error on its way to the
+  // console does not also leave this module wedged.
+  if (escapedMount !== undefined) throw escapedMount.value;
 }
 
 /**

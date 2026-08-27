@@ -49,14 +49,36 @@ A ref is for things state can't express. Don't use it to read or rewrite what th
 component shows — that is [state](/concepts/state)'s job, and the next render would
 overwrite whatever you changed by hand anyway.
 
-## On a component, the ref is its host
+## A ref goes on an element, not on a component
+
+A component may render one element, several, or none, so `<Card ref={…} />` has no answer
+to *which* element it would mean. Put the ref inside the component, on the element that
+should carry it:
 
 ```tsx
-<Card ref={this.card} />
+import { createRef } from "@ramonda/core";
+
+class Card extends Component {
+  private box = createRef<HTMLDivElement>();
+
+  render() {
+    return <div ref={this.box}>…</div>;
+  }
+}
 ```
 
-`this.card.current` is the `Card`'s [host element](/concepts/host) — there is only
-one, so there is no question of *which*.
+If the caller is the one who needs it, take the ref as an ordinary prop and place it
+where you know it belongs:
+
+```tsx
+import type { RefTarget } from "@ramonda/core";
+
+class Card extends Component<{ box?: RefTarget<HTMLDivElement> }> {
+  render() {
+    return <div ref={this.props.box}>…</div>;
+  }
+}
+```
 
 ## Callback refs
 

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Host, compute, state } from "../base/decorators";
+import { compute, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -34,7 +34,6 @@ describe("what a @compute promises", () => {
   test("it caches, invalidates on what it read, and lets go of what it stopped reading", async () => {
     let runs = 0;
 
-    @Host("div")
     class C extends Component {
       @state a = 1;
       @state b = 100;
@@ -48,9 +47,11 @@ describe("what a @compute promises", () => {
 
       render() {
         return (
-          <span>
-            {this.value}:{this.value}
-          </span>
+          <div>
+            <span>
+              {this.value}:{this.value}
+            </span>
+          </div>
         );
       }
     }

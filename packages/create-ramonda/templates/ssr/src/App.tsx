@@ -1,8 +1,7 @@
-import { Component, Head, Host, state } from "@ramonda/core";
+import { Component, Head, state } from "@ramonda/core";
 import { createRoutes, createRouter } from "@ramonda/router";
 
 /** The home page — static: the same for everyone, so the build bakes it to a file. */
-@Host("main")
 class HomePage extends Component {
   /**
    * The page's title and description, in the HTML the server sends.
@@ -23,7 +22,7 @@ class HomePage extends Component {
   }
   render() {
     return (
-      <div className="card">
+      <main className="card">
         <svg className="mark" viewBox="-32 -32 64 64" width="64" height="64" aria-hidden="true">
           <g fill="currentColor">
             <ellipse cx="0" cy="-14" rx="8.6" ry="14" />
@@ -40,28 +39,26 @@ class HomePage extends Component {
           count is {this.count}
         </button>
         <p className="hint">This page is prerendered at build time — pure static HTML.</p>
-      </div>
+      </main>
     );
   }
 }
 
 /** A second page, configured as ISR: baked, then rebaked on a timer — never per request. */
-@Host("main")
 class AboutPage extends Component {
   head = this.use(Head, () => ({ title: "About — Ramonda" }));
   render() {
     return (
-      <div className="card">
+      <main className="card">
         <h1>About</h1>
         <p className="tagline">Rendered on the server, cached, and revalidated on a schedule (ISR).</p>
         <p className="hint">Static content that can go stale — regenerated in the background.</p>
-      </div>
+      </main>
     );
   }
 }
 
 /** A per-request page: the `:name` param differs every time, so it renders on each request. */
-@Host("main")
 class GreetingPage extends Component {
   private nav = this.use(Navigator);
   // Below `nav` on purpose: field initialisers run in order, so reading `this.nav` above this
@@ -72,22 +69,21 @@ class GreetingPage extends Component {
   render() {
     const { name } = this.nav.params("/hello/:name");
     return (
-      <div className="card">
+      <main className="card">
         <h1>Hello, {name}!</h1>
         <p className="tagline">Rendered per request — its content depends on the URL.</p>
-      </div>
+      </main>
     );
   }
 }
 
-@Host("main")
 class NotFound extends Component {
   render() {
     return (
-      <div className="card">
+      <main className="card">
         <h1>Not found</h1>
         <p className="tagline">No route matched this URL.</p>
-      </div>
+      </main>
     );
   }
 }
@@ -106,7 +102,6 @@ export const routes = createRoutes({
 export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
 
 /** The app shell: navigation that stays put, and the outlet that swaps as you move. */
-@Host("div")
 export class App extends Component {
   router = this.use(Router);
   render() {

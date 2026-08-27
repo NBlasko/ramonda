@@ -16,7 +16,7 @@ export type RenderEnv = "client" | "server";
  * 1. Only `createComponent` reads it, and only when the component has **no
  *    parent**, i.e. a root mount.
  * 2. A root mount is fully synchronous: `renderToString` sets the flag, calls
- *    `mountNode`, and restores it before its first `await`. JavaScript is
+ *    `mountRoot`, and restores it before its first `await`. JavaScript is
  *    single-threaded, so no other render can run inside that window.
  * 3. Every component records `env` on its own runtime, and children inherit it
  *    from their parent. So re-renders drained from the task queue — which happen
